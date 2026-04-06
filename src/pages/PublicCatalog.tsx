@@ -57,59 +57,36 @@ export default function PublicCatalog() {
         setLoading(true);
         setError(null);
 
-        // 1. Find user by catalogSlug
-        const users = await db.list<UserProfile>('users');
-        const foundUser = users.find(u => u.catalogSlug?.toLowerCase() === slug.toLowerCase());
+        // 1. Find catalog config by slug
+        const configs = await db.find<CatalogConfig>('catalog_configs', 'slug', slug);
+        const foundConfig = configs[0];
 
-        if (!foundUser) {
+        if (!foundConfig) {
           setError('Catálogo no encontrado');
           setLoading(false);
           return;
         }
 
-        setOwner(foundUser);
-
-        // 2. Fetch catalog config, products and categories for this user
-        const [configs, p, c] = await Promise.all([
-          db.list<CatalogConfig>('catalog_configs'),
-          db.list<Product>('products', foundUser.uid),
-          db.list<Category>('categories', foundUser.uid)
-        ]);
-
-        const foundConfig = configs.find(cfg => cfg.ownerUid === foundUser.uid);
-        
-        if (foundConfig) {
-          if (!foundConfig.enabled) {
-            setError('Este catálogo está temporalmente desactivado');
-            setLoading(false);
-            return;
-          }
-          setConfig(foundConfig);
-        } else {
-          // Fallback default config if none exists
-          setConfig({
-            id: 'default',
-            ownerUid: foundUser.uid,
-            businessName: foundUser.businessName || 'Mi Tienda',
-            slug: foundUser.catalogSlug || slug,
-            enabled: true,
-            showPrices: true,
-            showStock: true,
-            showOutOfStock: false,
-            allowOrders: true,
-            welcomeMessage: '¡Bienvenido a nuestro catálogo!',
-            primaryColor: '#6366f1',
-            accentColor: '#6366f1',
-            layout: 'Grid',
-            fontStyle: 'Modern'
-          });
+        if (!foundConfig.enabled) {
+          setError('Este catálogo está temporalmente desactivado');
+          setLoading(false);
+          return;
         }
+
+        setConfig(foundConfig);
+        const ownerUid = foundConfig.ownerUid;
+
+        // 2. Fetch products and categories for this user
+        const [p, c] = await Promise.all([
+          db.list<Product>('products', ownerUid),
+          db.list<Category>('categories', ownerUid)
+        ]);
 
         // 3. Filter products
         let filteredProducts = p.filter(item => item.showInCatalog);
         
-        // Respect showOutOfStock rule if config exists
-        if (foundConfig && !foundConfig.showOutOfStock) {
+        // Respect showOutOfStock rule
+        if (!foundConfig.showOutOfStock) {
           filteredProducts = filteredProducts.filter(item => item.stock > 0);
         }
 

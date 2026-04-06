@@ -1,90 +1,196 @@
-import { Category, PriceRange, Product, Sale, StockIntake, CashFlowEntry, Order, CatalogConfig, UserProfile } from '../types';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where,
+  getDocFromServer
+} from 'firebase/firestore';
+import { 
+  getAuth, 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut as firebaseSignOut,
+  User
+} from 'firebase/auth';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { UserProfile, CatalogConfig } from '../types';
 
-// Mock database using localStorage
-class MockDB {
-  private getData<T>(key: string): T[] {
-    const data = localStorage.getItem(`rivatech_${key}`);
-    return data ? JSON.parse(data) : [];
-  }
+// Initialize Firebase SDK
+const app = initializeApp(firebaseConfig);
+export const db_instance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const auth_instance = getAuth(app);
 
-  private setData<T>(key: string, data: T[]) {
-    localStorage.setItem(`rivatech_${key}`, JSON.stringify(data));
-  }
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
 
-  // Generic CRUD
-  async list<T extends { id?: string; uid?: string; ownerUid?: string }>(collection: string, ownerUid?: string): Promise<T[]> {
-    let data = this.getData<T>(collection);
-    if (ownerUid) {
-      data = data.filter(item => item.ownerUid === ownerUid);
-    }
-    return data;
-  }
-
-  async get<T extends { id?: string; uid?: string }>(collection: string, id: string): Promise<T | null> {
-    const data = this.getData<T>(collection);
-    return data.find(item => (item.id || item.uid) === id) || null;
-  }
-
-  async create<T extends { id?: string; uid?: string }>(collection: string, item: T): Promise<T> {
-    const data = this.getData<T>(collection);
-    data.push(item);
-    this.setData(collection, data);
-    return item;
-  }
-
-  async update<T extends { id?: string; uid?: string }>(collection: string, id: string, updates: any): Promise<T> {
-    const data = this.getData<T>(collection);
-    const index = data.findIndex(item => (item.id || item.uid) === id);
-    if (index === -1) {
-      throw new Error('Not found');
-    }
-    data[index] = { ...data[index], ...updates };
-    this.setData(collection, data);
-    return data[index];
-  }
-
-  async delete(collection: string, id: string): Promise<void> {
-    const data = this.getData<any>(collection);
-    const filtered = data.filter((item: any) => (item.id || item.uid) !== id);
-    this.setData(collection, filtered);
-  }
-
-  // Specific helpers
-  async getCatalogBySlug(slug: string): Promise<CatalogConfig | null> {
-    const catalogs = this.getData<CatalogConfig>('catalog_configs');
-    return catalogs.find(c => c.slug === slug) || null;
-  }
-
-  async getUniqueSlug(baseSlug: string, collection: string): Promise<string> {
-    const data = this.getData<any>(collection);
-    let slug = baseSlug;
-    let counter = 1;
-    while (data.some((item: any) => item.slug === slug || item.catalogSlug === slug)) {
-      slug = `${baseSlug}-${counter}`;
-      counter++;
-    }
-    return slug;
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
   }
 }
 
-export const db = new MockDB();
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth_instance.currentUser?.uid,
+      email: auth_instance.currentUser?.email,
+      emailVerified: auth_instance.currentUser?.emailVerified,
+      isAnonymous: auth_instance.currentUser?.isAnonymous,
+      tenantId: auth_instance.currentUser?.tenantId,
+      providerInfo: auth_instance.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
-// Auth Mock
-export const auth = {
-  currentUser: null as UserProfile | null,
-  onAuthStateChanged: (callback: (user: UserProfile | null) => void) => {
-    const savedUser = localStorage.getItem('rivatech_user');
-    const user = savedUser ? JSON.parse(savedUser) : null;
-    auth.currentUser = user;
-    callback(user);
-    return () => {};
-  },
-  signIn: (user: UserProfile) => {
-    localStorage.setItem('rivatech_user', JSON.stringify(user));
-    auth.currentUser = user;
-  },
-  signOut: () => {
-    localStorage.removeItem('rivatech_user');
-    auth.currentUser = null;
+class FirebaseDB {
+  async list<T extends { id?: string; uid?: string; ownerUid?: string }>(collectionName: string, ownerUid?: string): Promise<T[]> {
+    try {
+      let q = query(collection(db_instance, collectionName));
+      if (ownerUid) {
+        q = query(collection(db_instance, collectionName), where('ownerUid', '==', ownerUid));
+      }
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+      return [];
+    }
   }
+
+  async find<T extends { id?: string; uid?: string; ownerUid?: string }>(collectionName: string, field: string, value: any): Promise<T[]> {
+    try {
+      const q = query(collection(db_instance, collectionName), where(field, '==', value));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, `${collectionName}?${field}=${value}`);
+      return [];
+    }
+  }
+
+  async get<T extends { id?: string; uid?: string }>(collectionName: string, id: string): Promise<T | null> {
+    try {
+      const docRef = doc(db_instance, collectionName, id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() } as T;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `${collectionName}/${id}`);
+      return null;
+    }
+  }
+
+  async create<T extends { id?: string; uid?: string }>(collectionName: string, item: T): Promise<T> {
+    try {
+      const id = item.id || item.uid || crypto.randomUUID();
+      const docRef = doc(db_instance, collectionName, id);
+      await setDoc(docRef, item);
+      return item;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, collectionName);
+      throw error;
+    }
+  }
+
+  async update<T extends { id?: string; uid?: string }>(collectionName: string, id: string, updates: any): Promise<T> {
+    try {
+      const docRef = doc(db_instance, collectionName, id);
+      await updateDoc(docRef, updates);
+      const updated = await this.get<T>(collectionName, id);
+      if (!updated) throw new Error('Not found after update');
+      return updated;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${id}`);
+      throw error;
+    }
+  }
+
+  async delete(collectionName: string, id: string): Promise<void> {
+    try {
+      const docRef = doc(db_instance, collectionName, id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${id}`);
+      throw error;
+    }
+  }
+
+  async getUniqueSlug(baseSlug: string, collectionName: string): Promise<string> {
+    try {
+      const users = await this.list<UserProfile>(collectionName);
+      let slug = baseSlug;
+      let counter = 1;
+      while (users.some(u => u.catalogSlug === slug)) {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+      return slug;
+    } catch (error) {
+      console.error('Error generating unique slug:', error);
+      return baseSlug;
+    }
+  }
+}
+
+export const db = new FirebaseDB();
+
+export const auth = {
+  currentUser: null as User | null,
+  onAuthStateChanged: (callback: (user: User | null) => void) => {
+    return onAuthStateChanged(auth_instance, (user) => {
+      auth.currentUser = user;
+      callback(user);
+    });
+  },
+  signOut: () => firebaseSignOut(auth_instance)
 };
+
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db_instance, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. ");
+    }
+  }
+}
+testConnection();

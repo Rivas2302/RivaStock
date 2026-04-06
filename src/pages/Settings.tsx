@@ -214,8 +214,8 @@ export default function Settings() {
     const slug = slugify(catalogSlug);
     
     // Check if slug is already taken by another user
-    const users = await db.list<UserProfile>('users');
-    const isTaken = users.some(u => u.uid !== user.uid && u.catalogSlug === slug);
+    const configs = await db.find<CatalogConfig>('catalog_configs', 'slug', slug);
+    const isTaken = configs.some(c => c.ownerUid !== user.uid);
     
     if (isTaken) {
       showMessage('Este slug ya está en uso. Por favor elige otro.', 'error');

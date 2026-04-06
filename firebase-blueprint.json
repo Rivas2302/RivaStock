@@ -1,0 +1,146 @@
+{
+  "entities": {
+    "users": {
+      "title": "UserProfile",
+      "description": "User profile and business settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "viewer"] },
+        "businessName": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "darkMode": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "catalogSlug": { "type": "string" }
+      },
+      "required": ["uid", "email", "businessName", "role"]
+    },
+    "categories": {
+      "title": "Category",
+      "description": "Product categories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerUid"]
+    },
+    "price_ranges": {
+      "title": "PriceRange",
+      "description": "Automatic markup rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "minPrice": { "type": "number" },
+        "maxPrice": { "type": "number" },
+        "markupPercent": { "type": "number" },
+        "ownerUid": { "type": "string" }
+      },
+      "required": ["id", "minPrice", "markupPercent", "ownerUid"]
+    },
+    "products": {
+      "title": "Product",
+      "description": "Inventory items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "category": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "showInCatalog": { "type": "boolean" },
+        "ownerUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "purchasePrice", "salePrice", "stock", "ownerUid"]
+    },
+    "sales": {
+      "title": "Sale",
+      "description": "Sales records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "unitPrice": { "type": "number" },
+        "quantity": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pagado", "No Pagado", "Pendiente"] },
+        "ownerUid": { "type": "string" }
+      },
+      "required": ["id", "date", "total", "status", "ownerUid"]
+    },
+    "cash_flow": {
+      "title": "CashFlowEntry",
+      "description": "Income and expense records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["Ingreso", "Gasto"] },
+        "amount": { "type": "number" },
+        "ownerUid": { "type": "string" }
+      },
+      "required": ["id", "date", "type", "amount", "ownerUid"]
+    },
+    "orders": {
+      "title": "Order",
+      "description": "Customer orders from catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "customerName": { "type": "string" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["Nuevo", "En Proceso", "Entregado", "Cancelado"] },
+        "ownerUid": { "type": "string" }
+      },
+      "required": ["id", "date", "customerName", "total", "status", "ownerUid"]
+    },
+    "catalog_configs": {
+      "title": "CatalogConfig",
+      "description": "Public catalog appearance settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "slug": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["id", "ownerUid", "slug", "enabled"]
+    },
+    "collaborators": {
+      "title": "Collaborator",
+      "description": "Business collaborators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "viewer"] },
+        "status": { "type": "string", "enum": ["pending", "active"] }
+      },
+      "required": ["id", "ownerUid", "email", "role", "status"]
+    }
+  },
+  "firestore": {
+    "users/{uid}": { "schema": "users", "description": "User profile" },
+    "categories/{id}": { "schema": "categories", "description": "Product categories" },
+    "price_ranges/{id}": { "schema": "price_ranges", "description": "Markup rules" },
+    "products/{id}": { "schema": "products", "description": "Inventory items" },
+    "sales/{id}": { "schema": "sales", "description": "Sales records" },
+    "cash_flow/{id}": { "schema": "cash_flow", "description": "Financial records" },
+    "orders/{id}": { "schema": "orders", "description": "Customer orders" },
+    "catalog_configs/{id}": { "schema": "catalog_configs", "description": "Catalog settings" },
+    "collaborators/{id}": { "schema": "collaborators", "description": "Business collaborators" }
+  }
+}

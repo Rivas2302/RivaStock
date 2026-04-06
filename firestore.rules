@@ -1,0 +1,159 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Fields:
+//   - uid: string (required) - User ID
+//   - email: string (required) - User email
+//   - businessName: string (required) - Business name
+//   - catalogSlug: string (optional) - Unique slug for the catalog
+//   - role: string (required) - 'admin' or 'viewer'
+//
+// Collection: products
+// Fields:
+//   - id: string (required) - Product ID
+//   - name: string (required) - Product name
+//   - ownerUid: string (required) - Owner User ID
+//   - showInCatalog: bool (required) - Whether to show in public catalog
+//
+// Collection: catalog_configs
+// Fields:
+//   - id: string (required) - Config ID
+//   - ownerUid: string (required) - Owner User ID
+//   - slug: string (required) - Catalog slug
+//   - enabled: bool (required) - Whether catalog is active
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+    }
+
+    function isRequestOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.ownerUid;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'businessName', 'role']) &&
+             data.uid is string && data.uid.size() < 128 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 256 &&
+             data.businessName is string && data.businessName.size() > 0 && data.businessName.size() < 100 &&
+             data.role in ['admin', 'viewer'];
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'purchasePrice', 'salePrice', 'stock', 'ownerUid']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.purchasePrice is number &&
+             data.salePrice is number &&
+             data.stock is number &&
+             data.ownerUid is string && data.ownerUid.size() < 128;
+    }
+
+    function isValidCollaborator(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'email', 'role', 'status']) &&
+             data.id is string &&
+             data.ownerUid is string &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'viewer'] &&
+             data.status in ['pending', 'active'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Users collection - Strictly isolated
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.email == resource.data.email;
+    }
+
+    // Catalog Configs - Publicly readable if enabled
+    match /catalog_configs/{configId} {
+      allow read: if resource.data.enabled == true || isDocOwner();
+      allow create: if isRequestOwner();
+      allow update: if isDocOwner() && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
+    // Products - Publicly readable if shown in catalog
+    match /products/{productId} {
+      allow read: if resource.data.showInCatalog == true || isDocOwner();
+      allow create: if isRequestOwner() && isValidProduct(request.resource.data);
+      allow update: if isDocOwner() && isValidProduct(request.resource.data) && 
+                    request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
+    // Orders - Public can create, Owner can read/update
+    match /orders/{orderId} {
+      allow read: if isDocOwner();
+      allow create: if request.resource.data.ownerUid is string; // Allow public creation
+      allow update: if isDocOwner() && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
+    // Other private collections
+    match /categories/{catId} {
+      allow read: if isDocOwner();
+      allow write: if isRequestOwner();
+    }
+    
+    match /price_ranges/{rangeId} {
+      allow read: if isDocOwner();
+      allow write: if isRequestOwner();
+    }
+    
+    match /sales/{saleId} {
+      allow read: if isDocOwner();
+      allow write: if isRequestOwner();
+    }
+    
+    match /cash_flow/{flowId} {
+      allow read: if isDocOwner();
+      allow write: if isRequestOwner();
+    }
+
+    match /collaborators/{collabId} {
+      allow read: if isDocOwner();
+      allow create: if isRequestOwner() && isValidCollaborator(request.resource.data);
+      allow update: if isDocOwner() && isValidCollaborator(request.resource.data) &&
+                    request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+    
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

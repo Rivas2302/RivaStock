@@ -11,11 +11,19 @@ import Calculator from './pages/Calculator';
 import Settings from './pages/Settings';
 import PublicCatalog from './pages/PublicCatalog';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import { useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">Cargando...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="animate-spin text-indigo-600" size={48} />
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" />;
   return <>{children}</>;
 }
@@ -34,6 +42,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/catalogo/:slug" element={<PublicCatalog />} />
       
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
