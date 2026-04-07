@@ -183,34 +183,46 @@ service cloud.firestore {
     }
 
     match /categories/{catId} {
-      allow read: if true; // Allow public read for categories
-      allow write: if isRequestOwner() && isValidCategory(request.resource.data);
+      allow read: if true;
+      allow create: if isRequestOwner() && isValidCategory(request.resource.data);
+      allow update: if isDocOwner() && isValidCategory(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     match /collaborators/{collabId} {
       allow read: if isDocOwner();
-      allow write: if isRequestOwner() && isValidCollaborator(request.resource.data);
+      allow create: if isRequestOwner() && isValidCollaborator(request.resource.data);
+      allow update: if isDocOwner() && isValidCollaborator(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     match /price_ranges/{rangeId} {
       allow read: if isDocOwner();
-      allow write: if isRequestOwner() && isValidPriceRange(request.resource.data);
+      allow create: if isRequestOwner() && isValidPriceRange(request.resource.data);
+      allow update: if isDocOwner() && isValidPriceRange(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     match /sales/{saleId} {
       allow read: if isDocOwner();
-      allow write: if isRequestOwner() && isValidSales(request.resource.data);
+      allow create: if isRequestOwner() && isValidSales(request.resource.data);
+      allow update: if isDocOwner() && isValidSales(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     match /cash_flow/{flowId} {
       allow read: if isDocOwner();
-      allow write: if isRequestOwner() && isValidCashFlow(request.resource.data);
+      allow create: if isRequestOwner() && isValidCashFlow(request.resource.data);
+      allow update: if isDocOwner() && isValidCashFlow(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     match /stock_intakes/{intakeId} {
       allow get: if isDocOwner();
       allow list: if isAuthenticated();
-      allow write: if isRequestOwner() && isValidStockIntake(request.resource.data);
+      allow create: if isRequestOwner() && isValidStockIntake(request.resource.data);
+      allow update: if isDocOwner() && isValidStockIntake(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
     }
     
     // Default deny

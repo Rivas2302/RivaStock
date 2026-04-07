@@ -33,13 +33,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      console.log("AUTH STATE CHANGED:", firebaseUser);
       if (firebaseUser) {
         const profile = await db.get<UserProfile>('users', firebaseUser.uid);
+        console.log("USER PROFILE:", profile);
         setUser(profile);
       } else {
+        console.log("USER IS NULL");
         setUser(null);
       }
       setLoading(false);
+      console.log("AUTH LOADING SET TO FALSE");
     });
     return unsubscribe;
   }, []);
@@ -71,12 +75,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const baseSlug = slugify(userCredential.user.displayName || email.split('@')[0]);
         const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
         
+        const businessName = userCredential.user.displayName || 'Mi Negocio';
         profile = {
           uid,
           email,
           displayName: userCredential.user.displayName || email.split('@')[0],
           role: 'admin',
-          businessName: userCredential.user.displayName || 'Mi Negocio',
+          businessName,
+          businessNameLower: businessName.toLowerCase(),
           currencySymbol: '$',
           darkMode: false,
           createdAt: new Date().toISOString(),

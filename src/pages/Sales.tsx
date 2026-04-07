@@ -185,6 +185,13 @@ export default function Sales() {
     return matchesSearch && matchesStatus;
   });
 
+  console.log('Rendering Sales page:', {
+    loading,
+    salesCount: sales.length,
+    filteredSalesCount: filteredSales.length,
+    user: user?.uid
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -45,7 +45,7 @@ export default function Layout() {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white shrink-0">
         <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-indigo-400">RivaTech</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-indigo-400">RivaStock</h1>
           <p className="text-xs text-slate-400 mt-1">{user?.businessName}</p>
         </div>
         
@@ -91,7 +91,7 @@ export default function Layout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <h1 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">RivaTech</h1>
+          <h1 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">RivaStock</h1>
           <button 
             onClick={() => setIsMobileMenuOpen(true)}
             className="p-2 text-slate-600 dark:text-slate-400"

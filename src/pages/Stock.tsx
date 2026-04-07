@@ -144,6 +144,13 @@ export default function Stock() {
     return `${margin.toFixed(0)}%`;
   };
 
+  console.log('Rendering Stock page:', {
+    loading,
+    productsCount: products.length,
+    filteredProductsCount: filteredProducts.length,
+    user: user?.uid
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -232,13 +239,23 @@ export default function Stock() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredProducts.map((p) => (
+              {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? filteredProducts.map((p) => (
                 <tr key={p.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
                         {p.imageUrl ? (
-                          <img src={p.imageUrl} alt={p.name} loading="lazy" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img 
+                            src={p.imageUrl} 
+                            alt={p.name} 
+                            loading="lazy" 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/product/100/100';
+                              (e.target as HTMLImageElement).onerror = null;
+                            }}
+                          />
                         ) : (
                           <ImageIcon size={20} />
                         )}
@@ -308,8 +325,7 @@ export default function Stock() {
                     </div>
                   </td>
                 </tr>
-              ))}
-              {filteredProducts.length === 0 && (
+              )) : (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     No se encontraron productos

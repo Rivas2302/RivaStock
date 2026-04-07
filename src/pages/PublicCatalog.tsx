@@ -53,6 +53,7 @@ export default function PublicCatalog() {
     let unsubCategories: () => void;
 
     const init = async () => {
+      console.log('Initializing PublicCatalog with slug:', slug);
       if (!slug) return;
       
       try {
@@ -62,6 +63,7 @@ export default function PublicCatalog() {
         // 1. Find catalog config by slug
         const configs = await db.find<CatalogConfig>('catalog_configs', 'slug', slug);
         const foundConfig = configs[0];
+        console.log('Catalog config found:', foundConfig);
 
         if (!foundConfig) {
           setError('Catálogo no encontrado');
@@ -86,15 +88,11 @@ export default function PublicCatalog() {
 
         unsubProducts = onSnapshot(productsQuery, (snapshot) => {
           const newProducts: Product[] = [];
-          snapshot.docChanges().forEach((change) => {
-            console.log('Product ' + change.type + ':', change.doc.id);
-          });
-          
           snapshot.forEach((doc) => {
             newProducts.push({ id: doc.id, ...doc.data() } as Product);
           });
 
-          console.log('Number of products received:', newProducts.length);
+          console.log('Products received from Firestore:', newProducts.length);
 
           // Respect showOutOfStock rule
           let filteredProducts = newProducts;
@@ -103,6 +101,9 @@ export default function PublicCatalog() {
           }
 
           setProducts(filteredProducts);
+        }, (err) => {
+          console.error('Firestore products error:', err);
+          setError('Error al conectar con la base de datos');
         });
 
         const categoriesQuery = query(
@@ -115,7 +116,10 @@ export default function PublicCatalog() {
           snapshot.forEach((doc) => {
             newCategories.push({ id: doc.id, ...doc.data() } as Category);
           });
+          console.log('Categories received from Firestore:', newCategories.length);
           setCategories(newCategories);
+        }, (err) => {
+          console.error('Firestore categories error:', err);
         });
         
         setLoading(false);
@@ -244,6 +248,14 @@ export default function PublicCatalog() {
 
   const businessName = config.businessName || 'Nuestra Tienda';
   const accentColor = config.accentColor || '#6366f1';
+
+  console.log('Rendering PublicCatalog:', {
+    loading,
+    error,
+    productsCount: products.length,
+    filteredProductsCount: filteredProducts.length,
+    config: !!config
+  });
 
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
@@ -384,7 +396,7 @@ export default function PublicCatalog() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           <AnimatePresence mode="popLayout">
-            {filteredProducts.map((product) => (
+            {Array.isArray(filteredProducts) && filteredProducts.length > 0 && filteredProducts.map((product) => (
               <motion.div
                 key={product.id}
                 layout
@@ -401,6 +413,10 @@ export default function PublicCatalog() {
                       loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/product/800/1000';
+                        (e.target as HTMLImageElement).onerror = null;
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-200">

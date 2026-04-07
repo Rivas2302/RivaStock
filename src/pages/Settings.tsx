@@ -261,22 +261,63 @@ export default function Settings() {
     fetchData();
   };
 
-  const handleDeleteAllData = async () => {
+  const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
+    products: false,
+    sales: false,
+    cash_flow: false,
+    orders: false,
+    catalog: false,
+    history: false
+  });
+  const [deleteStep, setDeleteStep] = useState<'selection' | 'confirmation'>('selection');
+
+  const toggleModule = (module: string) => {
+    if (module === 'all') {
+      const allSelected = Object.values(selectedModules).every(Boolean);
+      const newSelection = Object.keys(selectedModules).reduce((acc, key) => ({ ...acc, [key]: !allSelected }), {});
+      setSelectedModules(newSelection);
+    } else {
+      setSelectedModules(prev => ({ ...prev, [module]: !prev[module] }));
+    }
+  };
+
+  const handleDeleteSelectedData = async () => {
     if (!user) return;
     setIsDeletingData(true);
     try {
-      const collections = ['products', 'sales', 'stock_intakes', 'cash_flow', 'orders', 'categories', 'price_ranges'];
-      for (const col of collections) {
+      const moduleMap: Record<string, string[]> = {
+        products: ['products'],
+        sales: ['sales'],
+        cash_flow: ['cash_flow'],
+        orders: ['orders'],
+        catalog: ['products'], // Assuming catalog means products with showInCatalog: true
+        history: ['stock_intakes']
+      };
+
+      const collectionsToDelete = new Set<string>();
+      Object.entries(selectedModules).forEach(([module, selected]) => {
+        if (selected) {
+          moduleMap[module].forEach(col => collectionsToDelete.add(col));
+        }
+      });
+
+      for (const col of collectionsToDelete) {
         const items = await db.list(col, user.uid);
         for (const item of items) {
           if (item.id) {
-            await db.delete(col, item.id);
+            // Special handling for catalog: only delete if showInCatalog is true
+            if (selectedModules.catalog && !selectedModules.products && col === 'products') {
+              if ((item as any).showInCatalog) await db.delete(col, item.id);
+            } else {
+              await db.delete(col, item.id);
+            }
           }
         }
       }
       setIsDeleteDataModalOpen(false);
-      setMessage({ text: 'Datos eliminados correctamente', type: 'success' });
-      setTimeout(() => navigate('/'), 1500);
+      setDeleteStep('selection');
+      setSelectedModules({ products: false, sales: false, cash_flow: false, orders: false, catalog: false, history: false });
+      setMessage({ text: 'Datos seleccionados eliminados correctamente', type: 'success' });
     } catch (error) {
       console.error('Error deleting data:', error);
       setMessage({ text: 'Error al eliminar los datos', type: 'error' });
@@ -844,40 +885,51 @@ export default function Settings() {
         </form>
       </Modal>
 
-      {/* Delete All Data Modal */}
+      {/* Delete Data Modal */}
       <Modal
         isOpen={isDeleteDataModalOpen}
         onClose={() => !isDeletingData && setIsDeleteDataModalOpen(false)}
-        title="Eliminar todos los datos"
+        title={deleteStep === 'selection' ? "Seleccionar datos a eliminar" : "Confirmar eliminación"}
       >
-        <div className="space-y-6">
-          <div className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium">
-            ¿Estás seguro? Esta acción eliminará TODOS los datos (productos, ventas, stock, etc.) y no se puede deshacer.
+        {deleteStep === 'selection' ? (
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
+              <input type="checkbox" checked={Object.values(selectedModules).every(Boolean)} onChange={() => toggleModule('all')} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+              <span className="font-bold dark:text-white">Seleccionar todo</span>
+            </label>
+            <div className="grid grid-cols-1 gap-2">
+              {[
+                { id: 'products', label: 'Stock (productos)' },
+                { id: 'sales', label: 'Ventas' },
+                { id: 'cash_flow', label: 'Flujo de Caja' },
+                { id: 'orders', label: 'Pedidos' },
+                { id: 'catalog', label: 'Catálogo Público' },
+                { id: 'history', label: 'Historial (stock intakes)' }
+              ].map(mod => (
+                <label key={mod.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+                  <input type="checkbox" checked={selectedModules[mod.id]} onChange={() => toggleModule(mod.id)} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="dark:text-slate-300">{mod.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-3 pt-4">
+              <button onClick={() => setIsDeleteDataModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
+              <button onClick={() => setDeleteStep('confirmation')} disabled={!Object.values(selectedModules).some(Boolean)} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50">Continuar</button>
+            </div>
           </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={() => setIsDeleteDataModalOpen(false)}
-              disabled={isDeletingData}
-              className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button 
-              onClick={handleDeleteAllData}
-              disabled={isDeletingData}
-              className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isDeletingData ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Eliminando...
-                </>
-              ) : (
-                'Sí, eliminar todo'
-              )}
-            </button>
+        ) : (
+          <div className="space-y-6">
+            <div className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium">
+              Esta acción es irreversible. Los datos seleccionados serán eliminados permanentemente.
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteStep('selection')} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Volver</button>
+              <button onClick={handleDeleteSelectedData} disabled={isDeletingData} className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {isDeletingData ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Eliminando...</> : 'Borrar seleccionado'}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
     </div>
   );

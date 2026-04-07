@@ -21,16 +21,14 @@ import {
   signOut as firebaseSignOut,
   User
 } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserProfile, CatalogConfig } from '../types';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
+console.log("Firebase initialized successfully");
 export const db_instance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth_instance = getAuth(app);
-export const storage_instance = getStorage(app);
-storage_instance.maxUploadRetryTime = 10000; // 10 seconds max retry time
 
 export enum OperationType {
   CREATE = 'create',

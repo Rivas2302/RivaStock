@@ -67,7 +67,7 @@ export default function Login() {
             Bienvenido
           </h1>
           <p className="text-slate-500 font-medium">
-            Inicia sesión en tu cuenta de RivaTech
+            Inicia sesión en tu cuenta de RivaStock
           </p>
         </div>
 

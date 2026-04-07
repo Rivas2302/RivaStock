@@ -1,6 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './AuthContext';
-import { ThemeProvider } from './components/ThemeProvider';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Stock from './pages/Stock';
@@ -16,6 +14,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from './AuthContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -57,12 +56,8 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </ThemeProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

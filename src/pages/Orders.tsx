@@ -96,6 +96,13 @@ export default function Orders() {
     statusFilter === 'all' || o.status === statusFilter
   );
 
+  console.log('Rendering Orders page:', {
+    loading,
+    ordersCount: orders.length,
+    filteredOrdersCount: filteredOrders.length,
+    user: user?.uid
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -121,7 +128,7 @@ export default function Orders() {
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {filteredOrders.map((order) => (
+        {Array.isArray(filteredOrders) && filteredOrders.length > 0 ? filteredOrders.map((order) => (
           <motion.div
             key={order.id}
             layout
@@ -235,8 +242,7 @@ export default function Orders() {
               </div>
             </div>
           </motion.div>
-        ))}
-        {filteredOrders.length === 0 && (
+        )) : (
           <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
             <ClipboardList size={48} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
             <p className="text-slate-500 dark:text-slate-400 font-medium">No hay pedidos para mostrar</p>

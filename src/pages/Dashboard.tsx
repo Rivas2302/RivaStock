@@ -91,6 +91,14 @@ export default function Dashboard() {
     { title: 'Ventas del Mes', value: thisMonthSales, icon: ShoppingCart, color: 'indigo' },
   ];
 
+  console.log('Rendering Dashboard:', {
+    loading,
+    productsCount: products.length,
+    salesCount: sales.length,
+    ordersCount: orders.length,
+    user: user?.uid
+  });
+
   return (
     <div className="space-y-8">
       <div>
@@ -146,7 +154,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {sales.slice(0, 5).map((sale) => (
+                {Array.isArray(sales) && sales.length > 0 ? sales.slice(0, 5).map((sale) => (
                   <tr key={sale.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-6 py-4 dark:text-slate-300">{new Date(sale.date).toLocaleDateString('es-AR')}</td>
                     <td className="px-6 py-4 font-medium dark:text-white">{sale.productName}</td>
@@ -160,8 +168,7 @@ export default function Dashboard() {
                       </span>
                     </td>
                   </tr>
-                ))}
-                {sales.length === 0 && (
+                )) : (
                   <tr>
                     <td colSpan={4} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">No hay ventas registradas</td>
                   </tr>
