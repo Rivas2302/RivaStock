@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import { ThemeProvider } from './components/ThemeProvider';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Stock from './pages/Stock';
@@ -12,7 +13,8 @@ import Settings from './pages/Settings';
 import PublicCatalog from './pages/PublicCatalog';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import { useEffect } from 'react';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -29,20 +31,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (user?.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [user?.darkMode]);
-
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/catalogo/:slug" element={<PublicCatalog />} />
       
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -64,9 +58,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

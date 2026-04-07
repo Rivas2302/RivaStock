@@ -10,6 +10,7 @@ import {
   deleteDoc, 
   query, 
   where,
+  limit,
   getDocFromServer
 } from 'firebase/firestore';
 import { 
@@ -20,6 +21,7 @@ import {
   signOut as firebaseSignOut,
   User
 } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserProfile, CatalogConfig } from '../types';
 
@@ -27,6 +29,8 @@ import { UserProfile, CatalogConfig } from '../types';
 const app = initializeApp(firebaseConfig);
 export const db_instance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth_instance = getAuth(app);
+export const storage_instance = getStorage(app);
+storage_instance.maxUploadRetryTime = 10000; // 10 seconds max retry time
 
 export enum OperationType {
   CREATE = 'create',
@@ -94,9 +98,12 @@ class FirebaseDB {
     }
   }
 
-  async find<T extends { id?: string; uid?: string; ownerUid?: string }>(collectionName: string, field: string, value: any): Promise<T[]> {
+  async find<T extends { id?: string; uid?: string; ownerUid?: string }>(collectionName: string, field: string, value: any, limitCount?: number): Promise<T[]> {
     try {
-      const q = query(collection(db_instance, collectionName), where(field, '==', value));
+      let q = query(collection(db_instance, collectionName), where(field, '==', value));
+      if (limitCount) {
+        q = query(q, limit(limitCount));
+      }
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
     } catch (error) {
@@ -156,12 +163,18 @@ class FirebaseDB {
 
   async getUniqueSlug(baseSlug: string, collectionName: string): Promise<string> {
     try {
-      const users = await this.list<UserProfile>(collectionName);
       let slug = baseSlug;
       let counter = 1;
-      while (users.some(u => u.catalogSlug === slug)) {
+      const field = collectionName === 'users' ? 'catalogSlug' : 'slug';
+      
+      while (true) {
+        const existing = await this.find(collectionName, field, slug, 1);
+        if (existing.length === 0) {
+          return slug;
+        }
         slug = `${baseSlug}-${counter}`;
         counter++;
+        if (counter > 100) break; // Increased safety break
       }
       return slug;
     } catch (error) {

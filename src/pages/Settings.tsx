@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../components/ThemeProvider';
 import { db } from '../lib/db';
 import { 
   Category, 
   PriceRange, 
   CatalogConfig, 
   UserProfile,
-  Collaborator
+  Collaborator,
+  Product
 } from '../types';
 import { formatCurrency, cn, slugify } from '../lib/utils';
 import { 
@@ -35,6 +38,8 @@ type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'collaborators';
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [loading, setLoading] = useState(true);
   
@@ -55,6 +60,10 @@ export default function Settings() {
     markupPercent: 0
   });
   const [isCollaboratorModalOpen, setIsCollaboratorModalOpen] = useState(false);
+  const [isDeleteCategoryModalOpen, setIsDeleteCategoryModalOpen] = useState(false);
+  const [isDeleteDataModalOpen, setIsDeleteDataModalOpen] = useState(false);
+  const [isDeletingData, setIsDeletingData] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [collaboratorForm, setCollaboratorForm] = useState({
     email: '',
     role: 'viewer' as 'admin' | 'viewer'
@@ -127,23 +136,72 @@ export default function Settings() {
     setTimeout(() => setMessage(null), 3000);
   };
 
+  const handleDeleteCategory = async (reassign: boolean) => {
+    if (!categoryToDelete || !user) return;
+    
+    // Find products using this category
+    const products = await db.find<Product>('products', 'categoryId', categoryToDelete.id);
+    
+    if (reassign) {
+      // Reassign products to "Sin categoría"
+      for (const product of products) {
+        await db.update('products', product.id, { categoryId: '', category: 'Sin categoría' });
+      }
+    } else {
+      // Delete products
+      for (const product of products) {
+        await db.delete('products', product.id);
+      }
+    }
+    
+    await db.delete('categories', categoryToDelete.id);
+    setCategoryToDelete(null);
+    setIsDeleteCategoryModalOpen(false);
+    fetchData();
+    showMessage('Categoría eliminada correctamente');
+  };
+
   const handleUpdateProfile = async () => {
     if (!user) return;
-    const updated = await db.update<UserProfile>('users', user.uid, { businessName });
+    
+    // Check for unique business name (case insensitive, trim)
+    const trimmedName = businessName.trim();
+    const normalizedName = trimmedName.toLowerCase();
+    
+    console.log('Updating business:', trimmedName, 'Normalized:', normalizedName);
+    
+    const existingBusinesses = await db.find<UserProfile>('users', 'businessNameLower', normalizedName, 1);
+    
+    console.log('Existing businesses count:', existingBusinesses.length);
+    
+    // If name exists and it's not the current user's business
+    if (existingBusinesses.length > 0 && existingBusinesses[0].uid !== user.uid) {
+      showMessage('Este nombre de negocio ya está en uso. Elige otro.', 'error');
+      return;
+    }
+
+    // Generate slug from business name
+    const baseSlug = slugify(trimmedName);
+    const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
+    
+    const updated = await db.update<UserProfile>('users', user.uid, { 
+      businessName: trimmedName, 
+      businessNameLower: normalizedName,
+      catalogSlug 
+    });
     updateUser(updated); // Update context
+    setCatalogSlug(catalogSlug);
     
     // Sync with catalog config
     if (catalogConfig) {
-      await db.update('catalog_configs', catalogConfig.id, { businessName });
+      await db.update('catalog_configs', catalogConfig.id, { businessName: trimmedName, slug: catalogSlug });
     }
     
     showMessage('Configuración general guardada');
   };
 
-  const handleToggleDarkMode = async () => {
-    if (!user) return;
-    const updated = await db.update<UserProfile>('users', user.uid, { darkMode: !user.darkMode });
-    updateUser(updated);
+  const handleToggleDarkMode = () => {
+    toggleTheme();
   };
 
   const handleAddCategory = async () => {
@@ -181,12 +239,6 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteCategory = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta categoría?')) return;
-    await db.delete('categories', id);
-    fetchData();
-  };
-
   const handleAddPriceRange = async () => {
     if (!user) return;
     await db.create('price_ranges', {
@@ -209,29 +261,28 @@ export default function Settings() {
     fetchData();
   };
 
-  const handleUpdateCatalogSlug = async () => {
-    if (!user || !catalogSlug) return;
-    const slug = slugify(catalogSlug);
-    
-    // Check if slug is already taken by another user
-    const configs = await db.find<CatalogConfig>('catalog_configs', 'slug', slug);
-    const isTaken = configs.some(c => c.ownerUid !== user.uid);
-    
-    if (isTaken) {
-      showMessage('Este slug ya está en uso. Por favor elige otro.', 'error');
-      return;
+  const handleDeleteAllData = async () => {
+    if (!user) return;
+    setIsDeletingData(true);
+    try {
+      const collections = ['products', 'sales', 'stock_intakes', 'cash_flow', 'orders', 'categories', 'price_ranges'];
+      for (const col of collections) {
+        const items = await db.list(col, user.uid);
+        for (const item of items) {
+          if (item.id) {
+            await db.delete(col, item.id);
+          }
+        }
+      }
+      setIsDeleteDataModalOpen(false);
+      setMessage({ text: 'Datos eliminados correctamente', type: 'success' });
+      setTimeout(() => navigate('/'), 1500);
+    } catch (error) {
+      console.error('Error deleting data:', error);
+      setMessage({ text: 'Error al eliminar los datos', type: 'error' });
+    } finally {
+      setIsDeletingData(false);
     }
-
-    const updated = await db.update<UserProfile>('users', user.uid, { catalogSlug: slug });
-    updateUser(updated);
-    setCatalogSlug(slug);
-    
-    // Sync with catalog config if it exists
-    if (catalogConfig) {
-      await db.update('catalog_configs', catalogConfig.id, { slug });
-    }
-    
-    showMessage('Slug del catálogo actualizado');
   };
 
   const tabs = [
@@ -324,7 +375,7 @@ export default function Settings() {
                     <div className="flex items-center justify-between max-w-md p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
-                          {user?.darkMode ? <Moon size={20} className="text-indigo-400" /> : <Sun size={20} className="text-amber-500" />}
+                          {theme === 'dark' ? <Moon size={20} className="text-indigo-400" /> : <Sun size={20} className="text-amber-500" />}
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white">Modo Oscuro</p>
@@ -335,14 +386,30 @@ export default function Settings() {
                         onClick={handleToggleDarkMode}
                         className={cn(
                           "w-12 h-6 rounded-full transition-all relative",
-                          user?.darkMode ? "bg-indigo-600" : "bg-slate-300"
+                          theme === 'dark' ? "bg-indigo-600" : "bg-slate-300"
                         )}
                       >
                         <div className={cn(
                           "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                          user?.darkMode ? "left-7" : "left-1"
+                          theme === 'dark' ? "left-7" : "left-1"
                         )} />
                       </button>
+                    </div>
+
+                    <div className="pt-8 mt-8 border-t border-slate-200 dark:border-slate-800">
+                      <h4 className="text-lg font-bold text-rose-600 dark:text-rose-400 mb-4">Zona de Peligro</h4>
+                      <div className="flex items-center justify-between max-w-md p-4 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border border-rose-100 dark:border-rose-900/30">
+                        <div>
+                          <p className="font-bold text-rose-900 dark:text-rose-400">Eliminar todos los datos</p>
+                          <p className="text-xs text-rose-600 dark:text-rose-500/70 mt-1">Esta acción no se puede deshacer.</p>
+                        </div>
+                        <button 
+                          onClick={() => setIsDeleteDataModalOpen(true)}
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition-colors"
+                        >
+                          Eliminar Datos
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -379,7 +446,10 @@ export default function Settings() {
                       <div key={cat.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group">
                         <span className="font-bold text-slate-700 dark:text-slate-300">{cat.name}</span>
                         <button 
-                          onClick={() => handleDeleteCategory(cat.id)}
+                          onClick={() => {
+                            setCategoryToDelete(cat);
+                            setIsDeleteCategoryModalOpen(true);
+                          }}
                           className="text-slate-400 hover:text-rose-500 transition-colors p-1"
                         >
                           <Trash2 size={18} />
@@ -536,18 +606,12 @@ export default function Settings() {
                           <input 
                             type="text"
                             value={catalogSlug}
-                            onChange={(e) => setCatalogSlug(e.target.value)}
-                            className="w-full pl-24 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm font-mono"
+                            readOnly
+                            className="w-full pl-24 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm font-mono cursor-not-allowed"
                           />
                         </div>
-                        <button 
-                          onClick={handleUpdateCatalogSlug}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all"
-                        >
-                          Actualizar
-                        </button>
                       </div>
-                      <p className="mt-2 text-[10px] text-slate-500">Este es el nombre que aparecerá en tu URL. Solo letras, números y guiones.</p>
+                      <p className="mt-2 text-[10px] text-slate-500">Este es el nombre que aparecerá en tu URL. Se genera automáticamente.</p>
                     </div>
                   </div>
 
@@ -701,6 +765,33 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Delete Category Modal */}
+      <Modal 
+        isOpen={isDeleteCategoryModalOpen} 
+        onClose={() => setIsDeleteCategoryModalOpen(false)}
+        title="Eliminar Categoría"
+      >
+        <div className="space-y-6">
+          <p className="text-slate-600 dark:text-slate-400">
+            ¿Estás seguro de eliminar la categoría "{categoryToDelete?.name}"?
+          </p>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => handleDeleteCategory(true)}
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-all"
+            >
+              Eliminar y reasignar productos
+            </button>
+            <button 
+              onClick={() => handleDeleteCategory(false)}
+              className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 transition-all"
+            >
+              Eliminar todo
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Collaborator Modal */}
       <Modal 
         isOpen={isCollaboratorModalOpen} 
@@ -751,6 +842,42 @@ export default function Settings() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete All Data Modal */}
+      <Modal
+        isOpen={isDeleteDataModalOpen}
+        onClose={() => !isDeletingData && setIsDeleteDataModalOpen(false)}
+        title="Eliminar todos los datos"
+      >
+        <div className="space-y-6">
+          <div className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium">
+            ¿Estás seguro? Esta acción eliminará TODOS los datos (productos, ventas, stock, etc.) y no se puede deshacer.
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setIsDeleteDataModalOpen(false)}
+              disabled={isDeletingData}
+              className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleDeleteAllData}
+              disabled={isDeletingData}
+              className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isDeletingData ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                'Sí, eliminar todo'
+              )}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

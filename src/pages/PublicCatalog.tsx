@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { db } from '../lib/db';
+import { db, db_instance } from '../lib/db';
 import { Product, CatalogConfig, Category, Order, UserProfile } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
@@ -18,15 +18,14 @@ import {
   MessageCircle,
   User,
   Mail,
-  ChevronRight,
   ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { onSnapshot, query, where, collection } from 'firebase/firestore';
 
 export default function PublicCatalog() {
   const { slug } = useParams<{ slug: string }>();
   const [config, setConfig] = useState<CatalogConfig | null>(null);
-  const [owner, setOwner] = useState<UserProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +49,10 @@ export default function PublicCatalog() {
   });
 
   useEffect(() => {
-    const fetchData = async () => {
+    let unsubProducts: () => void;
+    let unsubCategories: () => void;
+
+    const init = async () => {
       if (!slug) return;
       
       try {
@@ -74,24 +76,47 @@ export default function PublicCatalog() {
         }
 
         setConfig(foundConfig);
-        const ownerUid = foundConfig.ownerUid;
 
-        // 2. Fetch products and categories for this user
-        const [p, c] = await Promise.all([
-          db.list<Product>('products', ownerUid),
-          db.list<Category>('categories', ownerUid)
-        ]);
+        // 2. Set up real-time listeners
+        const productsQuery = query(
+          collection(db_instance, 'products'),
+          where('ownerUid', '==', foundConfig.ownerUid),
+          where('showInCatalog', '==', true)
+        );
 
-        // 3. Filter products
-        let filteredProducts = p.filter(item => item.showInCatalog);
-        
-        // Respect showOutOfStock rule
-        if (!foundConfig.showOutOfStock) {
-          filteredProducts = filteredProducts.filter(item => item.stock > 0);
-        }
+        unsubProducts = onSnapshot(productsQuery, (snapshot) => {
+          const newProducts: Product[] = [];
+          snapshot.docChanges().forEach((change) => {
+            console.log('Product ' + change.type + ':', change.doc.id);
+          });
+          
+          snapshot.forEach((doc) => {
+            newProducts.push({ id: doc.id, ...doc.data() } as Product);
+          });
 
-        setProducts(filteredProducts);
-        setCategories(c);
+          console.log('Number of products received:', newProducts.length);
+
+          // Respect showOutOfStock rule
+          let filteredProducts = newProducts;
+          if (!foundConfig.showOutOfStock) {
+            filteredProducts = filteredProducts.filter(item => item.stock > 0);
+          }
+
+          setProducts(filteredProducts);
+        });
+
+        const categoriesQuery = query(
+          collection(db_instance, 'categories'),
+          where('ownerUid', '==', foundConfig.ownerUid)
+        );
+
+        unsubCategories = onSnapshot(categoriesQuery, (snapshot) => {
+          const newCategories: Category[] = [];
+          snapshot.forEach((doc) => {
+            newCategories.push({ id: doc.id, ...doc.data() } as Category);
+          });
+          setCategories(newCategories);
+        });
         
         setLoading(false);
       } catch (err) {
@@ -101,7 +126,12 @@ export default function PublicCatalog() {
       }
     };
 
-    fetchData();
+    init();
+
+    return () => {
+      if (unsubProducts) unsubProducts();
+      if (unsubCategories) unsubCategories();
+    };
   }, [slug]);
 
   const addToCart = (product: Product) => {
@@ -118,9 +148,6 @@ export default function PublicCatalog() {
       }
       return [...prev, { product, quantity: 1 }];
     });
-    
-    // Show a small feedback or open cart?
-    // For now just add
   };
 
   const removeFromCart = (productId: string) => {
@@ -215,7 +242,7 @@ export default function PublicCatalog() {
     return matchesSearch && matchesCategory;
   });
 
-  const businessName = config.businessName || owner?.businessName || 'Nuestra Tienda';
+  const businessName = config.businessName || 'Nuestra Tienda';
   const accentColor = config.accentColor || '#6366f1';
 
   return (
@@ -371,6 +398,7 @@ export default function PublicCatalog() {
                     <img 
                       src={product.imageUrl} 
                       alt={product.name}
+                      loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       referrerPolicy="no-referrer"
                     />
@@ -433,7 +461,7 @@ export default function PublicCatalog() {
                         "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg transition-all active:scale-90 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none",
                         product.stock > 0 ? "hover:scale-110" : ""
                       )}
-                      style={product.stock > 0 ? { backgroundColor: accentColor, boxShadow: `0 10px 15px -3px ${accentColor}40` } : {}}
+                      style={product.stock > 0 ? { backgroundColor: accentColor, boxShadow: '0 10px 15px -3px ' + accentColor + '40' } : {}}
                     >
                       <Plus size={24} />
                     </button>
@@ -476,7 +504,7 @@ export default function PublicCatalog() {
         <button 
           onClick={() => setIsCartOpen(true)}
           className="w-16 h-16 rounded-full text-white shadow-2xl flex items-center justify-center relative active:scale-95 transition-transform"
-          style={{ backgroundColor: accentColor, boxShadow: `0 20px 25px -5px ${accentColor}50` }}
+          style={{ backgroundColor: accentColor, boxShadow: '0 20px 25px -5px ' + accentColor + '50' }}
         >
           <ShoppingBag size={28} />
           {cart.length > 0 && (
@@ -593,7 +621,7 @@ export default function PublicCatalog() {
                       setIsCheckoutOpen(true);
                     }}
                     className="w-full text-white py-5 rounded-3xl font-black text-lg shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
-                    style={{ backgroundColor: accentColor, boxShadow: `0 20px 25px -5px ${accentColor}30` }}
+                    style={{ backgroundColor: accentColor, boxShadow: '0 20px 25px -5px ' + accentColor + '30' }}
                   >
                     Confirmar Pedido
                     <ArrowRight size={20} />
@@ -698,7 +726,7 @@ export default function PublicCatalog() {
                     <button 
                       type="submit"
                       className="flex-[2] text-white py-5 rounded-2xl font-black text-lg shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
-                      style={{ backgroundColor: accentColor, boxShadow: `0 15px 20px -5px ${accentColor}40` }}
+                      style={{ backgroundColor: accentColor, boxShadow: '0 15px 20px -5px ' + accentColor + '40' }}
                     >
                       Enviar Pedido
                       <Send size={20} />
@@ -764,12 +792,12 @@ export default function PublicCatalog() {
           </p>
           <div className="flex items-center justify-center gap-6">
             {config.whatsappNumber && (
-              <a href={`https://wa.me/${config.whatsappNumber}`} className="text-slate-400 hover:text-emerald-500 transition-colors">
+              <a href={'https://wa.me/' + config.whatsappNumber} className="text-slate-400 hover:text-emerald-500 transition-colors">
                 <Phone size={20} />
               </a>
             )}
             {config.contactEmail && (
-              <a href={`mailto:${config.contactEmail}`} className="text-slate-400 hover:text-indigo-500 transition-colors">
+              <a href={'mailto:' + config.contactEmail} className="text-slate-400 hover:text-indigo-500 transition-colors">
                 <Mail size={20} />
               </a>
             )}

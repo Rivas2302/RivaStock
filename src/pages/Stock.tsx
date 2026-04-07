@@ -17,6 +17,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import { ImageUpload } from '../components/ImageUpload';
 import { motion } from 'motion/react';
 
 export default function Stock() {
@@ -61,9 +62,11 @@ export default function Stock() {
     fetchData();
   }, [user]);
 
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || isUploadingImage) return;
 
     const productData = {
       ...formData,
@@ -71,12 +74,14 @@ export default function Stock() {
       updatedAt: new Date().toISOString()
     } as Product;
 
+    console.log('Saving product with imageUrl:', productData.imageUrl);
+
     if (editingProduct) {
       await db.update('products', editingProduct.id, productData);
     } else {
       await db.create('products', {
         ...productData,
-        id: crypto.randomUUID(),
+        id: productData.id || crypto.randomUUID(),
         createdAt: new Date().toISOString()
       });
     }
@@ -149,7 +154,9 @@ export default function Stock() {
         <button 
           onClick={() => {
             setEditingProduct(null);
+            setIsUploadingImage(false);
             setFormData({
+              id: crypto.randomUUID(),
               name: '',
               categoryId: categories[0]?.id || '',
               category: categories[0]?.name || '',
@@ -229,9 +236,9 @@ export default function Stock() {
                 <tr key={p.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden">
+                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
                         {p.imageUrl ? (
-                          <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={p.imageUrl} alt={p.name} loading="lazy" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <ImageIcon size={20} />
                         )}
@@ -284,6 +291,7 @@ export default function Stock() {
                       <button 
                         onClick={() => {
                           setEditingProduct(p);
+                          setIsUploadingImage(false);
                           setFormData(p);
                           setIsModalOpen(true);
                         }}
@@ -433,13 +441,17 @@ export default function Stock() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen URL (Opcional)</label>
-              <input 
-                type="url"
-                value={formData.imageUrl || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-                placeholder="https://ejemplo.com/imagen.jpg"
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen del Producto</label>
+              <ImageUpload 
+                userId={user!.uid}
+                productId={formData.id || editingProduct?.id || crypto.randomUUID()}
+                onUpload={(url) => {
+                  console.log('Image uploaded, URL:', url);
+                  setFormData(prev => ({ ...prev, imageUrl: url }));
+                  setIsUploadingImage(false);
+                }}
+                onUploadStart={() => setIsUploadingImage(true)}
+                currentImageUrl={formData.imageUrl}
               />
             </div>
 
@@ -463,9 +475,13 @@ export default function Stock() {
             </button>
             <button 
               type="submit"
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
+              disabled={isUploadingImage}
+              className={cn(
+                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all",
+                isUploadingImage ? "bg-indigo-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
+              )}
             >
-              {editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
+              {isUploadingImage ? 'Subiendo imagen...' : (editingProduct ? 'Guardar Cambios' : 'Crear Producto')}
             </button>
           </div>
         </form>

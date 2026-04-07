@@ -6,6 +6,7 @@ export interface UserProfile {
   displayName: string;
   role: UserRole;
   businessName: string;
+  businessNameLower: string;
   currencySymbol: string;
   darkMode: boolean;
   createdAt: string;

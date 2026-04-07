@@ -44,11 +44,52 @@ export default function Orders() {
     fetchData();
   };
 
-  const handleConvertToSale = (order: Order) => {
-    // In a real app, we'd pass this data to the Sales page via state or context
-    // For now, we'll just alert and navigate
-    alert('Redirigiendo a Ventas con los datos del pedido...');
-    navigate('/ventas', { state: { prefillOrder: order } });
+  const handleConvertToSale = async (order: Order) => {
+    // 1. Validate stock
+    const products = await db.list<Product>('products', user!.uid);
+    const insufficientStock = order.items.filter(item => {
+      const product = products.find(p => p.id === item.productId);
+      return !product || product.stock < item.quantity;
+    });
+
+    if (insufficientStock.length > 0) {
+      alert(`No hay suficiente stock para: ${insufficientStock.map(i => i.productName).join(', ')}`);
+      return;
+    }
+
+    // 2. Create sale
+    try {
+      for (const item of order.items) {
+        const product = products.find(p => p.id === item.productId)!;
+        
+        // Create sale entry
+        await db.create('sales', {
+          id: crypto.randomUUID(),
+          date: new Date().toISOString().split('T')[0],
+          productId: item.productId,
+          productName: item.productName,
+          unitPrice: item.price,
+          quantity: item.quantity,
+          adjustment: 0,
+          total: item.price * item.quantity,
+          status: 'Pagado',
+          paymentMethod: 'Efectivo',
+          client: order.customerName,
+          ownerUid: user!.uid
+        });
+
+        // Reduce stock
+        await db.update('products', product.id, { stock: product.stock - item.quantity });
+      }
+
+      // 3. Update order status
+      await updateOrderStatus(order.id, 'Entregado');
+      alert('Pedido convertido en venta exitosamente.');
+      fetchData();
+    } catch (error) {
+      console.error('Error converting order to sale:', error);
+      alert('Error al convertir el pedido en venta.');
+    }
   };
 
   const filteredOrders = orders.filter(o => 
