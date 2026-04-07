@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
-import { db } from '../lib/db';
+import { db, storage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from '../lib/db';
 import { 
   Category, 
   PriceRange, 
@@ -69,16 +69,62 @@ export default function Settings() {
     role: 'viewer' as 'admin' | 'viewer'
   });
 
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
+
+  const compressImage = (file: File, maxWidth: number, maxHeight: number, quality: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width *= maxHeight / height;
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        };
+        img.onerror = reject;
+      };
+      reader.onerror = reject;
+    });
+  };
+
   const fetchData = async () => {
     if (!user) return;
-    const [cat, pr, ccList, col] = await Promise.all([
-      db.list<Category>('categories', user.uid),
-      db.list<PriceRange>('price_ranges', user.uid),
-      db.list<CatalogConfig>('catalog_configs', user.uid),
-      db.list<Collaborator>('collaborators', user.uid)
-    ]);
+    console.log('fetchData: Fetching data for user', user.uid);
+    try {
+      const [cat, pr, ccList, col] = await Promise.all([
+        db.list<Category>('categories', user.uid),
+        db.list<PriceRange>('price_ranges', user.uid),
+        db.list<CatalogConfig>('catalog_configs', user.uid),
+        db.list<Collaborator>('collaborators', user.uid)
+      ]);
 
-    let cc = ccList[0] || null;
+      console.log('fetchData: Data fetched', { categories: cat.length, priceRanges: pr.length, catalogConfigs: ccList.length, collaborators: col.length });
+
+      let cc = ccList[0] || null;
 
     // Ensure CatalogConfig exists
     if (!cc) {
@@ -125,6 +171,10 @@ export default function Settings() {
     setCatalogConfig(cc);
     setCollaborators(col);
     setLoading(false);
+    } catch (error) {
+      console.error('fetchData: Error fetching data', error);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -233,9 +283,13 @@ export default function Settings() {
   };
 
   const handleDeleteCollaborator = async (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este colaborador?')) {
+    try {
       await db.delete('collaborators', id);
+      showMessage('Colaborador eliminado');
       fetchData();
+    } catch (error) {
+      console.error('Error deleting collaborator:', error);
+      showMessage('Error al eliminar colaborador', 'error');
     }
   };
 
@@ -256,9 +310,22 @@ export default function Settings() {
   };
 
   const handleUpdateCatalog = async (updates: Partial<CatalogConfig>) => {
-    if (!user || !catalogConfig) return;
-    await db.update('catalog_configs', catalogConfig.id, updates);
-    fetchData();
+    console.log('handleUpdateCatalog called with:', updates);
+    if (!user) {
+      console.log('handleUpdateCatalog: No user');
+      return;
+    }
+    if (!catalogConfig) {
+      console.log('handleUpdateCatalog: No catalogConfig');
+      return;
+    }
+    try {
+      await db.update('catalog_configs', catalogConfig.id, updates);
+      console.log('handleUpdateCatalog: Update successful');
+      fetchData();
+    } catch (error) {
+      console.error('handleUpdateCatalog: Update failed', error);
+    }
   };
 
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
@@ -595,7 +662,7 @@ export default function Settings() {
                   className="space-y-8"
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Configuración del Catálogo Público</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Configuración del Catálogo</h3>
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-bold text-slate-400 uppercase">Estado:</span>
                       <button 
@@ -639,6 +706,244 @@ export default function Settings() {
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Logo de la empresa</label>
+                        <div className="space-y-3">
+                          {catalogConfig.logoUrl && (
+                            <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
+                              <img src={catalogConfig.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                              <button 
+                                onClick={async () => {
+                                  console.log('Se ha pulsado el botón de eliminar logotipo');
+                                  try {
+                                    if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('firebasestorage.googleapis.com')) {
+                                      console.log('Eliminando logotipo del almacenamiento:', catalogConfig.logoUrl);
+                                      const oldRef = ref(storage, catalogConfig.logoUrl);
+                                      await deleteObject(oldRef);
+                                      console.log('Logotipo eliminado del almacenamiento');
+                                    }
+                                  } catch (e) {
+                                    console.error("Error al eliminar el logotipo del almacenamiento:", e);
+                                  }
+                                  console.log('Actualizando base de datos: estableciendo logoUrl a null');
+                                  await handleUpdateCatalog({ logoUrl: null as any });
+                                  console.log('Base de datos actualizada');
+                                  showMessage('Logo eliminado correctamente');
+                                }}
+                                className="absolute top-1 right-1 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                title="Eliminar logo"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                          
+                          <label className={cn(
+                            "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all",
+                            isUploadingLogo && "opacity-50 cursor-wait"
+                          )}>
+                            {isUploadingLogo ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-xs font-bold text-indigo-600">{Math.round(uploadProgress)}%</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                                <Plus size={18} />
+                                <span className="text-xs font-bold uppercase">{catalogConfig.logoUrl ? 'Cambiar Logo' : 'Subir Logo'}</span>
+                              </div>
+                            )}
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                              disabled={isUploadingLogo}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file || !user) return;
+                                
+                                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
+                                if (!allowedTypes.includes(file.type)) {
+                                  alert('Tipo de archivo no permitido. Usa JPG, PNG, WebP o SVG.');
+                                  return;
+                                }
+
+                                if (file.size > 2 * 1024 * 1024) {
+                                  alert('El archivo es demasiado grande. Máximo 2MB.');
+                                  return;
+                                }
+
+                                try {
+                                  setIsUploadingLogo(true);
+                                  setUploadProgress(20);
+
+                                  // Delete old logo if it's a storage URL
+                                  if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('firebasestorage.googleapis.com')) {
+                                    try {
+                                      const oldRef = ref(storage, catalogConfig.logoUrl);
+                                      await deleteObject(oldRef);
+                                    } catch (e) {
+                                      console.error("Error deleting old logo:", e);
+                                    }
+                                  }
+
+                                  const compressedBase64 = await compressImage(file, 800, 800, 0.8);
+                                  setUploadProgress(80);
+                                  await handleUpdateCatalog({ logoUrl: compressedBase64 });
+                                  setUploadProgress(100);
+                                  showMessage('Logo actualizado correctamente');
+                                  setIsUploadingLogo(false);
+                                  e.target.value = ''; // Reset input
+                                } catch (error) {
+                                  console.error('Logo processing failed:', error);
+                                  setIsUploadingLogo(false);
+                                  alert('Error al procesar la imagen');
+                                  e.target.value = ''; // Reset input
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen de fondo del banner</label>
+                        <div className="space-y-3">
+                          {catalogConfig.bannerUrl && (
+                            <div className="relative w-full h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
+                              <img src={catalogConfig.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+                              <button 
+                                onClick={async () => {
+                                  console.log('Borrar banner pulsado');
+                                  try {
+                                    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('firebasestorage.googleapis.com')) {
+                                      console.log('Eliminando banner del almacenamiento:', catalogConfig.bannerUrl);
+                                      const oldRef = ref(storage, catalogConfig.bannerUrl);
+                                      await deleteObject(oldRef);
+                                      console.log('Banner eliminado del almacenamiento');
+                                    }
+                                  } catch (e) {
+                                    console.error("Error al eliminar el banner del almacenamiento:", e);
+                                  }
+                                  console.log('Actualizando base de datos: estableciendo bannerUrl a null');
+                                  await handleUpdateCatalog({ bannerUrl: null as any });
+                                  console.log('Base de datos actualizada');
+                                  showMessage('Banner eliminado correctamente');
+                                }}
+                                className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                title="Eliminar banner"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          )}
+                          
+                          <label className={cn(
+                            "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all",
+                            isUploadingBanner && "opacity-50 cursor-wait"
+                          )}>
+                            {isUploadingBanner ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-xs font-bold text-indigo-600">{Math.round(bannerUploadProgress)}%</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                                <Plus size={18} />
+                                <span className="text-xs font-bold uppercase">{catalogConfig.bannerUrl ? 'Cambiar Banner' : 'Subir Banner'}</span>
+                              </div>
+                            )}
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/jpeg,image/png,image/webp"
+                              disabled={isUploadingBanner}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file || !user) return;
+                                
+                                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+                                if (!allowedTypes.includes(file.type)) {
+                                  alert('Tipo de archivo no permitido. Usa JPG, PNG o WebP.');
+                                  return;
+                                }
+
+                                if (file.size > 4 * 1024 * 1024) {
+                                  alert('El archivo es demasiado grande. Máximo 4MB.');
+                                  return;
+                                }
+
+                                try {
+                                  setIsUploadingBanner(true);
+                                  setBannerUploadProgress(20);
+
+                                  // Delete old banner if it's a storage URL
+                                  if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('firebasestorage.googleapis.com')) {
+                                    try {
+                                      const oldRef = ref(storage, catalogConfig.bannerUrl);
+                                      await deleteObject(oldRef);
+                                    } catch (e) {
+                                      console.error("Error deleting old banner:", e);
+                                    }
+                                  }
+
+                                  // Banners can be wider, 1920px is standard Full HD
+                                  const compressedBase64 = await compressImage(file, 1920, 1080, 0.7);
+                                  setBannerUploadProgress(80);
+                                  await handleUpdateCatalog({ bannerUrl: compressedBase64 });
+                                  setBannerUploadProgress(100);
+                                  showMessage('Banner actualizado correctamente');
+                                  setIsUploadingBanner(false);
+                                  e.target.value = ''; // Reset input
+                                } catch (error) {
+                                  console.error('Banner processing failed:', error);
+                                  setIsUploadingBanner(false);
+                                  alert('Error al procesar la imagen');
+                                  e.target.value = ''; // Reset input
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Instagram</label>
+                        <input 
+                          type="text"
+                          placeholder="https://instagram.com/tunegocio"
+                          value={catalogConfig.instagramUrl || ''}
+                          onChange={(e) => handleUpdateCatalog({ instagramUrl: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Facebook</label>
+                        <input 
+                          type="text"
+                          placeholder="https://facebook.com/tunegocio"
+                          value={catalogConfig.facebookUrl || ''}
+                          onChange={(e) => handleUpdateCatalog({ facebookUrl: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WhatsApp</label>
+                        <input 
+                          type="text"
+                          placeholder="Ej: 5491112345678"
+                          value={catalogConfig.whatsappNumber || ''}
+                          onChange={(e) => handleUpdateCatalog({ whatsappNumber: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
+                        />
+                        <p className="text-[10px] text-slate-500 mt-1">Sin + ni espacios</p>
+                      </div>
+                    </div>
+                  </div>
+
                     <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
                       <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Identificador del Catálogo (Slug)</label>
                       <div className="flex gap-2">
@@ -654,7 +959,6 @@ export default function Settings() {
                       </div>
                       <p className="mt-2 text-[10px] text-slate-500">Este es el nombre que aparecerá en tu URL. Se genera automáticamente.</p>
                     </div>
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">

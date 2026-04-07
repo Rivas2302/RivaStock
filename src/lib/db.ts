@@ -21,6 +21,7 @@ import {
   signOut as firebaseSignOut,
   User
 } from 'firebase/auth';
+import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { UserProfile, CatalogConfig } from '../types';
 
@@ -29,6 +30,8 @@ const app = initializeApp(firebaseConfig);
 console.log("Firebase initialized successfully");
 export const db_instance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth_instance = getAuth(app);
+export const storage = getStorage(app);
+export { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject };
 
 export enum OperationType {
   CREATE = 'create',

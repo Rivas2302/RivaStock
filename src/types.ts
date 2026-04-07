@@ -123,7 +123,8 @@ export interface CatalogConfig {
   bannerUrl?: string;
   bannerColor?: string;
   whatsappNumber?: string;
-  instagramHandle?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
   contactEmail?: string;
   aboutText?: string;
   slug: string;
@@ -133,10 +134,11 @@ export interface CatalogConfig {
   enabled: boolean;
   welcomeMessage: string;
   primaryColor: string;
-  allowOrders: boolean;
   accentColor: string;
+  allowOrders: boolean;
   layout: 'Grid' | 'List';
   fontStyle: 'Modern' | 'Classic' | 'Rounded';
+  updatedAt?: string;
 }
 
 export interface Collaborator {
