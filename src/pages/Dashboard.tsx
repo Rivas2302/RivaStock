@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry, Order } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -65,7 +65,7 @@ export default function Dashboard() {
 
   const pendingSales = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + s.total, 0);
   
-  const stockValue = products.reduce((acc, p) => acc + (p.salePrice * p.stock), 0);
+  const stockValue = products.reduce((acc, p) => acc + (roundPrice(p.salePrice) * p.stock), 0);
   const totalInvested = products.reduce((acc, p) => acc + (p.purchasePrice * p.stock), 0);
   const potentialProfit = stockValue - totalInvested;
   

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
-import { db, storage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from '../lib/db';
+import { auth, db, storage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from '../lib/db';
 import { 
   Category, 
   PriceRange, 
@@ -269,17 +269,45 @@ export default function Settings() {
     e.preventDefault();
     if (!user || !collaboratorForm.email) return;
 
-    await db.create<Collaborator>('collaborators', {
-      id: crypto.randomUUID(),
-      ownerUid: user.uid,
-      email: collaboratorForm.email,
-      role: collaboratorForm.role,
-      status: 'pending'
-    });
+    try {
+      await db.create<Collaborator>('collaborators', {
+        id: crypto.randomUUID(),
+        ownerUid: user.uid,
+        email: collaboratorForm.email,
+        role: collaboratorForm.role,
+        status: 'pending'
+      });
 
-    setCollaboratorForm({ email: '', role: 'viewer' });
-    setIsCollaboratorModalOpen(false);
-    fetchData();
+      // Intentar enviar email de invitación usando Firebase Auth
+      try {
+        const actionCodeSettings = {
+          url: `${window.location.origin}/login?email=${encodeURIComponent(collaboratorForm.email)}`,
+          handleCodeInApp: true,
+        };
+        
+        await auth.sendSignInLinkToEmail(collaboratorForm.email, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', collaboratorForm.email);
+        showMessage('Invitación enviada por email');
+      } catch (emailError: any) {
+        // Si falla el envío automático (por configuración de Firebase), 
+        // simplemente notificamos que el registro fue exitoso.
+        // El usuario ya tiene el botón de "Copiar Link" en la tabla como alternativa.
+        showMessage('Colaborador registrado correctamente');
+      }
+
+      setCollaboratorForm({ email: '', role: 'viewer' });
+      setIsCollaboratorModalOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('handleAddCollaborator: Error in invitation flow', error);
+      showMessage('Error al registrar el colaborador en la base de datos.', 'error');
+    }
+  };
+
+  const copyInviteLink = (email: string) => {
+    const link = `${window.location.origin}/login?email=${encodeURIComponent(email)}`;
+    navigator.clipboard.writeText(link);
+    showMessage('Enlace de invitación copiado al portapapeles');
   };
 
   const handleDeleteCollaborator = async (id: string) => {
@@ -1084,12 +1112,24 @@ export default function Settings() {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <button 
-                                onClick={() => handleDeleteCollaborator(c.id)}
-                                className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                              >
-                                <Trash2 size={18} />
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                {c.status === 'pending' && (
+                                  <button 
+                                    onClick={() => copyInviteLink(c.email)}
+                                    className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                                    title="Copiar link de invitación"
+                                  >
+                                    <Copy size={18} />
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => handleDeleteCollaborator(c.id)}
+                                  className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                                  title="Eliminar colaborador"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}

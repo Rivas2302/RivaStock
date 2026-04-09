@@ -19,6 +19,9 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut as firebaseSignOut,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
   User
 } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -195,7 +198,10 @@ export const auth = {
       callback(user);
     });
   },
-  signOut: () => firebaseSignOut(auth_instance)
+  signOut: () => firebaseSignOut(auth_instance),
+  sendSignInLinkToEmail: (email: string, actionCodeSettings: any) => sendSignInLinkToEmail(auth_instance, email, actionCodeSettings),
+  isSignInWithEmailLink: (url: string) => isSignInWithEmailLink(auth_instance, url),
+  signInWithEmailLink: (email: string, url: string) => signInWithEmailLink(auth_instance, email, url)
 };
 
 async function testConnection() {

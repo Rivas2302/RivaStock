@@ -14,6 +14,15 @@ export function formatCurrency(amount: number): string {
   }).format(amount).replace('ARS', '$');
 }
 
+export function roundPrice(price: number): number {
+  const lastTwoDigits = price % 100;
+  if (lastTwoDigits >= 50) {
+    return Math.ceil(price / 100) * 100;
+  } else {
+    return Math.floor(price / 100) * 100;
+  }
+}
+
 export function slugify(text: string): string {
   return text
     .toString()

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   Plus, 
   Search, 
@@ -63,7 +63,7 @@ export default function Sales() {
         ...prev,
         productId,
         productName: product.name,
-        unitPrice: product.salePrice
+        unitPrice: roundPrice(product.salePrice)
       }));
     }
   };
@@ -72,7 +72,7 @@ export default function Sales() {
     const qty = Number(formData.quantity) || 0;
     const price = Number(formData.unitPrice) || 0;
     const adj = Number(formData.adjustment) || 0;
-    return (qty * price) + adj;
+    return roundPrice((qty * price) + adj);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -175,9 +175,9 @@ export default function Sales() {
     }
   };
 
-  const totalSold = sales.reduce((acc, s) => acc + s.total, 0);
-  const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + s.total, 0);
-  const totalPending = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + s.total, 0);
+  const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
+  const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
+  const totalPending = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
 
   const filteredSales = sales.filter(s => {
     const matchesSearch = s.productName.toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
@@ -311,14 +311,14 @@ export default function Sales() {
                     {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
                   </td>
                   <td className="px-6 py-4 dark:text-slate-300">{s.quantity}</td>
-                  <td className="px-6 py-4 dark:text-slate-300">{formatCurrency(s.unitPrice)}</td>
+                  <td className="px-6 py-4 dark:text-slate-300">{formatCurrency(roundPrice(s.unitPrice))}</td>
                   <td className={cn(
                     "px-6 py-4 font-medium",
                     s.adjustment > 0 ? "text-rose-500" : s.adjustment < 0 ? "text-emerald-500" : "text-slate-400"
                   )}>
-                    {s.adjustment !== 0 ? formatCurrency(s.adjustment) : '-'}
+                    {s.adjustment !== 0 ? formatCurrency(roundPrice(s.adjustment)) : '-'}
                   </td>
-                  <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(s.total)}</td>
+                  <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(roundPrice(s.total))}</td>
                   <td className="px-6 py-4">
                     {s.status === 'Pagado' ? (
                       <span className="text-xs text-slate-500 dark:text-slate-400">{s.paymentMethod}</span>

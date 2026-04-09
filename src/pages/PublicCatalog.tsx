@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, db_instance } from '../lib/db';
 import { Product, CatalogConfig, Category, Order, UserProfile } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   ShoppingBag, 
   Search, 
@@ -191,7 +191,7 @@ export default function PublicCatalog() {
     }));
   };
 
-  const cartTotal = cart.reduce((acc, item) => acc + (item.product.salePrice * item.quantity), 0);
+  const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -608,7 +608,7 @@ export default function PublicCatalog() {
                           "text-2xl font-black tracking-tighter",
                           darkMode ? "text-white" : "text-slate-900"
                         )}>
-                          {formatCurrency(product.salePrice)}
+                          {formatCurrency(roundPrice(product.salePrice))}
                         </p>
                       )}
                       {config.showStock && (
@@ -1137,7 +1137,7 @@ export default function PublicCatalog() {
                 </h2>
                 {config.showPrices && (
                   <p className="text-2xl md:text-3xl font-black tracking-tighter" style={{ color: accentColor }}>
-                    {formatCurrency(selectedProductForLightbox.salePrice)}
+                    {formatCurrency(roundPrice(selectedProductForLightbox.salePrice))}
                   </p>
                 )}
               </div>

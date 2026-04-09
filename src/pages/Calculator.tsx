@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { PriceRange, Product } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   Calculator as CalcIcon, 
   Plus, 
@@ -56,7 +56,7 @@ export default function Calculator() {
     );
     if (range) {
       const markup = range.markupPercent / 100;
-      setSuggestedPrice(Math.ceil(purchase * (1 + markup)));
+      setSuggestedPrice(roundPrice(purchase * (1 + markup)));
       setAppliedRange(range);
     } else {
       setSuggestedPrice(0);
@@ -73,7 +73,7 @@ export default function Calculator() {
       );
       if (range) {
         const markup = range.markupPercent / 100;
-        const sale = Math.ceil(purchase * (1 + markup));
+        const sale = roundPrice(purchase * (1 + markup));
         const profit = sale - purchase;
         const margin = (profit / sale) * 100;
         return { purchase, range, sale, profit, margin };

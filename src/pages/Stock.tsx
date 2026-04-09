@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Category, PriceRange } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   Plus, 
   Search, 
@@ -116,7 +116,7 @@ export default function Stock() {
     );
     if (range) {
       const markup = range.markupPercent / 100;
-      const suggested = Math.ceil(purchase * (1 + markup));
+      const suggested = roundPrice(purchase * (1 + markup));
       setFormData(prev => ({ ...prev, salePrice: suggested }));
     }
   };
@@ -269,7 +269,7 @@ export default function Stock() {
                     </div>
                   </td>
                   <td className="px-6 py-4 dark:text-slate-300">{formatCurrency(p.purchasePrice)}</td>
-                  <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(p.salePrice)}</td>
+                  <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(roundPrice(p.salePrice))}</td>
                   <td className={cn("px-6 py-4", getMarginColor(p.purchasePrice, p.salePrice))}>
                     {getMarginPercent(p.purchasePrice, p.salePrice)}
                   </td>

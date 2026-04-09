@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Order, Product } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
   ClipboardList, 
   MessageCircle, 
@@ -183,13 +183,13 @@ export default function Orders() {
                       <span className="text-slate-700 dark:text-slate-300">
                         <span className="font-bold text-indigo-600 dark:text-indigo-400">x{item.quantity}</span> {item.productName}
                       </span>
-                      <span className="font-medium dark:text-white">{formatCurrency(item.price * item.quantity)}</span>
+                      <span className="font-medium dark:text-white">{formatCurrency(roundPrice(item.price) * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
                   <span className="font-bold text-slate-900 dark:text-white">Total del Pedido:</span>
-                  <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(order.total)}</span>
+                  <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(roundPrice(order.total))}</span>
                 </div>
               </div>
 

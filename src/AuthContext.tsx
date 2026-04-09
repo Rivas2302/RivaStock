@@ -23,6 +23,7 @@ interface AuthContextType {
   updateUser: (user: UserProfile) => void;
   sendResetEmail: (email: string) => Promise<void>;
   resetPassword: (code: string, newPassword: string) => Promise<void>;
+  completeSignInWithEmailLink: (email: string, url: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -175,12 +176,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const completeSignInWithEmailLink = async (email: string, url: string) => {
+    try {
+      const result = await auth.signInWithEmailLink(email, url);
+      const uid = result.user.uid;
+      
+      let profile = await db.get<UserProfile>('users', uid);
+      if (!profile) {
+        // If it's a new collaborator, they might not have a profile yet
+        // We should probably create one or redirect to a profile completion page
+        // For now, let's create a basic one
+        const baseSlug = slugify(email.split('@')[0]);
+        const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
+        
+        profile = {
+          uid,
+          email,
+          displayName: email.split('@')[0],
+          role: 'viewer', // Default to viewer for collaborators
+          businessName: 'Colaborador',
+          businessNameLower: 'colaborador',
+          currencySymbol: '$',
+          darkMode: false,
+          createdAt: new Date().toISOString(),
+          catalogSlug,
+        };
+        await db.create('users', profile);
+      }
+      setUser(profile);
+      window.localStorage.removeItem('emailForSignIn');
+    } catch (error: any) {
+      console.error('Complete Sign In Error:', error);
+      throw error;
+    }
+  };
+
   const updateUser = (updatedUser: UserProfile) => {
     setUser(updatedUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, updateUser, sendResetEmail, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, updateUser, sendResetEmail, resetPassword, completeSignInWithEmailLink }}>
       {children}
     </AuthContext.Provider>
   );

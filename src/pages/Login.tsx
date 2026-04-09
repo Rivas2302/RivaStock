@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { auth } from '../lib/db';
 import { LogIn, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -11,8 +12,40 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, completeSignInWithEmailLink } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const handleSignInLink = async () => {
+      if (auth.isSignInWithEmailLink(window.location.href)) {
+        setLoading(true);
+        try {
+          let emailToUse = new URLSearchParams(location.search).get('email');
+          if (!emailToUse) {
+            emailToUse = window.localStorage.getItem('emailForSignIn');
+          }
+          
+          if (!emailToUse) {
+            // If email is missing, ask the user for it
+            emailToUse = window.prompt('Por favor, ingresa tu email para confirmar la invitación:');
+          }
+          
+          if (emailToUse) {
+            await completeSignInWithEmailLink(emailToUse, window.location.href);
+            navigate('/');
+          }
+        } catch (err: any) {
+          console.error('Error completing sign in with link:', err);
+          setError('El link de invitación es inválido o ha expirado.');
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    
+    handleSignInLink();
+  }, [location, completeSignInWithEmailLink, navigate]);
 
   const handleGoogleLogin = async () => {
     setError(null);
