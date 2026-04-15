@@ -96,8 +96,8 @@ export default function Sales() {
 
     if (!product) return;
 
-    // Validate stock if marking as paid
-    if (formData.status === 'Pagado' && product.stock < (formData.quantity || 0)) {
+    // Validate stock before registering
+    if (product.stock < (formData.quantity || 0)) {
       alert('No hay suficiente stock para realizar esta venta.');
       return;
     }
@@ -121,9 +121,11 @@ export default function Sales() {
           id: crypto.randomUUID()
         });
 
-        // If paid, reduce stock and add to cash flow
+        // Always decrement stock regardless of payment status
+        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+
+        // Only register cash flow entry when paid
         if (newSale.status === 'Pagado') {
-          await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
           await db.create('cash_flow', {
             id: crypto.randomUUID(),
             date: newSale.date,
@@ -160,16 +162,8 @@ export default function Sales() {
 
   const handleMarkAsPaid = async (sale: Sale) => {
     if (!user) return;
-    const product = products.find(p => p.id === sale.productId);
-    if (!product) return;
-
-    if (product.stock < sale.quantity) {
-      alert('No hay suficiente stock para marcar como pagado.');
-      return;
-    }
 
     await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: 'Efectivo' });
-    await db.update<Product>('products', product.id, { stock: product.stock - sale.quantity });
     await db.create('cash_flow', {
       id: crypto.randomUUID(),
       date: sale.date,
