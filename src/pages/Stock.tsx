@@ -29,7 +29,8 @@ export default function Stock() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  
+  const [hideOutOfStock, setHideOutOfStock] = useState(false);
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -124,10 +125,11 @@ export default function Stock() {
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'disponible' && p.stock > 0) || 
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'disponible' && p.stock > 0) ||
       (statusFilter === 'no-disponible' && p.stock === 0);
-    return matchesSearch && matchesCategory && matchesStatus;
+    const matchesHideOutOfStock = !hideOutOfStock || p.stock > 0;
+    return matchesSearch && matchesCategory && matchesStatus && matchesHideOutOfStock;
   });
 
   const getMarginColor = (purchase: number, sale: number) => {
@@ -222,6 +224,24 @@ export default function Stock() {
         </div>
       </div>
 
+      {/* Hide out-of-stock toggle */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setHideOutOfStock(prev => !prev)}
+          className={cn(
+            "w-10 h-5 rounded-full transition-colors relative shrink-0",
+            hideOutOfStock ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+          )}
+        >
+          <div className={cn(
+            "absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all",
+            hideOutOfStock ? "left-5" : "left-0.5"
+          )} />
+        </button>
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Ocultar sin stock</span>
+      </div>
+
       {/* Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -275,10 +295,12 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(
-                      "font-bold",
-                      p.stock <= p.minStock ? "text-rose-600 dark:text-rose-400" : "dark:text-white"
+                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                      p.stock > 0
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
                     )}>
-                      {p.stock}
+                      {p.stock > 0 ? 'En stock' : 'Sin stock'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
