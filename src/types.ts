@@ -131,6 +131,7 @@ export interface CatalogConfig {
   showPrices: boolean;
   showOutOfStock: boolean;
   showStock: boolean;
+  hideOutOfStock: boolean;
   enabled: boolean;
   welcomeMessage: string;
   primaryColor: string;

@@ -29,7 +29,6 @@ export default function Stock() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [hideOutOfStock, setHideOutOfStock] = useState(false);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -128,8 +127,7 @@ export default function Stock() {
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'disponible' && p.stock > 0) ||
       (statusFilter === 'no-disponible' && p.stock === 0);
-    const matchesHideOutOfStock = !hideOutOfStock || p.stock > 0;
-    return matchesSearch && matchesCategory && matchesStatus && matchesHideOutOfStock;
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const getMarginColor = (purchase: number, sale: number) => {
@@ -222,24 +220,6 @@ export default function Stock() {
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
-      </div>
-
-      {/* Hide out-of-stock toggle */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setHideOutOfStock(prev => !prev)}
-          className={cn(
-            "w-10 h-5 rounded-full transition-colors relative shrink-0",
-            hideOutOfStock ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
-          )}
-        >
-          <div className={cn(
-            "absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all",
-            hideOutOfStock ? "left-5" : "left-0.5"
-          )} />
-        </button>
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Ocultar sin stock</span>
       </div>
 
       {/* Table */}
