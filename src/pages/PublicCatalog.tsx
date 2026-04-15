@@ -279,10 +279,11 @@ export default function PublicCatalog() {
   }
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
                          p.description?.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = activeCategory === 'all' || p.categoryId === activeCategory;
-    return matchesSearch && matchesCategory;
+    const matchesHideOutOfStock = !config.hideOutOfStock || p.stock > 0;
+    return matchesSearch && matchesCategory && matchesHideOutOfStock;
   });
 
   const businessName = config.businessName || 'Nuestra Tienda';
