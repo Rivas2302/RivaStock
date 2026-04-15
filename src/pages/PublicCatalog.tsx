@@ -612,14 +612,6 @@ export default function PublicCatalog() {
                           {formatCurrency(roundPrice(product.salePrice))}
                         </p>
                       )}
-                      {config.showStock && (
-                        <p className={cn(
-                          "text-[10px] font-bold uppercase tracking-widest",
-                          darkMode ? "text-white/20" : "text-slate-400"
-                        )}>
-                          Stock: {product.stock}
-                        </p>
-                      )}
                     </div>
                     
                     <button 
