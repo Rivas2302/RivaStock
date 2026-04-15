@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
+import { db, db_instance } from '../lib/db';
+import { onSnapshot, query, collection, where } from 'firebase/firestore';
 import { Product, Sale, CashFlowEntry } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
@@ -44,17 +45,27 @@ export default function Sales() {
 
   const fetchData = async () => {
     if (!user) return;
-    const [s, p] = await Promise.all([
-      db.list<Sale>('sales', user.uid),
-      db.list<Product>('products', user.uid)
-    ]);
-    setSales(s.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    const p = await db.list<Product>('products', user.uid);
     setProducts(p);
-    setLoading(false);
   };
 
   useEffect(() => {
+    if (!user) return;
+
     fetchData();
+
+    const q = query(
+      collection(db_instance, 'sales'),
+      where('ownerUid', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Sale));
+      setSales(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   const handleProductChange = (productId: string) => {
@@ -178,7 +189,6 @@ export default function Sales() {
   const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de eliminar esta venta?')) {
       await db.delete('sales', id);
-      fetchData();
     }
   };
 
