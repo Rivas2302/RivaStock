@@ -28,6 +28,7 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState('all');
   
   // Modal states
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [formData, setFormData] = useState<Partial<Sale>>({
@@ -77,11 +78,11 @@ export default function Sales() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || isSubmitting) return;
 
     const total = calculateTotal();
     const product = products.find(p => p.id === formData.productId);
-    
+
     if (!product) return;
 
     // Validate stock if marking as paid
@@ -90,54 +91,60 @@ export default function Sales() {
       return;
     }
 
-    const saleData = {
-      ...formData,
-      total,
-      ownerUid: user.uid
-    } as Sale;
+    setIsSubmitting(true);
 
-    if (editingSale) {
-      // Handle stock reversal if status changed or quantity changed
-      // For simplicity in this mock, we just update. In real app, logic would be more complex.
-      await db.update<Sale>('sales', editingSale.id, saleData);
-    } else {
-      const newSale = await db.create('sales', {
-        ...saleData,
-        id: crypto.randomUUID()
-      });
+    try {
+      const saleData = {
+        ...formData,
+        total,
+        ownerUid: user.uid
+      } as Sale;
 
-      // If paid, reduce stock and add to cash flow
-      if (newSale.status === 'Pagado') {
-        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
-        await db.create('cash_flow', {
-          id: crypto.randomUUID(),
-          date: newSale.date,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: `Venta: ${newSale.productName} x${newSale.quantity}`,
-          category: 'Venta Externa',
-          amount: newSale.total,
-          paymentMethod: newSale.paymentMethod || 'Efectivo',
-          status: 'Pagado',
-          saleId: newSale.id,
-          ownerUid: user.uid
+      if (editingSale) {
+        // Handle stock reversal if status changed or quantity changed
+        // For simplicity in this mock, we just update. In real app, logic would be more complex.
+        await db.update<Sale>('sales', editingSale.id, saleData);
+      } else {
+        const newSale = await db.create('sales', {
+          ...saleData,
+          id: crypto.randomUUID()
         });
-      }
-    }
 
-    setIsModalOpen(false);
-    setEditingSale(null);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      productId: '',
-      quantity: 1,
-      unitPrice: 0,
-      adjustment: 0,
-      status: 'Pagado',
-      paymentMethod: 'Efectivo',
-      client: ''
-    });
-    fetchData();
+        // If paid, reduce stock and add to cash flow
+        if (newSale.status === 'Pagado') {
+          await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+          await db.create('cash_flow', {
+            id: crypto.randomUUID(),
+            date: newSale.date,
+            type: 'Ingreso',
+            source: 'Venta',
+            description: `Venta: ${newSale.productName} x${newSale.quantity}`,
+            category: 'Venta Externa',
+            amount: newSale.total,
+            paymentMethod: newSale.paymentMethod || 'Efectivo',
+            status: 'Pagado',
+            saleId: newSale.id,
+            ownerUid: user.uid
+          });
+        }
+      }
+
+      setIsModalOpen(false);
+      setEditingSale(null);
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        productId: '',
+        quantity: 1,
+        unitPrice: 0,
+        adjustment: 0,
+        status: 'Pagado',
+        paymentMethod: 'Efectivo',
+        client: ''
+      });
+      fetchData();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleMarkAsPaid = async (sale: Sale) => {
@@ -539,11 +546,12 @@ export default function Sales() {
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
+              disabled={isSubmitting}
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
+              {isSubmitting ? 'Guardando...' : editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
             </button>
           </div>
         </form>
