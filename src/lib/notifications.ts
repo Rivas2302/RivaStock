@@ -3,9 +3,10 @@ import { getAuth } from 'firebase/auth';
 
 export const requestNotificationPermission = async () => {
   try {
+    if (!messaging) return null;
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
-      const token = await getToken(messaging, { 
+      const token = await getToken(messaging, {
         vapidKey: 'YOUR_VAPID_KEY_HERE' // This should be replaced with actual VAPID key
       });
       console.log('FCM Token:', token);

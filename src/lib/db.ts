@@ -35,7 +35,9 @@ console.log("Firebase initialized successfully");
 export const db_instance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth_instance = getAuth(app);
 export const storage = getStorage(app);
-export const messaging = getMessaging(app);
+export const messaging = typeof window !== 'undefined' && 'serviceWorker' in navigator
+  ? getMessaging(app)
+  : null as any;
 export { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject, getToken };
 
 export enum OperationType {

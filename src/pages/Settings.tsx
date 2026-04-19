@@ -140,7 +140,6 @@ export default function Settings() {
         showPrices: true,
         showStock: true,
         showOutOfStock: false,
-        hideOutOfStock: false,
         allowOrders: true,
         welcomeMessage: '¡Bienvenido a nuestra tienda!',
         primaryColor: '#6366f1',
@@ -1046,22 +1045,13 @@ export default function Settings() {
                           <span className="text-sm font-medium dark:text-slate-300">Mostrar stock disponible</span>
                         </label>
                         <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input
+                          <input 
                             type="checkbox"
                             checked={catalogConfig.allowOrders}
                             onChange={(e) => handleUpdateCatalog({ allowOrders: e.target.checked })}
                             className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
                           <span className="text-sm font-medium dark:text-slate-300">Permitir pedidos online</span>
-                        </label>
-                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={catalogConfig.hideOutOfStock ?? false}
-                            onChange={(e) => handleUpdateCatalog({ hideOutOfStock: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm font-medium dark:text-slate-300">Ocultar productos sin stock</span>
                         </label>
                       </div>
                     </div>

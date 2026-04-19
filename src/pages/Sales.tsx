@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { db, db_instance } from '../lib/db';
-import { onSnapshot, query, collection, where } from 'firebase/firestore';
+import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
@@ -27,9 +26,9 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [productSearch, setProductSearch] = useState('');
   
   // Modal states
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [formData, setFormData] = useState<Partial<Sale>>({
@@ -45,28 +44,27 @@ export default function Sales() {
 
   const fetchData = async () => {
     if (!user) return;
-    const p = await db.list<Product>('products', user.uid);
+    const [s, p] = await Promise.all([
+      db.list<Sale>('sales', user.uid),
+      db.list<Product>('products', user.uid)
+    ]);
+    setSales(s.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     setProducts(p);
+    setLoading(false);
   };
 
   useEffect(() => {
-    if (!user) return;
-
     fetchData();
-
-    const q = query(
-      collection(db_instance, 'sales'),
-      where('ownerUid', '==', user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Sale));
-      setSales(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
   }, [user]);
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.toLowerCase();
+    if (!q) return products;
+    return products.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q)
+    );
+  }, [products, productSearch]);
 
   const handleProductChange = (productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -89,81 +87,81 @@ export default function Sales() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isSubmitting) return;
+    if (!user) return;
 
     const total = calculateTotal();
     const product = products.find(p => p.id === formData.productId);
-
+    
     if (!product) return;
 
-    // Validate stock before registering
-    if (product.stock < (formData.quantity || 0)) {
+    // Validate stock if marking as paid
+    if (formData.status === 'Pagado' && product.stock < (formData.quantity || 0)) {
       alert('No hay suficiente stock para realizar esta venta.');
       return;
     }
 
-    setIsSubmitting(true);
+    const saleData = {
+      ...formData,
+      total,
+      ownerUid: user.uid
+    } as Sale;
 
-    try {
-      const saleData = {
-        ...formData,
-        total,
-        ownerUid: user.uid
-      } as Sale;
-
-      if (editingSale) {
-        // Handle stock reversal if status changed or quantity changed
-        // For simplicity in this mock, we just update. In real app, logic would be more complex.
-        await db.update<Sale>('sales', editingSale.id, saleData);
-      } else {
-        const newSale = await db.create('sales', {
-          ...saleData,
-          id: crypto.randomUUID()
-        });
-
-        // Always decrement stock regardless of payment status
-        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
-
-        // Only register cash flow entry when paid
-        if (newSale.status === 'Pagado') {
-          await db.create('cash_flow', {
-            id: crypto.randomUUID(),
-            date: newSale.date,
-            type: 'Ingreso',
-            source: 'Venta',
-            description: `Venta: ${newSale.productName} x${newSale.quantity}`,
-            category: 'Venta Externa',
-            amount: newSale.total,
-            paymentMethod: newSale.paymentMethod || 'Efectivo',
-            status: 'Pagado',
-            saleId: newSale.id,
-            ownerUid: user.uid
-          });
-        }
-      }
-
-      setIsModalOpen(false);
-      setEditingSale(null);
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        productId: '',
-        quantity: 1,
-        unitPrice: 0,
-        adjustment: 0,
-        status: 'Pagado',
-        paymentMethod: 'Efectivo',
-        client: ''
+    if (editingSale) {
+      // Handle stock reversal if status changed or quantity changed
+      // For simplicity in this mock, we just update. In real app, logic would be more complex.
+      await db.update<Sale>('sales', editingSale.id, saleData);
+    } else {
+      const newSale = await db.create('sales', {
+        ...saleData,
+        id: crypto.randomUUID()
       });
-      fetchData();
-    } finally {
-      setIsSubmitting(false);
+
+      // If paid, reduce stock and add to cash flow
+      if (newSale.status === 'Pagado') {
+        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+        await db.create('cash_flow', {
+          id: crypto.randomUUID(),
+          date: newSale.date,
+          type: 'Ingreso',
+          source: 'Venta',
+          description: `Venta: ${newSale.productName} x${newSale.quantity}`,
+          category: 'Venta Externa',
+          amount: newSale.total,
+          paymentMethod: newSale.paymentMethod || 'Efectivo',
+          status: 'Pagado',
+          saleId: newSale.id,
+          ownerUid: user.uid
+        });
+      }
     }
+
+    setIsModalOpen(false);
+    setEditingSale(null);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      productId: '',
+      quantity: 1,
+      unitPrice: 0,
+      adjustment: 0,
+      status: 'Pagado',
+      paymentMethod: 'Efectivo',
+      client: ''
+    });
+    fetchData();
   };
 
   const handleMarkAsPaid = async (sale: Sale) => {
     if (!user) return;
+    const product = products.find(p => p.id === sale.productId);
+    if (!product) return;
+
+    if (product.stock < sale.quantity) {
+      alert('No hay suficiente stock para marcar como pagado.');
+      return;
+    }
 
     await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: 'Efectivo' });
+    await db.update<Product>('products', product.id, { stock: product.stock - sale.quantity });
     await db.create('cash_flow', {
       id: crypto.randomUUID(),
       date: sale.date,
@@ -183,6 +181,7 @@ export default function Sales() {
   const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de eliminar esta venta?')) {
       await db.delete('sales', id);
+      fetchData();
     }
   };
 
@@ -228,6 +227,7 @@ export default function Sales() {
                 paymentMethod: 'Efectivo',
                 client: ''
               });
+              setProductSearch('');
               setIsModalOpen(true);
             }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
@@ -358,6 +358,7 @@ export default function Sales() {
                         onClick={() => {
                           setEditingSale(s);
                           setFormData(s);
+                          setProductSearch('');
                           setIsModalOpen(true);
                         }}
                         className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
@@ -407,14 +408,24 @@ export default function Sales() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
-              <select 
+              <div className="relative mb-1.5">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o categoría..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
+                />
+              </div>
+              <select
                 required
                 value={formData.productId}
                 onChange={(e) => handleProductChange(e.target.value)}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
               >
                 <option value="">Seleccionar producto</option>
-                {products.map(p => (
+                {filteredProducts.map(p => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.stock} disp.) - {formatCurrency(p.salePrice)}
                   </option>
@@ -550,12 +561,11 @@ export default function Sales() {
             >
               Cancelar
             </button>
-            <button
+            <button 
               type="submit"
-              disabled={isSubmitting}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
             >
-              {isSubmitting ? 'Guardando...' : editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
+              {editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
             </button>
           </div>
         </form>
