@@ -29,7 +29,7 @@ export default function Stock() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-
+  
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -42,7 +42,8 @@ export default function Stock() {
     stock: 0,
     minStock: 2,
     showInCatalog: true,
-    notes: ''
+    notes: '',
+    images: []
   });
 
   const fetchData = async () => {
@@ -97,7 +98,8 @@ export default function Stock() {
       stock: 0,
       minStock: 2,
       showInCatalog: true,
-      notes: ''
+      notes: '',
+      images: []
     });
     fetchData();
   };
@@ -124,8 +126,8 @@ export default function Stock() {
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'disponible' && p.stock > 0) ||
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'disponible' && p.stock > 0) || 
       (statusFilter === 'no-disponible' && p.stock === 0);
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -172,7 +174,8 @@ export default function Stock() {
               stock: 0,
               minStock: 2,
               showInCatalog: true,
-              notes: ''
+              notes: '',
+              images: []
             });
             setIsModalOpen(true);
           }}
@@ -244,12 +247,12 @@ export default function Stock() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
-                        {p.imageUrl ? (
-                          <img 
-                            src={p.imageUrl} 
-                            alt={p.name} 
-                            loading="lazy" 
-                            className="w-full h-full object-cover" 
+                        {(p.images?.[0] ?? p.imageUrl) ? (
+                          <img
+                            src={p.images?.[0] ?? p.imageUrl}
+                            alt={p.name}
+                            loading="lazy"
+                            className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/product/100/100';
@@ -275,12 +278,10 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      p.stock > 0
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                      "font-bold",
+                      p.stock <= p.minStock ? "text-rose-600 dark:text-rose-400" : "dark:text-white"
                     )}>
-                      {p.stock > 0 ? 'En stock' : 'Sin stock'}
+                      {p.stock}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -459,17 +460,14 @@ export default function Stock() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen del Producto</label>
-              <ImageUpload 
-                userId={user!.uid}
-                productId={formData.id || editingProduct?.id || crypto.randomUUID()}
-                onUpload={(url) => {
-                  console.log('Image uploaded, URL:', url);
-                  setFormData(prev => ({ ...prev, imageUrl: url }));
-                  setIsUploadingImage(false);
-                }}
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imágenes del Producto</label>
+              <ImageUpload
+                ownerUid={user!.uid}
+                productId={formData.id || editingProduct?.id || ''}
+                currentImages={formData.images ?? []}
+                onChange={(urls) => setFormData(prev => ({ ...prev, images: urls }))}
                 onUploadStart={() => setIsUploadingImage(true)}
-                currentImageUrl={formData.imageUrl}
+                onUploadEnd={() => setIsUploadingImage(false)}
               />
             </div>
 

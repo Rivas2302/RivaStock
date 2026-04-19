@@ -3,12 +3,12 @@ import { useParams } from 'react-router-dom';
 import { db, db_instance } from '../lib/db';
 import { Product, CatalogConfig, Category, Order, UserProfile } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { 
-  ShoppingBag, 
-  Search, 
-  Plus, 
-  Minus, 
-  X, 
+import {
+  ShoppingBag,
+  Search,
+  Plus,
+  Minus,
+  X,
   Send,
   CheckCircle2,
   XCircle,
@@ -22,7 +22,9 @@ import {
   Instagram,
   Facebook,
   Sun,
-  Moon
+  Moon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { onSnapshot, query, where, collection } from 'firebase/firestore';
@@ -41,6 +43,7 @@ export default function PublicCatalog() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedProductForLightbox, setSelectedProductForLightbox] = useState<Product | null>(null);
+  const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(() => {
@@ -279,11 +282,10 @@ export default function PublicCatalog() {
   }
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
                          p.description?.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = activeCategory === 'all' || p.categoryId === activeCategory;
-    const matchesHideOutOfStock = !config.hideOutOfStock || p.stock > 0;
-    return matchesSearch && matchesCategory && matchesHideOutOfStock;
+    return matchesSearch && matchesCategory;
   });
 
   const businessName = config.businessName || 'Nuestra Tienda';
@@ -537,13 +539,13 @@ export default function PublicCatalog() {
                     "w-full h-full rounded-2xl overflow-hidden relative",
                     darkMode ? "bg-white/5" : "bg-slate-50"
                   )}>
-                    {product.imageUrl ? (
-                      <div 
+                    {(product.images?.[0] ?? product.imageUrl) ? (
+                      <div
                         className="w-full h-full cursor-pointer relative group/img"
-                        onClick={() => setSelectedProductForLightbox(product)}
+                        onClick={() => { setSelectedProductForLightbox(product); setLightboxImageIndex(0); }}
                       >
-                        <img 
-                          src={product.imageUrl} 
+                        <img
+                          src={product.images?.[0] ?? product.imageUrl}
                           alt={product.name}
                           loading="lazy"
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
@@ -610,6 +612,14 @@ export default function PublicCatalog() {
                           darkMode ? "text-white" : "text-slate-900"
                         )}>
                           {formatCurrency(roundPrice(product.salePrice))}
+                        </p>
+                      )}
+                      {config.showStock && (
+                        <p className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest",
+                          darkMode ? "text-white/20" : "text-slate-400"
+                        )}>
+                          Stock: {product.stock}
                         </p>
                       )}
                     </div>
@@ -794,12 +804,12 @@ export default function PublicCatalog() {
                       "w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 relative",
                       darkMode ? "bg-white/5" : "bg-slate-50"
                     )}>
-                      {item.product.imageUrl ? (
-                        <img 
-                          src={item.product.imageUrl} 
-                          alt={item.product.name} 
-                          className="w-full h-full object-cover" 
-                          referrerPolicy="no-referrer" 
+                      {(item.product.images?.[0] ?? item.product.imageUrl) ? (
+                        <img
+                          src={item.product.images?.[0] ?? item.product.imageUrl}
+                          alt={item.product.name}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-300">
@@ -1108,32 +1118,74 @@ export default function PublicCatalog() {
               <X size={24} />
             </button>
 
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
               className="relative z-[105] max-w-5xl w-full flex flex-col items-center gap-8"
             >
-              <div className="w-full aspect-square md:aspect-video max-h-[70vh] rounded-2xl overflow-hidden shadow-2xl border border-white/5 bg-white/5">
-                <img 
-                  src={selectedProductForLightbox.imageUrl} 
-                  alt={selectedProductForLightbox.name}
-                  className="w-full h-full object-contain"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              
-              <div className="text-center space-y-2 px-4">
-                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-                  {selectedProductForLightbox.name}
-                </h2>
-                {config.showPrices && (
-                  <p className="text-2xl md:text-3xl font-black tracking-tighter" style={{ color: accentColor }}>
-                    {formatCurrency(roundPrice(selectedProductForLightbox.salePrice))}
-                  </p>
-                )}
-              </div>
+              {(() => {
+                const imgs = selectedProductForLightbox.images?.length
+                  ? selectedProductForLightbox.images
+                  : selectedProductForLightbox.imageUrl
+                    ? [selectedProductForLightbox.imageUrl]
+                    : [];
+                const idx = Math.min(lightboxImageIndex, imgs.length - 1);
+                return (
+                  <>
+                    <div className="relative w-full">
+                      <div className="w-full aspect-square md:aspect-video max-h-[70vh] rounded-2xl overflow-hidden shadow-2xl border border-white/5 bg-white/5">
+                        <img
+                          src={imgs[idx]}
+                          alt={selectedProductForLightbox.name}
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      {imgs.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => setLightboxImageIndex(i => (i - 1 + imgs.length) % imgs.length)}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
+                          >
+                            <ChevronLeft size={24} />
+                          </button>
+                          <button
+                            onClick={() => setLightboxImageIndex(i => (i + 1) % imgs.length)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
+                          >
+                            <ChevronRight size={24} />
+                          </button>
+                          <div className="flex gap-2 justify-center mt-4">
+                            {imgs.map((_, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setLightboxImageIndex(i)}
+                                className={cn(
+                                  "h-2 rounded-full transition-all",
+                                  i === idx ? "bg-white w-6" : "bg-white/30 w-2"
+                                )}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="text-center space-y-2 px-4">
+                      <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">
+                        {selectedProductForLightbox.name}
+                      </h2>
+                      {config.showPrices && (
+                        <p className="text-2xl md:text-3xl font-black tracking-tighter" style={{ color: accentColor }}>
+                          {formatCurrency(roundPrice(selectedProductForLightbox.salePrice))}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </motion.div>
           </div>
         )}
