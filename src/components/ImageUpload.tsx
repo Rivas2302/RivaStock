@@ -1,10 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
-import { storage, ref, uploadBytesResumable, getDownloadURL } from '../lib/db';
 
 const MAX_IMAGES = 4;
 
-const compressToWebpBlob = (file: File, maxSize = 800, quality = 0.7): Promise<Blob> => {
+const compressToBase64 = (file: File, maxSize = 600, quality = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -24,10 +23,7 @@ const compressToWebpBlob = (file: File, maxSize = 800, quality = 0.7): Promise<B
         const ctx = canvas.getContext('2d');
         if (!ctx) { reject(new Error('No canvas context')); return; }
         ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(blob => {
-          if (blob) resolve(blob);
-          else reject(new Error('Failed to create blob'));
-        }, 'image/webp', quality);
+        resolve(canvas.toDataURL('image/webp', quality));
       };
       img.onerror = reject;
     };
@@ -45,15 +41,13 @@ interface ImageUploadProps {
 }
 
 export const ImageUpload: React.FC<ImageUploadProps> = ({
-  ownerUid,
-  productId,
   currentImages = [],
   onChange,
   onUploadStart,
   onUploadEnd,
 }) => {
   const [images, setImages] = useState<string[]>(currentImages);
-  const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,34 +55,26 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     const remaining = MAX_IMAGES - images.length;
     if (remaining <= 0) return;
 
-    const toUpload = Array.from(files).slice(0, remaining);
-    const invalidFile = toUpload.find(f => !f.type.startsWith('image/'));
+    const toProcess = Array.from(files).slice(0, remaining);
+    const invalidFile = toProcess.find(f => !f.type.startsWith('image/'));
     if (invalidFile) {
       setError('Solo se permiten imágenes (jpg, png, webp).');
       return;
     }
 
     setError(null);
-    setUploading(true);
+    setProcessing(true);
     onUploadStart?.();
 
     try {
-      const urls = await Promise.all(toUpload.map(async (file) => {
-        const blob = await compressToWebpBlob(file);
-        const path = `products/${ownerUid}/${productId}/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
-        const storageRef = ref(storage, path);
-        const task = uploadBytesResumable(storageRef, blob, { contentType: 'image/webp' });
-        await new Promise<void>((res, rej) => task.on('state_changed', null, rej, res));
-        return getDownloadURL(storageRef);
-      }));
-
-      const updated = [...images, ...urls];
+      const base64s = await Promise.all(toProcess.map(f => compressToBase64(f)));
+      const updated = [...images, ...base64s];
       setImages(updated);
       onChange(updated);
     } catch (err: any) {
-      setError(`Error al subir imagen: ${err.message}`);
+      setError(`Error al procesar imagen: ${err.message}`);
     } finally {
-      setUploading(false);
+      setProcessing(false);
       onUploadEnd?.();
     }
   };
@@ -103,12 +89,12 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     <div className="space-y-2">
       <div className="grid grid-cols-4 gap-2">
         {images.map((url, i) => (
-          <div key={url} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
-            <img src={url} alt={`Imagen ${i + 1}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+            <img src={url} alt={`Imagen ${i + 1}`} className="w-full h-full object-cover" />
             <button
               type="button"
               onClick={() => removeImage(i)}
-              disabled={uploading}
+              disabled={processing}
               className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5 hover:bg-rose-600 transition-colors disabled:opacity-50"
             >
               <X size={14} />
@@ -119,14 +105,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         {images.length < MAX_IMAGES && (
           <div
             className="aspect-square border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors"
-            onClick={() => !uploading && fileInputRef.current?.click()}
+            onClick={() => !processing && fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              if (!uploading && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+              if (!processing && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
             }}
           >
-            {uploading ? (
+            {processing ? (
               <Loader2 className="animate-spin text-indigo-500" size={22} />
             ) : (
               <>
