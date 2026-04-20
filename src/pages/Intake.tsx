@@ -1,16 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, StockIntake } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
-import { 
-  Plus, 
-  Search, 
-  ArrowDownCircle, 
-  Calendar,
-  Package,
+import {
+  Plus,
+  Search,
   History,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
@@ -21,9 +19,10 @@ export default function Intake() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<Partial<StockIntake>>({
     date: new Date().toISOString().split('T')[0],
     productId: '',
@@ -32,6 +31,11 @@ export default function Intake() {
     supplier: '',
     notes: ''
   });
+
+  // Product search dropdown
+  const [productSearch, setProductSearch] = useState('');
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
     if (!user) return;
@@ -48,7 +52,23 @@ export default function Intake() {
     fetchData();
   }, [user]);
 
-  const handleProductChange = (productId: string) => {
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target as Node)) {
+        setIsProductDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredProductOptions = products.filter(p =>
+    p.name.toLowerCase().includes(productSearch.toLowerCase())
+  );
+
+  const selectedProduct = products.find(p => p.id === formData.productId);
+
+  const handleProductSelect = (productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
       setFormData(prev => ({
@@ -58,33 +78,17 @@ export default function Intake() {
         purchasePrice: product.purchasePrice
       }));
     }
+    setProductSearch('');
+    setIsProductDropdownOpen(false);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+  const handleClearProduct = () => {
+    setFormData(prev => ({ ...prev, productId: '', productName: '' }));
+    setProductSearch('');
+    setIsProductDropdownOpen(true);
+  };
 
-    const product = products.find(p => p.id === formData.productId);
-    if (!product) return;
-
-    const intakeData = {
-      ...formData,
-      ownerUid: user.uid
-    } as StockIntake;
-
-    const newIntake = await db.create('stock_intakes', {
-      ...intakeData,
-      id: crypto.randomUUID()
-    });
-
-    // Increase stock and update purchase price
-    await db.update<Product>('products', product.id, { 
-      stock: product.stock + newIntake.quantity,
-      purchasePrice: newIntake.purchasePrice,
-      updatedAt: new Date().toISOString()
-    });
-
-    setIsModalOpen(false);
+  const openModal = () => {
     setFormData({
       date: new Date().toISOString().split('T')[0],
       productId: '',
@@ -93,11 +97,51 @@ export default function Intake() {
       supplier: '',
       notes: ''
     });
-    fetchData();
+    setProductSearch('');
+    setIsProductDropdownOpen(false);
+    setIsModalOpen(true);
   };
 
-  const filteredIntakes = intakes.filter(i => 
-    i.productName.toLowerCase().includes(search.toLowerCase()) || 
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setProductSearch('');
+    setIsProductDropdownOpen(false);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || isSubmitting) return;
+
+    const product = products.find(p => p.id === formData.productId);
+    if (!product) return;
+
+    setIsSubmitting(true);
+    try {
+      const intakeData = {
+        ...formData,
+        ownerUid: user.uid
+      } as StockIntake;
+
+      const newIntake = await db.create('stock_intakes', {
+        ...intakeData,
+        id: crypto.randomUUID()
+      });
+
+      await db.update<Product>('products', product.id, {
+        stock: product.stock + newIntake.quantity,
+        purchasePrice: newIntake.purchasePrice,
+        updatedAt: new Date().toISOString()
+      });
+
+      closeModal();
+      fetchData();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredIntakes = intakes.filter(i =>
+    i.productName.toLowerCase().includes(search.toLowerCase()) ||
     (i.supplier?.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -108,18 +152,8 @@ export default function Intake() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ingresos de Mercadería</h2>
           <p className="text-slate-500 dark:text-slate-400">Registra la entrada de nuevos productos</p>
         </div>
-        <button 
-          onClick={() => {
-            setFormData({
-              date: new Date().toISOString().split('T')[0],
-              productId: '',
-              quantity: 1,
-              purchasePrice: 0,
-              supplier: '',
-              notes: ''
-            });
-            setIsModalOpen(true);
-          }}
+        <button
+          onClick={openModal}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
         >
           <Plus size={20} />
@@ -130,7 +164,7 @@ export default function Intake() {
       {/* Filters */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-        <input 
+        <input
           type="text"
           placeholder="Buscar por producto o proveedor..."
           value={search}
@@ -185,16 +219,16 @@ export default function Intake() {
       </div>
 
       {/* Add Modal */}
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
         title="Registrar Ingreso de Mercadería"
       >
         <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha</label>
-              <input 
+              <input
                 type="date"
                 required
                 value={formData.date}
@@ -203,26 +237,79 @@ export default function Intake() {
               />
             </div>
 
+            {/* Searchable product selector */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
-              <select 
-                required
-                value={formData.productId}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-              >
-                <option value="">Seleccionar producto</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (Stock actual: {p.stock})
-                  </option>
-                ))}
-              </select>
+              <div ref={productDropdownRef} className="relative">
+                {selectedProduct ? (
+                  <div className="flex items-center gap-2 w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl dark:text-white">
+                    <span className="flex-1 text-sm truncate">{selectedProduct.name}</span>
+                    <span className="text-xs text-slate-400 shrink-0">Stock: {selectedProduct.stock}</span>
+                    <button
+                      type="button"
+                      onClick={handleClearProduct}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors shrink-0"
+                      aria-label="Limpiar selección"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
+                    <input
+                      type="text"
+                      placeholder="Buscar producto..."
+                      value={productSearch}
+                      onChange={(e) => {
+                        setProductSearch(e.target.value);
+                        setIsProductDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsProductDropdownOpen(true)}
+                      className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
+
+                {isProductDropdownOpen && !selectedProduct && (
+                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                    {filteredProductOptions.length > 0 ? (
+                      filteredProductOptions.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleProductSelect(p.id)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors dark:text-white"
+                        >
+                          <span className="truncate">{p.name}</span>
+                          <span className="text-xs text-slate-400 shrink-0 ml-2">Stock: {p.stock}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-3 text-sm text-slate-400 dark:text-slate-500 text-center">
+                        No se encontraron productos
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Hidden input to enforce required validation */}
+                <input
+                  type="text"
+                  required
+                  value={formData.productId ?? ''}
+                  onChange={() => {}}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cantidad Recibida</label>
-              <input 
+              <input
                 type="number"
                 required
                 min="1"
@@ -236,7 +323,7 @@ export default function Intake() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Compra (Unitario)</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
+                <input
                   type="number"
                   required
                   min="0"
@@ -249,7 +336,7 @@ export default function Intake() {
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Proveedor (Opcional)</label>
-              <input 
+              <input
                 type="text"
                 value={formData.supplier}
                 onChange={(e) => setFormData(prev => ({ ...prev, supplier: e.target.value }))}
@@ -260,7 +347,7 @@ export default function Intake() {
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Notas</label>
-              <textarea 
+              <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white h-24 resize-none"
@@ -269,18 +356,19 @@ export default function Intake() {
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button 
+            <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={closeModal}
               className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
+              disabled={isSubmitting}
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Guardar Ingreso
+              {isSubmitting ? 'Guardando...' : 'Guardar Ingreso'}
             </button>
           </div>
         </form>
