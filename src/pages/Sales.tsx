@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry } from '../types';
-import { formatCurrency, cn, roundPrice } from '../lib/utils';
+import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import { 
   Plus, 
   Search, 
@@ -32,7 +32,7 @@ export default function Sales() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [formData, setFormData] = useState<Partial<Sale>>({
-    date: new Date().toISOString().split('T')[0],
+    date: todayString(),
     productId: '',
     quantity: 1,
     unitPrice: 0,
@@ -107,8 +107,63 @@ export default function Sales() {
     } as Sale;
 
     if (editingSale) {
-      // Handle stock reversal if status changed or quantity changed
-      // For simplicity in this mock, we just update. In real app, logic would be more complex.
+      const oldSale = editingSale;
+      const newStatus = saleData.status;
+      const newQty = saleData.quantity;
+      const newProductId = saleData.productId;
+      const newProduct = products.find(p => p.id === newProductId);
+      const oldProduct = products.find(p => p.id === oldSale.productId);
+
+      if (!newProduct) return;
+
+      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', oldSale.id);
+      const cfEntry = cfEntries[0] || null;
+      const productChanged = oldSale.productId !== newProductId;
+
+      if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
+        if (productChanged) {
+          // Return to old product, deduct from new
+          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
+          if (newProduct.stock < newQty) {
+            alert('No hay suficiente stock.');
+            if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
+            return;
+          }
+          await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
+        } else {
+          const effectiveStock = newProduct.stock + oldSale.quantity;
+          if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
+          await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+        }
+        if (cfEntry) {
+          await db.update('cash_flow', cfEntry.id, {
+            date: saleData.date,
+            description: `Venta: ${saleData.productName} x${newQty}`,
+            amount: total,
+            paymentMethod: saleData.paymentMethod || 'Efectivo'
+          });
+        }
+      } else if (oldSale.status === 'Pagado' && newStatus !== 'Pagado') {
+        if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
+        if (cfEntry) await db.delete('cash_flow', cfEntry.id);
+      } else if (oldSale.status !== 'Pagado' && newStatus === 'Pagado') {
+        if (newProduct.stock < newQty) { alert('No hay suficiente stock.'); return; }
+        await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
+        await db.create('cash_flow', {
+          id: crypto.randomUUID(),
+          date: saleData.date,
+          type: 'Ingreso',
+          source: 'Venta',
+          description: `Venta: ${saleData.productName} x${newQty}`,
+          category: 'Venta Externa',
+          amount: total,
+          paymentMethod: saleData.paymentMethod || 'Efectivo',
+          status: 'Pagado',
+          saleId: oldSale.id,
+          ownerUid: user.uid
+        });
+      }
+
       await db.update<Sale>('sales', editingSale.id, saleData);
     } else {
       const newSale = await db.create('sales', {
@@ -138,7 +193,7 @@ export default function Sales() {
     setIsModalOpen(false);
     setEditingSale(null);
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: todayString(),
       productId: '',
       quantity: 1,
       unitPrice: 0,
@@ -179,10 +234,16 @@ export default function Sales() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('¿Estás seguro de eliminar esta venta?')) {
-      await db.delete('sales', id);
-      fetchData();
+    if (!confirm('¿Estás seguro de eliminar esta venta?')) return;
+    const sale = sales.find(s => s.id === id);
+    if (sale?.status === 'Pagado') {
+      const product = products.find(p => p.id === sale.productId);
+      if (product) await db.update<Product>('products', product.id, { stock: product.stock + sale.quantity });
+      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
+      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
     }
+    await db.delete('sales', id);
+    fetchData();
   };
 
   const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
@@ -218,7 +279,7 @@ export default function Sales() {
             onClick={() => {
               setEditingSale(null);
               setFormData({
-                date: new Date().toISOString().split('T')[0],
+                date: todayString(),
                 productId: '',
                 quantity: 1,
                 unitPrice: 0,
@@ -316,7 +377,7 @@ export default function Sales() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredSales.map((s) => (
                 <tr key={s.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{new Date(s.date).toLocaleDateString('es-AR')}</td>
+                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(s.date)}</td>
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-900 dark:text-white">{s.productName}</p>
                     {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { CashFlowEntry } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import { 
   Plus, 
   Search, 
@@ -31,7 +31,7 @@ export default function CashFlow() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
   const [formData, setFormData] = useState<Partial<CashFlowEntry>>({
-    date: new Date().toISOString().split('T')[0],
+    date: todayString(),
     description: '',
     category: 'Otros',
     amount: 0,
@@ -69,7 +69,7 @@ export default function CashFlow() {
 
     setIsModalOpen(false);
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: todayString(),
       description: '',
       category: 'Otros',
       amount: 0,
@@ -231,7 +231,7 @@ export default function CashFlow() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredEntries.map((e) => (
                 <tr key={e.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{new Date(e.date).toLocaleDateString('es-AR')}</td>
+                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(e.date)}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className={cn(

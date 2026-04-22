@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, StockIntake } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
   Search,
@@ -24,7 +24,7 @@ export default function Intake() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<Partial<StockIntake>>({
-    date: new Date().toISOString().split('T')[0],
+    date: todayString(),
     productId: '',
     quantity: 1,
     purchasePrice: 0,
@@ -90,7 +90,7 @@ export default function Intake() {
 
   const openModal = () => {
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: todayString(),
       productId: '',
       quantity: 1,
       purchasePrice: 0,
@@ -194,7 +194,7 @@ export default function Intake() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredIntakes.map((i) => (
                 <tr key={i.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{new Date(i.date).toLocaleDateString('es-AR')}</td>
+                  <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(i.date)}</td>
                   <td className="px-6 py-4 font-bold dark:text-white">{i.productName}</td>
                   <td className="px-6 py-4 dark:text-slate-300">
                     <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-lg font-bold">

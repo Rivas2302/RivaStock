@@ -23,6 +23,18 @@ export function roundPrice(price: number): number {
   }
 }
 
+// Parses a YYYY-MM-DD string as local date to avoid UTC-3 offset shifting the day
+export function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('es-AR');
+}
+
+// Returns today's date as YYYY-MM-DD in local timezone (avoids UTC offset issues)
+export function todayString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 export function slugify(text: string): string {
   return text
     .toString()

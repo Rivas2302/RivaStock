@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Order, Product } from '../types';
-import { formatCurrency, cn, roundPrice } from '../lib/utils';
+import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import { 
   ClipboardList, 
   MessageCircle, 
@@ -59,27 +59,42 @@ export default function Orders() {
 
     // 2. Create sale
     try {
+      const today = todayString();
       for (const item of order.items) {
         const product = products.find(p => p.id === item.productId)!;
-        
-        // Create sale entry
+        const saleId = crypto.randomUUID();
+        const saleTotal = item.price * item.quantity;
+
         await db.create('sales', {
-          id: crypto.randomUUID(),
-          date: new Date().toISOString().split('T')[0],
+          id: saleId,
+          date: today,
           productId: item.productId,
           productName: item.productName,
           unitPrice: item.price,
           quantity: item.quantity,
           adjustment: 0,
-          total: item.price * item.quantity,
+          total: saleTotal,
           status: 'Pagado',
           paymentMethod: 'Efectivo',
           client: order.customerName,
           ownerUid: user!.uid
         });
 
-        // Reduce stock
         await db.update('products', product.id, { stock: product.stock - item.quantity });
+
+        await db.create('cash_flow', {
+          id: crypto.randomUUID(),
+          date: today,
+          type: 'Ingreso',
+          source: 'Venta',
+          description: `Venta: ${item.productName} x${item.quantity} (Pedido)`,
+          category: 'Venta Externa',
+          amount: saleTotal,
+          paymentMethod: 'Efectivo',
+          status: 'Pagado',
+          saleId,
+          ownerUid: user!.uid
+        });
       }
 
       // 3. Update order status
@@ -149,7 +164,7 @@ export default function Orders() {
                       <span className="bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Nuevo</span>
                     )}
                   </div>
-                  <span className="text-xs text-slate-400 font-medium">{new Date(order.date).toLocaleString('es-AR')}</span>
+                  <span className="text-xs text-slate-400 font-medium">{formatDate(order.date.split('T')[0])}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">

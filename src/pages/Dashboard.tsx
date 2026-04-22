@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry, Order } from '../types';
-import { formatCurrency, cn, roundPrice } from '../lib/utils';
+import { formatCurrency, cn, roundPrice, formatDate } from '../lib/utils';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -156,7 +156,7 @@ export default function Dashboard() {
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {Array.isArray(sales) && sales.length > 0 ? sales.slice(0, 5).map((sale) => (
                   <tr key={sale.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-6 py-4 dark:text-slate-300">{new Date(sale.date).toLocaleDateString('es-AR')}</td>
+                    <td className="px-6 py-4 dark:text-slate-300">{formatDate(sale.date)}</td>
                     <td className="px-6 py-4 font-medium dark:text-white">{sale.productName}</td>
                     <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(sale.total)}</td>
                     <td className="px-6 py-4">
