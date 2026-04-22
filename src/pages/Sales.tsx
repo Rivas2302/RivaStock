@@ -251,6 +251,38 @@ export default function Sales() {
     fetchData();
   };
 
+  const legacyPendingSales = sales.filter(s => !s.createdAt && s.status === 'No Pagado');
+
+  const handleFixLegacyStock = async () => {
+    if (!user || legacyPendingSales.length === 0) return;
+    if (!confirm(`Se encontraron ${legacyPendingSales.length} venta(s) pendiente(s) sin stock descontado. ¿Descontar ahora?`)) return;
+
+    // Group quantities by product to avoid race conditions
+    const deductions: Record<string, number> = {};
+    for (const sale of legacyPendingSales) {
+      deductions[sale.productId] = (deductions[sale.productId] || 0) + sale.quantity;
+    }
+
+    // Fetch fresh stock values before updating
+    const freshProducts = await db.list<Product>('products', user.uid);
+    let corrected = 0;
+    for (const [productId, qty] of Object.entries(deductions)) {
+      const product = freshProducts.find(p => p.id === productId);
+      if (product) {
+        await db.update<Product>('products', productId, { stock: Math.max(0, product.stock - qty) });
+        corrected++;
+      }
+    }
+
+    // Stamp createdAt so these sales are no longer detected as legacy
+    for (const sale of legacyPendingSales) {
+      await db.update<Sale>('sales', sale.id, { createdAt: new Date().toISOString() });
+    }
+
+    alert(`Stock corregido para ${corrected} producto(s).`);
+    fetchData();
+  };
+
   const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
   const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
   const totalPending = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
@@ -270,6 +302,22 @@ export default function Sales() {
 
   return (
     <div className="space-y-6">
+      {legacyPendingSales.length > 0 && (
+        <div className="flex items-center justify-between gap-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {legacyPendingSales.length} venta(s) pendiente(s) anteriores al fix no tienen stock descontado.
+            </p>
+          </div>
+          <button
+            onClick={handleFixLegacyStock}
+            className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            Corregir stock ahora
+          </button>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ventas</h2>
