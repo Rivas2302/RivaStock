@@ -98,8 +98,8 @@ export default function Sales() {
     
     if (!product) return;
 
-    // Validate stock if marking as paid
-    if (formData.status === 'Pagado' && product.stock < (formData.quantity || 0)) {
+    // Validate stock for all statuses — stock always reserved at creation
+    if (product.stock < (formData.quantity || 0)) {
       alert('No hay suficiente stock para realizar esta venta.');
       return;
     }
@@ -124,21 +124,23 @@ export default function Sales() {
       const cfEntry = cfEntries[0] || null;
       const productChanged = oldSale.productId !== newProductId;
 
-      if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
-        if (productChanged) {
-          // Return to old product, deduct from new
-          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
-          if (newProduct.stock < newQty) {
-            alert('No hay suficiente stock.');
-            if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
-            return;
-          }
-          await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
-        } else {
-          const effectiveStock = newProduct.stock + oldSale.quantity;
-          if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
-          await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+      // Stock: always held regardless of status. Adjust for product/quantity changes.
+      if (productChanged) {
+        if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
+        if (newProduct.stock < newQty) {
+          alert('No hay suficiente stock.');
+          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
+          return;
         }
+        await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
+      } else {
+        const effectiveStock = newProduct.stock + oldSale.quantity;
+        if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
+        await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+      }
+
+      // Cashflow: only for Pagado transitions
+      if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
         if (cfEntry) {
           await db.update('cash_flow', cfEntry.id, {
             date: saleData.date,
@@ -148,11 +150,8 @@ export default function Sales() {
           });
         }
       } else if (oldSale.status === 'Pagado' && newStatus !== 'Pagado') {
-        if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
         if (cfEntry) await db.delete('cash_flow', cfEntry.id);
       } else if (oldSale.status !== 'Pagado' && newStatus === 'Pagado') {
-        if (newProduct.stock < newQty) { alert('No hay suficiente stock.'); return; }
-        await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
         await db.create('cash_flow', {
           id: crypto.randomUUID(),
           date: saleData.date,
@@ -177,9 +176,11 @@ export default function Sales() {
         createdAt: new Date().toISOString()
       });
 
-      // If paid, reduce stock and add to cash flow
+      // Always reduce stock
+      await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+
+      // Only add to cash flow if paid
       if (newSale.status === 'Pagado') {
-        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
         await db.create('cash_flow', {
           id: crypto.randomUUID(),
           date: newSale.date,
@@ -214,16 +215,8 @@ export default function Sales() {
 
   const handleMarkAsPaid = async (sale: Sale) => {
     if (!user) return;
-    const product = products.find(p => p.id === sale.productId);
-    if (!product) return;
-
-    if (product.stock < sale.quantity) {
-      alert('No hay suficiente stock para marcar como pagado.');
-      return;
-    }
-
+    // Stock was already deducted at creation — only update status and create cashflow
     await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: 'Efectivo' });
-    await db.update<Product>('products', product.id, { stock: product.stock - sale.quantity });
     await db.create('cash_flow', {
       id: crypto.randomUUID(),
       date: sale.date,
@@ -244,11 +237,15 @@ export default function Sales() {
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar esta venta?')) return;
     const sale = sales.find(s => s.id === id);
-    if (sale?.status === 'Pagado') {
+    if (sale) {
+      // Always return stock — it was reserved at creation regardless of status
       const product = products.find(p => p.id === sale.productId);
       if (product) await db.update<Product>('products', product.id, { stock: product.stock + sale.quantity });
-      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
-      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+      // Only delete cashflow if the sale was paid
+      if (sale.status === 'Pagado') {
+        const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
+        for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+      }
     }
     await db.delete('sales', id);
     fetchData();
