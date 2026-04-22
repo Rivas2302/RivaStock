@@ -48,7 +48,11 @@ export default function Sales() {
       db.list<Sale>('sales', user.uid),
       db.list<Product>('products', user.uid)
     ]);
-    setSales(s.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    setSales(s.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      if (dc !== 0) return dc;
+      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+    }));
     setProducts(p);
     setLoading(false);
   };
@@ -160,7 +164,8 @@ export default function Sales() {
           paymentMethod: saleData.paymentMethod || 'Efectivo',
           status: 'Pagado',
           saleId: oldSale.id,
-          ownerUid: user.uid
+          ownerUid: user.uid,
+          createdAt: new Date().toISOString()
         });
       }
 
@@ -168,7 +173,8 @@ export default function Sales() {
     } else {
       const newSale = await db.create('sales', {
         ...saleData,
-        id: crypto.randomUUID()
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
       });
 
       // If paid, reduce stock and add to cash flow
@@ -185,7 +191,8 @@ export default function Sales() {
           paymentMethod: newSale.paymentMethod || 'Efectivo',
           status: 'Pagado',
           saleId: newSale.id,
-          ownerUid: user.uid
+          ownerUid: user.uid,
+          createdAt: new Date().toISOString()
         });
       }
     }
@@ -228,7 +235,8 @@ export default function Sales() {
       paymentMethod: 'Efectivo',
       status: 'Pagado',
       saleId: sale.id,
-      ownerUid: user.uid
+      ownerUid: user.uid,
+      createdAt: new Date().toISOString()
     });
     fetchData();
   };

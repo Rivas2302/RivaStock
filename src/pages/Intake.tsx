@@ -43,7 +43,11 @@ export default function Intake() {
       db.list<StockIntake>('stock_intakes', user.uid),
       db.list<Product>('products', user.uid)
     ]);
-    setIntakes(i.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    setIntakes(i.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      if (dc !== 0) return dc;
+      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+    }));
     setProducts(p);
     setLoading(false);
   };
@@ -124,7 +128,8 @@ export default function Intake() {
 
       const newIntake = await db.create('stock_intakes', {
         ...intakeData,
-        id: crypto.randomUUID()
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
       });
 
       await db.update<Product>('products', product.id, {

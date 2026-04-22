@@ -50,6 +50,7 @@ export interface Product {
 export interface Sale {
   id: string;
   date: string;
+  createdAt?: string;
   productId: string;
   productName: string;
   unitPrice: number;
@@ -71,6 +72,7 @@ export interface Sale {
 export interface StockIntake {
   id: string;
   date: string;
+  createdAt?: string;
   productId: string;
   productName: string;
   quantity: number;
@@ -83,6 +85,7 @@ export interface StockIntake {
 export interface CashFlowEntry {
   id: string;
   date: string;
+  createdAt?: string;
   type: 'Ingreso' | 'Gasto';
   source: 'Venta' | 'Manual' | 'Gasto';
   description: string;

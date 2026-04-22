@@ -77,7 +77,8 @@ export default function Orders() {
           status: 'Pagado',
           paymentMethod: 'Efectivo',
           client: order.customerName,
-          ownerUid: user!.uid
+          ownerUid: user!.uid,
+          createdAt: new Date().toISOString()
         });
 
         await db.update('products', product.id, { stock: product.stock - item.quantity });
@@ -93,7 +94,8 @@ export default function Orders() {
           paymentMethod: 'Efectivo',
           status: 'Pagado',
           saleId,
-          ownerUid: user!.uid
+          ownerUid: user!.uid,
+          createdAt: new Date().toISOString()
         });
       }
 
