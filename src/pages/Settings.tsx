@@ -56,6 +56,8 @@ export default function Settings() {
   // Form states
   const [businessName, setBusinessName] = useState(user?.businessName || '');
   const [catalogSlug, setCatalogSlug] = useState(user?.catalogSlug || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [emailContact, setEmailContact] = useState(user?.email_contact || '');
   const [newCategory, setNewCategory] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [newPriceRange, setNewPriceRange] = useState<Partial<PriceRange>>({
@@ -244,9 +246,11 @@ export default function Settings() {
     const baseSlug = slugify(trimmedName);
     const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
     
-    const updated = await db.update<UserProfile>('users', user.uid, { 
-      businessName: trimmedName, 
+    const updated = await db.update<UserProfile>('users', user.uid, {
+      businessName: trimmedName,
       businessNameLower: normalizedName,
+      phone: phone.trim(),
+      email_contact: emailContact.trim(),
       catalogSlug 
     });
     updateUser(updated); // Update context
@@ -501,14 +505,36 @@ export default function Settings() {
                     <div className="max-w-md space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre del Negocio</label>
-                        <input 
+                        <input
                           type="text"
                           value={businessName}
                           onChange={(e) => setBusinessName(e.target.value)}
                           className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white font-bold"
                         />
                       </div>
-                      <button 
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Teléfono de contacto</label>
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="+54 9 11 1234-5678"
+                          className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Se muestra en los presupuestos públicos</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email de contacto</label>
+                        <input
+                          type="email"
+                          value={emailContact}
+                          onChange={(e) => setEmailContact(e.target.value)}
+                          placeholder="ventas@minegocio.com"
+                          className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Email público (distinto al de tu cuenta)</p>
+                      </div>
+                      <button
                         onClick={handleUpdateProfile}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all"
                       >

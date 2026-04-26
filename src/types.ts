@@ -11,6 +11,8 @@ export interface UserProfile {
   darkMode: boolean;
   createdAt: string;
   catalogSlug?: string;
+  phone?: string;
+  email_contact?: string;
 }
 
 export interface Category {
