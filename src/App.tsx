@@ -10,6 +10,9 @@ import Orders from './pages/Orders';
 import Calculator from './pages/Calculator';
 import Settings from './pages/Settings';
 import PublicCatalog from './pages/PublicCatalog';
+import Quotes from './pages/Quotes';
+import QuotePublic from './pages/QuotePublic';
+import Customers from './pages/Customers';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -38,11 +41,14 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/catalogo/:slug" element={<PublicCatalog />} />
-      
+      <Route path="/presupuesto/:id" element={<QuotePublic />} />
+
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="stock" element={<Stock />} />
         <Route path="ventas" element={<Sales />} />
+        <Route path="presupuestos" element={<Quotes />} />
+        <Route path="clientes" element={<Customers />} />
         <Route path="ingresos" element={<Intake />} />
         <Route path="caja" element={<CashFlow />} />
         <Route path="pedidos" element={<Orders />} />

@@ -154,3 +154,62 @@ export interface Collaborator {
   role: 'admin' | 'viewer';
   status: 'pending' | 'active';
 }
+
+export interface QuoteItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+
+export interface Quote {
+  id: string;
+  ownerUid: string;
+  number: string;
+  clientId: string;
+  clientName: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  items: QuoteItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  status: QuoteStatus;
+  validDays: 7 | 15 | 30;
+  expiresAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  convertedToSaleId?: string;
+}
+
+export interface Customer {
+  id: string;
+  ownerUid: string;
+  name: string;
+  nameLower: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  currentBalance: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TransactionType = 'sale' | 'payment' | 'adjustment';
+
+export interface CustomerTransaction {
+  id: string;
+  ownerUid: string;
+  customerId: string;
+  type: TransactionType;
+  amount: number;
+  description: string;
+  relatedSaleId?: string;
+  relatedQuoteId?: string;
+  date: string;
+  createdAt: string;
+}

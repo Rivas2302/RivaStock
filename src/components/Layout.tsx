@@ -1,17 +1,19 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Package, 
-  ShoppingCart, 
-  ArrowDownCircle, 
-  Wallet, 
-  ClipboardList, 
-  Calculator, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  ArrowDownCircle,
+  Wallet,
+  ClipboardList,
+  Calculator,
+  Settings,
   LogOut,
   Menu,
   X,
-  ExternalLink
+  ExternalLink,
+  FileText,
+  Users
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -22,6 +24,8 @@ const navItems = [
   { name: 'Inicio', path: '/', icon: LayoutDashboard },
   { name: 'Stock', path: '/stock', icon: Package },
   { name: 'Ventas', path: '/ventas', icon: ShoppingCart },
+  { name: 'Presupuestos', path: '/presupuestos', icon: FileText },
+  { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet },
   { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, badge: true },
