@@ -3,10 +3,10 @@ import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { CashFlowEntry } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
+import {
+  Plus,
+  Search,
+  Filter,
   Download,
   Wallet,
   ArrowUpRight,
@@ -15,7 +15,9 @@ import {
   ChevronDown,
   TrendingUp,
   TrendingDown,
-  MoreHorizontal
+  MoreHorizontal,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
@@ -30,6 +32,7 @@ export default function CashFlow() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<CashFlowEntry | null>(null);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
   const [formData, setFormData] = useState<Partial<CashFlowEntry>>({
     date: todayString(),
@@ -40,6 +43,19 @@ export default function CashFlow() {
     status: 'Pagado',
     notes: ''
   });
+
+  const resetForm = () => {
+    setFormData({
+      date: todayString(),
+      description: '',
+      category: 'Otros',
+      amount: 0,
+      paymentMethod: 'Efectivo',
+      status: 'Pagado',
+      notes: ''
+    });
+    setEditingEntry(null);
+  };
 
   const handleToggleStatus = async (entry: CashFlowEntry) => {
     if (!user) return;
@@ -63,6 +79,12 @@ export default function CashFlow() {
     fetchData();
   }, [user]);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este registro?')) return;
+    await db.delete('cash_flow', id);
+    fetchData();
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || saving) return;
@@ -72,40 +94,37 @@ export default function CashFlow() {
       const entryData = {
         ...formData,
         type: modalType,
-        source: modalType === 'Ingreso' ? 'Manual' : 'Gasto',
+        // Preserve original source when editing; set default for new entries
+        source: editingEntry ? editingEntry.source : (modalType === 'Ingreso' ? 'Manual' : 'Gasto'),
         ownerUid: user.uid
       } as CashFlowEntry;
 
-      // Idempotency: reject duplicate within 5 seconds (same type/amount/description/date)
-      const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
-      const potentialDuplicate = entries.find(en =>
-        en.type === modalType &&
-        en.amount === (formData.amount || 0) &&
-        en.description === formData.description &&
-        en.date === formData.date &&
-        en.createdAt && en.createdAt > fiveSecondsAgo
-      );
-      if (potentialDuplicate) {
-        alert('Se detectó un registro idéntico creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
-        return;
+      if (editingEntry) {
+        await db.update('cash_flow', editingEntry.id, entryData);
+      } else {
+        // Idempotency: reject duplicate within 5 seconds (same type/amount/description/date)
+        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+        const potentialDuplicate = entries.find(en =>
+          en.type === modalType &&
+          en.amount === (formData.amount || 0) &&
+          en.description === formData.description &&
+          en.date === formData.date &&
+          en.createdAt && en.createdAt > fiveSecondsAgo
+        );
+        if (potentialDuplicate) {
+          alert('Se detectó un registro idéntico creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
+          return;
+        }
+
+        await db.create('cash_flow', {
+          ...entryData,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString()
+        });
       }
 
-      await db.create('cash_flow', {
-        ...entryData,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString()
-      });
-
       setIsModalOpen(false);
-      setFormData({
-        date: todayString(),
-        description: '',
-        category: 'Otros',
-        amount: 0,
-        paymentMethod: 'Efectivo',
-        status: 'Pagado',
-        notes: ''
-      });
+      resetForm();
       fetchData();
     } finally {
       setSaving(false);
@@ -145,21 +164,15 @@ export default function CashFlow() {
           <p className="text-slate-500 dark:text-slate-400">Control de ingresos y egresos</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => {
-              setModalType('Ingreso');
-              setIsModalOpen(true);
-            }}
+          <button
+            onClick={() => { resetForm(); setModalType('Ingreso'); setIsModalOpen(true); }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
           >
             <Plus size={20} />
             Ingreso Manual
           </button>
-          <button 
-            onClick={() => {
-              setModalType('Gasto');
-              setIsModalOpen(true);
-            }}
+          <button
+            onClick={() => { resetForm(); setModalType('Gasto'); setIsModalOpen(true); }}
             className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all"
           >
             <Plus size={20} />
@@ -257,7 +270,8 @@ export default function CashFlow() {
                 <th className="px-6 py-4">Método</th>
                 <th className="px-6 py-4">Monto</th>
                 <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4 text-right">Origen</th>
+                <th className="px-6 py-4">Origen</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -295,16 +309,39 @@ export default function CashFlow() {
                       {e.status}
                     </button>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4">
                     <span className="text-[10px] bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded uppercase font-bold">
                       {e.source}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingEntry(e);
+                          setModalType(e.type);
+                          setFormData(e);
+                          setIsModalOpen(true);
+                        }}
+                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        title="Editar"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(e.id)}
+                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {filteredEntries.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     No hay movimientos registrados
                   </td>
                 </tr>
@@ -314,11 +351,13 @@ export default function CashFlow() {
         </div>
       </div>
 
-      {/* Add Modal */}
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        title={modalType === 'Ingreso' ? 'Agregar Ingreso Manual' : 'Registrar Gasto'}
+      {/* Add/Edit Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); resetForm(); }}
+        title={editingEntry
+          ? `Editar ${modalType}`
+          : modalType === 'Ingreso' ? 'Agregar Ingreso Manual' : 'Registrar Gasto'}
       >
         <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -399,9 +438,9 @@ export default function CashFlow() {
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button 
+            <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => { setIsModalOpen(false); resetForm(); }}
               className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               Cancelar
@@ -414,7 +453,7 @@ export default function CashFlow() {
                 modalType === 'Ingreso' ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20" : "bg-rose-600 hover:bg-rose-700 shadow-rose-500/20"
               )}
             >
-              {saving ? 'Guardando...' : `Guardar ${modalType}`}
+              {saving ? 'Guardando...' : editingEntry ? 'Guardar Cambios' : `Guardar ${modalType}`}
             </button>
           </div>
         </form>
