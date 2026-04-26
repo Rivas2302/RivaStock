@@ -30,6 +30,7 @@ export default function Sales() {
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [formData, setFormData] = useState<Partial<Sale>>({
     date: todayString(),
@@ -91,146 +92,174 @@ export default function Sales() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || saving) return;
+    setSaving(true);
 
-    const total = calculateTotal();
-    const product = products.find(p => p.id === formData.productId);
-    
-    if (!product) return;
+    try {
+      const total = calculateTotal();
+      const product = products.find(p => p.id === formData.productId);
 
-    // Validate stock for all statuses — stock always reserved at creation
-    if (product.stock < (formData.quantity || 0)) {
-      alert('No hay suficiente stock para realizar esta venta.');
-      return;
-    }
+      if (!product) return;
 
-    const saleData = {
-      ...formData,
-      total,
-      ownerUid: user.uid
-    } as Sale;
-
-    if (editingSale) {
-      const oldSale = editingSale;
-      const newStatus = saleData.status;
-      const newQty = saleData.quantity;
-      const newProductId = saleData.productId;
-      const newProduct = products.find(p => p.id === newProductId);
-      const oldProduct = products.find(p => p.id === oldSale.productId);
-
-      if (!newProduct) return;
-
-      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', oldSale.id);
-      const cfEntry = cfEntries[0] || null;
-      const productChanged = oldSale.productId !== newProductId;
-
-      // Stock: always held regardless of status. Adjust for product/quantity changes.
-      if (productChanged) {
-        if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
-        if (newProduct.stock < newQty) {
-          alert('No hay suficiente stock.');
-          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
-          return;
-        }
-        await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
-      } else {
-        const effectiveStock = newProduct.stock + oldSale.quantity;
-        if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
-        await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+      // Validate stock for all statuses — stock always reserved at creation
+      if (product.stock < (formData.quantity || 0)) {
+        alert('No hay suficiente stock para realizar esta venta.');
+        return;
       }
 
-      // Cashflow: only for Pagado transitions
-      if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
-        if (cfEntry) {
-          await db.update('cash_flow', cfEntry.id, {
+      const saleData = {
+        ...formData,
+        total,
+        ownerUid: user.uid
+      } as Sale;
+
+      if (editingSale) {
+        const oldSale = editingSale;
+        const newStatus = saleData.status;
+        const newQty = saleData.quantity;
+        const newProductId = saleData.productId;
+        const newProduct = products.find(p => p.id === newProductId);
+        const oldProduct = products.find(p => p.id === oldSale.productId);
+
+        if (!newProduct) return;
+
+        const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', oldSale.id);
+        const cfEntry = cfEntries[0] || null;
+        const productChanged = oldSale.productId !== newProductId;
+
+        // Stock: always held regardless of status. Adjust for product/quantity changes.
+        if (productChanged) {
+          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
+          if (newProduct.stock < newQty) {
+            alert('No hay suficiente stock.');
+            if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
+            return;
+          }
+          await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
+        } else {
+          const effectiveStock = newProduct.stock + oldSale.quantity;
+          if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
+          await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+        }
+
+        // Cashflow: only for Pagado transitions
+        if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
+          if (cfEntry) {
+            await db.update('cash_flow', cfEntry.id, {
+              date: saleData.date,
+              description: `Venta: ${saleData.productName} x${newQty}`,
+              amount: total,
+              paymentMethod: saleData.paymentMethod || 'Efectivo'
+            });
+          }
+        } else if (oldSale.status === 'Pagado' && newStatus !== 'Pagado') {
+          if (cfEntry) await db.delete('cash_flow', cfEntry.id);
+        } else if (oldSale.status !== 'Pagado' && newStatus === 'Pagado') {
+          await db.create('cash_flow', {
+            id: crypto.randomUUID(),
             date: saleData.date,
+            type: 'Ingreso',
+            source: 'Venta',
             description: `Venta: ${saleData.productName} x${newQty}`,
+            category: 'Venta Externa',
             amount: total,
-            paymentMethod: saleData.paymentMethod || 'Efectivo'
+            paymentMethod: saleData.paymentMethod || 'Efectivo',
+            status: 'Pagado',
+            saleId: oldSale.id,
+            ownerUid: user.uid,
+            createdAt: new Date().toISOString()
           });
         }
-      } else if (oldSale.status === 'Pagado' && newStatus !== 'Pagado') {
-        if (cfEntry) await db.delete('cash_flow', cfEntry.id);
-      } else if (oldSale.status !== 'Pagado' && newStatus === 'Pagado') {
-        await db.create('cash_flow', {
+
+        await db.update<Sale>('sales', editingSale.id, saleData);
+      } else {
+        // Idempotency: reject duplicate within 5 seconds (same product/qty/total/date)
+        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+        const potentialDuplicate = sales.find(s =>
+          s.productId === formData.productId &&
+          s.quantity === (formData.quantity || 0) &&
+          s.total === total &&
+          s.date === formData.date &&
+          s.createdAt && s.createdAt > fiveSecondsAgo
+        );
+        if (potentialDuplicate) {
+          alert('Se detectó un registro idéntico creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
+          return;
+        }
+
+        const newSale = await db.create('sales', {
+          ...saleData,
           id: crypto.randomUUID(),
-          date: saleData.date,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: `Venta: ${saleData.productName} x${newQty}`,
-          category: 'Venta Externa',
-          amount: total,
-          paymentMethod: saleData.paymentMethod || 'Efectivo',
-          status: 'Pagado',
-          saleId: oldSale.id,
-          ownerUid: user.uid,
           createdAt: new Date().toISOString()
         });
+
+        // Always reduce stock
+        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+
+        // Only add to cash flow if paid
+        if (newSale.status === 'Pagado') {
+          await db.create('cash_flow', {
+            id: crypto.randomUUID(),
+            date: newSale.date,
+            type: 'Ingreso',
+            source: 'Venta',
+            description: `Venta: ${newSale.productName} x${newSale.quantity}`,
+            category: 'Venta Externa',
+            amount: newSale.total,
+            paymentMethod: newSale.paymentMethod || 'Efectivo',
+            status: 'Pagado',
+            saleId: newSale.id,
+            ownerUid: user.uid,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
 
-      await db.update<Sale>('sales', editingSale.id, saleData);
-    } else {
-      const newSale = await db.create('sales', {
-        ...saleData,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString()
+      setIsModalOpen(false);
+      setEditingSale(null);
+      setFormData({
+        date: todayString(),
+        productId: '',
+        quantity: 1,
+        unitPrice: 0,
+        adjustment: 0,
+        status: 'Pagado',
+        paymentMethod: 'Efectivo',
+        client: ''
       });
-
-      // Always reduce stock
-      await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
-
-      // Only add to cash flow if paid
-      if (newSale.status === 'Pagado') {
-        await db.create('cash_flow', {
-          id: crypto.randomUUID(),
-          date: newSale.date,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: `Venta: ${newSale.productName} x${newSale.quantity}`,
-          category: 'Venta Externa',
-          amount: newSale.total,
-          paymentMethod: newSale.paymentMethod || 'Efectivo',
-          status: 'Pagado',
-          saleId: newSale.id,
-          ownerUid: user.uid,
-          createdAt: new Date().toISOString()
-        });
-      }
+      fetchData();
+    } finally {
+      setSaving(false);
     }
-
-    setIsModalOpen(false);
-    setEditingSale(null);
-    setFormData({
-      date: todayString(),
-      productId: '',
-      quantity: 1,
-      unitPrice: 0,
-      adjustment: 0,
-      status: 'Pagado',
-      paymentMethod: 'Efectivo',
-      client: ''
-    });
-    fetchData();
   };
 
-  const handleMarkAsPaid = async (sale: Sale) => {
+  const handleToggleStatus = async (sale: Sale) => {
     if (!user) return;
-    // Stock was already deducted at creation — only update status and create cashflow
-    await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: 'Efectivo' });
-    await db.create('cash_flow', {
-      id: crypto.randomUUID(),
-      date: sale.date,
-      type: 'Ingreso',
-      source: 'Venta',
-      description: `Venta: ${sale.productName} x${sale.quantity}`,
-      category: 'Venta Externa',
-      amount: sale.total,
-      paymentMethod: 'Efectivo',
-      status: 'Pagado',
-      saleId: sale.id,
-      ownerUid: user.uid,
-      createdAt: new Date().toISOString()
-    });
+    if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
+      // Idempotency: check if cashflow entry already exists before creating
+      const existing = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: sale.paymentMethod || 'Efectivo' });
+      if (existing.length === 0) {
+        await db.create('cash_flow', {
+          id: crypto.randomUUID(),
+          date: sale.date,
+          type: 'Ingreso',
+          source: 'Venta',
+          description: `Venta: ${sale.productName} x${sale.quantity}`,
+          category: 'Venta Externa',
+          amount: sale.total,
+          paymentMethod: sale.paymentMethod || 'Efectivo',
+          status: 'Pagado',
+          saleId: sale.id,
+          ownerUid: user.uid,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } else if (sale.status === 'Pagado') {
+      await db.update<Sale>('sales', sale.id, { status: 'No Pagado' });
+      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+    }
     fetchData();
   };
 
@@ -450,25 +479,20 @@ export default function Sales() {
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    )}>
+                    <button
+                      onClick={() => handleToggleStatus(s)}
+                      title={s.status === 'Pagado' ? 'Click para marcar como No Pagado' : 'Click para marcar como Pagado'}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
+                        s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      )}
+                    >
                       {s.status}
-                    </span>
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {s.status === 'No Pagado' && (
-                        <button 
-                          onClick={() => handleMarkAsPaid(s)}
-                          className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                          title="Marcar como pagado"
-                        >
-                          <CheckCircle2 size={18} />
-                        </button>
-                      )}
-                      <button 
+                      <button
                         onClick={() => {
                           setEditingSale(s);
                           setFormData(s);
@@ -675,11 +699,12 @@ export default function Sales() {
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
+              disabled={saving}
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
+              {saving ? 'Guardando...' : editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
             </button>
           </div>
         </form>

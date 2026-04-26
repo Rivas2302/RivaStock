@@ -64,44 +64,58 @@ export default function Stock() {
   }, [user]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isUploadingImage) return;
+    if (!user || isUploadingImage || saving) return;
+    setSaving(true);
 
-    const productData = {
-      ...formData,
-      ownerUid: user.uid,
-      updatedAt: new Date().toISOString()
-    } as Product;
+    try {
+      const productData = {
+        ...formData,
+        ownerUid: user.uid,
+        updatedAt: new Date().toISOString()
+      } as Product;
 
-    console.log('Saving product with imageUrl:', productData.imageUrl);
+      if (editingProduct) {
+        await db.update('products', editingProduct.id, productData);
+      } else {
+        // Idempotency: reject duplicate product name within 5 seconds
+        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+        const potentialDuplicate = products.find(p =>
+          p.name.toLowerCase() === (formData.name || '').toLowerCase() &&
+          p.createdAt && p.createdAt > fiveSecondsAgo
+        );
+        if (potentialDuplicate) {
+          alert('Se detectó un producto con el mismo nombre creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
+          return;
+        }
+        await db.create('products', {
+          ...productData,
+          id: productData.id || crypto.randomUUID(),
+          createdAt: new Date().toISOString()
+        });
+      }
 
-    if (editingProduct) {
-      await db.update('products', editingProduct.id, productData);
-    } else {
-      await db.create('products', {
-        ...productData,
-        id: productData.id || crypto.randomUUID(),
-        createdAt: new Date().toISOString()
+      setIsModalOpen(false);
+      setEditingProduct(null);
+      setFormData({
+        name: '',
+        categoryId: '',
+        category: '',
+        purchasePrice: 0,
+        salePrice: 0,
+        stock: 0,
+        minStock: 2,
+        showInCatalog: true,
+        notes: '',
+        images: []
       });
+      fetchData();
+    } finally {
+      setSaving(false);
     }
-
-    setIsModalOpen(false);
-    setEditingProduct(null);
-    setFormData({
-      name: '',
-      categoryId: '',
-      category: '',
-      purchasePrice: 0,
-      salePrice: 0,
-      stock: 0,
-      minStock: 2,
-      showInCatalog: true,
-      notes: '',
-      images: []
-    });
-    fetchData();
   };
 
   const handleDelete = async (id: string) => {
@@ -489,15 +503,15 @@ export default function Stock() {
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
-              disabled={isUploadingImage}
+              disabled={isUploadingImage || saving}
               className={cn(
-                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all",
-                isUploadingImage ? "bg-indigo-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
+                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed",
+                (isUploadingImage || saving) ? "bg-indigo-400" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
               )}
             >
-              {isUploadingImage ? 'Subiendo imagen...' : (editingProduct ? 'Guardar Cambios' : 'Crear Producto')}
+              {isUploadingImage ? 'Subiendo imagen...' : saving ? 'Guardando...' : (editingProduct ? 'Guardar Cambios' : 'Crear Producto')}
             </button>
           </div>
         </form>
