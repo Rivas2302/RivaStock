@@ -44,17 +44,22 @@ export default function Sales() {
 
   const fetchData = async () => {
     if (!user) return;
-    const [s, p] = await Promise.all([
-      db.list<Sale>('sales', user.uid),
-      db.list<Product>('products', user.uid)
-    ]);
-    setSales(s.sort((a, b) => {
-      const dc = b.date.localeCompare(a.date);
-      if (dc !== 0) return dc;
-      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
-    }));
-    setProducts(p);
-    setLoading(false);
+    try {
+      const [s, p] = await Promise.all([
+        db.list<Sale>('sales', user.uid),
+        db.list<Product>('products', user.uid)
+      ]);
+      setSales(s.sort((a, b) => {
+        const dc = b.date.localeCompare(a.date);
+        if (dc !== 0) return dc;
+        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+      }));
+      setProducts(p);
+    } catch (error) {
+      console.error('Error al cargar ventas:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -288,7 +293,7 @@ export default function Sales() {
   const totalPending = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
 
   const filteredSales = sales.filter(s => {
-    const matchesSearch = s.productName.toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
+    const matchesSearch = (s.productName ?? '').toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
