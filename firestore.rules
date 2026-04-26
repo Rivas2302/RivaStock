@@ -141,6 +141,48 @@ service cloud.firestore {
              data.ownerUid is string && data.ownerUid.size() < 128;
     }
 
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'name', 'nameLower', 'currentBalance', 'createdAt', 'updatedAt']) &&
+             data.id is string &&
+             data.ownerUid is string && data.ownerUid.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.nameLower is string &&
+             data.currentBalance is number &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
+    function isValidQuote(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'number', 'clientId', 'clientName', 'items', 'subtotal', 'discount', 'total', 'status', 'validDays', 'expiresAt', 'notes', 'createdAt', 'updatedAt']) &&
+             data.id is string &&
+             data.ownerUid is string && data.ownerUid.size() < 128 &&
+             data.number is string &&
+             data.clientId is string &&
+             data.clientName is string &&
+             data.items is list &&
+             data.subtotal is number &&
+             data.discount is number &&
+             data.total is number &&
+             data.status in ['draft', 'sent', 'accepted', 'rejected', 'expired'] &&
+             data.validDays is number &&
+             data.expiresAt is string &&
+             data.notes is string &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
+    function isValidCustomerTransaction(data) {
+      return data.keys().hasAll(['id', 'ownerUid', 'customerId', 'type', 'amount', 'description', 'date', 'createdAt']) &&
+             data.id is string &&
+             data.ownerUid is string && data.ownerUid.size() < 128 &&
+             data.customerId is string &&
+             data.type in ['sale', 'payment', 'adjustment'] &&
+             data.amount is number &&
+             data.description is string &&
+             data.date is string &&
+             data.createdAt is string;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -224,7 +266,28 @@ service cloud.firestore {
       allow update: if isDocOwner() && isValidStockIntake(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
       allow delete: if isDocOwner();
     }
-    
+
+    match /customers/{customerId} {
+      allow read: if isDocOwner();
+      allow create: if isRequestOwner() && isValidCustomer(request.resource.data);
+      allow update: if isDocOwner() && isValidCustomer(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
+    match /quotes/{quoteId} {
+      allow read: if isDocOwner() || true; // public read needed for shared quote links
+      allow create: if isRequestOwner() && isValidQuote(request.resource.data);
+      allow update: if isDocOwner() && isValidQuote(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
+    match /customer_transactions/{txId} {
+      allow read: if isDocOwner();
+      allow create: if isRequestOwner() && isValidCustomerTransaction(request.resource.data);
+      allow update: if isDocOwner() && isValidCustomerTransaction(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocOwner();
+    }
+
     // Default deny
     match /{path=**} {
       allow read, write: if false;
