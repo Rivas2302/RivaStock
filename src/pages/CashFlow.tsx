@@ -29,6 +29,7 @@ export default function CashFlow() {
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
   const [formData, setFormData] = useState<Partial<CashFlowEntry>>({
     date: todayString(),
@@ -57,32 +58,51 @@ export default function CashFlow() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || saving) return;
+    setSaving(true);
 
-    const entryData = {
-      ...formData,
-      type: modalType,
-      source: modalType === 'Ingreso' ? 'Manual' : 'Gasto',
-      ownerUid: user.uid
-    } as CashFlowEntry;
+    try {
+      const entryData = {
+        ...formData,
+        type: modalType,
+        source: modalType === 'Ingreso' ? 'Manual' : 'Gasto',
+        ownerUid: user.uid
+      } as CashFlowEntry;
 
-    await db.create('cash_flow', {
-      ...entryData,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
-    });
+      // Idempotency: reject duplicate within 5 seconds (same type/amount/description/date)
+      const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+      const potentialDuplicate = entries.find(en =>
+        en.type === modalType &&
+        en.amount === (formData.amount || 0) &&
+        en.description === formData.description &&
+        en.date === formData.date &&
+        en.createdAt && en.createdAt > fiveSecondsAgo
+      );
+      if (potentialDuplicate) {
+        alert('Se detectó un registro idéntico creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
+        return;
+      }
 
-    setIsModalOpen(false);
-    setFormData({
-      date: todayString(),
-      description: '',
-      category: 'Otros',
-      amount: 0,
-      paymentMethod: 'Efectivo',
-      status: 'Pagado',
-      notes: ''
-    });
-    fetchData();
+      await db.create('cash_flow', {
+        ...entryData,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
+      });
+
+      setIsModalOpen(false);
+      setFormData({
+        date: todayString(),
+        description: '',
+        category: 'Otros',
+        amount: 0,
+        paymentMethod: 'Efectivo',
+        status: 'Pagado',
+        notes: ''
+      });
+      fetchData();
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Calculations
@@ -375,14 +395,15 @@ export default function CashFlow() {
             >
               Cancelar
             </button>
-            <button 
+            <button
               type="submit"
+              disabled={saving}
               className={cn(
-                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all",
+                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed",
                 modalType === 'Ingreso' ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20" : "bg-rose-600 hover:bg-rose-700 shadow-rose-500/20"
               )}
             >
-              Guardar {modalType}
+              {saving ? 'Guardando...' : `Guardar ${modalType}`}
             </button>
           </div>
         </form>
