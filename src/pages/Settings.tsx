@@ -12,29 +12,33 @@ import {
   Product
 } from '../types';
 import { formatCurrency, cn, slugify } from '../lib/utils';
-import { 
-  Settings as SettingsIcon, 
-  Plus, 
-  Trash2, 
-  Save, 
-  UserPlus, 
-  Shield, 
-  Globe, 
-  Palette, 
-  LayoutGrid, 
-  Tags, 
+import {
+  Settings as SettingsIcon,
+  Plus,
+  Trash2,
+  Save,
+  UserPlus,
+  Shield,
+  Globe,
+  Palette,
+  LayoutGrid,
+  Tags,
   DollarSign,
   Moon,
   Sun,
   Check,
   X,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Wrench,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'collaborators';
+type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'collaborators' | 'maintenance';
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
@@ -73,6 +77,12 @@ export default function Settings() {
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
+
+  // Maintenance: duplicate diagnostic states
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<{ salesDeleted: number; cashFlowDeleted: number } | null>(null);
 
   const compressImage = (file: File, maxWidth: number, maxHeight: number, quality: number): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -427,6 +437,7 @@ export default function Settings() {
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
     { id: 'collaborators', label: 'Colaboradores', icon: UserPlus },
+    { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
   ];
 
   return (
@@ -1143,6 +1154,211 @@ export default function Settings() {
                       </tbody>
                     </table>
                   </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'maintenance' && (
+                <motion.div
+                  key="maintenance"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  className="space-y-8"
+                >
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Detección de Duplicados</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Analiza ventas y movimientos de flujo de caja para detectar registros duplicados.
+                      El diagnóstico es solo lectura — no se elimina nada hasta que confirmes.
+                    </p>
+                  </div>
+
+                  {/* Step 1 — Run diagnosis */}
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <AlertTriangle size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 dark:text-white text-sm">Paso 1 — Diagnóstico</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Detecta duplicados en ventas y flujo de caja sin modificar nada</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!user) return;
+                        setDiagnosing(true);
+                        setCleanupResult(null);
+                        try {
+                          const report = await diagnoseDuplicates(user.uid);
+                          setDiagReport(report);
+                          // Also log to console for developer inspection
+                          console.group('[RivaStock] Diagnóstico de duplicados');
+                          console.log('Grupos de ventas duplicadas:', report.salesGroups.length, '→', report.totalSalesToDelete, 'a eliminar');
+                          console.log('Grupos de cash_flow por campos:', report.cashFlowFieldGroups.length, '→', report.cashFlowFieldGroups.reduce((n, g) => n + g.toDelete.length, 0), 'a eliminar');
+                          console.log('Grupos de cash_flow por saleId:', report.cashFlowSaleIdGroups.length, '→', report.cashFlowSaleIdGroups.reduce((n, g) => n + g.toDelete.length, 0), 'a eliminar');
+                          console.log('TOTAL a eliminar — ventas:', report.totalSalesToDelete, '| cash_flow:', report.totalCashFlowToDelete);
+                          console.groupEnd();
+                        } finally {
+                          setDiagnosing(false);
+                        }
+                      }}
+                      disabled={diagnosing}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed text-sm"
+                    >
+                      {diagnosing ? 'Analizando...' : 'Analizar duplicados'}
+                    </button>
+                  </div>
+
+                  {/* Diagnostic results */}
+                  {diagReport && (
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm uppercase tracking-wider">Resultados del diagnóstico</h4>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Sales */}
+                        <div className={cn(
+                          "p-5 rounded-2xl border",
+                          diagReport.totalSalesToDelete > 0
+                            ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-800"
+                            : "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800"
+                        )}>
+                          <div className="flex items-center gap-2 mb-2">
+                            {diagReport.totalSalesToDelete > 0
+                              ? <AlertTriangle size={16} className="text-rose-500" />
+                              : <CheckCircle2 size={16} className="text-emerald-500" />}
+                            <p className="font-bold text-sm text-slate-900 dark:text-white">Ventas</p>
+                          </div>
+                          {diagReport.totalSalesToDelete > 0 ? (
+                            <>
+                              <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{diagReport.totalSalesToDelete}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                registros duplicados en {diagReport.salesGroups.length} grupo(s)
+                              </p>
+                              <div className="mt-3 space-y-1">
+                                {diagReport.salesGroups.slice(0, 3).map((g, i) => (
+                                  <p key={i} className="text-xs text-slate-600 dark:text-slate-400 font-mono">
+                                    {g.keep.productName} × {g.keep.quantity} — {g.keep.date} (+{g.toDelete.length} dupl.)
+                                  </p>
+                                ))}
+                                {diagReport.salesGroups.length > 3 && (
+                                  <p className="text-xs text-slate-400">... y {diagReport.salesGroups.length - 3} grupos más</p>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold mt-1">Sin duplicados</p>
+                          )}
+                        </div>
+
+                        {/* CashFlow */}
+                        <div className={cn(
+                          "p-5 rounded-2xl border",
+                          diagReport.totalCashFlowToDelete > 0
+                            ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-800"
+                            : "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800"
+                        )}>
+                          <div className="flex items-center gap-2 mb-2">
+                            {diagReport.totalCashFlowToDelete > 0
+                              ? <AlertTriangle size={16} className="text-rose-500" />
+                              : <CheckCircle2 size={16} className="text-emerald-500" />}
+                            <p className="font-bold text-sm text-slate-900 dark:text-white">Flujo de Caja</p>
+                          </div>
+                          {diagReport.totalCashFlowToDelete > 0 ? (
+                            <>
+                              <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{diagReport.totalCashFlowToDelete}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                registros duplicados
+                                {diagReport.cashFlowFieldGroups.length > 0 && ` — ${diagReport.cashFlowFieldGroups.length} por campos`}
+                                {diagReport.cashFlowSaleIdGroups.length > 0 && ` — ${diagReport.cashFlowSaleIdGroups.length} por saleId`}
+                              </p>
+                              <div className="mt-3 space-y-1">
+                                {diagReport.cashFlowSaleIdGroups.slice(0, 3).map((g, i) => (
+                                  <p key={i} className="text-xs text-slate-600 dark:text-slate-400 font-mono">
+                                    saleId: {g.keep.saleId?.slice(0, 8)}… (+{g.toDelete.length} dupl.)
+                                  </p>
+                                ))}
+                                {diagReport.cashFlowSaleIdGroups.length > 3 && (
+                                  <p className="text-xs text-slate-400">... y {diagReport.cashFlowSaleIdGroups.length - 3} grupos más</p>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold mt-1">Sin duplicados</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Step 2 — Cleanup (only if there are duplicates) */}
+                      {(diagReport.totalSalesToDelete > 0 || diagReport.totalCashFlowToDelete > 0) && !cleanupResult && (
+                        <div className="p-6 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border border-rose-200 dark:border-rose-800 space-y-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-xl">
+                              <Trash2 size={20} />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900 dark:text-white text-sm">Paso 2 — Limpieza</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Se conservará el registro MÁS ANTIGUO de cada grupo. Esta acción no se puede deshacer.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              if (!user || !diagReport) return;
+                              if (!confirm(`¿Confirmar eliminación de ${diagReport.totalSalesToDelete} venta(s) y ${diagReport.totalCashFlowToDelete} movimiento(s) duplicados? Esta acción es irreversible.`)) return;
+                              setCleaning(true);
+                              try {
+                                const result = await cleanupDuplicates(user.uid, diagReport);
+                                setCleanupResult(result);
+                                setDiagReport(null);
+                              } finally {
+                                setCleaning(false);
+                              }
+                            }}
+                            disabled={cleaning}
+                            className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed text-sm"
+                          >
+                            {cleaning ? 'Eliminando...' : `Eliminar ${diagReport.totalSalesToDelete + diagReport.totalCashFlowToDelete} duplicados`}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* All clean */}
+                      {diagReport.totalSalesToDelete === 0 && diagReport.totalCashFlowToDelete === 0 && (
+                        <div className="p-5 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-3">
+                          <CheckCircle2 size={20} className="text-emerald-500" />
+                          <p className="font-semibold text-emerald-700 dark:text-emerald-400 text-sm">No se encontraron duplicados. Los datos están limpios.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cleanup success */}
+                  {cleanupResult && (
+                    <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 size={20} className="text-emerald-500" />
+                        <p className="font-bold text-emerald-700 dark:text-emerald-400">Limpieza completada</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-slate-500 dark:text-slate-400">Ventas eliminadas</p>
+                          <p className="text-2xl font-black text-slate-900 dark:text-white">{cleanupResult.salesDeleted}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 dark:text-slate-400">Movimientos eliminados</p>
+                          <p className="text-2xl font-black text-slate-900 dark:text-white">{cleanupResult.cashFlowDeleted}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setCleanupResult(null); setDiagReport(null); }}
+                        className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline"
+                      >
+                        Volver a analizar
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
