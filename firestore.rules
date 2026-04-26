@@ -180,7 +180,8 @@ service cloud.firestore {
              data.amount is number &&
              data.description is string &&
              data.date is string &&
-             data.createdAt is string;
+             data.createdAt is string &&
+             (!data.keys().hasAny(['paymentMethod']) || data.paymentMethod in ['Efectivo', 'Transferencia', 'Otro']);
     }
 
     // ===============================================================

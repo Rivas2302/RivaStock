@@ -7,15 +7,11 @@ import {
   Plus,
   Search,
   Filter,
-  Download,
   Wallet,
   ArrowUpRight,
   ArrowDownRight,
-  Clock,
-  ChevronDown,
   TrendingUp,
   TrendingDown,
-  MoreHorizontal,
   Edit2,
   Trash2
 } from 'lucide-react';
@@ -57,8 +53,14 @@ export default function CashFlow() {
     setEditingEntry(null);
   };
 
+  const isSaleManagedEntry = (entry: CashFlowEntry) => entry.source === 'Venta';
+
   const handleToggleStatus = async (entry: CashFlowEntry) => {
     if (!user) return;
+    if (isSaleManagedEntry(entry)) {
+      alert('Los movimientos generados por ventas se gestionan desde la pantalla de Ventas o Cuenta Corriente.');
+      return;
+    }
     const newStatus = entry.status === 'Pagado' ? 'Pendiente' : 'Pagado';
     await db.update('cash_flow', entry.id, { status: newStatus });
     fetchData();
@@ -80,6 +82,11 @@ export default function CashFlow() {
   }, [user]);
 
   const handleDelete = async (id: string) => {
+    const entry = entries.find(item => item.id === id);
+    if (entry && isSaleManagedEntry(entry)) {
+      alert('Los movimientos generados por ventas se eliminan desde la venta o el cobro que los originó.');
+      return;
+    }
     if (!confirm('¿Estás seguro de eliminar este registro?')) return;
     await db.delete('cash_flow', id);
     fetchData();
@@ -100,6 +107,10 @@ export default function CashFlow() {
       } as CashFlowEntry;
 
       if (editingEntry) {
+        if (isSaleManagedEntry(editingEntry)) {
+          alert('Los movimientos generados por ventas se editan desde el flujo que los originó.');
+          return;
+        }
         await db.update('cash_flow', editingEntry.id, entryData);
       } else {
         // Idempotency: reject duplicate within 5 seconds (same type/amount/description/date)
@@ -300,9 +311,15 @@ export default function CashFlow() {
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleToggleStatus(e)}
-                      title={e.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
+                      disabled={isSaleManagedEntry(e)}
+                      title={isSaleManagedEntry(e)
+                        ? 'Gestionado desde Ventas o Cuenta Corriente'
+                        : e.status === 'Pagado'
+                          ? 'Click para marcar como Pendiente'
+                          : 'Click para marcar como Pagado'}
                       className={cn(
-                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-opacity",
+                        isSaleManagedEntry(e) ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-70",
                         e.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                       )}
                     >
@@ -318,20 +335,33 @@ export default function CashFlow() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {
+                          if (isSaleManagedEntry(e)) return;
                           setEditingEntry(e);
                           setModalType(e.type);
                           setFormData(e);
                           setIsModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                        title="Editar"
+                        disabled={isSaleManagedEntry(e)}
+                        className={cn(
+                          "p-2 transition-colors",
+                          isSaleManagedEntry(e)
+                            ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
+                            : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                        )}
+                        title={isSaleManagedEntry(e) ? 'Gestionado desde Ventas o Cuenta Corriente' : 'Editar'}
                       >
                         <Edit2 size={18} />
                       </button>
                       <button
                         onClick={() => handleDelete(e.id)}
-                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                        title="Eliminar"
+                        disabled={isSaleManagedEntry(e)}
+                        className={cn(
+                          "p-2 transition-colors",
+                          isSaleManagedEntry(e)
+                            ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
+                            : "text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                        )}
+                        title={isSaleManagedEntry(e) ? 'Gestionado desde Ventas o Cuenta Corriente' : 'Eliminar'}
                       >
                         <Trash2 size={18} />
                       </button>

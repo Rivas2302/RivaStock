@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
-import { Customer, CustomerTransaction } from '../types';
+import { Customer, CustomerTransaction, CashFlowEntry } from '../types';
 import { formatCurrency, cn, todayString, formatDate } from '../lib/utils';
 import {
   Plus, Search, Edit2, Trash2, Eye, Users,
@@ -34,6 +34,7 @@ export default function Customers() {
   // Payment form
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | 'Otro'>('Efectivo');
   const [savingPayment, setSavingPayment] = useState(false);
 
   // Adjustment form
@@ -83,6 +84,7 @@ export default function Customers() {
     setFichaTab('history');
     setPaymentAmount('');
     setPaymentNote('');
+    setPaymentMethod('Efectivo');
     setAdjAmount('');
     setAdjNote('');
     setAdjIsPositive(true);
@@ -176,7 +178,21 @@ export default function Customers() {
         type: 'payment',
         amount: -amount,
         description: paymentNote.trim(),
+        paymentMethod,
         date: todayString(),
+        createdAt: now,
+      });
+      await db.create<CashFlowEntry>('cash_flow', {
+        id: crypto.randomUUID(),
+        ownerUid: user.uid,
+        date: todayString(),
+        type: 'Ingreso',
+        source: 'Venta',
+        description: `Cobro cuenta corriente: ${fichaCustomer.name}`,
+        category: 'Cuenta Corriente',
+        amount,
+        paymentMethod,
+        status: 'Pagado',
         createdAt: now,
       });
       const newBalance = fichaCustomer.currentBalance - amount;
@@ -188,6 +204,7 @@ export default function Customers() {
       setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? { ...c, currentBalance: newBalance } : c));
       setPaymentAmount('');
       setPaymentNote('');
+      setPaymentMethod('Efectivo');
       setFichaTab('history');
       loadTransactions(fichaCustomer.id);
       showMessage('Pago registrado');
@@ -512,6 +529,18 @@ export default function Customers() {
                     placeholder="0.00"
                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Método de pago *</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value as 'Efectivo' | 'Transferencia' | 'Otro')}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  >
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Otro">Otro</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nota *</label>

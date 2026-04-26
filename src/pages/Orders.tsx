@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { aggregateProductQuantities } from '../lib/sales';
 
 export default function Orders() {
   const { user } = useAuth();
@@ -46,14 +47,19 @@ export default function Orders() {
 
   const handleConvertToSale = async (order: Order) => {
     // 1. Validate stock
-    const products = await db.list<Product>('products', user!.uid);
-    const insufficientStock = order.items.filter(item => {
-      const product = products.find(p => p.id === item.productId);
-      return !product || product.stock < item.quantity;
-    });
+    const aggregatedItems = aggregateProductQuantities(order.items);
+    const insufficientStock: string[] = [];
+
+    for (const [productId, qty] of Object.entries(aggregatedItems)) {
+      const productName = order.items.find(item => item.productId === productId)?.productName || 'producto';
+      const freshProduct = await db.get<Product>('products', productId);
+      if (!freshProduct || freshProduct.stock < qty) {
+        insufficientStock.push(productName);
+      }
+    }
 
     if (insufficientStock.length > 0) {
-      alert(`No hay suficiente stock para: ${insufficientStock.map(i => i.productName).join(', ')}`);
+      alert(`No hay suficiente stock para: ${insufficientStock.join(', ')}`);
       return;
     }
 
@@ -61,7 +67,6 @@ export default function Orders() {
     try {
       const today = todayString();
       for (const item of order.items) {
-        const product = products.find(p => p.id === item.productId)!;
         const saleId = crypto.randomUUID();
         const saleTotal = item.price * item.quantity;
 
@@ -81,8 +86,6 @@ export default function Orders() {
           createdAt: new Date().toISOString()
         });
 
-        await db.update('products', product.id, { stock: product.stock - item.quantity });
-
         await db.create('cash_flow', {
           id: crypto.randomUUID(),
           date: today,
@@ -97,6 +100,14 @@ export default function Orders() {
           ownerUid: user!.uid,
           createdAt: new Date().toISOString()
         });
+      }
+
+      for (const [productId, qty] of Object.entries(aggregatedItems)) {
+        const freshProduct = await db.get<Product>('products', productId);
+        if (!freshProduct) {
+          throw new Error(`Producto no encontrado: ${productId}`);
+        }
+        await db.update('products', productId, { stock: freshProduct.stock - qty });
       }
 
       // 3. Update order status

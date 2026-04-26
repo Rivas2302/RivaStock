@@ -208,6 +208,7 @@ export interface CustomerTransaction {
   type: TransactionType;
   amount: number;
   description: string;
+  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Otro';
   relatedSaleId?: string;
   relatedQuoteId?: string;
   date: string;

@@ -9,6 +9,7 @@ import {
   CheckCircle2, Clock
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import { aggregateProductQuantities } from '../lib/sales';
 import { motion, AnimatePresence } from 'motion/react';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -371,12 +372,26 @@ export default function Quotes() {
       const now = new Date().toISOString();
       const today = todayString();
 
-      // Deduct stock for each item
-      for (const item of q.items) {
-        const prod = products.find(p => p.id === item.productId);
-        if (prod) {
-          await db.update<Product>('products', prod.id, { stock: Math.max(0, prod.stock - item.quantity) });
+      const aggregatedItems = aggregateProductQuantities(q.items);
+      for (const [productId, qty] of Object.entries(aggregatedItems)) {
+        const freshProduct = await db.get<Product>('products', productId);
+        if (!freshProduct) {
+          throw new Error(`Producto no encontrado: ${productId}`);
         }
+        if (freshProduct.stock < qty) {
+          const itemName = q.items.find(item => item.productId === productId)?.productName || 'producto';
+          alert(`No hay suficiente stock para: ${itemName}`);
+          return;
+        }
+      }
+
+      // Deduct stock for each product with fresh values
+      for (const [productId, qty] of Object.entries(aggregatedItems)) {
+        const freshProduct = await db.get<Product>('products', productId);
+        if (!freshProduct) {
+          throw new Error(`Producto no encontrado: ${productId}`);
+        }
+        await db.update<Product>('products', productId, { stock: freshProduct.stock - qty });
       }
 
       const saleItems = q.items.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, price: i.unitPrice }));

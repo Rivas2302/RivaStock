@@ -21,6 +21,14 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
+import {
+  aggregateProductQuantities,
+  getSaleCashFlowDescription,
+  getSaleDisplayQuantity,
+  getSaleLineItems,
+  hasDerivedSaleItems,
+  isPendingSaleStatus,
+} from '../lib/sales';
 
 export default function Sales() {
   const { user } = useAuth();
@@ -61,6 +69,75 @@ export default function Sales() {
     if (!q) return [];
     return customers.filter(c => c.nameLower.includes(q)).slice(0, 5);
   }, [customers, creditSearch]);
+
+  const syncCustomerLedgerForSale = async (
+    saleId: string,
+    status: Sale['status'],
+    total: number,
+    description: string,
+    saleDate: string,
+    paymentMethod?: Sale['paymentMethod']
+  ) => {
+    const relatedTxs = await db.find<CustomerTransaction>('customer_transactions', 'relatedSaleId', saleId);
+    const saleTx = relatedTxs.find(tx => tx.type === 'sale');
+    if (!saleTx) return;
+
+    const customer = await db.get<Customer>('customers', saleTx.customerId);
+    if (!customer) return;
+
+    const paymentTxs = relatedTxs.filter(tx => tx.type === 'payment');
+    const currentContribution = relatedTxs.reduce((sum, tx) => sum + tx.amount, 0);
+    const desiredContribution = isPendingSaleStatus(status) ? total : 0;
+
+    await db.update<CustomerTransaction>('customer_transactions', saleTx.id, {
+      amount: total,
+      description,
+      date: saleDate,
+    });
+
+    if (desiredContribution === 0) {
+      const paymentDescription = `Cobro de ${description}`;
+      const [primaryPaymentTx, ...extraPaymentTxs] = paymentTxs;
+
+      if (primaryPaymentTx) {
+        await db.update<CustomerTransaction>('customer_transactions', primaryPaymentTx.id, {
+          amount: -total,
+          description: paymentDescription,
+          date: primaryPaymentTx.date || todayString(),
+          paymentMethod: paymentMethod || primaryPaymentTx.paymentMethod || 'Efectivo',
+        });
+      } else {
+        await db.create<CustomerTransaction>('customer_transactions', {
+          id: crypto.randomUUID(),
+          ownerUid: user!.uid,
+          customerId: customer.id,
+          type: 'payment',
+          amount: -total,
+          description: paymentDescription,
+          paymentMethod: paymentMethod || 'Efectivo',
+          relatedSaleId: saleId,
+          date: todayString(),
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      for (const tx of extraPaymentTxs) {
+        await db.delete('customer_transactions', tx.id);
+      }
+    } else {
+      for (const tx of paymentTxs) {
+        await db.delete('customer_transactions', tx.id);
+      }
+    }
+
+    const balanceDelta = desiredContribution - currentContribution;
+    if (balanceDelta !== 0) {
+      await db.update<Customer>('customers', customer.id, {
+        currentBalance: customer.currentBalance + balanceDelta,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  };
 
   const fetchData = async () => {
     if (!user) return;
@@ -128,13 +205,18 @@ export default function Sales() {
     setSaving(true);
 
     try {
+      if (editingSale && hasDerivedSaleItems(editingSale)) {
+        alert('Las ventas creadas desde presupuestos se editan desde el presupuesto original.');
+        return;
+      }
+
       const total = calculateTotal();
       const product = products.find(p => p.id === formData.productId);
 
       if (!product) return;
 
       // Validate stock for all statuses — stock always reserved at creation
-      if (product.stock < (formData.quantity || 0)) {
+      if (!editingSale && product.stock < (formData.quantity || 0)) {
         alert('No hay suficiente stock para realizar esta venta.');
         return;
       }
@@ -158,6 +240,10 @@ export default function Sales() {
         const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', oldSale.id);
         const cfEntry = cfEntries[0] || null;
         const productChanged = oldSale.productId !== newProductId;
+        const saleDescription = getSaleCashFlowDescription({
+          ...saleData,
+          quantity: newQty,
+        });
 
         // Stock: always held regardless of status. Adjust for product/quantity changes.
         if (productChanged) {
@@ -183,7 +269,7 @@ export default function Sales() {
           if (cfEntry) {
             await db.update('cash_flow', cfEntry.id, {
               date: saleData.date,
-              description: `Venta: ${saleData.productName} x${newQty}`,
+              description: saleDescription,
               amount: total,
               paymentMethod: saleData.paymentMethod || 'Efectivo'
             });
@@ -196,7 +282,7 @@ export default function Sales() {
             date: saleData.date,
             type: 'Ingreso',
             source: 'Venta',
-            description: `Venta: ${saleData.productName} x${newQty}`,
+            description: saleDescription,
             category: 'Venta Externa',
             amount: total,
             paymentMethod: saleData.paymentMethod || 'Efectivo',
@@ -208,6 +294,14 @@ export default function Sales() {
         }
 
         await db.update<Sale>('sales', editingSale.id, saleData);
+        await syncCustomerLedgerForSale(
+          editingSale.id,
+          saleData.status,
+          total,
+          saleDescription,
+          saleData.date,
+          saleData.paymentMethod
+        );
       } else {
         // Idempotency: reject duplicate within 5 seconds (same product/qty/total/date)
         const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
@@ -255,7 +349,7 @@ export default function Sales() {
             customerId: selectedCustomer.id,
             type: 'sale',
             amount: total,
-            description: `Venta: ${newSale.productName} x${newSale.quantity}`,
+            description: getSaleCashFlowDescription(newSale),
             relatedSaleId: newSale.id,
             date: newSale.date,
             createdAt: now,
@@ -271,7 +365,7 @@ export default function Sales() {
             date: newSale.date,
             type: 'Ingreso',
             source: 'Venta',
-            description: `Venta: ${newSale.productName} x${newSale.quantity}`,
+            description: getSaleCashFlowDescription(newSale),
             category: 'Venta Externa',
             amount: newSale.total,
             paymentMethod: newSale.paymentMethod || 'Efectivo',
@@ -313,7 +407,7 @@ export default function Sales() {
 
   const handleToggleStatus = async (sale: Sale) => {
     if (!user) return;
-    if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
+    if (isPendingSaleStatus(sale.status)) {
       // Idempotency: check if cashflow entry already exists before creating
       const existing = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
       await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: sale.paymentMethod || 'Efectivo' });
@@ -323,7 +417,7 @@ export default function Sales() {
           date: sale.date,
           type: 'Ingreso',
           source: 'Venta',
-          description: `Venta: ${sale.productName} x${sale.quantity}`,
+          description: getSaleCashFlowDescription(sale),
           category: 'Venta Externa',
           amount: sale.total,
           paymentMethod: sale.paymentMethod || 'Efectivo',
@@ -333,10 +427,26 @@ export default function Sales() {
           createdAt: new Date().toISOString()
         });
       }
+      await syncCustomerLedgerForSale(
+        sale.id,
+        'Pagado',
+        sale.total,
+        getSaleCashFlowDescription(sale),
+        sale.date,
+        sale.paymentMethod || 'Efectivo'
+      );
     } else if (sale.status === 'Pagado') {
       await db.update<Sale>('sales', sale.id, { status: 'Pendiente' });
       const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
       for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+      await syncCustomerLedgerForSale(
+        sale.id,
+        'Pendiente',
+        sale.total,
+        getSaleCashFlowDescription(sale),
+        sale.date,
+        sale.paymentMethod
+      );
     }
     fetchData();
   };
@@ -346,17 +456,19 @@ export default function Sales() {
     const sale = sales.find(s => s.id === id);
     if (sale) {
       // Always return stock — it was reserved at creation regardless of status
-      const product = products.find(p => p.id === sale.productId);
-      if (product) await db.update<Product>('products', product.id, { stock: product.stock + sale.quantity });
-      // Only delete cashflow if the sale was paid
-      if (sale.status === 'Pagado') {
-        const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
-        for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+      const saleItems = aggregateProductQuantities(getSaleLineItems(sale));
+      for (const [productId, qty] of Object.entries(saleItems)) {
+        const freshProduct = await db.get<Product>('products', productId);
+        if (freshProduct) {
+          await db.update<Product>('products', productId, { stock: freshProduct.stock + qty });
+        }
       }
+      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
+      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
       // Reverse customer balance if this was a credit sale
       const txs = await db.find<CustomerTransaction>('customer_transactions', 'relatedSaleId', id);
       for (const tx of txs) {
-        const customer = customers.find(c => c.id === tx.customerId);
+        const customer = await db.get<Customer>('customers', tx.customerId);
         if (customer) {
           await db.update<Customer>('customers', tx.customerId, {
             currentBalance: customer.currentBalance - tx.amount,
@@ -370,17 +482,16 @@ export default function Sales() {
     fetchData();
   };
 
-  const legacyPendingSales = sales.filter(s => !s.createdAt && (s.status === 'No Pagado' || s.status === 'Pendiente'));
+  const legacyPendingSales = sales.filter(s => !s.createdAt && isPendingSaleStatus(s.status));
 
   const handleFixLegacyStock = async () => {
     if (!user || legacyPendingSales.length === 0) return;
     if (!confirm(`Se encontraron ${legacyPendingSales.length} venta(s) pendiente(s) sin stock descontado. ¿Descontar ahora?`)) return;
 
     // Group quantities by product to avoid race conditions
-    const deductions: Record<string, number> = {};
-    for (const sale of legacyPendingSales) {
-      deductions[sale.productId] = (deductions[sale.productId] || 0) + sale.quantity;
-    }
+    const deductions = aggregateProductQuantities(
+      legacyPendingSales.flatMap(sale => getSaleLineItems(sale))
+    );
 
     // Fetch fresh stock values before updating
     const freshProducts = await db.list<Product>('products', user.uid);
@@ -404,7 +515,7 @@ export default function Sales() {
 
   const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
   const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
-  const totalPending = sales.filter(s => s.status === 'No Pagado' || s.status === 'Pendiente').reduce((acc, s) => acc + roundPrice(s.total), 0);
+  const totalPending = sales.filter(s => isPendingSaleStatus(s.status)).reduce((acc, s) => acc + roundPrice(s.total), 0);
 
   const filteredSales = sales.filter(s => {
     const matchesSearch = (s.productName ?? '').toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
@@ -560,8 +671,10 @@ export default function Sales() {
                     <p className="font-bold text-slate-900 dark:text-white">{s.productName}</p>
                     {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
                   </td>
-                  <td className="px-6 py-4 dark:text-slate-300">{s.quantity}</td>
-                  <td className="px-6 py-4 dark:text-slate-300">{formatCurrency(roundPrice(s.unitPrice))}</td>
+                  <td className="px-6 py-4 dark:text-slate-300">{getSaleDisplayQuantity(s)}</td>
+                  <td className="px-6 py-4 dark:text-slate-300">
+                    {hasDerivedSaleItems(s) ? '-' : formatCurrency(roundPrice(s.unitPrice))}
+                  </td>
                   <td className={cn(
                     "px-6 py-4 font-medium",
                     s.adjustment > 0 ? "text-rose-500" : s.adjustment < 0 ? "text-emerald-500" : "text-slate-400"
@@ -590,12 +703,20 @@ export default function Sales() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {
+                          if (hasDerivedSaleItems(s)) return;
                           setEditingSale(s);
                           setFormData(s);
                           setProductSearch('');
                           setIsModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        disabled={hasDerivedSaleItems(s)}
+                        className={cn(
+                          "p-2 transition-colors",
+                          hasDerivedSaleItems(s)
+                            ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
+                            : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                        )}
+                        title={hasDerivedSaleItems(s) ? 'Editá el presupuesto original para cambiar esta venta' : 'Editar'}
                       >
                         <Edit2 size={18} />
                       </button>
