@@ -63,7 +63,7 @@ export default function Dashboard() {
   const bankExpenses = cashFlow.filter(e => e.type === 'Gasto' && e.status === 'Pagado' && e.paymentMethod === 'Transferencia').reduce((acc, e) => acc + e.amount, 0);
   const availableBank = bankIncome - bankExpenses;
 
-  const pendingSales = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + s.total, 0);
+  const pendingSales = sales.filter(s => s.status === 'No Pagado' || s.status === 'Pendiente').reduce((acc, s) => acc + s.total, 0);
   
   const stockValue = products.reduce((acc, p) => acc + (roundPrice(p.salePrice) * p.stock), 0);
   const totalInvested = products.reduce((acc, p) => acc + (p.purchasePrice * p.stock), 0);

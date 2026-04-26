@@ -322,7 +322,7 @@ export default function Sales() {
         });
       }
     } else if (sale.status === 'Pagado') {
-      await db.update<Sale>('sales', sale.id, { status: 'No Pagado' });
+      await db.update<Sale>('sales', sale.id, { status: 'Pendiente' });
       const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
       for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
     }
@@ -358,7 +358,7 @@ export default function Sales() {
     fetchData();
   };
 
-  const legacyPendingSales = sales.filter(s => !s.createdAt && s.status === 'No Pagado');
+  const legacyPendingSales = sales.filter(s => !s.createdAt && (s.status === 'No Pagado' || s.status === 'Pendiente'));
 
   const handleFixLegacyStock = async () => {
     if (!user || legacyPendingSales.length === 0) return;
@@ -392,11 +392,11 @@ export default function Sales() {
 
   const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
   const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
-  const totalPending = sales.filter(s => s.status === 'No Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
+  const totalPending = sales.filter(s => s.status === 'No Pagado' || s.status === 'Pendiente').reduce((acc, s) => acc + roundPrice(s.total), 0);
 
   const filteredSales = sales.filter(s => {
     const matchesSearch = (s.productName ?? '').toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || s.status === statusFilter || (statusFilter === 'Pendiente' && s.status === 'No Pagado');
     return matchesSearch && matchesStatus;
   });
 
@@ -517,7 +517,7 @@ export default function Sales() {
           >
             <option value="all">Todos los estados</option>
             <option value="Pagado">Pagado</option>
-            <option value="No Pagado">No Pagado</option>
+            <option value="Pendiente">Pendiente</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
@@ -565,7 +565,7 @@ export default function Sales() {
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleToggleStatus(s)}
-                      title={s.status === 'Pagado' ? 'Click para marcar como No Pagado' : 'Click para marcar como Pagado'}
+                      title={s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
                       className={cn(
                         "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
                         s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
@@ -868,16 +868,16 @@ export default function Sales() {
                 </button>
                 <button 
                   type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, status: 'No Pagado' }))}
+                  onClick={() => setFormData(prev => ({ ...prev, status: 'Pendiente' }))}
                   className={cn(
                     "flex-1 py-3 rounded-xl font-bold border-2 transition-all flex items-center justify-center gap-2",
-                    formData.status === 'No Pagado' 
-                      ? "bg-amber-50 border-amber-500 text-amber-700 dark:bg-amber-900/20 dark:border-amber-500 dark:text-amber-400" 
+                    formData.status === 'Pendiente'
+                      ? "bg-amber-50 border-amber-500 text-amber-700 dark:bg-amber-900/20 dark:border-amber-500 dark:text-amber-400"
                       : "bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800"
                   )}
                 >
                   <Clock size={20} />
-                  NO PAGADO
+                  PENDIENTE
                 </button>
               </div>
             </div>
