@@ -233,24 +233,33 @@ export default function Sales() {
     }
   };
 
-  const handleMarkAsPaid = async (sale: Sale) => {
+  const handleToggleStatus = async (sale: Sale) => {
     if (!user) return;
-    // Stock was already deducted at creation — only update status and create cashflow
-    await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: 'Efectivo' });
-    await db.create('cash_flow', {
-      id: crypto.randomUUID(),
-      date: sale.date,
-      type: 'Ingreso',
-      source: 'Venta',
-      description: `Venta: ${sale.productName} x${sale.quantity}`,
-      category: 'Venta Externa',
-      amount: sale.total,
-      paymentMethod: 'Efectivo',
-      status: 'Pagado',
-      saleId: sale.id,
-      ownerUid: user.uid,
-      createdAt: new Date().toISOString()
-    });
+    if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
+      // Idempotency: check if cashflow entry already exists before creating
+      const existing = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: sale.paymentMethod || 'Efectivo' });
+      if (existing.length === 0) {
+        await db.create('cash_flow', {
+          id: crypto.randomUUID(),
+          date: sale.date,
+          type: 'Ingreso',
+          source: 'Venta',
+          description: `Venta: ${sale.productName} x${sale.quantity}`,
+          category: 'Venta Externa',
+          amount: sale.total,
+          paymentMethod: sale.paymentMethod || 'Efectivo',
+          status: 'Pagado',
+          saleId: sale.id,
+          ownerUid: user.uid,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } else if (sale.status === 'Pagado') {
+      await db.update<Sale>('sales', sale.id, { status: 'No Pagado' });
+      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
+    }
     fetchData();
   };
 
@@ -470,25 +479,20 @@ export default function Sales() {
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    )}>
+                    <button
+                      onClick={() => handleToggleStatus(s)}
+                      title={s.status === 'Pagado' ? 'Click para marcar como No Pagado' : 'Click para marcar como Pagado'}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
+                        s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      )}
+                    >
                       {s.status}
-                    </span>
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {s.status === 'No Pagado' && (
-                        <button 
-                          onClick={() => handleMarkAsPaid(s)}
-                          className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                          title="Marcar como pagado"
-                        >
-                          <CheckCircle2 size={18} />
-                        </button>
-                      )}
-                      <button 
+                      <button
                         onClick={() => {
                           setEditingSale(s);
                           setFormData(s);

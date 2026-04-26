@@ -41,6 +41,13 @@ export default function CashFlow() {
     notes: ''
   });
 
+  const handleToggleStatus = async (entry: CashFlowEntry) => {
+    if (!user) return;
+    const newStatus = entry.status === 'Pagado' ? 'Pendiente' : 'Pagado';
+    await db.update('cash_flow', entry.id, { status: newStatus });
+    fetchData();
+  };
+
   const fetchData = async () => {
     if (!user) return;
     const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
@@ -277,12 +284,16 @@ export default function CashFlow() {
                     {e.type === 'Ingreso' ? '+' : '-'}{formatCurrency(e.amount)}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      e.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    )}>
+                    <button
+                      onClick={() => handleToggleStatus(e)}
+                      title={e.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
+                        e.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      )}
+                    >
                       {e.status}
-                    </span>
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <span className="text-[10px] bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded uppercase font-bold">
