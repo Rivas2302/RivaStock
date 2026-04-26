@@ -167,11 +167,15 @@ export default function Sales() {
             if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
             return;
           }
-          await db.update<Product>('products', newProduct.id, { stock: newProduct.stock - newQty });
+          const freshNewProduct = await db.get<Product>('products', newProduct.id);
+          if (!freshNewProduct) throw new Error('Producto no encontrado');
+          await db.update<Product>('products', newProduct.id, { stock: freshNewProduct.stock - newQty });
         } else {
-          const effectiveStock = newProduct.stock + oldSale.quantity;
-          if (effectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
-          await db.update<Product>('products', newProduct.id, { stock: effectiveStock - newQty });
+          const freshSameProduct = await db.get<Product>('products', newProduct.id);
+          if (!freshSameProduct) throw new Error('Producto no encontrado');
+          const freshEffectiveStock = freshSameProduct.stock + oldSale.quantity;
+          if (freshEffectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
+          await db.update<Product>('products', newProduct.id, { stock: freshEffectiveStock - newQty });
         }
 
         // Cashflow: only for Pagado transitions
@@ -231,8 +235,16 @@ export default function Sales() {
           createdAt: new Date().toISOString()
         });
 
-        // Always reduce stock
-        await db.update<Product>('products', product.id, { stock: product.stock - newSale.quantity });
+        // Always reduce stock — read fresh from Firestore to avoid race conditions
+        const freshProduct = await db.get<Product>('products', product.id);
+        if (!freshProduct) throw new Error('Producto no encontrado al descontar stock');
+        if (freshProduct.stock < newSale.quantity) {
+          await db.delete('sales', newSale.id);
+          alert('Stock insuficiente al confirmar la venta. La venta fue cancelada.');
+          return;
+        }
+        await db.update<Product>('products', product.id, { stock: freshProduct.stock - newSale.quantity });
+        console.log('[Stock] Descontado:', { productId: product.id, antes: freshProduct.stock, despues: freshProduct.stock - newSale.quantity });
 
         if (isCreditSale && selectedCustomer) {
           // Credit sale: create CustomerTransaction and update balance; no cash_flow yet
