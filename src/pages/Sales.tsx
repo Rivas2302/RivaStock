@@ -65,22 +65,28 @@ export default function Sales() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [s, p, c] = await Promise.all([
-        db.list<Sale>('sales', user.uid),
-        db.list<Product>('products', user.uid),
-        db.list<Customer>('customers', user.uid),
-      ]);
+      const s = await db.list<Sale>('sales', user.uid);
       setSales(s.sort((a, b) => {
         const dc = b.date.localeCompare(a.date);
         if (dc !== 0) return dc;
         return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
       }));
-      setProducts(p);
-      setCustomers(c);
     } catch (error) {
       console.error('Error al cargar ventas:', error);
     } finally {
       setLoading(false);
+    }
+    try {
+      const p = await db.list<Product>('products', user.uid);
+      setProducts(p);
+    } catch (error) {
+      console.error('Error al cargar productos:', error);
+    }
+    try {
+      const c = await db.list<Customer>('customers', user.uid);
+      setCustomers(c);
+    } catch (error) {
+      console.error('Error al cargar clientes:', error);
     }
   };
 
@@ -283,6 +289,10 @@ export default function Sales() {
       setShowNewCustInline(false);
       setNewCustName('');
       setNewCustPhone('');
+      fetchData();
+    } catch (error) {
+      console.error('Error al guardar venta:', error);
+      alert('Error al guardar la venta. Revisá la consola para más detalles.');
       fetchData();
     } finally {
       setSaving(false);
