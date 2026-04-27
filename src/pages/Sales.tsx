@@ -247,18 +247,24 @@ export default function Sales() {
 
         // Stock: always held regardless of status. Adjust for product/quantity changes.
         if (productChanged) {
-          if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock + oldSale.quantity });
+          // FIX 1: Leer stock fresco del producto viejo para restaurar
+          const freshOldProduct = await db.get<Product>('products', oldProduct.id);
+          const restoreStock = freshOldProduct ? freshOldProduct.stock + oldSale.quantity : (oldProduct?.stock || 0) + oldSale.quantity;
           if (newProduct.stock < newQty) {
             alert('No hay suficiente stock.');
-            if (oldProduct) await db.update<Product>('products', oldProduct.id, { stock: oldProduct.stock });
+            if (freshOldProduct) await db.update<Product>('products', freshOldProduct.id, { stock: restoreStock });
             return;
           }
           const freshNewProduct = await db.get<Product>('products', newProduct.id);
           if (!freshNewProduct) throw new Error('Producto no encontrado');
           await db.update<Product>('products', newProduct.id, { stock: freshNewProduct.stock - newQty });
         } else {
-          const freshSameProduct = await db.get<Product>('products', newProduct.id);
-          if (!freshSameProduct) throw new Error('Producto no encontrado');
+          // FIX 2: getDocFromServer para evitar cache stale
+          const { getDocFromServer } = await import('firebase/firestore');
+          const docRef = await db.getDocRef<Product>('products', newProduct.id);
+          const freshSameProductSnap = await getDocFromServer(docRef);
+          if (!freshSameProductSnap.exists()) throw new Error('Producto no encontrado');
+          const freshSameProduct = { id: freshSameProductSnap.id, ...freshSameProductSnap.data() };
           const freshEffectiveStock = freshSameProduct.stock + oldSale.quantity;
           if (freshEffectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
           await db.update<Product>('products', newProduct.id, { stock: freshEffectiveStock - newQty });
@@ -293,6 +299,7 @@ export default function Sales() {
           });
         }
 
+        // FIX 3: Guardar venta PRIMERO (transaccional parcial - si falla stock/cashflow, la venta ya quedó)
         await db.update<Sale>('sales', editingSale.id, saleData);
         await syncCustomerLedgerForSale(
           editingSale.id,
