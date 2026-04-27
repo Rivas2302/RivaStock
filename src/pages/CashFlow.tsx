@@ -397,6 +397,7 @@ export default function CashFlow() {
                 type="date"
                 required
                 value={formData.date}
+                max={todayString()}
                 onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
               />
