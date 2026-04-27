@@ -247,27 +247,27 @@ export default function Sales() {
 
         // Stock: always held regardless of status. Adjust for product/quantity changes.
         if (productChanged) {
-          // FIX 1: Leer stock fresco del producto viejo para restaurar
-          const freshOldProduct = await db.get<Product>('products', oldProduct.id);
-          const restoreStock = freshOldProduct ? freshOldProduct.stock + oldSale.quantity : (oldProduct?.stock || 0) + oldSale.quantity;
-          if (newProduct.stock < newQty) {
-            alert('No hay suficiente stock.');
-            if (freshOldProduct) await db.update<Product>('products', freshOldProduct.id, { stock: restoreStock });
+          // Restajar stock del producto viejo y aplicar al nuevo
+          const oldFresh = await db.get<Product>('products', oldProduct.id);
+          if (oldFresh) {
+            await db.update<Product>('products', oldProduct.id, { stock: oldFresh.stock + oldSale.quantity });
+          }
+          const freshNew = await db.get<Product>('products', newProduct.id);
+          if (!freshNew) throw new Error('Producto no encontrado');
+          if (freshNew.stock < newQty) {
+            // rollback si no hay stock suficiente en el nuevo producto
+            if (oldFresh) await db.update<Product>('products', oldProduct.id, { stock: oldFresh.stock });
+            alert('No hay suficiente stock para la actualización');
             return;
           }
-          const freshNewProduct = await db.get<Product>('products', newProduct.id);
-          if (!freshNewProduct) throw new Error('Producto no encontrado');
-          await db.update<Product>('products', newProduct.id, { stock: freshNewProduct.stock - newQty });
+          await db.update<Product>('products', newProduct.id, { stock: freshNew.stock - newQty });
         } else {
-          // FIX 2: getDocFromServer para evitar cache stale
-          const { getDocFromServer } = await import('firebase/firestore');
-          const docRef = await db.getDocRef<Product>('products', newProduct.id);
-          const freshSameProductSnap = await getDocFromServer(docRef);
-          if (!freshSameProductSnap.exists()) throw new Error('Producto no encontrado');
-          const freshSameProduct = { id: freshSameProductSnap.id, ...freshSameProductSnap.data() };
-          const freshEffectiveStock = freshSameProduct.stock + oldSale.quantity;
-          if (freshEffectiveStock < newQty) { alert('No hay suficiente stock.'); return; }
-          await db.update<Product>('products', newProduct.id, { stock: freshEffectiveStock - newQty });
+          // Misma tabla de producto: revertir stock de la cantidad anterior y aplicar la nueva
+          const freshSame = await db.get<Product>('products', newProduct.id);
+          if (!freshSame) throw new Error('Producto no encontrado');
+          const computed = freshSame.stock + oldSale.quantity - newQty;
+          if (computed < 0) { alert('No hay suficiente stock para la actualización'); return; }
+          await db.update<Product>('products', newProduct.id, { stock: computed });
         }
 
         // Cashflow: only for Pagado transitions
@@ -762,6 +762,7 @@ export default function Sales() {
               <input 
                 type="date"
                 required
+                max={todayString()}
                 value={formData.date}
                 onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
