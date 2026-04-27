@@ -120,6 +120,23 @@ class FirebaseDB {
     }
   }
 
+  async findBy<T extends { id?: string; uid?: string; ownerUid?: string }>(collectionName: string, filters: { field: string; value: any }[], limitCount?: number): Promise<T[]> {
+    try {
+      let q = query(collection(db_instance, collectionName));
+      for (const f of filters) {
+        q = query(q, where(f.field, '==', f.value));
+      }
+      if (limitCount) {
+        q = query(q, limit(limitCount));
+      }
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, collectionName);
+      return [];
+    }
+  }
+
   async get<T extends { id?: string; uid?: string }>(collectionName: string, id: string): Promise<T | null> {
     try {
       const docRef = doc(db_instance, collectionName, id);

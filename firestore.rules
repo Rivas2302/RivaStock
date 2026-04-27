@@ -16,6 +16,10 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
       allow read, update, delete: if request.auth != null && resource != null && resource.data.ownerUid == request.auth.uid;
     }
+    match /customer_transactions/{doc} {
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource != null && resource.data.ownerUid == request.auth.uid;
+    }
     // Default: deny all other access
     match /{document=**} { allow read, write: if false; }
   }

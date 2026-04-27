@@ -72,7 +72,10 @@ export default function Customers() {
   const loadTransactions = async (customerId: string) => {
     setLoadingTx(true);
     try {
-      const txs = await db.find<CustomerTransaction>('customer_transactions', 'customerId', customerId);
+      const txs = await db.findBy<CustomerTransaction>('customer_transactions', [
+        { field: 'customerId', value: customerId },
+        { field: 'ownerUid', value: user!.uid },
+      ]);
       setTransactions(txs.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)));
     } finally {
       setLoadingTx(false);

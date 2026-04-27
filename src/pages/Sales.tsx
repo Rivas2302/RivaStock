@@ -78,7 +78,10 @@ export default function Sales() {
     saleDate: string,
     paymentMethod?: Sale['paymentMethod']
   ) => {
-    const relatedTxs = await db.find<CustomerTransaction>('customer_transactions', 'relatedSaleId', saleId);
+    const relatedTxs = await db.findBy<CustomerTransaction>('customer_transactions', [
+      { field: 'relatedSaleId', value: saleId },
+      { field: 'ownerUid', value: user!.uid },
+    ]);
     const saleTx = relatedTxs.find(tx => tx.type === 'sale');
     if (!saleTx) return;
 
@@ -237,7 +240,10 @@ export default function Sales() {
 
         if (!newProduct) return;
 
-        const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', oldSale.id);
+        const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
+          { field: 'saleId', value: oldSale.id },
+          { field: 'ownerUid', value: user.uid },
+        ]);
         const cfEntry = cfEntries[0] || null;
         const productChanged = oldSale.productId !== newProductId;
         const saleDescription = getSaleCashFlowDescription({
@@ -416,7 +422,10 @@ export default function Sales() {
     if (!user) return;
     if (isPendingSaleStatus(sale.status)) {
       // Idempotency: check if cashflow entry already exists before creating
-      const existing = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      const existing = await db.findBy<CashFlowEntry>('cash_flow', [
+        { field: 'saleId', value: sale.id },
+        { field: 'ownerUid', value: user.uid },
+      ]);
       await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: sale.paymentMethod || 'Efectivo' });
       if (existing.length === 0) {
         await db.create('cash_flow', {
@@ -444,7 +453,10 @@ export default function Sales() {
       );
     } else if (sale.status === 'Pagado') {
       await db.update<Sale>('sales', sale.id, { status: 'Pendiente' });
-      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', sale.id);
+      const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
+        { field: 'saleId', value: sale.id },
+        { field: 'ownerUid', value: user.uid },
+      ]);
       for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
       await syncCustomerLedgerForSale(
         sale.id,
@@ -470,10 +482,16 @@ export default function Sales() {
           await db.update<Product>('products', productId, { stock: freshProduct.stock + qty });
         }
       }
-      const cfEntries = await db.find<CashFlowEntry>('cash_flow', 'saleId', id);
+      const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
+        { field: 'saleId', value: id },
+        { field: 'ownerUid', value: user!.uid },
+      ]);
       for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
       // Reverse customer balance if this was a credit sale
-      const txs = await db.find<CustomerTransaction>('customer_transactions', 'relatedSaleId', id);
+      const txs = await db.findBy<CustomerTransaction>('customer_transactions', [
+        { field: 'relatedSaleId', value: id },
+        { field: 'ownerUid', value: user!.uid },
+      ]);
       for (const tx of txs) {
         const customer = await db.get<Customer>('customers', tx.customerId);
         if (customer) {
