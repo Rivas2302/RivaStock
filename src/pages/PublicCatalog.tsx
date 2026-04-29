@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, db_instance } from '../lib/db';
-import { Product, CatalogConfig, Category, Order, UserProfile } from '../types';
+import { db, toDb } from '../lib/db';
+import { supabase } from '../lib/supabase';
+import { Product, CatalogConfig, Category, Order } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
   ShoppingBag,
@@ -27,7 +28,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { onSnapshot, query, where, collection } from 'firebase/firestore';
 
 export default function PublicCatalog() {
   const { slug } = useParams<{ slug: string }>();
@@ -79,12 +79,9 @@ export default function PublicCatalog() {
   });
 
   useEffect(() => {
-    let unsubProducts: () => void;
-    let unsubCategories: () => void;
-
     const init = async () => {
       if (!slug) return;
-      
+
       try {
         setLoading(true);
         setError(null);
@@ -95,73 +92,41 @@ export default function PublicCatalog() {
 
         if (!foundConfig) {
           setError('Catálogo no encontrado');
-          setLoading(false);
           return;
         }
 
         if (!foundConfig.enabled) {
           setError('Este catálogo está temporalmente desactivado');
-          setLoading(false);
           return;
         }
 
         setConfig(foundConfig);
 
-        // 2. Set up real-time listeners
-        const productsQuery = query(
-          collection(db_instance, 'products'),
-          where('ownerUid', '==', foundConfig.ownerUid),
-          where('showInCatalog', '==', true)
-        );
+        // 2. Fetch products and categories concurrently via Supabase
+        const [allProducts, cats] = await Promise.all([
+          db.findBy<Product>('products', [
+            { field: 'ownerUid',       value: foundConfig.ownerUid },
+            { field: 'showInCatalog',  value: true },
+          ]),
+          db.list<Category>('categories', foundConfig.ownerUid),
+        ]);
 
-        unsubProducts = onSnapshot(productsQuery, (snapshot) => {
-          const newProducts: Product[] = [];
-          snapshot.docChanges().forEach((change) => {
-            console.log('Product ' + change.type + ':', change.doc.id);
-          });
-          
-          snapshot.forEach((doc) => {
-            newProducts.push({ id: doc.id, ...doc.data() } as Product);
-          });
+        // Respect showOutOfStock setting
+        const visibleProducts = foundConfig.showOutOfStock
+          ? allProducts
+          : allProducts.filter(p => p.stock > 0);
 
-          console.log('Number of products received:', newProducts.length);
-
-          // Respect showOutOfStock rule
-          let filteredProducts = newProducts;
-          if (!foundConfig.showOutOfStock) {
-            filteredProducts = filteredProducts.filter(item => item.stock > 0);
-          }
-
-          setProducts(filteredProducts);
-        });
-
-        const categoriesQuery = query(
-          collection(db_instance, 'categories'),
-          where('ownerUid', '==', foundConfig.ownerUid)
-        );
-
-        unsubCategories = onSnapshot(categoriesQuery, (snapshot) => {
-          const newCategories: Category[] = [];
-          snapshot.forEach((doc) => {
-            newCategories.push({ id: doc.id, ...doc.data() } as Category);
-          });
-          setCategories(newCategories);
-        });
-        
-        setLoading(false);
+        setProducts(visibleProducts);
+        setCategories(cats);
       } catch (err) {
         console.error('Error loading catalog:', err);
         setError('Error al cargar el catálogo');
+      } finally {
         setLoading(false);
       }
     };
 
     init();
-
-    return () => {
-      if (unsubProducts) unsubProducts();
-      if (unsubCategories) unsubCategories();
-    };
   }, [slug]);
 
   const addToCart = (product: Product) => {
@@ -221,7 +186,9 @@ export default function PublicCatalog() {
     };
 
     try {
-      await db.create('orders', order);
+      // Use direct insert (no .select()) so anon RLS does not block the response
+      const { error: insertError } = await supabase.from('orders').insert(toDb(order));
+      if (insertError) throw new Error(insertError.message);
       setIsSuccess(true);
       setCart([]);
       setIsCheckoutOpen(false);

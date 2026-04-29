@@ -248,5 +248,6 @@ export async function deleteFromStorage(path: string): Promise<void> {
   if (error) console.error(`[storage.delete:${storagePath}]`, error.message);
 }
 
-// ─── Re-export supabase auth for AuthContext ──────────────────────────────────
+// ─── Re-export supabase client ────────────────────────────────────────────────
+export { supabase };
 export { supabase as supabaseAuth };

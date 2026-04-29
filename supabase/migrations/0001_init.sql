@@ -299,9 +299,18 @@ CREATE POLICY "profiles_select_own" ON profiles
 CREATE POLICY "profiles_update_own" ON profiles
   FOR UPDATE USING (id = auth.uid()) WITH CHECK (id = auth.uid());
 
--- categories
+-- categories: private CRUD
 CREATE POLICY "categories_owner" ON categories
   USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+-- categories: public read when catalog is enabled (needed by public catalog page)
+CREATE POLICY "categories_catalog_public" ON categories
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM catalog_config c
+      WHERE c.user_id = categories.user_id
+        AND c.enabled = true
+    )
+  );
 
 -- price_ranges
 CREATE POLICY "price_ranges_owner" ON price_ranges
