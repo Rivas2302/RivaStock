@@ -18,22 +18,22 @@ if (typeof crypto.randomUUID !== 'function') {
   };
 }
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-        
-        // Check for updates every 30 seconds
-        setInterval(() => {
-          registration.update();
-        }, 30000);
-      })
-      .catch((error) => {
-        console.log('ServiceWorker registration failed: ', error);
-      });
-  });
-}
+// Service Worker disabled - causes infinite loop issues
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('/sw.js')
+//       .then((registration) => {
+//         console.log('ServiceWorker registration successful with scope: ', registration.scope);
+//         
+//         setInterval(() => {
+//           registration.update();
+//         }, 30000);
+//       })
+//       .catch((error) => {
+//         console.log('ServiceWorker registration failed: ', error);
+//       });
+//   });
+// }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
