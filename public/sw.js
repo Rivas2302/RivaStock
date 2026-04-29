@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rivastock-v2';
+const CACHE_NAME = 'rivastock-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -27,6 +27,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Never intercept non-GET requests (POST, PUT, DELETE can't be cached)
+  if (event.request.method !== 'GET') return;
 
   if (url.origin === location.origin && APP_SHELL.includes(url.pathname)) {
     // Network first for app shell so updates are always picked up

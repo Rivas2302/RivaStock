@@ -287,12 +287,12 @@ export default function Settings() {
       });
 
       for (const col of collectionsToDelete) {
-        const items = await db.list(col, user.uid);
+        const items = await db.list<{ id: string; showInCatalog?: boolean }>(col, user.uid);
         for (const item of items) {
           if (item.id) {
             // Special handling for catalog: only delete if showInCatalog is true
             if (selectedModules.catalog && !selectedModules.products && col === 'products') {
-              if ((item as any).showInCatalog) await db.delete(col, item.id);
+              if (item.showInCatalog) await db.delete(col, item.id);
             } else {
               await db.delete(col, item.id);
             }

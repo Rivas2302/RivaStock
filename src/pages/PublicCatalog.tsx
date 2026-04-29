@@ -187,7 +187,7 @@ export default function PublicCatalog() {
 
     try {
       // Use direct insert (no .select()) so anon RLS does not block the response
-      const { error: insertError } = await supabase.from('orders').insert(toDb(order));
+      const { error: insertError } = await supabase.from('orders').insert(toDb(order as unknown as Record<string, unknown>));
       if (insertError) throw new Error(insertError.message);
       setIsSuccess(true);
       setCart([]);

@@ -32,29 +32,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        const profile = await loadProfile(session);
-        setUser(profile);
-      }
-      setLoading(false);
-    });
+    let mounted = true;
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    (async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) console.error('[Auth] getSession error:', error);
+        if (!mounted) return;
         if (session) {
           const profile = await loadProfile(session);
+          if (!mounted) return;
           setUser(profile);
-        } else {
-          setUser(null);
         }
-        setLoading(false);
+      } catch (err) {
+        console.error('[Auth] Init failed:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        try {
+          if (session) {
+            const profile = await loadProfile(session);
+            if (mounted) setUser(profile);
+          } else {
+            if (mounted) setUser(null);
+          }
+        } catch (err) {
+          console.error('[Auth] State change failed:', err);
+        } finally {
+          if (mounted) setLoading(false);
+        }
       },
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {

@@ -6,7 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
-firebase-applet-config.json
-scripts/migrate/dump/
-scripts/migrate/transformed/
-scripts/migrate/firebase-sa.json
+.claude/
+LEGACY_*
+scripts/migrate/
