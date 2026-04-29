@@ -1,6 +1,0 @@
-Merge branch feature/supabase-migration into main
-
-Completes the Firebase to Supabase migration with critical fixes:
-- AuthContext: guarantee setLoading(false) via try/catch/finally
-- Service Worker: bypass non-GET requests, add supabase.co to network-first
-- Clean stale Firebase files, update package.json, README, tsconfig

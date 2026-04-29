@@ -70,8 +70,11 @@ export default function App() {
     window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Guard: avoid repeatedly queuing multiple beforeinstallprompt events
+    // which can cause a perpetual banner/show loop in some environments.
     const handler = (e: any) => {
       e.preventDefault();
+      if (deferredPrompt) return; // already captured, ignore subsequent prompts
       setDeferredPrompt(e);
       setShowInstallBanner(true);
     };
