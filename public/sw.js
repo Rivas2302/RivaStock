@@ -33,7 +33,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(event.request))
     );
-  } else if (url.origin.includes('googleapis.com') || url.origin.includes('firebase')) {
+  } else if (url.origin.includes('googleapis.com') || url.origin.includes('firebase') || url.origin.includes('supabase.co')) {
     // Network first for API calls
     event.respondWith(
       fetch(event.request).catch(() => caches.match(event.request))
