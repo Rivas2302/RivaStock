@@ -6,6 +6,7 @@ import { formatCurrency } from '../lib/utils';
 import { AlertTriangle, Clock, CheckCircle2, FileText } from 'lucide-react';
 
 export default function QuotePublic() {
+  const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   const { id } = useParams<{ id: string }>();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [owner, setOwner] = useState<UserProfile | null>(null);
@@ -13,6 +14,12 @@ export default function QuotePublic() {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    // If offline from the start, skip network requests for this page
+    if (!online) {
+      setLoading(false);
+      setNotFound(false);
+      return;
+    }
     if (!id) { setNotFound(true); setLoading(false); return; }
     (async () => {
       try {
@@ -36,8 +43,22 @@ export default function QuotePublic() {
       </div>
     );
   }
-
   if (notFound || !quote) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      // Offline fallback for direct URL access
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText size={28} className="text-slate-400" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-800 mb-2">Sin conexión</h1>
+            <p className="text-slate-500 text-sm">No hay conexión a Internet. Conéctate para ver el presupuesto.</p>
+            <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white">Reintentar</button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="text-center max-w-sm">

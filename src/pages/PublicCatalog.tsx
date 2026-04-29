@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function PublicCatalog() {
+  const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   const { slug } = useParams<{ slug: string }>();
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -51,6 +52,12 @@ export default function PublicCatalog() {
   })
 
   useEffect(() => {
+    if (!online) {
+      // No network: skip loading and show offline state via error
+      setLoading(false);
+      setError('Sin conexión');
+      return;
+    }
     localStorage.setItem('catalog-dark-mode', String(darkMode))
     if (darkMode) {
       document.documentElement.classList.add('dark')
@@ -225,8 +232,21 @@ export default function PublicCatalog() {
       </div>
     );
   }
-
   if (error || !config) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+          <div className="max-w-md space-y-6">
+            <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+              <XCircle size={48} />
+            </div>
+            <h1 className="text-2xl font-black text-slate-900">Sin conexión</h1>
+            <p className="text-slate-500">Verifica tu conexión a Internet e intenta nuevamente.</p>
+            <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800">Reintentar</button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
         <div className="max-w-md space-y-6">

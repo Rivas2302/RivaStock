@@ -26,6 +26,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // SPA navigation fallback: serve index.html for SPA routes
+  const isNavigate = event.request.mode === 'navigate';
+  const acceptsHTML = (() => {
+    try {
+      const h = event.request.headers.get('accept');
+      return h ? h.includes('text/html') : false;
+    } catch {
+      return false;
+    }
+  })();
+  if (isNavigate || acceptsHTML) {
+    event.respondWith(
+      caches.match('/index.html').then((resp) => resp || fetch('/index.html'))
+    );
+    return;
+  }
   const url = new URL(event.request.url);
 
   // Never intercept non-GET requests (POST, PUT, DELETE can't be cached)
