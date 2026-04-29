@@ -80,10 +80,40 @@ export default function App() {
     };
     window.addEventListener('beforeinstallprompt', handler);
 
+    // Cleanup event listeners on unmount
     return () => {
       window.removeEventListener('online',  handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  // Automatic cache reset on fatal errors to avoid persistent loops caused by stale cache
+  useEffect(() => {
+    const onError = () => {
+      // Do not loop forever: guard per-tab/session
+      const alreadyCleared = sessionStorage.getItem('rivastock_cache_auto_cleared');
+      if (alreadyCleared) return;
+      sessionStorage.setItem('rivastock_cache_auto_cleared', '1');
+      // Unregister any active SWs and clear caches
+      if (navigator.serviceWorker && 'getRegistrations' in navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          regs.forEach((r) => r.unregister());
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+          window.location.reload();
+        });
+      } else {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onError);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onError);
     };
   }, []);
 
