@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
-import { Product, Quote, QuoteItem, QuoteStatus, Customer, CustomerTransaction, Sale, CashFlowEntry } from '../types';
+import { db, callRpc } from '../lib/db';
+import { Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';
 import { formatCurrency, cn, todayString } from '../lib/utils';
 import {
   Plus, Search, Filter, Edit2, Trash2, Share2, ChevronDown,
@@ -9,7 +9,6 @@ import {
   CheckCircle2, Clock
 } from 'lucide-react';
 import Modal from '../components/Modal';
-import { aggregateProductQuantities } from '../lib/sales';
 import { motion, AnimatePresence } from 'motion/react';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -368,101 +367,19 @@ export default function Quotes() {
     if (!user || !convertingQuote || savingConvert) return;
     setSavingConvert(true);
     try {
-      const q = convertingQuote;
-      const now = new Date().toISOString();
-      const today = todayString();
-
-      const aggregatedItems = aggregateProductQuantities(q.items);
-      for (const [productId, qty] of Object.entries(aggregatedItems)) {
-        const freshProduct = await db.get<Product>('products', productId);
-        if (!freshProduct) {
-          throw new Error(`Producto no encontrado: ${productId}`);
-        }
-        if (freshProduct.stock < qty) {
-          const itemName = q.items.find(item => item.productId === productId)?.productName || 'producto';
-          alert(`No hay suficiente stock para: ${itemName}`);
-          return;
-        }
-      }
-
-      // Deduct stock for each product with fresh values
-      for (const [productId, qty] of Object.entries(aggregatedItems)) {
-        const freshProduct = await db.get<Product>('products', productId);
-        if (!freshProduct) {
-          throw new Error(`Producto no encontrado: ${productId}`);
-        }
-        await db.update<Product>('products', productId, { stock: freshProduct.stock - qty });
-      }
-
-      const saleItems = q.items.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, price: i.unitPrice }));
-      const firstName = q.items[0];
       const isPaid = convertMode === 'paid';
-
-      const newSale = await db.create<Sale>('sales', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        date: today,
-        productId: firstName?.productId || '',
-        productName: q.items.length === 1 ? firstName?.productName || '' : `Presupuesto ${q.number}`,
-        unitPrice: q.total,
-        quantity: 1,
-        adjustment: 0,
-        total: q.total,
-        status: isPaid ? 'Pagado' : 'Pendiente',
-        paymentMethod: isPaid ? convertMethod : undefined,
-        client: q.clientName,
-        items: saleItems,
-        createdAt: now,
-      } as Sale);
-
-      if (isPaid) {
-        await db.create<CashFlowEntry>('cash_flow', {
-          id: crypto.randomUUID(),
-          ownerUid: user.uid,
-          date: today,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: `Venta (${q.number}): ${q.clientName}`,
-          category: 'Venta Externa',
-          amount: q.total,
-          paymentMethod: convertMethod,
-          status: 'Pagado',
-          saleId: newSale.id,
-          createdAt: now,
-        });
-      } else if (q.clientId) {
-        // Credit: update customer balance
-        const customer = customers.find(c => c.id === q.clientId);
-        if (customer) {
-          await db.create<CustomerTransaction>('customer_transactions', {
-            id: crypto.randomUUID(),
-            ownerUid: user.uid,
-            customerId: q.clientId,
-            type: 'sale',
-            amount: q.total,
-            description: `Venta (${q.number}): ${q.clientName}`,
-            relatedSaleId: newSale.id,
-            relatedQuoteId: q.id,
-            date: today,
-            createdAt: now,
-          });
-          await db.update<Customer>('customers', q.clientId, {
-            currentBalance: customer.currentBalance + q.total,
-            updatedAt: now,
-          });
-        }
-      }
-
-      await db.update<Quote>('quotes', q.id, {
-        convertedToSaleId: newSale.id,
-        status: 'accepted',
-        updatedAt: now,
+      await callRpc('convert_quote_to_sale', {
+        p_quote_id:       convertingQuote.id,
+        p_status:         isPaid ? 'Pagado' : 'Pendiente',
+        p_payment_method: isPaid ? convertMethod : null,
       });
-
       setIsConvertOpen(false);
       setConvertingQuote(null);
       fetchData();
-      alert(`Presupuesto convertido a venta exitosamente.`);
+      alert('Presupuesto convertido a venta exitosamente.');
+    } catch (error) {
+      console.error('Error al convertir presupuesto:', error);
+      alert(error instanceof Error ? error.message : 'Error al convertir el presupuesto.');
     } finally {
       setSavingConvert(false);
     }

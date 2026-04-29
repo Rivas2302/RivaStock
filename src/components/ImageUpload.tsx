@@ -1,35 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
+import { uploadToStorage, deleteFromStorage } from '../lib/db';
 
 const MAX_IMAGES = 4;
-
-const compressToBase64 = (file: File, maxSize = 600, quality = 0.7): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        if (width > height) {
-          if (width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; }
-        } else {
-          if (height > maxSize) { width = Math.round(width * maxSize / height); height = maxSize; }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { reject(new Error('No canvas context')); return; }
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/webp', quality));
-      };
-      img.onerror = reject;
-    };
-    reader.onerror = reject;
-  });
-};
 
 interface ImageUploadProps {
   ownerUid: string;
@@ -41,6 +14,8 @@ interface ImageUploadProps {
 }
 
 export const ImageUpload: React.FC<ImageUploadProps> = ({
+  ownerUid,
+  productId,
   currentImages = [],
   onChange,
   onUploadStart,
@@ -67,19 +42,33 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     onUploadStart?.();
 
     try {
-      const base64s = await Promise.all(toProcess.map(f => compressToBase64(f)));
-      const updated = [...images, ...base64s];
+      const urls = await Promise.all(
+        toProcess.map((f, i) => {
+          const ext = f.type === 'image/png' ? 'png' : 'webp';
+          const path = `${ownerUid}/products/${productId}/${Date.now()}_${i}.${ext}`;
+          return uploadToStorage(path, f, f.type);
+        })
+      );
+      const updated = [...images, ...urls];
       setImages(updated);
       onChange(updated);
-    } catch (err: any) {
-      setError(`Error al procesar imagen: ${err.message}`);
+    } catch (err: unknown) {
+      setError(`Error al subir imagen: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setProcessing(false);
       onUploadEnd?.();
     }
   };
 
-  const removeImage = (index: number) => {
+  const removeImage = async (index: number) => {
+    const url = images[index];
+    if (url && url.startsWith('https://') && url.includes('supabase')) {
+      try {
+        await deleteFromStorage(url);
+      } catch (e) {
+        console.error('Error al eliminar imagen del almacenamiento:', e);
+      }
+    }
     const updated = images.filter((_, i) => i !== index);
     setImages(updated);
     onChange(updated);

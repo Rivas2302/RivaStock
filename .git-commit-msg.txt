@@ -1,0 +1,15 @@
+feat: complete Firebase to Supabase migration
+
+- Replace all Firebase SDK calls with Supabase client
+- Auth uses supabase.auth (signInWithPassword, getSession, onAuthStateChange)
+- Database layer (db.ts) wraps Supabase PostgREST with camelCase/snake_case mapping
+- Storage uploads use Supabase Storage bucket
+- Fix AuthContext: guarantee setLoading(false) with try/catch/finally
+- Fix Service Worker: bypass non-GET requests, add supabase.co to network-first
+- Bump SW cache to v3 to force invalidation
+- Clean stale files: firebase config, root sw.js, Register page, notifications
+- Add Supabase env vars to vercel.json build.env
+- Rename package to rivastock v0.1.0, remove Firebase deps
+- Rewrite README with accurate project info
+- Add .claude, LEGACY, scripts/migrate to .gitignore
+- Fix TypeScript errors in PublicCatalog and Settings

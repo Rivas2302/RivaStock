@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
-import { Product, Sale, CashFlowEntry, Customer, CustomerTransaction } from '../types';
+import { db, callRpc } from '../lib/db';
+import { Product, Sale, Customer } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Clock,
   ChevronDown,
-  AlertCircle,
   ShoppingCart,
   UserCheck,
   UserPlus,
@@ -22,10 +21,7 @@ import {
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 import {
-  aggregateProductQuantities,
-  getSaleCashFlowDescription,
   getSaleDisplayQuantity,
-  getSaleLineItems,
   hasDerivedSaleItems,
   isPendingSaleStatus,
 } from '../lib/sales';
@@ -70,77 +66,6 @@ export default function Sales() {
     return customers.filter(c => c.nameLower.includes(q)).slice(0, 5);
   }, [customers, creditSearch]);
 
-  const syncCustomerLedgerForSale = async (
-    saleId: string,
-    status: Sale['status'],
-    total: number,
-    description: string,
-    saleDate: string,
-    paymentMethod?: Sale['paymentMethod']
-  ) => {
-    const relatedTxs = await db.findBy<CustomerTransaction>('customer_transactions', [
-      { field: 'relatedSaleId', value: saleId },
-      { field: 'ownerUid', value: user!.uid },
-    ]);
-    const saleTx = relatedTxs.find(tx => tx.type === 'sale');
-    if (!saleTx) return;
-
-    const customer = await db.get<Customer>('customers', saleTx.customerId);
-    if (!customer) return;
-
-    const paymentTxs = relatedTxs.filter(tx => tx.type === 'payment');
-    const currentContribution = relatedTxs.reduce((sum, tx) => sum + tx.amount, 0);
-    const desiredContribution = isPendingSaleStatus(status) ? total : 0;
-
-    await db.update<CustomerTransaction>('customer_transactions', saleTx.id, {
-      amount: total,
-      description,
-      date: saleDate,
-    });
-
-    if (desiredContribution === 0) {
-      const paymentDescription = `Cobro de ${description}`;
-      const [primaryPaymentTx, ...extraPaymentTxs] = paymentTxs;
-
-      if (primaryPaymentTx) {
-        await db.update<CustomerTransaction>('customer_transactions', primaryPaymentTx.id, {
-          amount: -total,
-          description: paymentDescription,
-          date: primaryPaymentTx.date || todayString(),
-          paymentMethod: paymentMethod || primaryPaymentTx.paymentMethod || 'Efectivo',
-        });
-      } else {
-        await db.create<CustomerTransaction>('customer_transactions', {
-          id: crypto.randomUUID(),
-          ownerUid: user!.uid,
-          customerId: customer.id,
-          type: 'payment',
-          amount: -total,
-          description: paymentDescription,
-          paymentMethod: paymentMethod || 'Efectivo',
-          relatedSaleId: saleId,
-          date: todayString(),
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      for (const tx of extraPaymentTxs) {
-        await db.delete('customer_transactions', tx.id);
-      }
-    } else {
-      for (const tx of paymentTxs) {
-        await db.delete('customer_transactions', tx.id);
-      }
-    }
-
-    const balanceDelta = desiredContribution - currentContribution;
-    if (balanceDelta !== 0) {
-      await db.update<Customer>('customers', customer.id, {
-        currentBalance: customer.currentBalance + balanceDelta,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-  };
 
   const fetchData = async () => {
     if (!user) return;
@@ -213,181 +138,35 @@ export default function Sales() {
         return;
       }
 
-      const total = calculateTotal();
-      const product = products.find(p => p.id === formData.productId);
-
-      if (!product) return;
-
-      // Validate stock for all statuses — stock always reserved at creation
-      if (!editingSale && product.stock < (formData.quantity || 0)) {
-        alert('No hay suficiente stock para realizar esta venta.');
-        return;
-      }
-
-      const saleData = {
-        ...formData,
-        total,
-        ownerUid: user.uid
-      } as Sale;
-
       if (editingSale) {
-        const oldSale = editingSale;
-        const newStatus = saleData.status;
-        const newQty = saleData.quantity;
-        const newProductId = saleData.productId;
-        const newProduct = products.find(p => p.id === newProductId);
-        const oldProduct = products.find(p => p.id === oldSale.productId);
-
-        if (!newProduct) return;
-
-        const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
-          { field: 'saleId', value: oldSale.id },
-          { field: 'ownerUid', value: user.uid },
-        ]);
-        const cfEntry = cfEntries[0] || null;
-        const productChanged = oldSale.productId !== newProductId;
-        const saleDescription = getSaleCashFlowDescription({
-          ...saleData,
-          quantity: newQty,
+        await callRpc('edit_sale', {
+          p_sale_id:            editingSale.id,
+          p_new_product_id:     formData.productId,
+          p_new_quantity:       formData.quantity,
+          p_new_unit_price:     formData.unitPrice,
+          p_new_adjustment:     formData.adjustment ?? 0,
+          p_new_status:         formData.status,
+          p_new_payment_method: formData.paymentMethod ?? null,
+          p_new_client:         formData.client ?? null,
+          p_new_date:           formData.date,
         });
-
-        // Stock: always held regardless of status. Adjust for product/quantity changes.
-        if (productChanged) {
-          // Restajar stock del producto viejo y aplicar al nuevo
-          const oldFresh = await db.get<Product>('products', oldProduct.id);
-          if (oldFresh) {
-            await db.update<Product>('products', oldProduct.id, { stock: oldFresh.stock + oldSale.quantity });
-          }
-          const freshNew = await db.get<Product>('products', newProduct.id);
-          if (!freshNew) throw new Error('Producto no encontrado');
-          if (freshNew.stock < newQty) {
-            // rollback si no hay stock suficiente en el nuevo producto
-            if (oldFresh) await db.update<Product>('products', oldProduct.id, { stock: oldFresh.stock });
-            alert('No hay suficiente stock para la actualización');
-            return;
-          }
-          await db.update<Product>('products', newProduct.id, { stock: freshNew.stock - newQty });
-        } else {
-          // Misma tabla de producto: revertir stock de la cantidad anterior y aplicar la nueva
-          const freshSame = await db.get<Product>('products', newProduct.id);
-          if (!freshSame) throw new Error('Producto no encontrado');
-          const computed = freshSame.stock + oldSale.quantity - newQty;
-          if (computed < 0) { alert('No hay suficiente stock para la actualización'); return; }
-          await db.update<Product>('products', newProduct.id, { stock: computed });
-        }
-
-        // Cashflow: only for Pagado transitions
-        if (oldSale.status === 'Pagado' && newStatus === 'Pagado') {
-          if (cfEntry) {
-            await db.update('cash_flow', cfEntry.id, {
-              date: saleData.date,
-              description: saleDescription,
-              amount: total,
-              paymentMethod: saleData.paymentMethod || 'Efectivo'
-            });
-          }
-        } else if (oldSale.status === 'Pagado' && newStatus !== 'Pagado') {
-          if (cfEntry) await db.delete('cash_flow', cfEntry.id);
-        } else if (oldSale.status !== 'Pagado' && newStatus === 'Pagado') {
-          await db.create('cash_flow', {
-            id: crypto.randomUUID(),
-            date: saleData.date,
-            type: 'Ingreso',
-            source: 'Venta',
-            description: saleDescription,
-            category: 'Venta Externa',
-            amount: total,
-            paymentMethod: saleData.paymentMethod || 'Efectivo',
-            status: 'Pagado',
-            saleId: oldSale.id,
-            ownerUid: user.uid,
-            createdAt: new Date().toISOString()
-          });
-        }
-
-        // FIX 3: Guardar venta PRIMERO (transaccional parcial - si falla stock/cashflow, la venta ya quedó)
-        await db.update<Sale>('sales', editingSale.id, saleData);
-        await syncCustomerLedgerForSale(
-          editingSale.id,
-          saleData.status,
-          total,
-          saleDescription,
-          saleData.date,
-          saleData.paymentMethod
-        );
       } else {
-        // Idempotency: reject duplicate within 5 seconds (same product/qty/total/date)
-        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
-        const potentialDuplicate = sales.find(s =>
-          s.productId === formData.productId &&
-          s.quantity === (formData.quantity || 0) &&
-          s.total === total &&
-          s.date === formData.date &&
-          s.createdAt && s.createdAt > fiveSecondsAgo
-        );
-        if (potentialDuplicate) {
-          alert('Se detectó un registro idéntico creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
-          return;
-        }
+        const status     = (isCreditSale && selectedCustomer) ? 'Pendiente' : formData.status;
+        const clientName = (isCreditSale && selectedCustomer)
+          ? selectedCustomer.name
+          : (formData.client ?? null);
 
-        // Override status if credit sale
-        if (isCreditSale && selectedCustomer) {
-          saleData.status = 'Pendiente';
-          saleData.client = selectedCustomer.name;
-        }
-
-        const newSale = await db.create('sales', {
-          ...saleData,
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString()
+        await callRpc('register_sale', {
+          p_date:           formData.date,
+          p_product_id:     formData.productId,
+          p_quantity:       formData.quantity,
+          p_unit_price:     formData.unitPrice,
+          p_adjustment:     formData.adjustment ?? 0,
+          p_status:         status,
+          p_payment_method: formData.paymentMethod ?? null,
+          p_client:         clientName,
+          p_customer_id:    (isCreditSale && selectedCustomer) ? selectedCustomer.id : null,
         });
-
-        // Always reduce stock — read fresh from Firestore to avoid race conditions
-        const freshProduct = await db.get<Product>('products', product.id);
-        if (!freshProduct) throw new Error('Producto no encontrado al descontar stock');
-        if (freshProduct.stock < newSale.quantity) {
-          await db.delete('sales', newSale.id);
-          alert('Stock insuficiente al confirmar la venta. La venta fue cancelada.');
-          return;
-        }
-        await db.update<Product>('products', product.id, { stock: freshProduct.stock - newSale.quantity });
-        console.log('[Stock] Descontado:', { productId: product.id, antes: freshProduct.stock, despues: freshProduct.stock - newSale.quantity });
-
-        if (isCreditSale && selectedCustomer) {
-          // Credit sale: create CustomerTransaction and update balance; no cash_flow yet
-          const now = new Date().toISOString();
-          await db.create<CustomerTransaction>('customer_transactions', {
-            id: crypto.randomUUID(),
-            ownerUid: user.uid,
-            customerId: selectedCustomer.id,
-            type: 'sale',
-            amount: total,
-            description: getSaleCashFlowDescription(newSale),
-            relatedSaleId: newSale.id,
-            date: newSale.date,
-            createdAt: now,
-          });
-          await db.update<Customer>('customers', selectedCustomer.id, {
-            currentBalance: selectedCustomer.currentBalance + total,
-            updatedAt: now,
-          });
-        } else if (newSale.status === 'Pagado') {
-          // Only add to cash flow if paid
-          await db.create('cash_flow', {
-            id: crypto.randomUUID(),
-            date: newSale.date,
-            type: 'Ingreso',
-            source: 'Venta',
-            description: getSaleCashFlowDescription(newSale),
-            category: 'Venta Externa',
-            amount: newSale.total,
-            paymentMethod: newSale.paymentMethod || 'Efectivo',
-            status: 'Pagado',
-            saleId: newSale.id,
-            ownerUid: user.uid,
-            createdAt: new Date().toISOString()
-          });
-        }
       }
 
       setIsModalOpen(false);
@@ -411,7 +190,7 @@ export default function Sales() {
       fetchData();
     } catch (error) {
       console.error('Error al guardar venta:', error);
-      alert('Error al guardar la venta. Revisá la consola para más detalles.');
+      alert(error instanceof Error ? error.message : 'Error al guardar la venta.');
       fetchData();
     } finally {
       setSaving(false);
@@ -419,123 +198,25 @@ export default function Sales() {
   };
 
   const handleToggleStatus = async (sale: Sale) => {
-    if (!user) return;
-    if (isPendingSaleStatus(sale.status)) {
-      // Idempotency: check if cashflow entry already exists before creating
-      const existing = await db.findBy<CashFlowEntry>('cash_flow', [
-        { field: 'saleId', value: sale.id },
-        { field: 'ownerUid', value: user.uid },
-      ]);
-      await db.update<Sale>('sales', sale.id, { status: 'Pagado', paymentMethod: sale.paymentMethod || 'Efectivo' });
-      if (existing.length === 0) {
-        await db.create('cash_flow', {
-          id: crypto.randomUUID(),
-          date: sale.date,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: getSaleCashFlowDescription(sale),
-          category: 'Venta Externa',
-          amount: sale.total,
-          paymentMethod: sale.paymentMethod || 'Efectivo',
-          status: 'Pagado',
-          saleId: sale.id,
-          ownerUid: user.uid,
-          createdAt: new Date().toISOString()
-        });
-      }
-      await syncCustomerLedgerForSale(
-        sale.id,
-        'Pagado',
-        sale.total,
-        getSaleCashFlowDescription(sale),
-        sale.date,
-        sale.paymentMethod || 'Efectivo'
-      );
-    } else if (sale.status === 'Pagado') {
-      await db.update<Sale>('sales', sale.id, { status: 'Pendiente' });
-      const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
-        { field: 'saleId', value: sale.id },
-        { field: 'ownerUid', value: user.uid },
-      ]);
-      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
-      await syncCustomerLedgerForSale(
-        sale.id,
-        'Pendiente',
-        sale.total,
-        getSaleCashFlowDescription(sale),
-        sale.date,
-        sale.paymentMethod
-      );
+    const newStatus = isPendingSaleStatus(sale.status) ? 'Pagado' : 'Pendiente';
+    try {
+      await callRpc('toggle_sale_status', { p_sale_id: sale.id, p_new_status: newStatus });
+      fetchData();
+    } catch (error) {
+      console.error('Error al cambiar estado:', error);
+      alert(error instanceof Error ? error.message : 'Error al cambiar el estado.');
     }
-    fetchData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar esta venta?')) return;
-    const sale = sales.find(s => s.id === id);
-    if (sale) {
-      // Always return stock — it was reserved at creation regardless of status
-      const saleItems = aggregateProductQuantities(getSaleLineItems(sale));
-      for (const [productId, qty] of Object.entries(saleItems)) {
-        const freshProduct = await db.get<Product>('products', productId);
-        if (freshProduct) {
-          await db.update<Product>('products', productId, { stock: freshProduct.stock + qty });
-        }
-      }
-      const cfEntries = await db.findBy<CashFlowEntry>('cash_flow', [
-        { field: 'saleId', value: id },
-        { field: 'ownerUid', value: user!.uid },
-      ]);
-      for (const cf of cfEntries) await db.delete('cash_flow', cf.id);
-      // Reverse customer balance if this was a credit sale
-      const txs = await db.findBy<CustomerTransaction>('customer_transactions', [
-        { field: 'relatedSaleId', value: id },
-        { field: 'ownerUid', value: user!.uid },
-      ]);
-      for (const tx of txs) {
-        const customer = await db.get<Customer>('customers', tx.customerId);
-        if (customer) {
-          await db.update<Customer>('customers', tx.customerId, {
-            currentBalance: customer.currentBalance - tx.amount,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        await db.delete('customer_transactions', tx.id);
-      }
+    try {
+      await callRpc('delete_sale', { p_sale_id: id });
+      fetchData();
+    } catch (error) {
+      console.error('Error al eliminar venta:', error);
+      alert(error instanceof Error ? error.message : 'Error al eliminar la venta.');
     }
-    await db.delete('sales', id);
-    fetchData();
-  };
-
-  const legacyPendingSales = sales.filter(s => !s.createdAt && isPendingSaleStatus(s.status));
-
-  const handleFixLegacyStock = async () => {
-    if (!user || legacyPendingSales.length === 0) return;
-    if (!confirm(`Se encontraron ${legacyPendingSales.length} venta(s) pendiente(s) sin stock descontado. ¿Descontar ahora?`)) return;
-
-    // Group quantities by product to avoid race conditions
-    const deductions = aggregateProductQuantities(
-      legacyPendingSales.flatMap(sale => getSaleLineItems(sale))
-    );
-
-    // Fetch fresh stock values before updating
-    const freshProducts = await db.list<Product>('products', user.uid);
-    let corrected = 0;
-    for (const [productId, qty] of Object.entries(deductions)) {
-      const product = freshProducts.find(p => p.id === productId);
-      if (product) {
-        await db.update<Product>('products', productId, { stock: Math.max(0, product.stock - qty) });
-        corrected++;
-      }
-    }
-
-    // Stamp createdAt so these sales are no longer detected as legacy
-    for (const sale of legacyPendingSales) {
-      await db.update<Sale>('sales', sale.id, { createdAt: new Date().toISOString() });
-    }
-
-    alert(`Stock corregido para ${corrected} producto(s).`);
-    fetchData();
   };
 
   const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
@@ -548,31 +229,8 @@ export default function Sales() {
     return matchesSearch && matchesStatus;
   });
 
-  console.log('Rendering Sales page:', {
-    loading,
-    salesCount: sales.length,
-    filteredSalesCount: filteredSales.length,
-    user: user?.uid
-  });
-
   return (
     <div className="space-y-6">
-      {legacyPendingSales.length > 0 && (
-        <div className="flex items-center justify-between gap-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl">
-          <div className="flex items-center gap-3">
-            <AlertCircle size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              {legacyPendingSales.length} venta(s) pendiente(s) anteriores al fix no tienen stock descontado.
-            </p>
-          </div>
-          <button
-            onClick={handleFixLegacyStock}
-            className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-colors"
-          >
-            Corregir stock ahora
-          </button>
-        </div>
-      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ventas</h2>

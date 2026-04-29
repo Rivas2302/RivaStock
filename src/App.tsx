@@ -14,7 +14,6 @@ import Quotes from './pages/Quotes';
 import QuotePublic from './pages/QuotePublic';
 import Customers from './pages/Customers';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { Loader2 } from 'lucide-react';
@@ -37,7 +36,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/catalogo/:slug" element={<PublicCatalog />} />
@@ -55,7 +53,7 @@ function AppRoutes() {
         <Route path="calculadora" element={<Calculator />} />
         <Route path="config" element={<Settings />} />
       </Route>
-      
+
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
@@ -67,9 +65,9 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline  = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
+    window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
 
     const handler = (e: any) => {
@@ -80,7 +78,7 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handler);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('online',  handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handler);
     };
@@ -90,9 +88,7 @@ export default function App() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then((choiceResult: any) => {
-        if (choiceResult.outcome === 'accepted') {
-          setShowInstallBanner(false);
-        }
+        if (choiceResult.outcome === 'accepted') setShowInstallBanner(false);
         setDeferredPrompt(null);
       });
     }
