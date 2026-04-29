@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rivastock-v3';
+const CACHE_NAME = 'rivastock-v5';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -26,39 +26,41 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // SPA navigation fallback: serve index.html for SPA routes
-  const isNavigate = event.request.mode === 'navigate';
-  const acceptsHTML = (() => {
-    try {
-      const h = event.request.headers.get('accept');
-      return h ? h.includes('text/html') : false;
-    } catch {
-      return false;
-    }
-  })();
-  if (isNavigate || acceptsHTML) {
+  const url = new URL(event.request.url);
+
+  // Always network first for index.html (the SPA entry point)
+  if (url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
-      caches.match('/index.html').then((resp) => resp || fetch('/index.html'))
+      fetch(event.request).then((response) => {
+        const responseClone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseClone);
+        });
+        return response;
+      }).catch(() => caches.match(event.request))
     );
     return;
   }
-  const url = new URL(event.request.url);
 
-  // Never intercept non-GET requests (POST, PUT, DELETE can't be cached)
+  // SPA navigation: serve index.html for all client-side routes
+  const isNavigate = event.request.mode === 'navigate';
+  if (isNavigate) {
+    event.respondWith(
+      fetch('/index.html').catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Never cache non-GET requests
   if (event.request.method !== 'GET') return;
 
-  if (url.origin === location.origin && APP_SHELL.includes(url.pathname)) {
-    // Network first for app shell so updates are always picked up
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
-  } else if (url.origin.includes('googleapis.com') || url.origin.includes('firebase') || url.origin.includes('supabase.co')) {
-    // Network first for API calls
+  // Network first for API calls
+  if (url.origin.includes('supabase.co') || url.origin.includes('googleapis.com') || url.origin.includes('firebase')) {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(event.request))
     );
   } else {
-    // Cache first for static assets (JS/CSS bundles), populate cache on miss
+    // Cache first for static assets
     event.respondWith(
       caches.match(event.request).then((response) => {
         return response || fetch(event.request).then((networkResponse) => {
