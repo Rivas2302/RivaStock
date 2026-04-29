@@ -19,9 +19,25 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 async function loadProfile(session: Session): Promise<UserProfile | null> {
   try {
     const profile = await db.get<UserProfile>('users', session.user.id);
-    if (!profile) return null;
-    // Ensure uid is always set (profile.uid comes from fromDb mapping id→uid)
-    return { ...profile, uid: session.user.id };
+    if (profile) {
+      // Ensure uid is always set (profile.uid comes from fromDb mapping id→uid)
+      return { ...profile, uid: session.user.id };
+    }
+    // If no profile exists yet, create a minimal profile from available auth data
+    const userMeta: any = (session.user as any).user_metadata ?? {};
+    const newProfile: UserProfile = {
+      uid: session.user.id,
+      email: session.user.email ?? '',
+      displayName: userMeta.full_name ?? session.user.email ?? '',
+      role: 'admin',
+      businessName: userMeta.businessName ?? '',
+      businessNameLower: (userMeta.businessName ?? '').toLowerCase(),
+      currencySymbol: '$',
+      darkMode: false,
+      createdAt: new Date().toISOString(),
+    } as UserProfile;
+    const created = await db.create<UserProfile>('users', newProfile);
+    return created;
   } catch {
     return null;
   }
