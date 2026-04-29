@@ -2,13 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
-import { auth, db, storage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from '../lib/db';
-import { 
-  Category, 
-  PriceRange, 
-  CatalogConfig, 
+import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
+import {
+  Category,
+  PriceRange,
+  CatalogConfig,
   UserProfile,
-  Collaborator,
   Product
 } from '../types';
 import { formatCurrency, cn, slugify } from '../lib/utils';
@@ -16,9 +15,6 @@ import {
   Settings as SettingsIcon,
   Plus,
   Trash2,
-  Save,
-  UserPlus,
-  Shield,
   Globe,
   Palette,
   LayoutGrid,
@@ -26,8 +22,6 @@ import {
   DollarSign,
   Moon,
   Sun,
-  Check,
-  X,
   Copy,
   ExternalLink,
   Wrench,
@@ -38,7 +32,7 @@ import Modal from '../components/Modal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'collaborators' | 'maintenance';
+type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'maintenance';
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
@@ -51,8 +45,7 @@ export default function Settings() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig | null>(null);
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  
+
   // Form states
   const [businessName, setBusinessName] = useState(user?.businessName || '');
   const [catalogSlug, setCatalogSlug] = useState(user?.catalogSlug || '');
@@ -65,15 +58,10 @@ export default function Settings() {
     maxPrice: null,
     markupPercent: 0
   });
-  const [isCollaboratorModalOpen, setIsCollaboratorModalOpen] = useState(false);
   const [isDeleteCategoryModalOpen, setIsDeleteCategoryModalOpen] = useState(false);
   const [isDeleteDataModalOpen, setIsDeleteDataModalOpen] = useState(false);
   const [isDeletingData, setIsDeletingData] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
-  const [collaboratorForm, setCollaboratorForm] = useState({
-    email: '',
-    role: 'viewer' as 'admin' | 'viewer'
-  });
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -86,55 +74,14 @@ export default function Settings() {
   const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
   const [cleanupResult, setCleanupResult] = useState<{ salesDeleted: number; cashFlowDeleted: number } | null>(null);
 
-  const compressImage = (file: File, maxWidth: number, maxHeight: number, quality: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > maxWidth) {
-              height *= maxWidth / width;
-              width = maxWidth;
-            }
-          } else {
-            if (height > maxHeight) {
-              width *= maxHeight / height;
-              height = maxHeight;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
-          resolve(dataUrl);
-        };
-        img.onerror = reject;
-      };
-      reader.onerror = reject;
-    });
-  };
-
   const fetchData = async () => {
     if (!user) return;
-    console.log('fetchData: Fetching data for user', user.uid);
     try {
-      const [cat, pr, ccList, col] = await Promise.all([
+      const [cat, pr, ccList] = await Promise.all([
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
         db.list<CatalogConfig>('catalog_configs', user.uid),
-        db.list<Collaborator>('collaborators', user.uid)
       ]);
-
-      console.log('fetchData: Data fetched', { categories: cat.length, priceRanges: pr.length, catalogConfigs: ccList.length, collaborators: col.length });
 
       let cc = ccList[0] || null;
 
@@ -181,7 +128,6 @@ export default function Settings() {
     setCategories(cat);
     setPriceRanges(pr.sort((a, b) => a.minPrice - b.minPrice));
     setCatalogConfig(cc);
-    setCollaborators(col);
     setLoading(false);
     } catch (error) {
       console.error('fetchData: Error fetching data', error);
@@ -225,16 +171,11 @@ export default function Settings() {
 
   const handleUpdateProfile = async () => {
     if (!user) return;
-    
-    // Check for unique business name (case insensitive, trim)
+
     const trimmedName = businessName.trim();
     const normalizedName = trimmedName.toLowerCase();
-    
-    console.log('Updating business:', trimmedName, 'Normalized:', normalizedName);
-    
+
     const existingBusinesses = await db.find<UserProfile>('users', 'businessNameLower', normalizedName, 1);
-    
-    console.log('Existing businesses count:', existingBusinesses.length);
     
     // If name exists and it's not the current user's business
     if (existingBusinesses.length > 0 && existingBusinesses[0].uid !== user.uid) {
@@ -279,62 +220,6 @@ export default function Settings() {
     fetchData();
   };
 
-  const handleAddCollaborator = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !collaboratorForm.email) return;
-
-    try {
-      await db.create<Collaborator>('collaborators', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        email: collaboratorForm.email,
-        role: collaboratorForm.role,
-        status: 'pending'
-      });
-
-      // Intentar enviar email de invitación usando Firebase Auth
-      try {
-        const actionCodeSettings = {
-          url: `${window.location.origin}/login?email=${encodeURIComponent(collaboratorForm.email)}`,
-          handleCodeInApp: true,
-        };
-        
-        await auth.sendSignInLinkToEmail(collaboratorForm.email, actionCodeSettings);
-        window.localStorage.setItem('emailForSignIn', collaboratorForm.email);
-        showMessage('Invitación enviada por email');
-      } catch (emailError: any) {
-        // Si falla el envío automático (por configuración de Firebase), 
-        // simplemente notificamos que el registro fue exitoso.
-        // El usuario ya tiene el botón de "Copiar Link" en la tabla como alternativa.
-        showMessage('Colaborador registrado correctamente');
-      }
-
-      setCollaboratorForm({ email: '', role: 'viewer' });
-      setIsCollaboratorModalOpen(false);
-      fetchData();
-    } catch (error) {
-      console.error('handleAddCollaborator: Error in invitation flow', error);
-      showMessage('Error al registrar el colaborador en la base de datos.', 'error');
-    }
-  };
-
-  const copyInviteLink = (email: string) => {
-    const link = `${window.location.origin}/login?email=${encodeURIComponent(email)}`;
-    navigator.clipboard.writeText(link);
-    showMessage('Enlace de invitación copiado al portapapeles');
-  };
-
-  const handleDeleteCollaborator = async (id: string) => {
-    try {
-      await db.delete('collaborators', id);
-      showMessage('Colaborador eliminado');
-      fetchData();
-    } catch (error) {
-      console.error('Error deleting collaborator:', error);
-      showMessage('Error al eliminar colaborador', 'error');
-    }
-  };
-
   const handleAddPriceRange = async () => {
     if (!user) return;
     await db.create('price_ranges', {
@@ -352,21 +237,12 @@ export default function Settings() {
   };
 
   const handleUpdateCatalog = async (updates: Partial<CatalogConfig>) => {
-    console.log('handleUpdateCatalog called with:', updates);
-    if (!user) {
-      console.log('handleUpdateCatalog: No user');
-      return;
-    }
-    if (!catalogConfig) {
-      console.log('handleUpdateCatalog: No catalogConfig');
-      return;
-    }
+    if (!user || !catalogConfig) return;
     try {
       await db.update('catalog_configs', catalogConfig.id, updates);
-      console.log('handleUpdateCatalog: Update successful');
       fetchData();
     } catch (error) {
-      console.error('handleUpdateCatalog: Update failed', error);
+      console.error('handleUpdateCatalog failed', error);
     }
   };
 
@@ -440,7 +316,6 @@ export default function Settings() {
     { id: 'categories', label: 'Categorías', icon: Tags },
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
-    { id: 'collaborators', label: 'Colaboradores', icon: UserPlus },
     { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
   ];
 
@@ -778,22 +653,16 @@ export default function Settings() {
                           {catalogConfig.logoUrl && (
                             <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
                               <img src={catalogConfig.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                              <button 
+                              <button
                                 onClick={async () => {
-                                  console.log('Se ha pulsado el botón de eliminar logotipo');
                                   try {
-                                    if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('firebasestorage.googleapis.com')) {
-                                      console.log('Eliminando logotipo del almacenamiento:', catalogConfig.logoUrl);
-                                      const oldRef = ref(storage, catalogConfig.logoUrl);
-                                      await deleteObject(oldRef);
-                                      console.log('Logotipo eliminado del almacenamiento');
+                                    if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('supabase')) {
+                                      await deleteFromStorage(catalogConfig.logoUrl);
                                     }
                                   } catch (e) {
-                                    console.error("Error al eliminar el logotipo del almacenamiento:", e);
+                                    console.error('Error al eliminar logo del almacenamiento:', e);
                                   }
-                                  console.log('Actualizando base de datos: estableciendo logoUrl a null');
                                   await handleUpdateCatalog({ logoUrl: null as any });
-                                  console.log('Base de datos actualizada');
                                   showMessage('Logo eliminado correctamente');
                                 }}
                                 className="absolute top-1 right-1 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
@@ -827,13 +696,12 @@ export default function Settings() {
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file || !user) return;
-                                
+
                                 const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
                                 if (!allowedTypes.includes(file.type)) {
                                   alert('Tipo de archivo no permitido. Usa JPG, PNG, WebP o SVG.');
                                   return;
                                 }
-
                                 if (file.size > 2 * 1024 * 1024) {
                                   alert('El archivo es demasiado grande. Máximo 2MB.');
                                   return;
@@ -841,30 +709,18 @@ export default function Settings() {
 
                                 try {
                                   setIsUploadingLogo(true);
-                                  setUploadProgress(20);
-
-                                  // Delete old logo if it's a storage URL
-                                  if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('firebasestorage.googleapis.com')) {
-                                    try {
-                                      const oldRef = ref(storage, catalogConfig.logoUrl);
-                                      await deleteObject(oldRef);
-                                    } catch (e) {
-                                      console.error("Error deleting old logo:", e);
-                                    }
-                                  }
-
-                                  const compressedBase64 = await compressImage(file, 800, 800, 0.8);
-                                  setUploadProgress(80);
-                                  await handleUpdateCatalog({ logoUrl: compressedBase64 });
+                                  setUploadProgress(50);
+                                  const url = await uploadToStorage(`${user.uid}/logo`, file, file.type);
                                   setUploadProgress(100);
+                                  await handleUpdateCatalog({ logoUrl: url });
                                   showMessage('Logo actualizado correctamente');
-                                  setIsUploadingLogo(false);
-                                  e.target.value = ''; // Reset input
                                 } catch (error) {
-                                  console.error('Logo processing failed:', error);
+                                  console.error('Logo upload failed:', error);
+                                  alert('Error al subir el logo.');
+                                } finally {
                                   setIsUploadingLogo(false);
-                                  alert('Error al procesar la imagen');
-                                  e.target.value = ''; // Reset input
+                                  setUploadProgress(0);
+                                  e.target.value = '';
                                 }
                               }}
                             />
@@ -878,22 +734,16 @@ export default function Settings() {
                           {catalogConfig.bannerUrl && (
                             <div className="relative w-full h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
                               <img src={catalogConfig.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-                              <button 
+                              <button
                                 onClick={async () => {
-                                  console.log('Borrar banner pulsado');
                                   try {
-                                    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('firebasestorage.googleapis.com')) {
-                                      console.log('Eliminando banner del almacenamiento:', catalogConfig.bannerUrl);
-                                      const oldRef = ref(storage, catalogConfig.bannerUrl);
-                                      await deleteObject(oldRef);
-                                      console.log('Banner eliminado del almacenamiento');
+                                    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('supabase')) {
+                                      await deleteFromStorage(catalogConfig.bannerUrl);
                                     }
                                   } catch (e) {
-                                    console.error("Error al eliminar el banner del almacenamiento:", e);
+                                    console.error('Error al eliminar banner del almacenamiento:', e);
                                   }
-                                  console.log('Actualizando base de datos: estableciendo bannerUrl a null');
                                   await handleUpdateCatalog({ bannerUrl: null as any });
-                                  console.log('Base de datos actualizada');
                                   showMessage('Banner eliminado correctamente');
                                 }}
                                 className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
@@ -927,13 +777,12 @@ export default function Settings() {
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file || !user) return;
-                                
+
                                 const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
                                 if (!allowedTypes.includes(file.type)) {
                                   alert('Tipo de archivo no permitido. Usa JPG, PNG o WebP.');
                                   return;
                                 }
-
                                 if (file.size > 4 * 1024 * 1024) {
                                   alert('El archivo es demasiado grande. Máximo 4MB.');
                                   return;
@@ -941,31 +790,18 @@ export default function Settings() {
 
                                 try {
                                   setIsUploadingBanner(true);
-                                  setBannerUploadProgress(20);
-
-                                  // Delete old banner if it's a storage URL
-                                  if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('firebasestorage.googleapis.com')) {
-                                    try {
-                                      const oldRef = ref(storage, catalogConfig.bannerUrl);
-                                      await deleteObject(oldRef);
-                                    } catch (e) {
-                                      console.error("Error deleting old banner:", e);
-                                    }
-                                  }
-
-                                  // Banners can be wider, 1920px is standard Full HD
-                                  const compressedBase64 = await compressImage(file, 1920, 1080, 0.7);
-                                  setBannerUploadProgress(80);
-                                  await handleUpdateCatalog({ bannerUrl: compressedBase64 });
+                                  setBannerUploadProgress(50);
+                                  const url = await uploadToStorage(`${user.uid}/banner`, file, file.type);
                                   setBannerUploadProgress(100);
+                                  await handleUpdateCatalog({ bannerUrl: url });
                                   showMessage('Banner actualizado correctamente');
-                                  setIsUploadingBanner(false);
-                                  e.target.value = ''; // Reset input
                                 } catch (error) {
-                                  console.error('Banner processing failed:', error);
+                                  console.error('Banner upload failed:', error);
+                                  alert('Error al subir el banner.');
+                                } finally {
                                   setIsUploadingBanner(false);
-                                  alert('Error al procesar la imagen');
-                                  e.target.value = ''; // Reset input
+                                  setBannerUploadProgress(0);
+                                  e.target.value = '';
                                 }
                               }}
                             />
@@ -1092,93 +928,6 @@ export default function Settings() {
                         </label>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'collaborators' && (
-                <motion.div
-                  key="collaborators"
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">Colaboradores</h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Gestiona quién tiene acceso a tu negocio</p>
-                    </div>
-                    <button 
-                      onClick={() => setIsCollaboratorModalOpen(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2"
-                    >
-                      <UserPlus size={18} />
-                      Invitar
-                    </button>
-                  </div>
-
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
-                        <tr>
-                          <th className="px-6 py-4">Email</th>
-                          <th className="px-6 py-4">Rol</th>
-                          <th className="px-6 py-4">Estado</th>
-                          <th className="px-6 py-4 text-right">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                        {collaborators.map((c) => (
-                          <tr key={c.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                            <td className="px-6 py-4 font-medium dark:text-white">{c.email}</td>
-                            <td className="px-6 py-4">
-                              <span className={cn(
-                                "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                                c.role === 'admin' ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                              )}>
-                                {c.role === 'admin' ? 'Administrador' : 'Solo Lectura'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={cn(
-                                "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                                c.status === 'active' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
-                              )}>
-                                {c.status === 'active' ? 'Activo' : 'Pendiente'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                {c.status === 'pending' && (
-                                  <button 
-                                    onClick={() => copyInviteLink(c.email)}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                                    title="Copiar link de invitación"
-                                  >
-                                    <Copy size={18} />
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => handleDeleteCollaborator(c.id)}
-                                  className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                                  title="Eliminar colaborador"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {collaborators.length === 0 && (
-                          <tr>
-                            <td colSpan={4} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                              No hay colaboradores invitados
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
                   </div>
                 </motion.div>
               )}
@@ -1417,58 +1166,6 @@ export default function Settings() {
             </button>
           </div>
         </div>
-      </Modal>
-
-      {/* Collaborator Modal */}
-      <Modal 
-        isOpen={isCollaboratorModalOpen} 
-        onClose={() => setIsCollaboratorModalOpen(false)}
-        title="Invitar Colaborador"
-      >
-        <form onSubmit={handleAddCollaborator} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email del Colaborador</label>
-            <input 
-              type="email"
-              required
-              value={collaboratorForm.email}
-              onChange={(e) => setCollaboratorForm(prev => ({ ...prev, email: e.target.value }))}
-              className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-              placeholder="ejemplo@correo.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Rol</label>
-            <select 
-              value={collaboratorForm.role}
-              onChange={(e) => setCollaboratorForm(prev => ({ ...prev, role: e.target.value as any }))}
-              className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-            >
-              <option value="viewer">Solo Lectura</option>
-              <option value="admin">Administrador</option>
-            </select>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {collaboratorForm.role === 'admin' 
-                ? 'El administrador puede ver, crear, editar y eliminar datos.' 
-                : 'El usuario de solo lectura solo puede ver los datos sin realizar cambios.'}
-            </p>
-          </div>
-          <div className="flex gap-3 pt-4">
-            <button 
-              type="button"
-              onClick={() => setIsCollaboratorModalOpen(false)}
-              className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit"
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
-            >
-              Enviar Invitación
-            </button>
-          </div>
-        </form>
       </Modal>
 
       {/* Delete Data Modal */}

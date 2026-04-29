@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
-import { Customer, CustomerTransaction, CashFlowEntry } from '../types';
+import { db, callRpc } from '../lib/db';
+import { Customer, CustomerTransaction } from '../types';
 import { formatCurrency, cn, todayString, formatDate } from '../lib/utils';
 import {
   Plus, Search, Edit2, Trash2, Eye, Users,
@@ -173,44 +173,28 @@ export default function Customers() {
     }
     setSavingPayment(true);
     try {
-      const now = new Date().toISOString();
-      await db.create<CustomerTransaction>('customer_transactions', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        customerId: fichaCustomer.id,
-        type: 'payment',
-        amount: -amount,
-        description: paymentNote.trim(),
-        paymentMethod,
-        date: todayString(),
-        createdAt: now,
+      await callRpc('register_customer_payment', {
+        p_customer_id:    fichaCustomer.id,
+        p_amount:         amount,
+        p_payment_method: paymentMethod,
+        p_description:    paymentNote.trim(),
       });
-      await db.create<CashFlowEntry>('cash_flow', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        date: todayString(),
-        type: 'Ingreso',
-        source: 'Venta',
-        description: `Cobro cuenta corriente: ${fichaCustomer.name}`,
-        category: 'Cuenta Corriente',
-        amount,
-        paymentMethod,
-        status: 'Pagado',
-        createdAt: now,
-      });
-      const newBalance = fichaCustomer.currentBalance - amount;
-      await db.update<Customer>('customers', fichaCustomer.id, {
-        currentBalance: newBalance,
-        updatedAt: now,
-      });
-      setFichaCustomer(prev => prev ? { ...prev, currentBalance: newBalance } : null);
-      setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? { ...c, currentBalance: newBalance } : c));
+      const [updated] = await Promise.all([
+        db.get<Customer>('customers', fichaCustomer.id),
+        loadTransactions(fichaCustomer.id),
+      ]);
+      if (updated) {
+        setFichaCustomer(updated);
+        setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? updated : c));
+      }
       setPaymentAmount('');
       setPaymentNote('');
       setPaymentMethod('Efectivo');
       setFichaTab('history');
-      loadTransactions(fichaCustomer.id);
       showMessage('Pago registrado');
+    } catch (error) {
+      console.error('Error al registrar pago:', error);
+      showMessage(error instanceof Error ? error.message : 'Error al registrar el pago.', 'error');
     } finally {
       setSavingPayment(false);
     }

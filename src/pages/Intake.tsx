@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
+import { db, callRpc } from '../lib/db';
 import { Product, StockIntake } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
@@ -114,32 +114,23 @@ export default function Intake() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isSubmitting) return;
-
-    const product = products.find(p => p.id === formData.productId);
-    if (!product) return;
+    if (!user || isSubmitting || !formData.productId) return;
 
     setIsSubmitting(true);
     try {
-      const intakeData = {
-        ...formData,
-        ownerUid: user.uid
-      } as StockIntake;
-
-      const newIntake = await db.create('stock_intakes', {
-        ...intakeData,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString()
+      await callRpc('intake_stock', {
+        p_product_id:    formData.productId,
+        p_quantity:      formData.quantity,
+        p_purchase_price: formData.purchasePrice,
+        p_supplier:      formData.supplier || null,
+        p_notes:         formData.notes || null,
+        p_date:          formData.date,
       });
-
-      await db.update<Product>('products', product.id, {
-        stock: product.stock + newIntake.quantity,
-        purchasePrice: newIntake.purchasePrice,
-        updatedAt: new Date().toISOString()
-      });
-
       closeModal();
       fetchData();
+    } catch (error) {
+      console.error('Error al registrar ingreso:', error);
+      alert(error instanceof Error ? error.message : 'Error al registrar el ingreso.');
     } finally {
       setIsSubmitting(false);
     }
