@@ -1,0 +1,23 @@
+{
+  "name": "rivastock-migrate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "1-export": "node --experimental-vm-modules 1-export.ts",
+    "2-transform": "tsx 2-transform.ts",
+    "3-load": "tsx 3-load.ts",
+    "4-verify": "tsx 4-verify.ts",
+    "5-link-profiles": "tsx 5-link-profiles.ts"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.9.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.1",
+    "typescript": "^5.4.5",
+    "@types/node": "^22.0.0"
+  }
+}

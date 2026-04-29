@@ -1,231 +1,109 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile } from './types';
-import { auth, db, auth_instance } from './lib/db';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  sendPasswordResetEmail,
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-  User
-} from 'firebase/auth';
-import { slugify } from './lib/utils';
+import { supabase } from './lib/supabase';
+import { db } from './lib/db';
+import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  register: (email: string, password: string, businessName: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: UserProfile) => void;
   sendResetEmail: (email: string) => Promise<void>;
   resetPassword: (code: string, newPassword: string) => Promise<void>;
-  completeSignInWithEmailLink: (email: string, url: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function loadProfile(session: Session): Promise<UserProfile | null> {
+  try {
+    const profile = await db.get<UserProfile>('users', session.user.id);
+    if (!profile) return null;
+    // Ensure uid is always set (profile.uid comes from fromDb mapping id→uid)
+    return { ...profile, uid: session.user.id };
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser]       = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      console.log("AUTH STATE CHANGED:", firebaseUser);
-      if (firebaseUser) {
-        const profile = await db.get<UserProfile>('users', firebaseUser.uid);
-        console.log("USER PROFILE:", profile);
+    // Load initial session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        const profile = await loadProfile(session);
         setUser(profile);
-      } else {
-        console.log("USER IS NULL");
-        setUser(null);
       }
       setLoading(false);
-      console.log("AUTH LOADING SET TO FALSE");
     });
-    return unsubscribe;
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          const profile = await loadProfile(session);
+          setUser(profile);
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      },
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth_instance, email, password);
-      const profile = await db.get<UserProfile>('users', userCredential.user.uid);
-      setUser(profile);
-    } catch (error: any) {
-      if (error.code === 'auth/operation-not-allowed') {
-        throw new Error('El inicio de sesión con Email/Contraseña no está habilitado en Firebase Console. Por favor, habilítalo en: https://console.firebase.google.com/project/gen-lang-client-0798723445/authentication/providers o usa Google Login.');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        throw new Error('Email o contraseña incorrectos. Por favor verificá tus datos.');
       }
-      throw error;
-    }
-  };
-
-  const loginWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth_instance, provider);
-      const uid = userCredential.user.uid;
-      
-      let profile = await db.get<UserProfile>('users', uid);
-      
-      if (!profile) {
-        // Create a basic profile if it doesn't exist
-        const email = userCredential.user.email || '';
-        const baseSlug = slugify(userCredential.user.displayName || email.split('@')[0]);
-        const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
-        
-        const businessName = userCredential.user.displayName || 'Mi Negocio';
-        profile = {
-          uid,
-          email,
-          displayName: userCredential.user.displayName || email.split('@')[0],
-          role: 'admin',
-          businessName,
-          businessNameLower: businessName.toLowerCase(),
-          currencySymbol: '$',
-          darkMode: false,
-          createdAt: new Date().toISOString(),
-          catalogSlug,
-        };
-        await db.create('users', profile);
-      }
-      
-      setUser(profile);
-    } catch (error: any) {
-      console.error('Google Login Error:', error);
-      throw error;
-    }
-  };
-
-  const register = async (email: string, password: string, businessName: string) => {
-    try {
-      // Check for unique business name (case insensitive, trim)
-      const trimmedName = businessName.trim();
-      const normalizedName = trimmedName.toLowerCase();
-      
-      console.log('Registering business:', trimmedName, 'Normalized:', normalizedName);
-      
-      const existingBusinesses = await db.find<UserProfile>('users', 'businessNameLower', normalizedName, 1);
-      
-      console.log('Existing businesses count:', existingBusinesses.length);
-      
-      if (existingBusinesses.length > 0) {
-        throw new Error('Este nombre de negocio ya está en uso. Elige otro.');
-      }
-
-      const userCredential = await createUserWithEmailAndPassword(auth_instance, email, password);
-      const uid = userCredential.user.uid;
-      
-      const baseSlug = slugify(trimmedName);
-      const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
-      
-      const newUser: UserProfile = {
-        uid,
-        email,
-        displayName: email.split('@')[0],
-        role: 'admin',
-        businessName: trimmedName,
-        businessNameLower: normalizedName,
-        currencySymbol: '$',
-        darkMode: false,
-        createdAt: new Date().toISOString(),
-        catalogSlug,
-      };
-      
-      await db.create('users', newUser);
-      setUser(newUser);
-    } catch (error: any) {
-      if (error.code === 'auth/operation-not-allowed') {
-        throw new Error('El inicio de sesión con Email/Contraseña no está habilitado en Firebase Console. Por favor, habilítalo en: https://console.firebase.google.com/project/gen-lang-client-0798723445/authentication/providers o usa Google Login.');
-      }
-      if (error.code === 'auth/email-already-in-use') {
-        throw new Error('Este email ya está registrado. Por favor inicia sesión.');
-      }
-      throw error;
+      throw new Error(error.message);
     }
   };
 
   const logout = async () => {
-    await auth.signOut();
+    await supabase.auth.signOut();
     setUser(null);
   };
 
   const sendResetEmail = async (email: string) => {
-    try {
-      await sendPasswordResetEmail(auth_instance, email);
-    } catch (error: any) {
-      console.error('Reset Email Error:', error);
-      throw new Error('Error al enviar el email de recuperación.');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) throw new Error('Error al enviar el email de recuperación.');
+  };
+
+  const resetPassword = async (_code: string, newPassword: string) => {
+    // Supabase handles the reset token via the URL automatically when the user
+    // lands on /reset-password; we just call updateUser with the new password.
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      if (error.message.includes('expired')) {
+        throw new Error('El link ha expirado. Por favor solicitá uno nuevo.');
+      }
+      throw new Error('Error al actualizar la contraseña.');
     }
   };
 
-  const resetPassword = async (code: string, newPassword: string) => {
-    try {
-      await confirmPasswordReset(auth_instance, code, newPassword);
-    } catch (error: any) {
-      console.error('Reset Password Error:', error);
-      if (error.code === 'auth/expired-action-code') {
-        throw new Error('El link ha expirado. Por favor solicita uno nuevo.');
-      }
-      if (error.code === 'auth/invalid-action-code') {
-        throw new Error('El link es inválido o ya fue utilizado.');
-      }
-      throw error;
-    }
-  };
-
-  const completeSignInWithEmailLink = async (email: string, url: string) => {
-    try {
-      const result = await auth.signInWithEmailLink(email, url);
-      const uid = result.user.uid;
-      
-      let profile = await db.get<UserProfile>('users', uid);
-      if (!profile) {
-        // If it's a new collaborator, they might not have a profile yet
-        // We should probably create one or redirect to a profile completion page
-        // For now, let's create a basic one
-        const baseSlug = slugify(email.split('@')[0]);
-        const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
-        
-        profile = {
-          uid,
-          email,
-          displayName: email.split('@')[0],
-          role: 'viewer', // Default to viewer for collaborators
-          businessName: 'Colaborador',
-          businessNameLower: 'colaborador',
-          currencySymbol: '$',
-          darkMode: false,
-          createdAt: new Date().toISOString(),
-          catalogSlug,
-        };
-        await db.create('users', profile);
-      }
-      setUser(profile);
-      window.localStorage.removeItem('emailForSignIn');
-    } catch (error: any) {
-      console.error('Complete Sign In Error:', error);
-      throw error;
-    }
-  };
-
-  const updateUser = (updatedUser: UserProfile) => {
-    setUser(updatedUser);
-  };
+  const updateUser = (updatedUser: UserProfile) => setUser(updatedUser);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, updateUser, sendResetEmail, resetPassword, completeSignInWithEmailLink }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, logout, updateUser, sendResetEmail, resetPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  return ctx;
 }
