@@ -18,12 +18,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadProfile(session: Session): Promise<UserProfile | null> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const profile = await db.get<UserProfile>('users', session.user.id);
+    clearTimeout(timeoutId);
+    
     if (profile) {
-      // Ensure uid is always set (profile.uid comes from fromDb mapping id→uid)
       return { ...profile, uid: session.user.id };
     }
-    // If no profile exists yet, create a minimal profile from available auth data
     const userMeta: any = (session.user as any).user_metadata ?? {};
     const newProfile: UserProfile = {
       uid: session.user.id,
@@ -38,7 +41,8 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
     } as UserProfile;
     const created = await db.create<UserProfile>('users', newProfile);
     return created;
-  } catch {
+  } catch (err) {
+    console.error('[Auth] loadProfile error:', err);
     return null;
   }
 }
@@ -46,22 +50,40 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    let abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+    }, 10000);
 
     (async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) console.error('[Auth] getSession error:', error);
+        clearTimeout(timeoutId);
+        if (error) {
+          console.error('[Auth] getSession error:', error);
+          if (!mounted) return;
+          setUser(null);
+          setInitialized(true);
+          setLoading(false);
+          return;
+        }
         if (!mounted) return;
         if (session) {
           const profile = await loadProfile(session);
           if (!mounted) return;
           setUser(profile);
         }
+        setInitialized(true);
       } catch (err) {
         console.error('[Auth] Init failed:', err);
+        if (mounted) {
+          setUser(null);
+          setInitialized(true);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -69,23 +91,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        try {
-          if (session) {
-            const profile = await loadProfile(session);
-            if (mounted) setUser(profile);
-          } else {
-            if (mounted) setUser(null);
-          }
-        } catch (err) {
-          console.error('[Auth] State change failed:', err);
-        } finally {
-          if (mounted) setLoading(false);
+        if (!mounted) return;
+        
+        if (session) {
+          const profile = await loadProfile(session);
+          if (mounted) setUser(profile);
+        } else {
+          if (mounted) setUser(null);
         }
       },
     );
 
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
