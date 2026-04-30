@@ -54,12 +54,6 @@ export default function Dashboard() {
     return () => clearTimeout(timeout);
   }, [user]);
 
-  if (loading) return <div className="animate-pulse space-y-8">
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
-    </div>
-  </div>;
-
   const { kpis, lowStockProducts, recentSales } = useMemo(() => {
     let totalCollected = 0;
     let totalExpenses = 0;
@@ -130,6 +124,12 @@ export default function Dashboard() {
       recentSales: sales.slice(0, 5),
     };
   }, [cashFlow, products, sales]);
+
+  if (loading) return <div className="animate-pulse space-y-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
+    </div>
+  </div>;
 
   return (
     <div className="space-y-8">
