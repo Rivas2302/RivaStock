@@ -98,6 +98,7 @@ export default function Settings() {
         enabled: true,
         showPrices: true,
         showStock: true,
+        showStockQuantity: false,
         showOutOfStock: false,
         allowOrders: true,
         welcomeMessage: '¡Bienvenido a nuestra tienda!',
@@ -916,6 +917,15 @@ export default function Settings() {
                             className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
                           <span className="text-sm font-medium dark:text-slate-300">Mostrar stock disponible</span>
+                        </label>
+                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={catalogConfig.showStockQuantity ?? false}
+                            onChange={(e) => handleUpdateCatalog({ showStockQuantity: e.target.checked })}
+                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm font-medium dark:text-slate-300">Ocultar cantidad disponible</span>
                         </label>
                         <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
                           <input 

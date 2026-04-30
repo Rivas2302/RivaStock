@@ -552,7 +552,7 @@ export default function PublicCatalog() {
                   
                   {/* Badges */}
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
-                    {config.showStock && product.stock <= 5 && product.stock > 0 && (
+                    {config.showStock && config.showStockQuantity && product.stock <= 5 && product.stock > 0 && (
                       <span className="bg-rose-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
                         Últimas unidades
                       </span>
@@ -606,7 +606,7 @@ export default function PublicCatalog() {
                           "text-[10px] font-bold uppercase tracking-widest",
                           darkMode ? "text-white/20" : "text-slate-400"
                         )}>
-                          Stock: {product.stock}
+                          {config.showStockQuantity ? 'Disponible' : `Stock: ${product.stock}`}
                         </p>
                       )}
                     </div>
