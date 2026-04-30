@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile } from './types';
 import { supabase } from './lib/supabase';
 import { db } from './lib/db';
@@ -18,12 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadProfile(session: Session): Promise<UserProfile | null> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
     const profile = await db.get<UserProfile>('users', session.user.id);
-    clearTimeout(timeoutId);
-    
     if (profile) {
       return { ...profile, uid: session.user.id };
     }
@@ -50,64 +45,43 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  const init = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const profile = await loadProfile(session);
+        setUser(profile);
+      }
+    } catch (err) {
+      console.error('[Auth] Init failed:', err);
+    } finally {
+      setLoading(false);
+      setIsReady(true);
+    }
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
-    let abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      abortController.abort();
-    }, 10000);
+    init();
+  }, [init]);
 
-    (async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        clearTimeout(timeoutId);
-        if (error) {
-          console.error('[Auth] getSession error:', error);
-          if (!mounted) return;
-          setUser(null);
-          setInitialized(true);
-          setLoading(false);
-          return;
-        }
-        if (!mounted) return;
-        if (session) {
-          const profile = await loadProfile(session);
-          if (!mounted) return;
-          setUser(profile);
-        }
-        setInitialized(true);
-      } catch (err) {
-        console.error('[Auth] Init failed:', err);
-        if (mounted) {
-          setUser(null);
-          setInitialized(true);
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
+  useEffect(() => {
+    if (!isReady) return;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return;
-        
         if (session) {
           const profile = await loadProfile(session);
-          if (mounted) setUser(profile);
+          setUser(profile);
         } else {
-          if (mounted) setUser(null);
+          setUser(null);
         }
       },
     );
 
-    return () => {
-      mounted = false;
-      clearTimeout(timeoutId);
-      subscription.unsubscribe();
-    };
-  }, []);
+    return () => subscription.unsubscribe();
+  }, [isReady]);
 
   const login = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -132,8 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (_code: string, newPassword: string) => {
-    // Supabase handles the reset token via the URL automatically when the user
-    // lands on /reset-password; we just call updateUser with the new password.
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
       if (error.message.includes('expired')) {

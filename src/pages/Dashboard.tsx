@@ -23,25 +23,35 @@ export default function Dashboard() {
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     
     const fetchData = async () => {
-      const [p, s, cf, o] = await Promise.all([
-        db.list<Product>('products', user.uid),
-        db.list<Sale>('sales', user.uid),
-        db.list<CashFlowEntry>('cash_flow', user.uid),
-        db.list<Order>('orders', user.uid)
-      ]);
-      setProducts(p);
-      setSales(s);
-      setCashFlow(cf);
-      setOrders(o);
-      setLoading(false);
+      try {
+        const [p, s, cf, o] = await Promise.all([
+          db.list<Product>('products', user.uid),
+          db.list<Sale>('sales', user.uid),
+          db.list<CashFlowEntry>('cash_flow', user.uid),
+          db.list<Order>('orders', user.uid)
+        ]);
+        setProducts(p);
+        setSales(s);
+        setCashFlow(cf);
+        setOrders(o);
+      } catch (err) {
+        console.error('Dashboard fetch error:', err);
+        setError(err instanceof Error ? err.message : 'Error cargando datos');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
+    
+    const timeout = setTimeout(() => setLoading(false), 15000);
+    return () => clearTimeout(timeout);
   }, [user]);
 
   if (loading) return <div className="animate-pulse space-y-8">
