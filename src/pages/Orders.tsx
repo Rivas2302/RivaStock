@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Order, Product } from '../types';
@@ -28,6 +28,7 @@ export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const deferredStatusFilter = useDeferredValue(statusFilter);
 
   const fetchData = async () => {
     if (!user) return;
@@ -48,15 +49,14 @@ export default function Orders() {
   const handleConvertToSale = async (order: Order) => {
     // 1. Validate stock
     const aggregatedItems = aggregateProductQuantities(order.items);
-    const insufficientStock: string[] = [];
-
-    for (const [productId, qty] of Object.entries(aggregatedItems)) {
-      const productName = order.items.find(item => item.productId === productId)?.productName || 'producto';
-      const freshProduct = await db.get<Product>('products', productId);
-      if (!freshProduct || freshProduct.stock < qty) {
-        insufficientStock.push(productName);
-      }
-    }
+    const stockChecks = await Promise.all(
+      Object.entries(aggregatedItems).map(async ([productId, qty]) => {
+        const productName = order.items.find(item => item.productId === productId)?.productName || 'producto';
+        const freshProduct = await db.get<Product>('products', productId);
+        return !freshProduct || freshProduct.stock < qty ? productName : null;
+      }),
+    );
+    const insufficientStock = stockChecks.filter(Boolean) as string[];
 
     if (insufficientStock.length > 0) {
       alert(`No hay suficiente stock para: ${insufficientStock.join(', ')}`);
@@ -66,7 +66,7 @@ export default function Orders() {
     // 2. Create sale
     try {
       const today = todayString();
-      for (const item of order.items) {
+      await Promise.all(order.items.map(async (item) => {
         const saleId = crypto.randomUUID();
         const saleTotal = item.price * item.quantity;
 
@@ -100,15 +100,15 @@ export default function Orders() {
           ownerUid: user!.uid,
           createdAt: new Date().toISOString()
         });
-      }
+      }));
 
-      for (const [productId, qty] of Object.entries(aggregatedItems)) {
+      await Promise.all(Object.entries(aggregatedItems).map(async ([productId, qty]) => {
         const freshProduct = await db.get<Product>('products', productId);
         if (!freshProduct) {
           throw new Error(`Producto no encontrado: ${productId}`);
         }
         await db.update('products', productId, { stock: freshProduct.stock - qty });
-      }
+      }));
 
       // 3. Update order status
       await updateOrderStatus(order.id, 'Entregado');
@@ -120,16 +120,10 @@ export default function Orders() {
     }
   };
 
-  const filteredOrders = orders.filter(o => 
-    statusFilter === 'all' || o.status === statusFilter
+  const filteredOrders = useMemo(
+    () => orders.filter((order) => deferredStatusFilter === 'all' || order.status === deferredStatusFilter),
+    [deferredStatusFilter, orders],
   );
-
-  console.log('Rendering Orders page:', {
-    loading,
-    ordersCount: orders.length,
-    filteredOrdersCount: filteredOrders.length,
-    user: user?.uid
-  });
 
   return (
     <div className="space-y-6">

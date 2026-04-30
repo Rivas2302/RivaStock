@@ -1,24 +1,37 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import Stock from './pages/Stock';
-import Sales from './pages/Sales';
-import Intake from './pages/Intake';
-import CashFlow from './pages/CashFlow';
-import Orders from './pages/Orders';
-import Calculator from './pages/Calculator';
-import Settings from './pages/Settings';
-import PublicCatalog from './pages/PublicCatalog';
-import Quotes from './pages/Quotes';
-import QuotePublic from './pages/QuotePublic';
-import Customers from './pages/Customers';
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Stock = lazy(() => import('./pages/Stock'));
+const Sales = lazy(() => import('./pages/Sales'));
+const Intake = lazy(() => import('./pages/Intake'));
+const CashFlow = lazy(() => import('./pages/CashFlow'));
+const Orders = lazy(() => import('./pages/Orders'));
+const Calculator = lazy(() => import('./pages/Calculator'));
+const Settings = lazy(() => import('./pages/Settings'));
+const PublicCatalog = lazy(() => import('./pages/PublicCatalog'));
+const Quotes = lazy(() => import('./pages/Quotes'));
+const QuotePublic = lazy(() => import('./pages/QuotePublic'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <Loader2 className="animate-spin text-indigo-600" size={36} />
+    </div>
+  );
+}
+
+function withSuspense(element: React.ReactNode) {
+  return <Suspense fallback={<PageLoader />}>{element}</Suspense>;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -36,23 +49,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/catalogo/:slug" element={<PublicCatalog />} />
-      <Route path="/presupuesto/:id" element={<QuotePublic />} />
+      <Route path="/login" element={withSuspense(<Login />)} />
+      <Route path="/forgot-password" element={withSuspense(<ForgotPassword />)} />
+      <Route path="/reset-password" element={withSuspense(<ResetPassword />)} />
+      <Route path="/catalogo/:slug" element={withSuspense(<PublicCatalog />)} />
+      <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<Dashboard />} />
-        <Route path="stock" element={<Stock />} />
-        <Route path="ventas" element={<Sales />} />
-        <Route path="presupuestos" element={<Quotes />} />
-        <Route path="clientes" element={<Customers />} />
-        <Route path="ingresos" element={<Intake />} />
-        <Route path="caja" element={<CashFlow />} />
-        <Route path="pedidos" element={<Orders />} />
-        <Route path="calculadora" element={<Calculator />} />
-        <Route path="config" element={<Settings />} />
+        <Route index element={withSuspense(<Dashboard />)} />
+        <Route path="stock" element={withSuspense(<Stock />)} />
+        <Route path="ventas" element={withSuspense(<Sales />)} />
+        <Route path="presupuestos" element={withSuspense(<Quotes />)} />
+        <Route path="clientes" element={withSuspense(<Customers />)} />
+        <Route path="ingresos" element={withSuspense(<Intake />)} />
+        <Route path="caja" element={withSuspense(<CashFlow />)} />
+        <Route path="pedidos" element={withSuspense(<Orders />)} />
+        <Route path="calculadora" element={withSuspense(<Calculator />)} />
+        <Route path="config" element={withSuspense(<Settings />)} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" />} />

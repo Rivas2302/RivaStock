@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry, Order } from '../types';
@@ -60,54 +60,76 @@ export default function Dashboard() {
     </div>
   </div>;
 
-  // Calculations
-  const totalCollected = cashFlow.filter(e => e.type === 'Ingreso' && e.status === 'Pagado').reduce((acc, e) => acc + e.amount, 0);
-  const totalExpenses = cashFlow.filter(e => e.type === 'Gasto' && e.status === 'Pagado').reduce((acc, e) => acc + e.amount, 0);
-  const netBalance = totalCollected - totalExpenses;
+  const { kpis, lowStockProducts, recentSales } = useMemo(() => {
+    let totalCollected = 0;
+    let totalExpenses = 0;
+    let cashIncome = 0;
+    let cashExpenses = 0;
+    let bankIncome = 0;
+    let bankExpenses = 0;
 
-  const cashIncome = cashFlow.filter(e => e.type === 'Ingreso' && e.status === 'Pagado' && e.paymentMethod === 'Efectivo').reduce((acc, e) => acc + e.amount, 0);
-  const cashExpenses = cashFlow.filter(e => e.type === 'Gasto' && e.status === 'Pagado' && e.paymentMethod === 'Efectivo').reduce((acc, e) => acc + e.amount, 0);
-  const availableCash = cashIncome - cashExpenses;
+    for (const entry of cashFlow) {
+      const isPaid = entry.status === 'Pagado';
+      if (!isPaid) continue;
 
-  const bankIncome = cashFlow.filter(e => e.type === 'Ingreso' && e.status === 'Pagado' && e.paymentMethod === 'Transferencia').reduce((acc, e) => acc + e.amount, 0);
-  const bankExpenses = cashFlow.filter(e => e.type === 'Gasto' && e.status === 'Pagado' && e.paymentMethod === 'Transferencia').reduce((acc, e) => acc + e.amount, 0);
-  const availableBank = bankIncome - bankExpenses;
+      if (entry.type === 'Ingreso') {
+        totalCollected += entry.amount;
+        if (entry.paymentMethod === 'Efectivo') cashIncome += entry.amount;
+        if (entry.paymentMethod === 'Transferencia') bankIncome += entry.amount;
+      } else {
+        totalExpenses += entry.amount;
+        if (entry.paymentMethod === 'Efectivo') cashExpenses += entry.amount;
+        if (entry.paymentMethod === 'Transferencia') bankExpenses += entry.amount;
+      }
+    }
 
-  const pendingSales = sales.filter(s => s.status === 'No Pagado' || s.status === 'Pendiente').reduce((acc, s) => acc + s.total, 0);
-  
-  const stockValue = products.reduce((acc, p) => acc + (roundPrice(p.salePrice) * p.stock), 0);
-  const totalInvested = products.reduce((acc, p) => acc + (p.purchasePrice * p.stock), 0);
-  const potentialProfit = stockValue - totalInvested;
-  
-  const outOfStockCount = products.filter(p => p.stock === 0).length;
-  
-  const now = new Date();
-  const thisMonthSales = sales
-    .filter(s => {
-      const d = new Date(s.date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && s.status === 'Pagado';
-    })
-    .reduce((acc, s) => acc + s.total, 0);
+    let pendingSales = 0;
+    let thisMonthSales = 0;
+    const now = new Date();
 
-  const kpis = [
-    { title: 'Balance Neto', value: netBalance, icon: Wallet, color: 'indigo' },
-    { title: 'Efectivo Disponible', value: availableCash, icon: ArrowUpRight, color: 'emerald' },
-    { title: 'Transferencias Disp.', value: availableBank, icon: ArrowUpRight, color: 'blue' },
-    { title: 'Cobros Pendientes', value: pendingSales, icon: Clock, color: 'amber' },
-    { title: 'Valor en Stock', value: stockValue, icon: Package, color: 'violet' },
-    { title: 'Total Invertido', value: totalInvested, icon: TrendingDown, color: 'rose' },
-    { title: 'Ganancia Potencial', value: potentialProfit, icon: TrendingUp, color: 'emerald' },
-    { title: 'Productos sin Stock', value: outOfStockCount, icon: AlertTriangle, color: 'rose', isCurrency: false },
-    { title: 'Ventas del Mes', value: thisMonthSales, icon: ShoppingCart, color: 'indigo' },
-  ];
+    for (const sale of sales) {
+      if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
+        pendingSales += sale.total;
+      }
 
-  console.log('Rendering Dashboard:', {
-    loading,
-    productsCount: products.length,
-    salesCount: sales.length,
-    ordersCount: orders.length,
-    user: user?.uid
-  });
+      if (sale.status === 'Pagado') {
+        const saleDate = new Date(sale.date);
+        if (saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear()) {
+          thisMonthSales += sale.total;
+        }
+      }
+    }
+
+    let stockValue = 0;
+    let totalInvested = 0;
+    let outOfStockCount = 0;
+    const lowStockProducts: Product[] = [];
+
+    for (const product of products) {
+      stockValue += roundPrice(product.salePrice) * product.stock;
+      totalInvested += product.purchasePrice * product.stock;
+      if (product.stock === 0) outOfStockCount += 1;
+      if (product.stock <= product.minStock) {
+        lowStockProducts.push(product);
+      }
+    }
+
+    return {
+      kpis: [
+        { title: 'Balance Neto', value: totalCollected - totalExpenses, icon: Wallet, color: 'indigo' },
+        { title: 'Efectivo Disponible', value: cashIncome - cashExpenses, icon: ArrowUpRight, color: 'emerald' },
+        { title: 'Transferencias Disp.', value: bankIncome - bankExpenses, icon: ArrowUpRight, color: 'blue' },
+        { title: 'Cobros Pendientes', value: pendingSales, icon: Clock, color: 'amber' },
+        { title: 'Valor en Stock', value: stockValue, icon: Package, color: 'violet' },
+        { title: 'Total Invertido', value: totalInvested, icon: TrendingDown, color: 'rose' },
+        { title: 'Ganancia Potencial', value: stockValue - totalInvested, icon: TrendingUp, color: 'emerald' },
+        { title: 'Productos sin Stock', value: outOfStockCount, icon: AlertTriangle, color: 'rose', isCurrency: false },
+        { title: 'Ventas del Mes', value: thisMonthSales, icon: ShoppingCart, color: 'indigo' },
+      ],
+      lowStockProducts,
+      recentSales: sales.slice(0, 5),
+    };
+  }, [cashFlow, products, sales]);
 
   return (
     <div className="space-y-8">
@@ -164,7 +186,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {Array.isArray(sales) && sales.length > 0 ? sales.slice(0, 5).map((sale) => (
+                {recentSales.length > 0 ? recentSales.map((sale) => (
                   <tr key={sale.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-6 py-4 dark:text-slate-300">{formatDate(sale.date)}</td>
                     <td className="px-6 py-4 font-medium dark:text-white">{sale.productName}</td>
@@ -195,7 +217,7 @@ export default function Dashboard() {
             <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Gestionar Stock</button>
           </div>
           <div className="p-6 space-y-4">
-            {products.filter(p => p.stock <= p.minStock).slice(0, 5).map((product) => (
+            {lowStockProducts.slice(0, 5).map((product) => (
               <div key={product.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-3">
                   <div className={cn(
@@ -215,7 +237,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {products.filter(p => p.stock <= p.minStock).length === 0 && (
+            {lowStockProducts.length === 0 && (
               <div className="text-center py-8 text-slate-500 dark:text-slate-400">Todo el stock está al día</div>
             )}
           </div>

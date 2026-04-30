@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { CashFlowEntry } from '../types';
@@ -24,6 +24,7 @@ export default function CashFlow() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const deferredSearch = useDeferredValue(search);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -142,30 +143,62 @@ export default function CashFlow() {
     }
   };
 
-  // Calculations
-  const totalCollected = entries.filter(e => e.type === 'Ingreso' && e.status === 'Pagado').reduce((acc, e) => acc + e.amount, 0);
-  const totalPendingIncome = entries.filter(e => e.type === 'Ingreso' && e.status === 'Pendiente').reduce((acc, e) => acc + e.amount, 0);
-  const totalExpenses = entries.filter(e => e.type === 'Gasto' && e.status === 'Pagado').reduce((acc, e) => acc + e.amount, 0);
-  const totalPendingExpenses = entries.filter(e => e.type === 'Gasto' && e.status === 'Pendiente').reduce((acc, e) => acc + e.amount, 0);
-  
-  const netBalance = totalCollected - totalExpenses;
+  const {
+    availableBank,
+    availableCash,
+    filteredEntries,
+    netBalance,
+    totalCollected,
+    totalExpenses,
+    totalPendingExpenses,
+    totalPendingIncome,
+  } = useMemo(() => {
+    let totalCollected = 0;
+    let totalPendingIncome = 0;
+    let totalExpenses = 0;
+    let totalPendingExpenses = 0;
+    let cashIncome = 0;
+    let cashExpenses = 0;
+    let bankIncome = 0;
+    let bankExpenses = 0;
+    const searchValue = deferredSearch.toLowerCase();
 
-  const cashIncome = entries.filter(e => e.type === 'Ingreso' && e.status === 'Pagado' && e.paymentMethod === 'Efectivo').reduce((acc, e) => acc + e.amount, 0);
-  const cashExpenses = entries.filter(e => e.type === 'Gasto' && e.status === 'Pagado' && e.paymentMethod === 'Efectivo').reduce((acc, e) => acc + e.amount, 0);
-  const availableCash = cashIncome - cashExpenses;
+    const filteredEntries = entries.filter((entry) => {
+      if (entry.type === 'Ingreso') {
+        if (entry.status === 'Pagado') totalCollected += entry.amount;
+        if (entry.status === 'Pendiente') totalPendingIncome += entry.amount;
+        if (entry.status === 'Pagado' && entry.paymentMethod === 'Efectivo') cashIncome += entry.amount;
+        if (entry.status === 'Pagado' && entry.paymentMethod === 'Transferencia') bankIncome += entry.amount;
+      } else {
+        if (entry.status === 'Pagado') totalExpenses += entry.amount;
+        if (entry.status === 'Pendiente') totalPendingExpenses += entry.amount;
+        if (entry.status === 'Pagado' && entry.paymentMethod === 'Efectivo') cashExpenses += entry.amount;
+        if (entry.status === 'Pagado' && entry.paymentMethod === 'Transferencia') bankExpenses += entry.amount;
+      }
 
-  const bankIncome = entries.filter(e => e.type === 'Ingreso' && e.status === 'Pagado' && e.paymentMethod === 'Transferencia').reduce((acc, e) => acc + e.amount, 0);
-  const bankExpenses = entries.filter(e => e.type === 'Gasto' && e.status === 'Pagado' && e.paymentMethod === 'Transferencia').reduce((acc, e) => acc + e.amount, 0);
-  const availableBank = bankIncome - bankExpenses;
+      const matchesSearch =
+        entry.description.toLowerCase().includes(searchValue) ||
+        entry.category.toLowerCase().includes(searchValue);
+      const matchesType =
+        typeFilter === 'all' ||
+        (typeFilter === 'ingresos' && entry.type === 'Ingreso') ||
+        (typeFilter === 'gastos' && entry.type === 'Gasto') ||
+        (typeFilter === 'pendientes' && entry.status === 'Pendiente');
 
-  const filteredEntries = entries.filter(e => {
-    const matchesSearch = e.description.toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
-    const matchesType = typeFilter === 'all' || 
-      (typeFilter === 'ingresos' && e.type === 'Ingreso') || 
-      (typeFilter === 'gastos' && e.type === 'Gasto') ||
-      (typeFilter === 'pendientes' && e.status === 'Pendiente');
-    return matchesSearch && matchesType;
-  });
+      return matchesSearch && matchesType;
+    });
+
+    return {
+      availableBank: bankIncome - bankExpenses,
+      availableCash: cashIncome - cashExpenses,
+      filteredEntries,
+      netBalance: totalCollected - totalExpenses,
+      totalCollected,
+      totalExpenses,
+      totalPendingExpenses,
+      totalPendingIncome,
+    };
+  }, [deferredSearch, entries, typeFilter]);
 
   return (
     <div className="space-y-6">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Category, PriceRange } from '../types';
@@ -29,6 +29,7 @@ export default function Stock() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const deferredSearch = useDeferredValue(search);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -137,14 +138,14 @@ export default function Stock() {
     }
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
+  const filteredProducts = useMemo(() => products.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(deferredSearch.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     const matchesStatus = statusFilter === 'all' || 
       (statusFilter === 'disponible' && p.stock > 0) || 
       (statusFilter === 'no-disponible' && p.stock === 0);
     return matchesSearch && matchesCategory && matchesStatus;
-  });
+  }), [categoryFilter, deferredSearch, products, statusFilter]);
 
   const getMarginColor = (purchase: number, sale: number) => {
     if (!purchase || !sale) return 'text-slate-400';
@@ -159,13 +160,6 @@ export default function Stock() {
     const margin = ((sale - purchase) / sale) * 100;
     return `${margin.toFixed(0)}%`;
   };
-
-  console.log('Rendering Stock page:', {
-    loading,
-    productsCount: products.length,
-    filteredProductsCount: filteredProducts.length,
-    user: user?.uid
-  });
 
   return (
     <div className="space-y-6">

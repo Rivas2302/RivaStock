@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, toDb } from '../lib/db';
+import { db, invalidateDbCache, toDb } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { Product, CatalogConfig, Category, Order } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
@@ -47,6 +47,7 @@ export default function PublicCatalog() {
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const deferredSearch = useDeferredValue(search);
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('catalog-dark-mode') === 'true'
   })
@@ -166,7 +167,21 @@ export default function PublicCatalog() {
     }));
   };
 
-  const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
+  const { cartItemCount, cartTotal, filteredProducts } = useMemo(() => {
+    const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+    const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
+    const searchValue = deferredSearch.toLowerCase();
+
+    const filteredProducts = products.filter((product) => {
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchValue) ||
+        product.description?.toLowerCase().includes(searchValue);
+      const matchesCategory = activeCategory === 'all' || product.categoryId === activeCategory;
+      return matchesSearch && matchesCategory;
+    });
+
+    return { cartItemCount, cartTotal, filteredProducts };
+  }, [activeCategory, cart, deferredSearch, products]);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +211,7 @@ export default function PublicCatalog() {
       // Use direct insert (no .select()) so anon RLS does not block the response
       const { error: insertError } = await supabase.from('orders').insert(toDb(order as unknown as Record<string, unknown>));
       if (insertError) throw new Error(insertError.message);
+      invalidateDbCache('orders');
       setIsSuccess(true);
       setCart([]);
       setIsCheckoutOpen(false);
@@ -267,13 +283,6 @@ export default function PublicCatalog() {
       </div>
     );
   }
-
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                         p.description?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = activeCategory === 'all' || p.categoryId === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
 
   const businessName = config.businessName || 'Nuestra Tienda';
   const accentColor = config.accentColor || '#6366f1';
@@ -370,7 +379,7 @@ export default function PublicCatalog() {
                   className="absolute -top-1 -right-1 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-lg animate-in zoom-in duration-300"
                   style={{ backgroundColor: accentColor }}
                 >
-                  {cart.reduce((acc, item) => acc + item.quantity, 0)}
+                  {cartItemCount}
                 </span>
               )}
             </button>
@@ -722,7 +731,7 @@ export default function PublicCatalog() {
           <ShoppingBag size={28} />
           {cart.length > 0 && (
             <span className="absolute -top-1 -right-1 bg-white text-slate-900 text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-              {cart.reduce((acc, item) => acc + item.quantity, 0)}
+                  {cartItemCount}
             </span>
           )}
         </button>

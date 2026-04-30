@@ -10,6 +10,81 @@ function tableName(col: string): string {
   return TABLE_MAP[col] ?? col;
 }
 
+const QUERY_CACHE_TTL_MS = 30_000;
+
+interface CacheEntry {
+  expiresAt: number;
+  hasValue: boolean;
+  promise?: Promise<unknown>;
+  value?: unknown;
+}
+
+const queryCache = new Map<string, CacheEntry>();
+
+const RPC_INVALIDATIONS: Record<string, string[]> = {
+  convert_quote_to_sale: ['quotes', 'sales', 'cash_flow', 'products', 'customers'],
+  delete_sale: ['sales', 'cash_flow', 'products', 'customers'],
+  edit_sale: ['sales', 'cash_flow', 'products', 'customers'],
+  intake_stock: ['products', 'stock_intakes'],
+  register_customer_payment: ['customers', 'cash_flow'],
+  register_sale: ['sales', 'cash_flow', 'products', 'customers'],
+  toggle_sale_status: ['sales', 'cash_flow', 'customers'],
+};
+
+function cloneValue<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function cacheKey(operation: string, collectionName: string, params: unknown): string {
+  return `${operation}:${tableName(collectionName)}:${JSON.stringify(params)}`;
+}
+
+export function invalidateDbCache(...collectionNames: string[]): void {
+  const tables = new Set(collectionNames.map(tableName));
+  for (const key of queryCache.keys()) {
+    const [, table] = key.split(':', 3);
+    if (tables.has(table)) {
+      queryCache.delete(key);
+    }
+  }
+}
+
+async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const existing = queryCache.get(key);
+
+  if (existing?.hasValue && existing.expiresAt > now) {
+    return cloneValue(existing.value as T);
+  }
+
+  if (existing?.promise) {
+    const data = await existing.promise;
+    return cloneValue(data as T);
+  }
+
+  const pending = loader();
+  queryCache.set(key, {
+    expiresAt: now + QUERY_CACHE_TTL_MS,
+    hasValue: false,
+    promise: pending,
+  });
+
+  try {
+    const value = await pending;
+    queryCache.set(key, {
+      expiresAt: Date.now() + QUERY_CACHE_TTL_MS,
+      hasValue: true,
+      value: cloneValue(value),
+    });
+    return cloneValue(value);
+  } catch (error) {
+    queryCache.delete(key);
+    throw error;
+  }
+}
+
 // ─── camelCase ↔ snake_case helpers ──────────────────────────────────────────
 
 const IDENTITY_FIELDS = new Set(['email_contact', 'created_at', 'updated_at']);
@@ -67,16 +142,19 @@ class SupabaseDB {
   async list<T>(collectionName: string, ownerUid?: string): Promise<T[]> {
     const tbl = tableName(collectionName);
     const ip  = this.isProfile(collectionName);
+    const key = cacheKey('list', collectionName, { ownerUid: ownerUid ?? null });
 
-    let q = supabase.from(tbl).select('*');
-    if (ownerUid && !ip) {
-      q = q.eq('user_id', ownerUid);
-    }
+    return readWithCache(key, async () => {
+      let q = supabase.from(tbl).select('*');
+      if (ownerUid && !ip) {
+        q = q.eq('user_id', ownerUid);
+      }
 
-    const { data, error } = await q;
-    if (error) throw new Error(`[db.list:${tbl}] ${error.message}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]).map(r => fromDb<T>(r, ip));
+      const { data, error } = await q;
+      if (error) throw new Error(`[db.list:${tbl}] ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data as any[]).map(r => fromDb<T>(r, ip));
+    });
   }
 
   async find<T>(
@@ -88,14 +166,17 @@ class SupabaseDB {
     const tbl      = tableName(collectionName);
     const ip       = this.isProfile(collectionName);
     const dbField  = colToDb(field, ip);
+    const key = cacheKey('find', collectionName, { field: dbField, value, limitCount: limitCount ?? null });
 
-    let q = supabase.from(tbl).select('*').eq(dbField, value as string);
-    if (limitCount) q = q.limit(limitCount);
+    return readWithCache(key, async () => {
+      let q = supabase.from(tbl).select('*').eq(dbField, value as string);
+      if (limitCount) q = q.limit(limitCount);
 
-    const { data, error } = await q;
-    if (error) throw new Error(`[db.find:${tbl}] ${error.message}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]).map(r => fromDb<T>(r, ip));
+      const { data, error } = await q;
+      if (error) throw new Error(`[db.find:${tbl}] ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data as any[]).map(r => fromDb<T>(r, ip));
+    });
   }
 
   async findBy<T>(
@@ -105,35 +186,48 @@ class SupabaseDB {
   ): Promise<T[]> {
     const tbl = tableName(collectionName);
     const ip  = this.isProfile(collectionName);
+    const normalizedFilters = filters.map((filter) => ({
+      field: colToDb(filter.field, ip),
+      value: filter.value,
+    }));
+    const key = cacheKey('findBy', collectionName, {
+      filters: normalizedFilters,
+      limitCount: limitCount ?? null,
+    });
 
-    let q = supabase.from(tbl).select('*');
-    for (const f of filters) {
-      q = q.eq(colToDb(f.field, ip), f.value as string);
-    }
-    if (limitCount) q = q.limit(limitCount);
+    return readWithCache(key, async () => {
+      let q = supabase.from(tbl).select('*');
+      for (const filter of normalizedFilters) {
+        q = q.eq(filter.field, filter.value as string);
+      }
+      if (limitCount) q = q.limit(limitCount);
 
-    const { data, error } = await q;
-    if (error) throw new Error(`[db.findBy:${tbl}] ${error.message}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[]).map(r => fromDb<T>(r, ip));
+      const { data, error } = await q;
+      if (error) throw new Error(`[db.findBy:${tbl}] ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data as any[]).map(r => fromDb<T>(r, ip));
+    });
   }
 
   async get<T>(collectionName: string, id: string): Promise<T | null> {
     const tbl = tableName(collectionName);
     const ip  = this.isProfile(collectionName);
+    const key = cacheKey('get', collectionName, { id });
 
-    const { data, error } = await supabase
-      .from(tbl)
-      .select('*')
-      .eq('id', id)
-      .single();
+    return readWithCache(key, async () => {
+      const { data, error } = await supabase
+        .from(tbl)
+        .select('*')
+        .eq('id', id)
+        .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') return null; // row not found
-      throw new Error(`[db.get:${tbl}/${id}] ${error.message}`);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return fromDb<T>(data as any, ip);
+      if (error) {
+        if (error.code === 'PGRST116') return null; // row not found
+        throw new Error(`[db.get:${tbl}/${id}] ${error.message}`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return fromDb<T>(data as any, ip);
+    });
   }
 
   async create<T extends { id?: string; uid?: string }>(
@@ -157,6 +251,7 @@ class SupabaseDB {
       .single();
 
     if (error) throw new Error(`[db.create:${tbl}] ${error.message}`);
+    invalidateDbCache(collectionName);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return fromDb<T>(data as any, ip);
   }
@@ -174,6 +269,7 @@ class SupabaseDB {
       .single();
 
     if (error) throw new Error(`[db.update:${tbl}/${id}] ${error.message}`);
+    invalidateDbCache(collectionName);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return fromDb<T>(data as any, ip);
   }
@@ -183,6 +279,7 @@ class SupabaseDB {
 
     const { error } = await supabase.from(tbl).delete().eq('id', id);
     if (error) throw new Error(`[db.delete:${tbl}/${id}] ${error.message}`);
+    invalidateDbCache(collectionName);
   }
 
   async getUniqueSlug(baseSlug: string, collectionName: string): Promise<string> {
@@ -216,6 +313,8 @@ export async function callRpc<T>(
 ): Promise<T> {
   const { data, error } = await supabase.rpc(name, params);
   if (error) throw new Error(`[rpc:${name}] ${error.message}`);
+  const invalidations = RPC_INVALIDATIONS[name];
+  if (invalidations) invalidateDbCache(...invalidations);
   return data as T;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db, callRpc } from '../lib/db';
 import { Product, Sale, Customer } from '../types';
@@ -34,6 +34,8 @@ export default function Sales() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [productSearch, setProductSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const deferredProductSearch = useDeferredValue(productSearch);
 
   // Cuenta corriente
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -69,30 +71,35 @@ export default function Sales() {
 
   const fetchData = async () => {
     if (!user) return;
-    try {
-      const s = await db.list<Sale>('sales', user.uid);
-      setSales(s.sort((a, b) => {
+    const [salesResult, productsResult, customersResult] = await Promise.allSettled([
+      db.list<Sale>('sales', user.uid),
+      db.list<Product>('products', user.uid),
+      db.list<Customer>('customers', user.uid),
+    ]);
+
+    if (salesResult.status === 'fulfilled') {
+      setSales(salesResult.value.sort((a, b) => {
         const dc = b.date.localeCompare(a.date);
         if (dc !== 0) return dc;
         return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
       }));
-    } catch (error) {
-      console.error('Error al cargar ventas:', error);
-    } finally {
-      setLoading(false);
+    } else {
+      console.error('Error al cargar ventas:', salesResult.reason);
     }
-    try {
-      const p = await db.list<Product>('products', user.uid);
-      setProducts(p);
-    } catch (error) {
-      console.error('Error al cargar productos:', error);
+
+    if (productsResult.status === 'fulfilled') {
+      setProducts(productsResult.value);
+    } else {
+      console.error('Error al cargar productos:', productsResult.reason);
     }
-    try {
-      const c = await db.list<Customer>('customers', user.uid);
-      setCustomers(c);
-    } catch (error) {
-      console.error('Error al cargar clientes:', error);
+
+    if (customersResult.status === 'fulfilled') {
+      setCustomers(customersResult.value);
+    } else {
+      console.error('Error al cargar clientes:', customersResult.reason);
     }
+
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -100,13 +107,13 @@ export default function Sales() {
   }, [user]);
 
   const filteredProducts = useMemo(() => {
-    const q = productSearch.toLowerCase();
+    const q = deferredProductSearch.toLowerCase();
     if (!q) return products;
     return products.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.category.toLowerCase().includes(q)
     );
-  }, [products, productSearch]);
+  }, [deferredProductSearch, products]);
 
   const handleProductChange = (productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -219,15 +226,35 @@ export default function Sales() {
     }
   };
 
-  const totalSold = sales.reduce((acc, s) => acc + roundPrice(s.total), 0);
-  const totalCollected = sales.filter(s => s.status === 'Pagado').reduce((acc, s) => acc + roundPrice(s.total), 0);
-  const totalPending = sales.filter(s => isPendingSaleStatus(s.status)).reduce((acc, s) => acc + roundPrice(s.total), 0);
+  const { filteredSales, totalCollected, totalPending, totalSold } = useMemo(() => {
+    let totalSold = 0;
+    let totalCollected = 0;
+    let totalPending = 0;
+    const searchValue = deferredSearch.toLowerCase();
 
-  const filteredSales = sales.filter(s => {
-    const matchesSearch = (s.productName ?? '').toLowerCase().includes(search.toLowerCase()) || (s.client?.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === 'all' || s.status === statusFilter || (statusFilter === 'Pendiente' && s.status === 'No Pagado');
-    return matchesSearch && matchesStatus;
-  });
+    const filteredSales = sales.filter((sale) => {
+      const roundedTotal = roundPrice(sale.total);
+      totalSold += roundedTotal;
+
+      if (sale.status === 'Pagado') {
+        totalCollected += roundedTotal;
+      } else if (isPendingSaleStatus(sale.status)) {
+        totalPending += roundedTotal;
+      }
+
+      const matchesSearch =
+        (sale.productName ?? '').toLowerCase().includes(searchValue) ||
+        sale.client?.toLowerCase().includes(searchValue);
+      const matchesStatus =
+        statusFilter === 'all' ||
+        sale.status === statusFilter ||
+        (statusFilter === 'Pendiente' && sale.status === 'No Pagado');
+
+      return matchesSearch && matchesStatus;
+    });
+
+    return { filteredSales, totalCollected, totalPending, totalSold };
+  }, [deferredSearch, sales, statusFilter]);
 
   return (
     <div className="space-y-6">

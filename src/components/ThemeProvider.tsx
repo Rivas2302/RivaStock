@@ -19,7 +19,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       root.classList.add('light');
     }
     localStorage.setItem('theme', theme);
-    console.log('Current theme:', theme);
   }, [theme]);
 
   const toggleTheme = () => {
