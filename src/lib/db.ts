@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { QUERY_CACHE_TTL_MS } from './constants';
 
 // ─── Table name mapping (Firestore collection → Supabase table) ───────────────
 const TABLE_MAP: Record<string, string> = {
@@ -9,8 +10,6 @@ const TABLE_MAP: Record<string, string> = {
 function tableName(col: string): string {
   return TABLE_MAP[col] ?? col;
 }
-
-const QUERY_CACHE_TTL_MS = 30_000;
 
 interface CacheEntry {
   expiresAt: number;
@@ -31,10 +30,10 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   toggle_sale_status: ['sales', 'cash_flow', 'customers'],
 };
 
-function cloneValue<T>(value: T): T {
-  if (value === null || typeof value !== 'object') return value;
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value)) as T;
+function shallowClone<T>(value: T): T {
+  if (Array.isArray(value)) return value.slice() as unknown as T;
+  if (value && typeof value === 'object') return { ...(value as object) } as T;
+  return value;
 }
 
 function cacheKey(operation: string, collectionName: string, params: unknown): string {
@@ -56,12 +55,12 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
   const existing = queryCache.get(key);
 
   if (existing?.hasValue && existing.expiresAt > now) {
-    return cloneValue(existing.value as T);
+    return shallowClone(existing.value as T);
   }
 
   if (existing?.promise) {
     const data = await existing.promise;
-    return cloneValue(data as T);
+    return shallowClone(data as T);
   }
 
   const pending = loader();
@@ -76,9 +75,9 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
     queryCache.set(key, {
       expiresAt: Date.now() + QUERY_CACHE_TTL_MS,
       hasValue: true,
-      value: cloneValue(value),
+      value,
     });
-    return cloneValue(value);
+    return shallowClone(value);
   } catch (error) {
     queryCache.delete(key);
     throw error;
@@ -318,9 +317,7 @@ export async function callRpc<T>(
   return data as T;
 }
 
-// ─── Supabase Storage helpers (replaces Firebase Storage exports) ─────────────
-
-export { supabase as storage };
+// ─── Supabase Storage helpers ─────────────────────────────────────────────────
 
 export async function uploadToStorage(
   path: string,
@@ -349,4 +346,3 @@ export async function deleteFromStorage(path: string): Promise<void> {
 
 // ─── Re-export supabase client ────────────────────────────────────────────────
 export { supabase };
-export { supabase as supabaseAuth };

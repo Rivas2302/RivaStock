@@ -15,3 +15,5 @@
     min-height: 44px;
   }
 }
+
+html.catalog-dark { color-scheme: dark; }

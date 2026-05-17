@@ -1,6 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
+import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { Product, Category, PriceRange } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
@@ -81,22 +82,24 @@ export default function Stock() {
 
       if (editingProduct) {
         await db.update('products', editingProduct.id, productData);
+        setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...productData } as Product : p));
       } else {
         // Idempotency: reject duplicate product name within 5 seconds
-        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+        const cutoff = new Date(Date.now() - DUPLICATE_DETECTION_WINDOW_MS).toISOString();
         const potentialDuplicate = products.find(p =>
           p.name.toLowerCase() === (formData.name || '').toLowerCase() &&
-          p.createdAt && p.createdAt > fiveSecondsAgo
+          p.createdAt && p.createdAt > cutoff
         );
         if (potentialDuplicate) {
           alert('Se detectó un producto con el mismo nombre creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
           return;
         }
-        await db.create('products', {
+        const created = await db.create<Product>('products', {
           ...productData,
           id: productData.id || crypto.randomUUID(),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
+        setProducts(prev => [...prev, created]);
       }
 
       setIsModalOpen(false);
@@ -113,17 +116,15 @@ export default function Stock() {
         notes: '',
         images: []
       });
-      fetchData();
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este producto?')) {
-      await db.delete('products', id);
-      fetchData();
-    }
+    if (!confirm('¿Estás seguro de eliminar este producto?')) return;
+    await db.delete('products', id);
+    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
   const autoCalculatePrice = () => {

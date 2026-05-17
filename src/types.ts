@@ -43,7 +43,7 @@ export interface Product {
   showInCatalog: boolean;
   notes?: string;
   description?: string;
-  customFields?: Record<string, any>;
+  customFields?: Record<string, string | number | boolean | null>;
   ownerUid: string;
   createdAt: string;
   updatedAt: string;

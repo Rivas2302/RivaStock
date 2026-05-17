@@ -20,7 +20,7 @@ import { useAuth } from '../AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-const navItems = [
+const navItems: { name: string; path: string; icon: typeof LayoutDashboard }[] = [
   { name: 'Inicio', path: '/', icon: LayoutDashboard },
   { name: 'Stock', path: '/stock', icon: Package },
   { name: 'Ventas', path: '/ventas', icon: ShoppingCart },
@@ -28,7 +28,7 @@ const navItems = [
   { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet },
-  { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, badge: true },
+  { name: 'Pedidos', path: '/pedidos', icon: ClipboardList },
   { name: 'Calculadora', path: '/calculadora', icon: Calculator },
   { name: 'Configuración', path: '/config', icon: Settings },
 ];
@@ -38,10 +38,17 @@ export default function Layout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/login');
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -70,11 +77,6 @@ export default function Layout() {
               >
                 <Icon size={20} />
                 <span className="font-medium">{item.name}</span>
-                {item.badge && (
-                  <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                    3
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -83,7 +85,8 @@ export default function Layout() {
         <div className="p-4 mt-auto border-t border-slate-800">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors"
+            disabled={loggingOut}
+            className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
           >
             <LogOut size={20} />
             <span className="font-medium">Cerrar Sesión</span>
@@ -176,7 +179,8 @@ export default function Layout() {
               <div className="p-4 border-t border-slate-800">
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors"
+                  disabled={loggingOut}
+                  className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
                 >
                   <LogOut size={20} />
                   <span className="font-medium">Cerrar Sesión</span>

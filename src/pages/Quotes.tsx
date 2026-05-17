@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { db, callRpc } from '../lib/db';
 import { Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';

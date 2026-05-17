@@ -73,9 +73,14 @@ function AppRoutes() {
   );
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 export default function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   useEffect(() => {
@@ -84,10 +89,9 @@ export default function App() {
     window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    const handler = (e: any) => {
+    const handler = (e: Event) => {
       e.preventDefault();
-      if (deferredPrompt) return;
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
@@ -99,14 +103,12 @@ export default function App() {
     };
   }, []);
 
-  const handleInstall = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult: any) => {
-        if (choiceResult.outcome === 'accepted') setShowInstallBanner(false);
-        setDeferredPrompt(null);
-      });
-    }
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    await deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') setShowInstallBanner(false);
+    setDeferredPrompt(null);
   };
 
   return (

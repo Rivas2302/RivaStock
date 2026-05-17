@@ -16,59 +16,48 @@
 
 import { db } from './db';
 import { Sale, CashFlowEntry } from '../types';
-
-const WINDOW_MS = 5000;
+import { DUPLICATE_DETECTION_WINDOW_MS as WINDOW_MS } from './constants';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function timeDiff(a?: string, b?: string): number {
-  if (!a || !b) return Infinity;
-  return Math.abs(new Date(a).getTime() - new Date(b).getTime());
+function saleDupeKey(s: Sale): string {
+  return `${s.ownerUid}|${s.productId}|${s.quantity}|${s.total}|${s.date}`;
 }
 
-function areDuplicateSales(a: Sale, b: Sale): boolean {
-  return (
-    a.ownerUid === b.ownerUid &&
-    a.productId === b.productId &&
-    a.quantity === b.quantity &&
-    a.total === b.total &&
-    a.date === b.date &&
-    timeDiff(a.createdAt, b.createdAt) <= WINDOW_MS
-  );
+function cashFlowDupeKey(c: CashFlowEntry): string {
+  return `${c.ownerUid}|${c.type}|${c.amount}|${c.description}|${c.date}`;
 }
 
-function areDuplicateCashFlow(a: CashFlowEntry, b: CashFlowEntry): boolean {
-  return (
-    a.ownerUid === b.ownerUid &&
-    a.type === b.type &&
-    a.amount === b.amount &&
-    a.description === b.description &&
-    a.date === b.date &&
-    timeDiff(a.createdAt, b.createdAt) <= WINDOW_MS
-  );
-}
-
-function groupDuplicates<T extends { id: string }>(
+function groupByKey<T extends { id: string; createdAt?: string }>(
   items: T[],
-  isDuplicate: (a: T, b: T) => boolean
+  keyFn: (item: T) => string,
+  windowMs: number,
 ): T[][] {
+  const buckets = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyFn(item);
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(item);
+    buckets.set(key, bucket);
+  }
   const groups: T[][] = [];
-  const used = new Set<string>();
-
-  for (let i = 0; i < items.length; i++) {
-    if (used.has(items[i].id)) continue;
-    const group: T[] = [items[i]];
-    for (let j = i + 1; j < items.length; j++) {
-      if (used.has(items[j].id)) continue;
-      if (isDuplicate(items[i], items[j])) {
-        group.push(items[j]);
-        used.add(items[j].id);
+  for (const bucket of buckets.values()) {
+    if (bucket.length < 2) continue;
+    const sorted = [...bucket].sort(
+      (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+    );
+    let current: T[] = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      const lastTime = new Date(current[current.length - 1].createdAt || 0).getTime();
+      const thisTime = new Date(sorted[i].createdAt || 0).getTime();
+      if (Math.abs(thisTime - lastTime) <= windowMs) {
+        current.push(sorted[i]);
+      } else {
+        if (current.length > 1) groups.push(current);
+        current = [sorted[i]];
       }
     }
-    if (group.length > 1) {
-      groups.push(group);
-      used.add(items[i].id);
-    }
+    if (current.length > 1) groups.push(current);
   }
   return groups;
 }
@@ -102,14 +91,14 @@ export async function diagnoseDuplicates(ownerUid: string): Promise<DiagnosticRe
   ]);
 
   // --- sales duplicates by field match ---
-  const salesGroups: DuplicateGroup<Sale>[] = groupDuplicates(sales, areDuplicateSales)
+  const salesGroups: DuplicateGroup<Sale>[] = groupByKey(sales, saleDupeKey, WINDOW_MS)
     .map(group => {
       const sorted = sortOldestFirst(group);
       return { keep: sorted[0], toDelete: sorted.slice(1) };
     });
 
   // --- cash_flow duplicates by field match ---
-  const cfFieldGroups: DuplicateGroup<CashFlowEntry>[] = groupDuplicates(cashFlow, areDuplicateCashFlow)
+  const cfFieldGroups: DuplicateGroup<CashFlowEntry>[] = groupByKey(cashFlow, cashFlowDupeKey, WINDOW_MS)
     .map(group => {
       const sorted = sortOldestFirst(group);
       return { keep: sorted[0], toDelete: sorted.slice(1) };

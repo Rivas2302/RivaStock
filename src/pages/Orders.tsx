@@ -47,27 +47,31 @@ export default function Orders() {
   };
 
   const handleConvertToSale = async (order: Order) => {
-    // 1. Validate stock
     const aggregatedItems = aggregateProductQuantities(order.items);
+
+    // 1. Re-validate stock right before mutating
     const stockChecks = await Promise.all(
       Object.entries(aggregatedItems).map(async ([productId, qty]) => {
-        const productName = order.items.find(item => item.productId === productId)?.productName || 'producto';
+        const productName =
+          order.items.find(item => item.productId === productId)?.productName || 'producto';
         const freshProduct = await db.get<Product>('products', productId);
         return !freshProduct || freshProduct.stock < qty ? productName : null;
       }),
     );
     const insufficientStock = stockChecks.filter(Boolean) as string[];
-
     if (insufficientStock.length > 0) {
       alert(`No hay suficiente stock para: ${insufficientStock.join(', ')}`);
       return;
     }
 
-    // 2. Create sale
+    const today = todayString();
+    const createdSaleIds: string[] = [];
+    const createdCashFlowIds: string[] = [];
+
     try {
-      const today = todayString();
-      await Promise.all(order.items.map(async (item) => {
+      for (const item of order.items) {
         const saleId = crypto.randomUUID();
+        const cashId = crypto.randomUUID();
         const saleTotal = item.price * item.quantity;
 
         await db.create('sales', {
@@ -83,11 +87,12 @@ export default function Orders() {
           paymentMethod: 'Efectivo',
           client: order.customerName,
           ownerUid: user!.uid,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
+        createdSaleIds.push(saleId);
 
         await db.create('cash_flow', {
-          id: crypto.randomUUID(),
+          id: cashId,
           date: today,
           type: 'Ingreso',
           source: 'Venta',
@@ -98,25 +103,29 @@ export default function Orders() {
           status: 'Pagado',
           saleId,
           ownerUid: user!.uid,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
-      }));
+        createdCashFlowIds.push(cashId);
+      }
 
-      await Promise.all(Object.entries(aggregatedItems).map(async ([productId, qty]) => {
+      for (const [productId, qty] of Object.entries(aggregatedItems)) {
         const freshProduct = await db.get<Product>('products', productId);
-        if (!freshProduct) {
-          throw new Error(`Producto no encontrado: ${productId}`);
-        }
+        if (!freshProduct) throw new Error(`Producto no encontrado: ${productId}`);
         await db.update('products', productId, { stock: freshProduct.stock - qty });
-      }));
+      }
 
-      // 3. Update order status
       await updateOrderStatus(order.id, 'Entregado');
       alert('Pedido convertido en venta exitosamente.');
       fetchData();
     } catch (error) {
       console.error('Error converting order to sale:', error);
-      alert('Error al convertir el pedido en venta.');
+      // Best-effort compensation: delete the rows we created so the user can retry
+      await Promise.allSettled([
+        ...createdCashFlowIds.map(id => db.delete('cash_flow', id)),
+        ...createdSaleIds.map(id => db.delete('sales', id)),
+      ]);
+      alert('Error al convertir el pedido. Se revirtieron las ventas parciales. Intentá de nuevo.');
+      fetchData();
     }
   };
 

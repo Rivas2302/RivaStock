@@ -22,7 +22,10 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
     if (profile) {
       return { ...profile, uid: session.user.id };
     }
-    const userMeta: any = (session.user as any).user_metadata ?? {};
+    const userMeta = (session.user.user_metadata ?? {}) as {
+      full_name?: string;
+      businessName?: string;
+    };
     const newProfile: UserProfile = {
       uid: session.user.id,
       email: session.user.email ?? '',

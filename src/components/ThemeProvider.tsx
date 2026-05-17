@@ -6,17 +6,18 @@ const ThemeContext = createContext<{ theme: Theme; toggleTheme: () => void } | u
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('theme') as Theme) || 'light';
+    const stored = localStorage.getItem('theme');
+    return stored === 'dark' || stored === 'light' ? stored : 'light';
   });
+  const initialRender = React.useRef(true);
 
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    } else {
-      root.classList.remove('dark');
-      root.classList.add('light');
+    root.classList.toggle('dark', theme === 'dark');
+    root.classList.toggle('light', theme === 'light');
+    if (initialRender.current) {
+      initialRender.current = false;
+      return;
     }
     localStorage.setItem('theme', theme);
   }, [theme]);

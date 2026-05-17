@@ -27,31 +27,34 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    
+
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
         const [p, s, cf, o] = await Promise.all([
           db.list<Product>('products', user.uid),
           db.list<Sale>('sales', user.uid),
           db.list<CashFlowEntry>('cash_flow', user.uid),
-          db.list<Order>('orders', user.uid)
+          db.list<Order>('orders', user.uid),
         ]);
+        if (cancelled) return;
         setProducts(p);
         setSales(s);
         setCashFlow(cf);
         setOrders(o);
+        setError(null);
       } catch (err) {
+        if (cancelled) return;
         console.error('Dashboard fetch error:', err);
         setError(err instanceof Error ? err.message : 'Error cargando datos');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchData();
-    
-    const timeout = setTimeout(() => setLoading(false), 15000);
-    return () => clearTimeout(timeout);
+    return () => { cancelled = true; };
   }, [user]);
 
   const { kpis, lowStockProducts, recentSales } = useMemo(() => {
@@ -130,6 +133,21 @@ export default function Dashboard() {
       {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
     </div>
   </div>;
+
+  if (error) {
+    return (
+      <div className="p-8 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 rounded-2xl border border-rose-200 dark:border-rose-800">
+        <p className="font-bold">No se pudo cargar el panel</p>
+        <p className="text-sm mt-1">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

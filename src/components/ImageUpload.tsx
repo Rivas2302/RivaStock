@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
 
@@ -25,6 +25,15 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Re-sync when the parent swaps the product being edited.
+  const lastKey = useRef<string>(productId);
+  useEffect(() => {
+    if (lastKey.current !== productId) {
+      lastKey.current = productId;
+      setImages(currentImages);
+    }
+  }, [productId, currentImages]);
 
   const handleFiles = async (files: FileList) => {
     const remaining = MAX_IMAGES - images.length;

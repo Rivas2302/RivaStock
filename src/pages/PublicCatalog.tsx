@@ -1,6 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, invalidateDbCache, toDb } from '../lib/db';
+import { TOAST_DURATION_MS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Product, CatalogConfig, Category, Order } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
@@ -30,8 +31,10 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function PublicCatalog() {
-  const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   const { slug } = useParams<{ slug: string }>();
+  const [online, setOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -48,33 +51,48 @@ export default function PublicCatalog() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('catalog-dark-mode') === 'true'
-  })
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem('catalog-dark-mode') === 'true',
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!online) {
-      // No network: skip loading and show offline state via error
       setLoading(false);
       setError('Sin conexión');
-      return;
-    }
-    localStorage.setItem('catalog-dark-mode', String(darkMode))
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
     } else {
-      document.documentElement.classList.remove('dark')
+      setError(prev => (prev === 'Sin conexión' ? null : prev));
     }
-  }, [darkMode])
+  }, [online]);
 
   useEffect(() => {
-    if (config?.logoUrl) {
-      const link = document.querySelector("link[rel*='icon']") as HTMLLinkElement || document.createElement('link');
+    localStorage.setItem('catalog-dark-mode', String(darkMode));
+    document.documentElement.classList.toggle('catalog-dark', darkMode);
+    return () => {
+      document.documentElement.classList.remove('catalog-dark');
+    };
+  }, [darkMode]);
+
+  useEffect(() => {
+    if (!config?.logoUrl) return;
+    let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
       link.type = 'image/x-icon';
       link.rel = 'shortcut icon';
-      link.href = config.logoUrl;
-      document.getElementsByTagName('head')[0].appendChild(link);
+      document.head.appendChild(link);
     }
+    link.href = config.logoUrl;
   }, [config?.logoUrl]);
 
   // Checkout form
@@ -139,14 +157,19 @@ export default function PublicCatalog() {
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0 && !config?.showOutOfStock) return;
-    
+
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        return prev.map(item => 
-          item.product.id === product.id 
-            ? { ...item, quantity: item.quantity + 1 } 
-            : item
+        if (existing.quantity >= product.stock && !config?.showOutOfStock) {
+          setMessage('No hay más stock disponible.');
+          setTimeout(() => setMessage(null), 2500);
+          return prev;
+        }
+        return prev.map(item =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
         );
       }
       return [...prev, { product, quantity: 1 }];
@@ -159,11 +182,10 @@ export default function PublicCatalog() {
 
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.product.id === productId) {
-        const newQty = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: newQty };
-      }
-      return item;
+      if (item.product.id !== productId) return item;
+      const max = config?.showOutOfStock ? Number.MAX_SAFE_INTEGER : item.product.stock;
+      const newQty = Math.min(max, Math.max(1, item.quantity + delta));
+      return { ...item, quantity: newQty };
     }));
   };
 
@@ -186,30 +208,50 @@ export default function PublicCatalog() {
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!config) return;
+    if (cart.length === 0) {
+      setMessage('Tu carrito está vacío.');
+      setTimeout(() => setMessage(null), 2500);
+      return;
+    }
+    const name = formData.name.trim();
+    const phone = formData.phone.trim();
+    const email = formData.email.trim();
+    const address = formData.address.trim();
+    if (name.length < 2 || phone.length < 5 || address.length < 3) {
+      setMessage('Por favor completá nombre, WhatsApp y dirección.');
+      setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setMessage('Email inválido.');
+      setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+      return;
+    }
 
     const order: Order = {
       id: crypto.randomUUID(),
       ownerUid: config.ownerUid,
       date: new Date().toISOString(),
-      customerName: formData.name,
-      customerPhone: formData.phone,
-      customerEmail: formData.email,
-      customerAddress: formData.address,
-      customerMessage: formData.message,
+      customerName: name,
+      customerPhone: phone,
+      customerEmail: email,
+      customerAddress: address,
+      customerMessage: formData.message.trim(),
       items: cart.map(item => ({
         productId: item.product.id,
         productName: item.product.name,
         quantity: item.quantity,
-        price: item.product.salePrice
+        price: item.product.salePrice,
       })),
       total: cartTotal,
       status: 'Nuevo',
-      isRead: false
+      isRead: false,
     };
 
     try {
-      // Use direct insert (no .select()) so anon RLS does not block the response
-      const { error: insertError } = await supabase.from('orders').insert(toDb(order as unknown as Record<string, unknown>));
+      const { error: insertError } = await supabase
+        .from('orders')
+        .insert(toDb(order as unknown as Record<string, unknown>));
       if (insertError) throw new Error(insertError.message);
       invalidateDbCache('orders');
       setIsSuccess(true);
@@ -217,25 +259,37 @@ export default function PublicCatalog() {
       setIsCheckoutOpen(false);
       setFormData({ name: '', phone: '', email: '', address: '', message: '' });
     } catch (err) {
+      console.error('[checkout] insert failed:', err);
       setMessage('Error al procesar el pedido. Por favor intenta de nuevo.');
-      setTimeout(() => setMessage(null), 3000);
+      setTimeout(() => setMessage(null), TOAST_DURATION_MS);
     }
   };
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedProductForLightbox(null);
+      if (e.key !== 'Escape') return;
+      if (selectedProductForLightbox) {
+        setSelectedProductForLightbox(null);
+      } else if (isCheckoutOpen) {
+        setIsCheckoutOpen(false);
+      } else if (isCartOpen) {
+        setIsCartOpen(false);
+      }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, []);
+  }, [selectedProductForLightbox, isCheckoutOpen, isCartOpen]);
 
   useEffect(() => {
+    const previous = document.body.style.overflow;
     if (selectedProductForLightbox || isCartOpen || isCheckoutOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
     }
+    return () => {
+      document.body.style.overflow = previous;
+    };
   }, [selectedProductForLightbox, isCartOpen, isCheckoutOpen]);
 
   if (loading) {

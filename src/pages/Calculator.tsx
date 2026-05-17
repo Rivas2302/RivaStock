@@ -17,6 +17,14 @@ import {
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 
+interface BatchResult {
+  purchase: number;
+  range: PriceRange | null;
+  sale: number;
+  profit: number;
+  margin: number;
+}
+
 export default function Calculator() {
   const { user } = useAuth();
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -32,7 +40,7 @@ export default function Calculator() {
 
   // Batch Calc State
   const [batchInput, setBatchInput] = useState('');
-  const [batchResults, setBatchResults] = useState<any[]>([]);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
 
   const fetchData = async () => {
     if (!user) return;
