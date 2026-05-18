@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import ProductSearchSelect from '../components/ProductSearchSelect';
 import { motion } from 'motion/react';
 import {
   getSaleDisplayQuantity,
@@ -33,9 +34,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [productSearch, setProductSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
-  const deferredProductSearch = useDeferredValue(productSearch);
 
   // Cuenta corriente
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -126,16 +125,11 @@ export default function Sales() {
     return () => { cancelled = true; };
   }, [user]);
 
-  const filteredProducts = useMemo(() => {
-    const q = deferredProductSearch.toLowerCase();
-    if (!q) return products;
-    return products.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q)
-    );
-  }, [deferredProductSearch, products]);
-
   const handleProductChange = (productId: string) => {
+    if (!productId) {
+      setFormData(prev => ({ ...prev, productId: '', productName: '' }));
+      return;
+    }
     const product = products.find(p => p.id === productId);
     if (product) {
       setFormData(prev => ({
@@ -301,7 +295,6 @@ export default function Sales() {
                 paymentMethod: 'Efectivo',
                 client: ''
               });
-              setProductSearch('');
               setIsCreditSale(false);
               setCreditSearch('');
               setSelectedCustomer(null);
@@ -436,7 +429,6 @@ export default function Sales() {
                           if (hasDerivedSaleItems(s)) return;
                           setEditingSale(s);
                           setFormData(s);
-                          setProductSearch('');
                           setIsModalOpen(true);
                         }}
                         disabled={hasDerivedSaleItems(s)}
@@ -494,29 +486,13 @@ export default function Sales() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
-              <div className="relative mb-1.5">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nombre o categoría..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
-                />
-              </div>
-              <select
+              <ProductSearchSelect
+                products={products}
+                value={formData.productId || ''}
+                onChange={handleProductChange}
+                placeholder="Buscar por nombre o categoría..."
                 required
-                value={formData.productId}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-              >
-                <option value="">Seleccionar producto</option>
-                {filteredProducts.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.stock} disp.) - {formatCurrency(p.salePrice)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>

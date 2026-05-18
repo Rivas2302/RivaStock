@@ -9,6 +9,7 @@ import {
   CheckCircle2, Clock
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import ProductSearchSelect from '../components/ProductSearchSelect';
 import { motion, AnimatePresence } from 'motion/react';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -76,7 +77,6 @@ export default function Quotes() {
   const [savingClient, setSavingClient] = useState(false);
 
   // Product adding inside modal
-  const [productSearch, setProductSearch] = useState('');
   const [addProductId, setAddProductId] = useState('');
   const [addQty, setAddQty] = useState(1);
   const [addPrice, setAddPrice] = useState(0);
@@ -123,12 +123,6 @@ export default function Quotes() {
     })();
     return () => { cancelled = true; };
   }, [user]);
-
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.toLowerCase();
-    if (!q) return products;
-    return products.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-  }, [products, productSearch]);
 
   const filteredCustomers = useMemo(() => {
     const q = clientSearch.toLowerCase();
@@ -182,7 +176,6 @@ export default function Quotes() {
     setNewClientName('');
     setNewClientPhone('');
     setNewClientEmail('');
-    setProductSearch('');
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
@@ -207,7 +200,6 @@ export default function Quotes() {
     setItems(q.items);
     setClientSearch('');
     setShowNewClientForm(false);
-    setProductSearch('');
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
@@ -215,6 +207,11 @@ export default function Quotes() {
   };
 
   const handleSelectProduct = (productId: string) => {
+    if (!productId) {
+      setAddProductId('');
+      setAddPrice(0);
+      return;
+    }
     const p = products.find(x => x.id === productId);
     if (p) {
       setAddProductId(productId);
@@ -249,7 +246,6 @@ export default function Quotes() {
     setAddProductId('');
     setAddQty(1);
     setAddPrice(0);
-    setProductSearch('');
   };
 
   const handleUpdateItemQty = (idx: number, qty: number) => {
@@ -678,27 +674,13 @@ export default function Quotes() {
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Productos</label>
             <div className="grid grid-cols-12 gap-2 mb-2">
-              <div className="col-span-5 relative">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar producto..."
-                  value={productSearch}
-                  onChange={e => setProductSearch(e.target.value)}
-                  className="w-full pl-7 pr-2 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-              <div className="col-span-3">
-                <select
+              <div className="col-span-8">
+                <ProductSearchSelect
+                  products={products}
                   value={addProductId}
-                  onChange={e => handleSelectProduct(e.target.value)}
-                  className="w-full px-2 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none dark:text-white"
-                >
-                  <option value="">Seleccionar</option>
-                  {filteredProducts.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.stock})</option>
-                  ))}
-                </select>
+                  onChange={handleSelectProduct}
+                  placeholder="Buscar producto..."
+                />
               </div>
               <input
                 type="number"
