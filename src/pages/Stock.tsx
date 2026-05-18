@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
+import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { Product, Category, PriceRange } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
@@ -123,6 +123,11 @@ export default function Stock() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
+    const product = products.find(p => p.id === id);
+    if (product) {
+      const allImages = [...(product.images ?? []), product.imageUrl].filter(Boolean) as string[];
+      await Promise.allSettled(allImages.map(url => deleteFromStorage(url)));
+    }
     await db.delete('products', id);
     setProducts(prev => prev.filter(p => p.id !== id));
   };

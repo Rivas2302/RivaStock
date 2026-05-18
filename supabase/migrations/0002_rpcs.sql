@@ -64,7 +64,7 @@ BEGIN
     unit_price, quantity, adjustment, total,
     status, payment_method, client, created_at
   ) VALUES (
-    v_sale_id, v_uid, p_date, p_product_id::text, v_prod.name,
+    v_sale_id, v_uid, p_date, p_product_id, v_prod.name,
     p_unit_price, p_quantity, p_adjustment, v_total,
     p_status, p_payment_method, p_client, now()
   ) RETURNING * INTO v_sale;
@@ -158,11 +158,11 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Venta no encontrada'; END IF;
 
   -- ── Stock management ──────────────────────────────────
-  IF v_sale.product_id::uuid IS DISTINCT FROM p_new_product_id THEN
+  IF v_sale.product_id IS DISTINCT FROM p_new_product_id THEN
     -- Different product: restore old stock, deduct new
     UPDATE products
        SET stock = stock + v_sale.quantity, updated_at = now()
-     WHERE id = v_sale.product_id::uuid AND user_id = v_uid;
+     WHERE id = v_sale.product_id AND user_id = v_uid;
 
     SELECT * INTO v_new_prod
       FROM products
@@ -172,13 +172,13 @@ BEGIN
       -- Rollback old product restore
       UPDATE products
          SET stock = stock - v_sale.quantity, updated_at = now()
-       WHERE id = v_sale.product_id::uuid AND user_id = v_uid;
+       WHERE id = v_sale.product_id AND user_id = v_uid;
       RAISE EXCEPTION 'Producto destino no encontrado';
     END IF;
     IF v_new_prod.stock < p_new_quantity THEN
       UPDATE products
          SET stock = stock - v_sale.quantity, updated_at = now()
-       WHERE id = v_sale.product_id::uuid AND user_id = v_uid;
+       WHERE id = v_sale.product_id AND user_id = v_uid;
       RAISE EXCEPTION 'Stock insuficiente en el producto destino. Disponible: %',
         v_new_prod.stock;
     END IF;
@@ -314,7 +314,7 @@ BEGIN
   -- ── Update sale row ───────────────────────────────────
   UPDATE sales
      SET date           = COALESCE(p_new_date, date),
-         product_id     = p_new_product_id::text,
+         product_id     = p_new_product_id,
          product_name   = v_new_name,
          unit_price     = p_new_unit_price,
          quantity       = p_new_quantity,
@@ -489,7 +489,7 @@ BEGIN
   ELSE
     UPDATE products
        SET stock = stock + v_sale.quantity, updated_at = now()
-     WHERE id = v_sale.product_id::uuid AND user_id = v_uid;
+     WHERE id = v_sale.product_id AND user_id = v_uid;
   END IF;
 
   -- ── Remove cash flow ──────────────────────────────────
@@ -597,7 +597,7 @@ BEGIN
     id, user_id, date, product_id, product_name,
     quantity, purchase_price, supplier, notes, created_at
   ) VALUES (
-    gen_random_uuid(), v_uid, v_date, p_product_id::text, v_prod.name,
+    gen_random_uuid(), v_uid, v_date, p_product_id, v_prod.name,
     p_quantity, p_purchase_price, p_supplier, p_notes, now()
   );
 
@@ -713,7 +713,7 @@ BEGIN
     status, payment_method, client, items, created_at
   ) VALUES (
     v_sale_id, v_uid, CURRENT_DATE,
-    COALESCE(v_first_pid::text, ''), v_disp_name,
+    v_first_pid, v_disp_name,
     v_total, 1, 0, v_total,
     p_status, p_payment_method, v_quote.client_name,
     v_items_out, now()
@@ -730,29 +730,24 @@ BEGIN
       v_total, COALESCE(p_payment_method, 'Efectivo'), 'Pagado',
       v_sale_id, now()
     );
-  ELSIF v_quote.client_id <> '' THEN
-    BEGIN
-      v_pid := v_quote.client_id::uuid;
-      SELECT * INTO v_customer
-        FROM customers
-       WHERE id = v_pid AND user_id = v_uid
-       FOR UPDATE;
-      IF FOUND THEN
-        INSERT INTO customer_transactions (
-          id, user_id, customer_id, type, amount, description,
-          related_sale_id, related_quote_id, date, created_at
-        ) VALUES (
-          gen_random_uuid(), v_uid, v_pid,
-          'sale', v_total, v_desc,
-          v_sale_id, p_quote_id::text, CURRENT_DATE, now()
-        );
-        UPDATE customers
-           SET current_balance = current_balance + v_total, updated_at = now()
-         WHERE id = v_pid;
-      END IF;
-    EXCEPTION WHEN invalid_text_representation THEN
-      NULL; -- client_id not a valid uuid, skip
-    END;
+  ELSIF v_quote.client_id IS NOT NULL THEN
+    SELECT * INTO v_customer
+      FROM customers
+     WHERE id = v_quote.client_id AND user_id = v_uid
+     FOR UPDATE;
+    IF FOUND THEN
+      INSERT INTO customer_transactions (
+        id, user_id, customer_id, type, amount, description,
+        related_sale_id, related_quote_id, date, created_at
+      ) VALUES (
+        gen_random_uuid(), v_uid, v_quote.client_id,
+        'sale', v_total, v_desc,
+        v_sale_id, p_quote_id::text, CURRENT_DATE, now()
+      );
+      UPDATE customers
+         SET current_balance = current_balance + v_total, updated_at = now()
+       WHERE id = v_quote.client_id;
+    END IF;
   END IF;
 
   -- ── Update quote status ───────────────────────────────

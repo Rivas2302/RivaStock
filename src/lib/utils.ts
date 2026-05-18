@@ -15,12 +15,22 @@ export function formatCurrency(amount: number): string {
 }
 
 export function roundPrice(price: number): number {
-  const lastTwoDigits = price % 100;
-  if (lastTwoDigits >= 50) {
-    return Math.ceil(price / 100) * 100;
-  } else {
-    return Math.floor(price / 100) * 100;
+  // Integer math to avoid float precision issues (e.g. 199.999... % 100)
+  const cents = Math.round(price * 100);
+  const lastTwo = cents % 100;
+  const rounded = lastTwo >= 50 ? cents - lastTwo + 100 : cents - lastTwo;
+  return rounded / 100;
+}
+
+export function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
   }
+  // Fallback for Safari < 15.4 / older iOS
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 // Parses a YYYY-MM-DD string as local date to avoid UTC-3 offset shifting the day

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { QUERY_CACHE_TTL_MS } from './constants';
+import { uuid } from './utils';
 
 // ─── Table name mapping (Firestore collection → Supabase table) ───────────────
 const TABLE_MAP: Record<string, string> = {
@@ -244,7 +245,7 @@ class SupabaseDB {
     // Profiles use `id` as PK (set externally by auth trigger); other tables
     // use `id` from the item or let Postgres generate one.
     if (!row['id'] && !ip) {
-      row['id'] = crypto.randomUUID();
+      row['id'] = uuid();
     }
 
     const { data, error } = await supabase
@@ -338,12 +339,18 @@ export async function uploadToStorage(
   return data.publicUrl;
 }
 
-export async function deleteFromStorage(path: string): Promise<void> {
-  // Extract just the path component from a full public URL if needed
-  const storagePath = path.includes('/storage/v1/object/public/assets/')
-    ? path.split('/storage/v1/object/public/assets/')[1]
-    : path;
-
+export async function deleteFromStorage(pathOrUrl: string): Promise<void> {
+  let storagePath: string;
+  if (pathOrUrl.startsWith('http')) {
+    const match = pathOrUrl.match(/\/assets\/(.+?)(\?|$)/);
+    if (!match) {
+      console.error('[storage.delete] URL no parseable:', pathOrUrl);
+      return;
+    }
+    storagePath = decodeURIComponent(match[1]);
+  } else {
+    storagePath = pathOrUrl;
+  }
   const { error } = await supabase.storage.from('assets').remove([storagePath]);
   if (error) console.error(`[storage.delete:${storagePath}]`, error.message);
 }

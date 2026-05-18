@@ -136,14 +136,18 @@ export default function Quotes() {
   }, [quotes, search, statusFilter]);
 
   const generateNumber = async (): Promise<string> => {
-    const existing = await db.list<Quote>('quotes', user!.uid);
-    if (existing.length === 0) return 'PRES-0001';
-    const nums = existing.map(q => {
-      const m = q.number?.match(/(\d+)$/);
-      return m ? parseInt(m[1]) : 0;
-    });
-    const next = Math.max(...nums) + 1;
-    return `PRES-${String(next).padStart(4, '0')}`;
+    try {
+      return await callRpc<string>('next_quote_number', { p_user: user!.uid });
+    } catch {
+      // Fallback to client-side if RPC not yet deployed
+      const existing = await db.list<Quote>('quotes', user!.uid);
+      if (existing.length === 0) return 'PRES-0001';
+      const nums = existing.map(q => {
+        const m = q.number?.match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      });
+      return `PRES-${String(Math.max(...nums) + 1).padStart(4, '0')}`;
+    }
   };
 
   const resetForm = () => {
@@ -749,7 +753,7 @@ export default function Quotes() {
                 min="0"
                 max="100"
                 value={formDiscount}
-                onChange={e => setFormDiscount(Number(e.target.value))}
+                onChange={e => setFormDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
               />
             </div>

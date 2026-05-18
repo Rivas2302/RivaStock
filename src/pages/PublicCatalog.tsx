@@ -1,10 +1,10 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+﻿import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, invalidateDbCache, toDb } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Product, CatalogConfig, Category, Order } from '../types';
-import { formatCurrency, cn, roundPrice } from '../lib/utils';
+import { formatCurrency, cn, roundPrice, uuid } from '../lib/utils';
 import {
   ShoppingBag,
   Search,
@@ -70,9 +70,9 @@ export default function PublicCatalog() {
   useEffect(() => {
     if (!online) {
       setLoading(false);
-      setError('Sin conexión');
+      setError('Sin conexiÃ³n');
     } else {
-      setError(prev => (prev === 'Sin conexión' ? null : prev));
+      setError(prev => (prev === 'Sin conexiÃ³n' ? null : prev));
     }
   }, [online]);
 
@@ -118,12 +118,12 @@ export default function PublicCatalog() {
         const foundConfig = configs[0];
 
         if (!foundConfig) {
-          setError('Catálogo no encontrado');
+          setError('CatÃ¡logo no encontrado');
           return;
         }
 
         if (!foundConfig.enabled) {
-          setError('Este catálogo está temporalmente desactivado');
+          setError('Este catÃ¡logo estÃ¡ temporalmente desactivado');
           return;
         }
 
@@ -147,7 +147,7 @@ export default function PublicCatalog() {
         setCategories(cats);
       } catch (err) {
         console.error('Error loading catalog:', err);
-        setError('Error al cargar el catálogo');
+        setError('Error al cargar el catÃ¡logo');
       } finally {
         setLoading(false);
       }
@@ -163,7 +163,7 @@ export default function PublicCatalog() {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
         if (existing.quantity >= product.stock && !config?.showOutOfStock) {
-          setMessage('No hay más stock disponible.');
+          setMessage('No hay mÃ¡s stock disponible.');
           setTimeout(() => setMessage(null), 2500);
           return prev;
         }
@@ -211,12 +211,12 @@ export default function PublicCatalog() {
     if (!config) return;
     const RATE_LIMIT_MS = 30_000;
     if (Date.now() - lastSubmitAt < RATE_LIMIT_MS) {
-      setMessage(`Esperá ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
+      setMessage(`EsperÃ¡ ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
     if (cart.length === 0) {
-      setMessage('Tu carrito está vacío.');
+      setMessage('Tu carrito estÃ¡ vacÃ­o.');
       setTimeout(() => setMessage(null), 2500);
       return;
     }
@@ -225,18 +225,18 @@ export default function PublicCatalog() {
     const email = formData.email.trim();
     const address = formData.address.trim();
     if (name.length < 2 || phone.length < 5 || address.length < 3) {
-      setMessage('Por favor completá nombre, WhatsApp y dirección.');
+      setMessage('Por favor completÃ¡ nombre, WhatsApp y direcciÃ³n.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setMessage('Email inválido.');
+      setMessage('Email invÃ¡lido.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
 
     const order: Order = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       ownerUid: config.ownerUid,
       date: new Date().toISOString(),
       customerName: name,
@@ -305,7 +305,7 @@ export default function PublicCatalog() {
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
-          <p className="text-slate-500 font-medium animate-pulse">Cargando catálogo...</p>
+          <p className="text-slate-500 font-medium animate-pulse">Cargando catÃ¡logo...</p>
         </div>
       </div>
     );
@@ -318,8 +318,8 @@ export default function PublicCatalog() {
             <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
               <XCircle size={48} />
             </div>
-            <h1 className="text-2xl font-black text-slate-900">Sin conexión</h1>
-            <p className="text-slate-500">Verifica tu conexión a Internet e intenta nuevamente.</p>
+            <h1 className="text-2xl font-black text-slate-900">Sin conexiÃ³n</h1>
+            <p className="text-slate-500">Verifica tu conexiÃ³n a Internet e intenta nuevamente.</p>
             <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800">Reintentar</button>
           </div>
         </div>
@@ -332,8 +332,8 @@ export default function PublicCatalog() {
             <XCircle size={48} />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-black text-slate-900">{error || 'Catálogo no disponible'}</h1>
-            <p className="text-slate-500">Este catálogo puede haber sido desactivado o la dirección es incorrecta.</p>
+            <h1 className="text-2xl font-black text-slate-900">{error || 'CatÃ¡logo no disponible'}</h1>
+            <p className="text-slate-500">Este catÃ¡logo puede haber sido desactivado o la direcciÃ³n es incorrecta.</p>
           </div>
           <button 
             onClick={() => window.location.reload()}
@@ -493,7 +493,7 @@ export default function PublicCatalog() {
                 "text-lg md:text-2xl font-medium max-w-2xl mx-auto leading-relaxed",
                 darkMode ? "text-white/60" : "text-slate-600"
               )}>
-                {config.welcomeMessage || 'Descubre nuestra selección exclusiva de productos.'}
+                {config.welcomeMessage || 'Descubre nuestra selecciÃ³n exclusiva de productos.'}
               </p>
               {config.tagline && (
                 <p className={cn(
@@ -524,7 +524,7 @@ export default function PublicCatalog() {
               )} size={20} />
               <input 
                 type="text"
-                placeholder="Busca en nuestra colección..."
+                placeholder="Busca en nuestra colecciÃ³n..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={cn(
@@ -625,7 +625,7 @@ export default function PublicCatalog() {
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
                     {config.showStock && config.showStockQuantity && product.stock <= 5 && product.stock > 0 && (
                       <span className="bg-rose-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
-                        Últimas unidades
+                        Ãšltimas unidades
                       </span>
                     )}
                     {product.stock <= 0 && (
@@ -719,7 +719,7 @@ export default function PublicCatalog() {
                 "text-2xl font-bold tracking-tight",
                 darkMode ? "text-white" : "text-slate-900"
               )}>
-                {products.length === 0 ? 'Catálogo vacío' : 'Sin resultados'}
+                {products.length === 0 ? 'CatÃ¡logo vacÃ­o' : 'Sin resultados'}
               </h3>
               <p className={cn(
                 "font-medium",
@@ -727,7 +727,7 @@ export default function PublicCatalog() {
               )}>
                 {products.length === 0 
                   ? 'Vuelve pronto para ver nuestras novedades.' 
-                  : 'Intenta con otros términos o categorías.'}
+                  : 'Intenta con otros tÃ©rminos o categorÃ­as.'}
               </p>
             </div>
             {products.length > 0 && (
@@ -943,11 +943,11 @@ export default function PublicCatalog() {
                       <p className={cn(
                         "text-xl font-bold tracking-tight",
                         darkMode ? "text-white" : "text-slate-900"
-                      )}>Tu carrito está vacío</p>
+                      )}>Tu carrito estÃ¡ vacÃ­o</p>
                       <p className={cn(
                         "text-sm font-medium",
                         darkMode ? "text-white/40" : "text-slate-500"
-                      )}>Explora nuestra colección y añade algo especial.</p>
+                      )}>Explora nuestra colecciÃ³n y aÃ±ade algo especial.</p>
                     </div>
                     <button 
                       onClick={() => setIsCartOpen(false)}
@@ -1100,7 +1100,7 @@ export default function PublicCatalog() {
                       <input 
                         required
                         type="text"
-                        placeholder="Dirección de entrega"
+                        placeholder="DirecciÃ³n de entrega"
                         value={formData.address}
                         onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                         className={cn(
@@ -1277,7 +1277,7 @@ export default function PublicCatalog() {
                 <h3 className={cn(
                   "text-3xl font-black tracking-tight",
                   darkMode ? "text-white" : "text-slate-900"
-                )}>¡Pedido Enviado!</h3>
+                )}>Â¡Pedido Enviado!</h3>
                 <p className={cn(
                   "font-medium leading-relaxed",
                   darkMode ? "text-white/40" : "text-slate-500"
@@ -1299,3 +1299,4 @@ export default function PublicCatalog() {
     </div>
   );
 }
+

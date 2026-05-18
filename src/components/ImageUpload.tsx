@@ -40,10 +40,16 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     if (remaining <= 0) return;
 
     const toProcess = Array.from(files).slice(0, remaining);
-    const invalidFile = toProcess.find(f => !f.type.startsWith('image/'));
-    if (invalidFile) {
-      setError('Solo se permiten imágenes (jpg, png, webp).');
-      return;
+    const MAX_BYTES = 5 * 1024 * 1024;
+    for (const f of toProcess) {
+      if (!f.type.startsWith('image/')) {
+        setError('Solo se permiten imágenes (jpg, png, webp).');
+        return;
+      }
+      if (f.size > MAX_BYTES) {
+        setError(`Cada imagen debe pesar menos de ${MAX_BYTES / 1024 / 1024}MB.`);
+        return;
+      }
     }
 
     setError(null);

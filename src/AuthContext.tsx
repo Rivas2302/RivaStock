@@ -102,13 +102,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (_code: string, newPassword: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Link inválido o vencido. Solicitá un nuevo email de recuperación.');
+    }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
-      if (error.message.includes('expired')) {
+      if (error.message.includes('expired') || error.message.includes('Auth')) {
         throw new Error('El link ha expirado. Por favor solicitá uno nuevo.');
       }
       throw new Error('Error al actualizar la contraseña.');
     }
+    // Force re-login after reset for security
+    await supabase.auth.signOut();
   };
 
   const updateUser = (updatedUser: UserProfile) => setUser(updatedUser);
