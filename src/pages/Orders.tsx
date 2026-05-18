@@ -37,7 +37,15 @@ export default function Orders() {
   };
 
   useEffect(() => {
-    fetchData();
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const o = await db.list<Order>('orders', user.uid);
+      if (cancelled) return;
+      setOrders(o.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const updateOrderStatus = async (id: string, status: Order['status']) => {

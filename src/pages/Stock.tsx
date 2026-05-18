@@ -62,7 +62,21 @@ export default function Stock() {
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    if (!user) return;
+    (async () => {
+      const [p, c, pr] = await Promise.all([
+        db.list<Product>('products', user.uid),
+        db.list<Category>('categories', user.uid),
+        db.list<PriceRange>('price_ranges', user.uid),
+      ]);
+      if (cancelled) return;
+      setProducts(p);
+      setCategories(c);
+      setPriceRanges(pr);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);

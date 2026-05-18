@@ -1,4 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { clearDbCache } from '../lib/db';
 import {
   LayoutDashboard,
   Package,
@@ -17,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
+
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,6 +42,17 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    const onFocus = () => clearDbCache();
+    const onVisible = () => { if (document.visibilityState === 'visible') clearDbCache(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   const handleLogout = async () => {
     if (loggingOut) return;

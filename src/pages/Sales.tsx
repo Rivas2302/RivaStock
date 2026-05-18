@@ -103,7 +103,27 @@ export default function Sales() {
   };
 
   useEffect(() => {
-    fetchData();
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const [salesResult, productsResult, customersResult] = await Promise.allSettled([
+        db.list<Sale>('sales', user.uid),
+        db.list<Product>('products', user.uid),
+        db.list<Customer>('customers', user.uid),
+      ]);
+      if (cancelled) return;
+      if (salesResult.status === 'fulfilled') {
+        setSales(salesResult.value.sort((a, b) => {
+          const dc = b.date.localeCompare(a.date);
+          if (dc !== 0) return dc;
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+        }));
+      }
+      if (productsResult.status === 'fulfilled') setProducts(productsResult.value);
+      if (customersResult.status === 'fulfilled') setCustomers(customersResult.value);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const filteredProducts = useMemo(() => {

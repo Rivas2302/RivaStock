@@ -79,7 +79,19 @@ export default function CashFlow() {
   };
 
   useEffect(() => {
-    fetchData();
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
+      if (cancelled) return;
+      setEntries(cf.sort((a, b) => {
+        const dc = b.date.localeCompare(a.date);
+        if (dc !== 0) return dc;
+        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+      }));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleDelete = async (id: string) => {

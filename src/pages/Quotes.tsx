@@ -106,7 +106,23 @@ export default function Quotes() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const [q, p, c] = await Promise.all([
+        db.list<Quote>('quotes', user.uid),
+        db.list<Product>('products', user.uid),
+        db.list<Customer>('customers', user.uid),
+      ]);
+      if (cancelled) return;
+      setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setProducts(p);
+      setCustomers(c);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.toLowerCase();
@@ -340,9 +356,14 @@ export default function Quotes() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (quote: Quote) => {
     if (!confirm('¿Eliminar este presupuesto?')) return;
-    await db.delete('quotes', id);
+    if (quote.convertedToSaleId) {
+      if (confirm('Este presupuesto ya fue convertido a venta. ¿Querés borrar también la venta vinculada?')) {
+        await callRpc('delete_sale', { p_sale_id: quote.convertedToSaleId });
+      }
+    }
+    await db.delete('quotes', quote.id);
     fetchData();
   };
 
@@ -517,7 +538,7 @@ export default function Quotes() {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDelete(q.id)}
+                          onClick={() => handleDelete(q)}
                           title="Eliminar"
                           className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                         >

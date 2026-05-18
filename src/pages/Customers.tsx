@@ -62,7 +62,17 @@ export default function Customers() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const c = await db.list<Customer>('customers', user.uid);
+      if (cancelled) return;
+      setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const filteredCustomers = useMemo(() => {
     const q = search.toLowerCase();
@@ -117,6 +127,11 @@ export default function Customers() {
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || saving || !formName.trim()) return;
+    const phoneVal = formPhone.trim();
+    if (phoneVal && !/^[\d+\s\-()]{6,20}$/.test(phoneVal)) {
+      alert('Teléfono inválido. Usá solo números, +, espacios, guiones o paréntesis (6-20 caracteres).');
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date().toISOString();

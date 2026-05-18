@@ -70,13 +70,13 @@ export default function Dashboard() {
       if (!isPaid) continue;
 
       if (entry.type === 'Ingreso') {
-        totalCollected += entry.amount;
-        if (entry.paymentMethod === 'Efectivo') cashIncome += entry.amount;
-        if (entry.paymentMethod === 'Transferencia') bankIncome += entry.amount;
+        totalCollected += entry.amount ?? 0;
+        if (entry.paymentMethod === 'Efectivo') cashIncome += entry.amount ?? 0;
+        if (entry.paymentMethod === 'Transferencia') bankIncome += entry.amount ?? 0;
       } else {
-        totalExpenses += entry.amount;
-        if (entry.paymentMethod === 'Efectivo') cashExpenses += entry.amount;
-        if (entry.paymentMethod === 'Transferencia') bankExpenses += entry.amount;
+        totalExpenses += entry.amount ?? 0;
+        if (entry.paymentMethod === 'Efectivo') cashExpenses += entry.amount ?? 0;
+        if (entry.paymentMethod === 'Transferencia') bankExpenses += entry.amount ?? 0;
       }
     }
 
@@ -86,7 +86,7 @@ export default function Dashboard() {
 
     for (const sale of sales) {
       if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
-        pendingSales += sale.total;
+        pendingSales += sale.total ?? 0;
       }
 
       if (sale.status === 'Pagado') {
