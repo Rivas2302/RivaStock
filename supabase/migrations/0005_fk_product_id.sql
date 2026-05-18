@@ -5,7 +5,8 @@
 UPDATE sales SET product_id = NULL WHERE product_id = '';
 UPDATE stock_intakes SET product_id = NULL WHERE product_id = '';
 
--- 2. Change type + add FK on sales
+-- 2. Change type + add FK on sales (drop DEFAULT first — column may have DEFAULT '')
+ALTER TABLE sales ALTER COLUMN product_id DROP DEFAULT;
 ALTER TABLE sales
   ALTER COLUMN product_id TYPE uuid USING NULLIF(product_id, '')::uuid;
 ALTER TABLE sales
@@ -14,7 +15,8 @@ ALTER TABLE sales
   ADD CONSTRAINT sales_product_fk
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL;
 
--- 3. Change type + add FK on stock_intakes
+-- 3. Change type + add FK on stock_intakes (drop DEFAULT first)
+ALTER TABLE stock_intakes ALTER COLUMN product_id DROP DEFAULT;
 ALTER TABLE stock_intakes
   ALTER COLUMN product_id TYPE uuid USING NULLIF(product_id, '')::uuid;
 ALTER TABLE stock_intakes
