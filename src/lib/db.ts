@@ -40,6 +40,10 @@ function cacheKey(operation: string, collectionName: string, params: unknown): s
   return `${operation}:${tableName(collectionName)}:${JSON.stringify(params)}`;
 }
 
+export function clearDbCache(): void {
+  queryCache.clear();
+}
+
 export function invalidateDbCache(...collectionNames: string[]): void {
   const tables = new Set(collectionNames.map(tableName));
   for (const key of queryCache.keys()) {

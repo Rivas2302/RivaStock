@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { db } from '../lib/db';
-import { Quote, UserProfile } from '../types';
+import { db, supabase } from '../lib/db';
+import { Quote } from '../types';
+
+interface PublicOwner {
+  id: string;
+  businessName: string;
+  phone?: string;
+  email_contact?: string;
+  currencySymbol?: string;
+}
 import { formatCurrency } from '../lib/utils';
 import { AlertTriangle, Clock, CheckCircle2, FileText } from 'lucide-react';
 
@@ -9,7 +17,7 @@ export default function QuotePublic() {
   const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   const { id } = useParams<{ id: string }>();
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [owner, setOwner] = useState<UserProfile | null>(null);
+  const [owner, setOwner] = useState<PublicOwner | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -26,8 +34,20 @@ export default function QuotePublic() {
         const q = await db.get<Quote>('quotes', id);
         if (!q) { setNotFound(true); setLoading(false); return; }
         setQuote(q);
-        const ownerProfile = await db.get<UserProfile>('users', q.ownerUid);
-        setOwner(ownerProfile);
+        const { data: ownerRow } = await supabase
+          .from('public_profiles')
+          .select('id, business_name, phone, email_contact, currency_symbol')
+          .eq('id', q.ownerUid)
+          .single();
+        if (ownerRow) {
+          setOwner({
+            id: ownerRow.id,
+            businessName: ownerRow.business_name,
+            phone: ownerRow.phone ?? undefined,
+            email_contact: ownerRow.email_contact ?? undefined,
+            currencySymbol: ownerRow.currency_symbol ?? undefined,
+          });
+        }
       } catch {
         setNotFound(true);
       } finally {

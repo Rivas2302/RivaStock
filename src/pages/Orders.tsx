@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
-import { db } from '../lib/db';
-import { Order, Product } from '../types';
+import { db, callRpc } from '../lib/db';
+import { Order, Sale } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import { 
   ClipboardList, 
@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { aggregateProductQuantities } from '../lib/sales';
 
 export default function Orders() {
   const { user } = useAuth();
@@ -47,84 +46,31 @@ export default function Orders() {
   };
 
   const handleConvertToSale = async (order: Order) => {
-    const aggregatedItems = aggregateProductQuantities(order.items);
-
-    // 1. Re-validate stock right before mutating
-    const stockChecks = await Promise.all(
-      Object.entries(aggregatedItems).map(async ([productId, qty]) => {
-        const productName =
-          order.items.find(item => item.productId === productId)?.productName || 'producto';
-        const freshProduct = await db.get<Product>('products', productId);
-        return !freshProduct || freshProduct.stock < qty ? productName : null;
-      }),
-    );
-    const insufficientStock = stockChecks.filter(Boolean) as string[];
-    if (insufficientStock.length > 0) {
-      alert(`No hay suficiente stock para: ${insufficientStock.join(', ')}`);
-      return;
-    }
-
+    if (!user) return;
     const today = todayString();
     const createdSaleIds: string[] = [];
-    const createdCashFlowIds: string[] = [];
-
     try {
       for (const item of order.items) {
-        const saleId = crypto.randomUUID();
-        const cashId = crypto.randomUUID();
-        const saleTotal = item.price * item.quantity;
-
-        await db.create('sales', {
-          id: saleId,
-          date: today,
-          productId: item.productId,
-          productName: item.productName,
-          unitPrice: item.price,
-          quantity: item.quantity,
-          adjustment: 0,
-          total: saleTotal,
-          status: 'Pagado',
-          paymentMethod: 'Efectivo',
-          client: order.customerName,
-          ownerUid: user!.uid,
-          createdAt: new Date().toISOString(),
+        const result = await callRpc<Sale[]>('register_sale', {
+          p_date: today,
+          p_product_id: item.productId,
+          p_quantity: item.quantity,
+          p_unit_price: item.price,
+          p_adjustment: 0,
+          p_status: 'Pagado',
+          p_payment_method: 'Efectivo',
+          p_client: order.customerName,
+          p_customer_id: null,
         });
-        createdSaleIds.push(saleId);
-
-        await db.create('cash_flow', {
-          id: cashId,
-          date: today,
-          type: 'Ingreso',
-          source: 'Venta',
-          description: `Venta: ${item.productName} x${item.quantity} (Pedido)`,
-          category: 'Venta Externa',
-          amount: saleTotal,
-          paymentMethod: 'Efectivo',
-          status: 'Pagado',
-          saleId,
-          ownerUid: user!.uid,
-          createdAt: new Date().toISOString(),
-        });
-        createdCashFlowIds.push(cashId);
+        const sale = Array.isArray(result) ? result[0] : result;
+        if (sale?.id) createdSaleIds.push(sale.id);
       }
-
-      for (const [productId, qty] of Object.entries(aggregatedItems)) {
-        const freshProduct = await db.get<Product>('products', productId);
-        if (!freshProduct) throw new Error(`Producto no encontrado: ${productId}`);
-        await db.update('products', productId, { stock: freshProduct.stock - qty });
-      }
-
       await updateOrderStatus(order.id, 'Entregado');
       alert('Pedido convertido en venta exitosamente.');
       fetchData();
     } catch (error) {
-      console.error('Error converting order to sale:', error);
-      // Best-effort compensation: delete the rows we created so the user can retry
-      await Promise.allSettled([
-        ...createdCashFlowIds.map(id => db.delete('cash_flow', id)),
-        ...createdSaleIds.map(id => db.delete('sales', id)),
-      ]);
-      alert('Error al convertir el pedido. Se revirtieron las ventas parciales. Intentá de nuevo.');
+      await Promise.allSettled(createdSaleIds.map(id => callRpc('delete_sale', { p_sale_id: id })));
+      alert(`Error: ${(error as Error).message}. Se revirtieron las ventas parciales.`);
       fetchData();
     }
   };

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile } from './types';
 import { supabase } from './lib/supabase';
-import { db } from './lib/db';
+import { db, clearDbCache } from './lib/db';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -18,27 +18,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadProfile(session: Session): Promise<UserProfile | null> {
   try {
-    const profile = await db.get<UserProfile>('users', session.user.id);
-    if (profile) {
-      return { ...profile, uid: session.user.id };
+    // Retry up to 3 times with backoff — the auth trigger may not have run yet
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const profile = await db.get<UserProfile>('users', session.user.id);
+      if (profile) return { ...profile, uid: session.user.id };
+      await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
     }
-    const userMeta = (session.user.user_metadata ?? {}) as {
-      full_name?: string;
-      businessName?: string;
-    };
-    const newProfile: UserProfile = {
-      uid: session.user.id,
-      email: session.user.email ?? '',
-      displayName: userMeta.full_name ?? session.user.email ?? '',
-      role: 'admin',
-      businessName: userMeta.businessName ?? '',
-      businessNameLower: (userMeta.businessName ?? '').toLowerCase(),
-      currencySymbol: '$',
-      darkMode: false,
-      createdAt: new Date().toISOString(),
-    } as UserProfile;
-    const created = await db.create<UserProfile>('users', newProfile);
-    return created;
+    // Trigger failed or took too long — don't create duplicate; surface error
+    throw new Error('No se pudo cargar el perfil. Recargá la página.');
   } catch (err) {
     console.error('[Auth] loadProfile error:', err);
     return null;
@@ -78,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = await loadProfile(session);
           setUser(profile);
         } else {
+          clearDbCache();
           setUser(null);
         }
       },
@@ -87,16 +75,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isReady]);
 
   const login = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       if (error.message.includes('Invalid login credentials')) {
         throw new Error('Email o contraseña incorrectos. Por favor verificá tus datos.');
       }
       throw new Error(error.message);
     }
+    if (data.user && !data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      throw new Error('Tu email no está verificado. Revisá tu casilla de correo.');
+    }
   };
 
   const logout = async () => {
+    clearDbCache();
     await supabase.auth.signOut();
     setUser(null);
   };

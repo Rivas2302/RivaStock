@@ -50,6 +50,7 @@ export default function PublicCatalog() {
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [lastSubmitAt, setLastSubmitAt] = useState<number>(0);
   const deferredSearch = useDeferredValue(search);
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem('catalog-dark-mode') === 'true',
@@ -208,6 +209,12 @@ export default function PublicCatalog() {
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!config) return;
+    const RATE_LIMIT_MS = 30_000;
+    if (Date.now() - lastSubmitAt < RATE_LIMIT_MS) {
+      setMessage(`Esperá ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
+      setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+      return;
+    }
     if (cart.length === 0) {
       setMessage('Tu carrito está vacío.');
       setTimeout(() => setMessage(null), 2500);
@@ -254,6 +261,7 @@ export default function PublicCatalog() {
         .insert(toDb(order as unknown as Record<string, unknown>));
       if (insertError) throw new Error(insertError.message);
       invalidateDbCache('orders');
+      setLastSubmitAt(Date.now());
       setIsSuccess(true);
       setCart([]);
       setIsCheckoutOpen(false);
