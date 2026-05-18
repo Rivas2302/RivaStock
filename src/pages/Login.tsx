@@ -10,19 +10,36 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [attempts, setAttempts]       = useState(0);
+  const [lockUntil, setLockUntil]     = useState(0);
 
   const { login } = useAuth();
   const navigate  = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const now = Date.now();
+    if (now < lockUntil) {
+      const secs = Math.ceil((lockUntil - now) / 1000);
+      setError(`Demasiados intentos. Esperá ${secs} segundos.`);
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
       await login(email, password);
+      setAttempts(0);
       navigate('/');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Ocurrió un error al iniciar sesión.');
+      const next = attempts + 1;
+      setAttempts(next);
+      if (next >= 5) {
+        setLockUntil(Date.now() + 30_000);
+        setAttempts(0);
+        setError('Demasiados intentos fallidos. Esperá 30 segundos.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Ocurrió un error al iniciar sesión.');
+      }
     } finally {
       setLoading(false);
     }
@@ -103,7 +120,7 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || Date.now() < lockUntil}
             className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'Iniciar Sesión'}

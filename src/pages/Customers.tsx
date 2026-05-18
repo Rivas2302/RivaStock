@@ -5,7 +5,7 @@ import { Customer, CustomerTransaction } from '../types';
 import { formatCurrency, cn, todayString, formatDate } from '../lib/utils';
 import {
   Plus, Search, Edit2, Trash2, Eye, Users,
-  TrendingUp, TrendingDown, Minus, CheckCircle2
+  TrendingUp, TrendingDown, Minus, CheckCircle2, RefreshCw
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,6 +36,7 @@ export default function Customers() {
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | 'Otro'>('Efectivo');
   const [savingPayment, setSavingPayment] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
 
   // Adjustment form
   const [adjAmount, setAdjAmount] = useState('');
@@ -235,6 +236,20 @@ export default function Customers() {
       showMessage('Ajuste registrado');
     } finally {
       setSavingAdj(false);
+    }
+  };
+
+  const handleReconcile = async () => {
+    if (!fichaCustomer || reconciling) return;
+    setReconciling(true);
+    try {
+      const newBalance = await callRpc<number>('reconcile_customer_balance', { p_customer_id: fichaCustomer.id });
+      setFichaCustomer(prev => prev ? { ...prev, currentBalance: newBalance } : null);
+      setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? { ...c, currentBalance: newBalance } : c));
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setReconciling(false);
     }
   };
 
@@ -478,6 +493,15 @@ export default function Customers() {
                 <p className="text-xs text-slate-400">
                   {fichaCustomer.currentBalance === 0 ? 'Al día' : fichaCustomer.currentBalance > 0 ? 'nos debe' : 'a su favor'}
                 </p>
+                <button
+                  onClick={handleReconcile}
+                  disabled={reconciling}
+                  className="mt-1 flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                  title="Recalcular saldo desde transacciones"
+                >
+                  <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} />
+                  Reconciliar
+                </button>
               </div>
             </div>
 

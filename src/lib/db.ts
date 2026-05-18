@@ -26,6 +26,7 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   delete_sale: ['sales', 'cash_flow', 'products', 'customers'],
   edit_sale: ['sales', 'cash_flow', 'products', 'customers'],
   intake_stock: ['products', 'stock_intakes'],
+  reconcile_customer_balance: ['customers'],
   register_customer_payment: ['customers', 'cash_flow'],
   register_sale: ['sales', 'cash_flow', 'products', 'customers'],
   toggle_sale_status: ['sales', 'cash_flow', 'customers'],
@@ -284,6 +285,21 @@ class SupabaseDB {
     const { error } = await supabase.from(tbl).delete().eq('id', id);
     if (error) throw new Error(`[db.delete:${tbl}/${id}] ${error.message}`);
     invalidateDbCache(collectionName);
+  }
+
+  async listByDateRange<T>(collectionName: string, ownerUid: string, from: string, to: string): Promise<T[]> {
+    const tbl = tableName(collectionName);
+    const key = cacheKey('listRange', collectionName, { ownerUid, from, to });
+    return readWithCache(key, async () => {
+      const { data, error } = await supabase.from(tbl).select('*')
+        .eq('user_id', ownerUid)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: false });
+      if (error) throw new Error(`[db.listByDateRange:${tbl}] ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data as any[]).map(r => fromDb<T>(r));
+    });
   }
 
   async getUniqueSlug(baseSlug: string, collectionName: string): Promise<string> {

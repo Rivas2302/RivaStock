@@ -185,6 +185,7 @@ export interface Quote {
   createdAt: string;
   updatedAt: string;
   convertedToSaleId?: string;
+  effectiveStatus?: QuoteStatus;
 }
 
 export interface Customer {

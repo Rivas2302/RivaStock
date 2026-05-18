@@ -54,7 +54,7 @@ export default function CashFlow() {
     setEditingEntry(null);
   };
 
-  const isSaleManagedEntry = (entry: CashFlowEntry) => entry.source === 'Venta';
+  const isSaleManagedEntry = (entry: CashFlowEntry) => entry.source === 'Venta' && !!entry.saleId;
 
   const handleToggleStatus = async (entry: CashFlowEntry) => {
     if (!user) return;
@@ -365,40 +365,31 @@ export default function CashFlow() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          if (isSaleManagedEntry(e)) return;
-                          setEditingEntry(e);
-                          setModalType(e.type);
-                          setFormData(e);
-                          setIsModalOpen(true);
-                        }}
-                        disabled={isSaleManagedEntry(e)}
-                        className={cn(
-                          "p-2 transition-colors",
-                          isSaleManagedEntry(e)
-                            ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
-                            : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                        )}
-                        title={isSaleManagedEntry(e) ? 'Gestionado desde Ventas o Cuenta Corriente' : 'Editar'}
-                      >
-                        <Edit2 size={18} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(e.id)}
-                        disabled={isSaleManagedEntry(e)}
-                        className={cn(
-                          "p-2 transition-colors",
-                          isSaleManagedEntry(e)
-                            ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
-                            : "text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
-                        )}
-                        title={isSaleManagedEntry(e) ? 'Gestionado desde Ventas o Cuenta Corriente' : 'Eliminar'}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+                    {isSaleManagedEntry(e) ? (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">Generado por venta — editá la venta</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingEntry(e);
+                            setModalType(e.type);
+                            setFormData(e);
+                            setIsModalOpen(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

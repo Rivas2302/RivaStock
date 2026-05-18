@@ -28,6 +28,7 @@ const STATUS_COLORS: Record<QuoteStatus, string> = {
 };
 
 function getEffectiveStatus(quote: Quote): QuoteStatus {
+  if (quote.effectiveStatus) return quote.effectiveStatus;
   if (quote.status === 'accepted' || quote.status === 'rejected') return quote.status;
   if (new Date(quote.expiresAt) < new Date()) return 'expired';
   return quote.status;
