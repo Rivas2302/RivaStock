@@ -20,6 +20,7 @@ export interface SupplierFormData {
   category?: string;
   notes?: string;
   paymentTerms?: string;
+  catalogUrl?: string;
 }
 
 const CATEGORIES = ['Insumos', 'Tecnología', 'Servicios', 'Materias Primas', 'Transporte', 'Otros'];
@@ -36,6 +37,7 @@ export default function SupplierModal({
   const [category, setCategory] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [paymentTerms, setPaymentTerms] = React.useState('');
+  const [catalogUrl, setCatalogUrl] = React.useState('');
 
   useEffect(() => {
     if (editingSupplier) {
@@ -48,10 +50,11 @@ export default function SupplierModal({
       setCategory(editingSupplier.category || '');
       setNotes(editingSupplier.notes || '');
       setPaymentTerms(editingSupplier.paymentTerms || '');
+      setCatalogUrl(editingSupplier.catalogUrl || '');
     } else {
       setName(''); setContactName(''); setPhone('');
       setEmail(''); setAddress(''); setCuit('');
-      setCategory(''); setNotes(''); setPaymentTerms('');
+      setCategory(''); setNotes(''); setPaymentTerms(''); setCatalogUrl('');
     }
   }, [editingSupplier, isOpen]);
 
@@ -68,6 +71,7 @@ export default function SupplierModal({
       category: category.trim() || undefined,
       notes: notes.trim() || undefined,
       paymentTerms: paymentTerms.trim() || undefined,
+      catalogUrl: catalogUrl.trim() || undefined,
     });
   };
 
@@ -135,6 +139,12 @@ export default function SupplierModal({
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Condición de Pago</label>
           <input type="text" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="30 días, Contado, etc."
+            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL del Catálogo</label>
+          <input type="url" value={catalogUrl} onChange={e => setCatalogUrl(e.target.value)} placeholder="https://..."
             className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" />
         </div>
 

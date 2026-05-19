@@ -30,6 +30,7 @@ export function useSuppliers() {
         category: r.category,
         notes: r.notes,
         paymentTerms: r.payment_terms,
+        catalogUrl: r.catalog_url,
         isActive: r.is_active,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -59,6 +60,7 @@ export function useSuppliers() {
     category?: string,
     notes?: string,
     paymentTerms?: string,
+    catalogUrl?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('register_supplier', {
       p_name:          name,
@@ -70,6 +72,7 @@ export function useSuppliers() {
       p_category:      category     ?? null,
       p_notes:         notes        ?? null,
       p_payment_terms: paymentTerms  ?? null,
+      p_catalog_url:   catalogUrl    ?? null,
     });
     await fetchSuppliers();
     return result;
@@ -86,6 +89,7 @@ export function useSuppliers() {
     category?: string,
     notes?: string,
     paymentTerms?: string,
+    catalogUrl?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('update_supplier', {
       p_id:           id,
@@ -98,6 +102,7 @@ export function useSuppliers() {
       p_category:     category     ?? null,
       p_notes:        notes        ?? null,
       p_payment_terms: paymentTerms ?? null,
+      p_catalog_url:  catalogUrl    ?? null,
     });
     await fetchSuppliers();
     return result;

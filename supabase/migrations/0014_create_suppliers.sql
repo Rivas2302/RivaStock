@@ -19,6 +19,7 @@ CREATE TABLE suppliers (
   category      text        DEFAULT NULL,
   notes         text        DEFAULT NULL,
   payment_terms text        DEFAULT NULL,
+  catalog_url   text        DEFAULT NULL,
   is_active     boolean     NOT NULL DEFAULT true,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
@@ -66,7 +67,8 @@ CREATE OR REPLACE FUNCTION register_supplier(
   p_cuit          text DEFAULT NULL,
   p_category      text DEFAULT NULL,
   p_notes         text DEFAULT NULL,
-  p_payment_terms text DEFAULT NULL
+  p_payment_terms text DEFAULT NULL,
+  p_catalog_url   text DEFAULT NULL
 )
 RETURNS suppliers
 LANGUAGE plpgsql
@@ -85,7 +87,7 @@ BEGIN
 
   INSERT INTO suppliers (
     user_id, name, name_lower, contact_name, phone, email,
-    address, cuit, category, notes, payment_terms
+    address, cuit, category, notes, payment_terms, catalog_url
   ) VALUES (
     v_uid, trim(p_name), lower(trim(p_name)),
     NULLIF(trim(p_contact_name), '')::text,
@@ -95,7 +97,8 @@ BEGIN
     NULLIF(trim(p_cuit), '')::text,
     NULLIF(trim(p_category), '')::text,
     NULLIF(trim(p_notes), '')::text,
-    NULLIF(trim(p_payment_terms), '')::text
+    NULLIF(trim(p_payment_terms), '')::text,
+    NULLIF(trim(p_catalog_url), '')::text
   ) RETURNING * INTO v_new;
 
   RETURN v_new;
@@ -115,7 +118,8 @@ CREATE OR REPLACE FUNCTION update_supplier(
   p_cuit          text DEFAULT NULL,
   p_category      text DEFAULT NULL,
   p_notes         text DEFAULT NULL,
-  p_payment_terms text DEFAULT NULL
+  p_payment_terms text DEFAULT NULL,
+  p_catalog_url   text DEFAULT NULL
 )
 RETURNS suppliers
 LANGUAGE plpgsql
@@ -149,7 +153,8 @@ BEGIN
     cuit          = NULLIF(trim(p_cuit), '')::text,
     category      = NULLIF(trim(p_category), '')::text,
     notes         = NULLIF(trim(p_notes), '')::text,
-    payment_terms = NULLIF(trim(p_payment_terms), '')::text
+    payment_terms = NULLIF(trim(p_payment_terms), '')::text,
+    catalog_url   = NULLIF(trim(p_catalog_url), '')::text
   WHERE id = p_id AND user_id = v_uid
   RETURNING * INTO v_updated;
 
@@ -159,7 +164,6 @@ $$;
 
 -- ────────────────────────────────────────────────
 -- RPC: delete_supplier
--- Soft-delete si tiene relaciones en stock_intakes, hard-delete si no
 -- ────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION delete_supplier(p_id uuid)
 RETURNS void
@@ -168,28 +172,10 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_uid      uuid := auth.uid();
-  v_existing suppliers%ROWTYPE;
-  v_has_stock_intakes boolean;
+  v_uid uuid := auth.uid();
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'No autenticado'; END IF;
-
-  SELECT * INTO v_existing
-    FROM suppliers
-   WHERE id = p_id AND user_id = v_uid;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Proveedor no encontrado'; END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM stock_intakes
-     WHERE supplier_id = p_id AND user_id = v_uid
-     LIMIT 1
-  ) INTO v_has_stock_intakes;
-
-  IF v_has_stock_intakes THEN
-    UPDATE suppliers SET is_active = false WHERE id = p_id;
-  ELSE
-    DELETE FROM suppliers WHERE id = p_id AND user_id = v_uid;
-  END IF;
+  DELETE FROM suppliers WHERE id = p_id AND user_id = v_uid;
 END;
 $$;
 

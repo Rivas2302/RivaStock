@@ -216,6 +216,7 @@ export interface Supplier {
   category?: string;
   notes?: string;
   paymentTerms?: string;
+  catalogUrl?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Search, Edit2, Trash2, Building2,
   Phone, Mail, Tag, CreditCard, CheckCircle2,
-  XCircle, Package
+  XCircle, Package, ExternalLink
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -72,11 +72,11 @@ export default function Suppliers() {
     try {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, data.name, data.contactName, data.phone,
-          data.email, data.address, data.cuit, data.category, data.notes, data.paymentTerms);
+          data.email, data.address, data.cuit, data.category, data.notes, data.paymentTerms, data.catalogUrl);
         showMessage('Proveedor actualizado');
       } else {
         await createSupplier(data.name, data.contactName, data.phone, data.email,
-          data.address, data.cuit, data.category, data.notes, data.paymentTerms);
+          data.address, data.cuit, data.category, data.notes, data.paymentTerms, data.catalogUrl);
         showMessage('Proveedor creado');
       }
       setIsModalOpen(false);
@@ -192,6 +192,7 @@ export default function Suppliers() {
                 <th className="px-6 py-4"><Mail size={14} className="inline mr-1" />Email</th>
                 <th className="px-6 py-4"><Tag size={14} className="inline mr-1" />Categoría</th>
                 <th className="px-6 py-4"><CreditCard size={14} className="inline mr-1" />Condición</th>
+                <th className="px-6 py-4">Catálogo</th>
                 <th className="px-6 py-4">Estado</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
@@ -214,6 +215,19 @@ export default function Suppliers() {
                     ) : '—'}
                   </td>
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400 text-xs">{s.paymentTerms || '—'}</td>
+                  <td className="px-6 py-4">
+                    {s.catalogUrl ? (
+                      <a
+                        href={s.catalogUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir catálogo"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+                      >
+                        <ExternalLink size={12} /> Ver
+                      </a>
+                    ) : '—'}
+                  </td>
                   <td className="px-6 py-4">
                     <button onClick={() => handleToggleActive(s)}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-colors">
@@ -244,7 +258,7 @@ export default function Suppliers() {
               ))}
               {filteredSuppliers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     <Package size={32} className="mx-auto mb-2 opacity-30" />
                     No se encontraron proveedores
                   </td>
