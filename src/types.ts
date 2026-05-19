@@ -203,6 +203,24 @@ export interface Customer {
 
 export type TransactionType = 'sale' | 'payment' | 'adjustment';
 
+export interface Supplier {
+  id: string;
+  ownerUid: string;
+  name: string;
+  nameLower: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  cuit?: string;
+  category?: string;
+  notes?: string;
+  paymentTerms?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CustomerTransaction {
   id: string;
   ownerUid: string;

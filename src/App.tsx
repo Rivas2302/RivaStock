@@ -17,6 +17,7 @@ const PublicCatalog = lazy(() => import('./pages/PublicCatalog'));
 const Quotes = lazy(() => import('./pages/Quotes'));
 const QuotePublic = lazy(() => import('./pages/QuotePublic'));
 const Customers = lazy(() => import('./pages/Customers'));
+const Suppliers = lazy(() => import('./pages/Suppliers'));
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="ventas" element={withSuspense(<Sales />)} />
         <Route path="presupuestos" element={withSuspense(<Quotes />)} />
         <Route path="clientes" element={withSuspense(<Customers />)} />
+        <Route path="proveedores" element={withSuspense(<Suppliers />)} />
         <Route path="ingresos" element={withSuspense(<Intake />)} />
         <Route path="caja" element={withSuspense(<CashFlow />)} />
         <Route path="pedidos" element={withSuspense(<Orders />)} />

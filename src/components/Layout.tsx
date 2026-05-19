@@ -15,7 +15,8 @@ import {
   X,
   ExternalLink,
   FileText,
-  Users
+  Users,
+  Building2
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -29,6 +30,7 @@ const navItems: { name: string; path: string; icon: typeof LayoutDashboard }[] =
   { name: 'Ventas', path: '/ventas', icon: ShoppingCart },
   { name: 'Presupuestos', path: '/presupuestos', icon: FileText },
   { name: 'Clientes', path: '/clientes', icon: Users },
+  { name: 'Proveedores', path: '/proveedores', icon: Building2 },
   { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet },
   { name: 'Pedidos', path: '/pedidos', icon: ClipboardList },

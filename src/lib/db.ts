@@ -30,6 +30,10 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   register_customer_payment: ['customers', 'cash_flow'],
   register_sale: ['sales', 'cash_flow', 'products', 'customers'],
   toggle_sale_status: ['sales', 'cash_flow', 'customers'],
+  register_supplier:    ['suppliers'],
+  update_supplier:      ['suppliers'],
+  delete_supplier:      ['suppliers'],
+  toggle_supplier_active: ['suppliers'],
 };
 
 function shallowClone<T>(value: T): T {
