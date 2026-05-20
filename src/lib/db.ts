@@ -60,6 +60,20 @@ export function invalidateDbCache(...collectionNames: string[]): void {
   }
 }
 
+const PENDING_PROMISE_TIMEOUT_MS = 20_000;
+
+function timeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`[db] timeout after ${ms}ms: ${label}`));
+    }, ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err)   => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const existing = queryCache.get(key);
@@ -69,11 +83,16 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
   }
 
   if (existing?.promise) {
-    const data = await existing.promise;
-    return shallowClone(data as T);
+    try {
+      const data = await timeoutPromise(existing.promise as Promise<T>, PENDING_PROMISE_TIMEOUT_MS, key);
+      return shallowClone(data);
+    } catch (err) {
+      queryCache.delete(key);
+      throw err;
+    }
   }
 
-  const pending = loader();
+  const pending = timeoutPromise(loader(), PENDING_PROMISE_TIMEOUT_MS, key);
   queryCache.set(key, {
     expiresAt: now + QUERY_CACHE_TTL_MS,
     hasValue: false,

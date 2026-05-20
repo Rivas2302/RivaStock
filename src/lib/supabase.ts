@@ -15,4 +15,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('[Supabase] Credentials missing or invalid; set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
+  },
+});

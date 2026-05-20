@@ -40,6 +40,16 @@ export default function PublicCatalog() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingTooLong, setLoadingTooLong] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingTooLong(false);
+      return;
+    }
+    const t = setTimeout(() => setLoadingTooLong(true), 8000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -67,14 +77,18 @@ export default function PublicCatalog() {
     };
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
     if (!online) {
       setLoading(false);
-      setError('Sin conexiÃ³n');
-    } else {
-      setError(prev => (prev === 'Sin conexiÃ³n' ? null : prev));
+      setError('Sin conexión');
+      return;
     }
-  }, [online]);
+    setError(prev => (prev === 'Sin conexión' ? null : prev));
+    // If we came back online and never loaded a config, trigger a reload so the catalog refreshes.
+    if (!config && error === 'Sin conexión') {
+      window.location.reload();
+    }
+  }, [online, config, error]);
 
   useEffect(() => {
     localStorage.setItem('catalog-dark-mode', String(darkMode));
@@ -105,38 +119,65 @@ export default function PublicCatalog() {
     message: ''
   });
 
-  useEffect(() => {
-    const init = async () => {
-      if (!slug) return;
+useEffect(() => {
+    let cancelled = false;
+    const LOAD_TIMEOUT_MS = 15_000;
 
+    const withTimeout = <T,>(promise: Promise<T>, label: string): Promise<T> => {
+      return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`[catalog] timeout: ${label} after ${LOAD_TIMEOUT_MS}ms`));
+        }, LOAD_TIMEOUT_MS);
+        promise.then(
+          (value) => { clearTimeout(timer); resolve(value); },
+          (err)   => { clearTimeout(timer); reject(err); },
+        );
+      });
+    };
+
+    const init = async () => {
       try {
         setLoading(true);
         setError(null);
 
+        if (!slug) {
+          console.warn('[catalog] slug missing from route params');
+          setError('Catálogo no encontrado');
+          return;
+        }
+
         // 1. Find catalog config by slug
-        const configs = await db.find<CatalogConfig>('catalog_configs', 'slug', slug);
+        const configs = await withTimeout(
+          db.find<CatalogConfig>('catalog_configs', 'slug', slug),
+          'find catalog_config',
+        );
+        if (cancelled) return;
         const foundConfig = configs[0];
 
         if (!foundConfig) {
-          setError('CatÃ¡logo no encontrado');
+          setError('Catálogo no encontrado');
           return;
         }
 
         if (!foundConfig.enabled) {
-          setError('Este catÃ¡logo estÃ¡ temporalmente desactivado');
+          setError('Este catálogo está temporalmente desactivado');
           return;
         }
 
         setConfig(foundConfig);
 
         // 2. Fetch products and categories concurrently via Supabase
-        const [allProducts, cats] = await Promise.all([
-          db.findBy<Product>('products', [
-            { field: 'ownerUid',       value: foundConfig.ownerUid },
-            { field: 'showInCatalog',  value: true },
+        const [allProducts, cats] = await withTimeout(
+          Promise.all([
+            db.findBy<Product>('products', [
+              { field: 'ownerUid',       value: foundConfig.ownerUid },
+              { field: 'showInCatalog',  value: true },
+            ]),
+            db.list<Category>('categories', foundConfig.ownerUid),
           ]),
-          db.list<Category>('categories', foundConfig.ownerUid),
-        ]);
+          'load products+categories',
+        );
+        if (cancelled) return;
 
         // Respect showOutOfStock setting
         const visibleProducts = foundConfig.showOutOfStock
@@ -146,14 +187,20 @@ export default function PublicCatalog() {
         setProducts(visibleProducts);
         setCategories(cats);
       } catch (err) {
-        console.error('Error loading catalog:', err);
-        setError('Error al cargar el catÃ¡logo');
+        if (cancelled) return;
+        console.error('[catalog] init failed:', err);
+        const isTimeout = err instanceof Error && err.message.startsWith('[catalog] timeout');
+        setError(isTimeout
+          ? 'No se pudo conectar con el servidor. Verificá tu conexión e intentá de nuevo.'
+          : 'Error al cargar el catálogo');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     init();
+
+    return () => { cancelled = true; };
   }, [slug]);
 
   const addToCart = (product: Product) => {
@@ -300,12 +347,23 @@ export default function PublicCatalog() {
     };
   }, [selectedProductForLightbox, isCartOpen, isCheckoutOpen]);
 
-  if (loading) {
+if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center px-6">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
-          <p className="text-slate-500 font-medium animate-pulse">Cargando catÃ¡logo...</p>
+          <p className="text-slate-500 font-medium animate-pulse">Cargando catálogo...</p>
+          {loadingTooLong && (
+            <>
+              <p className="text-slate-400 text-sm">Está tardando más de lo normal.</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-5 py-2.5 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800"
+              >
+                Reintentar
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
