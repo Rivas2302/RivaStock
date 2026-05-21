@@ -1,6 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
-import { clearDbCache } from '../lib/db';
+import { useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -41,20 +40,36 @@ const navItems: { name: string; path: string; icon: typeof LayoutDashboard }[] =
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, refetchData } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const lastRefetchAtRef = useRef(0);
 
   useEffect(() => {
-    const onFocus = () => clearDbCache();
-    const onVisible = () => { if (document.visibilityState === 'visible') clearDbCache(); };
+    const MIN_REFETCH_INTERVAL_MS = 10_000;
+    const maybeRefetch = () => {
+      const now = Date.now();
+      if (now - lastRefetchAtRef.current < MIN_REFETCH_INTERVAL_MS) return;
+      lastRefetchAtRef.current = now;
+      refetchData();
+    };
+
+    const onFocus = () => maybeRefetch();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') maybeRefetch();
+    };
+    const onOnline = () => maybeRefetch();
+
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+
     return () => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
     };
-  }, []);
+  }, [refetchData]);
 
   const handleLogout = async () => {
     if (loggingOut) return;

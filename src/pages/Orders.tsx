@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Orders() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +46,7 @@ export default function Orders() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const updateOrderStatus = async (id: string, status: Order['status']) => {
     await db.update<Order>('orders', id, { status, isRead: true });

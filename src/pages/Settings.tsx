@@ -35,7 +35,7 @@ import { motion, AnimatePresence } from 'motion/react';
 type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'maintenance';
 
 export default function Settings() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, refetchToken } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
@@ -138,7 +138,7 @@ export default function Settings() {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, refetchToken]);
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type });

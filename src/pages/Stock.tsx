@@ -22,7 +22,7 @@ import { ImageUpload } from '../components/ImageUpload';
 import { motion } from 'motion/react';
 
 export default function Stock() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -77,7 +77,7 @@ export default function Stock() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);

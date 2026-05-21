@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 function normalizeSupabaseUrl(value: string | undefined): string {
   const trimmedValue = value?.trim() ?? '';
@@ -15,8 +15,28 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('[Supabase] Credentials missing or invalid; set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: {
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
-  },
-});
+// Module-level singleton — guard against accidental re-instantiation (HMR, tests).
+declare global {
+  // eslint-disable-next-line no-var
+  var __rivastock_supabase__: SupabaseClient | undefined;
+}
+
+export const supabase: SupabaseClient =
+  globalThis.__rivastock_supabase__ ??
+  createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'rivastock-auth',
+      flowType: 'pkce',
+    },
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
+    },
+  });
+
+if (typeof window !== 'undefined') {
+  globalThis.__rivastock_supabase__ = supabase;
+}

@@ -19,7 +19,7 @@ import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 
 export default function CashFlow() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [entries, setEntries] = useState<CashFlowEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -92,7 +92,7 @@ export default function CashFlow() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const handleDelete = async (id: string) => {
     const entry = entries.find(item => item.id === id);

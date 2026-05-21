@@ -42,7 +42,7 @@ function addDays(days: number): string {
 }
 
 export default function Quotes() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -122,7 +122,7 @@ export default function Quotes() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const filteredCustomers = useMemo(() => {
     const q = clientSearch.toLowerCase();

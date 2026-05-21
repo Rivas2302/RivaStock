@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Supplier } from '../types';
 
 export function useSuppliers() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +48,7 @@ export function useSuppliers() {
       if (cancelled) return;
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const createSupplier = async (
     name: string,

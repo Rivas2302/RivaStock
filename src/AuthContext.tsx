@@ -1,12 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserProfile } from './types';
 import { supabase } from './lib/supabase';
-import { db, clearDbCache } from './lib/db';
+import { db, clearDbCache, invalidateDbCache } from './lib/db';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
+  refetchToken: number;
+  refetchData: () => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: UserProfile) => void;
@@ -24,7 +26,6 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
       if (profile) return { ...profile, uid: session.user.id };
       await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
     }
-    // Trigger failed or took too long — don't create duplicate; surface error
     throw new Error('No se pudo cargar el perfil. Recargá la página.');
   } catch (err) {
     console.error('[Auth] loadProfile error:', err);
@@ -33,16 +34,30 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isReady, setIsReady] = useState(false);
+  const [user, setUser]               = useState<UserProfile | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [isReady, setIsReady]         = useState(false);
+  const [refetchToken, setRefetchToken] = useState(0);
+  const currentUserIdRef              = useRef<string | null>(null);
+
+  const refetchData = useCallback(() => {
+    clearDbCache();
+    setRefetchToken(t => t + 1);
+  }, []);
 
   const init = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         const profile = await loadProfile(session);
-        setUser(profile);
+        if (profile) {
+          currentUserIdRef.current = profile.uid;
+          setUser(profile);
+        } else {
+          // Profile failed to load on initial boot. Keep user null but DO NOT
+          // sign out — let the user retry by reloading.
+          console.warn('[Auth] Initial profile load failed; user must reload.');
+        }
       }
     } catch (err) {
       console.error('[Auth] Init failed:', err);
@@ -58,15 +73,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isReady) return;
-    
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session) {
-          const profile = await loadProfile(session);
-          setUser(profile);
-        } else {
+        // Hard logout — only when Supabase explicitly signs out.
+        if (event === 'SIGNED_OUT' || !session) {
+          currentUserIdRef.current = null;
           clearDbCache();
           setUser(null);
+          return;
+        }
+
+        // Token refresh / user updated — keep existing user object unless the
+        // underlying auth user actually changed (different uid). A profile
+        // re-fetch failure here MUST NOT log the user out.
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          // Identity unchanged; nothing to do. Supabase already persisted the
+          // refreshed access token to localStorage.
+          if (currentUserIdRef.current === session.user.id) return;
+          // Edge case: identity changed under the same listener. Fall through
+          // to reload profile.
+        }
+
+        // INITIAL_SESSION / SIGNED_IN / identity changed: load profile.
+        const sameUser = currentUserIdRef.current === session.user.id;
+        const profile = await loadProfile(session);
+
+        if (profile) {
+          currentUserIdRef.current = profile.uid;
+          setUser(profile);
+          return;
+        }
+
+        // Profile load failed.
+        // - If we already had a user with this id, KEEP it — this is a transient
+        //   network failure, not a real logout.
+        // - If we didn't have a user yet, leave it null; UI will show the
+        //   login page or a profile-error state.
+        if (sameUser) {
+          console.warn('[Auth] Profile re-fetch failed during', event, '— preserving session.');
+        } else {
+          console.error('[Auth] Profile fetch failed for new session; user not signed in.');
         }
       },
     );
@@ -89,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    currentUserIdRef.current = null;
     clearDbCache();
     await supabase.auth.signOut();
     setUser(null);
@@ -113,15 +161,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw new Error('Error al actualizar la contraseña.');
     }
-    // Force re-login after reset for security
     await supabase.auth.signOut();
   };
 
-  const updateUser = (updatedUser: UserProfile) => setUser(updatedUser);
+  const updateUser = (updatedUser: UserProfile) => {
+    currentUserIdRef.current = updatedUser.uid;
+    invalidateDbCache('users');
+    setUser(updatedUser);
+  };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, logout, updateUser, sendResetEmail, resetPassword }}
+      value={{ user, loading, refetchToken, refetchData, login, logout, updateUser, sendResetEmail, resetPassword }}
     >
       {children}
     </AuthContext.Provider>

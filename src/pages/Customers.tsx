@@ -11,7 +11,7 @@ import Modal from '../components/Modal';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Customers() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,7 +72,7 @@ export default function Customers() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const filteredCustomers = useMemo(() => {
     const q = search.toLowerCase();

@@ -14,7 +14,7 @@ import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 
 export default function Intake() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [intakes, setIntakes] = useState<StockIntake[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +54,7 @@ export default function Intake() {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, refetchToken]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

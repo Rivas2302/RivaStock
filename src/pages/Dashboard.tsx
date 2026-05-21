@@ -17,7 +17,7 @@ import {
 import { motion } from 'motion/react';
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
@@ -55,7 +55,7 @@ export default function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const { kpis, lowStockProducts, recentSales } = useMemo(() => {
     let totalCollected = 0;

@@ -28,7 +28,7 @@ import {
 } from '../lib/sales';
 
 export default function Sales() {
-  const { user } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +123,7 @@ export default function Sales() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, refetchToken]);
 
   const handleProductChange = (productId: string) => {
     if (!productId) {
