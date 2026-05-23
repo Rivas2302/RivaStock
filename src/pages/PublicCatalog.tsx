@@ -26,7 +26,10 @@ import {
   Sun,
   Moon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Share2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -65,6 +68,22 @@ export default function PublicCatalog() {
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem('catalog-dark-mode') === 'true',
   );
+  const [shareProductId, setShareProductId] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleShareProduct = async (product: Product, action: 'copy' | 'whatsapp') => {
+    const url = `${window.location.origin}/catalogo/${slug}/${product.id}`;
+    if (action === 'copy') {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => { setShareCopied(false); setShareProductId(null); }, 2000);
+    } else {
+      const price = config?.showPrices ? ` — ${formatCurrency(roundPrice(product.salePrice))}` : '';
+      const text = `¡Mirá este producto: *${product.name}*${price}!\n${url}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      setShareProductId(null);
+    }
+  };
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -720,7 +739,7 @@ if (loading) {
                     )}
                   </div>
 
-                  <div className="flex items-end justify-between mt-6">
+                  <div className="flex items-end justify-between mt-6 relative">
                     <div className="space-y-1">
                       {config.showPrices && (
                         <p className={cn(
@@ -739,18 +758,77 @@ if (loading) {
                         </p>
                       )}
                     </div>
-                    
-                    <button 
-                      onClick={() => addToCart(product)}
-                      disabled={product.stock <= 0}
-                      className={cn(
-                        "w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all active:scale-90 disabled:opacity-20 disabled:grayscale",
-                        product.stock > 0 ? "hover:scale-110 hover:shadow-indigo-500/40" : ""
-                      )}
-                      style={product.stock > 0 ? { backgroundColor: accentColor, boxShadow: `0 10px 30px -5px ${accentColor}80` } : {}}
-                    >
-                      <Plus size={28} />
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setShareProductId(prev => prev === product.id ? null : product.id);
+                            setShareCopied(false);
+                          }}
+                          className={cn(
+                            "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                            darkMode
+                              ? "bg-white/10 hover:bg-white/20 text-white/60 hover:text-white"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-500"
+                          )}
+                          title="Compartir producto"
+                        >
+                          <Share2 size={18} />
+                        </button>
+
+                        {shareProductId === product.id && (
+                          <div
+                            className={cn(
+                              "absolute bottom-full right-0 mb-2 w-44 rounded-2xl shadow-2xl border overflow-hidden z-20",
+                              darkMode ? "bg-[#1a1a1a] border-white/10" : "bg-white border-slate-100"
+                            )}
+                          >
+                            <button
+                              onClick={() => handleShareProduct(product, 'copy')}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors",
+                                darkMode
+                                  ? "text-white hover:bg-white/5"
+                                  : "text-slate-700 hover:bg-slate-50"
+                              )}
+                            >
+                              {shareCopied ? (
+                                <Check size={15} className="text-emerald-500" />
+                              ) : (
+                                <Copy size={15} />
+                              )}
+                              {shareCopied ? 'Copiado' : 'Copiar link'}
+                            </button>
+                            <button
+                              onClick={() => handleShareProduct(product, 'whatsapp')}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors border-t",
+                                darkMode
+                                  ? "text-white hover:bg-white/5 border-white/5"
+                                  : "text-slate-700 hover:bg-slate-50 border-slate-100"
+                              )}
+                            >
+                              <MessageCircle size={15} className="text-emerald-500" />
+                              WhatsApp
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock <= 0}
+                        className={cn(
+                          "w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all active:scale-90 disabled:opacity-20 disabled:grayscale",
+                          product.stock > 0 ? "hover:scale-110 hover:shadow-indigo-500/40" : ""
+                        )}
+                        style={product.stock > 0 ? { backgroundColor: accentColor, boxShadow: `0 10px 30px -5px ${accentColor}80` } : {}}
+                      >
+                        <Plus size={28} />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 

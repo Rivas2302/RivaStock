@@ -21,6 +21,7 @@ const Suppliers = lazy(() => import('./pages/Suppliers'));
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const PublicProductPage = lazy(() => import('./pages/PublicProductPage'));
 
 function PageLoader() {
   return (
@@ -54,6 +55,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={withSuspense(<ForgotPassword />)} />
       <Route path="/reset-password" element={withSuspense(<ResetPassword />)} />
       <Route path="/catalogo/:slug" element={withSuspense(<PublicCatalog />)} />
+      <Route path="/catalogo/:slug/:productId" element={withSuspense(<PublicProductPage />)} />
       <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
 
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>

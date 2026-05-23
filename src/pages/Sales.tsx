@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { db, callRpc } from '../lib/db';
 import { Product, Sale, Customer } from '../types';
@@ -16,7 +16,9 @@ import {
   ShoppingCart,
   UserCheck,
   UserPlus,
-  X
+  X,
+  FileSpreadsheet,
+  FileDown,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
@@ -26,6 +28,9 @@ import {
   hasDerivedSaleItems,
   isPendingSaleStatus,
 } from '../lib/sales';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Sales() {
   const { user, refetchToken } = useAuth();
@@ -60,6 +65,66 @@ export default function Sales() {
     paymentMethod: 'Efectivo',
     client: ''
   });
+
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showExportMenu]);
+
+  const handleExportExcel = () => {
+    const data = filteredSales.map(s => ({
+      'Fecha': formatDate(s.date),
+      'Producto': s.productName,
+      'Cliente': s.client || '-',
+      'Cantidad': getSaleDisplayQuantity(s),
+      'Precio Unitario': roundPrice(s.unitPrice),
+      'Ajuste': s.adjustment ?? 0,
+      'Total': roundPrice(s.total),
+      'Método de Pago': s.paymentMethod || '-',
+      'Estado': s.status,
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+    XLSX.writeFile(wb, `ventas-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    setShowExportMenu(false);
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Reporte de Ventas', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
+    if (statusFilter !== 'all' || search) {
+      doc.text(`Filtros: estado="${statusFilter}" búsqueda="${search}"`, 14, 34);
+    }
+    autoTable(doc, {
+      startY: statusFilter !== 'all' || search ? 40 : 35,
+      head: [['Fecha', 'Producto', 'Cliente', 'Cant.', 'Total', 'Estado']],
+      body: filteredSales.map(s => [
+        formatDate(s.date),
+        s.productName,
+        s.client || '-',
+        String(getSaleDisplayQuantity(s)),
+        formatCurrency(roundPrice(s.total)),
+        s.status,
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [99, 102, 241] },
+    });
+    doc.save(`ventas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    setShowExportMenu(false);
+  };
 
   const filteredCreditCustomers = useMemo(() => {
     const q = creditSearch.toLowerCase();
@@ -278,10 +343,34 @@ export default function Sales() {
           <p className="text-slate-500 dark:text-slate-400">Registra y gestiona tus ventas</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="hidden md:flex items-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-            <Download size={20} />
-            Exportar CSV
-          </button>
+          <div className="relative hidden md:block" ref={exportMenuRef}>
+            <button
+              onClick={() => setShowExportMenu(v => !v)}
+              className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Download size={20} />
+              Exportar
+              <ChevronDown size={16} />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-20 overflow-hidden">
+                <button
+                  onClick={handleExportExcel}
+                  className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3"
+                >
+                  <FileSpreadsheet size={16} className="text-emerald-600" />
+                  Exportar Excel (.xlsx)
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800"
+                >
+                  <FileDown size={16} className="text-rose-600" />
+                  Exportar PDF
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => {
               setEditingSale(null);

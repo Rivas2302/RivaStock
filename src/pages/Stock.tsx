@@ -4,18 +4,19 @@ import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { Product, Category, PriceRange } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  Eye, 
-  EyeOff, 
+import {
+  Plus,
+  Search,
+  Filter,
+  Edit2,
+  Trash2,
+  Eye,
+  EyeOff,
   Image as ImageIcon,
   Check,
   X,
-  ChevronDown
+  ChevronDown,
+  Share2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
@@ -336,7 +337,19 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button 
+                      {p.showInCatalog && user?.catalogSlug && (
+                        <button
+                          onClick={() => {
+                            const url = `${window.location.origin}/catalogo/${user.catalogSlug}/${p.id}`;
+                            navigator.clipboard.writeText(url);
+                          }}
+                          title="Copiar enlace del producto en el catálogo"
+                          className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                        >
+                          <Share2 size={18} />
+                        </button>
+                      )}
+                      <button
                         onClick={() => {
                           setEditingProduct(p);
                           setIsUploadingImage(false);
@@ -347,7 +360,7 @@ export default function Stock() {
                       >
                         <Edit2 size={18} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDelete(p.id)}
                         className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                       >

@@ -3,18 +3,26 @@ import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { Product, Sale, CashFlowEntry, Order } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate } from '../lib/utils';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Package, 
-  AlertTriangle, 
-  ShoppingCart, 
-  Wallet, 
-  ArrowUpRight, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Package,
+  AlertTriangle,
+  ShoppingCart,
+  Wallet,
+  ArrowUpRight,
   ArrowDownRight,
-  Clock
+  Clock,
+  FileDown,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+  LineChart, Line,
+} from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Dashboard() {
   const { user, refetchToken } = useAuth();
@@ -128,6 +136,83 @@ export default function Dashboard() {
     };
   }, [cashFlow, products, sales]);
 
+  const monthlySalesData = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+      const total = sales
+        .filter(s => s.status === 'Pagado' && s.date.startsWith(monthKey))
+        .reduce((acc, s) => acc + s.total, 0);
+      return { label, total };
+    });
+  }, [sales]);
+
+  const stockByCategoryData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of products) {
+      if (!map[p.category]) map[p.category] = 0;
+      map[p.category] += roundPrice(p.salePrice) * p.stock;
+    }
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }, [products]);
+
+  const monthlyBalanceData = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+      let income = 0;
+      let expense = 0;
+      for (const entry of cashFlow) {
+        if (!entry.date.startsWith(monthKey) || entry.status !== 'Pagado') continue;
+        if (entry.type === 'Ingreso') income += entry.amount;
+        else expense += entry.amount;
+      }
+      return { label, balance: income - expense };
+    });
+  }, [cashFlow]);
+
+  const PIE_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#14b8a6'];
+
+  const handleExportDashboardPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text(`${user?.businessName || 'Mi Negocio'} — Panel de Control`, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Indicador', 'Valor']],
+      body: kpis.map(k => [
+        k.title,
+        k.isCurrency === false ? String(k.value) : formatCurrency(k.value as number),
+      ]),
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [99, 102, 241] },
+    });
+
+    const afterKpi = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    doc.setFontSize(13);
+    doc.text('Ventas por mes (últimos 6 meses)', 14, afterKpi);
+    autoTable(doc, {
+      startY: afterKpi + 5,
+      head: [['Mes', 'Ventas cobradas']],
+      body: monthlySalesData.map(d => [d.label, formatCurrency(d.total)]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [99, 102, 241] },
+    });
+
+    doc.save(`panel-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   if (loading) return <div className="animate-pulse space-y-8">
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
@@ -151,9 +236,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
-        <p className="text-slate-500 dark:text-slate-400">Resumen general de tu negocio</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
+          <p className="text-slate-500 dark:text-slate-400">Resumen general de tu negocio</p>
+        </div>
+        <button
+          onClick={handleExportDashboardPDF}
+          className="hidden md:flex items-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <FileDown size={18} />
+          Exportar reporte PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -184,6 +278,73 @@ export default function Dashboard() {
             </p>
           </motion.div>
         ))}
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Monthly Sales Bar Chart */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h3 className="font-bold text-slate-900 dark:text-white mb-4">Ventas cobradas por mes</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={monthlySalesData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => formatCurrency(v)} tick={{ fontSize: 10 }} width={72} />
+              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Bar dataKey="total" fill="#6366f1" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Stock by Category Pie */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h3 className="font-bold text-slate-900 dark:text-white mb-4">Valor en stock por categoría</h3>
+          {stockByCategoryData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={stockByCategoryData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  dataKey="value"
+                >
+                  {stockByCategoryData.map((_, idx) => (
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                <Legend
+                  formatter={(value) => <span className="text-xs text-slate-600 dark:text-slate-400">{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-slate-400 text-sm">Sin datos</div>
+          )}
+        </div>
+      </div>
+
+      {/* Net Balance Line Chart */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <h3 className="font-bold text-slate-900 dark:text-white mb-4">Balance neto mensual</h3>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={monthlyBalanceData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={v => formatCurrency(v)} tick={{ fontSize: 10 }} width={72} />
+            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <Line
+              type="monotone"
+              dataKey="balance"
+              stroke="#6366f1"
+              strokeWidth={2.5}
+              dot={{ r: 4, fill: '#6366f1' }}
+              activeDot={{ r: 6 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
