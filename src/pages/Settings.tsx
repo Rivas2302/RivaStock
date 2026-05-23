@@ -26,9 +26,11 @@ import {
   ExternalLink,
   Wrench,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  QrCode
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import CatalogQRModal from '../components/CatalogQRModal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -73,6 +75,7 @@ export default function Settings() {
   const [cleaning, setCleaning] = useState(false);
   const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
   const [cleanupResult, setCleanupResult] = useState<{ salesDeleted: number; cashFlowDeleted: number } | null>(null);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
 
   const fetchData = async () => {
     if (!user) return;
@@ -625,7 +628,7 @@ export default function Settings() {
                         <div className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-600 dark:text-slate-400 truncate">
                           {window.location.origin}/catalogo/{user?.catalogSlug}
                         </div>
-                        <button 
+                        <button
                           onClick={() => {
                             navigator.clipboard.writeText(`${window.location.origin}/catalogo/${user?.catalogSlug}`);
                             showMessage('URL copiada al portapapeles');
@@ -635,7 +638,14 @@ export default function Settings() {
                         >
                           <Copy size={18} />
                         </button>
-                        <a 
+                        <button
+                          onClick={() => setIsQRModalOpen(true)}
+                          className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                          title="Ver QR del catálogo"
+                        >
+                          <QrCode size={18} />
+                        </button>
+                        <a
                           href={`/catalogo/${user?.catalogSlug}`}
                           target="_blank"
                           rel="noreferrer"
@@ -1224,6 +1234,14 @@ export default function Settings() {
           </div>
         )}
       </Modal>
+      {catalogConfig && (
+        <CatalogQRModal
+          isOpen={isQRModalOpen}
+          onClose={() => setIsQRModalOpen(false)}
+          catalogUrl={`${window.location.origin}/catalogo/${user?.catalogSlug}`}
+          businessName={user?.businessName || 'Mi Tienda'}
+        />
+      )}
     </div>
   );
 }
