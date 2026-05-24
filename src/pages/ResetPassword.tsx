@@ -19,15 +19,40 @@ export default function ResetPassword() {
   const navigate          = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
+
+    // Listen for the token Supabase fires after processing the email hash.
+    // PASSWORD_RECOVERY = forgot-password link, SIGNED_IN = invitation link.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      // PASSWORD_RECOVERY = reset link; SIGNED_IN = invite link
+      if (cancelled) return;
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
     });
-    // Fallback: if Supabase already processed the token before this effect ran
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
-    });
-    return () => subscription.unsubscribe();
+
+    // Fallback for the case where Supabase already processed the URL hash
+    // before this effect registered the listener.
+    const hasAuthHash = typeof window !== 'undefined' &&
+      (window.location.hash.includes('access_token') || window.location.hash.includes('type='));
+    if (hasAuthHash) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!cancelled && session) setReady(true);
+      });
+    }
+
+    // Timeout: if no event fires within 5s, the link is invalid/expired.
+    const timeout = setTimeout(() => {
+      if (cancelled) return;
+      setReady((current) => {
+        if (current) return current;
+        setError('El link es inválido o ya expiró. Solicitá uno nuevo.');
+        return current;
+      });
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

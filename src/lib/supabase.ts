@@ -30,7 +30,10 @@ export const supabase: SupabaseClient =
       detectSessionInUrl: true,
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       storageKey: 'rivastock-auth',
-      flowType: 'pkce',
+      // implicit flow: email links (invite/recovery) work without a client-side
+      // code_verifier. PKCE breaks invitations (server-initiated) and breaks
+      // password reset across devices.
+      flowType: 'implicit',
     },
     global: {
       fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
