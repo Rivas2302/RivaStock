@@ -21,24 +21,34 @@ export default function ResetPassword() {
   useEffect(() => {
     let cancelled = false;
 
-    // Listen for the token Supabase fires after processing the email hash.
-    // PASSWORD_RECOVERY = forgot-password link, SIGNED_IN = invitation link.
+    // 1. Detect errors that Supabase puts in the URL hash (otp_expired,
+    //    access_denied, etc.) and surface them immediately — no need to wait.
+    const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+    const hashParams = new URLSearchParams(hash);
+    const hashError  = hashParams.get('error_code') ?? hashParams.get('error');
+    if (hashError) {
+      if (hashError === 'otp_expired' || hashError === 'access_denied') {
+        setError('El link expiró o ya fue usado. Solicitá uno nuevo.');
+      } else {
+        const desc = hashParams.get('error_description')?.replace(/\+/g, ' ');
+        setError(desc || 'Link inválido.');
+      }
+      return;
+    }
+
+    // 2. The /auth/confirm route already established a session via verifyOtp;
+    //    when we land here we can immediately show the form.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!cancelled && session) setReady(true);
+    });
+
+    // 3. Also listen for late events (race with Supabase hash processing).
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (cancelled) return;
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
     });
 
-    // Fallback for the case where Supabase already processed the URL hash
-    // before this effect registered the listener.
-    const hasAuthHash = typeof window !== 'undefined' &&
-      (window.location.hash.includes('access_token') || window.location.hash.includes('type='));
-    if (hasAuthHash) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (!cancelled && session) setReady(true);
-      });
-    }
-
-    // Timeout: if no event fires within 5s, the link is invalid/expired.
+    // 4. Timeout: if nothing fires within 5s, the link is invalid.
     const timeout = setTimeout(() => {
       if (cancelled) return;
       setReady((current) => {
@@ -88,7 +98,7 @@ export default function ResetPassword() {
           <p className="text-slate-500 font-medium">Ingresá tu nueva contraseña de acceso</p>
         </div>
 
-        {!ready && !success && (
+        {!ready && !success && !error && (
           <div className="text-center text-slate-500 py-4">
             <Loader2 className="animate-spin mx-auto mb-2" size={24} />
             <p className="text-sm">Validando link de recuperación...</p>
@@ -104,6 +114,15 @@ export default function ResetPassword() {
             <AlertCircle size={18} className="shrink-0" />
             {error}
           </motion.div>
+        )}
+
+        {error && !ready && !success && (
+          <button
+            onClick={() => navigate('/forgot-password')}
+            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 transition-all"
+          >
+            Solicitar nuevo link
+          </button>
         )}
 
         {success ? (
