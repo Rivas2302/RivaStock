@@ -82,6 +82,8 @@ serve(async (req) => {
   }
 
   const normalizedEmail = body.email.trim().toLowerCase();
+  let shouldSendInvite = true;
+  let status = 'sent';
 
   const { data: existing, error: existingErr } = await admin
     .from('invitations')
@@ -107,30 +109,49 @@ serve(async (req) => {
           { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
       }
     } else {
-      const { error: deleteErr } = await admin
-        .from('invitations')
-        .delete()
-        .eq('id', existing.id);
-      if (deleteErr) {
-        return new Response(JSON.stringify({ error: `Error al reemplazar invitación: ${deleteErr.message}` }),
+      const { data: collaborator, error: collabErr } = await admin
+        .from('collaborators')
+        .select('id, revoked_at')
+        .eq('invitation_id', existing.id)
+        .maybeSingle();
+      if (collabErr) {
+        return new Response(JSON.stringify({ error: `Error al buscar colaborador: ${collabErr.message}` }),
           { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
       }
 
-      const { data: inserted, error: insErr } = await admin
+      invitationId = existing.id;
+      if (collaborator) {
+        const { error: updateCollabErr } = await admin
+          .from('collaborators')
+          .update({
+            permissions: body.permissions,
+            role_preset: body.role_preset ?? null,
+            revoked_at: null,
+          })
+          .eq('id', collaborator.id);
+        if (updateCollabErr) {
+          return new Response(JSON.stringify({ error: `Error al actualizar colaborador: ${updateCollabErr.message}` }),
+            { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+        }
+        shouldSendInvite = false;
+        status = collaborator.revoked_at ? 'reactivated' : 'already_active';
+      }
+
+      const { error: updateInviteErr } = await admin
         .from('invitations')
-        .insert({
-          owner_uid:   user.id,
-          email:       normalizedEmail,
+        .update({
           permissions: body.permissions,
           role_preset: body.role_preset ?? null,
+          invited_at: new Date().toISOString(),
+          accepted_at: collaborator ? new Date().toISOString() : null,
+          revoked_at: null,
         })
-        .select('id')
-        .single();
-      if (insErr) {
-        return new Response(JSON.stringify({ error: `Error al crear invitación: ${insErr.message}` }),
+        .eq('id', existing.id);
+      if (updateInviteErr) {
+        return new Response(JSON.stringify({ error: `Error al reutilizar invitación: ${updateInviteErr.message}` }),
           { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
       }
-      invitationId = inserted.id;
+
     }
   } else {
     const { data: inserted, error: insErr } = await admin
@@ -150,17 +171,24 @@ serve(async (req) => {
     invitationId = inserted.id;
   }
 
-  const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
-    normalizedEmail,
-    { redirectTo: `${APP_URL}/` },
-  );
-  if (inviteErr) {
-    return new Response(JSON.stringify({
-      error: `Error al enviar email: ${inviteErr.message}`,
-      invitation_id: invitationId,
-    }), { status: 502, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  if (shouldSendInvite) {
+    const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
+      normalizedEmail,
+      { redirectTo: `${APP_URL}/reset-password` },
+    );
+    if (inviteErr) {
+      if (inviteErr.message.toLowerCase().includes('already been registered')) {
+        return new Response(JSON.stringify({ invitation_id: invitationId, status: 'already_registered' }),
+          { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(JSON.stringify({
+        error: `Error al enviar email: ${inviteErr.message}`,
+        invitation_id: invitationId,
+      }), { status: 502, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    }
   }
 
-  return new Response(JSON.stringify({ invitation_id: invitationId, status: 'sent' }),
+  return new Response(JSON.stringify({ invitation_id: invitationId, status }),
     { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
 });

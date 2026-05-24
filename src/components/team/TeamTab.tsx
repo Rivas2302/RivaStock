@@ -35,12 +35,21 @@ export default function TeamTab() {
 
   const handleResend = async (inv: Invitation) => {
     try {
-      await inviteCollaborator({
+      const result = await inviteCollaborator({
         email:        inv.email,
         permissions:  inv.permissions,
         role_preset:  inv.rolePreset ?? 'custom',
       });
-      showToast(`Invitación reenviada a ${inv.email}`, 'success');
+      showToast(
+        result.status === 'sent'
+          ? `Invitación reenviada a ${inv.email}`
+          : result.status === 'reactivated'
+            ? `Colaborador reactivado: ${inv.email}`
+            : result.status === 'already_active'
+              ? `El colaborador ya está activo: ${inv.email}`
+              : `El usuario ya existe. Pedile que use recuperar contraseña: ${inv.email}`,
+        'success'
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error al reenviar', 'error');
     }

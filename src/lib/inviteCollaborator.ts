@@ -5,7 +5,10 @@ export async function inviteCollaborator(args: {
   email: string;
   permissions: PermissionMatrix;
   role_preset: StaffRole;
-}): Promise<{ invitation_id: string }> {
+}): Promise<{
+  invitation_id: string;
+  status: 'sent' | 'reactivated' | 'already_active' | 'already_registered';
+}> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Sesión expirada');
 

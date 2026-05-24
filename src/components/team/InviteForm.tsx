@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { fromDb } from '../../lib/db';
 import type { Collaborator, Invitation, PermissionMatrix, StaffRole } from '../../types';
 import { ROLE_PRESETS, ROLE_PRESET_LABELS, presetForMatrix } from '../../lib/rolePresets';
+import { inviteCollaborator } from '../../lib/inviteCollaborator';
 import PermissionsEditor from './PermissionsEditor';
 
 interface Props {
@@ -72,23 +73,20 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Sesión expirada');
-
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-collaborator`, {
-        method: 'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ email: email.trim(), permissions, role_preset: rolePreset }),
+      const result = await inviteCollaborator({
+        email: email.trim(),
+        permissions,
+        role_preset: rolePreset,
       });
+      const successMessage = result.status === 'sent'
+        ? `Invitación enviada a ${email.trim()}`
+        : result.status === 'reactivated'
+          ? `Colaborador reactivado: ${email.trim()}`
+          : result.status === 'already_active'
+            ? `El colaborador ya está activo: ${email.trim()}`
+            : `El usuario ya existe. Pedile que use recuperar contraseña: ${email.trim()}`;
 
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? 'Error al enviar invitación');
-
-      setAlert({ text: `Invitación enviada a ${email.trim()}`, type: 'success' });
+      setAlert({ text: successMessage, type: 'success' });
       setTimeout(() => {
         onSuccess();
         onClose();
