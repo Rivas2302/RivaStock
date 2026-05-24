@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Order, Sale } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
@@ -23,6 +24,8 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Orders() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('pedidos', 'write');
+  const canDelete = usePermission('pedidos', 'delete');
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,11 +184,12 @@ export default function Orders() {
               {/* Actions */}
               <div className="flex flex-col gap-3 min-w-[200px]">
                 <div className="relative">
-                  <select 
+                  <select
                     value={order.status}
                     onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
+                    disabled={!canWrite}
                     className={cn(
-                      "w-full pl-4 pr-10 py-2 rounded-xl text-sm font-bold border-2 appearance-none transition-all",
+                      "w-full pl-4 pr-10 py-2 rounded-xl text-sm font-bold border-2 appearance-none transition-all disabled:opacity-50 disabled:cursor-not-allowed",
                       order.status === 'Nuevo' && "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400",
                       order.status === 'En Proceso' && "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400",
                       order.status === 'Entregado' && "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400",
@@ -200,9 +204,11 @@ export default function Orders() {
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
                 </div>
 
-                <button 
+                <button
                   onClick={() => handleConvertToSale(order)}
-                  className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                  disabled={!canWrite}
+                  title={!canWrite ? 'Sin permiso' : undefined}
+                  className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ArrowRight size={18} />
                   Convertir en Venta

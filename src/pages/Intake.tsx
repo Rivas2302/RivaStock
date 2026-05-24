@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Product, StockIntake } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
@@ -15,6 +16,7 @@ import { motion } from 'motion/react';
 
 export default function Intake() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('ingresos', 'write');
   const [intakes, setIntakes] = useState<StockIntake[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +152,9 @@ export default function Intake() {
         </div>
         <button
           onClick={openModal}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+          disabled={!canWrite}
+          title={!canWrite ? 'Sin permiso' : undefined}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={20} />
           Registrar Ingreso

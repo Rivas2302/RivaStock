@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Customer, CustomerTransaction } from '../types';
 import { formatCurrency, cn, todayString, formatDate } from '../lib/utils';
@@ -12,6 +13,8 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function Customers() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('clientes', 'write');
+  const canDelete = usePermission('clientes', 'delete');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -330,7 +333,9 @@ export default function Customers() {
         </div>
         <button
           onClick={openNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+          disabled={!canWrite}
+          title={!canWrite ? 'Sin permiso' : undefined}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={20} />
           Nuevo Cliente
@@ -391,15 +396,17 @@ export default function Customers() {
                       </button>
                       <button
                         onClick={() => openEdit(c)}
-                        title="Editar"
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        disabled={!canWrite}
+                        title={!canWrite ? 'Sin permiso' : 'Editar'}
+                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit2 size={16} />
                       </button>
                       <button
                         onClick={() => handleDelete(c)}
-                        title="Eliminar"
-                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                        disabled={!canDelete}
+                        title={!canDelete ? 'Sin permiso' : 'Eliminar'}
+                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -580,8 +587,9 @@ export default function Customers() {
                 </div>
                 <button
                   type="button"
-                  disabled={savingPayment}
+                  disabled={savingPayment || !canWrite}
                   onClick={handleRegisterPayment}
+                  title={!canWrite ? 'Sin permiso' : undefined}
                   className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   <CheckCircle2 size={18} />
@@ -645,8 +653,9 @@ export default function Customers() {
                 </div>
                 <button
                   type="button"
-                  disabled={savingAdj}
+                  disabled={savingAdj || !canWrite}
                   onClick={handleRegisterAdjustment}
+                  title={!canWrite ? 'Sin permiso' : undefined}
                   className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60"
                 >
                   {savingAdj ? 'Guardando...' : 'Registrar Ajuste'}

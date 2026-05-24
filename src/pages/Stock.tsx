@@ -1,5 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { Product, Category, PriceRange } from '../types';
@@ -24,6 +25,8 @@ import { motion } from 'motion/react';
 
 export default function Stock() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('stock', 'write');
+  const canDelete = usePermission('stock', 'delete');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -208,7 +211,9 @@ export default function Stock() {
             });
             setIsModalOpen(true);
           }}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+        disabled={!canWrite}
+          title={!canWrite ? 'Sin permiso' : undefined}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
         >
           <Plus size={20} />
           Agregar Producto
@@ -350,19 +355,23 @@ export default function Stock() {
                         </button>
                       )}
                       <button
+                        disabled={!canWrite}
+                        title={!canWrite ? 'Sin permiso' : undefined}
                         onClick={() => {
                           setEditingProduct(p);
                           setIsUploadingImage(false);
                           setFormData(p);
                           setIsModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit2 size={18} />
                       </button>
                       <button
+                        disabled={!canDelete}
+                        title={!canDelete ? 'Sin permiso' : undefined}
                         onClick={() => handleDelete(p.id)}
-                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={18} />
                       </button>

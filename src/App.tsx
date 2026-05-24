@@ -2,6 +2,8 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
+import RequirePermission from './components/RequirePermission';
+import ToastContainer from './components/ToastContainer';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -58,19 +60,19 @@ function AppRoutes() {
       <Route path="/catalogo/:slug/:productId" element={withSuspense(<PublicProductPage />)} />
       <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
 
-      <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={withSuspense(<Dashboard />)} />
-        <Route path="stock" element={withSuspense(<Stock />)} />
-        <Route path="ventas" element={withSuspense(<Sales />)} />
-        <Route path="presupuestos" element={withSuspense(<Quotes />)} />
-        <Route path="clientes" element={withSuspense(<Customers />)} />
-        <Route path="proveedores" element={withSuspense(<Suppliers />)} />
-        <Route path="ingresos" element={withSuspense(<Intake />)} />
-        <Route path="caja" element={withSuspense(<CashFlow />)} />
-        <Route path="pedidos" element={withSuspense(<Orders />)} />
-        <Route path="calculadora" element={withSuspense(<Calculator />)} />
-        <Route path="config" element={withSuspense(<Settings />)} />
-      </Route>
+        <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route index element={withSuspense(<Dashboard />)} />
+          <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
+          <Route path="ventas" element={withSuspense(<RequirePermission module="ventas"><Sales /></RequirePermission>)} />
+          <Route path="presupuestos" element={withSuspense(<RequirePermission module="presupuestos"><Quotes /></RequirePermission>)} />
+          <Route path="clientes" element={withSuspense(<RequirePermission module="clientes"><Customers /></RequirePermission>)} />
+          <Route path="proveedores" element={withSuspense(<RequirePermission module="proveedores"><Suppliers /></RequirePermission>)} />
+          <Route path="ingresos" element={withSuspense(<RequirePermission module="ingresos"><Intake /></RequirePermission>)} />
+          <Route path="caja" element={withSuspense(<RequirePermission module="caja"><CashFlow /></RequirePermission>)} />
+          <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
+          <Route path="calculadora" element={withSuspense(<Calculator />)} />
+          <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
+        </Route>
 
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
@@ -135,6 +137,7 @@ export default function App() {
         </div>
       )}
       <AppRoutes />
+      <ToastContainer />
     </BrowserRouter>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Product, Sale, Customer } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
@@ -34,6 +35,8 @@ import autoTable from 'jspdf-autotable';
 
 export default function Sales() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('ventas', 'write');
+  const canDelete = usePermission('ventas', 'delete');
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -392,7 +395,9 @@ export default function Sales() {
               setNewCustPhone('');
               setIsModalOpen(true);
             }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : undefined}
           >
             <Plus size={20} />
             Nueva Venta
@@ -502,9 +507,10 @@ export default function Sales() {
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleToggleStatus(s)}
-                      title={s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
+                      disabled={!canWrite}
+                      title={!canWrite ? 'Sin permiso' : s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
                       className={cn(
-                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70",
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed",
                         s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                       )}
                     >
@@ -520,20 +526,22 @@ export default function Sales() {
                           setFormData(s);
                           setIsModalOpen(true);
                         }}
-                        disabled={hasDerivedSaleItems(s)}
+                        disabled={hasDerivedSaleItems(s) || !canWrite}
+                        title={hasDerivedSaleItems(s) ? 'Editá el presupuesto original para cambiar esta venta' : !canWrite ? 'Sin permiso' : 'Editar'}
                         className={cn(
                           "p-2 transition-colors",
-                          hasDerivedSaleItems(s)
+                          hasDerivedSaleItems(s) || !canWrite
                             ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
                             : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                         )}
-                        title={hasDerivedSaleItems(s) ? 'Editá el presupuesto original para cambiar esta venta' : 'Editar'}
                       >
                         <Edit2 size={18} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDelete(s.id)}
-                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                        disabled={!canDelete}
+                        title={!canDelete ? 'Sin permiso' : undefined}
+                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={18} />
                       </button>

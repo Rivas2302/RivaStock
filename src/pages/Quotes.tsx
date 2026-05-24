@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';
 import { formatCurrency, cn, todayString } from '../lib/utils';
@@ -43,6 +44,8 @@ function addDays(days: number): string {
 
 export default function Quotes() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('presupuestos', 'write');
+  const canDelete = usePermission('presupuestos', 'delete');
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -425,7 +428,9 @@ export default function Quotes() {
         </div>
         <button
           onClick={openNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+          disabled={!canWrite}
+          title={!canWrite ? 'Sin permiso' : undefined}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={20} />
           Nuevo Presupuesto
@@ -512,31 +517,35 @@ export default function Quotes() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => openShare(q)}
-                          title="Compartir"
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          disabled={!canWrite}
+                          title={!canWrite ? 'Sin permiso' : 'Compartir'}
+                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Share2 size={16} />
                         </button>
                         <button
                           onClick={() => openEdit(q)}
-                          title="Editar"
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          disabled={!canWrite}
+                          title={!canWrite ? 'Sin permiso' : 'Editar'}
+                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Edit2 size={16} />
                         </button>
                         {(effective === 'accepted' && !q.convertedToSaleId) && (
                           <button
                             onClick={() => openConvert(q)}
-                            title="Convertir a venta"
-                            className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                            disabled={!canWrite}
+                            title={!canWrite ? 'Sin permiso' : 'Convertir a venta'}
+                            className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <ArrowRight size={16} />
                           </button>
                         )}
                         <button
                           onClick={() => handleDelete(q)}
-                          title="Eliminar"
-                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                          disabled={!canDelete}
+                          title={!canDelete ? 'Sin permiso' : 'Eliminar'}
+                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -693,7 +702,9 @@ export default function Quotes() {
               <button
                 type="button"
                 onClick={handleAddItem}
-                className="col-span-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition-colors"
+                disabled={!canWrite}
+                title={!canWrite ? 'Sin permiso' : undefined}
+                className="col-span-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus size={16} />
                 Agregar

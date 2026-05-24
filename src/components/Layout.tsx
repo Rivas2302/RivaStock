@@ -19,31 +19,43 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
+import type { ModuleKey } from '../types';
 
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-const navItems: { name: string; path: string; icon: typeof LayoutDashboard }[] = [
-  { name: 'Inicio', path: '/', icon: LayoutDashboard },
-  { name: 'Stock', path: '/stock', icon: Package },
-  { name: 'Ventas', path: '/ventas', icon: ShoppingCart },
-  { name: 'Presupuestos', path: '/presupuestos', icon: FileText },
-  { name: 'Clientes', path: '/clientes', icon: Users },
-  { name: 'Proveedores', path: '/proveedores', icon: Building2 },
-  { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle },
-  { name: 'Flujo de Caja', path: '/caja', icon: Wallet },
-  { name: 'Pedidos', path: '/pedidos', icon: ClipboardList },
-  { name: 'Calculadora', path: '/calculadora', icon: Calculator },
-  { name: 'Configuración', path: '/config', icon: Settings },
+interface NavItem {
+  name: string;
+  path: string;
+  icon: typeof LayoutDashboard;
+  module: ModuleKey | null;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { name: 'Inicio', path: '/', icon: LayoutDashboard, module: null },
+  { name: 'Stock', path: '/stock', icon: Package, module: 'stock' },
+  { name: 'Ventas', path: '/ventas', icon: ShoppingCart, module: 'ventas' },
+  { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
+  { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes' },
+  { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores' },
+  { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
+  { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },
+  { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, module: 'pedidos' },
+  { name: 'Calculadora', path: '/calculadora', icon: Calculator, module: null },
+  { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
 ];
 
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, refetchData } = useAuth();
+  const { user, logout, refetchData, permissions } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
+
+  const navItems = NAV_ITEMS.filter(it =>
+    it.module === null || permissions[it.module]?.read === true
+  );
 
   useEffect(() => {
     const MIN_REFETCH_INTERVAL_MS = 10_000;

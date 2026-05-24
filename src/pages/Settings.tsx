@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
+import TeamTab from '../components/team/TeamTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import {
   Category,
@@ -27,17 +28,18 @@ import {
   Wrench,
   AlertTriangle,
   CheckCircle2,
-  QrCode
+  QrCode,
+  Users
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import CatalogQRModal from '../components/CatalogQRModal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'maintenance';
+type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
 
 export default function Settings() {
-  const { user, updateUser, refetchToken } = useAuth();
+  const { user, updateUser, refetchToken, isOwner } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('general');
@@ -315,12 +317,13 @@ export default function Settings() {
     }
   };
 
-  const tabs = [
+  const tabs: { id: Tab; label: string; icon: typeof SettingsIcon }[] = [
     { id: 'general', label: 'General', icon: SettingsIcon },
     { id: 'categories', label: 'Categorías', icon: Tags },
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
     { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
+    ...(isOwner ? [{ id: 'equipo' as Tab, label: 'Equipo', icon: Users }] : []),
   ];
 
   return (
@@ -949,6 +952,17 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'equipo' && isOwner && (
+                <motion.div
+                  key="equipo"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                >
+                  <TeamTab />
                 </motion.div>
               )}
 

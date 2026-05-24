@@ -1,11 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { UserProfile } from './types';
+import { UserProfile, PermissionMatrix, ALL_TRUE_PERMISSIONS } from './types';
 import { supabase } from './lib/supabase';
-import { db, clearDbCache, invalidateDbCache } from './lib/db';
+import { clearDbCache, invalidateDbCache, fromDb } from './lib/db';
 import type { Session } from '@supabase/supabase-js';
+
+interface LoadedAuth {
+  profile: UserProfile;
+  ownerUid: string;
+  isOwner: boolean;
+  collaboratorId: string | null;
+  permissions: PermissionMatrix;
+}
 
 interface AuthContextType {
   user: UserProfile | null;
+  authUser: { uid: string; email: string } | null;
+  ownerUid: string | null;
+  isOwner: boolean;
+  collaboratorId: string | null;
+  permissions: PermissionMatrix;
   loading: boolean;
   refetchToken: number;
   refetchData: () => void;
@@ -18,15 +31,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function loadProfile(session: Session): Promise<UserProfile | null> {
+async function loadProfile(session: Session): Promise<LoadedAuth | null> {
   try {
-    // Retry up to 3 times with backoff — the auth trigger may not have run yet
+    const { data: collabRow } = await supabase
+      .from('collaborators')
+      .select('id, owner_uid, permissions')
+      .eq('user_uid', session.user.id)
+      .is('revoked_at', null)
+      .maybeSingle();
+
+    const isOwner = !collabRow;
+    const ownerUid = collabRow ? collabRow.owner_uid : session.user.id;
+    const collaboratorId = collabRow ? collabRow.id : null;
+    const permissions: PermissionMatrix = collabRow
+      ? (collabRow.permissions as PermissionMatrix)
+      : ALL_TRUE_PERMISSIONS;
+
+    let profile: UserProfile | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const profile = await db.get<UserProfile>('users', session.user.id);
-      if (profile) return { ...profile, uid: session.user.id };
+      const { data, error } = await supabase.rpc('get_owner_profile');
+      if (!error && data && data.length > 0) {
+        profile = fromDb<UserProfile>(data[0], true);
+        profile.uid = ownerUid;
+        break;
+      }
       await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
     }
-    throw new Error('No se pudo cargar el perfil. Recargá la página.');
+    if (!profile) throw new Error('No se pudo cargar el perfil. Recargá la página.');
+
+    return { profile, ownerUid, isOwner, collaboratorId, permissions };
   } catch (err) {
     console.error('[Auth] loadProfile error:', err);
     return null;
@@ -34,11 +67,12 @@ async function loadProfile(session: Session): Promise<UserProfile | null> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]               = useState<UserProfile | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [isReady, setIsReady]         = useState(false);
+  const [auth, setAuth]                 = useState<LoadedAuth | null>(null);
+  const [authUser, setAuthUser]         = useState<{ uid: string; email: string } | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [isReady, setIsReady]           = useState(false);
   const [refetchToken, setRefetchToken] = useState(0);
-  const currentUserIdRef              = useRef<string | null>(null);
+  const currentUserIdRef                = useRef<string | null>(null);
 
   const refetchData = useCallback(() => {
     clearDbCache();
@@ -49,13 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const profile = await loadProfile(session);
-        if (profile) {
-          currentUserIdRef.current = profile.uid;
-          setUser(profile);
+        setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
+        const loaded = await loadProfile(session);
+        if (loaded) {
+          currentUserIdRef.current = session.user.id;
+          setAuth(loaded);
         } else {
-          // Profile failed to load on initial boot. Keep user null but DO NOT
-          // sign out — let the user retry by reloading.
           console.warn('[Auth] Initial profile load failed; user must reload.');
         }
       }
@@ -76,40 +109,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Hard logout — only when Supabase explicitly signs out.
         if (event === 'SIGNED_OUT' || !session) {
           currentUserIdRef.current = null;
           clearDbCache();
-          setUser(null);
+          setAuth(null);
+          setAuthUser(null);
           return;
         }
 
-        // Token refresh / user updated — keep existing user object unless the
-        // underlying auth user actually changed (different uid). A profile
-        // re-fetch failure here MUST NOT log the user out.
         if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          // Identity unchanged; nothing to do. Supabase already persisted the
-          // refreshed access token to localStorage.
           if (currentUserIdRef.current === session.user.id) return;
-          // Edge case: identity changed under the same listener. Fall through
-          // to reload profile.
         }
 
-        // INITIAL_SESSION / SIGNED_IN / identity changed: load profile.
+        setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
         const sameUser = currentUserIdRef.current === session.user.id;
-        const profile = await loadProfile(session);
+        const loaded = await loadProfile(session);
 
-        if (profile) {
-          currentUserIdRef.current = profile.uid;
-          setUser(profile);
+        if (loaded) {
+          currentUserIdRef.current = session.user.id;
+          setAuth(loaded);
           return;
         }
 
-        // Profile load failed.
-        // - If we already had a user with this id, KEEP it — this is a transient
-        //   network failure, not a real logout.
-        // - If we didn't have a user yet, leave it null; UI will show the
-        //   login page or a profile-error state.
         if (sameUser) {
           console.warn('[Auth] Profile re-fetch failed during', event, '— preserving session.');
         } else {
@@ -139,7 +160,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentUserIdRef.current = null;
     clearDbCache();
     await supabase.auth.signOut();
-    setUser(null);
+    setAuth(null);
+    setAuthUser(null);
   };
 
   const sendResetEmail = async (email: string) => {
@@ -167,12 +189,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateUser = (updatedUser: UserProfile) => {
     currentUserIdRef.current = updatedUser.uid;
     invalidateDbCache('users');
-    setUser(updatedUser);
+    setAuth(prev => prev ? { ...prev, profile: updatedUser } : null);
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, refetchToken, refetchData, login, logout, updateUser, sendResetEmail, resetPassword }}
+      value={{
+        user:           auth?.profile ?? null,
+        authUser,
+        ownerUid:       auth?.ownerUid ?? null,
+        isOwner:        auth?.isOwner ?? false,
+        collaboratorId: auth?.collaboratorId ?? null,
+        permissions:    auth?.permissions ?? ALL_TRUE_PERMISSIONS,
+        loading,
+        refetchToken,
+        refetchData,
+        login,
+        logout,
+        updateUser,
+        sendResetEmail,
+        resetPassword,
+      }}
     >
       {children}
     </AuthContext.Provider>

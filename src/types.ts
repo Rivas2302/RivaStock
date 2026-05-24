@@ -148,12 +148,58 @@ export interface CatalogConfig {
   updatedAt?: string;
 }
 
+export type ModuleKey =
+  | 'stock'
+  | 'ventas'
+  | 'caja'
+  | 'ingresos'
+  | 'pedidos'
+  | 'presupuestos'
+  | 'clientes'
+  | 'proveedores'
+  | 'config';
+
+export type ActionKey = 'read' | 'write' | 'delete';
+
+export type ModulePermissions = Record<ActionKey, boolean>;
+
+export type PermissionMatrix = Record<ModuleKey, ModulePermissions>;
+
+export type StaffRole = 'admin' | 'employee' | 'viewer' | 'custom';
+
+export const ALL_TRUE_PERMISSIONS: PermissionMatrix = {
+  stock:        { read: true, write: true, delete: true },
+  ventas:       { read: true, write: true, delete: true },
+  caja:         { read: true, write: true, delete: true },
+  ingresos:     { read: true, write: true, delete: true },
+  pedidos:      { read: true, write: true, delete: true },
+  presupuestos: { read: true, write: true, delete: true },
+  clientes:     { read: true, write: true, delete: true },
+  proveedores:  { read: true, write: true, delete: true },
+  config:       { read: true, write: true, delete: true },
+};
+
 export interface Collaborator {
   id: string;
   ownerUid: string;
+  userUid: string;
   email: string;
-  role: 'admin' | 'viewer';
-  status: 'pending' | 'active';
+  permissions: PermissionMatrix;
+  rolePreset: StaffRole | null;
+  invitationId: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface Invitation {
+  id: string;
+  ownerUid: string;
+  email: string;
+  permissions: PermissionMatrix;
+  rolePreset: StaffRole | null;
+  invitedAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
 }
 
 export interface QuoteItem {

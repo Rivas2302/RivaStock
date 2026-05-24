@@ -1,5 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { db } from '../lib/db';
 import { CashFlowEntry } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
@@ -20,6 +21,7 @@ import { motion } from 'motion/react';
 
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
+  const canWrite = usePermission('caja', 'write');
   const [entries, setEntries] = useState<CashFlowEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -222,14 +224,18 @@ export default function CashFlow() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => { resetForm(); setModalType('Ingreso'); setIsModalOpen(true); }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : undefined}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={20} />
             Ingreso Manual
           </button>
           <button
             onClick={() => { resetForm(); setModalType('Gasto'); setIsModalOpen(true); }}
-            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all"
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : undefined}
+            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={20} />
             Gasto
@@ -381,23 +387,25 @@ export default function CashFlow() {
                       <span className="text-xs text-slate-400 dark:text-slate-500">Generado por venta — editá la venta</span>
                     ) : (
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingEntry(e);
-                            setModalType(e.type);
-                            setFormData(e);
-                            setIsModalOpen(true);
-                          }}
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                          title="Editar"
-                        >
+<button
+                           onClick={() => {
+                             setEditingEntry(e);
+                             setModalType(e.type);
+                             setFormData(e);
+                             setIsModalOpen(true);
+                           }}
+                           disabled={!canWrite}
+                           title={!canWrite ? 'Sin permiso' : 'Editar'}
+                           className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                         >
                           <Edit2 size={18} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(e.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                          title="Eliminar"
-                        >
+<button
+                           onClick={() => handleDelete(e.id)}
+                           disabled={!canWrite}
+                           title={!canWrite ? 'Sin permiso' : 'Eliminar'}
+                           className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                         >
                           <Trash2 size={18} />
                         </button>
                       </div>

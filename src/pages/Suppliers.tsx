@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSuppliers } from '../hooks/useSuppliers';
+import { useAuth } from '../AuthContext';
+import { usePermission } from '../hooks/usePermission';
 import { Supplier } from '../types';
 import SupplierModal, { SupplierFormData } from '../components/SupplierModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -15,6 +17,9 @@ export default function Suppliers() {
     suppliers, loading, createSupplier,
     updateSupplier, deleteSupplier, toggleSupplierActive,
   } = useSuppliers();
+  const { user } = useAuth();
+  const canWrite = usePermission('proveedores', 'write');
+  const canDelete = usePermission('proveedores', 'delete');
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -138,7 +143,9 @@ export default function Suppliers() {
           <p className="text-slate-500 dark:text-slate-400">Gestión de proveedores y condiciones de compra</p>
         </div>
         <button onClick={openNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all">
+          disabled={!canWrite}
+          title={!canWrite ? 'Sin permiso' : undefined}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
           <Plus size={20} /> Nuevo Proveedor
         </button>
       </div>
@@ -230,7 +237,9 @@ export default function Suppliers() {
                   </td>
                   <td className="px-6 py-4">
                     <button onClick={() => handleToggleActive(s)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-colors">
+                      disabled={!canWrite}
+                      title={!canWrite ? 'Sin permiso' : undefined}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                       {s.isActive ? (
                         <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
                           <CheckCircle2 size={12} /> Activo
@@ -244,12 +253,12 @@ export default function Suppliers() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(s)} title="Editar"
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                      <button onClick={() => openEdit(s)} disabled={!canWrite} title={!canWrite ? 'Sin permiso' : 'Editar'}
+                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <Edit2 size={16} />
                       </button>
-                      <button onClick={() => handleDelete(s)} title="Eliminar"
-                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
+                      <button onClick={() => handleDelete(s)} disabled={!canDelete} title={!canDelete ? 'Sin permiso' : 'Eliminar'}
+                        className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <Trash2 size={16} />
                       </button>
                     </div>
