@@ -111,7 +111,7 @@ serve(async (req) => {
     } else {
       const { data: collaborator, error: collabErr } = await admin
         .from('collaborators')
-        .select('id, revoked_at')
+        .select('id, revoked_at, user_uid')
         .eq('invitation_id', existing.id)
         .maybeSingle();
       if (collabErr) {
@@ -133,8 +133,20 @@ serve(async (req) => {
           return new Response(JSON.stringify({ error: `Error al actualizar colaborador: ${updateCollabErr.message}` }),
             { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
         }
-        shouldSendInvite = false;
-        status = collaborator.revoked_at ? 'reactivated' : 'already_active';
+
+        // Check if the underlying auth user is still pending (email not
+        // confirmed yet, or never signed in). If so, this is a true resend
+        // request → keep shouldSendInvite=true so they get a fresh email.
+        const { data: targetAuth } = await admin.auth.admin.getUserById(collaborator.user_uid);
+        const isPending = !targetAuth?.user?.email_confirmed_at || !targetAuth?.user?.last_sign_in_at;
+
+        if (isPending) {
+          shouldSendInvite = true;
+          status = 'sent';
+        } else {
+          shouldSendInvite = false;
+          status = collaborator.revoked_at ? 'reactivated' : 'already_active';
+        }
       }
 
       const { error: updateInviteErr } = await admin

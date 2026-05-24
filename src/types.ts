@@ -189,6 +189,7 @@ export interface Collaborator {
   invitationId: string | null;
   createdAt: string;
   revokedAt: string | null;
+  isPending: boolean;
 }
 
 export interface Invitation {

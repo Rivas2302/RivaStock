@@ -24,7 +24,10 @@ function getStatus(c: Collaborator | Invitation): 'active' | 'pending' | 'revoke
     if (c.acceptedAt) return 'active';
     return 'pending';
   }
-  return c.revokedAt ? 'revoked' : 'active';
+  if (c.revokedAt) return 'revoked';
+  // Collaborator exists but user hasn't confirmed email / set password yet.
+  if (c.isPending) return 'pending';
+  return 'active';
 }
 
 export default function CollaboratorRow({ collaborator, onEdit, onRevoke, onResend, refetch }: Props) {
