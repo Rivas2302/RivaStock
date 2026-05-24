@@ -1,0 +1,13 @@
+#!/bin/sh
+# Sync Engram memory to .engram/ before pushing
+ENGRAM="$USERPROFILE/AppData/Local/engram/bin/engram.exe"
+
+if [ -f "$ENGRAM" ]; then
+  "$ENGRAM" sync 2>/dev/null
+  git add .engram/ 2>/dev/null
+  if ! git diff --cached --quiet -- .engram/; then
+    git commit -m "chore: sync engram memory" --no-verify 2>/dev/null
+  fi
+fi
+
+exit 0

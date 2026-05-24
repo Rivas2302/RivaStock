@@ -1,0 +1,5 @@
+#!/bin/sh
+ENGRAM="$USERPROFILE/AppData/Local/engram/bin/engram.exe"
+if [ -f "$ENGRAM" ]; then
+  "$ENGRAM" sync --import 2>/dev/null
+fi
