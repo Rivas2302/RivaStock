@@ -178,7 +178,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message);
-    await supabase.auth.signOut();
+    // Fire-and-forget local signOut: clears localStorage instantly without a
+    // network round-trip. Awaiting a global signOut() here can hang because
+    // AuthContext may still be mid-loadProfile from the SIGNED_IN fired by
+    // verifyOtp moments before. The user logs in fresh next, which replaces
+    // any lingering session.
+    supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
   };
 
   const updateUser = (updatedUser: UserProfile) => {

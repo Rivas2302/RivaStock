@@ -1,234 +1,231 @@
-# EXECUTION PLAN — QR Code Compartible por Catálogo Público
+# Execution Plan — Display Logged-In Username in Navigation
 
-**Fecha**: 2026-05-23  
-**Scope**: Client-side only. Sin cambios a backend, Supabase, ni Firestore schema.  
-**Estimación**: 3 tareas, ~1-2h de implementación total.
-
----
-
-## ANÁLISIS PREVIO
-
-### Hallazgos clave del codebase
-
-| Aspecto | Detalle |
-|---|---|
-| URL real del catálogo | `${window.location.origin}/catalogo/${user?.catalogSlug}` (no `/:slug`) |
-| Punto de integración principal | `Settings.tsx` → tab `catalog`, línea ~624–647: row flex con Copy + ExternalLink |
-| Librería QR disponible | **Ninguna** — hay que instalar |
-| Modal reutilizable | `src/components/Modal.tsx` — animado con `motion/react`, tamaño max-w-2xl |
-| Icono QR en Lucide | `QrCode` — disponible en lucide-react ^0.475.0 |
-| Web Share API | Ya se usa `Share2` icon en PublicCatalog.tsx — precedente existe |
-| Auth | `user.catalogSlug` disponible desde `useAuth()` en toda la app |
-| Stack de animación | `motion` + `AnimatePresence` — ya importado en Settings y Modal |
-| Dark mode | `dark:` utilities de Tailwind — seguir el patrón `bg-white dark:bg-slate-900` |
-
-### Librería QR elegida: `qrcode.react` v4.x
-
-**Por qué esta y no otras:**
-- `qrcode.react`: exporta `QRCodeCanvas` (canvas nativo) → PNG download con `canvas.toDataURL()` sin conversiones intermedias. TypeScript types incluidos. ~7kB gzip. No deps.
-- `react-qr-code` (descartada): SVG only — PNG download requiere SVG→Canvas conversion manual, más código.
-- `qrcode` raw (descartada): sin componente React, hay que manejar el canvas imperativamente.
+**Date**: 2026-05-24
+**Scope**: UI only — `src/components/Layout.tsx`. Zero backend changes, zero type changes, zero new files.
+**Estimated implementation time**: 10–15 min.
 
 ---
 
-## TAREAS
+## Summary of Findings
+
+### Auth Model
+`useAuth()` (`src/AuthContext.tsx`) exposes:
+
+| Property | Type | What it contains |
+|----------|------|-----------------|
+| `user` | `UserProfile \| null` | **Always the owner's profile**, regardless of who is logged in. Loaded via `get_owner_profile` RPC. |
+| `authUser` | `{ uid: string; email: string } \| null` | The **actual authenticated user** (owner or collaborator). |
+| `isOwner` | `boolean` | `true` = owner session, `false` = collaborator session. |
+| `collaboratorId` | `string \| null` | Non-null when the session is a collaborator. |
+
+### User Display Name by Role
+| Role | Source | Fallback |
+|------|--------|----------|
+| Owner | `user.displayName` | `authUser.email` |
+| Collaborator | `authUser.email` | empty string |
+
+Collaborators have **no stored display name** — only `email` exists in the `collaborators` table. This is a DB schema fact, not a code limitation.
+
+### Navigation Component
+`src/components/Layout.tsx` — single file, handles both surfaces:
+
+| Surface | Location in file | Current footer content |
+|---------|-----------------|----------------------|
+| Desktop sidebar | Lines 128–137 | Logout button only |
+| Mobile overlay drawer | Lines 222–231 | Logout button only |
+
+Both surfaces already import `useAuth` and read `user`; they just don't display user identity.
 
 ---
 
-### TAREA 1 — Instalar librería QR
+## Files to Modify
 
-**Archivo afectado**: `package.json`  
-**Comando**:
-```
-npm install qrcode.react
-```
-
-**Verificación**: `package.json` tiene `"qrcode.react": "^4.x.x"` en `dependencies`.  
-**Tiempo estimado**: 2 min.
+| # | File | Severity | Risk |
+|---|------|----------|------|
+| 1 | `src/components/Layout.tsx` | Low | Low |
 
 ---
 
-### TAREA 2 — Crear componente `CatalogQRModal`
+## Change 1 — `src/components/Layout.tsx`
 
-**Archivo a crear**: `src/components/CatalogQRModal.tsx`  
-**Archivos de referencia**: `src/components/Modal.tsx` (estructura), `src/pages/Settings.tsx` (patrones Tailwind)
+### Sub-change 1a — Add `authUser` and `isOwner` to the `useAuth()` destructure
 
-#### Props interface
-```ts
-interface CatalogQRModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  catalogUrl: string;   // full URL: window.location.origin + '/catalogo/' + slug
-  businessName: string; // para el filename de descarga y el título
-}
-```
+**Location:** Line 51
 
-#### Comportamiento
-
-**Display del QR:**
-- Usar `<QRCodeCanvas>` de `qrcode.react` con:
-  - `size={220}`
-  - `level="H"` (corrección de errores alta — permite logos superpuestos en el futuro)
-  - `includeMargin={true}`
-  - `ref={canvasRef}` — para acceder al canvas en download
-- Centrado en modal con fondo blanco explícito (el QR siempre debe ser `bg-white` independiente del dark mode)
-
-**Acción 1 — Descargar PNG:**
-```ts
-const handleDownload = () => {
-  const canvas = canvasRef.current?.querySelector('canvas') as HTMLCanvasElement | null;
-  if (!canvas) return;
-  const a = document.createElement('a');
-  a.download = `qr-${businessName.toLowerCase().replace(/\s+/g, '-')}.png`;
-  a.href = canvas.toDataURL('image/png');
-  a.click();
-};
-```
-- Icono: `Download` de lucide-react
-- Clase: botón primario indigo (igual que el rest de la app)
-
-**Acción 2 — Copiar link:**
-```ts
-const [copied, setCopied] = useState(false);
-const handleCopy = async () => {
-  await navigator.clipboard.writeText(catalogUrl);
-  setCopied(true);
-  setTimeout(() => setCopied(false), 2000);
-};
-```
-- Icono: alterna entre `Copy` y `Check` (con `AnimatePresence` o simple ternario)
-- Clase: botón secundario (borde slate)
-
-**Acción 3 — Web Share API:**
-```ts
-const canShare = typeof navigator !== 'undefined' && !!navigator.share;
-const handleShare = () => {
-  navigator.share({
-    title: `Catálogo de ${businessName}`,
-    text: '¡Mirá nuestro catálogo!',
-    url: catalogUrl,
-  });
-};
-```
-- El botón de Share solo se renderiza si `canShare === true` (mobile / PWA)
-- Icono: `Share2` de lucide-react
-
-#### Layout del modal
-```
-┌─────────────────────────────────┐
-│ [título: "Compartir Catálogo"]  X│
-├─────────────────────────────────┤
-│                                 │
-│     ┌─────────────────┐         │
-│     │   [QR CODE]     │         │  ← bg-white siempre, padding 16px, rounded-2xl
-│     └─────────────────┘         │
-│                                 │
-│  URL: [monospace truncado]      │
-│                                 │
-│  [ ↓ Descargar PNG ]            │  ← full width, indigo
-│  [ □ Copiar link   ] [↑ Compartir]│  ← 2 col o 1+1
-└─────────────────────────────────┘
-```
-
-#### Offline-safety
-- `QRCodeCanvas` genera el QR en canvas sin red — funciona offline por diseño.
-- `navigator.clipboard` y `navigator.share` son APIs del browser — sin red.
-- No hay fetch ni Supabase calls en este componente.
-
-**Tiempo estimado**: 30-45 min.
-
----
-
-### TAREA 3 — Integrar botón QR en Settings > tab Catalog
-
-**Archivo afectado**: `src/pages/Settings.tsx`
-
-#### Cambios necesarios
-
-**3a. Imports a agregar** (línea ~15, bloque de lucide-react):
-```ts
-import { QrCode } from 'lucide-react';          // icono del botón
-```
-```ts
-import CatalogQRModal from '../components/CatalogQRModal';
-```
-
-**3b. Estado a agregar** (cerca de la línea ~62, bloque de estados):
-```ts
-const [isQRModalOpen, setIsQRModalOpen] = useState(false);
-```
-
-**3c. Botón QR en el row existente** (línea ~636–646, después del botón Copy y antes del `<a>` ExternalLink):
+**Current:**
 ```tsx
-<button
-  onClick={() => setIsQRModalOpen(true)}
-  className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-  title="Ver QR del catálogo"
->
-  <QrCode size={18} />
-</button>
+  const { user, logout, refetchData, permissions } = useAuth();
 ```
 
-El row resultante tendrá 4 elementos: `[URL display] [Copy] [QR] [ExternalLink]`
-
-**3d. Render del modal** (al final del JSX del componente, antes del último `</div>`):
+**Replace with:**
 ```tsx
-{catalogConfig && (
-  <CatalogQRModal
-    isOpen={isQRModalOpen}
-    onClose={() => setIsQRModalOpen(false)}
-    catalogUrl={`${window.location.origin}/catalogo/${user?.catalogSlug}`}
-    businessName={user?.businessName || 'Mi Tienda'}
-  />
-)}
+  const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
 ```
 
-**Tiempo estimado**: 10-15 min.
+---
+
+### Sub-change 1b — Compute display values
+
+**Location:** Insert after the `navItems` declaration (currently line 58), before the `useEffect` on line 60.
+
+**Insert:**
+```tsx
+  const displayName = isOwner
+    ? (user?.displayName || authUser?.email || '')
+    : (authUser?.email || '');
+  const displayInitial = displayName.charAt(0).toUpperCase() || '?';
+```
 
 ---
 
-## ORDEN DE EJECUCIÓN
+### Sub-change 1c — Replace desktop sidebar footer
+
+**Location:** Lines 128–137
+
+**Current:**
+```tsx
+        <div className="p-4 mt-auto border-t border-slate-800">
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+          >
+            <LogOut size={20} />
+            <span className="font-medium">Cerrar Sesión</span>
+          </button>
+        </div>
+```
+
+**Replace with:**
+```tsx
+        <div className="p-4 mt-auto border-t border-slate-800 space-y-2">
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+              {displayInitial}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+              <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+          >
+            <LogOut size={20} />
+            <span className="font-medium">Cerrar Sesión</span>
+          </button>
+        </div>
+```
+
+---
+
+### Sub-change 1d — Replace mobile overlay footer
+
+**Location:** Lines 222–231 (inside `AnimatePresence` → `motion.div`)
+
+**Current:**
+```tsx
+              <div className="p-4 border-t border-slate-800">
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+                >
+                  <LogOut size={20} />
+                  <span className="font-medium">Cerrar Sesión</span>
+                </button>
+              </div>
+```
+
+**Replace with:**
+```tsx
+              <div className="p-4 border-t border-slate-800 space-y-2">
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {displayInitial}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+                    <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+                >
+                  <LogOut size={20} />
+                  <span className="font-medium">Cerrar Sesión</span>
+                </button>
+              </div>
+```
+
+---
+
+## Order of Execution
 
 ```
-1. npm install qrcode.react
-2. Crear src/components/CatalogQRModal.tsx (desde cero)
-3. Editar src/pages/Settings.tsx (3 ediciones puntuales)
+1a → 1b → 1c → 1d
 ```
 
-Las tareas 2 y 3 son dependientes (3 importa lo que crea 2).
+- **1a** must be first (introduces `authUser` and `isOwner` variables).
+- **1b** must follow 1a (uses those variables to compute `displayName` / `displayInitial`).
+- **1c** and **1d** must follow 1b (use `displayName` and `displayInitial` in JSX).
+- **1c** and **1d** are independent of each other.
 
 ---
 
-## CRITERIOS DE ACEPTACIÓN
+## Edge Cases
 
-- [ ] El botón QR aparece en Settings > Catálogo Público junto a Copy y ExternalLink
-- [ ] Al hacer click se abre un modal con el QR scannable apuntando a `/catalogo/{slug}`
-- [ ] "Descargar PNG" descarga un archivo `.png` válido del QR
-- [ ] "Copiar link" copia la URL y muestra feedback visual (icono cambia a ✓)
-- [ ] "Compartir" usa Web Share API y solo aparece en browsers que la soportan
-- [ ] El QR se renderiza offline (sin conexión a internet)
-- [ ] Dark mode: el modal respeta el tema; el QR siempre tiene fondo blanco
-- [ ] No hay errores de TypeScript (`npm run lint` pasa)
-- [ ] El modal cierra con Escape y con el botón X (heredado de Modal.tsx)
-
----
-
-## RIESGOS / NOTAS
-
-| Riesgo | Mitigación |
-|---|---|
-| `canvas.toDataURL()` puede fallar en Safari si el canvas está "tainted" | `QRCodeCanvas` no carga imágenes externas → no habrá taint. Safe. |
-| `navigator.share` no existe en desktop Chrome/Firefox | Guard `if (canShare)` antes de renderizar el botón — ya contemplado |
-| `navigator.clipboard` requiere HTTPS o localhost | Vercel deploy siempre HTTPS; dev server en localhost → OK |
-| `user?.catalogSlug` puede ser `undefined` si el perfil no cargó aún | Pasar la prop solo cuando `catalogConfig && user?.catalogSlug` existen — ya así en el tab |
-| `qrcode.react` y Vite ESM | qrcode.react v4.x es ESM-compatible; no requiere config adicional en vite.config |
+| Case | Behavior |
+|------|----------|
+| Owner has no `displayName` | Falls back to `authUser.email` via `user?.displayName \|\| authUser?.email \|\| ''` |
+| Collaborator (no stored name) | Shows `authUser.email` — the only available identifier |
+| `displayName` is empty string | `displayInitial` returns `'?'` via `\|\| '?'` fallback |
+| Very long email or name | `truncate` CSS class clips text with ellipsis; layout never breaks |
+| `user` or `authUser` null at render | Layout only mounts for authenticated sessions (behind route guard). Both are set before `loading` becomes `false`. The `?.` and `\|\| ''` guards are a safety net only. |
+| Dark mode | No changes needed — sidebar and overlay already have hard-coded dark backgrounds (`bg-slate-900`); new elements inherit or use explicit `text-white` / `text-slate-500` |
 
 ---
 
-## FUERA DE SCOPE (no implementar)
+## Verification Steps
 
-- QR por producto individual (distinto al QR del catálogo completo)
-- Personalización visual del QR (colores, logo superpuesto)
-- Tracking de escaneos
-- Generación server-side del QR
-- Cambios al Service Worker
+### TypeScript build
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: zero errors. `authUser` and `isOwner` already exist on `AuthContextType` — no new types needed.
+
+### Manual browser verification
+
+1. **Owner session — desktop**
+   - Log in as owner.
+   - Check bottom of desktop sidebar: indigo avatar circle showing first letter of `displayName`, name text, label "Propietario".
+
+2. **Owner session — mobile**
+   - Open hamburger menu.
+   - Same user block appears in the drawer footer above "Cerrar Sesión".
+
+3. **Collaborator session — desktop + mobile**
+   - Log in as a collaborator account.
+   - Same locations show the collaborator's email and label "Colaborador".
+
+4. **Long email**
+   - Use an account with a 50+ character email.
+   - Verify text truncates cleanly without overflowing the sidebar.
+
+5. **Logout regression**
+   - Click "Cerrar Sesión" in both desktop and mobile.
+   - Verify redirect to `/login` with no console errors.
+
+---
+
+## Out of Scope
+
+- Storing a display name for collaborators (would require a DB schema change to the `collaborators` table and an update UI — separate feature).
+- Avatar image upload.
+- Clicking the user block to go to a profile page.
