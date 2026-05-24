@@ -37,18 +37,21 @@ export default function CollaboratorRow({ collaborator, onEdit, onRevoke, onRese
   const roleLabel = ROLE_PRESET_LABELS[collaborator.rolePreset ?? 'custom'];
 
   const handleRevoke = async () => {
-    if (!confirm('¿Revocar este acceso?')) return;
+    if (!confirm('¿Eliminar este colaborador?')) return;
     setIsRevoking(true);
     try {
       if (isInvitation(collaborator)) {
         await supabase.rpc('revoke_invitation', { p_invitation_id: collaborator.id });
       } else {
-        await supabase.rpc('revoke_collaborator', { p_collab_id: collaborator.id });
+        const { error } = await supabase.functions.invoke('delete-collaborator', {
+          body: { collaborator_id: collaborator.id },
+        });
+        if (error) throw error;
       }
-      showToast('Acceso revocado', 'success');
+      showToast('Colaborador eliminado', 'success');
       refetch();
     } catch {
-      showToast('Error al revocar', 'error');
+      showToast('Error al eliminar colaborador', 'error');
     } finally {
       setIsRevoking(false);
     }
