@@ -264,6 +264,8 @@ export interface Supplier {
   notes?: string;
   paymentTerms?: string;
   catalogUrl?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

@@ -31,6 +31,8 @@ export function useSuppliers() {
         notes: r.notes,
         paymentTerms: r.payment_terms,
         catalogUrl: r.catalog_url,
+        facebookUrl: r.facebook_url,
+        instagramUrl: r.instagram_url,
         isActive: r.is_active,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -61,6 +63,8 @@ export function useSuppliers() {
     notes?: string,
     paymentTerms?: string,
     catalogUrl?: string,
+    facebookUrl?: string,
+    instagramUrl?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('register_supplier', {
       p_name:          name,
@@ -73,6 +77,8 @@ export function useSuppliers() {
       p_notes:         notes        ?? null,
       p_payment_terms: paymentTerms  ?? null,
       p_catalog_url:   catalogUrl    ?? null,
+      p_facebook_url:  facebookUrl   ?? null,
+      p_instagram_url: instagramUrl  ?? null,
     });
     await fetchSuppliers();
     return result;
@@ -90,19 +96,23 @@ export function useSuppliers() {
     notes?: string,
     paymentTerms?: string,
     catalogUrl?: string,
+    facebookUrl?: string,
+    instagramUrl?: string,
   ): Promise<Supplier> => {
     const result = await callRpc<Supplier>('update_supplier', {
-      p_id:           id,
-      p_name:         name,
-      p_contact_name: contactName  ?? null,
-      p_phone:        phone        ?? null,
-      p_email:        email        ?? null,
-      p_address:      address      ?? null,
-      p_cuit:         cuit         ?? null,
-      p_category:     category     ?? null,
-      p_notes:        notes        ?? null,
-      p_payment_terms: paymentTerms ?? null,
-      p_catalog_url:  catalogUrl    ?? null,
+      p_id:            id,
+      p_name:          name,
+      p_contact_name:  contactName  ?? null,
+      p_phone:         phone        ?? null,
+      p_email:         email        ?? null,
+      p_address:       address      ?? null,
+      p_cuit:          cuit         ?? null,
+      p_category:      category     ?? null,
+      p_notes:         notes        ?? null,
+      p_payment_terms: paymentTerms  ?? null,
+      p_catalog_url:   catalogUrl    ?? null,
+      p_facebook_url:  facebookUrl   ?? null,
+      p_instagram_url: instagramUrl  ?? null,
     });
     await fetchSuppliers();
     return result;

@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, Search, Edit2, Trash2, Building2,
   Phone, Mail, Tag, CreditCard, CheckCircle2,
-  XCircle, Package, ExternalLink
+  XCircle, Package, ExternalLink, Facebook, Instagram
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -77,11 +77,13 @@ export default function Suppliers() {
     try {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, data.name, data.contactName, data.phone,
-          data.email, data.address, data.cuit, data.category, data.notes, data.paymentTerms, data.catalogUrl);
+          data.email, data.address, data.cuit, data.category, data.notes, data.paymentTerms,
+          data.catalogUrl, data.facebookUrl, data.instagramUrl);
         showMessage('Proveedor actualizado');
       } else {
         await createSupplier(data.name, data.contactName, data.phone, data.email,
-          data.address, data.cuit, data.category, data.notes, data.paymentTerms, data.catalogUrl);
+          data.address, data.cuit, data.category, data.notes, data.paymentTerms,
+          data.catalogUrl, data.facebookUrl, data.instagramUrl);
         showMessage('Proveedor creado');
       }
       setIsModalOpen(false);
@@ -200,6 +202,7 @@ export default function Suppliers() {
                 <th className="px-6 py-4"><Tag size={14} className="inline mr-1" />Categoría</th>
                 <th className="px-6 py-4"><CreditCard size={14} className="inline mr-1" />Condición</th>
                 <th className="px-6 py-4">Catálogo</th>
+                <th className="px-6 py-4">Redes</th>
                 <th className="px-6 py-4">Estado</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
@@ -236,6 +239,33 @@ export default function Suppliers() {
                     ) : '—'}
                   </td>
                   <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      {s.facebookUrl && (
+                        <a
+                          href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://facebook.com/${s.facebookUrl.replace(/^@/, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Facebook"
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                        >
+                          <Facebook size={16} />
+                        </a>
+                      )}
+                      {s.instagramUrl && (
+                        <a
+                          href={s.instagramUrl.startsWith('http') ? s.instagramUrl : `https://instagram.com/${s.instagramUrl.replace(/^@/, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Instagram"
+                          className="text-pink-500 hover:text-pink-700 dark:text-pink-400 dark:hover:text-pink-300 transition-colors"
+                        >
+                          <Instagram size={16} />
+                        </a>
+                      )}
+                      {!s.facebookUrl && !s.instagramUrl && '—'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
                     <button onClick={() => handleToggleActive(s)}
                       disabled={!canWrite}
                       title={!canWrite ? 'Sin permiso' : undefined}
@@ -267,7 +297,7 @@ export default function Suppliers() {
               ))}
               {filteredSuppliers.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     <Package size={32} className="mx-auto mb-2 opacity-30" />
                     No se encontraron proveedores
                   </td>

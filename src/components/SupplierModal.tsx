@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import Modal from './Modal';
+import { Facebook, Instagram } from 'lucide-react';
 import { Supplier } from '../types';
 
 interface SupplierModalProps {
@@ -21,6 +22,8 @@ export interface SupplierFormData {
   notes?: string;
   paymentTerms?: string;
   catalogUrl?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
 }
 
 const CATEGORIES = ['Insumos', 'Tecnología', 'Servicios', 'Materias Primas', 'Transporte', 'Otros'];
@@ -38,6 +41,8 @@ export default function SupplierModal({
   const [notes, setNotes] = React.useState('');
   const [paymentTerms, setPaymentTerms] = React.useState('');
   const [catalogUrl, setCatalogUrl] = React.useState('');
+const [facebookUrl, setFacebookUrl] = React.useState('');
+const [instagramUrl, setInstagramUrl] = React.useState('');
 
   useEffect(() => {
     if (editingSupplier) {
@@ -51,16 +56,34 @@ export default function SupplierModal({
       setNotes(editingSupplier.notes || '');
       setPaymentTerms(editingSupplier.paymentTerms || '');
       setCatalogUrl(editingSupplier.catalogUrl || '');
+      setFacebookUrl(editingSupplier.facebookUrl || '');
+      setInstagramUrl(editingSupplier.instagramUrl || '');
     } else {
       setName(''); setContactName(''); setPhone('');
       setEmail(''); setAddress(''); setCuit('');
-      setCategory(''); setNotes(''); setPaymentTerms(''); setCatalogUrl('');
+      setCategory(''); setNotes(''); setPaymentTerms('');
+      setCatalogUrl(''); setFacebookUrl(''); setInstagramUrl('');
     }
   }, [editingSupplier, isOpen]);
+
+  const SOCIAL_PATTERN = /^(https?:\/\/.+|@[\w.]+)$/;
+
+  function validateSocial(value: string): boolean {
+    if (!value) return true;
+    return SOCIAL_PATTERN.test(value);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (!validateSocial(facebookUrl.trim())) {
+      alert('Facebook: ingresá una URL válida (https://...) o un @usuario');
+      return;
+    }
+    if (!validateSocial(instagramUrl.trim())) {
+      alert('Instagram: ingresá una URL válida (https://...) o un @usuario');
+      return;
+    }
     await onSave({
       name: name.trim(),
       contactName: contactName.trim() || undefined,
@@ -72,6 +95,8 @@ export default function SupplierModal({
       notes: notes.trim() || undefined,
       paymentTerms: paymentTerms.trim() || undefined,
       catalogUrl: catalogUrl.trim() || undefined,
+      facebookUrl: facebookUrl.trim() || undefined,
+      instagramUrl: instagramUrl.trim() || undefined,
     });
   };
 
@@ -146,6 +171,33 @@ export default function SupplierModal({
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL del Catálogo</label>
           <input type="url" value={catalogUrl} onChange={e => setCatalogUrl(e.target.value)} placeholder="https://..."
             className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              <Facebook size={13} className="text-blue-600" /> Facebook
+            </label>
+            <input
+              type="text"
+              value={facebookUrl}
+              onChange={e => setFacebookUrl(e.target.value)}
+              placeholder="https://facebook.com/empresa o @empresa"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              <Instagram size={13} className="text-pink-500" /> Instagram
+            </label>
+            <input
+              type="text"
+              value={instagramUrl}
+              onChange={e => setInstagramUrl(e.target.value)}
+              placeholder="https://instagram.com/empresa o @empresa"
+              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
+            />
+          </div>
         </div>
 
         <div>
