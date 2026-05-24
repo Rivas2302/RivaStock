@@ -81,28 +81,63 @@ serve(async (req) => {
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  const { data: existing } = await admin
+  const normalizedEmail = body.email.trim().toLowerCase();
+
+  const { data: existing, error: existingErr } = await admin
     .from('invitations')
-    .select('*')
+    .select('id, accepted_at, revoked_at')
     .eq('owner_uid', user.id)
-    .eq('email', body.email)
-    .is('accepted_at', null)
-    .is('revoked_at', null)
+    .eq('email', normalizedEmail)
     .maybeSingle();
+  if (existingErr) {
+    return new Response(JSON.stringify({ error: `Error al buscar invitación: ${existingErr.message}` }),
+      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
 
   let invitationId: string;
   if (existing) {
-    invitationId = existing.id;
-    await admin.from('invitations').update({
-      permissions: body.permissions,
-      role_preset: body.role_preset ?? null,
-    }).eq('id', invitationId);
+    if (!existing.accepted_at && !existing.revoked_at) {
+      invitationId = existing.id;
+      const { error: updateErr } = await admin.from('invitations').update({
+        permissions: body.permissions,
+        role_preset: body.role_preset ?? null,
+      }).eq('id', invitationId);
+      if (updateErr) {
+        return new Response(JSON.stringify({ error: `Error al actualizar invitación: ${updateErr.message}` }),
+          { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+    } else {
+      const { error: deleteErr } = await admin
+        .from('invitations')
+        .delete()
+        .eq('id', existing.id);
+      if (deleteErr) {
+        return new Response(JSON.stringify({ error: `Error al reemplazar invitación: ${deleteErr.message}` }),
+          { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+
+      const { data: inserted, error: insErr } = await admin
+        .from('invitations')
+        .insert({
+          owner_uid:   user.id,
+          email:       normalizedEmail,
+          permissions: body.permissions,
+          role_preset: body.role_preset ?? null,
+        })
+        .select('id')
+        .single();
+      if (insErr) {
+        return new Response(JSON.stringify({ error: `Error al crear invitación: ${insErr.message}` }),
+          { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+      invitationId = inserted.id;
+    }
   } else {
     const { data: inserted, error: insErr } = await admin
       .from('invitations')
       .insert({
         owner_uid:   user.id,
-        email:       body.email,
+        email:       normalizedEmail,
         permissions: body.permissions,
         role_preset: body.role_preset ?? null,
       })
@@ -116,7 +151,7 @@ serve(async (req) => {
   }
 
   const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
-    body.email,
+    normalizedEmail,
     { redirectTo: `${APP_URL}/` },
   );
   if (inviteErr) {
