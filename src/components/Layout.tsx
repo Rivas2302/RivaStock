@@ -48,7 +48,7 @@ const NAV_ITEMS: NavItem[] = [
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, refetchData, permissions } = useAuth();
+  const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
@@ -56,6 +56,11 @@ export default function Layout() {
   const navItems = NAV_ITEMS.filter(it =>
     it.module === null || permissions[it.module]?.read === true
   );
+
+  const displayName = isOwner
+    ? (user?.displayName || authUser?.email || '')
+    : (authUser?.email || '');
+  const displayInitial = displayName.charAt(0).toUpperCase() || '?';
 
   useEffect(() => {
     const MIN_REFETCH_INTERVAL_MS = 10_000;
@@ -125,7 +130,16 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="p-4 mt-auto border-t border-slate-800">
+        <div className="p-4 mt-auto border-t border-slate-800 space-y-2">
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+              {displayInitial}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+              <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
+            </div>
+          </div>
           <button
             onClick={handleLogout}
             disabled={loggingOut}
@@ -219,7 +233,16 @@ export default function Layout() {
                   );
                 })}
               </nav>
-              <div className="p-4 border-t border-slate-800">
+              <div className="p-4 border-t border-slate-800 space-y-2">
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {displayInitial}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+                    <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
+                  </div>
+                </div>
                 <button
                   onClick={handleLogout}
                   disabled={loggingOut}
