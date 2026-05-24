@@ -98,31 +98,42 @@ export default function Quotes() {
 
   const fetchData = async () => {
     if (!user) return;
-    const [q, p, c] = await Promise.all([
-      db.list<Quote>('quotes', user.uid),
-      db.list<Product>('products', user.uid),
-      db.list<Customer>('customers', user.uid),
-    ]);
-    setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    setProducts(p);
-    setCustomers(c);
-    setLoading(false);
+    try {
+      const [q, p, c] = await Promise.all([
+        db.list<Quote>('quotes', user.uid),
+        db.list<Product>('products', user.uid),
+        db.list<Customer>('customers', user.uid),
+      ]);
+      setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setProducts(p);
+      setCustomers(c);
+    } catch (err) {
+      console.error('[Quotes] fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const [q, p, c] = await Promise.all([
-        db.list<Quote>('quotes', user.uid),
-        db.list<Product>('products', user.uid),
-        db.list<Customer>('customers', user.uid),
-      ]);
-      if (cancelled) return;
-      setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-      setProducts(p);
-      setCustomers(c);
-      setLoading(false);
+      try {
+        const [q, p, c] = await Promise.all([
+          db.list<Quote>('quotes', user.uid),
+          db.list<Product>('products', user.uid),
+          db.list<Customer>('customers', user.uid),
+        ]);
+        if (cancelled) return;
+        setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+        setProducts(p);
+        setCustomers(c);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Quotes] fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);

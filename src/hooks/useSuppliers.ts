@@ -11,35 +11,41 @@ export function useSuppliers() {
 
   const fetchSuppliers = async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from('suppliers')
-      .select('*')
-      .eq('user_id', user.uid)
-      .order('name_lower');
-    if (data) {
-      const mapped = data.map((r: Record<string, unknown>) => ({
-        id: r.id,
-        ownerUid: r.user_id,
-        name: r.name,
-        nameLower: r.name_lower,
-        contactName: r.contact_name,
-        phone: r.phone,
-        email: r.email,
-        address: r.address,
-        cuit: r.cuit,
-        category: r.category,
-        notes: r.notes,
-        paymentTerms: r.payment_terms,
-        catalogUrl: r.catalog_url,
-        facebookUrl: r.facebook_url,
-        instagramUrl: r.instagram_url,
-        isActive: r.is_active,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      } as Supplier));
-      setSuppliers(mapped.sort((a, b) => a.name.localeCompare(b.name)));
+    try {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('user_id', user.uid)
+        .order('name_lower');
+      if (error) throw error;
+      if (data) {
+        const mapped = data.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          ownerUid: r.user_id,
+          name: r.name,
+          nameLower: r.name_lower,
+          contactName: r.contact_name,
+          phone: r.phone,
+          email: r.email,
+          address: r.address,
+          cuit: r.cuit,
+          category: r.category,
+          notes: r.notes,
+          paymentTerms: r.payment_terms,
+          catalogUrl: r.catalog_url,
+          facebookUrl: r.facebook_url,
+          instagramUrl: r.instagram_url,
+          isActive: r.is_active,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        } as Supplier));
+        setSuppliers(mapped.sort((a, b) => a.name.localeCompare(b.name)));
+      }
+    } catch (err) {
+      console.error('[useSuppliers] fetchSuppliers error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

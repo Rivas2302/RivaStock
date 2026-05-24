@@ -54,31 +54,42 @@ export default function Stock() {
 
   const fetchData = async () => {
     if (!user) return;
-    const [p, c, pr] = await Promise.all([
-      db.list<Product>('products', user.uid),
-      db.list<Category>('categories', user.uid),
-      db.list<PriceRange>('price_ranges', user.uid)
-    ]);
-    setProducts(p);
-    setCategories(c);
-    setPriceRanges(pr);
-    setLoading(false);
+    try {
+      const [p, c, pr] = await Promise.all([
+        db.list<Product>('products', user.uid),
+        db.list<Category>('categories', user.uid),
+        db.list<PriceRange>('price_ranges', user.uid),
+      ]);
+      setProducts(p);
+      setCategories(c);
+      setPriceRanges(pr);
+    } catch (err) {
+      console.error('[Stock] fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     let cancelled = false;
     if (!user) return;
     (async () => {
-      const [p, c, pr] = await Promise.all([
-        db.list<Product>('products', user.uid),
-        db.list<Category>('categories', user.uid),
-        db.list<PriceRange>('price_ranges', user.uid),
-      ]);
-      if (cancelled) return;
-      setProducts(p);
-      setCategories(c);
-      setPriceRanges(pr);
-      setLoading(false);
+      try {
+        const [p, c, pr] = await Promise.all([
+          db.list<Product>('products', user.uid),
+          db.list<Category>('categories', user.uid),
+          db.list<PriceRange>('price_ranges', user.uid),
+        ]);
+        if (cancelled) return;
+        setProducts(p);
+        setCategories(c);
+        setPriceRanges(pr);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Stock] fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);

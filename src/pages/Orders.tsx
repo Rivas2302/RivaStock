@@ -34,19 +34,30 @@ export default function Orders() {
 
   const fetchData = async () => {
     if (!user) return;
-    const o = await db.list<Order>('orders', user.uid);
-    setOrders(o.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    setLoading(false);
+    try {
+      const o = await db.list<Order>('orders', user.uid);
+      setOrders(o.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    } catch (err) {
+      console.error('[Orders] fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const o = await db.list<Order>('orders', user.uid);
-      if (cancelled) return;
-      setOrders(o.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-      setLoading(false);
+      try {
+        const o = await db.list<Order>('orders', user.uid);
+        if (cancelled) return;
+        setOrders(o.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Orders] fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);

@@ -10,13 +10,20 @@ export function useTeam() {
 
   const refetch = useCallback(async () => {
     setLoading(true);
-    const [{ data: collabs }, { data: invs }] = await Promise.all([
-      supabase.rpc('list_collaborators'),
-      supabase.rpc('list_invitations'),
-    ]);
-    setCollaborators((collabs ?? []).map(r => fromDb<Collaborator>(r)));
-    setInvitations((invs ?? []).map(r => fromDb<Invitation>(r)));
-    setLoading(false);
+    try {
+      const [{ data: collabs, error: e1 }, { data: invs, error: e2 }] = await Promise.all([
+        supabase.rpc('list_collaborators'),
+        supabase.rpc('list_invitations'),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+      setCollaborators((collabs ?? []).map(r => fromDb<Collaborator>(r)));
+      setInvitations((invs ?? []).map(r => fromDb<Invitation>(r)));
+    } catch (err) {
+      console.error('[useTeam] refetch error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refetch(); }, [refetch]);

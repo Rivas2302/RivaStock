@@ -71,27 +71,38 @@ export default function CashFlow() {
 
   const fetchData = async () => {
     if (!user) return;
-    const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
-    setEntries(cf.sort((a, b) => {
-      const dc = b.date.localeCompare(a.date);
-      if (dc !== 0) return dc;
-      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
-    }));
-    setLoading(false);
+    try {
+      const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
+      setEntries(cf.sort((a, b) => {
+        const dc = b.date.localeCompare(a.date);
+        if (dc !== 0) return dc;
+        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+      }));
+    } catch (err) {
+      console.error('[CashFlow] fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
-      if (cancelled) return;
-      setEntries(cf.sort((a, b) => {
-        const dc = b.date.localeCompare(a.date);
-        if (dc !== 0) return dc;
-        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
-      }));
-      setLoading(false);
+      try {
+        const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
+        if (cancelled) return;
+        setEntries(cf.sort((a, b) => {
+          const dc = b.date.localeCompare(a.date);
+          if (dc !== 0) return dc;
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+        }));
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[CashFlow] fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);

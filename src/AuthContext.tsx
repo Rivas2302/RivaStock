@@ -159,9 +159,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     currentUserIdRef.current = null;
     clearDbCache();
-    await supabase.auth.signOut();
     setAuth(null);
     setAuthUser(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('[Auth] signOut error (ignored — local state already cleared):', err);
+    }
   };
 
   const sendResetEmail = async (email: string) => {

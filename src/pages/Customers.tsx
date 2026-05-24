@@ -60,19 +60,30 @@ export default function Customers() {
 
   const fetchData = async () => {
     if (!user) return;
-    const c = await db.list<Customer>('customers', user.uid);
-    setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
-    setLoading(false);
+    try {
+      const c = await db.list<Customer>('customers', user.uid);
+      setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) {
+      console.error('[Customers] fetchData error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const c = await db.list<Customer>('customers', user.uid);
-      if (cancelled) return;
-      setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
-      setLoading(false);
+      try {
+        const c = await db.list<Customer>('customers', user.uid);
+        if (cancelled) return;
+        setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Customers] fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);
