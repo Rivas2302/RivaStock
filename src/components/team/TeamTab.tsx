@@ -47,7 +47,7 @@ export default function TeamTab() {
             ? `Colaborador reactivado: ${inv.email}`
             : result.status === 'already_active'
               ? `El colaborador ya está activo: ${inv.email}`
-              : `El usuario ya existe. Pedile que use recuperar contraseña: ${inv.email}`,
+              : `${inv.email} ya tiene cuenta y fue agregado como colaborador.`,
         'success'
       );
     } catch (err) {

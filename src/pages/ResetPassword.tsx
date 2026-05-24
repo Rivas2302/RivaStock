@@ -20,9 +20,10 @@ export default function ResetPassword() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true);
+      // PASSWORD_RECOVERY = reset link; SIGNED_IN = invite link
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
     });
-    // Also check if there's already an active session (in case the event already fired)
+    // Fallback: if Supabase already processed the token before this effect ran
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setReady(true);
     });

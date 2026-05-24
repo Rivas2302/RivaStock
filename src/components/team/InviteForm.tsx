@@ -10,7 +10,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  editTarget?: Collaborator | null;
+  editTarget?: Collaborator | Invitation | null;
 }
 
 export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: Props) {
@@ -84,7 +84,7 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
           ? `Colaborador reactivado: ${email.trim()}`
           : result.status === 'already_active'
             ? `El colaborador ya está activo: ${email.trim()}`
-            : `El usuario ya existe. Pedile que use recuperar contraseña: ${email.trim()}`;
+            : `${email.trim()} ya tiene cuenta y fue agregado como colaborador. Puede iniciar sesión normalmente.`;
 
       setAlert({ text: successMessage, type: 'success' });
       setTimeout(() => {

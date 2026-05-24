@@ -178,6 +178,30 @@ serve(async (req) => {
     );
     if (inviteErr) {
       if (inviteErr.message.toLowerCase().includes('already been registered')) {
+        // User already has a confirmed Supabase account. The handle_new_user trigger
+        // won't fire for existing users, so we must create the collaborator row manually.
+        const { data: existingProfile } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('email', normalizedEmail)
+          .maybeSingle();
+
+        if (existingProfile?.id) {
+          await admin.from('collaborators').upsert({
+            owner_uid:     user.id,
+            user_uid:      existingProfile.id,
+            email:         normalizedEmail,
+            permissions:   body.permissions,
+            role_preset:   body.role_preset ?? null,
+            invitation_id: invitationId,
+            revoked_at:    null,
+          }, { onConflict: 'owner_uid,user_uid' });
+
+          await admin.from('invitations').update({
+            accepted_at: new Date().toISOString(),
+          }).eq('id', invitationId);
+        }
+
         return new Response(JSON.stringify({ invitation_id: invitationId, status: 'already_registered' }),
           { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
       }
