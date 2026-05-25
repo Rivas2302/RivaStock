@@ -61,7 +61,28 @@ export default function Intake() {
 
   useEffect(() => {
     if (!user) return;
-    fetchData();
+    let cancelled = false;
+    (async () => {
+      try {
+        const [i, p] = await Promise.all([
+          db.list<StockIntake>('stock_intakes', user.uid),
+          db.list<Product>('products', user.uid),
+        ]);
+        if (cancelled) return;
+        setIntakes(i.sort((a, b) => {
+          const dc = b.date.localeCompare(a.date);
+          if (dc !== 0) return dc;
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+        }));
+        setProducts(p);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Intake] fetchData error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user, refetchToken]);
 
   useEffect(() => {
