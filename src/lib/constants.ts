@@ -1,3 +1,3 @@
 export const DUPLICATE_DETECTION_WINDOW_MS = 5_000;
 export const TOAST_DURATION_MS = 3_000;
-export const QUERY_CACHE_TTL_MS = 60_000;
+export const QUERY_CACHE_TTL_MS = 10_000;

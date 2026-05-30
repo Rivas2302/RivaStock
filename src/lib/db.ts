@@ -12,21 +12,6 @@ function tableName(col: string): string {
   return TABLE_MAP[col] ?? col;
 }
 
-// Per-collection column projection. When a collection appears here, db.list /
-// db.find / db.findBy will fetch only the listed columns instead of `*`.
-// Keep this in sync with the TS interfaces in src/types.ts — the camelCase
-// converter (fromDb) translates snake_case columns automatically.
-const LIST_COLUMNS: Record<string, string> = {
-  // Dashboard reads only name/category/prices/stock for products; skip heavy
-  // columns (images, description, custom_fields, notes) to keep the payload
-  // small enough to return under the 12s client timeout on cold starts.
-  products: 'id,user_id,name,category_id,category,purchase_price,sale_price,stock,min_stock,image_url,show_in_catalog,created_at,updated_at',
-};
-
-function columnsFor(col: string): string {
-  return LIST_COLUMNS[tableName(col)] ?? '*';
-}
-
 interface CacheEntry {
   expiresAt: number;
   hasValue: boolean;
@@ -75,20 +60,12 @@ export function invalidateDbCache(...collectionNames: string[]): void {
   }
 }
 
-// Fire before the Supabase AbortSignal.timeout (15s in supabase.ts) so the
-// thrown error has a useful label instead of a generic AbortError. The cron
-// ping (api/cron/ping-db) keeps the DB warm so a real query should never
-// approach this limit; if it does, the dashboard error banner gives the
-// user a retry button.
-const PENDING_PROMISE_TIMEOUT_MS = 12_000;
+const PENDING_PROMISE_TIMEOUT_MS = 20_000;
 
 function timeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(
-        `La base de datos tardó más de ${Math.round(ms / 1000)}s en responder. ` +
-        `Probá recargar; si persiste, el proyecto puede estar pausado (${label}).`
-      ));
+      reject(new Error(`[db] timeout after ${ms}ms: ${label}`));
     }, ms);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
@@ -196,25 +173,13 @@ class SupabaseDB {
     const key = cacheKey('list', collectionName, { ownerUid: ownerUid ?? null });
 
     return readWithCache(key, async () => {
-      const LIST_LIMIT = 500;
-      let q = supabase
-        .from(tbl)
-        .select(columnsFor(collectionName))
-        .limit(LIST_LIMIT);
+      let q = supabase.from(tbl).select('*');
       if (ownerUid && !ip) {
         q = q.eq('user_id', ownerUid);
-      }
-      // Stable ordering so truncation is deterministic. profiles is excluded
-      // via `ip` because it does not have a created_at on every row.
-      if (!ip) {
-        q = q.order('created_at', { ascending: false });
       }
 
       const { data, error } = await q;
       if (error) throw new Error(`[db.list:${tbl}] ${error.message}`);
-      if (data && data.length === LIST_LIMIT) {
-        console.warn(`[db.list:${tbl}] hit the ${LIST_LIMIT}-row cap; some rows are not shown`);
-      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (data as any[]).map(r => fromDb<T>(r, ip));
     });
@@ -232,7 +197,7 @@ class SupabaseDB {
     const key = cacheKey('find', collectionName, { field: dbField, value, limitCount: limitCount ?? null });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select(columnsFor(collectionName)).eq(dbField, value as string);
+      let q = supabase.from(tbl).select('*').eq(dbField, value as string);
       if (limitCount) q = q.limit(limitCount);
 
       const { data, error } = await q;
@@ -259,7 +224,7 @@ class SupabaseDB {
     });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select(columnsFor(collectionName));
+      let q = supabase.from(tbl).select('*');
       for (const filter of normalizedFilters) {
         q = q.eq(filter.field, filter.value as string);
       }

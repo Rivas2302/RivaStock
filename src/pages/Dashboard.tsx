@@ -25,7 +25,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function Dashboard() {
-  const { user, refetchToken, refetchData } = useAuth();
+  const { user, refetchToken } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
@@ -40,32 +40,24 @@ export default function Dashboard() {
 
     const fetchData = async () => {
       try {
-        // Load products first so the KPI grid can paint as soon as possible.
-        // The remaining tables stream in afterwards; their KPIs simply show 0
-        // until they arrive — much better UX than a 20s blank screen.
-        const p = await db.list<Product>('products', user.uid);
-        if (cancelled) return;
-        setProducts(p);
-        setError(null);
-        setLoading(false);
-
-        const results = await Promise.allSettled([
+        const [p, s, cf, o] = await Promise.all([
+          db.list<Product>('products', user.uid),
           db.list<Sale>('sales', user.uid),
           db.list<CashFlowEntry>('cash_flow', user.uid),
           db.list<Order>('orders', user.uid),
         ]);
         if (cancelled) return;
-        if (results[0].status === 'fulfilled') setSales(results[0].value);
-        if (results[1].status === 'fulfilled') setCashFlow(results[1].value);
-        if (results[2].status === 'fulfilled') setOrders(results[2].value);
-        for (const r of results) {
-          if (r.status === 'rejected') console.error('Dashboard secondary fetch error:', r.reason);
-        }
+        setProducts(p);
+        setSales(s);
+        setCashFlow(cf);
+        setOrders(o);
+        setError(null);
       } catch (err) {
         if (cancelled) return;
         console.error('Dashboard fetch error:', err);
         setError(err instanceof Error ? err.message : 'Error cargando datos');
-        setLoading(false);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -232,20 +224,12 @@ export default function Dashboard() {
       <div className="p-8 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 rounded-2xl border border-rose-200 dark:border-rose-800">
         <p className="font-bold">No se pudo cargar el panel</p>
         <p className="text-sm mt-1">{error}</p>
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => { setError(null); setLoading(true); refetchData(); }}
-            className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold"
-          >
-            Reintentar
-          </button>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 border border-rose-300 dark:border-rose-700 rounded-lg text-sm font-bold"
-          >
-            Recargar página
-          </button>
-        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }
