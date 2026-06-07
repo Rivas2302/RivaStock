@@ -834,8 +834,8 @@ export default function Sales() {
             {formData.status === 'Pagado' && (
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Método de Pago</label>
-                <div className="flex gap-2">
-                  {['Efectivo', 'Transferencia', 'Otro'].map((method) => (
+                <div className="flex gap-2 overflow-x-auto">
+                  {(['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro'] as const).map((method) => (
                     <button
                       key={method}
                       type="button"
