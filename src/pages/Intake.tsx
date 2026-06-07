@@ -9,14 +9,21 @@ import {
   Search,
   History,
   ChevronDown,
+  ScanLine,
   X
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
+import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
+import { normalizeBarcode } from '../lib/barcode';
+import { showToast } from '../lib/toast';
 import { motion } from 'motion/react';
 
 export default function Intake() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('ingresos', 'write');
+  const navigate = useNavigate();
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [intakes, setIntakes] = useState<StockIntake[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +148,30 @@ export default function Intake() {
     setIsProductDropdownOpen(false);
   };
 
+  const handleScannedCode = (raw: string) => {
+    const code = normalizeBarcode(raw);
+    if (!code) return;
+    const product = products.find((p) => normalizeBarcode(p.barcode ?? '') === code);
+    setScannerOpen(false);
+    if (product) {
+      setFormData({
+        date: todayString(),
+        productId: product.id,
+        productName: product.name,
+        quantity: 1,
+        purchasePrice: product.purchasePrice,
+        supplier: '',
+        notes: '',
+      });
+      setIsModalOpen(true);
+      showToast(`Producto: ${product.name}`, 'success');
+      return;
+    }
+    if (confirm(`No encontramos un producto con el código ${code}. ¿Querés crearlo ahora?`)) {
+      navigate('/stock', { state: { newBarcode: code } });
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || isSubmitting || !formData.productId) return;
@@ -177,15 +208,26 @@ export default function Intake() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ingresos de Mercadería</h2>
           <p className="text-slate-500 dark:text-slate-400">Registra la entrada de nuevos productos</p>
         </div>
-        <button
-          onClick={openModal}
-          disabled={!canWrite}
-          title={!canWrite ? 'Sin permiso' : undefined}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus size={20} />
-          Registrar Ingreso
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setScannerOpen(true)}
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : 'Escanear código de barras'}
+            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg transition-all disabled:opacity-50"
+          >
+            <ScanLine size={20} />
+            Escanear
+          </button>
+          <button
+            onClick={openModal}
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : undefined}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus size={20} />
+            Registrar Ingreso
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -400,6 +442,14 @@ export default function Intake() {
           </div>
         </form>
       </Modal>
+
+      <BarcodeScannerOverlay
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleScannedCode}
+        continuous={false}
+        title="Escanear producto a ingresar"
+      />
     </div>
   );
 }
