@@ -28,6 +28,7 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   intake_stock: ['products', 'stock_intakes'],
   reconcile_customer_balance: ['customers'],
   register_customer_payment: ['customers', 'cash_flow'],
+  register_pos_sale: ['sales', 'cash_flow', 'products', 'customers'],
   register_sale: ['sales', 'cash_flow', 'products', 'customers'],
   toggle_sale_status: ['sales', 'cash_flow', 'customers'],
   register_supplier:    ['suppliers'],
