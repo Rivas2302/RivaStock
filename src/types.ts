@@ -43,6 +43,7 @@ export interface Product {
   showInCatalog: boolean;
   notes?: string;
   description?: string;
+  barcode?: string;
   customFields?: Record<string, string | number | boolean | null>;
   ownerUid: string;
   createdAt: string;
@@ -60,7 +61,7 @@ export interface Sale {
   adjustment: number;
   total: number;
   status: 'Pagado' | 'No Pagado' | 'Pendiente';
-  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Otro';
+  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Débito' | 'Crédito' | 'Otro';
   client?: string;
   ownerUid: string;
   items?: {
@@ -93,7 +94,7 @@ export interface CashFlowEntry {
   description: string;
   category: string;
   amount: number;
-  paymentMethod: 'Efectivo' | 'Transferencia' | 'Otro';
+  paymentMethod: 'Efectivo' | 'Transferencia' | 'Débito' | 'Crédito' | 'Otro';
   status: 'Pagado' | 'Pendiente';
   saleId?: string;
   ownerUid: string;
@@ -278,9 +279,12 @@ export interface CustomerTransaction {
   type: TransactionType;
   amount: number;
   description: string;
-  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Otro';
+  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Débito' | 'Crédito' | 'Otro';
   relatedSaleId?: string;
   relatedQuoteId?: string;
   date: string;
   createdAt: string;
 }
+
+export const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
