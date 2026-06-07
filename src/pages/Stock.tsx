@@ -1,4 +1,5 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db, deleteFromStorage } from '../lib/db';
@@ -31,6 +32,9 @@ export default function Stock() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const canDelete = usePermission('stock', 'delete');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -97,6 +101,30 @@ export default function Stock() {
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);
+
+  useEffect(() => {
+    const state = location.state as { newBarcode?: string } | null;
+    if (state?.newBarcode && !prefilledBarcodeRef.current) {
+      prefilledBarcodeRef.current = state.newBarcode;
+      setEditingProduct(null);
+      setFormData({
+        id: crypto.randomUUID(),
+        name: '',
+        categoryId: categories[0]?.id || '',
+        category: categories[0]?.name || '',
+        purchasePrice: 0,
+        salePrice: 0,
+        stock: 0,
+        minStock: 2,
+        showInCatalog: true,
+        notes: '',
+        images: [],
+        barcode: state.newBarcode,
+      });
+      setIsModalOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, categories, navigate]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
