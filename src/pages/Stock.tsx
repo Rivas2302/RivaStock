@@ -21,6 +21,10 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
+import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
+import { normalizeBarcode } from '../lib/barcode';
+import { ScanLine } from 'lucide-react';
+import { showToast } from '../lib/toast';
 import { motion } from 'motion/react';
 
 export default function Stock() {
@@ -96,6 +100,7 @@ export default function Stock() {
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,8 +108,20 @@ export default function Stock() {
     setSaving(true);
 
     try {
+      const normalizedBarcode = normalizeBarcode(formData.barcode ?? '');
+      if (normalizedBarcode) {
+        const duplicate = products.find(
+          (p) => normalizeBarcode(p.barcode ?? '') === normalizedBarcode && p.id !== editingProduct?.id,
+        );
+        if (duplicate) {
+          showToast(`Ya existe un producto con ese código: "${duplicate.name}"`, 'error');
+          return;
+        }
+      }
+
       const productData = {
         ...formData,
+        barcode: normalizedBarcode || undefined,
         ownerUid: user.uid,
         updatedAt: new Date().toISOString()
       } as Product;
@@ -503,6 +520,30 @@ export default function Stock() {
               />
             </div>
 
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Código de barras (opcional)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={formData.barcode ?? ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                  placeholder="Ej: 7790070123456"
+                  className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl flex items-center gap-2 hover:bg-slate-800"
+                >
+                  <ScanLine size={18} />
+                  Escanear
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Único por producto. Permite vender escaneando.</p>
+            </div>
+
             <div className="flex items-center gap-3 pt-6">
               <button 
                 type="button"
@@ -563,6 +604,18 @@ export default function Stock() {
           </div>
         </form>
       </Modal>
+
+      <BarcodeScannerOverlay
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        continuous={false}
+        title="Escanear código del producto"
+        onScan={(code) => {
+          const norm = normalizeBarcode(code);
+          setFormData(prev => ({ ...prev, barcode: norm }));
+          setScannerOpen(false);
+        }}
+      />
     </div>
   );
 }
