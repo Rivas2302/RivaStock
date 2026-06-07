@@ -9,6 +9,14 @@
 - **Deploy:** Vercel (SPA con rewrites a `/index.html`)
 - **PWA:** Service Worker + Web App Manifest
 
+## Funcionalidades destacadas
+
+- **Modo POS** (`/pos`): pantalla optimizada para venta rápida con carrito multi-ítem, búsqueda y escaneo continuo. Reutiliza el módulo de permisos `ventas`.
+- **Escaneo de código de barras** (`@zxing/browser`): integrado en POS, alta de producto y entrada de mercadería. Formatos soportados: EAN-13/8, UPC-A/E, Code 128, Code 39, QR.
+- **Métodos de pago**: Efectivo, Transferencia, Débito, Crédito, Otro. Cuenta corriente disponible como venta pendiente vinculada a cliente.
+
+> Requisito: el sitio debe servirse por **HTTPS** para que el navegador habilite el acceso a la cámara (Vercel lo cumple automáticamente; en local funciona en `http://localhost`).
+
 ## Setup Local
 
 ### Requisitos
