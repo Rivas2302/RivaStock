@@ -1,11 +1,13 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
 import { Product, Sale, Customer } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
+  ScanLine,
   Search,
   Filter,
   Edit2,
@@ -37,6 +39,7 @@ export default function Sales() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('ventas', 'write');
   const canDelete = usePermission('ventas', 'delete');
+  const navigate = useNavigate();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,6 +377,15 @@ export default function Sales() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => navigate('/pos')}
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : 'Abrir Modo POS'}
+            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50"
+          >
+            <ScanLine size={20} />
+            Modo POS
+          </button>
           <button
             onClick={() => {
               setEditingSale(null);
