@@ -17,6 +17,8 @@
     "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "clsx": "^2.1.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
