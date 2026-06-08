@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ScanLine, Keyboard, AlertTriangle } from 'lucide-react';
 import { useBarcodeScanner, ScannerError } from '../hooks/useBarcodeScanner';
@@ -24,12 +24,12 @@ const ERROR_MESSAGES: Record<ScannerError, { title: string; body: string }> = {
 export default function BarcodeScannerOverlay({
   isOpen, onClose, onScan, continuous = false, title = 'Escanear código',
 }: Props) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualValue, setManualValue] = useState('');
 
   const { status, error } = useBarcodeScanner({
-    videoElement: videoRef.current,
+    videoElement: videoEl,
     active: isOpen && !manualMode,
     continuous,
     onScan,
@@ -82,7 +82,7 @@ export default function BarcodeScannerOverlay({
             {!manualMode && !error && (
               <>
                 <video
-                  ref={videoRef}
+                  ref={setVideoEl}
                   className="absolute inset-0 w-full h-full object-cover"
                   playsInline
                   muted
