@@ -15,6 +15,21 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Unregister any stale service workers from previous PWA builds -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          if (registrations.length === 0) return;
+          var unregistered = registrations.map(function (r) { return r.unregister(); });
+          if ('caches' in window) {
+            caches.keys().then(function (names) {
+              names.forEach(function (name) { caches.delete(name); });
+            });
+          }
+          Promise.all(unregistered).then(function () { location.reload(); });
+        });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
