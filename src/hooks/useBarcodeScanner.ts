@@ -29,6 +29,8 @@ interface State {
   hasTorch: boolean;
   torchOn: boolean;
   toggleTorch: () => void;
+  /** Tap a point in the video (normalized 0..1) to focus there. */
+  focusAt: (xNorm: number, yNorm: number) => void;
 }
 
 const FORMATS: BarcodeFormat[] = [
@@ -136,6 +138,7 @@ export function useBarcodeScanner({
   const [torchOn,  setTorchOn]  = useState(false);
 
   const controlsRef = useRef<IScannerControls | null>(null);
+  const trackRef    = useRef<MediaStreamTrack | null>(null);
   const torchOnRef  = useRef(false);
   const cooldownRef = useRef(new BarcodeCooldown(cooldownMs));
   const onScanRef   = useRef(onScan);
@@ -144,17 +147,54 @@ export function useBarcodeScanner({
   const stop = useCallback(() => {
     try { controlsRef.current?.stop(); } catch { /* no-op */ }
     controlsRef.current = null;
+    trackRef.current = null;
     cooldownRef.current.reset();
   }, []);
 
   const toggleTorch = useCallback(() => {
-    if (!controlsRef.current) return;
-    torchOnRef.current = !torchOnRef.current;
+    const newValue = !torchOnRef.current;
+    // Prefer direct track.applyConstraints (more reliable than zxing wrapper)
+    if (trackRef.current) {
+      try {
+        trackRef.current.applyConstraints({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          advanced: [{ torch: newValue } as any],
+        });
+        torchOnRef.current = newValue;
+        setTorchOn(newValue);
+        return;
+      } catch { /* fall through to zxing wrapper */ }
+    }
+    if (controlsRef.current) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (controlsRef.current as any).switchTorch?.(newValue);
+        torchOnRef.current = newValue;
+        setTorchOn(newValue);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const focusAt = useCallback((xNorm: number, yNorm: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    // Clamp 0..1
+    const x = Math.max(0, Math.min(1, xNorm));
+    const y = Math.max(0, Math.min(1, yNorm));
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controlsRef.current as any).switchTorch?.(torchOnRef.current);
-      setTorchOn(torchOnRef.current);
-    } catch { /* not supported — ignore */ }
+      track.applyConstraints({
+        advanced: [
+          // pointsOfInterest is supported on Chrome Android; ignored elsewhere
+          { pointsOfInterest: [{ x, y }] } as MediaTrackConstraints,
+          { focusMode: 'single-shot' } as MediaTrackConstraints,
+        ],
+      }).catch(() => {
+        // Fallback: just re-trigger continuous autofocus
+        track.applyConstraints({
+          advanced: [{ focusMode: 'continuous' } as MediaTrackConstraints],
+        }).catch(() => { /* ignore */ });
+      });
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -235,44 +275,36 @@ export function useBarcodeScanner({
           controlsRef.current = ctrls;
           setStatus('streaming');
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const c = ctrls as any;
+          // Grab the underlying video track for direct applyConstraints control.
+          // This is more reliable than zxing's wrapper methods.
+          const stream = videoElement.srcObject as MediaStream | null;
+          const track  = stream?.getVideoTracks()?.[0] ?? null;
+          trackRef.current = track;
 
-          // Apply post-stream optimizations one by one; each is best-effort.
-
-          // a) Continuous autofocus
-          try {
-            await c.streamVideoConstraintsApply({
-              advanced: [{ focusMode: 'continuous' } as MediaTrackConstraints],
-            });
-          } catch { /* ignore */ }
-
-          // b) Auto exposure + auto white balance for adapting lighting
-          try {
-            await c.streamVideoConstraintsApply({
-              advanced: [
-                { exposureMode: 'continuous' } as MediaTrackConstraints,
-                { whiteBalanceMode: 'continuous' } as MediaTrackConstraints,
-              ],
-            });
-          } catch { /* ignore */ }
-
-          // c) Zoom — barcodes are small; 2-3× makes them fill the frame
-          try {
-            const caps = c.streamVideoCapabilitiesGet?.() as
-              | (MediaTrackCapabilities & { zoom?: { min: number; max: number; step?: number } })
-              | undefined;
-            if (caps?.zoom) {
-              const zoom = Math.min(2.5, caps.zoom.max);
-              await c.streamVideoConstraintsApply({
-                advanced: [{ zoom } as MediaTrackConstraints],
+          if (track) {
+            // a) Continuous autofocus + auto exposure + auto white balance
+            try {
+              await track.applyConstraints({
+                advanced: [
+                  { focusMode: 'continuous' } as MediaTrackConstraints,
+                  { exposureMode: 'continuous' } as MediaTrackConstraints,
+                  { whiteBalanceMode: 'continuous' } as MediaTrackConstraints,
+                ],
               });
-            }
-          } catch { /* ignore */ }
+            } catch { /* ignore — device doesn't support these advanced constraints */ }
 
-          // d) Torch detection (zxing adds switchTorch when the track supports it)
-          if (typeof c.switchTorch === 'function') {
-            setHasTorch(true);
+            // b) Detect torch support directly from track capabilities
+            let torchSupported = false;
+            try {
+              const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
+              if (caps.torch) torchSupported = true;
+            } catch { /* ignore */ }
+            // Fallback to zxing's detection if track-level didn't expose it
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (!torchSupported && typeof (ctrls as any).switchTorch === 'function') {
+              torchSupported = true;
+            }
+            if (torchSupported) setHasTorch(true);
           }
         })
         .catch((err) => {
@@ -288,5 +320,5 @@ export function useBarcodeScanner({
     };
   }, [active, videoElement, continuous, stop, retryKey]);
 
-  return { status, error, hasTorch, torchOn, toggleTorch };
+  return { status, error, hasTorch, torchOn, toggleTorch, focusAt };
 }

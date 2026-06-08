@@ -29,13 +29,26 @@ export default function BarcodeScannerOverlay({
   const [manualValue, setManualValue] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
-  const { status, error, hasTorch, torchOn, toggleTorch } = useBarcodeScanner({
+  const { status, error, hasTorch, torchOn, toggleTorch, focusAt } = useBarcodeScanner({
     videoElement: videoEl,
     active: isOpen && !manualMode,
     continuous,
     onScan,
     retryKey: retryCount,
   });
+
+  const [focusIndicator, setFocusIndicator] = useState<{ x: number; y: number; key: number } | null>(null);
+
+  const handleVideoTap = (e: React.PointerEvent<HTMLVideoElement>) => {
+    if (!videoEl || status !== 'streaming') return;
+    const rect = videoEl.getBoundingClientRect();
+    const xRel = (e.clientX - rect.left) / rect.width;
+    const yRel = (e.clientY - rect.top)  / rect.height;
+    focusAt(xRel, yRel);
+    setFocusIndicator({ x: e.clientX - rect.left, y: e.clientY - rect.top, key: Date.now() });
+    // Auto-hide indicator
+    setTimeout(() => setFocusIndicator(null), 800);
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -89,14 +102,24 @@ export default function BarcodeScannerOverlay({
             */}
             <video
               ref={setVideoEl}
+              onPointerDown={handleVideoTap}
               className={cn(
-                'absolute inset-0 w-full h-full object-cover',
+                'absolute inset-0 w-full h-full object-cover cursor-crosshair',
                 (manualMode || error) && 'invisible',
               )}
               playsInline
               muted
               autoPlay
             />
+
+            {/* Tap-to-focus indicator */}
+            {focusIndicator && (
+              <div
+                key={focusIndicator.key}
+                className="absolute pointer-events-none w-16 h-16 -ml-8 -mt-8 border-2 border-yellow-300 rounded-full animate-ping"
+                style={{ left: focusIndicator.x, top: focusIndicator.y }}
+              />
+            )}
 
             {/* Viewfinder + status (camera active, no error) */}
             {!manualMode && !error && (
@@ -111,7 +134,7 @@ export default function BarcodeScannerOverlay({
                 )}
                 {status === 'streaming' && (
                   <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-sm px-3 py-1.5 rounded-full">
-                    Apuntá al código
+                    Apuntá al código · Tocá para enfocar
                   </div>
                 )}
               </>
