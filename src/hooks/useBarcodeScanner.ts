@@ -91,34 +91,35 @@ export function useBarcodeScanner({
     hints.set(DecodeHintType.TRY_HARDER, true);
     const reader = new BrowserMultiFormatReader(hints);
 
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      .then((stream) => {
+    // Use decodeFromConstraints so zxing handles the entire stream lifecycle:
+    // getUserMedia → attachStreamToVideo → scan. This avoids the race condition
+    // where manually setting srcObject + play() conflicts with zxing's own
+    // playVideoOnLoadAsync() called inside decodeFromVideoElement().
+    reader
+      .decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' } }, audio: false },
+        videoElement,
+        (result, error, controls) => {
+          if (cancelled) return;
+          if (result) {
+            const code = normalizeBarcode(result.getText());
+            if (code && cooldownRef.current.accept(code)) {
+              scanFeedback();
+              onScanRef.current(code);
+              if (!continuous) {
+                try { controls.stop(); } catch { /* no-op */ }
+                controlsRef.current = null;
+                setStatus('idle');
+              }
+            }
+          }
+        },
+      )
+      .then((ctrls) => {
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          try { ctrls.stop(); } catch { /* no-op */ }
           return;
         }
-        videoElement.srcObject = stream;
-        videoElement.setAttribute('playsinline', 'true');
-        return videoElement.play().then(() => stream);
-      })
-      .then(async (stream) => {
-        if (cancelled || !stream) return;
-        const ctrls = await reader.decodeFromVideoElement(videoElement, (result) => {
-          if (cancelled) return;
-          if (!result) return;
-          const code = normalizeBarcode(result.getText());
-          if (!code) return;
-          if (!cooldownRef.current.accept(code)) return;
-          scanFeedback();
-          onScanRef.current(code);
-          if (!continuous) {
-            try { ctrls.stop(); } catch { /* no-op */ }
-            stream.getTracks().forEach((t) => t.stop());
-            controlsRef.current = null;
-            setStatus('idle');
-          }
-        });
         controlsRef.current = ctrls;
         setStatus('streaming');
       })
@@ -131,11 +132,6 @@ export function useBarcodeScanner({
     return () => {
       cancelled = true;
       stop();
-      const stream = videoElement.srcObject as MediaStream | null;
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        videoElement.srcObject = null;
-      }
     };
   }, [active, videoElement, continuous, stop]);
 
