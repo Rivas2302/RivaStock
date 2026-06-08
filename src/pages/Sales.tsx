@@ -29,7 +29,9 @@ import { motion } from 'motion/react';
 import {
   getSaleDisplayQuantity,
   hasDerivedSaleItems,
+  isPosSale,
   isPendingSaleStatus,
+  isQuoteSale,
 } from '../lib/sales';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -73,6 +75,7 @@ export default function Sales() {
   });
 
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -225,7 +228,7 @@ export default function Sales() {
     setSaving(true);
 
     try {
-      if (editingSale && hasDerivedSaleItems(editingSale)) {
+      if (editingSale && isQuoteSale(editingSale)) {
         alert('Las ventas creadas desde presupuestos se editan desde el presupuesto original.');
         return;
       }
@@ -494,11 +497,37 @@ export default function Sales() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredSales.map((s) => (
-                <tr key={s.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <React.Fragment key={s.id}>
+                  <tr className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(s.date)}</td>
                   <td className="px-6 py-4">
-                    <p className="font-bold text-slate-900 dark:text-white">{s.productName}</p>
-                    {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSaleId(expandedSaleId === s.id ? null : s.id)}
+                      className="text-left w-full"
+                    >
+                      <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        {s.productName}
+                        {hasDerivedSaleItems(s) && (
+                          <span className="inline-flex items-center justify-center w-4 h-4 text-slate-400">
+                            {expandedSaleId === s.id ? '▾' : '▸'}
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {isPosSale(s) && (
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                            POS
+                          </span>
+                        )}
+                        {isQuoteSale(s) && (
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                            Presupuesto
+                          </span>
+                        )}
+                        {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
+                      </div>
+                    </button>
                   </td>
                   <td className="px-6 py-4 dark:text-slate-300">{getSaleDisplayQuantity(s)}</td>
                   <td className="px-6 py-4 dark:text-slate-300">
@@ -533,16 +562,16 @@ export default function Sales() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {
-                          if (hasDerivedSaleItems(s)) return;
+                          if (isQuoteSale(s)) return;
                           setEditingSale(s);
                           setFormData(s);
                           setIsModalOpen(true);
                         }}
-                        disabled={hasDerivedSaleItems(s) || !canWrite}
-                        title={hasDerivedSaleItems(s) ? 'Editá el presupuesto original para cambiar esta venta' : !canWrite ? 'Sin permiso' : 'Editar'}
+                        disabled={isQuoteSale(s) || !canWrite}
+                        title={isQuoteSale(s) ? 'Editá el presupuesto original para cambiar esta venta' : !canWrite ? 'Sin permiso' : 'Editar'}
                         className={cn(
                           "p-2 transition-colors",
-                          hasDerivedSaleItems(s) || !canWrite
+                          isQuoteSale(s) || !canWrite
                             ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
                             : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                         )}
@@ -560,6 +589,28 @@ export default function Sales() {
                     </div>
                   </td>
                 </tr>
+                {expandedSaleId === s.id && hasDerivedSaleItems(s) && (
+                  <tr className="bg-slate-50/50 dark:bg-slate-800/30">
+                    <td colSpan={9} className="px-6 pb-4">
+                      <div className="ml-4 pl-4 border-l-2 border-indigo-300 dark:border-indigo-700">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Productos vendidos</p>
+                        <ul className="space-y-1.5">
+                          {s.items!.map((it, idx) => (
+                            <li key={idx} className="flex items-center justify-between text-xs">
+                              <span className="text-slate-700 dark:text-slate-300">
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400">{it.quantity}×</span> {it.productName}
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-400 font-mono">
+                                {formatCurrency(roundPrice(it.price))} c/u
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
               {filteredSales.length === 0 && (
                 <tr>

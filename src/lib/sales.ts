@@ -15,6 +15,14 @@ export function hasDerivedSaleItems(sale: Pick<Sale, 'items'>) {
   return Array.isArray(sale.items) && sale.items.length > 0;
 }
 
+export function isPosSale(sale: Pick<Sale, 'source'>) {
+  return sale.source === 'pos';
+}
+
+export function isQuoteSale(sale: Pick<Sale, 'source'>) {
+  return sale.source === 'quote';
+}
+
 export function getSaleLineItems(
   sale: Pick<Sale, 'productId' | 'productName' | 'quantity' | 'unitPrice' | 'items'>
 ): SaleLineItem[] {

@@ -70,6 +70,7 @@ export interface Sale {
     quantity: number;
     price: number;
   }[];
+  source?: 'pos' | 'quote' | 'manual';
 }
 
 export interface StockIntake {
