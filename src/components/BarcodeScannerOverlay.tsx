@@ -79,16 +79,26 @@ export default function BarcodeScannerOverlay({
 
           {/* Video / error / manual */}
           <div className="flex-1 relative overflow-hidden">
+            {/*
+              Always keep <video> in the DOM while the overlay is mounted.
+              If we unmount it on error, setVideoEl(null) resets the hook's
+              error state → video remounts → getUserMedia fires again → same
+              error → infinite loop that looks like "Pidiendo cámara…" forever.
+            */}
+            <video
+              ref={setVideoEl}
+              className={cn(
+                'absolute inset-0 w-full h-full object-cover',
+                (manualMode || error) && 'invisible',
+              )}
+              playsInline
+              muted
+              autoPlay
+            />
+
+            {/* Viewfinder + status (camera active, no error) */}
             {!manualMode && !error && (
               <>
-                <video
-                  ref={setVideoEl}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  playsInline
-                  muted
-                  autoPlay
-                />
-                {/* Viewfinder */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-72 max-w-[80%] h-40 border-2 border-rose-500 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
                 </div>
