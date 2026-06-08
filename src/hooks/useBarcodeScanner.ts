@@ -126,13 +126,21 @@ export function useBarcodeScanner({
           }
         },
       )
-      .then((ctrls) => {
+      .then(async (ctrls) => {
         if (cancelled) {
           try { ctrls.stop(); } catch { /* no-op */ }
           return;
         }
         controlsRef.current = ctrls;
         setStatus('streaming');
+        // Request continuous autofocus for sharper barcode scanning.
+        // Supported on Chrome for Android; silently ignored elsewhere.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (ctrls as any).streamVideoConstraintsApply({
+            advanced: [{ focusMode: 'continuous' } as MediaTrackConstraints],
+          });
+        } catch { /* not supported on this device — ignore */ }
       })
       .catch((err) => {
         if (cancelled) return;
