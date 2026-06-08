@@ -100,7 +100,15 @@ export function useBarcodeScanner({
     // playVideoOnLoadAsync() called inside decodeFromVideoElement().
     reader
       .decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' } }, audio: false },
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width:     { ideal: 1920 },
+            height:    { ideal: 1080 },
+            frameRate: { ideal: 30 },
+          },
+          audio: false,
+        },
         videoElement,
         (result, error, controls) => {
           if (cancelled) return;

@@ -102,7 +102,7 @@ export default function BarcodeScannerOverlay({
             {!manualMode && !error && (
               <>
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-72 max-w-[80%] h-40 border-2 border-rose-500 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
+                  <div className="w-80 max-w-[85%] h-52 border-2 border-rose-500 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
                 </div>
                 {status === 'requesting' && (
                   <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-sm px-3 py-1.5 rounded-full">
