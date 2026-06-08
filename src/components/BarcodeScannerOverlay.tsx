@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ScanLine, Keyboard, AlertTriangle } from 'lucide-react';
+import { X, ScanLine, Keyboard, AlertTriangle, Flashlight } from 'lucide-react';
 import { useBarcodeScanner, ScannerError } from '../hooks/useBarcodeScanner';
 import { normalizeBarcode } from '../lib/barcode';
 import { cn } from '../lib/utils';
@@ -29,7 +29,7 @@ export default function BarcodeScannerOverlay({
   const [manualValue, setManualValue] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
-  const { status, error } = useBarcodeScanner({
+  const { status, error, hasTorch, torchOn, toggleTorch } = useBarcodeScanner({
     videoElement: videoEl,
     active: isOpen && !manualMode,
     continuous,
@@ -196,13 +196,27 @@ export default function BarcodeScannerOverlay({
               <span className={cn('text-xs', continuous ? 'opacity-80' : 'opacity-60')}>
                 {continuous ? 'Modo continuo' : 'Escaneo único'}
               </span>
-              <button
-                onClick={() => setManualMode(v => !v)}
-                className="flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20"
-              >
-                <Keyboard size={16} />
-                {manualMode ? 'Usar cámara' : 'Tipear código'}
-              </button>
+              <div className="flex items-center gap-2">
+                {hasTorch && (
+                  <button
+                    onClick={toggleTorch}
+                    className={cn(
+                      'flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors',
+                      torchOn ? 'bg-yellow-400/30 text-yellow-300' : 'bg-white/10 hover:bg-white/20',
+                    )}
+                    aria-label="Linterna"
+                  >
+                    <Flashlight size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setManualMode(v => !v)}
+                  className="flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20"
+                >
+                  <Keyboard size={16} />
+                  {manualMode ? 'Usar cámara' : 'Tipear código'}
+                </button>
+              </div>
             </div>
           )}
         </motion.div>

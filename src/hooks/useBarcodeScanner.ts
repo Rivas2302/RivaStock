@@ -26,6 +26,9 @@ interface Options {
 interface State {
   status: ScannerStatus;
   error: ScannerError | null;
+  hasTorch: boolean;
+  torchOn: boolean;
+  toggleTorch: () => void;
 }
 
 const FORMATS: BarcodeFormat[] = [
@@ -59,9 +62,13 @@ export function useBarcodeScanner({
   cooldownMs = 1500,
   retryKey = 0,
 }: Options): State {
-  const [status, setStatus] = useState<ScannerStatus>('idle');
-  const [error, setError]   = useState<ScannerError | null>(null);
+  const [status,   setStatus]   = useState<ScannerStatus>('idle');
+  const [error,    setError]    = useState<ScannerError | null>(null);
+  const [hasTorch, setHasTorch] = useState(false);
+  const [torchOn,  setTorchOn]  = useState(false);
+
   const controlsRef = useRef<IScannerControls | null>(null);
+  const torchOnRef  = useRef(false);
   const cooldownRef = useRef(new BarcodeCooldown(cooldownMs));
   const onScanRef   = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
@@ -72,11 +79,24 @@ export function useBarcodeScanner({
     cooldownRef.current.reset();
   }, []);
 
+  const toggleTorch = useCallback(() => {
+    if (!controlsRef.current) return;
+    torchOnRef.current = !torchOnRef.current;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (controlsRef.current as any).switchTorch?.(torchOnRef.current);
+      setTorchOn(torchOnRef.current);
+    } catch { /* not supported — ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!active || !videoElement) {
       stop();
       setStatus('idle');
       setError(null);
+      setHasTorch(false);
+      setTorchOn(false);
+      torchOnRef.current = false;
       return;
     }
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -88,16 +108,15 @@ export function useBarcodeScanner({
     let cancelled = false;
     setStatus('requesting');
     setError(null);
+    setHasTorch(false);
+    setTorchOn(false);
+    torchOnRef.current = false;
 
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, FORMATS);
     hints.set(DecodeHintType.TRY_HARDER, true);
     const reader = new BrowserMultiFormatReader(hints);
 
-    // Use decodeFromConstraints so zxing handles the entire stream lifecycle:
-    // getUserMedia → attachStreamToVideo → scan. This avoids the race condition
-    // where manually setting srcObject + play() conflicts with zxing's own
-    // playVideoOnLoadAsync() called inside decodeFromVideoElement().
     reader
       .decodeFromConstraints(
         {
@@ -110,7 +129,7 @@ export function useBarcodeScanner({
           audio: false,
         },
         videoElement,
-        (result, error, controls) => {
+        (result, _err, controls) => {
           if (cancelled) return;
           if (result) {
             const code = normalizeBarcode(result.getText());
@@ -133,14 +152,32 @@ export function useBarcodeScanner({
         }
         controlsRef.current = ctrls;
         setStatus('streaming');
-        // Request continuous autofocus for sharper barcode scanning.
-        // Supported on Chrome for Android; silently ignored elsewhere.
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c = ctrls as any;
+
+        // 1. Continuous autofocus (Android Chrome)
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (ctrls as any).streamVideoConstraintsApply({
+          await c.streamVideoConstraintsApply({
             advanced: [{ focusMode: 'continuous' } as MediaTrackConstraints],
           });
-        } catch { /* not supported on this device — ignore */ }
+        } catch { /* not supported — ignore */ }
+
+        // 2. Zoom 2× for better barcode detail — check capability first
+        try {
+          const caps = c.streamVideoCapabilitiesGet?.() as (MediaTrackCapabilities & { zoom?: { min: number; max: number } }) | undefined;
+          if (caps?.zoom) {
+            const zoom = Math.min(2, caps.zoom.max);
+            await c.streamVideoConstraintsApply({
+              advanced: [{ zoom } as MediaTrackConstraints],
+            });
+          }
+        } catch { /* not supported — ignore */ }
+
+        // 3. Detect torch availability (switchTorch is added by zxing when torch track found)
+        if (typeof c.switchTorch === 'function') {
+          setHasTorch(true);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -154,5 +191,5 @@ export function useBarcodeScanner({
     };
   }, [active, videoElement, continuous, stop, retryKey]);
 
-  return { status, error };
+  return { status, error, hasTorch, torchOn, toggleTorch };
 }
