@@ -19,6 +19,8 @@ interface Options {
   continuous: boolean;
   onScan: (code: string) => void;
   cooldownMs?: number;
+  /** Increment to force a fresh camera attempt after fixing permissions */
+  retryKey?: number;
 }
 
 interface State {
@@ -55,6 +57,7 @@ export function useBarcodeScanner({
   continuous,
   onScan,
   cooldownMs = 1500,
+  retryKey = 0,
 }: Options): State {
   const [status, setStatus] = useState<ScannerStatus>('idle');
   const [error, setError]   = useState<ScannerError | null>(null);
@@ -133,7 +136,7 @@ export function useBarcodeScanner({
       cancelled = true;
       stop();
     };
-  }, [active, videoElement, continuous, stop]);
+  }, [active, videoElement, continuous, stop, retryKey]);
 
   return { status, error };
 }

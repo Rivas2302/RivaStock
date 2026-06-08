@@ -13,12 +13,12 @@ interface Props {
   title?: string;
 }
 
-const ERROR_MESSAGES: Record<ScannerError, { title: string; body: string }> = {
-  denied:       { title: 'Permiso de cámara denegado', body: 'Habilitá la cámara en la configuración del navegador y recargá la pantalla.' },
-  notSupported: { title: 'Cámara no disponible',       body: 'Tu navegador no soporta acceso a la cámara. Usá la entrada manual.' },
-  noCamera:     { title: 'No se encontró cámara',      body: 'Verificá que el dispositivo tenga una cámara conectada.' },
-  inUse:        { title: 'Cámara ocupada',             body: 'Otra aplicación está usando la cámara. Cerrala e intentá de nuevo.' },
-  unknown:      { title: 'No se pudo abrir la cámara', body: 'Reintentá o usá la entrada manual.' },
+const ERROR_MESSAGES: Record<ScannerError, { title: string; body: string; canRetry: boolean }> = {
+  denied:       { title: 'Permiso de cámara denegado', body: 'Tocá el candado 🔒 en la barra de direcciones → Cámara → Permitir. Después tocá "Reintentar".', canRetry: true },
+  notSupported: { title: 'Cámara no disponible',       body: 'Tu navegador no soporta acceso a la cámara. Usá la entrada manual.', canRetry: false },
+  noCamera:     { title: 'No se encontró cámara',      body: 'Verificá que el dispositivo tenga una cámara conectada.', canRetry: true },
+  inUse:        { title: 'Cámara ocupada',             body: 'Otra aplicación está usando la cámara. Cerrala e intentá de nuevo.', canRetry: true },
+  unknown:      { title: 'No se pudo abrir la cámara', body: 'Reintentá o usá la entrada manual.', canRetry: true },
 };
 
 export default function BarcodeScannerOverlay({
@@ -27,12 +27,14 @@ export default function BarcodeScannerOverlay({
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualValue, setManualValue] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   const { status, error } = useBarcodeScanner({
     videoElement: videoEl,
     active: isOpen && !manualMode,
     continuous,
     onScan,
+    retryKey: retryCount,
   });
 
   useEffect(() => {
@@ -129,12 +131,22 @@ export default function BarcodeScannerOverlay({
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setManualMode(true)}
-                    className="w-full mt-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl"
-                  >
-                    Ingresar código manualmente
-                  </button>
+                  <div className="flex flex-col gap-2 mt-5">
+                    {ERROR_MESSAGES[error].canRetry && (
+                      <button
+                        onClick={() => setRetryCount(c => c + 1)}
+                        className="w-full py-2.5 bg-indigo-600 text-white font-semibold rounded-xl"
+                      >
+                        Reintentar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setManualMode(true)}
+                      className="w-full py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl"
+                    >
+                      Ingresar código manualmente
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
