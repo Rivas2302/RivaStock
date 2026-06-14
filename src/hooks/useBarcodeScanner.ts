@@ -70,6 +70,53 @@ function classifyError(err: unknown): ScannerError {
 }
 
 /**
+ * Open a camera briefly just to read its hardware capabilities, then release it.
+ * Returns null if the camera can't be opened or capabilities aren't exposed.
+ */
+async function probeCameraCaps(deviceId: string): Promise<MediaTrackCapabilities | null> {
+  let stream: MediaStream | null = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: deviceId } },
+      audio: false,
+    });
+    const track = stream.getVideoTracks()[0];
+    return track?.getCapabilities?.() ?? null;
+  } catch {
+    return null;
+  } finally {
+    stream?.getTracks().forEach(t => t.stop());
+  }
+}
+
+/**
+ * Score a rear lens by how suitable it is for barcode scanning.
+ * The MAIN camera autofocuses (reports a focusDistance range and continuous
+ * focus modes) and usually controls the flash. Ultra-wide / depth lenses have
+ * fixed focus and report no focusDistance — those score low.
+ */
+function scoreCamera(caps: MediaTrackCapabilities | null): number {
+  if (!caps) return 0;
+  // These fields aren't in the standard TS lib but Chrome Android exposes them.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = caps as any;
+  let score = 0;
+  // Real autofocus → has a focusDistance range. Fixed-focus aux lenses lack it.
+  if (c.focusDistance) score += 100;
+  if (Array.isArray(c.focusMode) &&
+      c.focusMode.some((m: string) => m === 'continuous' || m === 'single-shot')) {
+    score += 50;
+  }
+  // The main camera typically owns the torch.
+  if (c.torch === true) score += 20;
+  // Ultra-wide reports zoom.min < 1; the main lens starts around 1.
+  if (c.zoom && typeof c.zoom.min === 'number') {
+    score += c.zoom.min < 1 ? -30 : 10;
+  }
+  return score;
+}
+
+/**
  * Pick the best rear-facing camera deviceId.
  * On multi-camera phones (Samsung, Pixel, iPhone) the OS exposes ultra-wide,
  * telephoto, macro etc. as separate cameras. facingMode: 'environment' may
@@ -78,9 +125,11 @@ function classifyError(err: unknown): ScannerError {
  *
  * Strategy:
  * 1. Get permission with a minimal stream (so labels become populated).
- * 2. Enumerate devices, filter videoinput.
- * 3. Score each by: rear-facing > not an auxiliary lens > first in list.
- * 4. Return the best deviceId, or null to fall back to facingMode.
+ * 2. Enumerate videoinput devices and drop obvious front cameras.
+ * 3. If labels are descriptive (e.g. iPhone "Back Ultra Wide Camera"), use them.
+ * 4. Otherwise (Samsung exposes generic "camera2 N, facing back" labels),
+ *    probe each lens' capabilities and pick the one that actually autofocuses.
+ * 5. If nothing is conclusive, return null to fall back to facingMode.
  */
 async function pickRearCameraId(): Promise<string | null> {
   if (!navigator.mediaDevices?.enumerateDevices) return null;
@@ -99,26 +148,31 @@ async function pickRearCameraId(): Promise<string | null> {
     if (videoInputs.length === 0) return null;
     if (videoInputs.length === 1) return videoInputs[0].deviceId;
 
-    // Filter out front/user cameras and auxiliary rear lenses
-    const rearMain = videoInputs.filter(d => {
-      const label = d.label.toLowerCase();
-      // Skip explicit front cameras
-      if (/front|user|selfie/i.test(label)) return false;
-      // Skip auxiliary rear lenses
-      for (const pattern of AUX_CAMERA_PATTERNS) {
-        if (pattern.test(label)) return false;
-      }
-      return true;
-    });
+    // Drop obvious front cameras (Samsung labels them "...facing front").
+    const backCandidates = videoInputs.filter(d => !/front|user|selfie/i.test(d.label));
+    const candidates = backCandidates.length > 0 ? backCandidates : videoInputs;
 
-    if (rearMain.length > 0) return rearMain[0].deviceId;
+    // 1) If the phone names its aux lenses (iPhone, some Pixels), trust labels.
+    const hasDescriptiveLabels = candidates.some(d =>
+      AUX_CAMERA_PATTERNS.some(p => p.test(d.label)));
+    if (hasDescriptiveLabels) {
+      const labeledMain = candidates.find(d =>
+        d.label && !AUX_CAMERA_PATTERNS.some(p => p.test(d.label)));
+      if (labeledMain) return labeledMain.deviceId;
+    }
 
-    // No good match — try anything that mentions "back" or "rear"
-    const anyRear = videoInputs.find(d => /back|rear|environment/i.test(d.label));
-    if (anyRear) return anyRear.deviceId;
+    // 2) Generic labels (Samsung): probe capabilities to find the lens that
+    //    truly autofocuses, instead of blindly taking the first deviceId.
+    let best: { deviceId: string; score: number } | null = null;
+    for (const cam of candidates) {
+      const caps = await probeCameraCaps(cam.deviceId);
+      const score = scoreCamera(caps);
+      if (!best || score > best.score) best = { deviceId: cam.deviceId, score };
+    }
+    if (best && best.score > 0) return best.deviceId;
 
-    // Last resort: first device (browser usually orders rear first)
-    return videoInputs[0].deviceId;
+    // 3) Nothing conclusive — let facingMode pick the OS default rear camera.
+    return null;
   } catch {
     return null;
   }
@@ -231,19 +285,20 @@ export function useBarcodeScanner({
       if (cancelled) return;
 
       // 2. Build constraints — prefer exact deviceId, fall back to facingMode
+      // 1080p is the sweet spot: sharp enough for barcodes while keeping
+      // autofocus responsive and the framerate high. 4K degrades focus on
+      // many phones (notably Samsung) and lowers the decode framerate.
       const videoConstraints: MediaTrackConstraints = deviceId
         ? {
             deviceId: { exact: deviceId },
-            // Push for the highest resolution the device offers.
-            // Browsers will downgrade gracefully if unsupported.
-            width:     { ideal: 3840 },
-            height:    { ideal: 2160 },
+            width:     { ideal: 1920 },
+            height:    { ideal: 1080 },
             frameRate: { ideal: 30 },
           }
         : {
             facingMode: { ideal: 'environment' },
-            width:     { ideal: 3840 },
-            height:    { ideal: 2160 },
+            width:     { ideal: 1920 },
+            height:    { ideal: 1080 },
             frameRate: { ideal: 30 },
           };
 
