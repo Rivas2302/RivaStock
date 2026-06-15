@@ -13,9 +13,11 @@ interface Props {
 
 export default function BarcodePrintModal({ isOpen, onClose, product, businessName }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [svgMarkup, setSvgMarkup] = useState('');
 
   const [showName, setShowName] = useState(true);
   const [nameOverride, setNameOverride] = useState(product.name);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -24,8 +26,10 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
   }, [isOpen, product.name]);
 
   useEffect(() => {
-    if (!isOpen || !svgRef.current) return;
-    if (!product.barcode) return;
+    if (!isOpen || !svgRef.current || !product.barcode) {
+      setSvgMarkup('');
+      return;
+    }
     try {
       JsBarcode(svgRef.current, product.barcode, {
         format: 'CODE128',
@@ -37,22 +41,126 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
         lineColor: '#000000',
         textMargin: 2,
       });
+      setSvgMarkup(new XMLSerializer().serializeToString(svgRef.current));
     } catch (err) {
       console.error('[BarcodePrintModal] JsBarcode render error:', err);
+      setSvgMarkup('');
     }
   }, [isOpen, product.barcode]);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const displayName = nameOverride.trim();
+
+  const handlePrint = () => {
+    if (!svgMarkup || printing) return;
+    setPrinting(true);
+
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      setPrinting(false);
+      return;
+    }
+
+    const nameBlock = showName && displayName
+      ? `<p class="name">${escapeHtml(displayName)}</p>`
+      : '';
+    const bizBlock = businessName
+      ? `<p class="biz">${escapeHtml(businessName)}</p>`
+      : '';
+
+    doc.open();
+    doc.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiqueta</title>
+<style>
+  @page { margin: 5mm; size: auto; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #000;
+  }
+  .label {
+    width: 50mm;
+    min-height: 30mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+    padding: 2mm;
+    box-sizing: border-box;
+  }
+  .biz {
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 600;
+    color: #555;
+    margin: 0;
+  }
+  .name {
+    font-size: 11pt;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.15;
+    margin: 0;
+    max-width: 46mm;
+    word-wrap: break-word;
+  }
+  .barcode {
+    max-width: 100%;
+    height: auto;
+  }
+</style>
+</head>
+<body>
+  <div class="label">
+    ${bizBlock}
+    ${nameBlock}
+    <div class="barcode">${svgMarkup}</div>
+  </div>
+</body>
+</html>`);
+    doc.close();
+
+    const triggerPrint = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error('[BarcodePrintModal] print error:', err);
+      } finally {
+        setTimeout(() => {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          setPrinting(false);
+        }, 1000);
+      }
+    };
+
+    if (doc.readyState === 'complete') {
+      triggerPrint();
+    } else {
+      iframe.onload = triggerPrint;
+    }
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
         <div
-          className="barcode-print-root fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm print:bg-white print:p-0"
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label="Vista previa de etiqueta"
@@ -61,9 +169,9 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 print:shadow-none print:border-0 print:rounded-none print:max-w-none"
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200"
           >
-            <div className="flex items-center justify-between p-5 border-b border-slate-200 print:hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Tag size={20} className="text-indigo-600" />
                 Vista previa de etiqueta
@@ -77,10 +185,10 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
               </button>
             </div>
 
-            <div className="p-6 print:p-0">
-              <div className="barcode-label mx-auto bg-white text-black border border-dashed border-slate-300 p-3 flex flex-col items-center gap-1 print:border-0">
+            <div className="p-6">
+              <div className="mx-auto bg-white text-black border border-dashed border-slate-300 p-3 flex flex-col items-center gap-1">
                 {businessName && (
-                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold print:text-black">
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">
                     {businessName}
                   </p>
                 )}
@@ -98,7 +206,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
               </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 p-5 space-y-4 print:hidden">
+            <div className="border-t border-slate-200 bg-slate-50 p-5 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <span className="relative">
                   <input
@@ -130,7 +238,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
               )}
             </div>
 
-            <div className="flex gap-3 p-5 border-t border-slate-200 bg-slate-50 print:hidden">
+            <div className="flex gap-3 p-5 border-t border-slate-200 bg-slate-50">
               <button
                 type="button"
                 onClick={onClose}
@@ -141,10 +249,11 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+                disabled={printing || !svgMarkup}
+                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 <Printer size={18} />
-                Imprimir Etiqueta
+                {printing ? 'Imprimiendo...' : 'Imprimir Etiqueta'}
               </button>
             </div>
           </motion.div>
@@ -152,4 +261,13 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
       )}
     </AnimatePresence>
   );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
