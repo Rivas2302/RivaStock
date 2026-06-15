@@ -20,26 +20,28 @@ html.catalog-dark { color-scheme: dark; }
 
 /*
  * Print rules for the BarcodePrintModal.
- * - Hide the entire app shell (sidebar, header, bottom nav, toasts, offline banner).
- * - Show only the .barcode-print-root subtree.
- * - Force light background, drop shadows, and size the label for 50x30mm
- *   thermal labels (the SVG inside scales to fill).
+ * - Hide the entire app shell (#root contains the whole app).
+ * - Reveal only the .barcode-print-root subtree at full size.
+ * - Force light background, drop fixed positioning and backdrop-filter so
+ *   the browser's print/PDF engine renders the label cleanly.
  */
 @media print {
-  body * {
-    visibility: hidden !important;
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-  .barcode-print-root,
-  .barcode-print-root * {
-    visibility: visible !important;
+  #root > * {
+    display: none !important;
   }
   .barcode-print-root {
     position: static !important;
+    display: block !important;
+    inset: auto !important;
     background: #ffffff !important;
     backdrop-filter: none !important;
-    inset: auto !important;
     padding: 0 !important;
-    display: block !important;
+    margin: 0 !important;
   }
   .barcode-label {
     width: 50mm;
