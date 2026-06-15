@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import RequirePermission from './components/RequirePermission';
@@ -88,7 +88,17 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
-export default function App() {
+const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/presupuesto/', '/login', '/forgot-password', '/reset-password', '/auth/'];
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return true;
+  return false;
+}
+
+function AppShell() {
+  const location = useLocation();
+  const publicRoute = isPublicPath(location.pathname);
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -98,20 +108,26 @@ export default function App() {
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online',  handleOnline);
     window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online',  handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
+  useEffect(() => {
+    if (publicRoute) {
+      setDeferredPrompt(null);
+      setShowInstallBanner(false);
+      return;
+    }
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
-
-    return () => {
-      window.removeEventListener('online',  handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('beforeinstallprompt', handler);
-    };
-  }, []);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, [publicRoute]);
 
   const handleInstall = async () => {
     if (!deferredPrompt) return;
@@ -122,13 +138,13 @@ export default function App() {
   };
 
   return (
-    <BrowserRouter>
-      {!isOnline && (
+    <>
+      {!isOnline && !publicRoute && (
         <div className="bg-rose-600 text-white text-center py-2 text-sm font-bold z-[100] relative">
           Estás trabajando sin conexión. Los cambios se sincronizarán al recuperar la conexión.
         </div>
       )}
-      {showInstallBanner && (
+      {showInstallBanner && !publicRoute && (
         <div className="fixed bottom-4 left-4 right-4 bg-[#1a1a1a] text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-center justify-between border border-[#2a2a2a]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold">RS</div>
@@ -142,6 +158,14 @@ export default function App() {
       )}
       <AppRoutes />
       <ToastContainer />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   );
 }
