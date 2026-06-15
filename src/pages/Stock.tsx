@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Share2,
   Barcode,
+  Printer,
   Loader2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
@@ -576,7 +577,20 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {!hasBarcode && (
+                      {hasBarcode ? (
+                        <button
+                          disabled={isGenerating}
+                          title="Imprimir etiqueta del código de barras"
+                          onClick={() => {
+                            setPrintProduct(p);
+                          }}
+                          className="p-2 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGenerating
+                            ? <Loader2 size={18} className="animate-spin" />
+                            : <Printer size={18} />}
+                        </button>
+                      ) : (
                         <button
                           disabled={!canWrite || isGenerating}
                           title={!canWrite ? 'Sin permiso' : 'Generar código interno e imprimir etiqueta'}
@@ -761,6 +775,24 @@ export default function Stock() {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 mt-1">Único por producto. Permite vender escaneando.</p>
+
+              {formData.barcode && editingProduct && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintProduct({
+                      ...editingProduct,
+                      name: formData.name ?? editingProduct.name,
+                      salePrice: formData.salePrice ?? editingProduct.salePrice,
+                      barcode: formData.barcode,
+                    });
+                  }}
+                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Printer size={18} />
+                  Imprimir Etiqueta
+                </button>
+              )}
 
               {!formData.barcode && editingProduct && canWrite && (
                 <button
