@@ -8,10 +8,9 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   product: Product;
-  businessName?: string;
 }
 
-export default function BarcodePrintModal({ isOpen, onClose, product, businessName }: Props) {
+export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [svgMarkup, setSvgMarkup] = useState('');
 
@@ -74,9 +73,6 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
     const nameBlock = showName && displayName
       ? `<p class="name">${escapeHtml(displayName)}</p>`
       : '';
-    const bizBlock = businessName
-      ? `<p class="biz">${escapeHtml(businessName)}</p>`
-      : '';
 
     doc.open();
     doc.write(`<!doctype html>
@@ -101,14 +97,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
     gap: 2mm;
     padding: 2mm;
     box-sizing: border-box;
-  }
-  .biz {
-    font-size: 8pt;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    font-weight: 600;
-    color: #555;
-    margin: 0;
+    text-align: center;
   }
   .name {
     font-size: 11pt;
@@ -116,10 +105,18 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
     text-align: center;
     line-height: 1.15;
     margin: 0;
-    max-width: 46mm;
+    width: 100%;
     word-wrap: break-word;
   }
   .barcode {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .barcode svg {
+    display: block;
+    margin: 0 auto;
     max-width: 100%;
     height: auto;
   }
@@ -127,7 +124,6 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
 </head>
 <body>
   <div class="label">
-    ${bizBlock}
     ${nameBlock}
     <div class="barcode">${svgMarkup}</div>
   </div>
@@ -186,12 +182,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
             </div>
 
             <div className="p-6">
-              <div className="mx-auto bg-white text-black border border-dashed border-slate-300 p-3 flex flex-col items-center gap-1">
-                {businessName && (
-                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">
-                    {businessName}
-                  </p>
-                )}
+              <div className="mx-auto bg-white text-black border border-dashed border-slate-300 p-3 flex flex-col items-center gap-1 text-center">
                 {showName && displayName && (
                   <p className="text-sm font-bold text-center leading-tight line-clamp-2 max-w-[280px]">
                     {displayName}
@@ -201,7 +192,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product, businessNa
                   ref={svgRef}
                   role="img"
                   aria-label={`Código de barras ${product.barcode ?? ''}`}
-                  className="max-w-full h-auto"
+                  className="max-w-full h-auto mx-auto"
                 />
               </div>
             </div>

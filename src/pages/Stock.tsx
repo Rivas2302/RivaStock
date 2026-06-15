@@ -868,7 +868,6 @@ export default function Stock() {
           updatedAt: '',
           barcode: '',
         }}
-        businessName={user?.businessName}
       />
     </div>
   );
