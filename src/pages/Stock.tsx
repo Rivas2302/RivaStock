@@ -19,11 +19,14 @@ import {
   X,
   ChevronDown,
   Share2,
+  Barcode,
+  Loader2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
-import { normalizeBarcode } from '../lib/barcode';
+import BarcodePrintModal from '../components/BarcodePrintModal';
+import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import { ScanLine } from 'lucide-react';
 import { showToast } from '../lib/toast';
 import { motion } from 'motion/react';
@@ -129,6 +132,10 @@ export default function Stock() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [generatingFor, setGeneratingFor] = useState<string | null>(null);
+  const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkGenerating, setBulkGenerating] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +215,7 @@ export default function Stock() {
 
   const autoCalculatePrice = () => {
     const purchase = Number(formData.purchasePrice) || 0;
-    const range = priceRanges.find(r => 
+    const range = priceRanges.find(r =>
       purchase >= r.minPrice && (r.maxPrice === null || purchase <= r.maxPrice)
     );
     if (range) {
@@ -218,14 +225,127 @@ export default function Stock() {
     }
   };
 
+  /**
+   * Generates a unique internal barcode for a product, persists it via
+   * `db.update`, invalidates the products cache, and opens the print modal.
+   * Re-uses the same duplicate-check logic as `handleSave` so we never write a
+   * barcode that collides with another product.
+   */
+  const generateAndPrint = async (product: Product) => {
+    if (!user) return;
+    setGeneratingFor(product.id);
+    try {
+      const existing = new Set(
+        products
+          .filter((p) => p.id !== product.id)
+          .map((p) => normalizeBarcode(p.barcode ?? ''))
+          .filter(Boolean),
+      );
+
+      let candidate = '';
+      for (let attempt = 0; attempt < 5; attempt++) {
+        candidate = generateInternalBarcode(user.uid);
+        if (!existing.has(candidate)) break;
+      }
+      if (existing.has(candidate)) {
+        throw new Error('No fue posible generar un código único. Reintentá.');
+      }
+
+      const updated = await db.update<Product>('products', product.id, {
+        barcode: candidate,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? updated : p)));
+      setPrintProduct(updated);
+      showToast('Código generado correctamente', 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al generar el código';
+      showToast(msg, 'error');
+    } finally {
+      setGeneratingFor(null);
+    }
+  };
+
+  /**
+   * Bulk action: generates an internal barcode for every selected product that
+   * doesn't already have one, then refreshes local state once at the end.
+   */
+  const handleBulkGenerate = async () => {
+    if (!user || selectedIds.size === 0) return;
+    const targets = products.filter((p) => selectedIds.has(p.id) && !normalizeBarcode(p.barcode ?? ''));
+    if (targets.length === 0) {
+      showToast('Los productos seleccionados ya tienen código', 'info');
+      return;
+    }
+    setBulkGenerating(true);
+    const taken = new Set(
+      products
+        .map((p) => normalizeBarcode(p.barcode ?? ''))
+        .filter(Boolean),
+    );
+    const updates: Product[] = [];
+    let failures = 0;
+
+    for (const p of targets) {
+      let candidate = '';
+      for (let attempt = 0; attempt < 5; attempt++) {
+        candidate = generateInternalBarcode(user.uid);
+        if (!taken.has(candidate)) break;
+      }
+      if (taken.has(candidate)) { failures++; continue; }
+      taken.add(candidate);
+      try {
+        const updated = await db.update<Product>('products', p.id, {
+          barcode: candidate,
+          updatedAt: new Date().toISOString(),
+        });
+        updates.push(updated);
+      } catch {
+        failures++;
+      }
+    }
+
+    if (updates.length > 0) {
+      const byId = new Map(updates.map((u) => [u.id, u]));
+      setProducts((prev) => prev.map((p) => byId.get(p.id) ?? p));
+      showToast(`Se generaron ${updates.length} códigos${failures ? ` (${failures} fallaron)` : ''}`, 'success');
+    } else {
+      showToast('No se pudo generar ningún código', 'error');
+    }
+    setBulkGenerating(false);
+    setSelectedIds(new Set());
+  };
+
   const filteredProducts = useMemo(() => products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(deferredSearch.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'disponible' && p.stock > 0) || 
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'disponible' && p.stock > 0) ||
       (statusFilter === 'no-disponible' && p.stock === 0);
     return matchesSearch && matchesCategory && matchesStatus;
   }), [categoryFilter, deferredSearch, products, statusFilter]);
+
+  const selectableIds = useMemo(
+    () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
+    [filteredProducts],
+  );
+  const allSelectableSelected = selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.has(id));
+  const toggleSelectAll = () => {
+    if (allSelectableSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableIds));
+    }
+  };
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const getMarginColor = (purchase: number, sale: number) => {
     if (!purchase || !sale) return 'text-slate-400';
@@ -276,6 +396,40 @@ export default function Stock() {
         </button>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && canWrite && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-3 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-lg shadow-indigo-500/30"
+        >
+          <span className="text-sm font-semibold">
+            {selectedIds.size} producto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkGenerating}
+              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkGenerate}
+              disabled={bulkGenerating}
+              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-60"
+            >
+              {bulkGenerating
+                ? <Loader2 size={14} className="animate-spin" />
+                : <Barcode size={14} />}
+              Generar Códigos para Seleccionados
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="relative md:col-span-2">
@@ -321,6 +475,16 @@ export default function Stock() {
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
               <tr>
+                <th className="px-4 py-4 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar productos sin código"
+                    checked={allSelectableSelected}
+                    onChange={toggleSelectAll}
+                    disabled={selectableIds.length === 0}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
+                  />
+                </th>
                 <th className="px-6 py-4">Producto</th>
                 <th className="px-6 py-4">Compra</th>
                 <th className="px-6 py-4">Venta</th>
@@ -332,8 +496,22 @@ export default function Stock() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? filteredProducts.map((p) => (
+              {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? filteredProducts.map((p) => {
+                const hasBarcode = Boolean(normalizeBarcode(p.barcode ?? ''));
+                const isGenerating = generatingFor === p.id;
+                return (
                 <tr key={p.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      aria-label={`Seleccionar ${p.name}`}
+                      checked={selectedIds.has(p.id)}
+                      onChange={() => toggleSelect(p.id)}
+                      disabled={hasBarcode}
+                      title={hasBarcode ? 'Este producto ya tiene código' : 'Seleccionar para generar código'}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
@@ -398,6 +576,18 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {!hasBarcode && (
+                        <button
+                          disabled={!canWrite || isGenerating}
+                          title={!canWrite ? 'Sin permiso' : 'Generar código interno e imprimir etiqueta'}
+                          onClick={() => generateAndPrint(p)}
+                          className="p-2 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGenerating
+                            ? <Loader2 size={18} className="animate-spin" />
+                            : <Barcode size={18} />}
+                        </button>
+                      )}
                       {p.showInCatalog && user?.catalogSlug && (
                         <button
                           onClick={() => {
@@ -434,9 +624,10 @@ export default function Stock() {
                     </div>
                   </td>
                 </tr>
-              )) : (
+                );
+              }) : (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     No se encontraron productos
                   </td>
                 </tr>
@@ -570,6 +761,20 @@ export default function Stock() {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 mt-1">Único por producto. Permite vender escaneando.</p>
+
+              {!formData.barcode && editingProduct && canWrite && (
+                <button
+                  type="button"
+                  disabled={generatingFor === editingProduct.id}
+                  onClick={() => generateAndPrint(editingProduct)}
+                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {generatingFor === editingProduct.id
+                    ? <Loader2 size={18} className="animate-spin" />
+                    : <Barcode size={18} />}
+                  Generar e Imprimir Código
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-3 pt-6">
@@ -643,6 +848,27 @@ export default function Stock() {
           setFormData(prev => ({ ...prev, barcode: norm }));
           setScannerOpen(false);
         }}
+      />
+
+      <BarcodePrintModal
+        isOpen={printProduct !== null}
+        onClose={() => setPrintProduct(null)}
+        product={printProduct ?? {
+          id: '',
+          name: '',
+          categoryId: '',
+          category: '',
+          purchasePrice: 0,
+          salePrice: 0,
+          stock: 0,
+          minStock: 0,
+          showInCatalog: false,
+          ownerUid: '',
+          createdAt: '',
+          updatedAt: '',
+          barcode: '',
+        }}
+        businessName={user?.businessName}
       />
     </div>
   );
