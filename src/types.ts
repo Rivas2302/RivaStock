@@ -289,3 +289,65 @@ export interface CustomerTransaction {
 
 export const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+// ─── Reports & Analytics ────────────────────────────────────────────────────
+
+export type ReportRangePreset = 'today' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom';
+
+export interface ReportFilters {
+  preset: ReportRangePreset;
+  from: string; // YYYY-MM-DD (local)
+  to:   string; // YYYY-MM-DD (local), inclusive
+}
+
+export interface ReportKpis {
+  totalSales:      number; // suma de `total` de ventas Pagado en el rango
+  transactionCount:number; // cantidad de ventas (cualquier estado) en el rango
+  paidCount:       number; // cantidad Pagado
+  pendingCount:    number; // cantidad Pendiente/No Pagado
+  averageTicket:   number; // totalSales / paidCount (0 si paidCount===0)
+  pendingAmount:   number; // suma de ventas no pagadas
+}
+
+export interface ReportTopProduct {
+  productId:   string;
+  productName: string;
+  quantity:    number;
+  revenue:     number; // suma de (quantity * unitPrice) sin adjustment
+}
+
+export interface ReportPaymentSlice {
+  paymentMethod: PaymentMethod | 'Sin especificar';
+  total:         number;
+  count:         number;
+}
+
+export interface ReportDailyPoint {
+  date:  string; // YYYY-MM-DD
+  total: number; // suma de ventas Pagado
+  count: number;
+}
+
+/** Una fila para la tabla y para exportar. Es una versión "aplanada" de Sale. */
+export interface ReportSaleRow {
+  id:            string;
+  date:          string;
+  productName:   string;
+  quantity:      number;
+  unitPrice:     number;
+  total:         number;
+  paymentMethod: PaymentMethod | 'Sin especificar';
+  status:        Sale['status'];
+  client:        string | null;
+  source:        Sale['source'] | null;
+}
+
+/** Payload completo que devuelve el RPC get_sales_report. */
+export interface SalesReportData {
+  kpis:           ReportKpis;
+  daily:          ReportDailyPoint[];
+  byPayment:      ReportPaymentSlice[];
+  topProducts:    ReportTopProduct[];
+  sales:          ReportSaleRow[];
+  range:          { from: string; to: string };
+}

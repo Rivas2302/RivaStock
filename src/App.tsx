@@ -26,6 +26,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const AuthConfirm = lazy(() => import('./pages/AuthConfirm'));
 const PublicProductPage = lazy(() => import('./pages/PublicProductPage'));
 const POS = lazy(() => import('./pages/POS'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 function PageLoader() {
   return (
@@ -67,6 +68,7 @@ function AppRoutes() {
           <Route index element={withSuspense(<Dashboard />)} />
           <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
           <Route path="ventas" element={withSuspense(<RequirePermission module="ventas"><Sales /></RequirePermission>)} />
+          <Route path="reportes" element={withSuspense(<RequirePermission module="ventas" action="read"><Reports /></RequirePermission>)} />
           <Route path="pos" element={withSuspense(<RequirePermission module="ventas" action="write"><POS /></RequirePermission>)} />
           <Route path="presupuestos" element={withSuspense(<RequirePermission module="presupuestos"><Quotes /></RequirePermission>)} />
           <Route path="clientes" element={withSuspense(<RequirePermission module="clientes"><Customers /></RequirePermission>)} />

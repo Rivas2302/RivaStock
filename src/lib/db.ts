@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { QUERY_CACHE_TTL_MS } from './constants';
 import { uuid } from './utils';
+import type { SalesReportData } from '../types';
 
 // ─── Table name mapping (Firestore collection → Supabase table) ───────────────
 const TABLE_MAP: Record<string, string> = {
@@ -37,6 +38,10 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   toggle_supplier_active: ['suppliers'],
 };
 
+// Report cache uses a different keyspace (date-range based) — we tag it
+// separately so invalidateDbCache('sales') also evicts all report entries.
+const REPORT_CACHE_PREFIX = 'salesReport';
+
 function shallowClone<T>(value: T): T {
   if (Array.isArray(value)) return value.slice() as unknown as T;
   if (value && typeof value === 'object') return { ...(value as object) } as T;
@@ -54,7 +59,14 @@ export function clearDbCache(): void {
 export function invalidateDbCache(...collectionNames: string[]): void {
   const tables = new Set(collectionNames.map(tableName));
   for (const key of queryCache.keys()) {
-    const [, table] = key.split(':', 3);
+    const [namespace, table] = key.split(':', 3);
+    if (namespace === REPORT_CACHE_PREFIX) {
+      // Reports depend on sales + cash_flow + products; evict on any of those.
+      if (tables.has('sales') || tables.has('cash_flow') || tables.has('products')) {
+        queryCache.delete(key);
+      }
+      continue;
+    }
     if (tables.has(table)) {
       queryCache.delete(key);
     }
@@ -323,6 +335,31 @@ class SupabaseDB {
       if (error) throw new Error(`[db.listByDateRange:${tbl}] ${error.message}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (data as any[]).map(r => fromDb<T>(r));
+    });
+  }
+
+  /**
+   * Aggregated sales report for the Reports/Analytics page.
+   *
+   * Calls the `get_sales_report(p_from, p_to)` RPC, which itself resolves the
+   * owner via `get_owner_uid(auth.uid())` (so collaborators transparently see
+   * the owner's data) and validates `ventas.read` permission on the server.
+   *
+   * The `ownerUid` arg is unused server-side (RPC uses auth.uid) but we keep
+   * it in the cache key for symmetry with other helpers and to make cache
+   * collisions across tenants impossible (defence in depth: any change to the
+   * resolved owner — e.g. logout/login as a different collaborator — yields a
+   * fresh key).
+   */
+  async getSalesReport(ownerUid: string, from: string, to: string): Promise<SalesReportData> {
+    const key = `${REPORT_CACHE_PREFIX}:${ownerUid}:${from}:${to}`;
+    return readWithCache(key, async () => {
+      const { data, error } = await supabase.rpc('get_sales_report', {
+        p_from: from,
+        p_to:   to,
+      });
+      if (error) throw new Error(`[db.getSalesReport] ${error.message}`);
+      return data as SalesReportData;
     });
   }
 
