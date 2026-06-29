@@ -24,6 +24,8 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock';
+
 export default function Dashboard() {
   const { user, refetchToken, refetchData } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,7 +48,7 @@ export default function Dashboard() {
         // cold Supabase start this is the slow query, so unblocking the UI
         // here means the user sees a real dashboard within seconds instead
         // of waiting for every table to wake up in lockstep.
-        const p = await db.list<Product>('products', user.uid);
+        const p = await db.listColumns<Product>('products', user.uid, DASHBOARD_PRODUCT_COLUMNS);
         if (cancelled) return;
         setProducts(p);
         setLoading(false);

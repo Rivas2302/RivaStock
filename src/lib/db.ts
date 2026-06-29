@@ -201,6 +201,25 @@ class SupabaseDB {
     });
   }
 
+  async listColumns<T>(collectionName: string, ownerUid: string | undefined, columns: string): Promise<T[]> {
+    const tbl = tableName(collectionName);
+    const ip  = this.isProfile(collectionName);
+    const selectedColumns = columns.trim() || '*';
+    const key = cacheKey('listColumns', collectionName, { ownerUid: ownerUid ?? null, columns: selectedColumns });
+
+    return readWithCache(key, async () => {
+      let q = supabase.from(tbl).select(selectedColumns);
+      if (ownerUid && !ip) {
+        q = q.eq('user_id', ownerUid);
+      }
+
+      const { data, error } = await q;
+      if (error) throw new Error(`[db.listColumns:${tbl}] ${error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data as any[]).map(r => fromDb<T>(r, ip));
+    });
+  }
+
   async find<T>(
     collectionName: string,
     field: string,

@@ -36,7 +36,7 @@ export const supabase: SupabaseClient =
       flowType: 'implicit',
     },
     global: {
-      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(65_000) }),
     },
   });
 
