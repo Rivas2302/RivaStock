@@ -4,6 +4,8 @@ import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
+import { generatePriceListPdf } from '../lib/priceListPdf';
+import { showToast } from '../lib/toast';
 import { Product, Category, PriceRange } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
@@ -21,6 +23,7 @@ import {
   Share2,
   Barcode,
   Printer,
+  FileText,
   Loader2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
@@ -29,7 +32,6 @@ import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import { ScanLine } from 'lucide-react';
-import { showToast } from '../lib/toast';
 import { motion } from 'motion/react';
 
 export default function Stock() {
@@ -137,6 +139,32 @@ export default function Stock() {
   const [printProduct, setPrintProduct] = useState<Product | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPriceList = async () => {
+    if (isExportingPdf) return;
+    if (!user) return;
+    if (products.length === 0) {
+      showToast('No hay productos para incluir en la lista de precios.', 'info');
+      return;
+    }
+    setIsExportingPdf(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      generatePriceListPdf({
+        products,
+        categories,
+        businessName: user.businessName,
+        currencySymbol: user.currencySymbol,
+      });
+      showToast('Lista de precios generada correctamente.', 'success');
+    } catch (err) {
+      console.error('[Stock] price list PDF error:', err);
+      showToast('No se pudo generar la lista de precios.', 'error');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,32 +397,55 @@ export default function Stock() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestión de Stock</h2>
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
         </div>
-        <button 
-          onClick={() => {
-            setEditingProduct(null);
-            setIsUploadingImage(false);
-            setFormData({
-              id: crypto.randomUUID(),
-              name: '',
-              categoryId: categories[0]?.id || '',
-              category: categories[0]?.name || '',
-              purchasePrice: 0,
-              salePrice: 0,
-              stock: 0,
-              minStock: 2,
-              showInCatalog: true,
-              notes: '',
-              images: []
-            });
-            setIsModalOpen(true);
-          }}
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button
+            type="button"
+            onClick={handleExportPriceList}
+            disabled={isExportingPdf || products.length === 0}
+            title={
+              products.length === 0
+                ? 'No hay productos para listar'
+                : isExportingPdf
+                  ? 'Generando PDF...'
+                  : 'Descargar lista de precios en PDF'
+            }
+            className={cn(
+              'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border',
+              isExportingPdf || products.length === 0
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500'
+            )}
+          >
+            {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            {isExportingPdf ? 'Generando...' : 'Lista de Precios'}
+          </button>
+          <button 
+            onClick={() => {
+              setEditingProduct(null);
+              setIsUploadingImage(false);
+              setFormData({
+                id: crypto.randomUUID(),
+                name: '',
+                categoryId: categories[0]?.id || '',
+                category: categories[0]?.name || '',
+                purchasePrice: 0,
+                salePrice: 0,
+                stock: 0,
+                minStock: 2,
+                showInCatalog: true,
+                notes: '',
+                images: []
+              });
+              setIsModalOpen(true);
+            }}
         disabled={!canWrite}
-          title={!canWrite ? 'Sin permiso' : undefined}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
-        >
-          <Plus size={20} />
-          Agregar Producto
-        </button>
+            title={!canWrite ? 'Sin permiso' : undefined}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+          >
+            <Plus size={20} />
+            Agregar Producto
+          </button>
+        </div>
       </div>
 
       {/* Bulk action bar */}
