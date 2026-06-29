@@ -25,7 +25,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function Dashboard() {
-  const { user, refetchToken } = useAuth();
+  const { user, refetchToken, refetchData } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
@@ -39,19 +39,32 @@ export default function Dashboard() {
     let cancelled = false;
 
     const fetchData = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const [p, s, cf, o] = await Promise.all([
-          db.list<Product>('products', user.uid),
+        // Products first: the KPI grid paints as soon as this returns. On a
+        // cold Supabase start this is the slow query, so unblocking the UI
+        // here means the user sees a real dashboard within seconds instead
+        // of waiting for every table to wake up in lockstep.
+        const p = await db.list<Product>('products', user.uid);
+        if (cancelled) return;
+        setProducts(p);
+        setLoading(false);
+
+        const results = await Promise.allSettled([
           db.list<Sale>('sales', user.uid),
           db.list<CashFlowEntry>('cash_flow', user.uid),
           db.list<Order>('orders', user.uid),
         ]);
         if (cancelled) return;
-        setProducts(p);
-        setSales(s);
-        setCashFlow(cf);
-        setOrders(o);
-        setError(null);
+        if (results[0].status === 'fulfilled') setSales(results[0].value);
+        if (results[1].status === 'fulfilled') setCashFlow(results[1].value);
+        if (results[2].status === 'fulfilled') setOrders(results[2].value);
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn('Dashboard secondary fetch error:', r.reason);
+          }
+        }
       } catch (err) {
         if (cancelled) return;
         console.error('Dashboard fetch error:', err);
@@ -224,12 +237,20 @@ export default function Dashboard() {
       <div className="p-8 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 rounded-2xl border border-rose-200 dark:border-rose-800">
         <p className="font-bold">No se pudo cargar el panel</p>
         <p className="text-sm mt-1">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-3 px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold"
-        >
-          Reintentar
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => { setError(null); setLoading(true); refetchData(); }}
+            className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-bold"
+          >
+            Reintentar
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 rounded-lg text-sm font-bold"
+          >
+            Recargar página
+          </button>
+        </div>
       </div>
     );
   }

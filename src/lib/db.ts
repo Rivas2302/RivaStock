@@ -73,12 +73,15 @@ export function invalidateDbCache(...collectionNames: string[]): void {
   }
 }
 
-const PENDING_PROMISE_TIMEOUT_MS = 20_000;
+const PENDING_PROMISE_TIMEOUT_MS = 60_000;
 
 function timeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`[db] timeout after ${ms}ms: ${label}`));
+      reject(new Error(
+        `La base de datos tardó más de ${Math.round(ms / 1000)}s en responder. ` +
+        `Probá recargar; si persiste, el proyecto puede estar en cold start (${label}).`
+      ));
     }, ms);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
