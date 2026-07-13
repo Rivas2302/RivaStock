@@ -73,6 +73,19 @@ function getEventTitle(event: AuditEvent): string {
   return subject ? `${action} · ${entity} · ${subject}` : `${action} · ${entity}`;
 }
 
+function getActorLabel(
+  event: AuditEvent,
+  currentUser: { uid: string; displayName?: string; email?: string } | null,
+): string {
+  const metadata = asAuditRecord(event.metadata);
+  const storedName = firstText(metadata ?? {}, ['actorDisplayName', 'actor_display_name', 'actorName', 'actor_name']);
+  if (storedName) return storedName;
+  if (currentUser && event.actorUid === currentUser.uid) {
+    return currentUser.displayName?.trim() || currentUser.email?.trim() || 'Usuario actual';
+  }
+  return event.actorUid ?? event.ownerUid ?? '—';
+}
+
 export default function AuditTrail() {
   const { user, refetchToken } = useAuth();
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -160,7 +173,7 @@ export default function AuditTrail() {
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{selectedEvent.entityType}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">ID del registro</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.entityId ?? '—'}</dd></div>
-                <div><dt className="text-slate-500 dark:text-slate-400">Usuario</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.actorUid ?? selectedEvent.ownerUid ?? '—'}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">Usuario</dt><dd className="break-all text-xs text-slate-800 dark:text-slate-200">{getActorLabel(selectedEvent, user)}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">Fecha</dt><dd className="text-slate-800 dark:text-slate-200">{new Date(selectedEvent.createdAt).toLocaleString('es-AR')}</dd></div>
               </dl>
             </div>
