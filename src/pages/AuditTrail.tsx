@@ -44,7 +44,10 @@ function firstText(record: AuditRecord, keys: string[]): string | null {
 
 function getEventSubject(event: AuditEvent): string | null {
   const snapshot = getEventSnapshot(event);
-  if (!snapshot) return event.entityId ? `ID ${event.entityId}` : null;
+  if (!snapshot) {
+    if (event.entityType === 'products') return 'Nombre no capturado (evento anterior)';
+    return event.entityId ? `ID ${event.entityId}` : null;
+  }
 
   const directLabel = firstText(snapshot, [
     'name', 'product_name', 'productName', 'description', 'client',
@@ -149,6 +152,11 @@ export default function AuditTrail() {
           <div className="space-y-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="font-bold text-slate-900 dark:text-white">{getEventTitle(selectedEvent)}</p>
+              {!getEventSnapshot(selectedEvent) && selectedEvent.entityType === 'products' && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  Este evento fue generado antes de guardar la información completa del producto. Los nuevos eventos conservarán su nombre y todos sus datos.
+                </p>
+              )}
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{selectedEvent.entityType}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">ID del registro</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.entityId ?? '—'}</dd></div>
