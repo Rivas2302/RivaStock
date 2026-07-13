@@ -5,8 +5,9 @@ import { usePermission } from '../hooks/usePermission';
 import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
+import { getRestockRecommendations } from '../lib/stockIntelligence';
 import { showToast } from '../lib/toast';
-import { Product, Category, PriceRange } from '../types';
+import { Product, Category, PriceRange, Sale } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
   Plus,
@@ -26,6 +27,8 @@ import {
   FileText,
   Download,
   Loader2,
+  AlertTriangle,
+  PackageCheck,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
@@ -43,6 +46,7 @@ export default function Stock() {
   const navigate = useNavigate();
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,14 +74,16 @@ export default function Stock() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [p, c, pr] = await Promise.all([
+      const [p, c, pr, s] = await Promise.all([
         db.list<Product>('products', user.uid),
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
+        db.list<Sale>('sales', user.uid),
       ]);
       setProducts(p);
       setCategories(c);
       setPriceRanges(pr);
+      setSales(s);
     } catch (err) {
       console.error('[Stock] fetchData error:', err);
     } finally {
@@ -90,15 +96,17 @@ export default function Stock() {
     if (!user) return;
     (async () => {
       try {
-        const [p, c, pr] = await Promise.all([
+        const [p, c, pr, s] = await Promise.all([
           db.list<Product>('products', user.uid),
           db.list<Category>('categories', user.uid),
           db.list<PriceRange>('price_ranges', user.uid),
+          db.list<Sale>('sales', user.uid),
         ]);
         if (cancelled) return;
         setProducts(p);
         setCategories(c);
         setPriceRanges(pr);
+        setSales(s);
       } catch (err) {
         if (cancelled) return;
         console.error('[Stock] fetch error:', err);
@@ -108,6 +116,12 @@ export default function Stock() {
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('status') === 'reponer') {
+      setStatusFilter('reponer');
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const state = location.state as { newBarcode?: string } | null;
@@ -366,14 +380,24 @@ export default function Stock() {
     setSelectedIds(new Set());
   };
 
+  const restockRecommendations = useMemo(
+    () => getRestockRecommendations(products, sales),
+    [products, sales],
+  );
+  const restockProductIds = useMemo(
+    () => new Set(restockRecommendations.map((recommendation) => recommendation.product.id)),
+    [restockRecommendations],
+  );
+
   const filteredProducts = useMemo(() => products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(deferredSearch.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'disponible' && p.stock > 0) ||
-      (statusFilter === 'no-disponible' && p.stock === 0);
+      (statusFilter === 'no-disponible' && p.stock === 0) ||
+      (statusFilter === 'reponer' && restockProductIds.has(p.id));
     return matchesSearch && matchesCategory && matchesStatus;
-  }), [categoryFilter, deferredSearch, products, statusFilter]);
+  }), [categoryFilter, deferredSearch, products, restockProductIds, statusFilter]);
 
   const selectableIds = useMemo(
     () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
@@ -516,6 +540,45 @@ export default function Stock() {
         )}
       </Modal>
 
+      {restockRecommendations.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/30">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex gap-3">
+              <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-amber-950 dark:text-amber-100">Reposición sugerida</h3>
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {restockRecommendations.length} producto{restockRecommendations.length === 1 ? '' : 's'} necesita{restockRecommendations.length === 1 ? '' : 'n'} atención según el mínimo y las ventas cobradas de los últimos 30 días.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('reponer')}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800"
+            >
+              <PackageCheck size={16} />
+              Ver reposición
+            </button>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            {restockRecommendations.slice(0, 3).map((recommendation) => (
+              <div key={recommendation.product.id} className="rounded-xl bg-white/80 px-3 py-2.5 dark:bg-slate-900/70">
+                <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{recommendation.product.name}</p>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                  Pedir {recommendation.suggestedQuantity} · {recommendation.unitsSoldLast30Days} vendidas en 30 días
+                </p>
+                <p className="mt-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  Inversión estimada: {formatCurrency(recommendation.estimatedCost)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Bulk action bar */}
       {selectedIds.size > 0 && canWrite && (
         <motion.div
@@ -584,6 +647,7 @@ export default function Stock() {
             <option value="all">Todos los estados</option>
             <option value="disponible">Disponible</option>
             <option value="no-disponible">Sin Stock</option>
+            <option value="reponer">Reposición sugerida</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>

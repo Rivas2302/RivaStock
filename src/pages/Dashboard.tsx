@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
+import { getRestockRecommendations } from '../lib/stockIntelligence';
 import { Product, Sale, CashFlowEntry, Order } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate } from '../lib/utils';
 import {
@@ -28,6 +30,7 @@ const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_
 
 export default function Dashboard() {
   const { user, refetchToken, refetchData } = useAuth();
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
@@ -150,6 +153,11 @@ export default function Dashboard() {
       recentSales: sales.slice(0, 5),
     };
   }, [cashFlow, products, sales]);
+
+  const restockRecommendations = useMemo(
+    () => getRestockRecommendations(products, sales),
+    [products, sales],
+  );
 
   const monthlySalesData = useMemo(() => {
     const now = new Date();
@@ -375,7 +383,7 @@ export default function Dashboard() {
         <div className="dashboard-panel overflow-hidden">
           <div className="dashboard-panel-header p-6 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white">Ventas Recientes</h3>
-            <button className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Ver todas</button>
+            <button onClick={() => navigate('/ventas')} className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Ver todas</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -412,35 +420,38 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Low Stock Alerts */}
+        {/* Restock recommendations */}
         <div className="dashboard-panel overflow-hidden">
           <div className="dashboard-panel-header p-6 flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 dark:text-white">Alertas de Stock Bajo</h3>
-            <button className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Gestionar Stock</button>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white">Reposición sugerida</h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Mínimos + ventas cobradas de los últimos 30 días</p>
+            </div>
+            <button onClick={() => navigate('/stock?status=reponer')} className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Gestionar Stock</button>
           </div>
           <div className="p-6 space-y-4">
-            {lowStockProducts.slice(0, 5).map((product) => (
-              <div key={product.id} className="low-stock-item flex items-center justify-between p-4">
+            {restockRecommendations.slice(0, 5).map((recommendation) => (
+              <div key={recommendation.product.id} className="low-stock-item flex items-center justify-between gap-3 p-4">
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "p-2 rounded-lg",
-                    product.stock === 0 ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" : "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+                    recommendation.priority === 'critical' ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" : "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
                   )}>
                     <AlertTriangle size={18} />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900 dark:text-white text-sm">{product.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{product.category}</p>
+                    <p className="font-bold text-slate-900 dark:text-white text-sm">{recommendation.product.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Pedir {recommendation.suggestedQuantity} · {recommendation.unitsSoldLast30Days} vendidas</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-slate-900 dark:text-white text-sm">{product.stock} unidades</p>
-                  <p className="text-[10px] text-slate-400 uppercase font-bold">Mínimo: {product.minStock}</p>
+                  <p className="font-bold text-slate-900 dark:text-white text-sm">{recommendation.product.stock} unidades</p>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">{formatCurrency(recommendation.estimatedCost)}</p>
                 </div>
               </div>
             ))}
-            {lowStockProducts.length === 0 && (
-              <div className="text-center py-8 text-slate-500 dark:text-slate-400">Todo el stock está al día</div>
+            {restockRecommendations.length === 0 && (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">No hay reposiciones sugeridas</div>
             )}
           </div>
         </div>
