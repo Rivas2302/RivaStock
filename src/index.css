@@ -8,6 +8,24 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  :root {
+    --canvas: #f4f5f2;
+    --surface: #ffffff;
+    --surface-muted: #eef1ed;
+    --ink: #18201c;
+    --ink-muted: #64706a;
+    --line: #dce2dc;
+    --brand: #1f6b58;
+    --brand-strong: #165443;
+    --sidebar: #18201c;
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-feature-settings: "ss01" on, "cv01" on;
+  }
+
   input, select, textarea {
     font-size: 16px;
   }
@@ -17,3 +35,104 @@
 }
 
 html.catalog-dark { color-scheme: dark; }
+
+@layer components {
+  .app-shell {
+    background: var(--canvas);
+    color: var(--ink);
+  }
+
+  .app-sidebar {
+    background: var(--sidebar);
+    border-right: 1px solid rgb(255 255 255 / 0.08);
+  }
+
+  .brand-mark {
+    letter-spacing: -0.055em;
+  }
+
+  .nav-item {
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+  }
+
+  .nav-item-active {
+    background: rgb(255 255 255 / 0.1);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow: inset 3px 0 0 var(--brand);
+  }
+
+  .app-content {
+    background:
+      radial-gradient(circle at top right, rgb(31 107 88 / 0.055), transparent 30rem),
+      var(--canvas);
+  }
+
+  .page-heading {
+    letter-spacing: -0.04em;
+  }
+
+  .subtle-action {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: #46514b;
+    border-radius: 0.625rem;
+    box-shadow: 0 1px 2px rgb(24 32 28 / 0.04);
+  }
+
+  .subtle-action:hover {
+    background: var(--surface-muted);
+    border-color: #cbd4cc;
+  }
+
+  .metric-card,
+  .dashboard-panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgb(24 32 28 / 0.035);
+  }
+
+  .metric-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric-card::after {
+    content: "";
+    position: absolute;
+    inset: auto 1.5rem 0;
+    height: 2px;
+    background: currentColor;
+    opacity: 0.14;
+  }
+
+  .dashboard-panel-header {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .low-stock-item {
+    background: #fafbf9;
+    border: 1px solid var(--line);
+    border-radius: 0.625rem;
+  }
+
+  .table-head {
+    background: #f7f8f6;
+  }
+
+  .table-row:hover {
+    background: #fafbf9;
+  }
+
+  .dark .app-shell,
+  .dark .app-content { background: #101713; color: #edf1ed; }
+  .dark .metric-card,
+  .dark .dashboard-panel,
+  .dark .subtle-action { background: #18201c; border-color: #2d3931; }
+  .dark .subtle-action:hover,
+  .dark .low-stock-item,
+  .dark .table-head,
+  .dark .table-row:hover { background: #202b24; }
+  .dark .dashboard-panel-header { border-color: #2d3931; }
+}

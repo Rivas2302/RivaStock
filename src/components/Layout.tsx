@@ -102,12 +102,12 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
+    <div className="app-shell flex h-screen overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white shrink-0">
+      <aside className="app-sidebar hidden md:flex flex-col w-64 text-white shrink-0">
         <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-indigo-400">RivaStock</h1>
-          <p className="text-xs text-slate-400 mt-1">{user?.businessName}</p>
+          <h1 className="brand-mark text-2xl font-extrabold text-white">RivaStock</h1>
+          <p className="mt-1 text-xs text-slate-400">{user?.businessName}</p>
         </div>
         
         <nav className="flex-1 px-4 space-y-1">
@@ -119,10 +119,10 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group",
+                  "nav-item flex items-center gap-3 px-3 py-2 transition-colors group",
                   isActive 
-                    ? "bg-indigo-600 text-white" 
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    ? "nav-item-active text-white"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
                 )}
               >
                 <Icon size={20} />
@@ -134,7 +134,7 @@ export default function Layout() {
 
         <div className="p-4 mt-auto border-t border-slate-800 space-y-2">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center text-white text-sm font-bold shrink-0">
               {displayInitial}
             </div>
             <div className="min-w-0">
@@ -145,7 +145,7 @@ export default function Layout() {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+            className="nav-item flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
           >
             <LogOut size={20} />
             <span className="font-medium">Cerrar Sesión</span>
@@ -157,7 +157,7 @@ export default function Layout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <h1 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">RivaStock</h1>
+          <h1 className="brand-mark text-xl font-extrabold text-emerald-800 dark:text-emerald-400">RivaStock</h1>
           <button 
             onClick={() => setIsMobileMenuOpen(true)}
             className="p-2 text-slate-600 dark:text-slate-400"
@@ -166,7 +166,7 @@ export default function Layout() {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="app-content flex-1 overflow-y-auto p-4 md:p-8">
           <Outlet />
         </div>
 
@@ -181,7 +181,7 @@ export default function Layout() {
                 to={item.path}
                 className={cn(
                   "flex flex-col items-center gap-1 p-2 transition-colors",
-                  isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"
+                  isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-400"
                 )}
               >
                 <Icon size={20} />
@@ -225,8 +225,8 @@ export default function Layout() {
                       to={item.path}
                       onClick={() => setIsMobileMenuOpen(false)}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
-                        isActive ? "bg-indigo-600 text-white" : "text-slate-400 hover:bg-slate-800"
+                        "nav-item flex items-center gap-3 px-3 py-2 transition-colors",
+                        isActive ? "nav-item-active text-white" : "text-slate-400 hover:bg-white/5"
                       )}
                     >
                       <Icon size={20} />
@@ -237,7 +237,7 @@ export default function Layout() {
               </nav>
               <div className="p-4 border-t border-slate-800 space-y-2">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center text-white text-sm font-bold shrink-0">
                     {displayInitial}
                   </div>
                   <div className="min-w-0">
@@ -248,7 +248,7 @@ export default function Layout() {
                 <button
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-400 transition-colors disabled:opacity-50"
+                  className="nav-item flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
                 >
                   <LogOut size={20} />
                   <span className="font-medium">Cerrar Sesión</span>

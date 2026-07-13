@@ -261,12 +261,12 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
+          <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
           <p className="text-slate-500 dark:text-slate-400">Resumen general de tu negocio</p>
         </div>
         <button
           onClick={handleExportDashboardPDF}
-          className="hidden md:flex items-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          className="subtle-action hidden md:flex items-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300"
         >
           <FileDown size={18} />
           Exportar reporte PDF
@@ -280,17 +280,17 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm"
+            className="metric-card p-5"
           >
             <div className="flex items-center justify-between mb-4">
               <div className={cn(
                 "p-2 rounded-xl",
-                kpi.color === 'indigo' && "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400",
-                kpi.color === 'emerald' && "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
-                kpi.color === 'rose' && "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400",
-                kpi.color === 'amber' && "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400",
-                kpi.color === 'violet' && "bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400",
-                kpi.color === 'blue' && "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
+                kpi.color === 'indigo' && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+                kpi.color === 'emerald' && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+                kpi.color === 'rose' && "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+                kpi.color === 'amber' && "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+                kpi.color === 'violet' && "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+                kpi.color === 'blue' && "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
               )}>
                 <kpi.icon size={20} />
               </div>
@@ -306,7 +306,7 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Sales Bar Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="dashboard-panel lg:col-span-2 p-6">
           <h3 className="font-bold text-slate-900 dark:text-white mb-4">Ventas cobradas por mes</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlySalesData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -320,7 +320,7 @@ export default function Dashboard() {
         </div>
 
         {/* Stock by Category Pie */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="dashboard-panel p-6">
           <h3 className="font-bold text-slate-900 dark:text-white mb-4">Valor en stock por categoría</h3>
           {stockByCategoryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
@@ -350,7 +350,7 @@ export default function Dashboard() {
       </div>
 
       {/* Net Balance Line Chart */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="dashboard-panel p-6">
         <h3 className="font-bold text-slate-900 dark:text-white mb-4">Balance neto mensual</h3>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={monthlyBalanceData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -372,14 +372,14 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Recent Sales */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div className="dashboard-panel overflow-hidden">
+          <div className="dashboard-panel-header p-6 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white">Ventas Recientes</h3>
             <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Ver todas</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
+              <thead className="table-head text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-3">Fecha</th>
                   <th className="px-6 py-3">Producto</th>
@@ -389,7 +389,7 @@ export default function Dashboard() {
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {recentSales.length > 0 ? recentSales.map((sale) => (
-                  <tr key={sale.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <tr key={sale.id} className="table-row text-sm transition-colors">
                     <td className="px-6 py-4 dark:text-slate-300">{formatDate(sale.date)}</td>
                     <td className="px-6 py-4 font-medium dark:text-white">{sale.productName}</td>
                     <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(sale.total)}</td>
@@ -413,14 +413,14 @@ export default function Dashboard() {
         </div>
 
         {/* Low Stock Alerts */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div className="dashboard-panel overflow-hidden">
+          <div className="dashboard-panel-header p-6 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white">Alertas de Stock Bajo</h3>
             <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Gestionar Stock</button>
           </div>
           <div className="p-6 space-y-4">
             {lowStockProducts.slice(0, 5).map((product) => (
-              <div key={product.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div key={product.id} className="low-stock-item flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "p-2 rounded-lg",
