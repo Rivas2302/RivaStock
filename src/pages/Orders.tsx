@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import '../styles/business-redesign.css';
 
 export default function Orders() {
   const { user, refetchToken } = useAuth();
@@ -103,7 +104,7 @@ export default function Orders() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="business-page operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Pedidos del Catálogo</h2>

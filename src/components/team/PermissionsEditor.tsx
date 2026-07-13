@@ -50,7 +50,7 @@ export default function PermissionsEditor({ value, onChange }: Props) {
   }, [value, onChange]);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="permissions-editor overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-slate-200 dark:border-slate-700">

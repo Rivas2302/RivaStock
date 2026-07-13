@@ -90,7 +90,7 @@ export default function PublicProductPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="public-page-state min-h-screen flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent" />
       </div>
     );
@@ -98,7 +98,7 @@ export default function PublicProductPage() {
 
   if (error || !product || !config) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="public-page-state min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
         <p className="text-xl font-bold text-slate-700">{error || 'Producto no encontrado'}</p>
         <Link
           to={`/catalogo/${slug}`}
@@ -120,7 +120,7 @@ export default function PublicProductPage() {
   const accentColor = config.accentColor || '#6366f1';
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="public-product-page min-h-screen bg-white text-slate-900">
       <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <Link

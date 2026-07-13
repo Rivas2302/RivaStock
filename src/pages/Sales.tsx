@@ -345,10 +345,10 @@ export default function Sales() {
   }, [deferredSearch, sales, statusFilter]);
 
   return (
-    <div className="space-y-6">
+    <div className="operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ventas</h2>
+          <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ventas</h2>
           <p className="text-slate-500 dark:text-slate-400">Registra y gestiona tus ventas</p>
         </div>
         <div className="flex items-center gap-3">
@@ -362,7 +362,7 @@ export default function Sales() {
               <ChevronDown size={16} />
             </button>
             {showExportMenu && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg z-20 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm z-20 overflow-hidden">
                 <button
                   onClick={handleExportExcel}
                   className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3"
@@ -384,7 +384,7 @@ export default function Sales() {
             onClick={() => navigate('/pos')}
             disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : 'Abrir Modo POS'}
-            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50"
+            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-rose-500/20 transition-all disabled:opacity-50"
           >
             <ScanLine size={20} />
             Modo POS
@@ -410,7 +410,7 @@ export default function Sales() {
               setNewCustPhone('');
               setIsModalOpen(true);
             }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+            className="bg-[#365fad] hover:bg-[#284b91] text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-slate-900/10 transition-all disabled:opacity-50"
             disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : undefined}
           >
@@ -422,16 +422,16 @@ export default function Sales() {
 
       {/* Summary Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Vendido</p>
             <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(totalSold)}</p>
           </div>
-          <div className="p-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 rounded-xl">
+          <div className="p-2 bg-indigo-50 text-[#365fad] dark:bg-indigo-900/20 dark:text-indigo-400 rounded-xl">
             <ShoppingCart size={20} />
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Cobrado</p>
             <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totalCollected)}</p>
@@ -440,7 +440,7 @@ export default function Sales() {
             <CheckCircle2 size={20} />
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="operational-card bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pendiente de Cobro</p>
             <p className="text-xl font-bold text-amber-600 dark:text-amber-400 mt-1">{formatCurrency(totalPending)}</p>
@@ -460,7 +460,7 @@ export default function Sales() {
             placeholder="Buscar por producto o cliente..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white"
           />
         </div>
         <div className="relative">
@@ -468,7 +468,7 @@ export default function Sales() {
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
           >
             <option value="all">Todos los estados</option>
             <option value="Pagado">Pagado</option>
@@ -479,10 +479,10 @@ export default function Sales() {
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="operational-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
+            <thead className="table-head bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4">Fecha</th>
                 <th className="px-6 py-4">Producto</th>
@@ -498,7 +498,7 @@ export default function Sales() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredSales.map((s) => (
                 <React.Fragment key={s.id}>
-                  <tr className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <tr className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(s.date)}</td>
                   <td className="px-6 py-4">
                     <button
@@ -521,7 +521,7 @@ export default function Sales() {
                           </span>
                         )}
                         {isQuoteSale(s) && (
-                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-[#284b91] dark:bg-indigo-900/30 dark:text-indigo-400">
                             Presupuesto
                           </span>
                         )}
@@ -573,7 +573,7 @@ export default function Sales() {
                           "p-2 transition-colors",
                           isQuoteSale(s) || !canWrite
                             ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
-                            : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                            : "text-slate-400 hover:text-[#365fad] dark:hover:text-indigo-400"
                         )}
                       >
                         <Edit2 size={18} />
@@ -592,13 +592,13 @@ export default function Sales() {
                 {expandedSaleId === s.id && hasDerivedSaleItems(s) && (
                   <tr className="bg-slate-50/50 dark:bg-slate-800/30">
                     <td colSpan={9} className="px-6 pb-4">
-                      <div className="ml-4 pl-4 border-l-2 border-indigo-300 dark:border-indigo-700">
+                      <div className="ml-4 pl-4 border-l-2 border-[#b7c7e8] dark:border-indigo-700">
                         <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Productos vendidos</p>
                         <ul className="space-y-1.5">
                           {s.items!.map((it, idx) => (
                             <li key={idx} className="flex items-center justify-between text-xs">
                               <span className="text-slate-700 dark:text-slate-300">
-                                <span className="font-bold text-indigo-600 dark:text-indigo-400">{it.quantity}×</span> {it.productName}
+                                <span className="font-bold text-[#365fad] dark:text-indigo-400">{it.quantity}×</span> {it.productName}
                               </span>
                               <span className="text-slate-500 dark:text-slate-400 font-mono">
                                 {formatCurrency(roundPrice(it.price))} c/u
@@ -630,7 +630,7 @@ export default function Sales() {
         onClose={() => setIsModalOpen(false)} 
         title={editingSale ? 'Editar Venta' : 'Nueva Venta'}
       >
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} className="operational-page space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha</label>
@@ -640,7 +640,7 @@ export default function Sales() {
                 max={todayString()}
                 value={formData.date}
                 onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -663,7 +663,7 @@ export default function Sales() {
                 min="1"
                 value={formData.quantity}
                 onChange={(e) => setFormData(prev => ({ ...prev, quantity: Number(e.target.value) }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -677,7 +677,7 @@ export default function Sales() {
                   min="0"
                   value={formData.unitPrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, unitPrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>
@@ -692,7 +692,7 @@ export default function Sales() {
                   type="number"
                   value={formData.adjustment}
                   onChange={(e) => setFormData(prev => ({ ...prev, adjustment: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                   placeholder="Ej: -500 para descuento"
                 />
               </div>
@@ -705,7 +705,7 @@ export default function Sales() {
                 type="text"
                 value={formData.client}
                 onChange={(e) => setFormData(prev => ({ ...prev, client: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 placeholder="Nombre del cliente"
               />
             </div>
@@ -844,7 +844,7 @@ export default function Sales() {
             <div className="md:col-span-2 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <span className="text-lg font-bold text-slate-900 dark:text-white">Total a Cobrar:</span>
-                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                <span className="text-2xl font-black text-[#365fad] dark:text-indigo-400">
                   {formatCurrency(calculateTotal())}
                 </span>
               </div>
@@ -894,7 +894,7 @@ export default function Sales() {
                       className={cn(
                         "flex-1 py-2 rounded-lg text-sm font-semibold border transition-all",
                         formData.paymentMethod === method
-                          ? "bg-indigo-600 border-indigo-600 text-white"
+                          ? "bg-[#365fad] border-[#365fad] text-white"
                           : "bg-white border-slate-200 text-slate-600 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400"
                       )}
                     >
@@ -917,7 +917,7 @@ export default function Sales() {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 bg-[#365fad] text-white font-semibold rounded-xl hover:bg-[#284b91] shadow-sm shadow-slate-900/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? 'Guardando...' : editingSale ? 'Guardar Cambios' : 'Registrar Venta'}
             </button>

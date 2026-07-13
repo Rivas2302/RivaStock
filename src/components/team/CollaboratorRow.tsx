@@ -82,7 +82,7 @@ export default function CollaboratorRow({ collaborator, onEdit, onRevoke, onRese
 
   return (
     <div className={cn(
-      "flex items-center justify-between p-4 rounded-2xl border transition-all",
+      "team-row flex items-center justify-between p-4 rounded-2xl border transition-all",
       status === 'revoked'
         ? "bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 opacity-60"
         : "bg-white dark:bg-slate-800/50 border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700"

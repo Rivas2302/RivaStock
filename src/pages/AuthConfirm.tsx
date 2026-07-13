@@ -45,11 +45,11 @@ export default function AuthConfirm() {
   }, [searchParams, navigate]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="auth-page">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 sm:p-12 text-center"
+        className="auth-card text-center"
       >
         {error ? (
           <>
@@ -60,7 +60,7 @@ export default function AuthConfirm() {
             <p className="text-slate-500 font-medium mb-6">{error}</p>
             <button
               onClick={() => navigate('/login')}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-lg shadow-indigo-200 transition-all"
+              className="auth-primary w-full py-3 font-semibold transition-colors"
             >
               Volver al login
             </button>

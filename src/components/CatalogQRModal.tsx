@@ -40,7 +40,7 @@ export default function CatalogQRModal({ isOpen, onClose, catalogUrl, businessNa
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Compartir Catálogo">
-      <div className="flex flex-col items-center gap-6">
+      <div className="catalog-qr-modal flex flex-col items-center gap-6">
         <div ref={canvasRef} className="bg-white p-4 rounded-2xl">
           <QRCodeCanvas
             value={catalogUrl}

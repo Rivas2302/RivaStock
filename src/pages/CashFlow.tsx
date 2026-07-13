@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
+import '../styles/business-redesign.css';
 
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
@@ -226,7 +227,7 @@ export default function CashFlow() {
   }, [deferredSearch, entries, typeFilter]);
 
   return (
-    <div className="space-y-6">
+    <div className="business-page operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Flujo de Caja</h2>

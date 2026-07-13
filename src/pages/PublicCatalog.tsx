@@ -368,7 +368,7 @@ useEffect(() => {
 
 if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="public-page-state min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4 max-w-sm text-center px-6">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
           <p className="text-slate-500 font-medium animate-pulse">Cargando catálogo...</p>
@@ -390,7 +390,7 @@ if (loading) {
   if (error || !config) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="public-page-state min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
           <div className="max-w-md space-y-6">
             <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
               <XCircle size={48} />
@@ -403,7 +403,7 @@ if (loading) {
       );
     }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+      <div className="public-page-state min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
         <div className="max-w-md space-y-6">
           <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
             <XCircle size={48} />
@@ -428,7 +428,7 @@ if (loading) {
 
   return (
     <div className={cn(
-      "min-h-screen font-sans selection:bg-indigo-500/30 relative transition-colors duration-500",
+      "public-catalog min-h-screen font-sans selection:bg-indigo-500/30 relative transition-colors duration-500",
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
     )}>
       <AnimatePresence>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
+import '../styles/business-redesign.css';
 
 interface BatchResult {
   purchase: number;
@@ -100,7 +101,7 @@ export default function Calculator() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="business-page operational-page space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Calculadora de Precios</h2>
         <p className="text-slate-500 dark:text-slate-400">Calcula precios de venta basados en tus rangos configurados</p>

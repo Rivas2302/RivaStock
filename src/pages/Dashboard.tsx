@@ -258,7 +258,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="operational-page space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
@@ -314,7 +314,7 @@ export default function Dashboard() {
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tickFormatter={v => formatCurrency(v)} tick={{ fontSize: 10 }} width={72} />
               <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Bar dataKey="total" fill="#6366f1" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="total" fill="#365fad" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -361,9 +361,9 @@ export default function Dashboard() {
             <Line
               type="monotone"
               dataKey="balance"
-              stroke="#6366f1"
+              stroke="#365fad"
               strokeWidth={2.5}
-              dot={{ r: 4, fill: '#6366f1' }}
+              dot={{ r: 4, fill: '#365fad' }}
               activeDot={{ r: 6 }}
             />
           </LineChart>
@@ -375,7 +375,7 @@ export default function Dashboard() {
         <div className="dashboard-panel overflow-hidden">
           <div className="dashboard-panel-header p-6 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white">Ventas Recientes</h3>
-            <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Ver todas</button>
+            <button className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Ver todas</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -416,7 +416,7 @@ export default function Dashboard() {
         <div className="dashboard-panel overflow-hidden">
           <div className="dashboard-panel-header p-6 flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white">Alertas de Stock Bajo</h3>
-            <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Gestionar Stock</button>
+            <button className="text-sm text-[#365fad] dark:text-[#9fb4df] font-medium hover:underline">Gestionar Stock</button>
           </div>
           <div className="p-6 space-y-4">
             {lowStockProducts.slice(0, 5).map((product) => (

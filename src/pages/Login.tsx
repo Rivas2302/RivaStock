@@ -46,17 +46,18 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="auth-page">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 sm:p-12"
+        className="auth-card"
       >
-        <div className="text-center space-y-2 mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-200">
-            <LogIn className="text-white" size={32} />
+        <div className="space-y-3 mb-9">
+          <div className="auth-brand-mark mb-6">
+            <LogIn size={22} strokeWidth={1.8} />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Bienvenido</h1>
+          <p className="auth-kicker">RivaStock</p>
+          <h1 className="auth-title">Bienvenido</h1>
           <p className="text-slate-500 font-medium">Inicia sesión en tu cuenta de RivaStock</p>
         </div>
 
@@ -64,7 +65,7 @@ export default function Login() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-bold"
+            className="auth-alert mb-6 p-4 flex items-center gap-3 text-sm font-semibold"
           >
             <AlertCircle size={18} className="shrink-0" />
             <span>{error}</span>
@@ -73,7 +74,7 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-black text-slate-700 ml-1">Email</label>
+            <label className="auth-label">Email</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -82,7 +83,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@email.com"
-                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                className="auth-input pl-12 pr-4 py-3.5 font-medium"
               />
             </div>
           </div>
@@ -93,7 +94,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => navigate('/forgot-password')}
-                className="text-xs font-bold text-indigo-600 hover:underline"
+                className="auth-link text-xs"
               >
                 ¿Olvidaste tu contraseña?
               </button>
@@ -106,12 +107,13 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                className="auth-input pl-12 pr-12 py-3.5 font-medium"
               />
               <button
                 type="button"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1D2026] transition-colors"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -121,7 +123,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading || Date.now() < lockUntil}
-            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+            className="auth-primary w-full py-3.5 font-semibold transition-colors flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'Iniciar Sesión'}
           </button>
