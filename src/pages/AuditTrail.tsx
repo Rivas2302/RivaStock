@@ -21,6 +21,55 @@ const ACTION_LABELS: Record<string, string> = {
   cash_closing_created: 'Cierre registrado',
 };
 
+type AuditRecord = Record<string, unknown>;
+
+function asAuditRecord(value: unknown): AuditRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as AuditRecord
+    : null;
+}
+
+function getEventSnapshot(event: AuditEvent): AuditRecord | null {
+  const metadata = asAuditRecord(event.metadata);
+  return asAuditRecord(metadata?.after) ?? asAuditRecord(metadata?.before);
+}
+
+function firstText(record: AuditRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function getEventSubject(event: AuditEvent): string | null {
+  const snapshot = getEventSnapshot(event);
+  if (!snapshot) return event.entityId ? `ID ${event.entityId}` : null;
+
+  const directLabel = firstText(snapshot, [
+    'name', 'product_name', 'productName', 'description', 'client',
+    'customer_name', 'customerName', 'supplier_name', 'supplierName',
+  ]);
+  if (directLabel) return directLabel;
+
+  if (Array.isArray(snapshot.items)) {
+    const itemNames = snapshot.items
+      .map((item) => asAuditRecord(item))
+      .map((item) => item && firstText(item, ['product_name', 'productName', 'name']))
+      .filter((name): name is string => Boolean(name));
+    if (itemNames.length > 0) return itemNames.join(', ');
+  }
+
+  return event.entityId ? `ID ${event.entityId}` : null;
+}
+
+function getEventTitle(event: AuditEvent): string {
+  const action = ACTION_LABELS[event.action] ?? event.action;
+  const entity = ENTITY_LABELS[event.entityType] ?? event.entityType;
+  const subject = getEventSubject(event);
+  return subject ? `${action} · ${entity} · ${subject}` : `${action} · ${entity}`;
+}
+
 export default function AuditTrail() {
   const { user, refetchToken } = useAuth();
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -83,7 +132,7 @@ export default function AuditTrail() {
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"><History size={18} /></div>
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white">{ACTION_LABELS[event.action] ?? event.action} · {ENTITY_LABELS[event.entityType] ?? event.entityType}</p>
+                    <p className="font-bold text-slate-900 dark:text-white">{getEventTitle(event)}</p>
                     <p className="truncate text-xs text-slate-500 dark:text-slate-400">{formatDate(event.createdAt.slice(0, 10))} · {new Date(event.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
@@ -96,7 +145,23 @@ export default function AuditTrail() {
       </div>
 
       <Modal isOpen={selectedEvent !== null} onClose={() => setSelectedEvent(null)} title="Detalle del evento">
-        {selectedEvent && <pre className={cn('max-h-[60vh] overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-100', 'whitespace-pre-wrap break-words')}>{JSON.stringify(selectedEvent.metadata ?? {}, null, 2)}</pre>}
+        {selectedEvent && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <p className="font-bold text-slate-900 dark:text-white">{getEventTitle(selectedEvent)}</p>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{selectedEvent.entityType}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">ID del registro</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.entityId ?? '—'}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">Usuario</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.actorUid ?? selectedEvent.ownerUid ?? '—'}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">Fecha</dt><dd className="text-slate-800 dark:text-slate-200">{new Date(selectedEvent.createdAt).toLocaleString('es-AR')}</dd></div>
+              </dl>
+            </div>
+            <div>
+              <p className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-300">Datos completos del evento</p>
+              <pre className={cn('max-h-[50vh] overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-100', 'whitespace-pre-wrap break-words')}>{JSON.stringify(selectedEvent.metadata ?? {}, null, 2)}</pre>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

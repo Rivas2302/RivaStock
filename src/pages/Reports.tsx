@@ -592,10 +592,8 @@ export default function Reports() {
                     }}
                   />
                   <Legend />
-                  <LineChart data={topProductsChart}>
-                    <Line yAxisId="left"  type="monotone" dataKey="cantidad" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} name="Cantidad" />
-                    <Line yAxisId="right" type="monotone" dataKey="ingresos" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} name="Ingresos" />
-                  </LineChart>
+                  <Line yAxisId="left"  type="monotone" dataKey="cantidad" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} name="Cantidad" />
+                  <Line yAxisId="right" type="monotone" dataKey="ingresos" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} name="Ingresos" />
                 </LineChart>
               </ResponsiveContainer>
             </div>

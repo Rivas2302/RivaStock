@@ -214,6 +214,83 @@ export function fromDb<T>(row: Record<string, unknown>, isProfile = false): T {
   return out as T;
 }
 
+function reportRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function reportText(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : value == null ? fallback : String(value);
+}
+
+function reportNumber(value: unknown): number {
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+/** Normalize the RPC payload for both current and legacy snake_case keys. */
+export function normalizeSalesReport(data: unknown): SalesReportData {
+  const raw = reportRecord(data);
+  const kpis = reportRecord(raw.kpis);
+  const range = reportRecord(raw.range);
+
+  return {
+    kpis: {
+      totalSales: reportNumber(kpis.totalSales ?? kpis.total_sales),
+      transactionCount: reportNumber(kpis.transactionCount ?? kpis.transaction_count),
+      paidCount: reportNumber(kpis.paidCount ?? kpis.paid_count),
+      pendingCount: reportNumber(kpis.pendingCount ?? kpis.pending_count),
+      averageTicket: reportNumber(kpis.averageTicket ?? kpis.average_ticket),
+      pendingAmount: reportNumber(kpis.pendingAmount ?? kpis.pending_amount),
+    },
+    daily: (Array.isArray(raw.daily) ? raw.daily : []).map((point) => {
+      const row = reportRecord(point);
+      return {
+        date: reportText(row.date),
+        total: reportNumber(row.total),
+        count: reportNumber(row.count ?? row.cnt),
+      };
+    }),
+    byPayment: (Array.isArray(raw.byPayment) ? raw.byPayment : []).map((payment) => {
+      const row = reportRecord(payment);
+      return {
+        paymentMethod: reportText(row.paymentMethod ?? row.payment_method, 'Sin especificar') as SalesReportData['byPayment'][number]['paymentMethod'],
+        total: reportNumber(row.total),
+        count: reportNumber(row.count ?? row.cnt),
+      };
+    }),
+    topProducts: (Array.isArray(raw.topProducts) ? raw.topProducts : []).map((product) => {
+      const row = reportRecord(product);
+      return {
+        productId: reportText(row.productId ?? row.product_id),
+        productName: reportText(row.productName ?? row.product_name, 'Producto sin nombre'),
+        quantity: reportNumber(row.quantity),
+        revenue: reportNumber(row.revenue),
+      };
+    }),
+    sales: (Array.isArray(raw.sales) ? raw.sales : []).map((sale) => {
+      const row = reportRecord(sale);
+      return {
+        id: reportText(row.id),
+        date: reportText(row.date),
+        productName: reportText(row.productName ?? row.product_name, 'Producto sin nombre'),
+        quantity: reportNumber(row.quantity),
+        unitPrice: reportNumber(row.unitPrice ?? row.unit_price),
+        total: reportNumber(row.total),
+        paymentMethod: reportText(row.paymentMethod ?? row.payment_method, 'Sin especificar') as SalesReportData['byPayment'][number]['paymentMethod'],
+        status: reportText(row.status) as SalesReportData['sales'][number]['status'],
+        client: typeof row.client === 'string' ? row.client : null,
+        source: typeof row.source === 'string' ? row.source as SalesReportData['sales'][number]['source'] : null,
+      };
+    }),
+    range: {
+      from: reportText(range.from),
+      to: reportText(range.to),
+    },
+  };
+}
+
 // ─── SupabaseDB — same public interface as old FirebaseDB ─────────────────────
 
 class SupabaseDB {
@@ -437,7 +514,7 @@ class SupabaseDB {
         p_to:   to,
       });
       if (error) throw new Error(`[db.getSalesReport] ${error.message}`);
-      return data as SalesReportData;
+      return normalizeSalesReport(data);
     });
   }
 
