@@ -84,7 +84,7 @@ export default function TeamTab() {
   const totalCount = activeCollaborators.length + pendingInvitations.length;
 
   return (
-    <div className="space-y-6">
+    <div className="team-tab space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Equipo</h3>

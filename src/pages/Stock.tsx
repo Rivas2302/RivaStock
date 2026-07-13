@@ -391,10 +391,10 @@ export default function Stock() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Gestión de Stock</h2>
+          <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Gestión de Stock</h2>
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -413,7 +413,7 @@ export default function Stock() {
               'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border',
               isExportingPdf || products.length === 0
                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
-                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-[#b7c7e8] dark:hover:border-indigo-500'
             )}
           >
             {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
@@ -440,7 +440,7 @@ export default function Stock() {
             }}
         disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : undefined}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50"
+            className="bg-[#365fad] hover:bg-[#284b91] text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-slate-900/10 transition-all disabled:opacity-50"
           >
             <Plus size={20} />
             Agregar Producto
@@ -453,7 +453,7 @@ export default function Stock() {
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between gap-3 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-lg shadow-indigo-500/30"
+          className="flex items-center justify-between gap-3 bg-[#365fad] text-white px-4 py-3 rounded-xl shadow-sm shadow-slate-900/10"
         >
           <span className="text-sm font-semibold">
             {selectedIds.size} producto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}
@@ -471,7 +471,7 @@ export default function Stock() {
               type="button"
               onClick={handleBulkGenerate}
               disabled={bulkGenerating}
-              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-60"
+              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white text-[#284b91] hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-60"
             >
               {bulkGenerating
                 ? <Loader2 size={14} className="animate-spin" />
@@ -491,7 +491,7 @@ export default function Stock() {
             placeholder="Buscar por nombre..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white"
           />
         </div>
         <div className="relative">
@@ -499,7 +499,7 @@ export default function Stock() {
           <select 
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
           >
             <option value="all">Todas las categorías</option>
             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -511,7 +511,7 @@ export default function Stock() {
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
           >
             <option value="all">Todos los estados</option>
             <option value="disponible">Disponible</option>
@@ -522,10 +522,10 @@ export default function Stock() {
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="operational-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
+            <thead className="table-head bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-4 py-4 w-10">
                   <input
@@ -534,7 +534,7 @@ export default function Stock() {
                     checked={allSelectableSelected}
                     onChange={toggleSelectAll}
                     disabled={selectableIds.length === 0}
-                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-40"
+                    className="w-4 h-4 rounded border-slate-300 text-[#365fad] focus:ring-[#365fad] disabled:opacity-40"
                   />
                 </th>
                 <th className="px-6 py-4">Producto</th>
@@ -552,7 +552,7 @@ export default function Stock() {
                 const hasBarcode = Boolean(normalizeBarcode(p.barcode ?? ''));
                 const isGenerating = generatingFor === p.id;
                 return (
-                <tr key={p.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={p.id} className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-4 py-4">
                     <input
                       type="checkbox"
@@ -561,7 +561,7 @@ export default function Stock() {
                       onChange={() => toggleSelect(p.id)}
                       disabled={hasBarcode}
                       title={hasBarcode ? 'Este producto ya tiene código' : 'Seleccionar para generar código'}
-                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="w-4 h-4 rounded border-slate-300 text-[#365fad] focus:ring-[#365fad] disabled:opacity-30 disabled:cursor-not-allowed"
                     />
                   </td>
                   <td className="px-6 py-4">
@@ -585,7 +585,7 @@ export default function Stock() {
                       </div>
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white">{p.name}</p>
-                        <span className="text-[10px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
+                        <span className="text-[10px] bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
                           {p.category}
                         </span>
                       </div>
@@ -620,7 +620,7 @@ export default function Stock() {
                       }}
                       className={cn(
                         "p-1.5 rounded-lg transition-colors",
-                        p.showInCatalog ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        p.showInCatalog ? "text-[#365fad] bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                       )}
                     >
                       {p.showInCatalog ? <Eye size={18} /> : <EyeOff size={18} />}
@@ -674,7 +674,7 @@ export default function Stock() {
                           setFormData(p);
                           setIsModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-2 text-slate-400 hover:text-[#365fad] dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit2 size={18} />
                       </button>
@@ -708,7 +708,7 @@ export default function Stock() {
         onClose={() => setIsModalOpen(false)} 
         title={editingProduct ? 'Editar Producto' : 'Agregar Nuevo Producto'}
       >
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} className="operational-page space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre del Producto</label>
@@ -717,7 +717,7 @@ export default function Stock() {
                 required
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
             
@@ -734,7 +734,7 @@ export default function Stock() {
                     category: cat?.name || ''
                   }));
                 }}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               >
                 <option value="">Seleccionar categoría</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -749,7 +749,7 @@ export default function Stock() {
                 min="0"
                 value={formData.stock}
                 onChange={(e) => setFormData(prev => ({ ...prev, stock: Number(e.target.value) }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -763,7 +763,7 @@ export default function Stock() {
                   min="0"
                   value={formData.purchasePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>
@@ -774,7 +774,7 @@ export default function Stock() {
                 <button 
                   type="button"
                   onClick={autoCalculatePrice}
-                  className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase hover:underline"
+                  className="text-[10px] text-[#365fad] dark:text-indigo-400 font-bold uppercase hover:underline"
                 >
                   Calcular Auto
                 </button>
@@ -787,7 +787,7 @@ export default function Stock() {
                   min="0"
                   value={formData.salePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, salePrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>
@@ -800,7 +800,7 @@ export default function Stock() {
                 min="0"
                 value={formData.minStock}
                 onChange={(e) => setFormData(prev => ({ ...prev, minStock: Number(e.target.value) }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -814,7 +814,7 @@ export default function Stock() {
                   value={formData.barcode ?? ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
                   placeholder="Ej: 7790070123456"
-                  className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white font-mono"
+                  className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white font-mono"
                 />
                 <button
                   type="button"
@@ -838,7 +838,7 @@ export default function Stock() {
                       barcode: formData.barcode,
                     });
                   }}
-                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-sm shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
                 >
                   <Printer size={18} />
                   Imprimir Etiqueta
@@ -850,7 +850,7 @@ export default function Stock() {
                   type="button"
                   disabled={generatingFor === editingProduct.id}
                   onClick={() => generateAndPrint(editingProduct)}
-                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="mt-3 w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-sm shadow-amber-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {generatingFor === editingProduct.id
                     ? <Loader2 size={18} className="animate-spin" />
@@ -866,7 +866,7 @@ export default function Stock() {
                 onClick={() => setFormData(prev => ({ ...prev, showInCatalog: !prev.showInCatalog }))}
                 className={cn(
                   "w-12 h-6 rounded-full transition-colors relative",
-                  formData.showInCatalog ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+                  formData.showInCatalog ? "bg-[#365fad]" : "bg-slate-300 dark:bg-slate-700"
                 )}
               >
                 <div className={cn(
@@ -894,7 +894,7 @@ export default function Stock() {
               <textarea 
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white h-24 resize-none"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white h-24 resize-none"
               />
             </div>
           </div>
@@ -911,8 +911,8 @@ export default function Stock() {
               type="submit"
               disabled={isUploadingImage || saving}
               className={cn(
-                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed",
-                (isUploadingImage || saving) ? "bg-indigo-400" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
+                "flex-1 px-4 py-2.5 text-white font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed",
+                (isUploadingImage || saving) ? "bg-indigo-400" : "bg-[#365fad] hover:bg-[#284b91] shadow-slate-900/10"
               )}
             >
               {isUploadingImage ? 'Subiendo imagen...' : saving ? 'Guardando...' : (editingProduct ? 'Guardar Cambios' : 'Crear Producto')}

@@ -58,6 +58,15 @@ export default function Layout() {
   const navItems = NAV_ITEMS.filter(it =>
     it.module === null || permissions[it.module]?.read === true
   );
+  const navGroups = [
+    { label: 'Operación', paths: ['/', '/stock', '/ventas', '/reportes', '/presupuestos'] },
+    { label: 'Relaciones', paths: ['/clientes', '/proveedores'] },
+    { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
+    { label: 'Sistema', paths: ['/config'] },
+  ].map((group) => ({
+    ...group,
+    items: navItems.filter((item) => group.paths.includes(item.path)),
+  })).filter((group) => group.items.length > 0);
 
   const displayName = isOwner
     ? (user?.displayName || authUser?.email || '')
@@ -110,31 +119,38 @@ export default function Layout() {
           <p className="mt-1 text-xs text-slate-400">{user?.businessName}</p>
         </div>
         
-        <nav className="flex-1 px-4 space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "nav-item flex items-center gap-3 px-3 py-2 transition-colors group",
-                  isActive 
-                    ? "nav-item-active text-white"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white"
-                )}
-              >
-                <Icon size={20} />
-                <span className="font-medium">{item.name}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-4 space-y-5 overflow-y-auto">
+          {navGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                {group.label}
+              </p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                      "nav-item flex items-center gap-3 px-3 py-2 transition-colors group",
+                      isActive
+                        ? "nav-item-active text-white"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <Icon size={19} strokeWidth={1.8} />
+                    <span className="font-medium">{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 mt-auto border-t border-slate-800 space-y-2">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center text-white text-sm font-bold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
               {displayInitial}
             </div>
             <div className="min-w-0">
@@ -156,11 +172,11 @@ export default function Layout() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <h1 className="brand-mark text-xl font-extrabold text-emerald-800 dark:text-emerald-400">RivaStock</h1>
+        <header className="md:hidden flex items-center justify-between p-4 bg-[#FCFAF5] dark:bg-[#202329] border-b border-[#DDD8CE] dark:border-slate-700 shrink-0">
+          <h1 className="brand-mark text-xl font-extrabold text-[#1D2026] dark:text-white">RivaStock</h1>
           <button 
             onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 text-slate-600 dark:text-slate-400"
+            className="p-2 text-[#4E535D] dark:text-slate-300"
           >
             <Menu size={24} />
           </button>
@@ -171,7 +187,7 @@ export default function Layout() {
         </div>
 
         {/* Mobile Bottom Bar */}
-        <nav className="md:hidden flex items-center justify-around p-2 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0">
+        <nav className="md:hidden flex items-center justify-around p-2 bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -181,7 +197,7 @@ export default function Layout() {
                 to={item.path}
                 className={cn(
                   "flex flex-col items-center gap-1 p-2 transition-colors",
-                  isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-400"
+                  isActive ? "text-[#365FAD] dark:text-[#90A9DF]" : "text-slate-400"
                 )}
               >
                 <Icon size={20} />
@@ -207,7 +223,7 @@ export default function Layout() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="fixed inset-y-0 right-0 w-64 bg-slate-900 text-white z-50 md:hidden flex flex-col"
+              className="fixed inset-y-0 right-0 w-64 app-sidebar text-white z-50 md:hidden flex flex-col"
             >
               <div className="p-6 flex items-center justify-between">
                 <h1 className="text-xl font-bold text-indigo-400">Menú</h1>
@@ -237,7 +253,7 @@ export default function Layout() {
               </nav>
               <div className="p-4 border-t border-slate-800 space-y-2">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
                     {displayInitial}
                   </div>
                   <div className="min-w-0">

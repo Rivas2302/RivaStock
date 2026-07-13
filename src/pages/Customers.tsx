@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion, AnimatePresence } from 'motion/react';
+import '../styles/business-redesign.css';
 
 export default function Customers() {
   const { user, refetchToken } = useAuth();
@@ -318,7 +319,7 @@ export default function Customers() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="business-page operational-page space-y-6">
       {/* Toast */}
       <AnimatePresence>
         {message && (

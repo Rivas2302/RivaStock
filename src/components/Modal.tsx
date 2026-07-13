@@ -51,7 +51,7 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className={cn(
-              "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] overflow-hidden border border-slate-200 dark:border-slate-800 outline-none",
+              "app-modal fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] overflow-hidden border border-slate-200 dark:border-slate-800 outline-none",
               className
             )}
           >

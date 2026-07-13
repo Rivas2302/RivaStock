@@ -58,7 +58,7 @@ export default function QuotePublic() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
       </div>
     );
@@ -67,7 +67,7 @@ export default function QuotePublic() {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       // Offline fallback for direct URL access
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50 px-4">
           <div className="text-center max-w-sm">
             <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText size={28} className="text-slate-400" />
@@ -80,7 +80,7 @@ export default function QuotePublic() {
       );
     }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <FileText size={28} className="text-slate-400" />
@@ -102,7 +102,7 @@ export default function QuotePublic() {
   const expiresDate = expiresAt.toLocaleDateString('es-AR');
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="public-quote-page min-h-screen bg-slate-50">
       {/* Expired banner */}
       {isExpired && (
         <div className="bg-rose-600 text-white text-center py-3 px-4 text-sm font-bold">

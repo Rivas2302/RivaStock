@@ -202,10 +202,10 @@ export default function Intake() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Ingresos de Mercadería</h2>
+          <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ingresos de Mercadería</h2>
           <p className="text-slate-500 dark:text-slate-400">Registra la entrada de nuevos productos</p>
         </div>
         <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export default function Intake() {
             onClick={() => setScannerOpen(true)}
             disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : 'Escanear código de barras'}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg transition-all disabled:opacity-50"
+            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
           >
             <ScanLine size={20} />
             Escanear
@@ -222,7 +222,7 @@ export default function Intake() {
             onClick={openModal}
             disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : undefined}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-[#365fad] hover:bg-[#284b91] text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-slate-900/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={20} />
             Registrar Ingreso
@@ -238,19 +238,19 @@ export default function Intake() {
           placeholder="Buscar por producto o proveedor..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+          className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white"
         />
       </div>
 
       {/* History Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="operational-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <History size={20} className="text-indigo-600" />
+          <History size={20} className="text-[#365fad]" />
           <h3 className="font-bold text-slate-900 dark:text-white">Historial de Ingresos</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
+            <thead className="table-head bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4">Fecha</th>
                 <th className="px-6 py-4">Producto</th>
@@ -262,7 +262,7 @@ export default function Intake() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {filteredIntakes.map((i) => (
-                <tr key={i.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={i.id} className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(i.date)}</td>
                   <td className="px-6 py-4 font-bold dark:text-white">{i.productName}</td>
                   <td className="px-6 py-4 dark:text-slate-300">
@@ -293,7 +293,7 @@ export default function Intake() {
         onClose={closeModal}
         title="Registrar Ingreso de Mercadería"
       >
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} className="operational-page space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Fecha</label>
@@ -302,7 +302,7 @@ export default function Intake() {
                 required
                 value={formData.date}
                 onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -335,14 +335,14 @@ export default function Intake() {
                         setIsProductDropdownOpen(true);
                       }}
                       onFocus={() => setIsProductDropdownOpen(true)}
-                      className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-sm"
+                      className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white text-sm"
                       autoComplete="off"
                     />
                   </div>
                 )}
 
                 {isProductDropdownOpen && !selectedProduct && (
-                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm max-h-52 overflow-y-auto">
                     {filteredProductOptions.length > 0 ? (
                       filteredProductOptions.map(p => (
                         <button
@@ -384,7 +384,7 @@ export default function Intake() {
                 min="1"
                 value={formData.quantity}
                 onChange={(e) => setFormData(prev => ({ ...prev, quantity: Number(e.target.value) }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
             </div>
 
@@ -398,7 +398,7 @@ export default function Intake() {
                   min="0"
                   value={formData.purchasePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>
@@ -409,7 +409,7 @@ export default function Intake() {
                 type="text"
                 value={formData.supplier}
                 onChange={(e) => setFormData(prev => ({ ...prev, supplier: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 placeholder="Nombre del proveedor"
               />
             </div>
@@ -419,7 +419,7 @@ export default function Intake() {
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white h-24 resize-none"
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white h-24 resize-none"
               />
             </div>
           </div>
@@ -435,7 +435,7 @@ export default function Intake() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 bg-[#365fad] text-white font-semibold rounded-xl hover:bg-[#284b91] shadow-sm shadow-slate-900/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Guardando...' : 'Guardar Ingreso'}
             </button>

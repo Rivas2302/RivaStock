@@ -103,7 +103,7 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="invite-dialog relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
           <h3 className="text-xl font-bold text-slate-900 dark:text-white">
             {isEditing ? 'Editar permisos' : 'Invitar colaborador'}

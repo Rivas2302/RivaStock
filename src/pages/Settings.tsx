@@ -327,7 +327,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="settings-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Configuración</h2>
@@ -337,7 +337,7 @@ export default function Settings() {
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Tabs */}
-        <div className="lg:w-64 flex flex-row lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+        <div className="settings-tabs lg:w-64 flex flex-row lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -356,7 +356,7 @@ export default function Settings() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
+        <div className="settings-panel flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
           <div className="p-8">
             <AnimatePresence>
               {message && (

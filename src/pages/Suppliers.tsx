@@ -11,6 +11,7 @@ import {
   XCircle, Package, ExternalLink, Facebook, Instagram
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import '../styles/business-redesign.css';
 
 export default function Suppliers() {
   const {
@@ -122,7 +123,7 @@ export default function Suppliers() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="business-page operational-page space-y-6">
       <AnimatePresence>
         {message && (
           <motion.div

@@ -12,6 +12,7 @@ import {
 import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
 import { motion, AnimatePresence } from 'motion/react';
+import '../styles/business-redesign.css';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Borrador',
@@ -430,7 +431,7 @@ export default function Quotes() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="business-page operational-page space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

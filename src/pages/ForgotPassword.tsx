@@ -30,11 +30,11 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="auth-page">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-8 sm:p-12"
+        className="auth-card"
       >
         <button 
           onClick={() => navigate('/login')}
@@ -55,7 +55,7 @@ export default function ForgotPassword() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-sm font-bold"
+            className="auth-alert mb-6 p-4 flex items-center gap-3 text-sm font-semibold"
           >
             <AlertCircle size={18} className="shrink-0" />
             {error}
@@ -78,7 +78,7 @@ export default function ForgotPassword() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="tu@email.com"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                  className="auth-input pl-12 pr-4 py-3.5 font-medium"
                 />
               </div>
             </div>
@@ -86,7 +86,7 @@ export default function ForgotPassword() {
             <button 
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+              className="auth-primary w-full py-3.5 font-semibold transition-colors flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : 'Enviar link de recuperación'}
             </button>

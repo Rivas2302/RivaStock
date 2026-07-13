@@ -1,0 +1,131 @@
+/* Ink Cobalt surfaces for settings and public routes. Public catalog accents remain data-driven. */
+
+.settings-page {
+  --settings-surface: #fcfaf5;
+  --settings-muted: #f0ede6;
+  --settings-line: #ddd8ce;
+  --settings-ink: #1d2026;
+  --settings-blue: #365fad;
+  --settings-blue-strong: #284b91;
+  color: var(--settings-ink);
+}
+
+.settings-page > div:first-child h2 { letter-spacing: -0.055em; line-height: .98; }
+.settings-tabs {
+  align-self: flex-start;
+  padding: .5rem;
+  border: 1px solid var(--settings-line);
+  border-radius: .75rem;
+  background: var(--settings-surface);
+  box-shadow: 0 1px 2px rgb(29 32 38 / .035);
+}
+.settings-tabs button { min-height: 42px; border-radius: .45rem !important; }
+.settings-tabs button.bg-indigo-600 { background: var(--settings-blue) !important; box-shadow: none !important; }
+.settings-panel {
+  border-color: var(--settings-line) !important;
+  border-radius: .75rem !important;
+  background: var(--settings-surface) !important;
+  box-shadow: 0 1px 2px rgb(29 32 38 / .04) !important;
+}
+.settings-page input:not([type='checkbox']):not([type='radio']), .settings-page select, .settings-page textarea {
+  border-color: var(--settings-line) !important;
+  border-radius: .5rem !important;
+  background: #fffdf9 !important;
+  box-shadow: 0 1px 1px rgb(29 32 38 / .02);
+}
+.settings-page input:focus, .settings-page select:focus, .settings-page textarea:focus {
+  border-color: var(--settings-blue) !important;
+  box-shadow: 0 0 0 3px rgb(54 95 173 / .14) !important;
+}
+.settings-page button.bg-indigo-600, .team-tab button.bg-indigo-600, .invite-dialog button.bg-indigo-600, .catalog-qr-modal button.bg-indigo-600 {
+  background: var(--settings-blue) !important;
+  box-shadow: 0 2px 4px rgb(54 95 173 / .16) !important;
+}
+.settings-page button.bg-indigo-600:hover, .team-tab button.bg-indigo-600:hover, .invite-dialog button.bg-indigo-600:hover, .catalog-qr-modal button.bg-indigo-600:hover { background: var(--settings-blue-strong) !important; }
+.settings-page .rounded-3xl, .settings-page .rounded-2xl { border-radius: .75rem; }
+.settings-page .rounded-xl { border-radius: .5rem; }
+.settings-page .bg-slate-50 { background-color: var(--settings-muted); }
+
+.team-tab h3, .team-tab h4 { letter-spacing: -0.025em; }
+.team-tab > div:first-child { padding-bottom: 1rem; border-bottom: 1px solid var(--settings-line); }
+.team-row {
+  border-color: var(--settings-line) !important;
+  border-radius: .625rem !important;
+  background: #fffdf9 !important;
+  box-shadow: 0 1px 1px rgb(29 32 38 / .025);
+}
+.team-row:hover { border-color: #9db3df !important; }
+.team-row .bg-indigo-100 { background: #e8eef9 !important; }
+.team-row .text-indigo-600 { color: var(--settings-blue) !important; }
+.permissions-editor { border: 1px solid var(--settings-line); border-radius: .625rem; overflow: hidden; }
+.permissions-editor thead { background: var(--settings-muted); }
+.permissions-editor tbody tr:last-child { border-bottom: 0; }
+.permissions-editor button.bg-indigo-600 { background: var(--settings-blue) !important; border-color: var(--settings-blue) !important; }
+
+.app-modal { border-color: var(--settings-line) !important; border-radius: .75rem !important; box-shadow: 0 20px 60px rgb(29 32 38 / .2) !important; }
+.app-modal > div:first-child { background: var(--settings-muted) !important; border-color: var(--settings-line) !important; }
+.catalog-qr-modal > div:first-child { border: 1px solid var(--settings-line); border-radius: .625rem; }
+.catalog-qr-modal .bg-slate-100 { background: var(--settings-muted) !important; border-radius: .5rem; }
+.toast-container > div { border: 1px solid rgb(255 255 255 / .18); border-radius: .625rem !important; box-shadow: 0 12px 28px rgb(29 32 38 / .18) !important; }
+
+.public-page-state, .public-quote-page, .public-product-page, .public-catalog { font-family: "Inter Tight", ui-sans-serif, system-ui, sans-serif; }
+.public-page-state { background: #f4f1ea !important; color: #1d2026; }
+.public-page-state .bg-slate-900 { background: #17191d !important; }
+.public-page-state .border-indigo-600 { border-color: #365fad !important; }
+
+/* Product details are neutral so the store's configured accent stays intact. */
+.public-product-page { min-height: 100vh; background: #f4f1ea !important; color: #1d2026 !important; }
+.public-product-page header { background: rgb(252 250 245 / .9) !important; border-color: #ddd8ce !important; }
+.public-product-page main { max-width: 72rem; padding-top: 3.5rem; }
+.public-product-page main > div { gap: clamp(2rem, 6vw, 5rem); }
+.public-product-page .aspect-square { border: 1px solid #ddd8ce; border-radius: .75rem !important; background: #fcfaf5 !important; box-shadow: 0 10px 24px rgb(29 32 38 / .055); }
+.public-product-page .rounded-3xl { border-radius: .75rem !important; }
+.public-product-page .rounded-2xl { border-radius: .625rem !important; }
+.public-product-page .rounded-xl { border-radius: .5rem !important; }
+.public-product-page h1 { letter-spacing: -.055em !important; font-size: clamp(2.25rem, 5vw, 3.75rem) !important; }
+.public-product-page h2 { letter-spacing: -.025em; }
+.public-product-page .border-slate-100, .public-product-page .border-slate-200 { border-color: #ddd8ce !important; }
+.public-product-page .bg-slate-50 { background: #f0ede6 !important; }
+
+/* Catalog primary/accent colors are supplied inline from CatalogConfig; only neutral framing changes here. */
+.public-catalog:not([class~="bg-[#080808]"]) { background: #f4f1ea !important; color: #1d2026 !important; }
+.public-catalog:not([class~="bg-[#080808]"]) header { background: rgb(252 250 245 / .9) !important; border-color: #ddd8ce !important; }
+.public-catalog header .max-w-7xl { height: 4.5rem; }
+.public-catalog .relative.pt-20 { padding-top: 4.5rem; }
+.public-catalog .h-\[60vh\] { min-height: 340px; height: min(54vh, 520px); }
+.public-catalog h2 { letter-spacing: -.065em !important; }
+.public-catalog .-mt-12 > div { border-color: #ddd8ce !important; border-radius: .75rem !important; box-shadow: 0 16px 36px rgb(29 32 38 / .12) !important; }
+.public-catalog input { border-radius: .5rem !important; }
+.public-catalog main { padding-top: 4.5rem !important; padding-bottom: 5rem !important; }
+.public-catalog main > div { gap: 1.5rem !important; }
+.public-catalog main .group.relative.rounded-\[2rem\] { border-color: #ddd8ce !important; border-radius: .75rem !important; box-shadow: 0 1px 2px rgb(29 32 38 / .04); }
+.public-catalog main .group.relative.rounded-\[2rem\]:hover { transform: translateY(-3px); box-shadow: 0 12px 24px rgb(29 32 38 / .09); }
+.public-catalog main .aspect-square { padding: 1rem !important; }
+.public-catalog main .aspect-square > div { border-radius: .5rem !important; }
+.public-catalog main .px-8 { padding-left: 1.25rem !important; padding-right: 1.25rem !important; }
+.public-catalog main h3 { letter-spacing: -.03em; }
+.public-catalog .rounded-full { border-radius: .5rem; }
+
+.public-quote-page { background: #f4f1ea !important; color: #1d2026; }
+.public-quote-page .max-w-2xl { max-width: 48rem; }
+.public-quote-page .bg-white { background: #fcfaf5 !important; border-color: #ddd8ce !important; box-shadow: 0 1px 2px rgb(29 32 38 / .045) !important; }
+.public-quote-page .bg-indigo-600 { background: #365fad !important; }
+.public-quote-page .rounded-2xl { border-radius: .75rem !important; }
+.public-quote-page .bg-slate-50 { background: #f0ede6 !important; }
+.public-quote-page h1 { letter-spacing: -.045em; }
+.public-quote-page .text-indigo-600 { color: #365fad !important; }
+
+@media (max-width: 640px) {
+  .settings-tabs { margin-inline: -.25rem; width: calc(100% + .5rem); }
+  .settings-panel > div { padding: 1.25rem; }
+  .public-product-page main { padding: 2rem 1.25rem 3rem; }
+  .public-product-page header > div { padding-inline: 1.25rem; }
+  .public-catalog header .max-w-7xl { padding-inline: 1rem; }
+  .public-catalog .relative.z-30.-mt-12 { padding-inline: 1rem; }
+  .public-catalog main { padding-inline: 1rem; }
+  .public-quote-page .max-w-2xl { padding-inline: 1rem; }
+  .public-quote-page .px-8 { padding-left: 1.25rem; padding-right: 1.25rem; }
+}
+
+.dark .settings-panel, .dark .settings-tabs, .dark .team-row, .dark .app-modal { background: #202329 !important; border-color: #3a3d44 !important; }
+.dark .settings-page input:not([type='checkbox']):not([type='radio']), .dark .settings-page select, .dark .settings-page textarea { background: #202329 !important; border-color: #3a3d44 !important; }

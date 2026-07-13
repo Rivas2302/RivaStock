@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import Modal from './Modal';
 import { Facebook, Instagram } from 'lucide-react';
 import { Supplier } from '../types';
+import '../styles/business-redesign.css';
 
 interface SupplierModalProps {
   isOpen: boolean;
@@ -105,7 +106,7 @@ const [instagramUrl, setInstagramUrl] = React.useState('');
       isOpen={isOpen}
       onClose={onClose}
       title={editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-      className="max-w-lg"
+      className="max-w-lg supplier-modal"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

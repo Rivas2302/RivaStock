@@ -1,0 +1,131 @@
+@layer components {
+  /* Financial and relationship screens share a compact, paper-like operational surface. */
+  .business-page {
+    max-width: 96rem;
+    margin-inline: auto;
+    color: var(--ink);
+  }
+
+  .business-page > .flex:first-child,
+  .business-page > div:first-child:not(.fixed) {
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .business-page h2 {
+    color: var(--ink);
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    line-height: 0.98;
+    letter-spacing: -0.055em;
+  }
+
+  .business-page .bg-white,
+  .business-page .bg-slate-50 {
+    background-color: var(--surface);
+  }
+
+  .business-page .bg-slate-50\/50 {
+    background-color: var(--surface-muted);
+  }
+
+  .business-page .border-slate-100,
+  .business-page .border-slate-200,
+  .business-page .border-slate-700,
+  .business-page .border-slate-800 {
+    border-color: var(--line);
+  }
+
+  .business-page .divide-slate-50 > :not(:last-child),
+  .business-page .divide-slate-100 > :not(:last-child),
+  .business-page .divide-slate-200 > :not(:last-child),
+  .business-page .divide-slate-800 > :not(:last-child) {
+    border-color: var(--line);
+  }
+
+  .business-page .rounded-2xl {
+    border-radius: 0.625rem;
+  }
+
+  .business-page .rounded-xl {
+    border-radius: 0.5rem;
+  }
+
+  .business-page .shadow-lg,
+  .business-page .shadow-md,
+  .business-page .shadow-sm {
+    box-shadow: 0 1px 2px rgb(29 32 38 / 0.045);
+  }
+
+  .business-page .bg-indigo-600 {
+    background-color: var(--brand);
+  }
+
+  .business-page .hover\:bg-indigo-700:hover {
+    background-color: var(--brand-strong);
+  }
+
+  .business-page .bg-indigo-50,
+  .business-page .bg-indigo-100 {
+    background-color: #edf2fc;
+  }
+
+  .business-page .text-indigo-600,
+  .business-page .text-indigo-700 {
+    color: var(--brand);
+  }
+
+  .business-page .focus\:ring-indigo-500:focus {
+    --tw-ring-color: rgb(54 95 173 / 0.22);
+  }
+
+  .business-page input:not([type="checkbox"]):not([type="radio"]),
+  .business-page select,
+  .business-page textarea {
+    background-color: #fffdf9;
+    border-color: var(--line);
+    box-shadow: 0 1px 1px rgb(29 32 38 / 0.02);
+  }
+
+  .business-page table thead {
+    background-color: var(--surface-muted);
+  }
+
+  .business-page table tbody tr:hover {
+    background-color: #f8f6f0;
+  }
+
+  .supplier-modal {
+    border-radius: 0.75rem;
+  }
+
+  .supplier-modal input,
+  .supplier-modal select,
+  .supplier-modal textarea {
+    background: #fffdf9;
+    border-color: var(--line);
+    border-radius: 0.5rem;
+  }
+
+  .supplier-modal .bg-indigo-600 { background-color: var(--brand); }
+  .supplier-modal .hover\:bg-indigo-700:hover { background-color: var(--brand-strong); }
+  .supplier-modal .focus\:ring-indigo-500:focus { --tw-ring-color: rgb(54 95 173 / 0.22); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .dark .business-page .bg-white,
+  .dark .business-page .bg-slate-50,
+  .dark .business-page input:not([type="checkbox"]):not([type="radio"]),
+  .dark .business-page select,
+  .dark .business-page textarea,
+  .dark .supplier-modal input,
+  .dark .supplier-modal select,
+  .dark .supplier-modal textarea {
+    background-color: #202329;
+    border-color: #3a3d44;
+  }
+
+  .dark .business-page table thead { background-color: #292c33; }
+  .dark .business-page table tbody tr:hover { background-color: #292c33; }
+  .dark .business-page .bg-indigo-50,
+  .dark .business-page .bg-indigo-100 { background-color: rgb(54 95 173 / 0.2); }
+}
