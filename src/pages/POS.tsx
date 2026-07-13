@@ -147,9 +147,9 @@ export default function POS() {
   };
 
   return (
-    <div className="pos-surface fixed inset-0 z-30 flex flex-col bg-slate-100 dark:bg-slate-950">
+    <div className="pos-surface fixed inset-0 h-[100dvh] z-30 flex flex-col bg-slate-100 dark:bg-slate-950">
       {/* Header */}
-      <header className="px-3 py-2 bg-[#365fad] text-white flex items-center gap-2 shrink-0">
+      <header className="px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 bg-[#365fad] text-white flex items-center gap-2 shrink-0">
         <button onClick={() => navigate('/ventas')} className="p-2 rounded-lg hover:bg-white/10" aria-label="Volver">
           <ArrowLeft size={20} />
         </button>
@@ -206,7 +206,7 @@ export default function POS() {
       </div>
 
       {/* Cart list */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
         {cart.items.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400">
             <ScanLine size={48} className="mb-3 opacity-50" />
@@ -293,7 +293,8 @@ export default function POS() {
       </div>
 
       {/* Bottom bar */}
-      <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-3 pt-2 pb-3 shrink-0 space-y-2">
+      <div className="relative shrink-0">
+        <div className="max-h-[min(58dvh,34rem)] overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
         {/* Credit toggle */}
         <button
           type="button"
@@ -337,7 +338,7 @@ export default function POS() {
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none dark:text-white"
                 />
                 {filteredCustomers.length > 0 && (
-                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                  <div className="max-h-48 overflow-y-auto overscroll-contain border border-slate-200 dark:border-slate-700 rounded-xl">
                     {filteredCustomers.map((c) => (
                       <button
                         key={c.id}
@@ -393,38 +394,40 @@ export default function POS() {
         </div>
 
         {/* Totals + Cobrar */}
-        <div className="flex items-center justify-between pt-1">
+        <div className="sticky bottom-0 -mx-3 px-3 py-2 flex items-center justify-between bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
             <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">
               {formatCurrency(roundPrice(totals.total))}
             </p>
           </div>
-          <button
-            type="button"
-            disabled={cart.items.length === 0 || saving}
-            onClick={handleCobrar}
-            className={cn(
-              'px-5 py-3 rounded-xl font-bold text-white shadow-lg transition-all',
-              cart.items.length === 0 || saving
-                ? 'bg-slate-300 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700 shadow-slate-900/15',
-            )}
-          >
-            {saving ? 'Cobrando…' : 'Cobrar'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              className="w-11 h-11 rounded-xl bg-rose-600 text-white shadow-sm flex items-center justify-center hover:bg-rose-700"
+              aria-label="Abrir scanner"
+              title="Abrir scanner"
+            >
+              <ScanLine size={22} />
+            </button>
+            <button
+              type="button"
+              disabled={cart.items.length === 0 || saving}
+              onClick={handleCobrar}
+              className={cn(
+                'px-4 sm:px-5 py-3 rounded-xl font-bold text-white shadow-lg transition-all',
+                cart.items.length === 0 || saving
+                  ? 'bg-slate-300 cursor-not-allowed'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-slate-900/15',
+              )}
+            >
+              {saving ? 'Cobrando…' : 'Cobrar'}
+            </button>
+          </div>
+        </div>
         </div>
       </div>
-
-      {/* Scanner FAB */}
-      <button
-        type="button"
-        onClick={() => setScannerOpen(true)}
-        className="fixed bottom-44 right-4 z-40 w-16 h-16 rounded-full bg-rose-600 text-white shadow-lg shadow-rose-500/40 flex items-center justify-center hover:bg-rose-700"
-        aria-label="Abrir scanner"
-      >
-        <ScanLine size={28} />
-      </button>
 
       {/* Scanner overlay (continuous in POS) */}
       <BarcodeScannerOverlay

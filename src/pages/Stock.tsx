@@ -453,17 +453,17 @@ export default function Stock() {
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between gap-3 bg-[#365fad] text-white px-4 py-3 rounded-xl shadow-sm shadow-slate-900/10"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#365fad] text-white px-4 py-3 rounded-xl shadow-sm shadow-slate-900/10"
         >
           <span className="text-sm font-semibold">
             {selectedIds.size} producto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
               disabled={bulkGenerating}
-              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50 flex-1 sm:flex-none"
             >
               Cancelar
             </button>
@@ -471,7 +471,7 @@ export default function Stock() {
               type="button"
               onClick={handleBulkGenerate}
               disabled={bulkGenerating}
-              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white text-[#284b91] hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-60"
+              className="px-3 py-1.5 text-xs font-bold uppercase rounded-lg bg-white text-[#284b91] hover:bg-indigo-50 transition-colors flex flex-1 sm:flex-none items-center justify-center gap-2 disabled:opacity-60"
             >
               {bulkGenerating
                 ? <Loader2 size={14} className="animate-spin" />

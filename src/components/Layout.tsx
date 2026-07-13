@@ -111,7 +111,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden">
+    <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="app-sidebar hidden md:flex flex-col w-64 text-white shrink-0">
         <div className="p-6">
@@ -187,7 +187,7 @@ export default function Layout() {
         </div>
 
         {/* Mobile Bottom Bar */}
-        <nav className="md:hidden flex items-center justify-around p-2 bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
+        <nav className="md:hidden flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -223,7 +223,7 @@ export default function Layout() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="fixed inset-y-0 right-0 w-64 app-sidebar text-white z-50 md:hidden flex flex-col"
+              className="fixed inset-y-0 right-0 w-64 max-w-[85vw] app-sidebar text-white z-50 md:hidden flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
             >
               <div className="p-6 flex items-center justify-between">
                 <h1 className="text-xl font-bold text-indigo-400">Menú</h1>
@@ -231,7 +231,7 @@ export default function Layout() {
                   <X size={24} />
                 </button>
               </div>
-              <nav className="flex-1 px-4 space-y-1">
+              <nav className="flex-1 min-h-0 px-4 space-y-1 overflow-y-auto overscroll-contain">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
@@ -251,7 +251,7 @@ export default function Layout() {
                   );
                 })}
               </nav>
-              <div className="p-4 border-t border-slate-800 space-y-2">
+              <div className="p-4 border-t border-slate-800 space-y-2 shrink-0">
                 <div className="flex items-center gap-3 px-3 py-2">
                   <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
                     {displayInitial}

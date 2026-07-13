@@ -58,7 +58,7 @@ export default function QuotePublic() {
 
   if (loading) {
     return (
-      <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="public-quote-page min-h-[100dvh] flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
       </div>
     );
@@ -67,7 +67,7 @@ export default function QuotePublic() {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       // Offline fallback for direct URL access
       return (
-        <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="public-quote-page min-h-[100dvh] flex items-center justify-center bg-slate-50 px-4">
           <div className="text-center max-w-sm">
             <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText size={28} className="text-slate-400" />
@@ -80,7 +80,7 @@ export default function QuotePublic() {
       );
     }
     return (
-      <div className="public-quote-page min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="public-quote-page min-h-[100dvh] flex items-center justify-center bg-slate-50 px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <FileText size={28} className="text-slate-400" />
@@ -102,7 +102,7 @@ export default function QuotePublic() {
   const expiresDate = expiresAt.toLocaleDateString('es-AR');
 
   return (
-    <div className="public-quote-page min-h-screen bg-slate-50">
+    <div className="public-quote-page min-h-[100dvh] bg-slate-50">
       {/* Expired banner */}
       {isExpired && (
         <div className="bg-rose-600 text-white text-center py-3 px-4 text-sm font-bold">
@@ -111,16 +111,16 @@ export default function QuotePublic() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto px-4 py-10">
+      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 sm:py-10">
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-4">
-          <div className="bg-indigo-600 px-8 py-6 text-white">
-            <div className="flex items-center justify-between">
+          <div className="bg-indigo-600 px-4 sm:px-8 py-5 sm:py-6 text-white">
+            <div className="flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-3">
               <div>
                 <p className="text-indigo-200 text-sm font-medium">Presupuesto</p>
                 <h1 className="text-2xl font-black mt-0.5">{quote.number}</h1>
               </div>
-              <div className="text-right">
+              <div className="min-[380px]:text-right">
                 {owner && <p className="font-bold text-lg">{owner.businessName}</p>}
                 <p className="text-indigo-200 text-sm mt-0.5">Fecha: {createdDate}</p>
               </div>
@@ -128,7 +128,7 @@ export default function QuotePublic() {
           </div>
 
           {/* Client + validity */}
-          <div className="px-8 py-5 border-b border-slate-100">
+          <div className="px-4 sm:px-8 py-5 border-b border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Para</p>
@@ -136,7 +136,7 @@ export default function QuotePublic() {
                 {quote.clientPhone && <p className="text-slate-500 text-sm">{quote.clientPhone}</p>}
                 {quote.clientEmail && <p className="text-slate-500 text-sm">{quote.clientEmail}</p>}
               </div>
-              <div className="text-right">
+              <div className="sm:text-right">
                 <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Válido hasta</p>
                 <p className={`font-bold text-sm ${isExpired ? 'text-rose-600' : 'text-slate-900'}`}>{expiresDate}</p>
                 {isNearExpiry && (
@@ -156,8 +156,8 @@ export default function QuotePublic() {
           </div>
 
           {/* Items table */}
-          <div className="px-8 py-4">
-            <table className="w-full text-sm">
+          <div className="px-4 sm:px-8 py-4 overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-[32rem] text-sm">
               <thead>
                 <tr className="text-xs uppercase text-slate-400 font-semibold border-b border-slate-100">
                   <th className="py-2 text-left">Descripción</th>
@@ -180,7 +180,7 @@ export default function QuotePublic() {
           </div>
 
           {/* Totals */}
-          <div className="px-8 py-5 bg-slate-50 border-t border-slate-100">
+          <div className="px-4 sm:px-8 py-5 bg-slate-50 border-t border-slate-100">
             <div className="max-w-xs ml-auto space-y-1.5">
               <div className="flex justify-between text-sm text-slate-500">
                 <span>Subtotal</span>
@@ -202,7 +202,7 @@ export default function QuotePublic() {
 
         {/* Notes */}
         {quote.notes && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-8 py-5 mb-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-8 py-5 mb-4">
             <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-2">Observaciones</p>
             <p className="text-slate-700 text-sm whitespace-pre-wrap">{quote.notes}</p>
           </div>
@@ -210,7 +210,7 @@ export default function QuotePublic() {
 
         {/* Contact */}
         {owner && (owner.phone || owner.email_contact) && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-8 py-5 mb-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-8 py-5 mb-4">
             <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide mb-3">Contacto</p>
             <p className="font-bold text-slate-900 mb-1">{owner.businessName}</p>
             {owner.phone && (

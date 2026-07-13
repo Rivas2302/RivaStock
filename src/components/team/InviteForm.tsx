@@ -101,10 +101,10 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="invite-dialog relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+      <div className="invite-dialog relative w-full max-w-lg max-h-[calc(100dvh_-_2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
           <h3 className="text-xl font-bold text-slate-900 dark:text-white">
             {isEditing ? 'Editar permisos' : 'Invitar colaborador'}
           </h3>
@@ -115,7 +115,7 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {!isEditing && (
             <div>
               <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Email</label>

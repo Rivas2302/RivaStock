@@ -1,12 +1,16 @@
 /* Ink Cobalt surfaces for settings and public routes. Public catalog accents remain data-driven. */
 
 .settings-page {
-  --settings-surface: #fcfaf5;
-  --settings-muted: #f0ede6;
-  --settings-line: #ddd8ce;
-  --settings-ink: #1d2026;
-  --settings-blue: #365fad;
-  --settings-blue-strong: #284b91;
+  --settings-surface: var(--surface);
+  --settings-raised: var(--surface-raised);
+  --settings-muted: var(--surface-muted);
+  --settings-line: var(--line);
+  --settings-ink: var(--ink);
+  --settings-blue: var(--brand);
+  --settings-blue-strong: var(--brand-strong);
+  --settings-action: var(--action-bg);
+  --settings-action-hover: var(--action-bg-hover);
+  --settings-action-ink: var(--action-ink);
   color: var(--settings-ink);
 }
 
@@ -20,7 +24,7 @@
   box-shadow: 0 1px 2px rgb(29 32 38 / .035);
 }
 .settings-tabs button { min-height: 42px; border-radius: .45rem !important; }
-.settings-tabs button.bg-indigo-600 { background: var(--settings-blue) !important; box-shadow: none !important; }
+.settings-tabs button.bg-indigo-600 { background: var(--settings-action) !important; color: var(--settings-action-ink) !important; box-shadow: none !important; }
 .settings-panel {
   border-color: var(--settings-line) !important;
   border-radius: .75rem !important;
@@ -30,18 +34,20 @@
 .settings-page input:not([type='checkbox']):not([type='radio']), .settings-page select, .settings-page textarea {
   border-color: var(--settings-line) !important;
   border-radius: .5rem !important;
-  background: #fffdf9 !important;
+  background: var(--settings-raised) !important;
+  color: var(--settings-ink);
   box-shadow: 0 1px 1px rgb(29 32 38 / .02);
 }
 .settings-page input:focus, .settings-page select:focus, .settings-page textarea:focus {
   border-color: var(--settings-blue) !important;
-  box-shadow: 0 0 0 3px rgb(54 95 173 / .14) !important;
+  box-shadow: 0 0 0 3px var(--brand-ring) !important;
 }
 .settings-page button.bg-indigo-600, .team-tab button.bg-indigo-600, .invite-dialog button.bg-indigo-600, .catalog-qr-modal button.bg-indigo-600 {
-  background: var(--settings-blue) !important;
-  box-shadow: 0 2px 4px rgb(54 95 173 / .16) !important;
+  background: var(--settings-action) !important;
+  color: var(--settings-action-ink) !important;
+  box-shadow: 0 2px 4px var(--brand-ring) !important;
 }
-.settings-page button.bg-indigo-600:hover, .team-tab button.bg-indigo-600:hover, .invite-dialog button.bg-indigo-600:hover, .catalog-qr-modal button.bg-indigo-600:hover { background: var(--settings-blue-strong) !important; }
+.settings-page button.bg-indigo-600:hover, .team-tab button.bg-indigo-600:hover, .invite-dialog button.bg-indigo-600:hover, .catalog-qr-modal button.bg-indigo-600:hover { background: var(--settings-action-hover) !important; }
 .settings-page .rounded-3xl, .settings-page .rounded-2xl { border-radius: .75rem; }
 .settings-page .rounded-xl { border-radius: .5rem; }
 .settings-page .bg-slate-50 { background-color: var(--settings-muted); }
@@ -51,22 +57,26 @@
 .team-row {
   border-color: var(--settings-line) !important;
   border-radius: .625rem !important;
-  background: #fffdf9 !important;
+  background: var(--settings-raised) !important;
   box-shadow: 0 1px 1px rgb(29 32 38 / .025);
 }
-.team-row:hover { border-color: #9db3df !important; }
-.team-row .bg-indigo-100 { background: #e8eef9 !important; }
+.team-row:hover { border-color: var(--brand) !important; }
+.team-row .bg-indigo-100 { background: var(--brand-soft) !important; }
 .team-row .text-indigo-600 { color: var(--settings-blue) !important; }
 .permissions-editor { border: 1px solid var(--settings-line); border-radius: .625rem; overflow: hidden; }
 .permissions-editor thead { background: var(--settings-muted); }
 .permissions-editor tbody tr:last-child { border-bottom: 0; }
-.permissions-editor button.bg-indigo-600 { background: var(--settings-blue) !important; border-color: var(--settings-blue) !important; }
+.permissions-editor button.bg-indigo-600 { background: var(--settings-action) !important; border-color: var(--settings-action) !important; color: var(--settings-action-ink) !important; }
 
-.app-modal { border-color: var(--settings-line) !important; border-radius: .75rem !important; box-shadow: 0 20px 60px rgb(29 32 38 / .2) !important; }
-.app-modal > div:first-child { background: var(--settings-muted) !important; border-color: var(--settings-line) !important; }
-.catalog-qr-modal > div:first-child { border: 1px solid var(--settings-line); border-radius: .625rem; }
-.catalog-qr-modal .bg-slate-100 { background: var(--settings-muted) !important; border-radius: .5rem; }
-.toast-container > div { border: 1px solid rgb(255 255 255 / .18); border-radius: .625rem !important; box-shadow: 0 12px 28px rgb(29 32 38 / .18) !important; }
+.app-modal { color: var(--ink); background: var(--surface) !important; border-color: var(--line) !important; border-radius: .75rem !important; box-shadow: 0 20px 60px var(--shadow-color) !important; }
+.app-modal > div:first-child { background: var(--surface-muted) !important; border-color: var(--line) !important; }
+.app-modal > div:last-child { background: var(--surface); }
+.catalog-qr-modal > div:first-child { border: 1px solid var(--line); border-radius: .625rem; }
+.catalog-qr-modal .bg-slate-100 { background: var(--surface-muted) !important; border-radius: .5rem; }
+.toast-container > div { border: 1px solid rgb(255 255 255 / .18); border-radius: .625rem !important; box-shadow: 0 12px 28px var(--shadow-color) !important; }
+.toast-container .app-toast-success { background: var(--toast-success-bg); color: var(--toast-success-ink); border-color: var(--toast-success-line); }
+.toast-container .app-toast-error { background: var(--toast-error-bg); color: var(--toast-error-ink); border-color: var(--toast-error-line); }
+.toast-container .app-toast-info { background: var(--toast-info-bg); color: var(--toast-info-ink); border-color: var(--toast-info-line); }
 
 .public-page-state, .public-quote-page, .public-product-page, .public-catalog { font-family: "Inter Tight", ui-sans-serif, system-ui, sans-serif; }
 .public-page-state { background: #f4f1ea !important; color: #1d2026; }
@@ -109,7 +119,7 @@
 .public-quote-page { background: #f4f1ea !important; color: #1d2026; }
 .public-quote-page .max-w-2xl { max-width: 48rem; }
 .public-quote-page .bg-white { background: #fcfaf5 !important; border-color: #ddd8ce !important; box-shadow: 0 1px 2px rgb(29 32 38 / .045) !important; }
-.public-quote-page .bg-indigo-600 { background: #365fad !important; }
+.public-quote-page .bg-indigo-600 { background: var(--action-bg) !important; color: var(--action-ink) !important; }
 .public-quote-page .rounded-2xl { border-radius: .75rem !important; }
 .public-quote-page .bg-slate-50 { background: #f0ede6 !important; }
 .public-quote-page h1 { letter-spacing: -.045em; }
@@ -127,5 +137,67 @@
   .public-quote-page .px-8 { padding-left: 1.25rem; padding-right: 1.25rem; }
 }
 
-.dark .settings-panel, .dark .settings-tabs, .dark .team-row, .dark .app-modal { background: #202329 !important; border-color: #3a3d44 !important; }
-.dark .settings-page input:not([type='checkbox']):not([type='radio']), .dark .settings-page select, .dark .settings-page textarea { background: #202329 !important; border-color: #3a3d44 !important; }
+.dark .settings-page,
+.dark .team-tab,
+.dark .invite-dialog,
+.dark .catalog-qr-modal { color: var(--ink); }
+
+.dark .settings-panel,
+.dark .settings-tabs,
+.dark .team-row,
+.dark .app-modal { background: var(--surface) !important; border-color: var(--line) !important; }
+
+.dark .settings-page input:not([type='checkbox']):not([type='radio']),
+.dark .settings-page select,
+.dark .settings-page textarea,
+.dark .invite-dialog input:not([type='checkbox']):not([type='radio']),
+.dark .invite-dialog select,
+.dark .invite-dialog textarea {
+  background: var(--surface-raised) !important;
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+}
+
+.dark .settings-page .bg-white,
+.dark .team-tab .bg-white,
+.dark .invite-dialog .bg-white { background-color: var(--surface) !important; }
+.dark .settings-page .bg-slate-50,
+.dark .settings-page .bg-slate-800,
+.dark .settings-page .bg-slate-800\/50,
+.dark .team-tab .bg-slate-50,
+.dark .team-tab .bg-slate-800,
+.dark .invite-dialog .bg-slate-50,
+.dark .invite-dialog .bg-slate-800 { background-color: var(--surface-muted) !important; }
+
+.dark .settings-page .border-slate-100,
+.dark .settings-page .border-slate-200,
+.dark .settings-page .border-slate-700,
+.dark .settings-page .border-slate-800,
+.dark .team-tab .border-slate-100,
+.dark .team-tab .border-slate-200,
+.dark .team-tab .border-slate-700,
+.dark .permissions-editor tr { border-color: var(--line) !important; }
+
+.dark .settings-page .text-slate-900,
+.dark .team-tab .text-slate-900,
+.dark .app-modal .text-slate-900 { color: var(--ink) !important; }
+.dark .settings-page .text-slate-700,
+.dark .settings-page .text-slate-600,
+.dark .team-tab .text-slate-700,
+.dark .team-tab .text-slate-600,
+.dark .app-modal .text-slate-700,
+.dark .app-modal .text-slate-600 { color: var(--ink-subtle) !important; }
+.dark .settings-page .text-slate-500,
+.dark .settings-page .text-slate-400,
+.dark .team-tab .text-slate-500,
+.dark .team-tab .text-slate-400,
+.dark .app-modal .text-slate-500,
+.dark .app-modal .text-slate-400 { color: var(--ink-muted) !important; }
+
+.dark .permissions-editor thead { background: var(--surface-muted); }
+.dark .permissions-editor tbody tr:hover { background: var(--surface-raised); }
+.dark .catalog-qr-modal > div:first-child { background: white !important; border-color: var(--line-strong); }
+.dark .catalog-qr-modal .bg-slate-100 { background: var(--surface-muted) !important; }
+
+/* Public catalog dark mode remains independent from the authenticated app theme. */
+html.catalog-dark .public-page-state { background: #080808 !important; color: #f7f7f7; }

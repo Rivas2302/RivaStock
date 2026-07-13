@@ -90,7 +90,7 @@ export default function PublicProductPage() {
 
   if (loading) {
     return (
-      <div className="public-page-state min-h-screen flex items-center justify-center bg-white">
+      <div className="public-page-state min-h-[100dvh] flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent" />
       </div>
     );
@@ -98,7 +98,7 @@ export default function PublicProductPage() {
 
   if (error || !product || !config) {
     return (
-      <div className="public-page-state min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="public-page-state min-h-[100dvh] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <p className="text-xl font-bold text-slate-700">{error || 'Producto no encontrado'}</p>
         <Link
           to={`/catalogo/${slug}`}
@@ -120,9 +120,9 @@ export default function PublicProductPage() {
   const accentColor = config.accentColor || '#6366f1';
 
   return (
-    <div className="public-product-page min-h-screen bg-white text-slate-900">
+    <div className="public-product-page min-h-[100dvh] bg-white text-slate-900">
       <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex items-center justify-between gap-2">
           <Link
             to={`/catalogo/${slug}`}
             className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-semibold transition-colors shrink-0"
@@ -132,31 +132,33 @@ export default function PublicProductPage() {
             <span className="sm:hidden">Catálogo</span>
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              aria-label={copied ? 'Enlace copiado' : 'Copiar enlace del producto'}
+              className="flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
             >
               {copied ? (
                 <Check size={15} className="text-emerald-500" />
               ) : (
                 <Copy size={15} />
               )}
-              {copied ? 'Copiado' : 'Copiar link'}
+              <span className="hidden sm:inline">{copied ? 'Copiado' : 'Copiar link'}</span>
             </button>
             <button
               onClick={handleWhatsApp}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors"
+              aria-label="Compartir producto por WhatsApp"
+              className="flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors shrink-0"
             >
               <MessageCircle size={15} />
-              WhatsApp
+              <span className="hidden min-[390px]:inline">WhatsApp</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-7 sm:gap-12 items-start">
           <div className="space-y-4">
             <div className="aspect-square rounded-3xl overflow-hidden bg-slate-50 relative">
               {imgs.length > 0 ? (
@@ -272,7 +274,7 @@ export default function PublicProductPage() {
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 Compartir producto
               </p>
-              <div className="flex gap-3">
+              <div className="flex flex-col min-[380px]:flex-row gap-3">
                 <button
                   onClick={handleCopy}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-slate-200 rounded-2xl font-semibold text-slate-700 hover:border-slate-300 transition-colors"

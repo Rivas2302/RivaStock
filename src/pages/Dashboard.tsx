@@ -266,7 +266,7 @@ export default function Dashboard() {
         </div>
         <button
           onClick={handleExportDashboardPDF}
-          className="subtle-action hidden md:flex items-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300"
+          className="subtle-action flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300"
         >
           <FileDown size={18} />
           Exportar reporte PDF

@@ -368,7 +368,7 @@ useEffect(() => {
 
 if (loading) {
     return (
-      <div className="public-page-state min-h-screen flex items-center justify-center bg-white">
+      <div className="public-page-state min-h-[100dvh] flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4 max-w-sm text-center px-6">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
           <p className="text-slate-500 font-medium animate-pulse">Cargando catálogo...</p>
@@ -390,7 +390,7 @@ if (loading) {
   if (error || !config) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return (
-        <div className="public-page-state min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="public-page-state min-h-[100dvh] flex items-center justify-center bg-slate-50 p-6 text-center">
           <div className="max-w-md space-y-6">
             <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
               <XCircle size={48} />
@@ -403,7 +403,7 @@ if (loading) {
       );
     }
     return (
-      <div className="public-page-state min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+      <div className="public-page-state min-h-[100dvh] flex items-center justify-center bg-slate-50 p-6 text-center">
         <div className="max-w-md space-y-6">
           <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
             <XCircle size={48} />
@@ -428,7 +428,7 @@ if (loading) {
 
   return (
     <div className={cn(
-      "public-catalog min-h-screen font-sans selection:bg-indigo-500/30 relative transition-colors duration-500",
+      "public-catalog min-h-[100dvh] font-sans selection:bg-indigo-500/30 relative transition-colors duration-500",
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
     )}>
       <AnimatePresence>
@@ -437,7 +437,7 @@ if (loading) {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 bg-rose-500 text-white rounded-full shadow-2xl z-[100] font-bold text-sm backdrop-blur-md"
+            className="fixed top-[max(1rem,env(safe-area-inset-top))] left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 px-4 sm:px-6 py-3 bg-rose-500 text-white text-center rounded-2xl sm:rounded-full shadow-2xl z-[100] font-bold text-sm leading-snug backdrop-blur-md break-words"
           >
             {message}
           </motion.div>
@@ -450,10 +450,10 @@ if (loading) {
         darkMode ? "bg-[#080808]/80 border-white/5" : "bg-white/80 border-slate-100",
         "backdrop-blur-xl"
       )}>
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-20 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {config.logoUrl ? (
-              <img src={config.logoUrl} alt={businessName} className="h-10 w-auto object-contain" referrerPolicy="no-referrer" />
+              <img src={config.logoUrl} alt={businessName} className="h-9 sm:h-10 w-auto max-w-[7.5rem] sm:max-w-[12rem] object-contain" referrerPolicy="no-referrer" />
             ) : (
               <div 
                 className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg"
@@ -473,20 +473,20 @@ if (loading) {
             </h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 mr-2 border-r border-white/10 pr-4">
+          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+            <div className="hidden sm:flex items-center gap-3 mr-2 border-r border-white/10 pr-4">
               {config.instagramUrl && (
-                <a href={config.instagramUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                <a href={config.instagramUrl} target="_blank" rel="noreferrer" aria-label="Instagram" className="text-slate-400 hover:text-white transition-colors">
                   <Instagram size={18} />
                 </a>
               )}
               {config.facebookUrl && (
-                <a href={config.facebookUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                <a href={config.facebookUrl} target="_blank" rel="noreferrer" aria-label="Facebook" className="text-slate-400 hover:text-white transition-colors">
                   <Facebook size={18} />
                 </a>
               )}
               {config.whatsappNumber && (
-                <a href={`https://wa.me/${config.whatsappNumber}`} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">
+                <a href={`https://wa.me/${config.whatsappNumber}`} target="_blank" rel="noreferrer" aria-label="WhatsApp" className="text-slate-400 hover:text-emerald-400 transition-colors">
                   <MessageCircle size={18} />
                 </a>
               )}
@@ -494,6 +494,7 @@ if (loading) {
 
             <button
               onClick={() => setDarkMode(!darkMode)}
+              aria-label={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
               className={cn(
                 "p-2 rounded-full transition-all",
                 darkMode ? "bg-white/5 hover:bg-white/10 text-yellow-400" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
@@ -504,6 +505,7 @@ if (loading) {
 
             <button 
               onClick={() => setIsCartOpen(true)}
+              aria-label={`Abrir carrito, ${cartItemCount} productos`}
               className={cn(
                 "relative p-2.5 rounded-full transition-all group",
                 darkMode ? "bg-white/5 hover:bg-white/10" : "bg-slate-100 hover:bg-slate-200"
@@ -920,7 +922,7 @@ if (loading) {
       </footer>
 
       {/* Floating Cart Button (Mobile) */}
-      <div className="fixed bottom-10 right-10 z-40 md:hidden">
+      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 md:hidden">
         <button 
           onClick={() => setIsCartOpen(true)}
           className="w-16 h-16 rounded-full text-white shadow-2xl flex items-center justify-center relative active:scale-95 transition-all"
@@ -952,7 +954,7 @@ if (loading) {
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className={cn(
-                "fixed right-0 top-0 bottom-0 w-full max-w-md z-50 shadow-2xl flex flex-col transition-colors duration-500",
+                "fixed right-0 top-0 bottom-0 w-full max-w-md z-50 shadow-2xl flex flex-col transition-colors duration-500 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
                 darkMode ? "bg-[#0f0f0f]" : "bg-white"
               )}
             >
@@ -1138,7 +1140,7 @@ if (loading) {
       {/* Checkout Modal */}
       <AnimatePresence>
         {isCheckoutOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1151,11 +1153,11 @@ if (loading) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                "w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden relative z-10 border",
+                "w-full max-w-lg max-h-[calc(100dvh_-_2rem)] rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden relative z-10 border flex flex-col",
                 darkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-100"
               )}
             >
-              <div className="p-10 space-y-8">
+              <div className="p-5 sm:p-10 space-y-6 sm:space-y-8 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <div className="text-center space-y-3">
                   <h3 className={cn(
                     "text-3xl font-black tracking-tight",

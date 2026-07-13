@@ -7,7 +7,7 @@ export default function ToastContainer() {
   const { toasts, remove } = useToastStore();
 
   return (
-    <div className="toast-container fixed bottom-6 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="toast-container flex w-full flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((toast) => (
           <motion.div
@@ -16,16 +16,16 @@ export default function ToastContainer() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             className={cn(
-              "pointer-events-auto flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm",
-              toast.type === 'success' && "bg-emerald-500 text-white",
-              toast.type === 'error'   && "bg-rose-500 text-white",
-              toast.type === 'info'    && "bg-slate-800 text-white dark:bg-slate-700",
+              "app-toast pointer-events-auto flex w-full sm:w-auto sm:max-w-md items-start gap-3 px-4 sm:px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm",
+              toast.type === 'success' && "app-toast-success",
+              toast.type === 'error'   && "app-toast-error",
+              toast.type === 'info'    && "app-toast-info",
             )}
           >
-            <span>{toast.text}</span>
+            <span className="min-w-0 flex-1 break-words leading-snug">{toast.text}</span>
             <button
               onClick={() => remove(toast.id)}
-              className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
+              className="ml-auto shrink-0 opacity-70 hover:opacity-100 transition-opacity"
             >
               <X size={14} />
             </button>

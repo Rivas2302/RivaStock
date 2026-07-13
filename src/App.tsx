@@ -44,7 +44,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50 dark:bg-slate-950">
         <Loader2 className="animate-spin text-indigo-600" size={48} />
       </div>
     );
@@ -146,20 +146,22 @@ function AppShell() {
           Estás trabajando sin conexión. Los cambios se sincronizarán al recuperar la conexión.
         </div>
       )}
-      {showInstallBanner && !publicRoute && (
-        <div className="fixed bottom-4 left-4 right-4 bg-[#1a1a1a] text-white p-4 rounded-2xl shadow-2xl z-[100] flex items-center justify-between border border-[#2a2a2a]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold">RS</div>
-            <p className="text-sm font-bold">Instalá RivaStock en tu dispositivo</p>
+      <div className={`fixed ${isOnline ? 'top-[max(1rem,env(safe-area-inset-top))]' : 'top-[max(5rem,calc(env(safe-area-inset-top)_+_5rem))]'} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] sm:left-auto sm:w-[min(30rem,calc(100vw_-_2rem))] z-[100] flex flex-col gap-2 pointer-events-none`}>
+        {showInstallBanner && !publicRoute && (
+          <div className="pointer-events-auto bg-[#1a1a1a] text-white p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[#2a2a2a]">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold shrink-0">RS</div>
+              <p className="text-sm font-bold leading-snug">Instalá RivaStock en tu dispositivo</p>
+            </div>
+            <div className="flex items-center justify-end gap-3 self-stretch sm:self-auto shrink-0">
+              <button onClick={() => setShowInstallBanner(false)} className="text-xs font-bold text-slate-400">Ahora no</button>
+              <button onClick={handleInstall} className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-lg">Instalar</button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowInstallBanner(false)} className="text-xs font-bold text-slate-400">Ahora no</button>
-            <button onClick={handleInstall} className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-lg">Instalar</button>
-          </div>
-        </div>
-      )}
+        )}
+        <ToastContainer />
+      </div>
       <AppRoutes />
-      <ToastContainer />
     </>
   );
 }

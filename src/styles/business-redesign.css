@@ -57,16 +57,17 @@
   }
 
   .business-page .bg-indigo-600 {
-    background-color: var(--brand);
+    background-color: var(--action-bg);
+    color: var(--action-ink);
   }
 
   .business-page .hover\:bg-indigo-700:hover {
-    background-color: var(--brand-strong);
+    background-color: var(--action-bg-hover);
   }
 
   .business-page .bg-indigo-50,
   .business-page .bg-indigo-100 {
-    background-color: #edf2fc;
+    background-color: var(--brand-soft);
   }
 
   .business-page .text-indigo-600,
@@ -75,14 +76,15 @@
   }
 
   .business-page .focus\:ring-indigo-500:focus {
-    --tw-ring-color: rgb(54 95 173 / 0.22);
+    --tw-ring-color: var(--brand-ring);
   }
 
   .business-page input:not([type="checkbox"]):not([type="radio"]),
   .business-page select,
   .business-page textarea {
-    background-color: #fffdf9;
+    background-color: var(--surface-raised);
     border-color: var(--line);
+    color: var(--ink);
     box-shadow: 0 1px 1px rgb(29 32 38 / 0.02);
   }
 
@@ -91,7 +93,7 @@
   }
 
   .business-page table tbody tr:hover {
-    background-color: #f8f6f0;
+    background-color: var(--surface-raised);
   }
 
   .supplier-modal {
@@ -101,31 +103,66 @@
   .supplier-modal input,
   .supplier-modal select,
   .supplier-modal textarea {
-    background: #fffdf9;
+    background: var(--surface-raised);
     border-color: var(--line);
+    color: var(--ink);
     border-radius: 0.5rem;
   }
 
-  .supplier-modal .bg-indigo-600 { background-color: var(--brand); }
-  .supplier-modal .hover\:bg-indigo-700:hover { background-color: var(--brand-strong); }
-  .supplier-modal .focus\:ring-indigo-500:focus { --tw-ring-color: rgb(54 95 173 / 0.22); }
+  .supplier-modal .bg-indigo-600 { background-color: var(--action-bg); color: var(--action-ink); }
+  .supplier-modal .hover\:bg-indigo-700:hover { background-color: var(--action-bg-hover); }
+  .supplier-modal .focus\:ring-indigo-500:focus { --tw-ring-color: var(--brand-ring); }
 }
 
-@media (prefers-color-scheme: dark) {
-  .dark .business-page .bg-white,
-  .dark .business-page .bg-slate-50,
-  .dark .business-page input:not([type="checkbox"]):not([type="radio"]),
-  .dark .business-page select,
-  .dark .business-page textarea,
-  .dark .supplier-modal input,
-  .dark .supplier-modal select,
-  .dark .supplier-modal textarea {
-    background-color: #202329;
-    border-color: #3a3d44;
-  }
+/* The application theme is explicit; it must never depend on the OS media query. */
+.dark .business-page,
+.dark .supplier-modal { color: var(--ink); }
 
-  .dark .business-page table thead { background-color: #292c33; }
-  .dark .business-page table tbody tr:hover { background-color: #292c33; }
-  .dark .business-page .bg-indigo-50,
-  .dark .business-page .bg-indigo-100 { background-color: rgb(54 95 173 / 0.2); }
+.dark .business-page .bg-white,
+.dark .business-page .bg-slate-50,
+.dark .business-page .bg-slate-900,
+.dark .supplier-modal,
+.dark .supplier-modal .bg-white,
+.dark .supplier-modal .bg-slate-900 {
+  background-color: var(--surface);
+  border-color: var(--line);
 }
+
+.dark .business-page .bg-slate-50\/50,
+.dark .business-page .bg-slate-800,
+.dark .business-page .bg-slate-800\/50,
+.dark .supplier-modal .bg-slate-50,
+.dark .supplier-modal .bg-slate-800 { background-color: var(--surface-muted); }
+
+.dark .business-page input:not([type="checkbox"]):not([type="radio"]),
+.dark .business-page select,
+.dark .business-page textarea,
+.dark .supplier-modal input,
+.dark .supplier-modal select,
+.dark .supplier-modal textarea {
+  background-color: var(--surface-raised);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.dark .business-page table { color: var(--ink-subtle); }
+.dark .business-page table thead { background-color: var(--surface-muted); color: var(--ink-muted); }
+.dark .business-page table tbody tr:hover { background-color: var(--surface-raised); }
+.dark .business-page .divide-slate-50 > :not(:last-child),
+.dark .business-page .divide-slate-100 > :not(:last-child),
+.dark .business-page .divide-slate-200 > :not(:last-child),
+.dark .business-page .divide-slate-800 > :not(:last-child) { border-color: var(--line); }
+
+.dark .business-page .text-slate-900,
+.dark .supplier-modal .text-slate-900 { color: var(--ink); }
+.dark .business-page .text-slate-700,
+.dark .business-page .text-slate-600,
+.dark .supplier-modal .text-slate-700,
+.dark .supplier-modal .text-slate-600 { color: var(--ink-subtle); }
+.dark .business-page .text-slate-500,
+.dark .business-page .text-slate-400,
+.dark .supplier-modal .text-slate-500,
+.dark .supplier-modal .text-slate-400 { color: var(--ink-muted); }
+
+.dark .business-page .bg-indigo-50,
+.dark .business-page .bg-indigo-100 { background-color: var(--brand-soft); }

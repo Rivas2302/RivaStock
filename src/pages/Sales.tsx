@@ -351,18 +351,18 @@ export default function Sales() {
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ventas</h2>
           <p className="text-slate-500 dark:text-slate-400">Registra y gestiona tus ventas</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative hidden md:block" ref={exportMenuRef}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 sm:flex-none" ref={exportMenuRef}>
             <button
               onClick={() => setShowExportMenu(v => !v)}
-              className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <Download size={20} />
               Exportar
               <ChevronDown size={16} />
             </button>
             {showExportMenu && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm z-20 overflow-hidden">
+              <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-56 max-w-[calc(100vw_-_2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm z-20 overflow-hidden">
                 <button
                   onClick={handleExportExcel}
                   className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3"

@@ -165,17 +165,17 @@ export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200"
+            className="barcode-print-modal w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700"
           >
-            <div className="flex items-center justify-between p-5 border-b border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Tag size={20} className="text-indigo-600" />
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Tag size={20} className="text-indigo-600 dark:text-indigo-400" />
                 Vista previa de etiqueta
               </h3>
               <button
                 onClick={onClose}
                 aria-label="Cerrar"
-                className="p-2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
               >
                 <X size={22} />
               </button>
@@ -197,7 +197,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 p-5 space-y-4">
+            <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <span className="relative">
                   <input
@@ -209,12 +209,12 @@ export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
                   <span className="w-10 h-6 bg-slate-300 rounded-full transition-colors peer-checked:bg-indigo-600 block" />
                   <span className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
                 </span>
-                <span className="text-sm font-medium text-slate-700">Mostrar nombre en la etiqueta</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Mostrar nombre en la etiqueta</span>
               </label>
 
               {showName && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1.5">
                     Texto de la etiqueta
                   </label>
                   <input
@@ -223,17 +223,17 @@ export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
                     onChange={(e) => setNameOverride(e.target.value)}
                     placeholder="Ej: Camiseta M, o dejá vacío"
                     maxLength={60}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:text-white"
                   />
                 </div>
               )}
             </div>
 
-            <div className="flex gap-3 p-5 border-t border-slate-200 bg-slate-50">
+            <div className="flex gap-3 p-5 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-white transition-colors"
+                className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold rounded-xl hover:bg-white dark:hover:bg-slate-700 transition-colors"
               >
                 Cerrar
               </button>
