@@ -163,7 +163,9 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
 
 // ─── camelCase ↔ snake_case helpers ──────────────────────────────────────────
 
-const IDENTITY_FIELDS = new Set(['email_contact', 'created_at', 'updated_at']);
+// `email_contact` is intentionally snake_case in the application model. Audit
+// events and the rest of the domain model, however, use camelCase timestamps.
+const IDENTITY_FIELDS = new Set(['email_contact']);
 
 function toSnake(s: string): string {
   return s.replace(/([A-Z])/g, m => '_' + m.toLowerCase());
