@@ -102,6 +102,28 @@ export interface CashFlowEntry {
   notes?: string;
 }
 
+export interface CashClosing {
+  id: string;
+  ownerUid: string;
+  date: string;
+  expectedCash: number;
+  countedCash: number;
+  difference: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  ownerUid: string;
+  actorUid?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface Order {
   id: string;
   date: string;

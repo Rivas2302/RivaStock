@@ -21,6 +21,38 @@ interface CacheEntry {
 }
 
 const queryCache = new Map<string, CacheEntry>();
+const OFFLINE_QUEUE_KEY = 'rivastock:offline-mutations';
+const OFFLINE_QUEUE_EVENT = 'rivastock:offline-queue-changed';
+
+type OfflineMutation = {
+  operation: 'create' | 'update' | 'delete';
+  collectionName: string;
+  id?: string;
+  row?: Record<string, unknown>;
+};
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+function readOfflineQueue(): OfflineMutation[] {
+  if (typeof localStorage === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) ?? '[]') as OfflineMutation[]; }
+  catch { return []; }
+}
+
+function writeOfflineQueue(queue: OfflineMutation[]): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+}
+
+export function getOfflineQueueSize(): number { return readOfflineQueue().length; }
+
+export function subscribeToOfflineQueue(listener: () => void): () => void {
+  window.addEventListener(OFFLINE_QUEUE_EVENT, listener);
+  return () => window.removeEventListener(OFFLINE_QUEUE_EVENT, listener);
+}
 
 const RPC_INVALIDATIONS: Record<string, string[]> = {
   convert_quote_to_sale: ['quotes', 'sales', 'cash_flow', 'products', 'customers'],
@@ -167,6 +199,10 @@ export function toDb(obj: Record<string, unknown>, isProfile = false): Record<st
   return out;
 }
 
+function enqueueOfflineMutation(mutation: OfflineMutation): void {
+  writeOfflineQueue([...readOfflineQueue(), mutation]);
+}
+
 /** Convert a DB snake_case row to a TS camelCase object */
 export function fromDb<T>(row: Record<string, unknown>, isProfile = false): T {
   const out: Record<string, unknown> = {};
@@ -307,6 +343,12 @@ class SupabaseDB {
       row['id'] = uuid();
     }
 
+    if (isOffline()) {
+      enqueueOfflineMutation({ operation: 'create', collectionName, row });
+      invalidateDbCache(collectionName);
+      return item as T;
+    }
+
     const { data, error } = await supabase
       .from(tbl)
       .insert(row)
@@ -324,6 +366,12 @@ class SupabaseDB {
     const ip  = this.isProfile(collectionName);
     const row = toDb(updates as Record<string, unknown>, ip);
 
+    if (isOffline()) {
+      enqueueOfflineMutation({ operation: 'update', collectionName, id, row });
+      invalidateDbCache(collectionName);
+      return { id, ...(updates as Record<string, unknown>) } as T;
+    }
+
     const { data, error } = await supabase
       .from(tbl)
       .update(row)
@@ -339,6 +387,12 @@ class SupabaseDB {
 
   async delete(collectionName: string, id: string): Promise<void> {
     const tbl = tableName(collectionName);
+
+    if (isOffline()) {
+      enqueueOfflineMutation({ operation: 'delete', collectionName, id });
+      invalidateDbCache(collectionName);
+      return;
+    }
 
     const { error } = await supabase.from(tbl).delete().eq('id', id);
     if (error) throw new Error(`[db.delete:${tbl}/${id}] ${error.message}`);
@@ -407,6 +461,41 @@ class SupabaseDB {
 }
 
 export const db = new SupabaseDB();
+
+export async function syncOfflineMutations(): Promise<void> {
+  if (isOffline()) return;
+  const queue = readOfflineQueue();
+  const remaining: OfflineMutation[] = [];
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const mutation = queue[index];
+    const table = tableName(mutation.collectionName);
+    let error: Error | null = null;
+
+    if (mutation.operation === 'create') {
+      const result = await supabase.from(table).insert(mutation.row ?? {});
+      error = result.error;
+    } else if (mutation.operation === 'update') {
+      const result = await supabase.from(table).update(mutation.row ?? {}).eq('id', mutation.id ?? '');
+      error = result.error;
+    } else {
+      const result = await supabase.from(table).delete().eq('id', mutation.id ?? '');
+      error = result.error;
+    }
+
+    if (error) {
+      remaining.push(...queue.slice(index));
+      break;
+    }
+    invalidateDbCache(mutation.collectionName);
+  }
+
+  writeOfflineQueue(remaining);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { void syncOfflineMutations(); });
+}
 
 // ─── RPC helper ───────────────────────────────────────────────────────────────
 

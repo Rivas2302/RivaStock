@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db } from '../lib/db';
-import { CashFlowEntry } from '../types';
+import { AuditEvent, CashClosing, CashFlowEntry } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -14,7 +14,8 @@ import {
   TrendingUp,
   TrendingDown,
   Edit2,
-  Trash2
+  Trash2,
+  ClipboardCheck
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
@@ -34,6 +35,9 @@ export default function CashFlow() {
   const [saving, setSaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CashFlowEntry | null>(null);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
+  const [isClosingOpen, setIsClosingOpen] = useState(false);
+  const [countedCash, setCountedCash] = useState('');
+  const [closingNotes, setClosingNotes] = useState('');
   const [formData, setFormData] = useState<Partial<CashFlowEntry>>({
     date: todayString(),
     description: '',
@@ -55,6 +59,42 @@ export default function CashFlow() {
       notes: ''
     });
     setEditingEntry(null);
+  };
+
+  const handleCashClosing = async (event: React.FormEvent, expectedCash: number) => {
+    event.preventDefault();
+    if (!user || saving || countedCash.trim() === '') return;
+    const counted = Number(countedCash);
+    if (!Number.isFinite(counted) || counted < 0) return;
+
+    setSaving(true);
+    try {
+      const closing = await db.create<CashClosing>('cash_closings', {
+        id: crypto.randomUUID(),
+        ownerUid: user.uid,
+        date: todayString(),
+        expectedCash,
+        countedCash: counted,
+        difference: counted - expectedCash,
+        notes: closingNotes.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      });
+      await db.create<AuditEvent>('audit_events', {
+        id: crypto.randomUUID(),
+        ownerUid: user.uid,
+        actorUid: user.uid,
+        action: 'cash_closing_created',
+        entityType: 'cash_closing',
+        entityId: closing.id,
+        metadata: { expectedCash, countedCash: counted, difference: counted - expectedCash },
+        createdAt: new Date().toISOString(),
+      });
+      setIsClosingOpen(false);
+      setCountedCash('');
+      setClosingNotes('');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const isSaleManagedEntry = (entry: CashFlowEntry) => entry.source === 'Venta' && !!entry.saleId;
@@ -234,6 +274,15 @@ export default function CashFlow() {
           <p className="text-slate-500 dark:text-slate-400">Control de ingresos y egresos</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsClosingOpen(true)}
+            disabled={!canWrite}
+            title={!canWrite ? 'Sin permiso' : undefined}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ClipboardCheck size={20} />
+            Cerrar caja
+          </button>
           <button
             onClick={() => { resetForm(); setModalType('Ingreso'); setIsModalOpen(true); }}
             disabled={!canWrite}
@@ -436,6 +485,46 @@ export default function CashFlow() {
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={isClosingOpen}
+        onClose={() => { setIsClosingOpen(false); setCountedCash(''); setClosingNotes(''); }}
+        title="Cierre de caja"
+      >
+        <form onSubmit={(event) => handleCashClosing(event, availableCash)} className="space-y-5">
+          <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Efectivo esperado</p>
+            <p className="mt-1 text-3xl font-black text-slate-900 dark:text-white">{formatCurrency(availableCash)}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Calculado con ingresos y egresos cobrados en efectivo.</p>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Efectivo contado</label>
+            <input
+              autoFocus
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={countedCash}
+              onChange={(event) => setCountedCash(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Observación</label>
+            <textarea
+              value={closingNotes}
+              onChange={(event) => setClosingNotes(event.target.value)}
+              rows={3}
+              placeholder="Ej.: diferencia por cambio inicial"
+              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+          </div>
+          <button disabled={saving} className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-60">
+            {saving ? 'Registrando...' : 'Confirmar cierre'}
+          </button>
+        </form>
+      </Modal>
 
       {/* Add/Edit Modal */}
       <Modal

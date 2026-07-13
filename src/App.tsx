@@ -6,6 +6,7 @@ import RequirePermission from './components/RequirePermission';
 import ToastContainer from './components/ToastContainer';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { getOfflineQueueSize, subscribeToOfflineQueue, syncOfflineMutations } from './lib/db';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Stock = lazy(() => import('./pages/Stock'));
@@ -27,6 +28,7 @@ const AuthConfirm = lazy(() => import('./pages/AuthConfirm'));
 const PublicProductPage = lazy(() => import('./pages/PublicProductPage'));
 const POS = lazy(() => import('./pages/POS'));
 const Reports = lazy(() => import('./pages/Reports'));
+const AuditTrail = lazy(() => import('./pages/AuditTrail'));
 
 function PageLoader() {
   return (
@@ -78,6 +80,7 @@ function AppRoutes() {
           <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
           <Route path="calculadora" element={withSuspense(<Calculator />)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
+          <Route path="trazabilidad" element={withSuspense(<RequirePermission module="config"><AuditTrail /></RequirePermission>)} />
         </Route>
 
       <Route path="*" element={<Navigate to="/" />} />
@@ -104,6 +107,7 @@ function AppShell() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(getOfflineQueueSize);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);
@@ -114,6 +118,14 @@ function AppShell() {
       window.removeEventListener('online',  handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setPendingSyncCount(getOfflineQueueSize());
+    const unsubscribe = subscribeToOfflineQueue(refresh);
+    window.addEventListener('online', refresh);
+    void syncOfflineMutations().finally(refresh);
+    return () => { unsubscribe(); window.removeEventListener('online', refresh); };
   }, []);
 
   useEffect(() => {
@@ -143,7 +155,7 @@ function AppShell() {
     <>
       {!isOnline && !publicRoute && (
         <div className="bg-rose-600 text-white text-center py-2 text-sm font-bold z-[100] relative">
-          Estás trabajando sin conexión. Los cambios se sincronizarán al recuperar la conexión.
+          Estás trabajando sin conexión. {pendingSyncCount > 0 ? `${pendingSyncCount} cambio${pendingSyncCount === 1 ? '' : 's'} pendiente${pendingSyncCount === 1 ? '' : 's'} de sincronización.` : 'Los cambios nuevos se sincronizarán al recuperar la conexión.'}
         </div>
       )}
       <div className={`fixed ${isOnline ? 'top-[max(1rem,env(safe-area-inset-top))]' : 'top-[max(5rem,calc(env(safe-area-inset-top)_+_5rem))]'} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] sm:left-auto sm:w-[min(30rem,calc(100vw_-_2rem))] z-[100] flex flex-col gap-2 pointer-events-none`}>

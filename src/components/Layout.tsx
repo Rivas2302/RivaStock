@@ -16,7 +16,8 @@ import {
   FileText,
   Users,
   Building2,
-  BarChart3
+  BarChart3,
+  History
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -44,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },
   { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, module: 'pedidos' },
   { name: 'Calculadora', path: '/calculadora', icon: Calculator, module: null },
+  { name: 'Trazabilidad', path: '/trazabilidad', icon: History, module: 'config' },
   { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
 ];
 
@@ -62,7 +64,7 @@ export default function Layout() {
     { label: 'Operación', paths: ['/', '/stock', '/ventas', '/reportes', '/presupuestos'] },
     { label: 'Relaciones', paths: ['/clientes', '/proveedores'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
-    { label: 'Sistema', paths: ['/config'] },
+    { label: 'Sistema', paths: ['/trazabilidad', '/config'] },
   ].map((group) => ({
     ...group,
     items: navItems.filter((item) => group.paths.includes(item.path)),
