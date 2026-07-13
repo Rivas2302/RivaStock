@@ -152,6 +152,14 @@
       "sessions": 0,
       "memories": 6,
       "prompts": 2
+    },
+    {
+      "id": "1b9cd295",
+      "created_by": "USER",
+      "created_at": "2026-07-13T21:45:49Z",
+      "sessions": 0,
+      "memories": 2,
+      "prompts": 1
     }
   ]
 }
