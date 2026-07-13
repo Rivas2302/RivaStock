@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
-import { generatePriceListPdf } from '../lib/priceListPdf';
+import { createPriceListPdf } from '../lib/priceListPdf';
 import { showToast } from '../lib/toast';
 import { Product, Category, PriceRange } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
@@ -24,6 +24,7 @@ import {
   Barcode,
   Printer,
   FileText,
+  Download,
   Loader2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
@@ -140,8 +141,13 @@ export default function Stock() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
 
-  const handleExportPriceList = async () => {
+  useEffect(() => () => {
+    if (priceListPreview) URL.revokeObjectURL(priceListPreview.url);
+  }, [priceListPreview]);
+
+  const handlePriceList = async (action: 'preview' | 'download') => {
     if (isExportingPdf) return;
     if (!user) return;
     if (products.length === 0) {
@@ -151,13 +157,27 @@ export default function Stock() {
     setIsExportingPdf(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      generatePriceListPdf({
+      const pdf = createPriceListPdf({
         products,
         categories,
         businessName: user.businessName,
         currencySymbol: user.currencySymbol,
       });
-      showToast('Lista de precios generada correctamente.', 'success');
+
+      const url = URL.createObjectURL(pdf.blob);
+      if (action === 'preview') {
+        setPriceListPreview({ url, fileName: pdf.fileName });
+        showToast('Vista previa de la lista de precios generada.', 'success');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = pdf.fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+        showToast('Lista de precios descargada correctamente.', 'success');
+      }
     } catch (err) {
       console.error('[Stock] price list PDF error:', err);
       showToast('No se pudo generar la lista de precios.', 'error');
@@ -400,14 +420,14 @@ export default function Stock() {
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <button
             type="button"
-            onClick={handleExportPriceList}
+            onClick={() => handlePriceList('preview')}
             disabled={isExportingPdf || products.length === 0}
             title={
               products.length === 0
                 ? 'No hay productos para listar'
                 : isExportingPdf
                   ? 'Generando PDF...'
-                  : 'Descargar lista de precios en PDF'
+                  : 'Ver lista de precios'
             }
             className={cn(
               'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border',
@@ -417,7 +437,28 @@ export default function Stock() {
             )}
           >
             {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
-            {isExportingPdf ? 'Generando...' : 'Lista de Precios'}
+            {isExportingPdf ? 'Generando...' : 'Ver lista de precios'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePriceList('download')}
+            disabled={isExportingPdf || products.length === 0}
+            title={
+              products.length === 0
+                ? 'No hay productos para listar'
+                : isExportingPdf
+                  ? 'Generando PDF...'
+                  : 'Descargar lista de precios en PDF'
+            }
+            className={cn(
+              'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all',
+              isExportingPdf || products.length === 0
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                : 'bg-[#365fad] hover:bg-[#284b91] text-white shadow-sm shadow-slate-900/10'
+            )}
+          >
+            {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            {isExportingPdf ? 'Generando...' : 'Descargar PDF'}
           </button>
           <button 
             onClick={() => {
@@ -447,6 +488,33 @@ export default function Stock() {
           </button>
         </div>
       </div>
+
+      <Modal
+        isOpen={priceListPreview !== null}
+        onClose={() => setPriceListPreview(null)}
+        title="Vista previa de lista de precios"
+        className="max-w-6xl h-[calc(100dvh-2rem)]"
+      >
+        {priceListPreview && (
+          <div className="flex h-full min-h-[calc(100dvh-10rem)] flex-col gap-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+              <p className="text-sm text-slate-600 dark:text-slate-300">Revisá el documento antes de imprimirlo o descargarlo.</p>
+              <a
+                href={priceListPreview.url}
+                download={priceListPreview.fileName}
+                className="shrink-0 rounded-lg bg-[#365fad] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#284b91]"
+              >
+                Descargar PDF
+              </a>
+            </div>
+            <iframe
+              src={priceListPreview.url}
+              title="Vista previa de la lista de precios"
+              className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700"
+            />
+          </div>
+        )}
+      </Modal>
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && canWrite && (

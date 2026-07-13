@@ -15,6 +15,11 @@ interface CategoryGroup {
   items: Product[];
 }
 
+export interface PriceListPdf {
+  blob: Blob;
+  fileName: string;
+}
+
 const formatPrice = (amount: number, symbol: string): string => {
   const value = roundPrice(amount);
   const formatted = value.toLocaleString('es-AR', {
@@ -24,213 +29,184 @@ const formatPrice = (amount: number, symbol: string): string => {
   return `${symbol} ${formatted}`;
 };
 
-const getProductCode = (p: Product): string | null => {
-  const cf = p.customFields;
-  if (!cf) return null;
-  const candidates = ['codigo', 'code', 'Código', 'Code', 'CODIGO', 'sku', 'SKU'];
-  for (const key of candidates) {
-    const raw = cf[key];
-    if (raw === null || raw === undefined) continue;
-    const str = String(raw).trim();
-    if (str.length > 0) return str;
+const getProductCode = (product: Product): string | null => {
+  const fields = product.customFields;
+  if (!fields) return null;
+
+  for (const key of ['codigo', 'código', 'code', 'CODIGO', 'CÓDIGO', 'sku', 'SKU']) {
+    const value = fields[key];
+    if (value === null || value === undefined) continue;
+    const code = String(value).trim();
+    if (code) return code;
   }
+
   return null;
 };
 
-const getProductDescription = (p: Product): string => {
-  const parts: string[] = [];
-  if (p.description && p.description.trim().length > 0) {
-    parts.push(p.description.trim());
-  }
-  if (p.notes && p.notes.trim().length > 0) {
-    parts.push(p.notes.trim());
-  }
-  if (parts.length === 0) return '—';
-  return parts.join('\n');
+const getProductDescription = (product: Product): string => {
+  const parts = [product.description, product.notes]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim());
+
+  return parts.join('\n') || '-';
 };
 
-const groupProductsByCategory = (
-  products: Product[],
-  categories: Category[],
-): CategoryGroup[] => {
+const groupProductsByCategory = (products: Product[], categories: Category[]): CategoryGroup[] => {
   const buckets = new Map<string, Product[]>();
-  for (const p of products) {
-    const key = (p.category ?? '').trim() || 'Sin categoría';
-    const arr = buckets.get(key);
-    if (arr) arr.push(p);
-    else buckets.set(key, [p]);
+
+  for (const product of products) {
+    const category = product.category?.trim() || 'Sin categoría';
+    buckets.set(category, [...(buckets.get(category) ?? []), product]);
   }
 
-  const ordered: CategoryGroup[] = [];
-  for (const c of categories) {
-    const items = buckets.get(c.name);
-    if (items && items.length > 0) {
-      ordered.push({ name: c.name, items });
-      buckets.delete(c.name);
-    }
-  }
+  const ordered = categories.flatMap((category) => {
+    const items = buckets.get(category.name);
+    buckets.delete(category.name);
+    return items?.length ? [{ name: category.name, items }] : [];
+  });
 
-  const leftover = Array.from(buckets.entries())
-    .filter(([, items]) => items.length > 0)
-    .map(([name, items]) => ({ name, items }));
-  leftover.sort((a, b) => a.name.localeCompare(b.name, 'es-AR'));
-  ordered.push(...leftover);
+  const remaining = Array.from(buckets, ([name, items]) => ({ name, items }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es-AR'));
 
-  for (const group of ordered) {
-    group.items.sort((a, b) => a.name.localeCompare(b.name, 'es-AR'));
-  }
-
-  return ordered;
+  return [...ordered, ...remaining].map((group) => ({
+    ...group,
+    items: group.items.sort((a, b) => a.name.localeCompare(b.name, 'es-AR')),
+  }));
 };
 
-export function generatePriceListPdf({
+export function createPriceListPdf({
   products,
   categories,
   businessName,
   currencySymbol = '$',
-}: PriceListPdfOptions): void {
+}: PriceListPdfOptions): PriceListPdf {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = { top: 22, bottom: 18, left: 14, right: 14 };
+  const margin = { top: 34, bottom: 18, left: 14, right: 14 };
   const contentWidth = pageWidth - margin.left - margin.right;
-
   const generatedAt = new Date();
-  const generatedDateStr = generatedAt.toLocaleDateString('es-AR', {
+  const generatedDate = generatedAt.toLocaleDateString('es-AR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   });
-  const fileStamp = generatedAt.toISOString().slice(0, 10);
-  const safeBusiness = (businessName || '').trim() || 'Mi Negocio';
+  const fileName = `lista-precios-${generatedAt.toISOString().slice(0, 10)}.pdf`;
+  const safeBusinessName = businessName.trim() || 'Mi Negocio';
+  const groups = groupProductsByCategory(products, categories);
 
-  const drawPageHeader = (isFirstPage: boolean) => {
-    doc.setTextColor(15, 23, 42);
-    if (isFirstPage) {
+  const drawPageHeader = (pageNumber: number) => {
+    if (pageNumber === 1) {
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, pageWidth, 28, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('Lista de Precios por Categoría', pageWidth / 2, 16, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.setTextColor(71, 85, 105);
-      doc.text(safeBusiness, pageWidth / 2, 22, { align: 'center' });
-      doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Generado el ${generatedDateStr}`, pageWidth / 2, 27, { align: 'center' });
-    } else {
+      doc.setFontSize(17);
+      doc.setTextColor(255, 255, 255);
+      doc.text('LISTA DE PRECIOS', margin.left, 12);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139);
-      doc.text(safeBusiness, margin.left, 12);
-      doc.text('Lista de Precios', pageWidth / 2, 12, { align: 'center' });
-      doc.text(`Generado el ${generatedDateStr}`, pageWidth - margin.right, 12, { align: 'right' });
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.2);
-      doc.line(margin.left, 14, pageWidth - margin.right, 14);
+      doc.setTextColor(203, 213, 225);
+      doc.text(safeBusinessName, margin.left, 19);
+      doc.text(`Actualizada el ${generatedDate}`, pageWidth - margin.right, 19, { align: 'right' });
+      return;
     }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(safeBusinessName, margin.left, 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('Lista de precios', pageWidth / 2, 12, { align: 'center' });
+    doc.text(`Actualizada el ${generatedDate}`, pageWidth - margin.right, 12, { align: 'right' });
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin.left, 15, pageWidth - margin.right, 15);
   };
 
   const drawPageFooter = (pageNumber: number, totalPages: number) => {
+    const y = pageHeight - 8;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin.left, y - 4, pageWidth - margin.right, y - 4);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    const footerY = pageHeight - 8;
-    doc.text(safeBusiness, margin.left, footerY);
-    doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth / 2, footerY, { align: 'center' });
-    doc.text(`Generado el ${generatedDateStr}`, pageWidth - margin.right, footerY, { align: 'right' });
+    doc.setTextColor(100, 116, 139);
+    doc.text(safeBusinessName, margin.left, y);
+    doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - margin.right, y, { align: 'right' });
   };
 
-  const groups = groupProductsByCategory(products, categories);
+  drawPageHeader(1);
 
   if (groups.length === 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(15, 23, 42);
-    doc.text('Lista de Precios por Categoría', pageWidth / 2, 16, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(100, 116, 139);
-    doc.text(safeBusiness, pageWidth / 2, 22, { align: 'center' });
-    doc.text(`Generado el ${generatedDateStr}`, pageWidth / 2, 27, { align: 'center' });
     doc.setFontSize(11);
     doc.setTextColor(71, 85, 105);
-    doc.text('No hay productos cargados para mostrar.', pageWidth / 2, 60, { align: 'center' });
-    drawPageFooter(1, 1);
-    doc.save(`lista-precios-${fileStamp}.pdf`);
-    return;
+    doc.text('No hay productos cargados para mostrar.', pageWidth / 2, 62, { align: 'center' });
   }
 
-  let isFirstPage = true;
-  let cursorY = margin.top + 6;
-  const minRowsBeforeBreak = 3;
-  const rowEstimate = 11;
-  const categoryHeaderHeight = 12;
-
-  const onPageDraw = (data: { pageNumber: number }) => {
-    drawPageHeader(isFirstPage);
-    if (isFirstPage) isFirstPage = false;
-  };
-
+  let cursorY = margin.top;
   for (const group of groups) {
-    if (cursorY + categoryHeaderHeight + minRowsBeforeBreak * rowEstimate > pageHeight - margin.bottom) {
+    const categoryHeight = 9;
+    if (cursorY + categoryHeight + 25 > pageHeight - margin.bottom) {
       doc.addPage();
-      cursorY = margin.top + 4;
+      drawPageHeader(doc.getNumberOfPages());
+      cursorY = 22;
     }
 
+    doc.setFillColor(30, 41, 59);
+    doc.roundedRect(margin.left, cursorY, contentWidth, categoryHeight, 1.5, 1.5, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(30, 41, 59);
-    doc.text(group.name, margin.left, cursorY);
-    cursorY += 2;
-    doc.setDrawColor(99, 102, 241);
-    doc.setLineWidth(0.6);
-    doc.line(margin.left, cursorY, margin.left + contentWidth, cursorY);
-    cursorY += 5;
-
-    const body = group.items.map((p) => {
-      const code = getProductCode(p);
-      const nameCell = code ? `${p.name}\nCód: ${code}` : p.name;
-      return [nameCell, getProductDescription(p), formatPrice(p.salePrice, currencySymbol)];
-    });
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text(group.name.toUpperCase(), margin.left + 3, cursorY + 5.9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`${group.items.length} producto${group.items.length === 1 ? '' : 's'}`, pageWidth - margin.right - 3, cursorY + 5.9, { align: 'right' });
+    cursorY += categoryHeight + 2;
 
     autoTable(doc, {
       startY: cursorY,
-      margin: { top: margin.top, bottom: margin.bottom, left: margin.left, right: margin.right },
-      head: [['Producto', 'Descripción', 'Precio Venta']],
-      body,
+      margin: { top: 22, bottom: margin.bottom, left: margin.left, right: margin.right },
+      head: [['Producto', 'Descripción', 'Precio']],
+      body: group.items.map((product) => {
+        const code = getProductCode(product);
+        return [code ? `${product.name}\nCódigo: ${code}` : product.name, getProductDescription(product), formatPrice(product.salePrice, currencySymbol)];
+      }),
       styles: {
-        fontSize: 9,
-        cellPadding: 2.2,
+        font: 'helvetica',
+        fontSize: 8.7,
+        cellPadding: { top: 2.4, right: 2.5, bottom: 2.4, left: 2.5 },
         textColor: [30, 41, 59],
         lineColor: [226, 232, 240],
         lineWidth: 0.1,
         overflow: 'linebreak',
+        valign: 'middle',
       },
       headStyles: {
-        fillColor: [99, 102, 241],
-        textColor: [255, 255, 255],
+        fillColor: [241, 245, 249],
+        textColor: [51, 65, 85],
         fontStyle: 'bold',
-        fontSize: 9,
+        fontSize: 8,
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: {
-        0: { cellWidth: contentWidth * 0.30, fontStyle: 'bold', valign: 'top' },
-        1: { cellWidth: contentWidth * 0.50, valign: 'top' },
-        2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', valign: 'top' },
+        0: { cellWidth: contentWidth * 0.42, fontStyle: 'bold' },
+        1: { cellWidth: contentWidth * 0.38 },
+        2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
       },
-      didDrawPage: onPageDraw,
+      didDrawPage: (data) => {
+        if (data.pageNumber > 1) drawPageHeader(data.pageNumber);
+      },
     });
 
-    const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    cursorY = finalY + 6;
+    cursorY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   }
 
   const totalPages = doc.getNumberOfPages();
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    drawPageFooter(p, totalPages);
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    drawPageFooter(page, totalPages);
   }
 
-  doc.save(`lista-precios-${fileStamp}.pdf`);
+  return { blob: doc.output('blob') as Blob, fileName };
 }
