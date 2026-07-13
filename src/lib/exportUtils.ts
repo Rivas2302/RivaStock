@@ -14,6 +14,10 @@ export interface ExcelColumn<T> {
 interface ExportToExcelOptions {
   /** Optional summary block rendered ABOVE the table on the same sheet. */
   summary?: Array<{ label: string; value: string }>;
+  /** Explicit money headers; avoids relying on labels when reports vary. */
+  moneyHeaders?: string[];
+  /** Currency symbol displayed by Excel while keeping values numeric. */
+  currencySymbol?: string;
 }
 
 /**
@@ -49,14 +53,17 @@ export function exportToExcel<T>(
   // format it, so users can still SUM/AVG in the spreadsheet.
   // We only apply this when the header looks like a money column to avoid
   // touching the wrong cells.
-  const moneyHeaders = new Set(['Precio Unitario', 'Total', 'Ingresos', 'Monto']);
+  const moneyHeaders = new Set(options.moneyHeaders ?? ['Precio Unitario', 'Total', 'Ingresos', 'Monto']);
+  const currencyFormat = options.currencySymbol
+    ? `"${options.currencySymbol.replace(/"/g, '""')}" #,##0.00`
+    : '#,##0.00';
   for (let r = 1; r <= dataMatrix.length; r++) {
     for (let c = 0; c < columns.length; c++) {
       if (!moneyHeaders.has(columns[c].header)) continue;
       const cellRef = XLSX.utils.encode_cell({ r, c });
       const cell = ws[cellRef];
       if (cell && typeof cell.v === 'number') {
-        cell.z = '#,##0.00';
+        cell.z = currencyFormat;
       }
     }
   }

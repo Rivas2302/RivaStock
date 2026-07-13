@@ -32,4 +32,10 @@ REVOKE ALL ON FUNCTION record_audit_event() FROM PUBLIC;
 REVOKE ALL ON FUNCTION record_audit_event() FROM anon;
 REVOKE ALL ON FUNCTION record_audit_event() FROM authenticated;
 
+-- Cash closings are operationally significant and must be captured by the
+-- same immutable audit path instead of being written directly by the client.
+DROP TRIGGER IF EXISTS cash_closings_audit_event ON cash_closings;
+CREATE TRIGGER cash_closings_audit_event AFTER INSERT OR UPDATE OR DELETE ON cash_closings
+  FOR EACH ROW EXECUTE FUNCTION record_audit_event();
+
 COMMIT;

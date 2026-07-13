@@ -1,10 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { Eye, History, Search, SlidersHorizontal } from 'lucide-react';
+import { Download, Eye, FileSpreadsheet, History, Search, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import Modal from '../components/Modal';
 import { db } from '../lib/db';
 import type { AuditEvent } from '../types';
 import { formatAuditEventTimestamp } from '../lib/auditEvent';
+import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 import { cn } from '../lib/utils';
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -13,6 +14,7 @@ const ENTITY_LABELS: Record<string, string> = {
   cash_flow: 'Caja',
   stock_intakes: 'Ingreso de mercadería',
   cash_closing: 'Cierre de caja',
+  cash_closings: 'Cierre de caja',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -94,6 +96,7 @@ export default function AuditTrail() {
   const [search, setSearch] = useState('');
   const [entityFilter, setEntityFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
@@ -120,11 +123,77 @@ export default function AuditTrail() {
     });
   }, [deferredSearch, entityFilter, events]);
 
+  const handleExport = async (format: 'excel' | 'pdf') => {
+    if (!user || exporting) return;
+    setExporting(format);
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    const filterSummary = [
+      entityFilter === 'all' ? 'Todas las entidades' : (ENTITY_LABELS[entityFilter] ?? entityFilter),
+      deferredSearch.trim() ? `búsqueda: ${deferredSearch.trim()}` : null,
+    ].filter(Boolean).join(' · ');
+    const rows = filteredEvents.map((event) => ({
+      fecha: formatAuditEventTimestamp(event),
+      accion: ACTION_LABELS[event.action] ?? event.action,
+      entidad: ENTITY_LABELS[event.entityType] ?? event.entityType,
+      registro: getEventSubject(event) ?? 'Sin identificar',
+      usuario: getActorLabel(event, user),
+      id: event.entityId ?? '—',
+    }));
+
+    try {
+      if (format === 'excel') {
+        exportToExcel(rows, [
+          { header: 'Fecha', value: row => row.fecha, width: 22 },
+          { header: 'Acción', value: row => row.accion, width: 18 },
+          { header: 'Entidad', value: row => row.entidad, width: 18 },
+          { header: 'Registro afectado', value: row => row.registro, width: 32 },
+          { header: 'Usuario', value: row => row.usuario, width: 28 },
+          { header: 'ID del registro', value: row => row.id, width: 38 },
+        ], `trazabilidad-${generatedAt}.xlsx`, 'Trazabilidad', {
+          summary: [
+            { label: 'Negocio', value: user.businessName },
+            { label: 'Filtros', value: filterSummary },
+            { label: 'Eventos exportados', value: String(rows.length) },
+          ],
+        });
+      } else {
+        await exportToPDF({
+          businessName: user.businessName,
+          currencySymbol: user.currencySymbol,
+          rangeLabel: filterSummary,
+        }, {
+          title: 'Informe de trazabilidad',
+          columns: [
+            { header: 'Fecha', dataKey: 'fecha' },
+            { header: 'Acción', dataKey: 'accion' },
+            { header: 'Entidad', dataKey: 'entidad' },
+            { header: 'Registro', dataKey: 'registro' },
+            { header: 'Usuario', dataKey: 'usuario' },
+          ],
+          rows,
+          fileName: `trazabilidad-${generatedAt}.pdf`,
+        });
+      }
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="business-page operational-page space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Trazabilidad</h2>
-        <p className="text-slate-500 dark:text-slate-400">Historial de altas, cambios y eliminaciones operativas.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Trazabilidad</h2>
+          <p className="text-slate-500 dark:text-slate-400">Historial de altas, cambios y eliminaciones operativas.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => void handleExport('excel')} disabled={exporting !== null} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <FileSpreadsheet size={16} className="mr-1.5 inline" />{exporting === 'excel' ? 'Generando...' : 'Excel'}
+          </button>
+          <button onClick={() => void handleExport('pdf')} disabled={exporting !== null} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50">
+            <Download size={16} className="mr-1.5 inline" />{exporting === 'pdf' ? 'Generando...' : 'PDF'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 md:flex-row">

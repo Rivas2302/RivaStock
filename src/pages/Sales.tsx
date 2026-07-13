@@ -33,9 +33,7 @@ import {
   isPendingSaleStatus,
   isQuoteSale,
 } from '../lib/sales';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 
 export default function Sales() {
   const { user, refetchToken } = useAuth();
@@ -90,48 +88,63 @@ export default function Sales() {
   }, [showExportMenu]);
 
   const handleExportExcel = () => {
-    const data = filteredSales.map(s => ({
-      'Fecha': formatDate(s.date),
-      'Producto': s.productName,
-      'Cliente': s.client || '-',
-      'Cantidad': getSaleDisplayQuantity(s),
-      'Precio Unitario': roundPrice(s.unitPrice),
-      'Ajuste': s.adjustment ?? 0,
-      'Total': roundPrice(s.total),
-      'Método de Pago': s.paymentMethod || '-',
-      'Estado': s.status,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
-    XLSX.writeFile(wb, `ventas-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    if (!user) return;
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    exportToExcel(filteredSales, [
+      { header: 'Fecha', value: sale => formatDate(sale.date), width: 14 },
+      { header: 'Producto', value: sale => sale.productName, width: 30 },
+      { header: 'Cliente', value: sale => sale.client || '-', width: 24 },
+      { header: 'Cantidad', value: sale => getSaleDisplayQuantity(sale), width: 10 },
+      { header: 'Precio Unitario', value: sale => roundPrice(sale.unitPrice), width: 16 },
+      { header: 'Ajuste', value: sale => sale.adjustment ?? 0, width: 12 },
+      { header: 'Total', value: sale => roundPrice(sale.total), width: 16 },
+      { header: 'Método de Pago', value: sale => sale.paymentMethod || '-', width: 18 },
+      { header: 'Estado', value: sale => sale.status, width: 14 },
+    ], `ventas-${generatedAt}.xlsx`, 'Ventas', {
+      currencySymbol: user.currencySymbol,
+      summary: [
+        { label: 'Negocio', value: user.businessName },
+        { label: 'Filtro de estado', value: statusFilter === 'all' ? 'Todos' : statusFilter },
+        { label: 'Búsqueda', value: search.trim() || 'Sin filtro' },
+        { label: 'Ventas exportadas', value: String(filteredSales.length) },
+      ],
+    });
     setShowExportMenu(false);
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Reporte de Ventas', 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
-    if (statusFilter !== 'all' || search) {
-      doc.text(`Filtros: estado="${statusFilter}" búsqueda="${search}"`, 14, 34);
-    }
-    autoTable(doc, {
-      startY: statusFilter !== 'all' || search ? 40 : 35,
-      head: [['Fecha', 'Producto', 'Cliente', 'Cant.', 'Total', 'Estado']],
-      body: filteredSales.map(s => [
-        formatDate(s.date),
-        s.productName,
-        s.client || '-',
-        String(getSaleDisplayQuantity(s)),
-        formatCurrency(roundPrice(s.total)),
-        s.status,
-      ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [99, 102, 241] },
+  const handleExportPDF = async () => {
+    if (!user) return;
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    const filters = [
+      statusFilter === 'all' ? 'Todos los estados' : `Estado: ${statusFilter}`,
+      search.trim() ? `Búsqueda: ${search.trim()}` : null,
+    ].filter(Boolean).join(' · ');
+    await exportToPDF({
+      businessName: user.businessName,
+      currencySymbol: user.currencySymbol,
+      rangeLabel: filters,
+    }, {
+      title: 'Informe de ventas',
+      columns: [
+        { header: 'Fecha', dataKey: 'fecha' },
+        { header: 'Producto', dataKey: 'producto' },
+        { header: 'Cliente', dataKey: 'cliente' },
+        { header: 'Cant.', dataKey: 'cantidad' },
+        { header: 'Total', dataKey: 'total' },
+        { header: 'Método', dataKey: 'metodo' },
+        { header: 'Estado', dataKey: 'estado' },
+      ],
+      rows: filteredSales.map((sale) => ({
+        fecha: formatDate(sale.date),
+        producto: sale.productName,
+        cliente: sale.client || '-',
+        cantidad: getSaleDisplayQuantity(sale),
+        total: formatCurrency(roundPrice(sale.total)),
+        metodo: sale.paymentMethod || '-',
+        estado: sale.status,
+      })),
+      fileName: `ventas-${generatedAt}.pdf`,
     });
-    doc.save(`ventas-${new Date().toISOString().slice(0, 10)}.pdf`);
     setShowExportMenu(false);
   };
 

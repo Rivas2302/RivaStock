@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db } from '../lib/db';
-import { AuditEvent, CashClosing, CashFlowEntry } from '../types';
+import { CashClosing, CashFlowEntry } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -15,11 +15,14 @@ import {
   TrendingDown,
   Edit2,
   Trash2,
-  ClipboardCheck
+  ClipboardCheck,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 import '../styles/business-redesign.css';
+import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
@@ -36,6 +39,7 @@ export default function CashFlow() {
   const [editingEntry, setEditingEntry] = useState<CashFlowEntry | null>(null);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
   const [isClosingOpen, setIsClosingOpen] = useState(false);
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [countedCash, setCountedCash] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
   const [formData, setFormData] = useState<Partial<CashFlowEntry>>({
@@ -77,16 +81,6 @@ export default function CashFlow() {
         countedCash: counted,
         difference: counted - expectedCash,
         notes: closingNotes.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      });
-      await db.create<AuditEvent>('audit_events', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        actorUid: user.uid,
-        action: 'cash_closing_created',
-        entityType: 'cash_closing',
-        entityId: closing.id,
-        metadata: { expectedCash, countedCash: counted, difference: counted - expectedCash },
         createdAt: new Date().toISOString(),
       });
       setIsClosingOpen(false);
@@ -266,6 +260,73 @@ export default function CashFlow() {
     };
   }, [deferredSearch, entries, typeFilter]);
 
+  const handleExport = async (format: 'excel' | 'pdf') => {
+    if (!user || exporting) return;
+    setExporting(format);
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    const filterSummary = [
+      typeFilter === 'all' ? 'Todos los movimientos' : typeFilter,
+      deferredSearch.trim() ? `búsqueda: ${deferredSearch.trim()}` : null,
+    ].filter(Boolean).join(' · ');
+    const rows = filteredEntries.map((entry) => ({
+      fecha: formatDate(entry.date),
+      tipo: entry.type,
+      descripcion: entry.description,
+      categoria: entry.category,
+      metodo: entry.paymentMethod,
+      monto: entry.amount,
+      estado: entry.status,
+      origen: entry.source ?? 'Manual',
+    }));
+    const collected = filteredEntries.filter((entry) => entry.type === 'Ingreso' && entry.status === 'Pagado').reduce((total, entry) => total + entry.amount, 0);
+    const expenses = filteredEntries.filter((entry) => entry.type === 'Gasto' && entry.status === 'Pagado').reduce((total, entry) => total + entry.amount, 0);
+
+    try {
+      if (format === 'excel') {
+        exportToExcel(rows, [
+          { header: 'Fecha', value: row => row.fecha, width: 14 },
+          { header: 'Tipo', value: row => row.tipo, width: 12 },
+          { header: 'Descripción', value: row => row.descripcion, width: 34 },
+          { header: 'Categoría', value: row => row.categoria, width: 20 },
+          { header: 'Método de pago', value: row => row.metodo, width: 18 },
+          { header: 'Monto', value: row => row.monto, width: 16 },
+          { header: 'Estado', value: row => row.estado, width: 14 },
+          { header: 'Origen', value: row => row.origen, width: 16 },
+        ], `flujo-de-caja-${generatedAt}.xlsx`, 'Flujo de caja', {
+          currencySymbol: user.currencySymbol,
+          summary: [
+            { label: 'Negocio', value: user.businessName },
+            { label: 'Filtros', value: filterSummary },
+            { label: 'Cobrado', value: formatCurrency(collected) },
+            { label: 'Gastos', value: formatCurrency(expenses) },
+            { label: 'Balance neto', value: formatCurrency(collected - expenses) },
+          ],
+        });
+      } else {
+        await exportToPDF({
+          businessName: user.businessName,
+          currencySymbol: user.currencySymbol,
+          rangeLabel: filterSummary,
+        }, {
+          title: 'Informe de flujo de caja',
+          columns: [
+            { header: 'Fecha', dataKey: 'fecha' },
+            { header: 'Tipo', dataKey: 'tipo' },
+            { header: 'Descripción', dataKey: 'descripcion' },
+            { header: 'Categoría', dataKey: 'categoria' },
+            { header: 'Método', dataKey: 'metodo' },
+            { header: 'Monto', dataKey: 'montoTexto' },
+            { header: 'Estado', dataKey: 'estado' },
+          ],
+          rows: rows.map((row) => ({ ...row, montoTexto: formatCurrency(row.monto) })),
+          fileName: `flujo-de-caja-${generatedAt}.pdf`,
+        });
+      }
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="business-page operational-page space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -274,6 +335,22 @@ export default function CashFlow() {
           <p className="text-slate-500 dark:text-slate-400">Control de ingresos y egresos</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => void handleExport('excel')}
+            disabled={exporting !== null}
+            className="border border-slate-200 bg-white text-slate-700 px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <FileSpreadsheet size={18} />
+            {exporting === 'excel' ? 'Generando...' : 'Excel'}
+          </button>
+          <button
+            onClick={() => void handleExport('pdf')}
+            disabled={exporting !== null}
+            className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
+          >
+            <Download size={18} />
+            {exporting === 'pdf' ? 'Generando...' : 'PDF'}
+          </button>
           <button
             onClick={() => setIsClosingOpen(true)}
             disabled={!canWrite}
