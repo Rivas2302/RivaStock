@@ -72,6 +72,14 @@
       "sessions": 0,
       "memories": 7,
       "prompts": 1
+    },
+    {
+      "id": "c1e129ad",
+      "created_by": "USER",
+      "created_at": "2026-07-13T01:33:42Z",
+      "sessions": 5,
+      "memories": 36,
+      "prompts": 4
     }
   ]
 }
