@@ -12,34 +12,11 @@
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#6366f1">
     <meta name="permissions-policy" content="camera=*">
-    <script>
-      // Apply the persisted app theme before CSS paints to avoid a light flash.
-      try {
-        var appTheme = localStorage.getItem('theme');
-        document.documentElement.classList.toggle('dark', appTheme === 'dark');
-        document.documentElement.classList.toggle('light', appTheme !== 'dark');
-      } catch (_) {
-        document.documentElement.classList.add('light');
-      }
-    </script>
+    <script src="/theme-bootstrap.js"></script>
   </head>
   <body>
     <div id="root"></div>
-    <!-- Unregister any stale service workers from previous PWA builds -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          if (registrations.length === 0) return;
-          var unregistered = registrations.map(function (r) { return r.unregister(); });
-          if ('caches' in window) {
-            caches.keys().then(function (names) {
-              names.forEach(function (name) { caches.delete(name); });
-            });
-          }
-          Promise.all(unregistered).then(function () { location.reload(); });
-        });
-      }
-    </script>
+    <script src="/cleanup-stale-workers.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

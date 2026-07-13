@@ -4,7 +4,8 @@ import { useAuth } from '../AuthContext';
 import Modal from '../components/Modal';
 import { db } from '../lib/db';
 import type { AuditEvent } from '../types';
-import { cn, formatDate } from '../lib/utils';
+import { formatAuditEventTimestamp } from '../lib/auditEvent';
+import { cn } from '../lib/utils';
 
 const ENTITY_LABELS: Record<string, string> = {
   products: 'Producto',
@@ -149,7 +150,7 @@ export default function AuditTrail() {
                   <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"><History size={18} /></div>
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 dark:text-white">{getEventTitle(event)}</p>
-                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{formatDate(event.createdAt.slice(0, 10))} · {new Date(event.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{formatAuditEventTimestamp(event)}</p>
                   </div>
                 </div>
                 <button onClick={() => setSelectedEvent(event)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800 dark:hover:text-indigo-300" title="Ver detalle"><Eye size={18} /></button>
@@ -174,7 +175,7 @@ export default function AuditTrail() {
                 <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{selectedEvent.entityType}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">ID del registro</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.entityId ?? '—'}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">Usuario</dt><dd className="break-all text-xs text-slate-800 dark:text-slate-200">{getActorLabel(selectedEvent, user)}</dd></div>
-                <div><dt className="text-slate-500 dark:text-slate-400">Fecha</dt><dd className="text-slate-800 dark:text-slate-200">{new Date(selectedEvent.createdAt).toLocaleString('es-AR')}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">Fecha</dt><dd className="text-slate-800 dark:text-slate-200">{formatAuditEventTimestamp(selectedEvent)}</dd></div>
               </dl>
             </div>
             <div>
