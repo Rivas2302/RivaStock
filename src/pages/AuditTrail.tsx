@@ -5,8 +5,8 @@ import Modal from '../components/Modal';
 import { db } from '../lib/db';
 import type { AuditEvent } from '../types';
 import { formatAuditEventTimestamp } from '../lib/auditEvent';
+import { getAuditDetailRows, getAuditSnapshots, formatAuditValue } from '../lib/auditDetails';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
-import { cn } from '../lib/utils';
 
 const ENTITY_LABELS: Record<string, string> = {
   products: 'Producto',
@@ -33,8 +33,8 @@ function asAuditRecord(value: unknown): AuditRecord | null {
 }
 
 function getEventSnapshot(event: AuditEvent): AuditRecord | null {
-  const metadata = asAuditRecord(event.metadata);
-  return asAuditRecord(metadata?.after) ?? asAuditRecord(metadata?.before);
+  const { before, after } = getAuditSnapshots(event);
+  return after ?? before;
 }
 
 function firstText(record: AuditRecord, keys: string[]): string | null {
@@ -117,7 +117,7 @@ export default function AuditTrail() {
     const query = deferredSearch.trim().toLowerCase();
     return events.filter((event) => {
       const matchesEntity = entityFilter === 'all' || event.entityType === entityFilter;
-      const matchesSearch = !query || [event.action, event.entityType, event.entityId]
+      const matchesSearch = !query || [event.action, event.entityType, event.entityId, getEventSubject(event)]
         .filter(Boolean).join(' ').toLowerCase().includes(query);
       return matchesEntity && matchesSearch;
     });
@@ -232,7 +232,7 @@ export default function AuditTrail() {
 
       <Modal isOpen={selectedEvent !== null} onClose={() => setSelectedEvent(null)} title="Detalle del evento">
         {selectedEvent && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="font-bold text-slate-900 dark:text-white">{getEventTitle(selectedEvent)}</p>
               {!getEventSnapshot(selectedEvent) && selectedEvent.entityType === 'products' && (
@@ -248,8 +248,35 @@ export default function AuditTrail() {
               </dl>
             </div>
             <div>
-              <p className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-300">Datos completos del evento</p>
-              <pre className={cn('max-h-[50vh] overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-relaxed text-slate-100', 'whitespace-pre-wrap break-words')}>{JSON.stringify(selectedEvent.metadata ?? {}, null, 2)}</pre>
+              {(() => {
+                const rows = getAuditDetailRows(selectedEvent);
+                const isUpdate = selectedEvent.action === 'update';
+                const heading = isUpdate ? 'Cambios realizados' : selectedEvent.action === 'delete' ? 'Datos antes de eliminar' : 'Datos registrados';
+
+                return (
+                  <>
+                    <div className="mb-2 flex items-baseline justify-between gap-3">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{heading}</p>
+                      {isUpdate && rows.length > 0 && <span className="text-xs text-slate-500">{rows.length} {rows.length === 1 ? 'campo modificado' : 'campos modificados'}</span>}
+                    </div>
+                    {rows.length > 0 ? (
+                      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                        {rows.map((row) => (
+                          <div key={row.field} className="grid gap-2 border-b border-slate-100 p-3 last:border-b-0 dark:border-slate-800 sm:grid-cols-[minmax(8rem,0.7fr)_1fr_1fr] sm:items-center">
+                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{row.label}</p>
+                            {isUpdate && <div><p className="text-xs text-slate-500">Antes</p><p className="break-words text-sm text-slate-600 dark:text-slate-400">{formatAuditValue(row.before)}</p></div>}
+                            <div><p className="text-xs text-slate-500">{isUpdate ? 'Después' : 'Valor'}</p><p className="break-words text-sm font-medium text-slate-900 dark:text-white">{formatAuditValue(row.after ?? row.before)}</p></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+                        No hay datos campo por campo para este evento histórico.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
