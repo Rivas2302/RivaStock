@@ -7,6 +7,7 @@ import type { AuditEvent } from '../types';
 import { formatAuditEventTimestamp } from '../lib/auditEvent';
 import { getAuditDetailRows, getAuditSnapshots, formatAuditValue } from '../lib/auditDetails';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import { cn } from '../lib/utils';
 
 const ENTITY_LABELS: Record<string, string> = {
   products: 'Producto',
@@ -241,7 +242,7 @@ export default function AuditTrail() {
                 </p>
               )}
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{selectedEvent.entityType}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">Entidad</dt><dd className="font-medium text-slate-800 dark:text-slate-200">{ENTITY_LABELS[selectedEvent.entityType] ?? selectedEvent.entityType}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">ID del registro</dt><dd className="break-all font-mono text-xs text-slate-800 dark:text-slate-200">{selectedEvent.entityId ?? '—'}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">Usuario</dt><dd className="break-all text-xs text-slate-800 dark:text-slate-200">{getActorLabel(selectedEvent, user)}</dd></div>
                 <div><dt className="text-slate-500 dark:text-slate-400">Fecha</dt><dd className="text-slate-800 dark:text-slate-200">{formatAuditEventTimestamp(selectedEvent)}</dd></div>
@@ -262,10 +263,13 @@ export default function AuditTrail() {
                     {rows.length > 0 ? (
                       <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                         {rows.map((row) => (
-                          <div key={row.field} className="grid gap-2 border-b border-slate-100 p-3 last:border-b-0 dark:border-slate-800 sm:grid-cols-[minmax(8rem,0.7fr)_1fr_1fr] sm:items-center">
+                          <div key={row.field} className={cn(
+                            'grid gap-2 border-b border-slate-100 p-3 last:border-b-0 dark:border-slate-800 sm:items-center',
+                            isUpdate ? 'sm:grid-cols-[minmax(8rem,0.7fr)_1fr_1fr]' : 'sm:grid-cols-[minmax(10rem,0.7fr)_1.5fr]',
+                          )}>
                             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{row.label}</p>
-                            {isUpdate && <div><p className="text-xs text-slate-500">Antes</p><p className="break-words text-sm text-slate-600 dark:text-slate-400">{formatAuditValue(row.before)}</p></div>}
-                            <div><p className="text-xs text-slate-500">{isUpdate ? 'Después' : 'Valor'}</p><p className="break-words text-sm font-medium text-slate-900 dark:text-white">{formatAuditValue(row.after ?? row.before)}</p></div>
+                            {isUpdate && <div><p className="text-xs text-slate-500">Antes</p><p className="whitespace-pre-line break-words text-sm text-slate-600 dark:text-slate-400">{formatAuditValue(row.before, row.field, user?.currencySymbol)}</p></div>}
+                            <div><p className="text-xs text-slate-500">{isUpdate ? 'Después' : 'Valor'}</p><p className={cn('whitespace-pre-line break-words text-sm font-medium text-slate-900 dark:text-white', row.field.toLowerCase().endsWith('id') && 'font-mono text-xs')}>{formatAuditValue(selectedEvent.action === 'delete' ? row.before : row.after, row.field, user?.currencySymbol)}</p></div>
                           </div>
                         ))}
                       </div>
