@@ -156,6 +156,7 @@ export default function Stock() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const priceListProducts = useMemo(() => products.filter((product) => product.stock > 0), [products]);
 
   useEffect(() => () => {
     if (priceListPreview) URL.revokeObjectURL(priceListPreview.url);
@@ -164,15 +165,15 @@ export default function Stock() {
   const handlePriceList = async (action: 'preview' | 'download') => {
     if (isExportingPdf) return;
     if (!user) return;
-    if (products.length === 0) {
-      showToast('No hay productos para incluir en la lista de precios.', 'info');
+    if (priceListProducts.length === 0) {
+      showToast('No hay productos con stock disponible para incluir en la lista de precios.', 'info');
       return;
     }
     setIsExportingPdf(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
       const pdf = createPriceListPdf({
-        products,
+        products: priceListProducts,
         categories,
         businessName: user.businessName,
         currencySymbol: user.currencySymbol,
@@ -445,17 +446,17 @@ export default function Stock() {
           <button
             type="button"
             onClick={() => handlePriceList('preview')}
-            disabled={isExportingPdf || products.length === 0}
+            disabled={isExportingPdf || priceListProducts.length === 0}
             title={
-              products.length === 0
-                ? 'No hay productos para listar'
+              priceListProducts.length === 0
+                ? 'No hay productos con stock disponible para listar'
                 : isExportingPdf
                   ? 'Generando PDF...'
                   : 'Ver lista de precios'
             }
             className={cn(
               'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border',
-              isExportingPdf || products.length === 0
+              isExportingPdf || priceListProducts.length === 0
                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
                 : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-[#b7c7e8] dark:hover:border-indigo-500'
             )}
@@ -466,17 +467,17 @@ export default function Stock() {
           <button
             type="button"
             onClick={() => handlePriceList('download')}
-            disabled={isExportingPdf || products.length === 0}
+            disabled={isExportingPdf || priceListProducts.length === 0}
             title={
-              products.length === 0
-                ? 'No hay productos para listar'
+              priceListProducts.length === 0
+                ? 'No hay productos con stock disponible para listar'
                 : isExportingPdf
                   ? 'Generando PDF...'
                   : 'Descargar lista de precios en PDF'
             }
             className={cn(
               'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all',
-              isExportingPdf || products.length === 0
+              isExportingPdf || priceListProducts.length === 0
                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                 : 'bg-[#365fad] hover:bg-[#284b91] text-white shadow-sm shadow-slate-900/10'
             )}
