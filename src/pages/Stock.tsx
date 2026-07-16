@@ -169,6 +169,15 @@ export default function Stock() {
       showToast('No hay productos con stock disponible para incluir en la lista de precios.', 'info');
       return;
     }
+
+    // Mobile browsers do not consistently render blob PDFs embedded in iframes.
+    // Opening a blank tab before the first await preserves the user gesture, so
+    // the native PDF viewer can be used without triggering the popup blocker.
+    const useNativePdfPreview = action === 'preview' && window.matchMedia(
+      '(max-width: 767px), (hover: none) and (pointer: coarse)',
+    ).matches;
+    const previewWindow = useNativePdfPreview ? window.open('', '_blank') : null;
+
     setIsExportingPdf(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -181,8 +190,13 @@ export default function Stock() {
 
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
-        setPriceListPreview({ url, fileName: pdf.fileName });
-        showToast('Vista previa de la lista de precios generada.', 'success');
+        if (previewWindow && !previewWindow.closed) {
+          previewWindow.location.replace(url);
+          showToast('La lista de precios se abrió en el visor de tu dispositivo.', 'success');
+        } else {
+          setPriceListPreview({ url, fileName: pdf.fileName });
+          showToast('Vista previa de la lista de precios generada.', 'success');
+        }
       } else {
         const link = document.createElement('a');
         link.href = url;
@@ -194,6 +208,7 @@ export default function Stock() {
         showToast('Lista de precios descargada correctamente.', 'success');
       }
     } catch (err) {
+      previewWindow?.close();
       console.error('[Stock] price list PDF error:', err);
       showToast('No se pudo generar la lista de precios.', 'error');
     } finally {
