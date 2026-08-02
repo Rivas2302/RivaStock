@@ -29,6 +29,22 @@ export interface PriceRange {
   ownerUid: string;
 }
 
+export interface InventoryOwner {
+  id: string;
+  ownerUid: string;
+  name: string;
+  sortOrder: number;
+  isPrimary: boolean;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicInventoryOwnerLabel {
+  productId: string;
+  inventoryOwnerName: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -45,6 +61,7 @@ export interface Product {
   description?: string;
   barcode?: string;
   customFields?: Record<string, string | number | boolean | null>;
+  inventoryOwnerId?: string;
   ownerUid: string;
   createdAt: string;
   updatedAt: string;
