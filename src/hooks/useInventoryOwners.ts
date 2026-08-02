@@ -3,11 +3,16 @@ import type { InventoryOwner } from '../types';
 import { db } from '../lib/db';
 import {
   getActiveInventoryOwners,
+  filterInventoryOwnersByMembership,
   getPrimaryInventoryOwner,
   sortInventoryOwners,
 } from '../lib/inventoryOwners';
 
-export function useInventoryOwners(ownerUid?: string | null, refetchToken = 0) {
+export function useInventoryOwners(
+  ownerUid?: string | null,
+  refetchToken = 0,
+  allowedOwnerIds?: string[],
+) {
   const [owners, setOwners] = useState<InventoryOwner[]>([]);
   const [loading, setLoading] = useState(Boolean(ownerUid));
   const [reloadToken, setReloadToken] = useState(0);
@@ -37,8 +42,11 @@ export function useInventoryOwners(ownerUid?: string | null, refetchToken = 0) {
     return () => { cancelled = true; };
   }, [ownerUid, refetchToken, reloadToken]);
 
-  const activeOwners = useMemo(() => getActiveInventoryOwners(owners), [owners]);
-  const primaryOwner = useMemo(() => getPrimaryInventoryOwner(owners), [owners]);
+  const visibleOwners = useMemo(() => {
+    return filterInventoryOwnersByMembership(owners, allowedOwnerIds);
+  }, [allowedOwnerIds, owners]);
+  const activeOwners = useMemo(() => getActiveInventoryOwners(visibleOwners), [visibleOwners]);
+  const primaryOwner = useMemo(() => getPrimaryInventoryOwner(visibleOwners), [visibleOwners]);
 
-  return { owners, activeOwners, primaryOwner, loading, reload };
+  return { owners: visibleOwners, activeOwners, primaryOwner, loading, reload };
 }

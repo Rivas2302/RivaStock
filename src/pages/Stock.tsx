@@ -8,11 +8,23 @@ import {
   getInventoryOwnerName,
 } from '../lib/inventoryOwners';
 import { db, deleteFromStorage } from '../lib/db';
+import {
+  buildHoldingDrafts,
+  filterProductsByHoldingOwner,
+  getVisibleHoldingEconomics,
+  getVisibleInventoryHoldings,
+  getInventoryHoldings,
+  saveProductWithHoldings,
+  transferInventoryHoldingStock,
+} from '../lib/inventoryHoldings';
+import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
+import { beginSubmission, endSubmission } from '../lib/submissionGuard';
+import { failedStorageCleanupPaths } from '../lib/storageCleanup';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
-import { getRestockRecommendations } from '../lib/stockIntelligence';
+import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
 import { showToast } from '../lib/toast';
-import { Product, Category, PriceRange, Sale } from '../types';
+import { Product, Category, PriceRange, Sale, InventoryHolding, InventoryHoldingDraft } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
   Plus,
@@ -34,6 +46,7 @@ import {
   Loader2,
   AlertTriangle,
   PackageCheck,
+  ArrowRightLeft,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
@@ -44,13 +57,17 @@ import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function Stock() {
-  const { user, refetchToken } = useAuth();
+  const {
+    user, refetchToken, holdingsEnabled, inventoryAccessError,
+    allowedInventoryOwnerIds, operableInventoryOwnerIds,
+  } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -60,7 +77,11 @@ export default function Stock() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
   const deferredSearch = useDeferredValue(search);
-  const { owners: inventoryOwners, primaryOwner } = useInventoryOwners(user?.uid, refetchToken);
+  const { owners: inventoryOwners, primaryOwner } = useInventoryOwners(
+    user?.uid,
+    refetchToken,
+    allowedInventoryOwnerIds,
+  );
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,24 +98,37 @@ export default function Stock() {
     notes: '',
     images: []
   });
+  const [holdingDrafts, setHoldingDrafts] = useState<InventoryHoldingDraft[]>([]);
+  const [transfer, setTransfer] = useState<{
+    productId: string; sourceOwnerId: string; destinationOwnerId: string; quantity: number; reason: string;
+  } | null>(null);
+  const productIntentRef = useRef<IdempotencyIntent | null>(null);
+  const productSubmitInFlightRef = useRef(false);
+  const transferIntentRef = useRef<IdempotencyIntent | null>(null);
+  const transferSubmitInFlightRef = useRef(false);
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [pendingImageCleanup, setPendingImageCleanup] = useState<string[]>([]);
+  const [imageCleanupRetrying, setImageCleanupRetrying] = useState(false);
   const assignableOwners = useMemo(
     () => getAssignableInventoryOwners(inventoryOwners, editingProduct?.inventoryOwnerId),
     [editingProduct?.inventoryOwnerId, inventoryOwners],
   );
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user || inventoryAccessError) return;
     try {
-      const [p, c, pr, s] = await Promise.all([
+      const [p, c, pr, s, h] = await Promise.all([
         db.list<Product>('products', user.uid),
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
         db.list<Sale>('sales', user.uid),
+        holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       setProducts(p);
       setCategories(c);
       setPriceRanges(pr);
       setSales(s);
+      setHoldings(h);
     } catch (err) {
       console.error('[Stock] fetchData error:', err);
     } finally {
@@ -104,20 +138,27 @@ export default function Stock() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user) return;
+    if (!user || inventoryAccessError) {
+      setProducts([]);
+      setHoldings([]);
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
-        const [p, c, pr, s] = await Promise.all([
+        const [p, c, pr, s, h] = await Promise.all([
           db.list<Product>('products', user.uid),
           db.list<Category>('categories', user.uid),
           db.list<PriceRange>('price_ranges', user.uid),
           db.list<Sale>('sales', user.uid),
+          holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         setProducts(p);
         setCategories(c);
         setPriceRanges(pr);
         setSales(s);
+        setHoldings(h);
       } catch (err) {
         if (cancelled) return;
         console.error('[Stock] fetch error:', err);
@@ -126,7 +167,7 @@ export default function Stock() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, refetchToken]);
+  }, [user, refetchToken, holdingsEnabled, inventoryAccessError]);
 
   useEffect(() => {
     if (editingProduct || formData.inventoryOwnerId || !primaryOwner) return;
@@ -162,10 +203,15 @@ export default function Stock() {
         barcode: state.newBarcode,
         inventoryOwnerId: primaryOwner?.id,
       });
+      setHoldingDrafts(buildHoldingDrafts(
+        inventoryOwners.filter((owner) => !owner.archivedAt),
+        [],
+      ));
+      productIntentRef.current = null;
       setIsModalOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location, categories, navigate, primaryOwner]);
+  }, [location, categories, inventoryOwners, navigate, primaryOwner]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,7 +222,12 @@ export default function Stock() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
-  const priceListProducts = useMemo(() => products.filter((product) => product.stock > 0), [products]);
+  const priceListProducts = useMemo(() => {
+    const visibleProducts = holdingsEnabled
+      ? filterProductsByHoldingOwner(products, holdings, 'all')
+      : products;
+    return visibleProducts.filter((product) => product.stock > 0);
+  }, [holdings, holdingsEnabled, products]);
 
   useEffect(() => () => {
     if (priceListPreview) URL.revokeObjectURL(priceListPreview.url);
@@ -237,9 +288,38 @@ export default function Stock() {
     }
   };
 
+  const operableOwners = useMemo(() => {
+    const operable = new Set(operableInventoryOwnerIds);
+    return inventoryOwners.filter((owner) => (
+      operable.has(owner.id)
+      && (!owner.archivedAt || holdings.some((holding) => holding.inventoryOwnerId === owner.id))
+    ));
+  }, [holdings, inventoryOwners, operableInventoryOwnerIds]);
+
+  const openProductEditor = (product?: Product, barcode?: string) => {
+    const next = product ?? {
+      id: crypto.randomUUID(),
+      name: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
+      purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2,
+      showInCatalog: true, notes: '', images: [], barcode,
+      inventoryOwnerId: primaryOwner?.id,
+      ownerUid: user?.uid ?? '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    setEditingProduct(product ?? null);
+    productIntentRef.current = null;
+    setIsUploadingImage(false);
+    setFormData(next);
+    setHoldingDrafts(buildHoldingDrafts(
+      operableOwners,
+      product ? holdings.filter((holding) => holding.productId === product.id) : [],
+    ));
+    setIsModalOpen(true);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isUploadingImage || saving) return;
+    if (!user || inventoryAccessError || isUploadingImage) return;
+    if (!beginSubmission(productSubmitInFlightRef)) return;
     setSaving(true);
 
     try {
@@ -262,7 +342,33 @@ export default function Stock() {
         updatedAt: new Date().toISOString()
       } as Product;
 
-      if (editingProduct) {
+      if (holdingsEnabled) {
+        const intent = resolveIdempotencyIntent('product', {
+          editingProductId: editingProduct?.id ?? null,
+          formData,
+          holdings: holdingDrafts,
+        }, productIntentRef.current);
+        productIntentRef.current = intent;
+        const result = await saveProductWithHoldings({
+          product: {
+            ...productData,
+            id: editingProduct?.id ?? productData.id ?? crypto.randomUUID(),
+            createdAt: editingProduct?.createdAt ?? new Date().toISOString(),
+          },
+          holdings: holdingDrafts,
+          idempotencyKey: intent.key,
+        });
+        setProducts((previous) => {
+          const exists = previous.some((product) => product.id === result.product.id);
+          return exists
+            ? previous.map((product) => product.id === result.product.id ? result.product : product)
+            : [...previous, result.product];
+        });
+        setHoldings((previous) => [
+          ...previous.filter((holding) => holding.productId !== result.product.id),
+          ...result.holdings,
+        ]);
+      } else if (editingProduct) {
         await db.update('products', editingProduct.id, productData);
         setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...productData } as Product : p));
       } else {
@@ -286,7 +392,9 @@ export default function Stock() {
       }
 
       setIsModalOpen(false);
+      productIntentRef.current = null;
       setEditingProduct(null);
+      setHoldingDrafts([]);
       setFormData({
         name: '',
         categoryId: '',
@@ -300,24 +408,63 @@ export default function Stock() {
         images: [],
         inventoryOwnerId: primaryOwner?.id,
       });
+    } catch (error) {
+      console.error('[Stock] save product error:', error);
+      showToast(error instanceof Error ? error.message : 'No se pudo guardar el producto.', 'error');
     } finally {
+      endSubmission(productSubmitInFlightRef);
       setSaving(false);
     }
+  };
+
+  const closeProductEditor = () => {
+    if (productSubmitInFlightRef.current) return;
+    productIntentRef.current = null;
+    setIsModalOpen(false);
+  };
+
+  const retryImageCleanup = async () => {
+    if (pendingImageCleanup.length === 0 || imageCleanupRetrying) return;
+    setImageCleanupRetrying(true);
+    const retryPaths = [...pendingImageCleanup];
+    const results = await Promise.allSettled(retryPaths.map((url) => deleteFromStorage(url)));
+    const failedPaths = failedStorageCleanupPaths(retryPaths, results);
+    setPendingImageCleanup(failedPaths);
+    if (failedPaths.length > 0) {
+      showToast(`No se pudieron eliminar ${failedPaths.length} imágenes. Revisá la conexión y reintentá.`, 'error');
+    } else {
+      showToast('Las imágenes pendientes se eliminaron correctamente.', 'success');
+    }
+    setImageCleanupRetrying(false);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
     const product = products.find(p => p.id === id);
-    if (product) {
-      const allImages = [...(product.images ?? []), product.imageUrl].filter(Boolean) as string[];
-      await Promise.allSettled(allImages.map(url => deleteFromStorage(url)));
+    try {
+      await db.delete('products', id);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      if (product) {
+        const allImages = [...new Set(
+          [...(product.images ?? []), product.imageUrl].filter(Boolean) as string[],
+        )];
+        const results = await Promise.allSettled(allImages.map(url => deleteFromStorage(url)));
+        const failedPaths = failedStorageCleanupPaths(allImages, results);
+        if (failedPaths.length > 0) {
+          setPendingImageCleanup((current) => [...new Set([...current, ...failedPaths])]);
+          showToast(`Producto eliminado, pero no se pudieron eliminar ${failedPaths.length} imágenes. Reintentá desde el aviso.`, 'error');
+        }
+      }
+    } catch (error) {
+      console.error('[Stock] delete product error:', error);
+      showToast('No se pudo eliminar el producto. Las imágenes se conservaron.', 'error');
     }
-    await db.delete('products', id);
-    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
   const autoCalculatePrice = () => {
-    const purchase = Number(formData.purchasePrice) || 0;
+    const purchase = holdingsEnabled
+      ? holdingDrafts.find((draft) => draft.active)?.purchaseCost ?? 0
+      : Number(formData.purchasePrice) || 0;
     const range = priceRanges.find(r =>
       purchase >= r.minPrice && (r.maxPrice === null || purchase <= r.maxPrice)
     );
@@ -420,27 +567,44 @@ export default function Stock() {
     setSelectedIds(new Set());
   };
 
+  const visibleHoldings = useMemo(
+    () => holdingsEnabled ? getVisibleInventoryHoldings(holdings, ownerFilter) : [],
+    [holdings, holdingsEnabled, ownerFilter],
+  );
+  const ownerVisibleProducts = useMemo(
+    () => holdingsEnabled
+      ? filterProductsByHoldingOwner(products, visibleHoldings, 'all')
+      : products,
+    [holdingsEnabled, products, visibleHoldings],
+  );
   const restockRecommendations = useMemo(
-    () => getRestockRecommendations(products, sales),
-    [products, sales],
+    () => holdingsEnabled
+      ? getHoldingRestockRecommendations(ownerVisibleProducts, visibleHoldings)
+      : getRestockRecommendations(ownerVisibleProducts, sales),
+    [holdingsEnabled, ownerVisibleProducts, sales, visibleHoldings],
   );
   const restockProductIds = useMemo(
     () => new Set(restockRecommendations.map((recommendation) => recommendation.product.id)),
     [restockRecommendations],
   );
 
-  const filteredProducts = useMemo(() => products.filter((p) => {
+  const filteredProducts = useMemo(() => {
+    return ownerVisibleProducts.filter((p) => {
     const normalizedSearch = deferredSearch.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(normalizedSearch)
       || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(normalizedSearch);
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    const matchesOwner = ownerFilter === 'all' || p.inventoryOwnerId === ownerFilter;
+    const matchesOwner = holdingsEnabled || ownerFilter === 'all' || p.inventoryOwnerId === ownerFilter;
+    const visibleStock = holdingsEnabled
+      ? getVisibleHoldingEconomics(p, visibleHoldings, 'all').stock
+      : p.stock;
     const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'disponible' && p.stock > 0) ||
-      (statusFilter === 'no-disponible' && p.stock === 0) ||
+      (statusFilter === 'disponible' && visibleStock > 0) ||
+      (statusFilter === 'no-disponible' && visibleStock === 0) ||
       (statusFilter === 'reponer' && restockProductIds.has(p.id));
     return matchesSearch && matchesCategory && matchesOwner && matchesStatus;
-  }), [categoryFilter, deferredSearch, inventoryOwners, ownerFilter, products, restockProductIds, statusFilter]);
+    });
+  }, [categoryFilter, deferredSearch, holdingsEnabled, inventoryOwners, ownerFilter, ownerVisibleProducts, restockProductIds, statusFilter, visibleHoldings]);
 
   const selectableIds = useMemo(
     () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
@@ -476,6 +640,18 @@ export default function Stock() {
     const margin = ((sale - purchase) / sale) * 100;
     return `${margin.toFixed(0)}%`;
   };
+
+  if (inventoryAccessError) {
+    return (
+      <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100">
+        <h2 className="text-lg font-bold">No pudimos verificar el acceso al stock</h2>
+        <p className="mt-1 text-sm">{inventoryAccessError}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-rose-700 px-4 py-2 font-semibold text-white">
+          Recargar
+        </button>
+      </section>
+    );
+  }
 
   return (
     <div className="operational-page space-y-6">
@@ -528,25 +704,7 @@ export default function Stock() {
             {isExportingPdf ? 'Generando...' : 'Descargar PDF'}
           </button>
           <button 
-            onClick={() => {
-              setEditingProduct(null);
-              setIsUploadingImage(false);
-              setFormData({
-                id: crypto.randomUUID(),
-                name: '',
-                categoryId: categories[0]?.id || '',
-                category: categories[0]?.name || '',
-                purchasePrice: 0,
-                salePrice: 0,
-                stock: 0,
-                minStock: 2,
-                showInCatalog: true,
-                notes: '',
-                images: [],
-                inventoryOwnerId: primaryOwner?.id,
-              });
-              setIsModalOpen(true);
-            }}
+            onClick={() => openProductEditor()}
         disabled={!canWrite}
             title={!canWrite ? 'Sin permiso' : undefined}
             className="bg-[#365fad] hover:bg-[#284b91] text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-slate-900/10 transition-all disabled:opacity-50"
@@ -556,6 +714,39 @@ export default function Stock() {
           </button>
         </div>
       </div>
+
+      {pendingImageCleanup.length > 0 && (
+        <section role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-bold">Limpieza de imágenes pendiente</h3>
+            <p className="text-sm">
+              No se pudieron eliminar {pendingImageCleanup.length} imágenes del almacenamiento. Las rutas quedan guardadas en esta sesión.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={retryImageCleanup}
+            disabled={imageCleanupRetrying}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white disabled:opacity-60"
+          >
+            {imageCleanupRetrying && <Loader2 size={16} className="animate-spin" />}
+            {imageCleanupRetrying ? 'Reintentando...' : 'Reintentar limpieza'}
+          </button>
+        </section>
+      )}
+
+      {!holdingsEnabled && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/30">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-bold text-indigo-950 dark:text-indigo-100">Stock compartido por titular</h3>
+              <p className="text-sm text-indigo-800 dark:text-indigo-200">
+                La activación está pausada hasta adaptar ventas y devoluciones. Mientras tanto, el stock actual sigue funcionando de forma segura.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <Modal
         isOpen={priceListPreview !== null}
@@ -594,7 +785,7 @@ export default function Stock() {
               <div>
                 <h3 className="font-bold text-amber-950 dark:text-amber-100">Reposición sugerida</h3>
                 <p className="text-sm text-amber-800 dark:text-amber-200">
-                  {restockRecommendations.length} producto{restockRecommendations.length === 1 ? '' : 's'} necesita{restockRecommendations.length === 1 ? '' : 'n'} atención según el mínimo y las ventas cobradas de los últimos 30 días.
+                  {restockRecommendations.length} existencia{restockRecommendations.length === 1 ? '' : 's'} necesita{restockRecommendations.length === 1 ? '' : 'n'} atención según {holdingsEnabled ? 'el mínimo del titular' : 'el mínimo y las ventas cobradas de los últimos 30 días'}.
                 </p>
               </div>
             </div>
@@ -609,10 +800,15 @@ export default function Stock() {
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {restockRecommendations.slice(0, 3).map((recommendation) => (
-              <div key={recommendation.product.id} className="rounded-xl bg-white/80 px-3 py-2.5 dark:bg-slate-900/70">
+              <div key={recommendation.scopeKey ?? recommendation.product.id} className="rounded-xl bg-white/80 px-3 py-2.5 dark:bg-slate-900/70">
                 <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{recommendation.product.name}</p>
+                {recommendation.inventoryOwnerId && (
+                  <p className="truncate text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    {inventoryOwners.find((owner) => owner.id === recommendation.inventoryOwnerId)?.name ?? 'Titular'}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                  Pedir {recommendation.suggestedQuantity} · {recommendation.unitsSoldLast30Days} vendidas en 30 días
+                  Pedir {recommendation.suggestedQuantity}{holdingsEnabled ? '' : ` · ${recommendation.unitsSoldLast30Days} vendidas en 30 días`}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
                   Inversión estimada: {formatCurrency(recommendation.estimatedCost)}
@@ -743,6 +939,18 @@ export default function Stock() {
               {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? filteredProducts.map((p) => {
                 const hasBarcode = Boolean(normalizeBarcode(p.barcode ?? ''));
                 const isGenerating = generatingFor === p.id;
+                const economics = holdingsEnabled
+                  ? getVisibleHoldingEconomics(p, visibleHoldings, 'all')
+                  : {
+                    stock: p.stock,
+                    minStock: p.minStock,
+                    purchaseCost: p.purchasePrice,
+                    purchaseCostRange: [p.purchasePrice, p.purchasePrice] as [number, number],
+                    hasMixedPurchaseCosts: false,
+                  };
+                const purchaseCostLabel = economics.hasMixedPurchaseCosts
+                  ? `${formatCurrency(economics.purchaseCostRange[0])} – ${formatCurrency(economics.purchaseCostRange[1])}`
+                  : formatCurrency(economics.purchaseCost ?? 0);
                 return (
                 <tr key={p.id} className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-4 py-4">
@@ -780,33 +988,42 @@ export default function Stock() {
                         <span className="text-[10px] bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
                           {p.category}
                         </span>
-                        {getInventoryOwnerName(p, inventoryOwners) && (
-                          <span className="ml-1 text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase font-bold">
-                            {getInventoryOwnerName(p, inventoryOwners)}
-                          </span>
-                        )}
+                        {holdingsEnabled ? visibleHoldings
+                          .filter((holding) => holding.productId === p.id)
+                          .map((holding) => {
+                            const owner = inventoryOwners.find((item) => item.id === holding.inventoryOwnerId);
+                            return owner ? (
+                              <span key={holding.id} className="ml-1 text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded font-bold">
+                                {owner.name}: {holding.stock}
+                              </span>
+                            ) : null;
+                          }) : getInventoryOwnerName(p, inventoryOwners) && (
+                            <span className="ml-1 text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase font-bold">
+                              {getInventoryOwnerName(p, inventoryOwners)}
+                            </span>
+                          )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 dark:text-slate-300">{formatCurrency(p.purchasePrice)}</td>
+                  <td className="px-6 py-4 dark:text-slate-300">{purchaseCostLabel}</td>
                   <td className="px-6 py-4 font-bold dark:text-white">{formatCurrency(roundPrice(p.salePrice))}</td>
-                  <td className={cn("px-6 py-4", getMarginColor(p.purchasePrice, p.salePrice))}>
-                    {getMarginPercent(p.purchasePrice, p.salePrice)}
+                  <td className={cn("px-6 py-4", economics.purchaseCost === null ? 'text-slate-400' : getMarginColor(economics.purchaseCost, p.salePrice))}>
+                    {economics.purchaseCost === null ? '—' : getMarginPercent(economics.purchaseCost, p.salePrice)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "font-bold",
-                      p.stock <= p.minStock ? "text-rose-600 dark:text-rose-400" : "dark:text-white"
+                      economics.stock <= economics.minStock ? "text-rose-600 dark:text-rose-400" : "dark:text-white"
                     )}>
-                      {p.stock}
+                      {economics.stock}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      p.stock > 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                      economics.stock > 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
                     )}>
-                      {p.stock > 0 ? 'Disponible' : 'Sin Stock'}
+                      {economics.stock > 0 ? 'Disponible' : 'Sin Stock'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -865,12 +1082,7 @@ export default function Stock() {
                       <button
                         disabled={!canWrite}
                         title={!canWrite ? 'Sin permiso' : undefined}
-                        onClick={() => {
-                          setEditingProduct(p);
-                          setIsUploadingImage(false);
-                          setFormData(p);
-                          setIsModalOpen(true);
-                        }}
+                        onClick={() => openProductEditor(p)}
                         className="p-2 text-slate-400 hover:text-[#365fad] dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Edit2 size={18} />
@@ -900,9 +1112,9 @@ export default function Stock() {
       </div>
 
       {/* Add/Edit Modal */}
-      <Modal 
+      <Modal
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+        onClose={closeProductEditor}
         title={editingProduct ? 'Editar Producto' : 'Agregar Nuevo Producto'}
       >
         <form onSubmit={handleSave} className="operational-page space-y-6">
@@ -938,7 +1150,7 @@ export default function Stock() {
               </select>
             </div>
 
-            <div>
+            {!holdingsEnabled && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular de la mercadería</label>
               <select
                 required
@@ -959,9 +1171,9 @@ export default function Stock() {
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
 
-            <div>
+            {!holdingsEnabled && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Inicial</label>
               <input 
                 type="number"
@@ -971,9 +1183,9 @@ export default function Stock() {
                 onChange={(e) => setFormData(prev => ({ ...prev, stock: Number(e.target.value) }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
-            </div>
+            </div>}
 
-            <div>
+            {!holdingsEnabled && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Compra</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
@@ -986,7 +1198,61 @@ export default function Stock() {
                   className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
-            </div>
+            </div>}
+
+            {holdingsEnabled && (
+              <div className="md:col-span-2 space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Existencias por titular</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    El producto y su precio de venta son únicos. Stock, costo y mínimo se administran por separado.
+                  </p>
+                </div>
+                {holdingDrafts.map((draft, index) => {
+                  const owner = inventoryOwners.find((item) => item.id === draft.inventoryOwnerId);
+                  return (
+                    <div key={draft.inventoryOwnerId} className="grid gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800 md:grid-cols-4">
+                      <div className="flex items-center font-semibold text-slate-800 dark:text-slate-100">
+                        {owner?.name ?? 'Titular'}
+                      </div>
+                      {(['stock', 'purchaseCost', 'minStock'] as const).map((field) => (
+                        <label key={field} className="text-xs text-slate-500 dark:text-slate-400">
+                          {field === 'stock' ? 'Stock' : field === 'purchaseCost' ? 'Costo' : 'Mínimo'}
+                          <input
+                            type="number"
+                            min="0"
+                            required
+                            value={draft[field]}
+                            onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => (
+                              itemIndex === index ? { ...item, [field]: Number(event.target.value) } : item
+                            )))}
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                          />
+                        </label>
+                      ))}
+                      {editingProduct && draft.stock > 0 && operableOwners.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            transferIntentRef.current = null;
+                            setTransfer({
+                              productId: editingProduct.id,
+                              sourceOwnerId: draft.inventoryOwnerId,
+                              destinationOwnerId: operableOwners.find((item) => item.id !== draft.inventoryOwnerId)?.id ?? '',
+                              quantity: 1,
+                              reason: 'Transferencia entre titulares',
+                            });
+                          }}
+                          className="md:col-span-4 inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-[#365fad] hover:bg-indigo-50 dark:border-indigo-800 dark:hover:bg-indigo-950"
+                        >
+                          <ArrowRightLeft size={16} /> Transferir stock
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
@@ -1012,7 +1278,7 @@ export default function Stock() {
               </div>
             </div>
 
-            <div>
+            {!holdingsEnabled && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Mínimo (Alerta)</label>
               <input 
                 type="number"
@@ -1022,7 +1288,7 @@ export default function Stock() {
                 onChange={(e) => setFormData(prev => ({ ...prev, minStock: Number(e.target.value) }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
-            </div>
+            </div>}
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
@@ -1122,7 +1388,7 @@ export default function Stock() {
           <div className="flex gap-3 pt-4">
             <button 
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={closeProductEditor}
               className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               Cancelar
@@ -1139,6 +1405,89 @@ export default function Stock() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={transfer !== null}
+        onClose={() => {
+          if (transferSubmitInFlightRef.current) return;
+          transferIntentRef.current = null;
+          setTransfer(null);
+        }}
+        title="Transferir stock entre titulares"
+      >
+        {transfer && (
+          <form
+            className="space-y-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!beginSubmission(transferSubmitInFlightRef)) return;
+              setTransferSubmitting(true);
+              try {
+                const intent = resolveIdempotencyIntent(
+                  'transfer', transfer, transferIntentRef.current,
+                );
+                transferIntentRef.current = intent;
+                await transferInventoryHoldingStock({ ...transfer, idempotencyKey: intent.key });
+                transferIntentRef.current = null;
+                setTransfer(null);
+                setIsModalOpen(false);
+                await fetchData();
+                showToast('Stock transferido con trazabilidad.', 'success');
+              } catch (error) {
+                console.error('[Stock] transfer error:', error);
+                showToast(error instanceof Error ? error.message : 'No se pudo transferir el stock.', 'error');
+              } finally {
+                endSubmission(transferSubmitInFlightRef);
+                setTransferSubmitting(false);
+              }
+            }}
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="text-sm text-slate-600 dark:text-slate-300">
+                Origen
+                <select
+                  value={transfer.sourceOwnerId}
+                  onChange={(event) => setTransfer({ ...transfer, sourceOwnerId: event.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  {operableOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+                </select>
+              </label>
+              <label className="text-sm text-slate-600 dark:text-slate-300">
+                Destino
+                <select
+                  value={transfer.destinationOwnerId}
+                  onChange={(event) => setTransfer({ ...transfer, destinationOwnerId: event.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  {operableOwners.filter((owner) => owner.id !== transfer.sourceOwnerId).map((owner) => (
+                    <option key={owner.id} value={owner.id}>{owner.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-slate-600 dark:text-slate-300">
+                Cantidad
+                <input
+                  type="number" min="1" required value={transfer.quantity}
+                  onChange={(event) => setTransfer({ ...transfer, quantity: Number(event.target.value) })}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                />
+              </label>
+              <label className="text-sm text-slate-600 dark:text-slate-300">
+                Motivo
+                <input
+                  required value={transfer.reason}
+                  onChange={(event) => setTransfer({ ...transfer, reason: event.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
+                />
+              </label>
+            </div>
+            <button type="submit" disabled={transferSubmitting} className="w-full rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white hover:bg-[#284b91] disabled:opacity-60">
+              {transferSubmitting ? 'Transfiriendo...' : 'Confirmar transferencia'}
+            </button>
+          </form>
+        )}
       </Modal>
 
       <BarcodeScannerOverlay

@@ -71,6 +71,14 @@ export interface InventoryHoldingAllocation {
   quantity: number;
 }
 
+export interface InventoryHoldingDraft {
+  inventoryOwnerId: string;
+  stock: number;
+  purchaseCost: number;
+  minStock: number;
+  active: boolean;
+}
+
 export interface InventoryOperationSettings {
   ownerUid: string;
   holdingsEnabled: boolean;
@@ -153,6 +161,10 @@ export interface StockIntake {
   purchasePrice: number;
   supplier?: string;
   notes?: string;
+  inventoryOwnerId?: string;
+  inventoryOwnerName?: string;
+  actorUid?: string;
+  idempotencyKey?: string;
   ownerUid: string;
 }
 

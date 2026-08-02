@@ -3,6 +3,11 @@ import { UserProfile, PermissionMatrix, ALL_TRUE_PERMISSIONS } from './types';
 import { supabase } from './lib/supabase';
 import { clearDbCache, invalidateDbCache, fromDb } from './lib/db';
 import type { Session } from '@supabase/supabase-js';
+import {
+  INVENTORY_ACCESS_ERROR_MESSAGE,
+  resolveInventoryAccessState,
+} from './lib/inventoryAccess';
+import { resolveAccountActor } from './lib/accountActor';
 
 interface LoadedAuth {
   profile: UserProfile;
@@ -10,6 +15,11 @@ interface LoadedAuth {
   isOwner: boolean;
   collaboratorId: string | null;
   permissions: PermissionMatrix;
+  allowedInventoryOwnerIds: string[];
+  operableInventoryOwnerIds: string[];
+  defaultInventoryOwnerId: string | null;
+  holdingsEnabled: boolean;
+  inventoryAccessError: string | null;
 }
 
 interface AuthContextType {
@@ -19,6 +29,11 @@ interface AuthContextType {
   isOwner: boolean;
   collaboratorId: string | null;
   permissions: PermissionMatrix;
+  allowedInventoryOwnerIds: string[];
+  operableInventoryOwnerIds: string[];
+  defaultInventoryOwnerId: string | null;
+  holdingsEnabled: boolean;
+  inventoryAccessError: string | null;
   loading: boolean;
   refetchToken: number;
   refetchData: () => void;
@@ -33,19 +48,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadProfile(session: Session): Promise<LoadedAuth | null> {
   try {
-    const { data: collabRow } = await supabase
+    const collaboratorResult = await supabase
       .from('collaborators')
       .select('id, owner_uid, permissions')
       .eq('user_uid', session.user.id)
       .is('revoked_at', null)
       .maybeSingle();
-
-    const isOwner = !collabRow;
-    const ownerUid = collabRow ? collabRow.owner_uid : session.user.id;
-    const collaboratorId = collabRow ? collabRow.id : null;
-    const permissions: PermissionMatrix = collabRow
-      ? (collabRow.permissions as PermissionMatrix)
-      : ALL_TRUE_PERMISSIONS;
+    const accountActor = resolveAccountActor({
+      actorUid: session.user.id,
+      collaborator: collaboratorResult.data ? {
+        id: collaboratorResult.data.id,
+        ownerUid: collaboratorResult.data.owner_uid,
+        permissions: collaboratorResult.data.permissions as PermissionMatrix,
+      } : null,
+      queryError: collaboratorResult.error?.message ?? null,
+      ownerPermissions: ALL_TRUE_PERMISSIONS,
+    });
+    const { isOwner, ownerUid, collaboratorId, permissions } = accountActor;
 
     let profile: UserProfile | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -59,7 +78,44 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
     }
     if (!profile) throw new Error('No se pudo cargar el perfil. Recargá la página.');
 
-    return { profile, ownerUid, isOwner, collaboratorId, permissions };
+    const [membershipsResult, settingsResult, ownersResult] = await Promise.all([
+      supabase
+        .from('inventory_owner_memberships')
+        .select('inventory_owner_id, is_default, can_operate')
+        .eq('user_id', ownerUid)
+        .eq('actor_uid', session.user.id),
+      supabase
+        .from('inventory_operation_settings')
+        .select('holdings_enabled')
+        .eq('user_id', ownerUid)
+        .maybeSingle(),
+      supabase
+        .from('inventory_owners')
+        .select('id')
+        .eq('user_id', ownerUid),
+    ]);
+    const memberships = membershipsResult.data ?? [];
+    const inventoryAccess = resolveInventoryAccessState({
+      memberships: memberships.map((row) => ({
+        inventoryOwnerId: row.inventory_owner_id,
+        isDefault: row.is_default,
+        canOperate: row.can_operate,
+      })),
+      holdingsEnabled: settingsResult.data?.holdings_enabled ?? null,
+      inventoryOwnerIds: (ownersResult.data ?? []).map((row) => row.id),
+      queryErrors: [membershipsResult.error, settingsResult.error, ownersResult.error]
+        .filter((error): error is NonNullable<typeof error> => Boolean(error))
+        .map((error) => error.message),
+    });
+
+    return {
+      profile,
+      ownerUid,
+      isOwner,
+      collaboratorId,
+      permissions,
+      ...inventoryAccess,
+    };
   } catch (err) {
     console.error('[Auth] loadProfile error:', err);
     return null;
@@ -77,6 +133,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refetchData = useCallback(() => {
     clearDbCache();
     setRefetchToken(t => t + 1);
+    void supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session) return;
+      const loaded = await loadProfile(data.session);
+      setAuth(loaded);
+    });
   }, []);
 
   const init = useCallback(async () => {
@@ -131,8 +192,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        setAuth(null);
         if (sameUser) {
-          console.warn('[Auth] Profile re-fetch failed during', event, '— preserving session.');
+          console.warn('[Auth] Profile re-fetch failed during', event, '— blocking access until reload.');
         } else {
           console.error('[Auth] Profile fetch failed for new session; user not signed in.');
         }
@@ -205,6 +267,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isOwner:        auth?.isOwner ?? false,
         collaboratorId: auth?.collaboratorId ?? null,
         permissions:    auth?.permissions ?? ALL_TRUE_PERMISSIONS,
+        allowedInventoryOwnerIds: auth?.allowedInventoryOwnerIds ?? [],
+        operableInventoryOwnerIds: auth?.operableInventoryOwnerIds ?? [],
+        defaultInventoryOwnerId: auth?.defaultInventoryOwnerId ?? null,
+        holdingsEnabled: auth?.holdingsEnabled ?? false,
+        inventoryAccessError: auth?.inventoryAccessError
+          ?? (authUser && !loading ? INVENTORY_ACCESS_ERROR_MESSAGE : null),
         loading,
         refetchToken,
         refetchData,

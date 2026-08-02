@@ -33,6 +33,15 @@ export function getAssignableInventoryOwners(
   );
 }
 
+export function filterInventoryOwnersByMembership(
+  owners: InventoryOwner[],
+  allowedOwnerIds?: string[],
+): InventoryOwner[] {
+  if (allowedOwnerIds === undefined) return owners;
+  const allowed = new Set(allowedOwnerIds);
+  return owners.filter((owner) => allowed.has(owner.id));
+}
+
 export function resolveInventoryOwner(
   product: Pick<Product, 'inventoryOwnerId'>,
   owners: InventoryOwner[],

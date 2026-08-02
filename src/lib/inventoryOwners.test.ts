@@ -6,6 +6,7 @@ import type { InventoryOwner, Product } from '../types';
 import {
   getActiveInventoryOwners,
   getAssignableInventoryOwners,
+  filterInventoryOwnersByMembership,
   getInventoryOwnerName,
   getInventoryOwnerProductLabel,
   getPrimaryInventoryOwner,
@@ -53,6 +54,13 @@ describe('inventory owner resolution', () => {
 });
 
 describe('inventory owner availability', () => {
+  it('does not expose owners when a collaborator has no memberships', () => {
+    expect(filterInventoryOwnersByMembership(owners, [])).toEqual([]);
+    expect(filterInventoryOwnersByMembership(owners, ['mama']).map((owner) => owner.id))
+      .toEqual(['mama']);
+    expect(filterInventoryOwnersByMembership(owners, undefined)).toEqual(owners);
+  });
+
   it('sorts active owners first and excludes archived owners from new assignments', () => {
     expect(sortInventoryOwners(owners).map((owner) => owner.id)).toEqual(['main', 'mama', 'legacy']);
     expect(getActiveInventoryOwners(owners).map((owner) => owner.id)).toEqual(['main', 'mama']);

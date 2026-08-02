@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getRestockRecommendations } from './stockIntelligence';
-import type { Product, Sale } from '../types';
+import { getHoldingRestockRecommendations, getRestockRecommendations } from './stockIntelligence';
+import type { InventoryHolding, Product, Sale } from '../types';
 
 const product = (overrides: Partial<Product> = {}): Product => ({
   id: 'product-1',
@@ -59,5 +59,46 @@ describe('getRestockRecommendations', () => {
     );
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('getHoldingRestockRecommendations', () => {
+  const holding = (overrides: Partial<InventoryHolding> = {}): InventoryHolding => ({
+    id: 'holding-leo',
+    ownerUid: 'owner-1',
+    productId: 'product-1',
+    inventoryOwnerId: 'leo',
+    stock: 1,
+    purchaseCost: 80,
+    minStock: 3,
+    active: true,
+    createdAt: '2026-01-01',
+    updatedAt: '2026-01-01',
+    ...overrides,
+  });
+
+  it('calculates each recommendation from the visible holding stock, minimum and cost', () => {
+    const result = getHoldingRestockRecommendations(
+      [product({ purchasePrice: 999, stock: 50, minStock: 0 })],
+      [holding()],
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      scopeKey: 'holding-leo',
+      inventoryOwnerId: 'leo',
+      targetStock: 6,
+      suggestedQuantity: 5,
+      estimatedCost: 400,
+      priority: 'high',
+    });
+  });
+
+  it('does not reveal or recommend products without a visible active holding', () => {
+    expect(getHoldingRestockRecommendations([product()], [])).toEqual([]);
+    expect(getHoldingRestockRecommendations(
+      [product()],
+      [holding({ active: false, stock: 0 })],
+    )).toEqual([]);
   });
 });

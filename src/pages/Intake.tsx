@@ -3,7 +3,8 @@ import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
-import { Product, StockIntake } from '../types';
+import { Product, StockIntake, InventoryHolding } from '../types';
+import { getInventoryHoldings, receiveInventoryHoldingStock } from '../lib/inventoryHoldings';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -20,21 +21,33 @@ import { normalizeBarcode } from '../lib/barcode';
 import { showToast } from '../lib/toast';
 import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import { motion } from 'motion/react';
+import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
+import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 
 export default function Intake() {
-  const { user, refetchToken } = useAuth();
-  const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
+  const {
+    user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
+    operableInventoryOwnerIds, defaultInventoryOwnerId,
+  } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(
+    user?.uid,
+    refetchToken,
+    allowedInventoryOwnerIds,
+  );
   const canWrite = usePermission('ingresos', 'write');
   const navigate = useNavigate();
   const [scannerOpen, setScannerOpen] = useState(false);
   const [intakes, setIntakes] = useState<StockIntake[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const intakeIntentRef = useRef<IdempotencyIntent | null>(null);
+  const intakeSubmitInFlightRef = useRef(false);
   const [formData, setFormData] = useState<Partial<StockIntake>>({
     date: todayString(),
     productId: '',
@@ -50,11 +63,12 @@ export default function Intake() {
   const productDropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user || inventoryAccessError) return;
     try {
-      const [i, p] = await Promise.all([
+      const [i, p, h] = await Promise.all([
         db.list<StockIntake>('stock_intakes', user.uid),
         db.list<Product>('products', user.uid),
+        holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       setIntakes(i.sort((a, b) => {
         const dc = b.date.localeCompare(a.date);
@@ -62,6 +76,7 @@ export default function Intake() {
         return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
       }));
       setProducts(p);
+      setHoldings(h);
     } catch (err) {
       console.error('[Intake] fetchData error:', err);
     } finally {
@@ -70,13 +85,20 @@ export default function Intake() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || inventoryAccessError) {
+      setIntakes([]);
+      setProducts([]);
+      setHoldings([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const [i, p] = await Promise.all([
+        const [i, p, h] = await Promise.all([
           db.list<StockIntake>('stock_intakes', user.uid),
           db.list<Product>('products', user.uid),
+          holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         setIntakes(i.sort((a, b) => {
@@ -85,6 +107,7 @@ export default function Intake() {
           return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
         }));
         setProducts(p);
+        setHoldings(h);
       } catch (err) {
         if (cancelled) return;
         console.error('[Intake] fetchData error:', err);
@@ -93,7 +116,7 @@ export default function Intake() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, refetchToken]);
+  }, [user, refetchToken, holdingsEnabled, inventoryAccessError]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -105,21 +128,47 @@ export default function Intake() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredProductOptions = products.filter(p =>
-    p.name.toLowerCase().includes(productSearch.toLowerCase())
-    || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(productSearch.toLowerCase())
-  );
+  const filteredProductOptions = products.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(productSearch.toLowerCase())
+      || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(productSearch.toLowerCase());
+    const hasAllowedHolding = !holdingsEnabled || holdings.some((holding) => (
+      holding.productId === p.id && holding.active
+      && operableInventoryOwnerIds.includes(holding.inventoryOwnerId)
+    ));
+    return matchesSearch && hasAllowedHolding;
+  });
 
   const selectedProduct = products.find(p => p.id === formData.productId);
+  const selectedHoldings = holdings.filter((holding) => (
+    holding.productId === formData.productId
+    && holding.active
+    && operableInventoryOwnerIds.includes(holding.inventoryOwnerId)
+  ));
+
+  const selectProductValues = (product: Product) => {
+    const productHoldings = holdings.filter((holding) => (
+      holding.productId === product.id && holding.active
+      && operableInventoryOwnerIds.includes(holding.inventoryOwnerId)
+    ));
+    const selectedHolding = productHoldings.find((holding) => (
+      holding.inventoryOwnerId === defaultInventoryOwnerId
+    )) ?? productHoldings[0];
+    return {
+      inventoryOwnerId: selectedHolding?.inventoryOwnerId,
+      purchasePrice: selectedHolding?.purchaseCost ?? product.purchasePrice,
+    };
+  };
 
   const handleProductSelect = (productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
+      const values = selectProductValues(product);
       setFormData(prev => ({
         ...prev,
         productId,
         productName: product.name,
-        purchasePrice: product.purchasePrice
+        purchasePrice: values.purchasePrice,
+        inventoryOwnerId: values.inventoryOwnerId,
       }));
     }
     setProductSearch('');
@@ -133,6 +182,7 @@ export default function Intake() {
   };
 
   const openModal = () => {
+    intakeIntentRef.current = null;
     setFormData({
       date: todayString(),
       productId: '',
@@ -147,6 +197,8 @@ export default function Intake() {
   };
 
   const closeModal = () => {
+    if (intakeSubmitInFlightRef.current) return;
+    intakeIntentRef.current = null;
     setIsModalOpen(false);
     setProductSearch('');
     setIsProductDropdownOpen(false);
@@ -158,12 +210,15 @@ export default function Intake() {
     const product = products.find((p) => normalizeBarcode(p.barcode ?? '') === code);
     setScannerOpen(false);
     if (product) {
+      intakeIntentRef.current = null;
+      const values = selectProductValues(product);
       setFormData({
         date: todayString(),
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        purchasePrice: product.purchasePrice,
+        purchasePrice: values.purchasePrice,
+        inventoryOwnerId: values.inventoryOwnerId,
         supplier: '',
         notes: '',
       });
@@ -178,24 +233,47 @@ export default function Intake() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isSubmitting || !formData.productId) return;
+    if (!user || inventoryAccessError || !formData.productId) return;
+    if (!beginSubmission(intakeSubmitInFlightRef)) return;
 
     setIsSubmitting(true);
     try {
-      await callRpc('intake_stock', {
-        p_product_id:    formData.productId,
-        p_quantity:      formData.quantity,
-        p_purchase_price: formData.purchasePrice,
-        p_supplier:      formData.supplier || null,
-        p_notes:         formData.notes || null,
-        p_date:          formData.date,
-      });
-      closeModal();
+      if (holdingsEnabled) {
+        if (!formData.inventoryOwnerId) throw new Error('Seleccioná un titular');
+        const intent = resolveIdempotencyIntent(
+          'intake', formData, intakeIntentRef.current,
+        );
+        intakeIntentRef.current = intent;
+        await receiveInventoryHoldingStock({
+          productId: formData.productId,
+          inventoryOwnerId: formData.inventoryOwnerId,
+          quantity: formData.quantity ?? 0,
+          purchaseCost: formData.purchasePrice ?? 0,
+          supplier: formData.supplier,
+          notes: formData.notes,
+          date: formData.date ?? todayString(),
+          idempotencyKey: intent.key,
+        });
+      } else {
+        await callRpc('intake_stock', {
+          p_product_id:    formData.productId,
+          p_quantity:      formData.quantity,
+          p_purchase_price: formData.purchasePrice,
+          p_supplier:      formData.supplier || null,
+          p_notes:         formData.notes || null,
+          p_date:          formData.date,
+        });
+      }
+      intakeIntentRef.current = null;
+      setIsModalOpen(false);
+      setProductSearch('');
+      setIsProductDropdownOpen(false);
       fetchData();
     } catch (error) {
       console.error('Error al registrar ingreso:', error);
-      alert(error instanceof Error ? error.message : 'Error al registrar el ingreso.');
+      showToast(error instanceof Error ? error.message : 'Error al registrar el ingreso.', 'error');
     } finally {
+      endSubmission(intakeSubmitInFlightRef);
       setIsSubmitting(false);
     }
   };
@@ -204,6 +282,18 @@ export default function Intake() {
     i.productName.toLowerCase().includes(search.toLowerCase()) ||
     (i.supplier?.toLowerCase().includes(search.toLowerCase()))
   );
+
+  if (inventoryAccessError) {
+    return (
+      <section role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100">
+        <h2 className="text-lg font-bold">No pudimos verificar el acceso a los ingresos</h2>
+        <p className="mt-1 text-sm">{inventoryAccessError}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-rose-700 px-4 py-2 font-semibold text-white">
+          Recargar
+        </button>
+      </section>
+    );
+  }
 
   return (
     <div className="operational-page space-y-6">
@@ -268,7 +358,14 @@ export default function Intake() {
               {filteredIntakes.map((i) => (
                 <tr key={i.id} className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(i.date)}</td>
-                  <td className="px-6 py-4 font-bold dark:text-white">{i.productName}</td>
+                  <td className="px-6 py-4 font-bold dark:text-white">
+                    {i.productName}
+                    {i.inventoryOwnerName && (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        {i.inventoryOwnerName}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 dark:text-slate-300">
                     <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-lg font-bold">
                       +{i.quantity}
@@ -388,6 +485,31 @@ export default function Intake() {
                 />
               </div>
             </div>
+
+            {holdingsEnabled && selectedProduct && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular que recibe</label>
+                <select
+                  required
+                  value={formData.inventoryOwnerId ?? ''}
+                  onChange={(event) => {
+                    const holding = selectedHoldings.find((item) => item.inventoryOwnerId === event.target.value);
+                    setFormData((current) => ({
+                      ...current,
+                      inventoryOwnerId: event.target.value,
+                      purchasePrice: holding?.purchaseCost ?? current.purchasePrice,
+                    }));
+                  }}
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                >
+                  <option value="">Seleccionar titular</option>
+                  {selectedHoldings.map((holding) => {
+                    const owner = inventoryOwners.find((item) => item.id === holding.inventoryOwnerId);
+                    return <option key={holding.id} value={holding.inventoryOwnerId}>{owner?.name ?? 'Titular'} · Stock {holding.stock}</option>;
+                  })}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cantidad Recibida</label>

@@ -1,9 +1,11 @@
-import type { Product, Sale } from '../types';
+import type { InventoryHolding, Product, Sale } from '../types';
 
 export type RestockPriority = 'critical' | 'high' | 'medium';
 
 export interface RestockRecommendation {
   product: Product;
+  scopeKey?: string;
+  inventoryOwnerId?: string;
   unitsSoldLast30Days: number;
   averageDailySales: number;
   coverageDays: number | null;
@@ -11,6 +13,11 @@ export interface RestockRecommendation {
   suggestedQuantity: number;
   estimatedCost: number;
   priority: RestockPriority;
+}
+
+export interface HoldingRestockRecommendation extends RestockRecommendation {
+  scopeKey: string;
+  inventoryOwnerId: string;
 }
 
 const LOOKBACK_DAYS = 30;
@@ -83,5 +90,31 @@ export function getRestockRecommendations(
       return priorities[a.priority] - priorities[b.priority]
         || b.estimatedCost - a.estimatedCost
         || a.product.name.localeCompare(b.product.name);
+    });
+}
+
+export function getHoldingRestockRecommendations(
+  products: Product[],
+  visibleHoldings: InventoryHolding[],
+): HoldingRestockRecommendation[] {
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
+  return visibleHoldings
+    .filter((holding) => holding.active)
+    .flatMap((holding) => {
+      const product = productsById.get(holding.productId);
+      if (!product) return [];
+      const [recommendation] = getRestockRecommendations([{
+        ...product,
+        stock: holding.stock,
+        minStock: holding.minStock,
+        purchasePrice: holding.purchaseCost,
+      }], []);
+      if (!recommendation) return [];
+      return [{
+        ...recommendation,
+        scopeKey: holding.id,
+        inventoryOwnerId: holding.inventoryOwnerId,
+      }];
     });
 }

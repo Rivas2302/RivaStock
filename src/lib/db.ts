@@ -75,6 +75,8 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   mutate_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],
   transfer_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],
   set_inventory_holdings_enabled: ['inventory_operation_settings'],
+  save_product_with_holdings: ['products', 'inventory_holdings', 'inventory_stock_commands'],
+  receive_inventory_holding_stock: ['products', 'inventory_holdings', 'inventory_stock_commands', 'stock_intakes'],
 };
 
 // Report cache uses a different keyspace (date-range based) — we tag it
