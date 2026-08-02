@@ -40,6 +40,59 @@ export interface InventoryOwner {
   updatedAt: string;
 }
 
+export interface InventoryHolding {
+  id: string;
+  ownerUid: string;
+  productId: string;
+  inventoryOwnerId: string;
+  stock: number;
+  purchaseCost: number;
+  minStock: number;
+  active: boolean;
+  ownerSortOrder?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryOwnerMembership {
+  id: string;
+  ownerUid: string;
+  actorUid: string;
+  inventoryOwnerId: string;
+  isDefault: boolean;
+  canOperate: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryHoldingAllocation {
+  holdingId: string;
+  inventoryOwnerId: string;
+  quantity: number;
+}
+
+export interface InventoryOperationSettings {
+  ownerUid: string;
+  holdingsEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryStockCommand {
+  id: string;
+  ownerUid: string;
+  idempotencyKey: string;
+  productId: string;
+  productName: string;
+  inventoryOwnerId: string;
+  inventoryOwnerName: string;
+  actorUid: string;
+  delta: number;
+  reason: string;
+  resultingStock: number;
+  createdAt: string;
+}
+
 export interface PublicInventoryOwnerLabel {
   productId: string;
   inventoryOwnerName: string;
