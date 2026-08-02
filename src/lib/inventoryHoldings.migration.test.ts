@@ -64,6 +64,20 @@ describe('inventory holdings migration contract', () => {
     expect(migration).toContain('ORDER BY membership.is_default DESC, io.sort_order, h.id');
   });
 
+  it('uses scalar INTO targets when selecting holding metadata', () => {
+    const mutate = sqlBlock(
+      'CREATE OR REPLACE FUNCTION mutate_inventory_holding_stock',
+      'CREATE OR REPLACE FUNCTION transfer_inventory_holding_stock',
+    );
+
+    expect(mutate).not.toMatch(
+      /v_holding\s+inventory_holdings%ROWTYPE[\s\S]*INTO\s+v_holding\s*,/i,
+    );
+    expect(mutate).toContain(
+      'INTO v_holding_id, v_holding_stock, v_product_name, v_owner_name',
+    );
+  });
+
   it('does not expose direct holding mutations to clients', () => {
     expect(migration).not.toMatch(
       /CREATE POLICY[^;]+ON inventory_holdings\s+FOR (INSERT|UPDATE|DELETE)/i,

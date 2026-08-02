@@ -422,7 +422,8 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_uid uuid := get_owner_uid(auth.uid());
-  v_holding inventory_holdings%ROWTYPE;
+  v_holding_id uuid;
+  v_holding_stock integer;
   v_command inventory_stock_commands%ROWTYPE;
   v_product_name text;
   v_owner_name text;
@@ -468,8 +469,8 @@ BEGIN
     RAISE EXCEPTION 'Sin permiso para operar este titular';
   END IF;
 
-  SELECT h, p.name, io.name
-  INTO v_holding, v_product_name, v_owner_name
+  SELECT h.id, h.stock, p.name, io.name
+  INTO v_holding_id, v_holding_stock, v_product_name, v_owner_name
   FROM inventory_holdings h
   JOIN products p ON p.user_id = h.user_id AND p.id = h.product_id
   JOIN inventory_owners io
@@ -481,12 +482,12 @@ BEGIN
     AND h.inventory_owner_id = p_inventory_owner_id
     AND h.active
   FOR UPDATE;
-  IF v_holding.id IS NULL THEN RAISE EXCEPTION 'Existencia no encontrada o inactiva'; END IF;
+  IF v_holding_id IS NULL THEN RAISE EXCEPTION 'Existencia no encontrada o inactiva'; END IF;
 
-  v_result := v_holding.stock + p_delta;
+  v_result := v_holding_stock + p_delta;
   IF v_result < 0 THEN
     RAISE EXCEPTION 'Stock insuficiente. Disponible: %, solicitado: %',
-      v_holding.stock, abs(p_delta);
+      v_holding_stock, abs(p_delta);
   END IF;
 
   INSERT INTO inventory_stock_commands (
@@ -516,7 +517,7 @@ BEGIN
 
   UPDATE inventory_holdings
   SET stock = v_result, updated_at = now()
-  WHERE id = v_holding.id;
+  WHERE id = v_holding_id;
   RETURN v_command;
 END;
 $$;
