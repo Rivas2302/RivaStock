@@ -1,13 +1,15 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Category, Product } from '../types';
+import type { Category, InventoryOwner, Product } from '../types';
 import { roundPrice } from './utils';
+import { getInventoryOwnerName } from './inventoryOwners';
 
 interface PriceListPdfOptions {
   products: Product[];
   categories: Category[];
   businessName: string;
   currencySymbol?: string;
+  inventoryOwners?: InventoryOwner[];
 }
 
 interface CategoryGroup {
@@ -79,6 +81,7 @@ export function createPriceListPdf({
   categories,
   businessName,
   currencySymbol = '$',
+  inventoryOwners = [],
 }: PriceListPdfOptions): PriceListPdf {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -170,7 +173,10 @@ export function createPriceListPdf({
       head: [['Producto', 'Descripción', 'Precio']],
       body: group.items.map((product) => {
         const code = getProductCode(product);
-        return [code ? `${product.name}\nCódigo: ${code}` : product.name, getProductDescription(product), formatPrice(product.salePrice, currencySymbol)];
+        const ownerName = getInventoryOwnerName(product, inventoryOwners);
+        const ownerLabel = ownerName ? ` — ${ownerName}` : '';
+        const productLabel = `${product.name}${ownerLabel}`;
+        return [code ? `${productLabel}\nCódigo: ${code}` : productLabel, getProductDescription(product), formatPrice(product.salePrice, currencySymbol)];
       }),
       styles: {
         font: 'helvetica',

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
+import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import { PriceRange, Product } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { 
@@ -28,6 +30,7 @@ interface BatchResult {
 
 export default function Calculator() {
   const { user } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(user?.uid);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,7 +252,9 @@ export default function Calculator() {
             >
               <option value="">Seleccionar producto</option>
               {products.map(p => (
-                <option key={p.id} value={p.id}>{p.name} (Actual: {formatCurrency(p.salePrice)})</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}{getInventoryOwnerName(p, inventoryOwners) ? ` — ${getInventoryOwnerName(p, inventoryOwners)}` : ''} (Actual: {formatCurrency(p.salePrice)})
+                </option>
               ))}
             </select>
           </div>

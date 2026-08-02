@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
+import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import {
   Category,
@@ -29,14 +30,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   QrCode,
-  Users
+  Users,
+  ContactRound
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import CatalogQRModal from '../components/CatalogQRModal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'general' | 'categories' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
+type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
 
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
@@ -320,6 +322,7 @@ export default function Settings() {
   const tabs: { id: Tab; label: string; icon: typeof SettingsIcon }[] = [
     { id: 'general', label: 'General', icon: SettingsIcon },
     { id: 'categories', label: 'Categorías', icon: Tags },
+    { id: 'owners', label: 'Titulares', icon: ContactRound },
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
     { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
@@ -512,6 +515,17 @@ export default function Settings() {
                       </div>
                     ))}
                   </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'owners' && (
+                <motion.div
+                  key="owners"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                >
+                  <InventoryOwnersTab />
                 </motion.div>
               )}
 

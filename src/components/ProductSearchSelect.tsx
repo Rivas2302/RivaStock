@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Product } from '../types';
+import { InventoryOwner, Product } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
+import {
+  getInventoryOwnerName,
+  getInventoryOwnerProductLabel,
+} from '../lib/inventoryOwners';
 
 interface Props {
   products: Product[];
@@ -10,6 +14,7 @@ interface Props {
   onChange: (productId: string) => void;
   placeholder?: string;
   required?: boolean;
+  inventoryOwners?: InventoryOwner[];
 }
 
 export default function ProductSearchSelect({
@@ -18,29 +23,29 @@ export default function ProductSearchSelect({
   onChange,
   placeholder = 'Buscar producto...',
   required = false,
+  inventoryOwners = [],
 }: Props) {
   const [inputText, setInputText] = useState(() => {
     if (!value) return '';
     const p = products.find(p => p.id === value);
-    return p ? p.name : '';
+    return p ? getInventoryOwnerProductLabel(p, inventoryOwners) : '';
   });
   const [isOpen, setIsOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastValueRef = useRef(value);
+  const lastDisplayRef = useRef(inputText);
 
   // Sync display text when value changes externally (reset or edit load)
   useEffect(() => {
-    if (value === lastValueRef.current) return;
+    const p = value ? products.find((product) => product.id === value) : undefined;
+    const display = p ? getInventoryOwnerProductLabel(p, inventoryOwners) : '';
+    if (value === lastValueRef.current && display === lastDisplayRef.current) return;
     lastValueRef.current = value;
-    if (!value) {
-      setInputText('');
-    } else {
-      const p = products.find(p => p.id === value);
-      setInputText(p ? p.name : '');
-    }
-  }, [value, products]);
+    lastDisplayRef.current = display;
+    setInputText(display);
+  }, [value, products, inventoryOwners]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -56,16 +61,18 @@ export default function ProductSearchSelect({
     const q = inputText.toLowerCase().trim();
     if (!q) return products;
     return products.filter(p =>
-      p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+      getInventoryOwnerProductLabel(p, inventoryOwners).toLowerCase().includes(q)
+      || p.category.toLowerCase().includes(q)
     );
-  }, [products, inputText]);
+  }, [products, inputText, inventoryOwners]);
 
   useEffect(() => { setHighlighted(0); }, [filtered]);
 
   const handleSelect = (product: Product) => {
     lastValueRef.current = product.id;
+    lastDisplayRef.current = getInventoryOwnerProductLabel(product, inventoryOwners);
     onChange(product.id);
-    setInputText(product.name);
+    setInputText(lastDisplayRef.current);
     setIsOpen(false);
     setHighlighted(0);
   };
@@ -98,6 +105,7 @@ export default function ProductSearchSelect({
 
   const handleClear = () => {
     lastValueRef.current = '';
+    lastDisplayRef.current = '';
     onChange('');
     setInputText('');
     setIsOpen(false);
@@ -176,6 +184,11 @@ export default function ProductSearchSelect({
                         <span className="font-semibold text-slate-900 dark:text-white text-sm truncate">
                           {p.name}
                         </span>
+                        {getInventoryOwnerName(p, inventoryOwners) && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            {getInventoryOwnerName(p, inventoryOwners)}
+                          </span>
+                        )}
                         {p.stock === 0 ? (
                           <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
                             Sin stock

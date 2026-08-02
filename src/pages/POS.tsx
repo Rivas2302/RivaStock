@@ -10,12 +10,15 @@ import { Product, Customer, PAYMENT_METHODS } from '../types';
 import { cn, formatCurrency, roundPrice, todayString } from '../lib/utils';
 import { normalizeBarcode } from '../lib/barcode';
 import { showToast } from '../lib/toast';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
+import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
 
 export default function POS() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(user?.uid);
   const cart = usePosCart();
   const totals = useMemo(
     () => calculateCartTotals({ items: cart.items, globalAdjustment: cart.globalAdjustment }),
@@ -63,7 +66,8 @@ export default function POS() {
     const product = products.find((p) => normalizeBarcode(p.barcode ?? '') === code);
     if (product) {
       cart.addProduct({ id: product.id, name: product.name, salePrice: product.salePrice, stock: product.stock });
-      showToast(`Agregado: ${product.name}`, 'success');
+      const ownerName = getInventoryOwnerName(product, inventoryOwners);
+      showToast(`Agregado: ${product.name}${ownerName ? ` — ${ownerName}` : ''}`, 'success');
       return;
     }
     setUnknownCode(code);
@@ -77,10 +81,11 @@ export default function POS() {
       .filter((p) =>
         p.name.toLowerCase().includes(q)
         || p.category.toLowerCase().includes(q)
+        || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(q)
         || normalizeBarcode(p.barcode ?? '').includes(q.toUpperCase()),
       )
       .slice(0, 8);
-  }, [products, search]);
+  }, [inventoryOwners, products, search]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
@@ -194,7 +199,9 @@ export default function POS() {
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-900 dark:text-white text-sm truncate">{p.name}</p>
-                  <p className="text-[11px] text-slate-400">{p.category} · stock {p.stock}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {getInventoryOwnerName(p, inventoryOwners) ? `${getInventoryOwnerName(p, inventoryOwners)} · ` : ''}{p.category} · stock {p.stock}
+                  </p>
                 </div>
                 <span className="text-sm font-semibold text-[#365fad] dark:text-[#9fb4df] ml-2 shrink-0">
                   {formatCurrency(roundPrice(p.salePrice))}
@@ -239,7 +246,9 @@ export default function POS() {
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{it.productName}</p>
+                    <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                      {it.productName}{prod && getInventoryOwnerName(prod, inventoryOwners) ? ` — ${getInventoryOwnerName(prod, inventoryOwners)}` : ''}
+                    </p>
                     <div className="flex items-center gap-2 mt-1 text-xs">
                       <span className="text-slate-400">{formatCurrency(linePrice)} c/u</span>
                       {over && (

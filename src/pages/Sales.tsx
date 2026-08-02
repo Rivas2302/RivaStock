@@ -2,6 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
 import { Product, Sale, Customer } from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
@@ -37,6 +38,7 @@ import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 
 export default function Sales() {
   const { user, refetchToken } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
   const canWrite = usePermission('ventas', 'write');
   const canDelete = usePermission('ventas', 'delete');
   const navigate = useNavigate();
@@ -661,6 +663,7 @@ export default function Sales() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
               <ProductSearchSelect
                 products={products}
+                inventoryOwners={inventoryOwners}
                 value={formData.productId || ''}
                 onChange={handleProductChange}
                 placeholder="Buscar por nombre o categoría..."

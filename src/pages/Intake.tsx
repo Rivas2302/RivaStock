@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
 import { Product, StockIntake } from '../types';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
@@ -17,10 +18,12 @@ import Modal from '../components/Modal';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import { normalizeBarcode } from '../lib/barcode';
 import { showToast } from '../lib/toast';
+import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import { motion } from 'motion/react';
 
 export default function Intake() {
   const { user, refetchToken } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
   const canWrite = usePermission('ingresos', 'write');
   const navigate = useNavigate();
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -104,6 +107,7 @@ export default function Intake() {
 
   const filteredProductOptions = products.filter(p =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
+    || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(productSearch.toLowerCase())
   );
 
   const selectedProduct = products.find(p => p.id === formData.productId);
@@ -312,7 +316,9 @@ export default function Intake() {
               <div ref={productDropdownRef} className="relative">
                 {selectedProduct ? (
                   <div className="flex items-center gap-2 w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl dark:text-white">
-                    <span className="flex-1 text-sm truncate">{selectedProduct.name}</span>
+                    <span className="flex-1 text-sm truncate">
+                      {selectedProduct.name}{getInventoryOwnerName(selectedProduct, inventoryOwners) ? ` — ${getInventoryOwnerName(selectedProduct, inventoryOwners)}` : ''}
+                    </span>
                     <span className="text-xs text-slate-400 shrink-0">Stock: {selectedProduct.stock}</span>
                     <button
                       type="button"
@@ -351,7 +357,14 @@ export default function Intake() {
                           onClick={() => handleProductSelect(p.id)}
                           className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors dark:text-white"
                         >
-                          <span className="truncate">{p.name}</span>
+                          <span className="min-w-0 truncate">
+                            {p.name}
+                            {getInventoryOwnerName(p, inventoryOwners) && (
+                              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                {getInventoryOwnerName(p, inventoryOwners)}
+                              </span>
+                            )}
+                          </span>
                           <span className="text-xs text-slate-400 shrink-0 ml-2">Stock: {p.stock}</span>
                         </button>
                       ))

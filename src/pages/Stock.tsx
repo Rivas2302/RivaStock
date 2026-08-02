@@ -2,6 +2,11 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
+import {
+  getAssignableInventoryOwners,
+  getInventoryOwnerName,
+} from '../lib/inventoryOwners';
 import { db, deleteFromStorage } from '../lib/db';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
@@ -53,7 +58,9 @@ export default function Stock() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
   const deferredSearch = useDeferredValue(search);
+  const { owners: inventoryOwners, primaryOwner } = useInventoryOwners(user?.uid, refetchToken);
   
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -70,6 +77,10 @@ export default function Stock() {
     notes: '',
     images: []
   });
+  const assignableOwners = useMemo(
+    () => getAssignableInventoryOwners(inventoryOwners, editingProduct?.inventoryOwnerId),
+    [editingProduct?.inventoryOwnerId, inventoryOwners],
+  );
 
   const fetchData = async () => {
     if (!user) return;
@@ -118,6 +129,14 @@ export default function Stock() {
   }, [user, refetchToken]);
 
   useEffect(() => {
+    if (editingProduct || formData.inventoryOwnerId || !primaryOwner) return;
+    setFormData((current) => ({
+      ...current,
+      inventoryOwnerId: primaryOwner.id,
+    }));
+  }, [editingProduct, formData.inventoryOwnerId, primaryOwner]);
+
+  useEffect(() => {
     if (new URLSearchParams(location.search).get('status') === 'reponer') {
       setStatusFilter('reponer');
     }
@@ -141,11 +160,12 @@ export default function Stock() {
         notes: '',
         images: [],
         barcode: state.newBarcode,
+        inventoryOwnerId: primaryOwner?.id,
       });
       setIsModalOpen(true);
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location, categories, navigate]);
+  }, [location, categories, navigate, primaryOwner]);
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -186,6 +206,7 @@ export default function Stock() {
         categories,
         businessName: user.businessName,
         currencySymbol: user.currencySymbol,
+        inventoryOwners,
       });
 
       const url = URL.createObjectURL(pdf.blob);
@@ -236,6 +257,7 @@ export default function Stock() {
       const productData = {
         ...formData,
         barcode: normalizedBarcode || undefined,
+        inventoryOwnerId: formData.inventoryOwnerId || primaryOwner?.id,
         ownerUid: user.uid,
         updatedAt: new Date().toISOString()
       } as Product;
@@ -248,6 +270,7 @@ export default function Stock() {
         const cutoff = new Date(Date.now() - DUPLICATE_DETECTION_WINDOW_MS).toISOString();
         const potentialDuplicate = products.find(p =>
           p.name.toLowerCase() === (formData.name || '').toLowerCase() &&
+          p.inventoryOwnerId === productData.inventoryOwnerId &&
           p.createdAt && p.createdAt > cutoff
         );
         if (potentialDuplicate) {
@@ -274,7 +297,8 @@ export default function Stock() {
         minStock: 2,
         showInCatalog: true,
         notes: '',
-        images: []
+        images: [],
+        inventoryOwnerId: primaryOwner?.id,
       });
     } finally {
       setSaving(false);
@@ -406,14 +430,17 @@ export default function Stock() {
   );
 
   const filteredProducts = useMemo(() => products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(deferredSearch.toLowerCase());
+    const normalizedSearch = deferredSearch.toLowerCase();
+    const matchesSearch = p.name.toLowerCase().includes(normalizedSearch)
+      || getInventoryOwnerName(p, inventoryOwners).toLowerCase().includes(normalizedSearch);
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+    const matchesOwner = ownerFilter === 'all' || p.inventoryOwnerId === ownerFilter;
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'disponible' && p.stock > 0) ||
       (statusFilter === 'no-disponible' && p.stock === 0) ||
       (statusFilter === 'reponer' && restockProductIds.has(p.id));
-    return matchesSearch && matchesCategory && matchesStatus;
-  }), [categoryFilter, deferredSearch, products, restockProductIds, statusFilter]);
+    return matchesSearch && matchesCategory && matchesOwner && matchesStatus;
+  }), [categoryFilter, deferredSearch, inventoryOwners, ownerFilter, products, restockProductIds, statusFilter]);
 
   const selectableIds = useMemo(
     () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
@@ -515,7 +542,8 @@ export default function Stock() {
                 minStock: 2,
                 showInCatalog: true,
                 notes: '',
-                images: []
+                images: [],
+                inventoryOwnerId: primaryOwner?.id,
               });
               setIsModalOpen(true);
             }}
@@ -630,7 +658,7 @@ export default function Stock() {
       )}
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative md:col-span-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -640,6 +668,22 @@ export default function Stock() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white"
           />
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <select
+            value={ownerFilter}
+            onChange={(event) => setOwnerFilter(event.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
+          >
+            <option value="all">Todos los titulares</option>
+            {inventoryOwners.map((owner) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.name}{owner.archivedAt ? ' (archivado)' : ''}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -736,6 +780,11 @@ export default function Stock() {
                         <span className="text-[10px] bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
                           {p.category}
                         </span>
+                        {getInventoryOwnerName(p, inventoryOwners) && (
+                          <span className="ml-1 text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase font-bold">
+                            {getInventoryOwnerName(p, inventoryOwners)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -886,6 +935,29 @@ export default function Stock() {
               >
                 <option value="">Seleccionar categoría</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular de la mercadería</label>
+              <select
+                required
+                value={formData.inventoryOwnerId ?? ''}
+                onChange={(event) => {
+                  const selectedOwner = inventoryOwners.find((owner) => owner.id === event.target.value);
+                  setFormData((current) => ({
+                    ...current,
+                    inventoryOwnerId: selectedOwner?.id,
+                  }));
+                }}
+                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+              >
+                <option value="">Seleccionar titular</option>
+                {assignableOwners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name}{owner.isPrimary ? ' (predeterminado)' : ''}{owner.archivedAt ? ' (archivado)' : ''}
+                  </option>
+                ))}
               </select>
             </div>
 

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fromDb } from '../lib/db';
 import { Product, CatalogConfig } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
+import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import {
   ArrowLeft,
   Copy,
@@ -18,6 +19,7 @@ export default function PublicProductPage() {
   const { slug, productId } = useParams<{ slug: string; productId: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [config, setConfig] = useState<CatalogConfig | null>(null);
+  const [inventoryOwnerName, setInventoryOwnerName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
@@ -31,7 +33,7 @@ export default function PublicProductPage() {
         return;
       }
 
-      const [catalogRes, productRes] = await Promise.all([
+      const [catalogRes, productRes, ownerLabels] = await Promise.all([
         supabase
           .from('catalog_config')
           .select('*')
@@ -44,6 +46,7 @@ export default function PublicProductPage() {
           .eq('id', productId)
           .eq('show_in_catalog', true)
           .single(),
+        getPublicInventoryOwnerLabels(slug, productId),
       ]);
 
       const catalogRow = catalogRes.data?.[0];
@@ -63,6 +66,7 @@ export default function PublicProductPage() {
 
       setConfig(fromDb<CatalogConfig>(catalogRow));
       setProduct(fromDb<Product>(productRow));
+      setInventoryOwnerName(ownerLabels[0]?.inventoryOwnerName ?? '');
       setLoading(false);
     };
 
@@ -225,6 +229,11 @@ export default function PublicProductPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
                 {product.category}
               </p>
+              {inventoryOwnerName && (
+                <p className="mb-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                  {inventoryOwnerName}
+                </p>
+              )}
               <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
                 {product.name}
               </h1>

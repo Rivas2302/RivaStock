@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
+import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
 import { Product, Quote, QuoteItem, QuoteStatus, Customer } from '../types';
 import { formatCurrency, cn, todayString } from '../lib/utils';
@@ -45,6 +46,7 @@ function addDays(days: number): string {
 
 export default function Quotes() {
   const { user, refetchToken } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
   const canWrite = usePermission('presupuestos', 'write');
   const canDelete = usePermission('presupuestos', 'delete');
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -698,6 +700,7 @@ export default function Quotes() {
               <div className="col-span-8">
                 <ProductSearchSelect
                   products={products}
+                  inventoryOwners={inventoryOwners}
                   value={addProductId}
                   onChange={handleSelectProduct}
                   placeholder="Buscar producto..."

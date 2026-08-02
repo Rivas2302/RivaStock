@@ -5,6 +5,7 @@ import { TOAST_DURATION_MS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Product, CatalogConfig, Category, Order } from '../types';
 import { formatCurrency, cn, roundPrice, uuid } from '../lib/utils';
+import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import {
   ShoppingBag,
   Search,
@@ -41,6 +42,7 @@ export default function PublicCatalog() {
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [inventoryOwnerLabels, setInventoryOwnerLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
@@ -186,13 +188,14 @@ useEffect(() => {
         setConfig(foundConfig);
 
         // 2. Fetch products and categories concurrently via Supabase
-        const [allProducts, cats] = await withTimeout(
+        const [allProducts, cats, ownerLabels] = await withTimeout(
           Promise.all([
             db.findBy<Product>('products', [
               { field: 'ownerUid',       value: foundConfig.ownerUid },
               { field: 'showInCatalog',  value: true },
             ]),
             db.list<Category>('categories', foundConfig.ownerUid),
+            getPublicInventoryOwnerLabels(slug),
           ]),
           'load products+categories',
         );
@@ -205,6 +208,7 @@ useEffect(() => {
 
         setProducts(visibleProducts);
         setCategories(cats);
+        setInventoryOwnerLabels(Object.fromEntries(ownerLabels.map((label) => [label.productId, label.inventoryOwnerName])));
       } catch (err) {
         if (cancelled) return;
         console.error('[catalog] init failed:', err);
@@ -724,6 +728,14 @@ if (loading) {
                       )}>
                         {categories.find(c => c.id === product.categoryId)?.name || 'General'}
                       </span>
+                      {inventoryOwnerLabels[product.id] && (
+                        <span className={cn(
+                          "rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                          darkMode ? "bg-white/10 text-white/60" : "bg-amber-50 text-amber-700",
+                        )}>
+                          {inventoryOwnerLabels[product.id]}
+                        </span>
+                      )}
                     </div>
                     <h3 className={cn(
                       "text-xl font-bold tracking-tight leading-tight transition-colors",
@@ -1373,6 +1385,11 @@ if (loading) {
                       <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">
                         {selectedProductForLightbox.name}
                       </h2>
+                      {inventoryOwnerLabels[selectedProductForLightbox.id] && (
+                        <p className="text-xs font-bold uppercase tracking-widest text-white/50">
+                          {inventoryOwnerLabels[selectedProductForLightbox.id]}
+                        </p>
+                      )}
                       {config.showPrices && (
                         <p className="text-2xl md:text-3xl font-black tracking-tighter" style={{ color: accentColor }}>
                           {formatCurrency(roundPrice(selectedProductForLightbox.salePrice))}
