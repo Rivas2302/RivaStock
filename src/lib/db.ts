@@ -54,23 +54,35 @@ export function subscribeToOfflineQueue(listener: () => void): () => void {
   return () => window.removeEventListener(OFFLINE_QUEUE_EVENT, listener);
 }
 
+const ATTRIBUTED_SALE_TABLES = [
+  'sale_items',
+  'sale_item_allocations',
+  'stock_movements',
+  'cash_flow_allocations',
+  'attributed_sale_commands',
+];
+
 const RPC_INVALIDATIONS: Record<string, string[]> = {
-  convert_quote_to_sale: ['quotes', 'sales', 'cash_flow', 'products', 'customers'],
-  delete_sale: ['sales', 'cash_flow', 'products', 'customers'],
-  edit_sale: ['sales', 'cash_flow', 'products', 'customers'],
-  intake_stock: ['products', 'stock_intakes'],
+  register_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  refund_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  convert_quote_to_sale: ['quotes', 'sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  delete_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  intake_stock: ['products', 'stock_intakes', 'inventory_holdings'],
   reconcile_customer_balance: ['customers'],
   register_customer_payment: ['customers', 'cash_flow'],
-  register_pos_sale: ['sales', 'cash_flow', 'products', 'customers'],
-  register_sale: ['sales', 'cash_flow', 'products', 'customers'],
-  toggle_sale_status: ['sales', 'cash_flow', 'customers'],
+  register_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  register_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  toggle_sale_status: ['sales', 'cash_flow', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   register_supplier:    ['suppliers'],
   update_supplier:      ['suppliers'],
   delete_supplier:      ['suppliers'],
   toggle_supplier_active: ['suppliers'],
   create_inventory_owner: ['inventory_owners'],
   rename_inventory_owner: ['inventory_owners'],
-  archive_inventory_owner: ['inventory_owners'],
+  archive_inventory_owner: ['inventory_owners', 'inventory_holdings', 'products'],
   reorder_inventory_owners: ['inventory_owners'],
   mutate_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],
   transfer_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],

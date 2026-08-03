@@ -147,8 +147,98 @@ export interface Sale {
     productName: string;
     quantity: number;
     price: number;
+    discount?: number;
   }[];
   source?: 'pos' | 'quote' | 'manual';
+}
+
+export interface SaleItemSnapshot {
+  id: string;
+  ownerUid: string;
+  saleId?: string;
+  saleIdSnapshot: string;
+  revision: number;
+  lineNumber: number;
+  productId?: string;
+  productIdSnapshot?: string;
+  productNameSnapshot: string;
+  quantity: number;
+  unitPrice: number;
+  unitDiscount: number;
+  discountAmount: number;
+  adjustmentShare: number;
+  lineTotal: number;
+  actorUid?: string;
+  snapshotSource: 'captured' | 'legacy_runtime' | 'legacy_estimated';
+  snapshotReason?: string;
+  reversedAt?: string;
+  reversalReason?: string;
+  createdAt: string;
+}
+
+export interface SaleItemAllocation {
+  id: string;
+  ownerUid: string;
+  saleId?: string;
+  saleIdSnapshot: string;
+  saleItemId: string;
+  inventoryHoldingId?: string;
+  inventoryOwnerId?: string;
+  inventoryOwnerIdSnapshot: string;
+  inventoryOwnerNameSnapshot: string;
+  productIdSnapshot?: string;
+  productNameSnapshot: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  discountShare: number;
+  adjustmentShare: number;
+  revenueShare: number;
+  costShare: number;
+  allocationSource: 'manual_override' | 'default' | 'priority' | 'legacy_estimated';
+  actorUid?: string;
+  snapshotReason?: string;
+  reversedAt?: string;
+  reversalReason?: string;
+  createdAt: string;
+}
+
+export interface StockMovement {
+  id: string;
+  ownerUid: string;
+  idempotencyKey: string;
+  productIdSnapshot?: string;
+  productNameSnapshot: string;
+  inventoryOwnerIdSnapshot: string;
+  inventoryOwnerNameSnapshot: string;
+  saleIdSnapshot?: string;
+  saleItemId?: string;
+  saleItemAllocationId?: string;
+  actorUid?: string;
+  movementType: 'sale' | 'edit_restore' | 'refund';
+  delta: number;
+  resultingStock: number;
+  unitCostSnapshot: number;
+  createdAt: string;
+}
+
+export interface CashFlowAllocation {
+  id: string;
+  ownerUid: string;
+  cashFlowId?: string;
+  cashFlowIdSnapshot: string;
+  saleIdSnapshot: string;
+  inventoryOwnerId?: string;
+  inventoryOwnerIdSnapshot: string;
+  inventoryOwnerNameSnapshot: string;
+  amount: number;
+  costAmount: number;
+  actorUid?: string;
+  snapshotSource: string;
+  snapshotReason?: string;
+  reversedAt?: string;
+  reversalReason?: string;
+  createdAt: string;
 }
 
 export interface StockIntake {

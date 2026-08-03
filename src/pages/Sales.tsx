@@ -29,6 +29,7 @@ import ProductSearchSelect from '../components/ProductSearchSelect';
 import { motion } from 'motion/react';
 import {
   getSaleDisplayQuantity,
+  getSalesPageEditPlan,
   hasDerivedSaleItems,
   isPosSale,
   isPendingSaleStatus,
@@ -249,17 +250,39 @@ export default function Sales() {
       }
 
       if (editingSale) {
-        await callRpc('edit_sale', {
-          p_sale_id:            editingSale.id,
-          p_new_product_id:     formData.productId,
-          p_new_quantity:       formData.quantity,
-          p_new_unit_price:     formData.unitPrice,
-          p_new_adjustment:     formData.adjustment ?? 0,
-          p_new_status:         formData.status,
-          p_new_payment_method: formData.paymentMethod ?? null,
-          p_new_client:         formData.client ?? null,
-          p_new_date:           formData.date,
-        });
+        const editPlan = getSalesPageEditPlan(editingSale);
+        if ('reason' in editPlan) {
+          alert(editPlan.reason);
+          return;
+        }
+        if (editPlan.rpc === 'edit_pos_sale') {
+          await callRpc('edit_pos_sale', {
+            p_sale_id: editingSale.id,
+            p_new_items: [{
+              productId: formData.productId,
+              quantity: formData.quantity,
+              unitPrice: formData.unitPrice,
+              lineDiscount: editingSale.items?.[0]?.discount ?? 0,
+            }],
+            p_new_adjustment: formData.adjustment ?? 0,
+            p_new_status: formData.status,
+            p_new_payment_method: formData.paymentMethod ?? null,
+            p_new_customer_id: null,
+            p_new_date: formData.date,
+          });
+        } else {
+          await callRpc('edit_sale', {
+            p_sale_id:            editingSale.id,
+            p_new_product_id:     formData.productId,
+            p_new_quantity:       formData.quantity,
+            p_new_unit_price:     formData.unitPrice,
+            p_new_adjustment:     formData.adjustment ?? 0,
+            p_new_status:         formData.status,
+            p_new_payment_method: formData.paymentMethod ?? null,
+            p_new_client:         formData.client ?? null,
+            p_new_date:           formData.date,
+          });
+        }
       } else {
         const status     = (isCreditSale && selectedCustomer) ? 'Pendiente' : formData.status;
         const clientName = (isCreditSale && selectedCustomer)
@@ -577,16 +600,20 @@ export default function Sales() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {
-                          if (isQuoteSale(s)) return;
+                          const editPlan = getSalesPageEditPlan(s);
+                          if ('reason' in editPlan) {
+                            alert(editPlan.reason);
+                            return;
+                          }
                           setEditingSale(s);
                           setFormData(s);
                           setIsModalOpen(true);
                         }}
-                        disabled={isQuoteSale(s) || !canWrite}
-                        title={isQuoteSale(s) ? 'Editá el presupuesto original para cambiar esta venta' : !canWrite ? 'Sin permiso' : 'Editar'}
+                        disabled={!canWrite}
+                        title={!canWrite ? 'Sin permiso' : getSalesPageEditPlan(s).allowed ? 'Editar' : 'Edicion no disponible; hace click para ver el motivo'}
                         className={cn(
                           "p-2 transition-colors",
-                          isQuoteSale(s) || !canWrite
+                          !canWrite
                             ? "text-slate-300 dark:text-slate-700 cursor-not-allowed"
                             : "text-slate-400 hover:text-[#365fad] dark:hover:text-indigo-400"
                         )}

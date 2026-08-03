@@ -23,6 +23,33 @@ export function isQuoteSale(sale: Pick<Sale, 'source'>) {
   return sale.source === 'quote';
 }
 
+export type SalesPageEditPlan =
+  | { allowed: true; rpc: 'edit_sale' | 'edit_pos_sale' }
+  | { allowed: false; reason: string };
+
+export function getSalesPageEditPlan(
+  sale: Pick<Sale, 'source' | 'items'>,
+): SalesPageEditPlan {
+  if (isQuoteSale(sale)) {
+    return {
+      allowed: false,
+      reason: 'Las ventas creadas desde presupuestos se editan desde el presupuesto original.',
+    };
+  }
+
+  if (isPosSale(sale)) {
+    if (Array.isArray(sale.items) && sale.items.length > 1) {
+      return {
+        allowed: false,
+        reason: 'Esta venta POS tiene varios productos. Para conservar sus lineas y stock, elimina la venta y volve a registrarla desde el POS.',
+      };
+    }
+    return { allowed: true, rpc: 'edit_pos_sale' };
+  }
+
+  return { allowed: true, rpc: 'edit_sale' };
+}
+
 export function getSaleLineItems(
   sale: Pick<Sale, 'productId' | 'productName' | 'quantity' | 'unitPrice' | 'items'>
 ): SaleLineItem[] {
