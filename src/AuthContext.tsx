@@ -78,35 +78,63 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
     }
     if (!profile) throw new Error('No se pudo cargar el perfil. Recargá la página.');
 
-    const [membershipsResult, settingsResult, ownersResult] = await Promise.all([
-      supabase
-        .from('inventory_owner_memberships')
-        .select('inventory_owner_id, is_default, can_operate')
-        .eq('user_id', ownerUid)
-        .eq('actor_uid', session.user.id),
-      supabase
-        .from('inventory_operation_settings')
-        .select('holdings_enabled')
-        .eq('user_id', ownerUid)
-        .maybeSingle(),
-      supabase
-        .from('inventory_owners')
-        .select('id')
-        .eq('user_id', ownerUid),
-    ]);
-    const memberships = membershipsResult.data ?? [];
-    const inventoryAccess = resolveInventoryAccessState({
-      memberships: memberships.map((row) => ({
-        inventoryOwnerId: row.inventory_owner_id,
-        isDefault: row.is_default,
-        canOperate: row.can_operate,
-      })),
-      holdingsEnabled: settingsResult.data?.holdings_enabled ?? null,
-      inventoryOwnerIds: (ownersResult.data ?? []).map((row) => row.id),
-      queryErrors: [membershipsResult.error, settingsResult.error, ownersResult.error]
+    // Inventory-owner scope queries are best-effort: a failure here must NOT
+    // prevent the rest of the app (Stock, Sales, etc.) from loading. We log
+    // and fall back to the legacy single-owner model so the user keeps
+    // working with their existing products.
+    let inventoryAccess: ReturnType<typeof resolveInventoryAccessState>;
+    try {
+      const [membershipsResult, settingsResult, ownersResult] = await Promise.all([
+        supabase
+          .from('inventory_owner_memberships')
+          .select('inventory_owner_id, is_default, can_operate')
+          .eq('user_id', ownerUid)
+          .eq('actor_uid', session.user.id),
+        supabase
+          .from('inventory_operation_settings')
+          .select('holdings_enabled')
+          .eq('user_id', ownerUid)
+          .maybeSingle(),
+        supabase
+          .from('inventory_owners')
+          .select('id')
+          .eq('user_id', ownerUid),
+      ]);
+      const memberships = membershipsResult.data ?? [];
+      const queryErrors = [membershipsResult.error, settingsResult.error, ownersResult.error]
         .filter((error): error is NonNullable<typeof error> => Boolean(error))
-        .map((error) => error.message),
-    });
+        .map((error) => error.message);
+      if (queryErrors.length > 0) {
+        console.warn('[Auth] inventory-owner scope queries failed; falling back to legacy model.', queryErrors);
+        inventoryAccess = {
+          allowedInventoryOwnerIds: [],
+          operableInventoryOwnerIds: [],
+          defaultInventoryOwnerId: null,
+          holdingsEnabled: false,
+          inventoryAccessError: null,
+        };
+      } else {
+        inventoryAccess = resolveInventoryAccessState({
+          memberships: memberships.map((row) => ({
+            inventoryOwnerId: row.inventory_owner_id,
+            isDefault: row.is_default,
+            canOperate: row.can_operate,
+          })),
+          holdingsEnabled: settingsResult.data?.holdings_enabled ?? null,
+          inventoryOwnerIds: (ownersResult.data ?? []).map((row) => row.id),
+          queryErrors: [],
+        });
+      }
+    } catch (inventoryErr) {
+      console.warn('[Auth] inventory-owner scope unavailable; falling back to legacy model.', inventoryErr);
+      inventoryAccess = {
+        allowedInventoryOwnerIds: [],
+        operableInventoryOwnerIds: [],
+        defaultInventoryOwnerId: null,
+        holdingsEnabled: false,
+        inventoryAccessError: null,
+      };
+    }
 
     return {
       profile,
@@ -271,8 +299,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         operableInventoryOwnerIds: auth?.operableInventoryOwnerIds ?? [],
         defaultInventoryOwnerId: auth?.defaultInventoryOwnerId ?? null,
         holdingsEnabled: auth?.holdingsEnabled ?? false,
-        inventoryAccessError: auth?.inventoryAccessError
-          ?? (authUser && !loading ? INVENTORY_ACCESS_ERROR_MESSAGE : null),
+        inventoryAccessError: auth
+          ? auth.inventoryAccessError
+          : null,
         loading,
         refetchToken,
         refetchData,
