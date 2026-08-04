@@ -31,6 +31,12 @@ describe('owner-aware stock UI safety contract', () => {
     expect(stock).toContain('visibleHoldings');
   });
 
+  it('does not display aggregate product stock in intake or price-list availability during owner-aware mode', () => {
+    expect(intake).toContain('getVisibleProductStock');
+    expect(stock).toContain('getVisibleProductStock');
+    expect(stock).not.toContain('return visibleProducts.filter((product) => product.stock > 0)');
+  });
+
   it('uses stable intent keys instead of regenerating keys inside RPC calls', () => {
     expect(stock).toContain('resolveIdempotencyIntent');
     expect(intake).toContain('resolveIdempotencyIntent');

@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
-import { Product, Sale, Customer } from '../types';
+import {
+  Product, Sale, Customer, CustomerTransaction, InventoryHolding,
+  SaleItemAllocation, SaleItemSnapshot,
+} from '../types';
 import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -28,26 +31,46 @@ import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
 import { motion } from 'motion/react';
 import {
-  getSaleDisplayQuantity,
   getSalesPageEditPlan,
-  hasDerivedSaleItems,
-  isPosSale,
   isPendingSaleStatus,
   isQuoteSale,
 } from '../lib/sales';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import {
+  buildAttributedSaleCommandItems,
+  getSaleRefundEligibility,
+  hasFullOperableAttributedSaleScope,
+  projectAttributedSales,
+  resolveAttributedSaleCustomerId,
+  shouldRenderSalesMutationActions,
+  type OwnerSaleProjection,
+} from '../lib/attributedSales';
+import { getInventoryHoldings } from '../lib/inventoryHoldings';
+import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 
 export default function Sales() {
-  const { user, refetchToken } = useAuth();
-  const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
+  const {
+    user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
+    operableInventoryOwnerIds, defaultInventoryOwnerId,
+  } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(
+    user?.uid,
+    refetchToken,
+    allowedInventoryOwnerIds,
+  );
   const canWrite = usePermission('ventas', 'write');
   const canDelete = usePermission('ventas', 'delete');
   const navigate = useNavigate();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
+  const [saleItems, setSaleItems] = useState<SaleItemSnapshot[]>([]);
+  const [saleAllocations, setSaleAllocations] = useState<SaleItemAllocation[]>([]);
+  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
   const deferredSearch = useDeferredValue(search);
 
   // Cuenta corriente
@@ -78,6 +101,16 @@ export default function Sales() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [preferredOwnerId, setPreferredOwnerId] = useState<string>('');
+  const registerIntentRef = useRef<IdempotencyIntent | null>(null);
+  const editIntentRef = useRef<IdempotencyIntent | null>(null);
+  const refundIntentRef = useRef<IdempotencyIntent | null>(null);
+  const statusIntentRef = useRef<IdempotencyIntent | null>(null);
+  const [statusSavingSaleId, setStatusSavingSaleId] = useState<string | null>(null);
+  const renderCreationActions = shouldRenderSalesMutationActions(
+    holdingsEnabled,
+    operableInventoryOwnerIds.length > 0,
+  );
 
   useEffect(() => {
     if (!showExportMenu) return;
@@ -97,12 +130,13 @@ export default function Sales() {
       { header: 'Fecha', value: sale => formatDate(sale.date), width: 14 },
       { header: 'Producto', value: sale => sale.productName, width: 30 },
       { header: 'Cliente', value: sale => sale.client || '-', width: 24 },
-      { header: 'Cantidad', value: sale => getSaleDisplayQuantity(sale), width: 10 },
-      { header: 'Precio Unitario', value: sale => roundPrice(sale.unitPrice), width: 16 },
+      { header: 'Cantidad', value: sale => sale.quantity, width: 10 },
+      { header: 'Precio Unitario', value: sale => sale.unitPrice === null ? '-' : roundPrice(sale.unitPrice), width: 16 },
       { header: 'Ajuste', value: sale => sale.adjustment ?? 0, width: 12 },
       { header: 'Total', value: sale => roundPrice(sale.total), width: 16 },
       { header: 'Método de Pago', value: sale => sale.paymentMethod || '-', width: 18 },
       { header: 'Estado', value: sale => sale.status, width: 14 },
+      { header: 'Vista', value: sale => sale.viewLabel, width: 16 },
     ], `ventas-${generatedAt}.xlsx`, 'Ventas', {
       currencySymbol: user.currencySymbol,
       summary: [
@@ -136,15 +170,17 @@ export default function Sales() {
         { header: 'Total', dataKey: 'total' },
         { header: 'Método', dataKey: 'metodo' },
         { header: 'Estado', dataKey: 'estado' },
+        { header: 'Vista', dataKey: 'vista' },
       ],
       rows: filteredSales.map((sale) => ({
         fecha: formatDate(sale.date),
         producto: sale.productName,
         cliente: sale.client || '-',
-        cantidad: getSaleDisplayQuantity(sale),
+        cantidad: sale.quantity,
         total: formatCurrency(roundPrice(sale.total)),
         metodo: sale.paymentMethod || '-',
         estado: sale.status,
+        vista: sale.viewLabel,
       })),
       fileName: `ventas-${generatedAt}.pdf`,
     });
@@ -156,25 +192,56 @@ export default function Sales() {
     if (!q) return [];
     return customers.filter(c => c.nameLower.includes(q)).slice(0, 5);
   }, [customers, creditSearch]);
+  const selectedProductOwnerOptions = useMemo(() => inventoryOwners.filter((owner) => (
+    operableInventoryOwnerIds.includes(owner.id)
+    && holdings.some((holding) => (
+      holding.productId === formData.productId
+      && holding.inventoryOwnerId === owner.id
+      && holding.active
+      && holding.stock > 0
+    ))
+  )), [formData.productId, holdings, inventoryOwners, operableInventoryOwnerIds]);
 
 
   const fetchData = async () => {
     if (!user) return;
-    const [salesResult, productsResult, customersResult] = await Promise.allSettled([
+    const [
+      salesResult, productsResult, customersResult, customerTransactionsResult,
+      itemsResult, allocationsResult, holdingsResult,
+    ] = await Promise.allSettled([
       db.list<Sale>('sales', user.uid),
       db.list<Product>('products', user.uid),
       db.list<Customer>('customers', user.uid),
+      holdingsEnabled ? db.list<CustomerTransaction>('customer_transactions', user.uid) : Promise.resolve([]),
+      holdingsEnabled ? db.list<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
+      holdingsEnabled ? db.list<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+      holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
     ]);
 
-    if (salesResult.status === 'fulfilled') {
-      setSales(salesResult.value.sort((a, b) => {
-        const dc = b.date.localeCompare(a.date);
-        if (dc !== 0) return dc;
-        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
-      }));
-    } else {
-      console.error('Error al cargar ventas:', salesResult.reason);
+    if (
+      salesResult.status === 'rejected'
+      || (holdingsEnabled && (
+        itemsResult.status === 'rejected'
+        || allocationsResult.status === 'rejected'
+        || holdingsResult.status === 'rejected'
+        || customerTransactionsResult.status === 'rejected'
+      ))
+    ) {
+      console.error('No se pudo verificar la atribucion de ventas');
+      setSales([]);
+      setSaleItems([]);
+      setSaleAllocations([]);
+      setHoldings([]);
+      setCustomerTransactions([]);
+      setLoading(false);
+      return;
     }
+
+    setSales(salesResult.value.sort((a, b) => {
+      const dc = b.date.localeCompare(a.date);
+      if (dc !== 0) return dc;
+      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+    }));
 
     if (productsResult.status === 'fulfilled') {
       setProducts(productsResult.value);
@@ -187,20 +254,59 @@ export default function Sales() {
     } else {
       console.error('Error al cargar clientes:', customersResult.reason);
     }
+    if (customerTransactionsResult.status === 'fulfilled') {
+      setCustomerTransactions(customerTransactionsResult.value);
+    }
+    if (itemsResult.status === 'fulfilled') setSaleItems(itemsResult.value);
+    if (allocationsResult.status === 'fulfilled') setSaleAllocations(allocationsResult.value);
+    if (holdingsResult.status === 'fulfilled') setHoldings(holdingsResult.value);
 
     setLoading(false);
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || inventoryAccessError) {
+      setSales([]);
+      setSaleItems([]);
+      setSaleAllocations([]);
+      setHoldings([]);
+      setCustomerTransactions([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
-      const [salesResult, productsResult, customersResult] = await Promise.allSettled([
+      const [
+        salesResult, productsResult, customersResult, customerTransactionsResult,
+        itemsResult, allocationsResult, holdingsResult,
+      ] = await Promise.allSettled([
         db.list<Sale>('sales', user.uid),
         db.list<Product>('products', user.uid),
         db.list<Customer>('customers', user.uid),
+        holdingsEnabled ? db.list<CustomerTransaction>('customer_transactions', user.uid) : Promise.resolve([]),
+        holdingsEnabled ? db.list<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
+        holdingsEnabled ? db.list<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+        holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       if (cancelled) return;
+      if (
+        salesResult.status === 'rejected'
+        || (holdingsEnabled && (
+          itemsResult.status === 'rejected'
+          || allocationsResult.status === 'rejected'
+          || holdingsResult.status === 'rejected'
+          || customerTransactionsResult.status === 'rejected'
+        ))
+      ) {
+        console.error('No se pudo verificar la atribucion de ventas');
+        setSales([]);
+        setSaleItems([]);
+        setSaleAllocations([]);
+        setHoldings([]);
+        setCustomerTransactions([]);
+        setLoading(false);
+        return;
+      }
       if (salesResult.status === 'fulfilled') {
         setSales(salesResult.value.sort((a, b) => {
           const dc = b.date.localeCompare(a.date);
@@ -210,18 +316,26 @@ export default function Sales() {
       }
       if (productsResult.status === 'fulfilled') setProducts(productsResult.value);
       if (customersResult.status === 'fulfilled') setCustomers(customersResult.value);
+      if (customerTransactionsResult.status === 'fulfilled') {
+        setCustomerTransactions(customerTransactionsResult.value);
+      }
+      if (itemsResult.status === 'fulfilled') setSaleItems(itemsResult.value);
+      if (allocationsResult.status === 'fulfilled') setSaleAllocations(allocationsResult.value);
+      if (holdingsResult.status === 'fulfilled') setHoldings(holdingsResult.value);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user, refetchToken]);
+  }, [holdingsEnabled, inventoryAccessError, refetchToken, user]);
 
   const handleProductChange = (productId: string) => {
     if (!productId) {
       setFormData(prev => ({ ...prev, productId: '', productName: '' }));
+      setPreferredOwnerId('');
       return;
     }
     const product = products.find(p => p.id === productId);
     if (product) {
+      setPreferredOwnerId('');
       setFormData(prev => ({
         ...prev,
         productId,
@@ -238,9 +352,53 @@ export default function Sales() {
     return roundPrice((qty * price) + adj);
   };
 
+  const saleMutationDenialReason = (
+    sale: Sale,
+    projection?: OwnerSaleProjection,
+  ): string | null => {
+    if (sale.source === 'quote') {
+      return 'Las ventas creadas desde presupuestos se gestionan desde el presupuesto original.';
+    }
+    if (!holdingsEnabled) return null;
+    if (projection?.isPartial) {
+      return 'La operacion requiere acceso operativo al ticket completo.';
+    }
+    const eligibility = getSaleRefundEligibility(
+      sale,
+      saleAllocations,
+      operableInventoryOwnerIds,
+      true,
+      saleItems,
+    );
+    if ('reason' in eligibility) {
+      return 'La operacion requiere acceso operativo a todos los titulares atribuidos.';
+    }
+    return null;
+  };
+
+  const projectedSaleMutationDenialReason = (projection: OwnerSaleProjection): string | null => {
+    const sale = sales.find((candidate) => candidate.id === projection.id);
+    return sale ? saleMutationDenialReason(sale, projection) : 'Venta no encontrada.';
+  };
+
+  const ticketHasFullOperableScope = (projection: OwnerSaleProjection): boolean => {
+    const sale = sales.find((candidate) => candidate.id === projection.id);
+    return Boolean(sale && hasFullOperableAttributedSaleScope(
+      sale,
+      saleAllocations,
+      operableInventoryOwnerIds,
+      holdingsEnabled,
+      saleItems,
+    ) && !projection.isPartial);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || saving) return;
+    if (inventoryAccessError) {
+      alert(inventoryAccessError);
+      return;
+    }
     setSaving(true);
 
     try {
@@ -255,7 +413,42 @@ export default function Sales() {
           alert(editPlan.reason);
           return;
         }
-        if (editPlan.rpc === 'edit_pos_sale') {
+        if (holdingsEnabled) {
+          const mutationDenial = saleMutationDenialReason(editingSale);
+          if (mutationDenial) {
+            alert(mutationDenial);
+            return;
+          }
+          const effectiveCustomerId = resolveAttributedSaleCustomerId(
+            editingSale.id,
+            selectedCustomer?.id ?? null,
+            customerTransactions,
+          );
+          const items = buildAttributedSaleCommandItems([{
+            productId: formData.productId ?? '',
+            productName: formData.productName ?? editingSale.productName,
+            quantity: Number(formData.quantity) || 0,
+            unitPrice: Number(formData.unitPrice) || 0,
+            lineDiscount: editingSale.items?.[0]?.discount ?? 0,
+            ...(preferredOwnerId ? { preferredOwnerId } : {}),
+          }]);
+          const payload = {
+            p_sale_id: editingSale.id,
+            p_items: items,
+            p_adjustment_total: formData.adjustment ?? 0,
+            p_status: formData.status,
+            p_payment_method: formData.paymentMethod ?? null,
+            p_customer_id: effectiveCustomerId,
+            p_client: formData.client ?? null,
+            p_date: formData.date,
+          };
+          editIntentRef.current = resolveIdempotencyIntent('sale:edit', payload, editIntentRef.current);
+          await callRpc('edit_attributed_sale', {
+            ...payload,
+            p_idempotency_key: editIntentRef.current.key,
+          });
+          editIntentRef.current = null;
+        } else if (editPlan.rpc === 'edit_pos_sale') {
           await callRpc('edit_pos_sale', {
             p_sale_id: editingSale.id,
             p_new_items: [{
@@ -289,17 +482,45 @@ export default function Sales() {
           ? selectedCustomer.name
           : (formData.client ?? null);
 
-        await callRpc('register_sale', {
-          p_date:           formData.date,
-          p_product_id:     formData.productId,
-          p_quantity:       formData.quantity,
-          p_unit_price:     formData.unitPrice,
-          p_adjustment:     formData.adjustment ?? 0,
-          p_status:         status,
-          p_payment_method: formData.paymentMethod ?? null,
-          p_client:         clientName,
-          p_customer_id:    (isCreditSale && selectedCustomer) ? selectedCustomer.id : null,
-        });
+        if (holdingsEnabled) {
+          const payload = {
+            p_items: buildAttributedSaleCommandItems([{
+              productId: formData.productId ?? '',
+              productName: formData.productName ?? '',
+              quantity: Number(formData.quantity) || 0,
+              unitPrice: Number(formData.unitPrice) || 0,
+              lineDiscount: 0,
+              ...(preferredOwnerId ? { preferredOwnerId } : {}),
+            }]),
+            p_payment_method: status === 'Pagado' ? formData.paymentMethod ?? null : null,
+            p_status: status,
+            p_customer_id: (isCreditSale && selectedCustomer) ? selectedCustomer.id : null,
+            p_adjustment_total: formData.adjustment ?? 0,
+            p_date: formData.date,
+            p_source: 'manual',
+            p_client: clientName,
+          };
+          registerIntentRef.current = resolveIdempotencyIntent(
+            'sale:register', payload, registerIntentRef.current,
+          );
+          await callRpc('register_attributed_sale', {
+            ...payload,
+            p_idempotency_key: registerIntentRef.current.key,
+          });
+          registerIntentRef.current = null;
+        } else {
+          await callRpc('register_sale', {
+            p_date:           formData.date,
+            p_product_id:     formData.productId,
+            p_quantity:       formData.quantity,
+            p_unit_price:     formData.unitPrice,
+            p_adjustment:     formData.adjustment ?? 0,
+            p_status:         status,
+            p_payment_method: formData.paymentMethod ?? null,
+            p_client:         clientName,
+            p_customer_id:    (isCreditSale && selectedCustomer) ? selectedCustomer.id : null,
+          });
+        }
       }
 
       setIsModalOpen(false);
@@ -320,6 +541,7 @@ export default function Sales() {
       setShowNewCustInline(false);
       setNewCustName('');
       setNewCustPhone('');
+      setPreferredOwnerId('');
       fetchData();
     } catch (error) {
       console.error('Error al guardar venta:', error);
@@ -330,21 +552,69 @@ export default function Sales() {
     }
   };
 
-  const handleToggleStatus = async (sale: Sale) => {
+  const handleToggleStatus = async (projection: OwnerSaleProjection) => {
+    if (statusSavingSaleId) return;
+    const sale = sales.find((candidate) => candidate.id === projection.id);
+    if (!sale) return;
+    if (isQuoteSale(sale)) {
+      alert('Las ventas creadas desde presupuestos se gestionan desde el presupuesto original.');
+      return;
+    }
+    const mutationDenial = saleMutationDenialReason(sale, projection);
+    if (mutationDenial) {
+      alert(mutationDenial);
+      return;
+    }
     const newStatus = isPendingSaleStatus(sale.status) ? 'Pagado' : 'Pendiente';
+    setStatusSavingSaleId(sale.id);
     try {
-      await callRpc('toggle_sale_status', { p_sale_id: sale.id, p_new_status: newStatus });
+      if (holdingsEnabled) {
+        const payload = { p_sale_id: sale.id, p_new_status: newStatus };
+        statusIntentRef.current = resolveIdempotencyIntent(
+          'sale:status', payload, statusIntentRef.current,
+        );
+        await callRpc('toggle_attributed_sale_status', {
+          ...payload,
+          p_idempotency_key: statusIntentRef.current.key,
+        });
+        statusIntentRef.current = null;
+      } else {
+        await callRpc('toggle_sale_status', { p_sale_id: sale.id, p_new_status: newStatus });
+      }
       fetchData();
     } catch (error) {
       console.error('Error al cambiar estado:', error);
       alert(error instanceof Error ? error.message : 'Error al cambiar el estado.');
+    } finally {
+      setStatusSavingSaleId(null);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta venta?')) return;
+  const handleDelete = async (projection: OwnerSaleProjection) => {
+    const sale = sales.find((candidate) => candidate.id === projection.id);
+    if (!sale) return;
+    const mutationDenial = saleMutationDenialReason(sale, projection);
+    if (mutationDenial) {
+      alert(mutationDenial);
+      return;
+    }
+    if (!confirm(holdingsEnabled
+      ? '¿Estás seguro de devolver esta venta y restaurar el stock atribuido?'
+      : '¿Estás seguro de eliminar esta venta?')) return;
     try {
-      await callRpc('delete_sale', { p_sale_id: id });
+      if (holdingsEnabled) {
+        const payload = { saleId: sale.id };
+        refundIntentRef.current = resolveIdempotencyIntent(
+          'sale:refund', payload, refundIntentRef.current,
+        );
+        await callRpc('refund_attributed_sale', {
+          p_sale_id: sale.id,
+          p_idempotency_key: refundIntentRef.current.key,
+        });
+        refundIntentRef.current = null;
+      } else {
+        await callRpc('delete_sale', { p_sale_id: sale.id });
+      }
       fetchData();
     } catch (error) {
       console.error('Error al eliminar venta:', error);
@@ -358,7 +628,15 @@ export default function Sales() {
     let totalPending = 0;
     const searchValue = deferredSearch.toLowerCase();
 
-    const filteredSales = sales.filter((sale) => {
+    const projectedSales = projectAttributedSales(
+      sales,
+      saleAllocations,
+      saleItems,
+      allowedInventoryOwnerIds,
+      ownerFilter,
+      holdingsEnabled,
+    );
+    const filteredSales = projectedSales.filter((sale) => {
       const roundedTotal = roundPrice(sale.total);
       totalSold += roundedTotal;
 
@@ -380,7 +658,10 @@ export default function Sales() {
     });
 
     return { filteredSales, totalCollected, totalPending, totalSold };
-  }, [deferredSearch, sales, statusFilter]);
+  }, [
+    allowedInventoryOwnerIds, deferredSearch, holdingsEnabled, ownerFilter,
+    saleAllocations, saleItems, sales, statusFilter,
+  ]);
 
   return (
     <div className="operational-page space-y-6">
@@ -418,9 +699,10 @@ export default function Sales() {
               </div>
             )}
           </div>
+          {renderCreationActions && (<>
           <button
             onClick={() => navigate('/pos')}
-            disabled={!canWrite}
+            disabled={!canWrite || Boolean(inventoryAccessError)}
             title={!canWrite ? 'Sin permiso' : 'Abrir Modo POS'}
             className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-rose-500/20 transition-all disabled:opacity-50"
           >
@@ -446,17 +728,25 @@ export default function Sales() {
               setShowNewCustInline(false);
               setNewCustName('');
               setNewCustPhone('');
+              setPreferredOwnerId('');
               setIsModalOpen(true);
             }}
             className="bg-[#365fad] hover:bg-[#284b91] text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm shadow-slate-900/10 transition-all disabled:opacity-50"
-            disabled={!canWrite}
+            disabled={!canWrite || Boolean(inventoryAccessError)}
             title={!canWrite ? 'Sin permiso' : undefined}
           >
             <Plus size={20} />
             Nueva Venta
           </button>
+          </>)}
         </div>
       </div>
+
+      {inventoryAccessError && (
+        <div role="alert" className="px-4 py-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-sm font-semibold">
+          {inventoryAccessError}
+        </div>
+      )}
 
       {/* Summary Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -490,7 +780,7 @@ export default function Sales() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={cn('grid grid-cols-1 gap-4', holdingsEnabled ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
         <div className="relative md:col-span-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -514,6 +804,22 @@ export default function Sales() {
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
+        {holdingsEnabled && (
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <select
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none transition-all dark:text-white appearance-none"
+            >
+              <option value="all">Todos mis titulares</option>
+              {inventoryOwners.map((owner) => (
+                <option key={owner.id} value={owner.id}>{owner.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -546,30 +852,40 @@ export default function Sales() {
                     >
                       <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                         {s.productName}
-                        {hasDerivedSaleItems(s) && (
+                        {(s.items.length > 1 || s.ownerNames.length > 0) && (
                           <span className="inline-flex items-center justify-center w-4 h-4 text-slate-400">
                             {expandedSaleId === s.id ? '▾' : '▸'}
                           </span>
                         )}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        {isPosSale(s) && (
+                        {s.source === 'pos' && (
                           <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
                             POS
                           </span>
                         )}
-                        {isQuoteSale(s) && (
+                        {s.source === 'quote' && (
                           <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-[#284b91] dark:bg-indigo-900/30 dark:text-indigo-400">
                             Presupuesto
+                          </span>
+                        )}
+                        {holdingsEnabled && (
+                          <span className={cn(
+                            'text-[9px] font-bold uppercase px-1.5 py-0.5 rounded',
+                            s.isPartial
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                          )}>
+                            {s.viewLabel}
                           </span>
                         )}
                         {s.client && <p className="text-[10px] text-slate-400 uppercase font-bold">{s.client}</p>}
                       </div>
                     </button>
                   </td>
-                  <td className="px-6 py-4 dark:text-slate-300">{getSaleDisplayQuantity(s)}</td>
+                  <td className="px-6 py-4 dark:text-slate-300">{s.quantity}</td>
                   <td className="px-6 py-4 dark:text-slate-300">
-                    {hasDerivedSaleItems(s) ? '-' : formatCurrency(roundPrice(s.unitPrice))}
+                    {s.unitPrice === null ? '-' : formatCurrency(roundPrice(s.unitPrice))}
                   </td>
                   <td className={cn(
                     "px-6 py-4 font-medium",
@@ -584,10 +900,21 @@ export default function Sales() {
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4">
+                    {shouldRenderSalesMutationActions(
+                      holdingsEnabled,
+                      ticketHasFullOperableScope(s),
+                    ) ? (
                     <button
                       onClick={() => handleToggleStatus(s)}
-                      disabled={!canWrite}
-                      title={!canWrite ? 'Sin permiso' : s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado'}
+                      disabled={
+                        !canWrite
+                        || statusSavingSaleId === s.id
+                        || Boolean(projectedSaleMutationDenialReason(s))
+                      }
+                      title={!canWrite
+                        ? 'Sin permiso'
+                        : projectedSaleMutationDenialReason(s)
+                          ?? (s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado')}
                       className={cn(
                         "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed",
                         s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
@@ -595,22 +922,62 @@ export default function Sales() {
                     >
                       {s.status}
                     </button>
+                    ) : (
+                      <span
+                        title="Estado de solo lectura"
+                        className={cn(
+                          'px-2 py-1 rounded-full text-[10px] font-bold uppercase',
+                          s.status === 'Pagado'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                        )}
+                      >
+                        {s.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-right">
+                    {shouldRenderSalesMutationActions(
+                      holdingsEnabled,
+                      ticketHasFullOperableScope(s),
+                    ) ? (
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {
-                          const editPlan = getSalesPageEditPlan(s);
+                          const sale = sales.find((candidate) => candidate.id === s.id);
+                          if (!sale) return;
+                          const editPlan = getSalesPageEditPlan(sale);
                           if ('reason' in editPlan) {
                             alert(editPlan.reason);
                             return;
                           }
-                          setEditingSale(s);
-                          setFormData(s);
+                          const mutationDenial = saleMutationDenialReason(sale, s);
+                          if (mutationDenial) {
+                            alert(mutationDenial);
+                            return;
+                          }
+                          setEditingSale(sale);
+                          setFormData(sale);
+                          const ownerIds = [...new Set(
+                            saleAllocations
+                              .filter((allocation) => allocation.saleIdSnapshot === s.id && !allocation.reversedAt)
+                              .map((allocation) => allocation.inventoryOwnerIdSnapshot),
+                          )];
+                          const currentCustomerId = resolveAttributedSaleCustomerId(
+                            sale.id,
+                            null,
+                            customerTransactions,
+                          );
+                          setSelectedCustomer(
+                            customers.find((customer) => customer.id === currentCustomerId) ?? null,
+                          );
+                          setPreferredOwnerId(ownerIds.length === 1 ? ownerIds[0] : '');
                           setIsModalOpen(true);
                         }}
-                        disabled={!canWrite}
-                        title={!canWrite ? 'Sin permiso' : getSalesPageEditPlan(s).allowed ? 'Editar' : 'Edicion no disponible; hace click para ver el motivo'}
+                        disabled={!canWrite || Boolean(projectedSaleMutationDenialReason(s))}
+                        title={!canWrite
+                          ? 'Sin permiso'
+                          : projectedSaleMutationDenialReason(s) ?? 'Editar'}
                         className={cn(
                           "p-2 transition-colors",
                           !canWrite
@@ -621,33 +988,43 @@ export default function Sales() {
                         <Edit2 size={18} />
                       </button>
                       <button
-                        onClick={() => handleDelete(s.id)}
-                        disabled={!canDelete}
-                        title={!canDelete ? 'Sin permiso' : undefined}
+                        onClick={() => handleDelete(s)}
+                        disabled={!canDelete || Boolean(projectedSaleMutationDenialReason(s))}
+                        title={!canDelete ? 'Sin permiso' : projectedSaleMutationDenialReason(s) ?? undefined}
                         className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={18} />
                       </button>
                     </div>
+                    ) : (
+                      <span className="text-slate-400" title="Acciones no disponibles en modo solo lectura">-</span>
+                    )}
                   </td>
                 </tr>
-                {expandedSaleId === s.id && hasDerivedSaleItems(s) && (
+                {expandedSaleId === s.id && (s.items.length > 1 || s.ownerNames.length > 0) && (
                   <tr className="bg-slate-50/50 dark:bg-slate-800/30">
                     <td colSpan={9} className="px-6 pb-4">
                       <div className="ml-4 pl-4 border-l-2 border-[#b7c7e8] dark:border-indigo-700">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Productos vendidos</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">
+                          {s.isPartial ? 'Productos visibles' : 'Productos vendidos'}
+                        </p>
                         <ul className="space-y-1.5">
-                          {s.items!.map((it, idx) => (
-                            <li key={idx} className="flex items-center justify-between text-xs">
+                          {s.items.map((item) => (
+                            <li key={item.saleItemId} className="flex items-center justify-between text-xs">
                               <span className="text-slate-700 dark:text-slate-300">
-                                <span className="font-bold text-[#365fad] dark:text-indigo-400">{it.quantity}×</span> {it.productName}
+                                <span className="font-bold text-[#365fad] dark:text-indigo-400">{item.quantity}×</span> {item.productName}
                               </span>
                               <span className="text-slate-500 dark:text-slate-400 font-mono">
-                                {formatCurrency(roundPrice(it.price))} c/u
+                                {formatCurrency(roundPrice(item.revenue))}
                               </span>
                             </li>
                           ))}
                         </ul>
+                        {s.ownerNames.length > 0 && (
+                          <p className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs font-semibold text-[#365fad] dark:text-indigo-300">
+                            Titulares visibles: {s.ownerNames.join(', ')}
+                          </p>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -690,13 +1067,38 @@ export default function Sales() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Producto</label>
               <ProductSearchSelect
                 products={products}
-                inventoryOwners={inventoryOwners}
+                inventoryOwners={holdingsEnabled ? [] : inventoryOwners}
                 value={formData.productId || ''}
                 onChange={handleProductChange}
                 placeholder="Buscar por nombre o categoría..."
                 required
               />
             </div>
+
+            {holdingsEnabled && formData.productId && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                  Titular preferido
+                </label>
+                <select
+                  value={preferredOwnerId}
+                  onChange={(event) => setPreferredOwnerId(event.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                >
+                  <option value="">
+                    Automatico{defaultInventoryOwnerId ? ' (predeterminado y prioridad)' : ''}
+                  </option>
+                  {selectedProductOwnerOptions.map((owner) => {
+                    const holding = holdings.find((candidate) => (
+                      candidate.productId === formData.productId
+                      && candidate.inventoryOwnerId === owner.id
+                      && candidate.active
+                    ));
+                    return <option key={owner.id} value={owner.id}>{owner.name} · Stock {holding?.stock ?? 0}</option>;
+                  })}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cantidad</label>
@@ -752,6 +1154,31 @@ export default function Sales() {
                 placeholder="Nombre del cliente"
               />
             </div>
+
+            {holdingsEnabled && editingSale && selectedCustomer && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                  Cliente de cuenta corriente
+                </label>
+                <select
+                  value={selectedCustomer.id}
+                  onChange={(event) => {
+                    const customer = customers.find((candidate) => candidate.id === event.target.value);
+                    if (!customer) return;
+                    setSelectedCustomer(customer);
+                    setFormData((previous) => ({ ...previous, client: customer.name }));
+                  }}
+                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                >
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Se conserva automáticamente si no lo cambiás.
+                </p>
+              </div>
+            )}
 
             {/* Cuenta corriente toggle — solo en nueva venta */}
             {!editingSale && (

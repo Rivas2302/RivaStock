@@ -27,4 +27,25 @@ describe('idempotency intent keys', () => {
     expect(changed.fingerprint).not.toBe(initial.fingerprint);
     expect(generate).toHaveBeenCalledTimes(2);
   });
+
+  it('reuses an attributed sale key after an error but changes it when the preferred owner changes', () => {
+    const keys = ['retry-safe', 'new-owner'];
+    const generate = vi.fn(() => keys.shift() ?? 'unexpected');
+    const initial = resolveIdempotencyIntent('sale:register', {
+      items: [{ productId: 'mate', quantity: 2, preferredOwnerId: 'mine' }],
+      total: 20,
+    }, null, generate);
+    const retryAfterError = resolveIdempotencyIntent('sale:register', {
+      total: 20,
+      items: [{ quantity: 2, preferredOwnerId: 'mine', productId: 'mate' }],
+    }, initial, generate);
+    const changedOwner = resolveIdempotencyIntent('sale:register', {
+      items: [{ productId: 'mate', quantity: 2, preferredOwnerId: 'mama' }],
+      total: 20,
+    }, retryAfterError, generate);
+
+    expect(retryAfterError).toEqual(initial);
+    expect(changedOwner.key).toBe('sale:register:new-owner');
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
 });

@@ -9,6 +9,7 @@ export interface PosCartItem {
   quantity: number;
   stockAtAdd: number;
   lineDiscount: number;
+  preferredOwnerId?: string;
 }
 
 interface State {
@@ -25,6 +26,7 @@ interface Actions {
   setItemQuantity: (productId: string, qty: number) => void;
   setItemPrice: (productId: string, price: number) => void;
   setItemLineDiscount: (productId: string, discount: number) => void;
+  setItemPreferredOwner: (productId: string, inventoryOwnerId?: string) => void;
   removeItem: (productId: string) => void;
   setPaymentMethod: (m: PaymentMethod) => void;
   setGlobalAdjustment: (n: number) => void;
@@ -87,6 +89,11 @@ export const usePosCart = create<PosCartStore>()(
         items: s.items.map((it) =>
           it.productId === productId ? { ...it, lineDiscount: Math.max(0, discount) } : it,
         ),
+      })),
+      setItemPreferredOwner: (productId, preferredOwnerId) => set((s) => ({
+        items: s.items.map((it) => (
+          it.productId === productId ? { ...it, preferredOwnerId } : it
+        )),
       })),
       removeItem: (productId) => set((s) => ({
         items: s.items.filter((it) => it.productId !== productId),

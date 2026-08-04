@@ -203,6 +203,14 @@ export interface SaleItemAllocation {
   createdAt: string;
 }
 
+export interface AttributedSaleCommandItem {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  lineDiscount: number;
+  preferredOwnerId?: string;
+}
+
 export interface StockMovement {
   id: string;
   ownerUid: string;

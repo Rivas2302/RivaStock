@@ -225,6 +225,15 @@ export function getVisibleInventoryHoldings(
   ));
 }
 
+export function getVisibleProductStock(
+  productId: string,
+  holdings: InventoryHolding[],
+): number {
+  return holdings.reduce((total, holding) => (
+    holding.productId === productId && holding.active ? total + holding.stock : total
+  ), 0);
+}
+
 export interface VisibleHoldingEconomics {
   stock: number;
   minStock: number;

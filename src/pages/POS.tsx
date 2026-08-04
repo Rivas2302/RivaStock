@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Minus, Trash2, ScanLine, Search, X, ShoppingCart, UserCheck, ArrowLeft, AlertTriangle, CheckCircle2,
@@ -6,7 +6,7 @@ import {
 import { motion } from 'motion/react';
 import { useAuth } from '../AuthContext';
 import { db, callRpc } from '../lib/db';
-import { Product, Customer, PAYMENT_METHODS } from '../types';
+import { Product, Customer, InventoryHolding, PAYMENT_METHODS } from '../types';
 import { cn, formatCurrency, roundPrice, todayString } from '../lib/utils';
 import { normalizeBarcode } from '../lib/barcode';
 import { showToast } from '../lib/toast';
@@ -14,11 +14,21 @@ import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
+import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHoldings';
+import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/attributedSales';
+import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 
 export default function POS() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { owners: inventoryOwners } = useInventoryOwners(user?.uid);
+  const {
+    user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
+    operableInventoryOwnerIds, defaultInventoryOwnerId,
+  } = useAuth();
+  const { owners: inventoryOwners } = useInventoryOwners(
+    user?.uid,
+    refetchToken,
+    allowedInventoryOwnerIds,
+  );
   const cart = usePosCart();
   const totals = useMemo(
     () => calculateCartTotals({ items: cart.items, globalAdjustment: cart.globalAdjustment }),
@@ -26,6 +36,7 @@ export default function POS() {
   );
 
   const [products, setProducts]   = useState<Product[]>([]);
+  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading]     = useState(true);
 
@@ -40,33 +51,63 @@ export default function POS() {
   const [confirmOversell, setConfirmOversell] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSaleAt, setLastSaleAt] = useState<number | null>(null);
+  const saleIntentRef = useRef<IdempotencyIntent | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || inventoryAccessError) {
+      setProducts([]);
+      setCustomers([]);
+      setHoldings([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const [p, c] = await Promise.all([
+        const [p, c, h] = await Promise.all([
           db.list<Product>('products', user.uid),
           db.list<Customer>('customers', user.uid),
+          holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         setProducts(p);
         setCustomers(c);
+        setHoldings(h);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[POS] fetch error:', error);
+          setProducts([]);
+          setCustomers([]);
+          setHoldings([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [holdingsEnabled, inventoryAccessError, refetchToken, user]);
+
+  const visibleStockForProduct = (product: Pick<Product, 'id' | 'stock'>): number => (
+    holdingsEnabled
+      ? getVisibleProductStock(
+        product.id,
+        holdings.filter((holding) => operableInventoryOwnerIds.includes(holding.inventoryOwnerId)),
+      )
+      : product.stock
+  );
 
   const handleScannedCode = (raw: string) => {
     const code = normalizeBarcode(raw);
     if (!code) return;
     const product = products.find((p) => normalizeBarcode(p.barcode ?? '') === code);
     if (product) {
-      cart.addProduct({ id: product.id, name: product.name, salePrice: product.salePrice, stock: product.stock });
-      const ownerName = getInventoryOwnerName(product, inventoryOwners);
+      cart.addProduct({
+        id: product.id,
+        name: product.name,
+        salePrice: product.salePrice,
+        stock: visibleStockForProduct(product),
+      });
+      const ownerName = holdingsEnabled ? '' : getInventoryOwnerName(product, inventoryOwners);
       showToast(`Agregado: ${product.name}${ownerName ? ` — ${ownerName}` : ''}`, 'success');
       return;
     }
@@ -95,9 +136,41 @@ export default function POS() {
 
   const selectedCustomer = customers.find((c) => c.id === cart.creditCustomerId) ?? null;
 
+  const ownerNames = useMemo(() => Object.fromEntries(
+    inventoryOwners.map((owner) => [owner.id, owner.name]),
+  ), [inventoryOwners]);
+  const attributedPreview = useMemo(() => {
+    if (!holdingsEnabled || !user || cart.items.length === 0) {
+      return { preview: null, error: null as string | null };
+    }
+    try {
+      return {
+        preview: previewAttributedCart({
+          actorUid: user.uid,
+          items: cart.items,
+          holdings,
+          ownerNames,
+          allowedOwnerIds: allowedInventoryOwnerIds,
+          operableOwnerIds: operableInventoryOwnerIds,
+          defaultOwnerId: defaultInventoryOwnerId,
+          globalAdjustment: cart.globalAdjustment,
+        }),
+        error: null as string | null,
+      };
+    } catch (error) {
+      return {
+        preview: null,
+        error: error instanceof Error ? error.message : 'No se pudo distribuir el stock',
+      };
+    }
+  }, [
+    allowedInventoryOwnerIds, cart.globalAdjustment, cart.items, defaultInventoryOwnerId,
+    holdings, holdingsEnabled, operableInventoryOwnerIds, ownerNames, user,
+  ]);
+
   const hasOversell = cart.items.some((it) => {
     const prod = products.find((p) => p.id === it.productId);
-    const live = prod?.stock ?? it.stockAtAdd;
+    const live = prod ? visibleStockForProduct(prod) : it.stockAtAdd;
     return it.quantity > live;
   });
 
@@ -107,31 +180,45 @@ export default function POS() {
       showToast('Elegí un cliente para cuenta corriente', 'error');
       return;
     }
-    if (hasOversell && !confirmOversell) {
+    if (inventoryAccessError || (holdingsEnabled && attributedPreview.error)) {
+      showToast(inventoryAccessError ?? attributedPreview.error ?? 'No se pudo verificar el stock', 'error');
+      return;
+    }
+    if (!holdingsEnabled && hasOversell && !confirmOversell) {
       setConfirmOpen(true);
       return;
     }
     setSaving(true);
     try {
-      const items = cart.items.map((it) => ({
-        productId:    it.productId,
-        productName:  it.productName,
-        quantity:     it.quantity,
-        unitPrice:    it.unitPrice,
-        lineDiscount: it.lineDiscount,
-      }));
+      const items = buildAttributedSaleCommandItems(cart.items);
       const status = isCreditSale ? 'Pendiente' : 'Pagado';
       const customerId = isCreditSale ? cart.creditCustomerId : null;
 
-      await callRpc('register_pos_sale', {
-        p_items:             items,
-        p_payment_method:    isCreditSale ? null : cart.paymentMethod,
-        p_status:            status,
-        p_customer_id:       customerId,
-        p_adjustment_total:  roundPrice(cart.globalAdjustment),
-        p_date:              todayString(),
-        p_allow_oversell:    hasOversell,
-      });
+      const commonPayload = {
+        p_items: items,
+        p_payment_method: isCreditSale ? null : cart.paymentMethod,
+        p_status: status,
+        p_customer_id: customerId,
+        p_adjustment_total: roundPrice(cart.globalAdjustment),
+        p_date: todayString(),
+      };
+      if (holdingsEnabled) {
+        saleIntentRef.current = resolveIdempotencyIntent(
+          'sale:register',
+          { ...commonPayload, p_source: 'pos' },
+          saleIntentRef.current,
+        );
+        await callRpc('register_attributed_sale', {
+          ...commonPayload,
+          p_source: 'pos',
+          p_idempotency_key: saleIntentRef.current.key,
+        });
+      } else {
+        await callRpc('register_pos_sale', {
+          ...commonPayload,
+          p_allow_oversell: hasOversell,
+        });
+      }
 
       cart.clear();
       setIsCreditSale(false);
@@ -139,10 +226,15 @@ export default function POS() {
       setConfirmOversell(false);
       setConfirmOpen(false);
       setLastSaleAt(Date.now());
+      saleIntentRef.current = null;
       showToast('Venta registrada', 'success');
 
-      const fresh = await db.list<Product>('products', user.uid);
+      const [fresh, freshHoldings] = await Promise.all([
+        db.list<Product>('products', user.uid),
+        holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
+      ]);
       setProducts(fresh);
+      setHoldings(freshHoldings);
     } catch (err) {
       console.error('[POS] register_pos_sale error:', err);
       showToast(err instanceof Error ? err.message : 'Error al registrar la venta', 'error');
@@ -162,6 +254,12 @@ export default function POS() {
         <h1 className="font-bold text-base">Modo POS</h1>
         <span className="ml-auto text-xs opacity-90">{totals.itemCount} ítem{totals.itemCount === 1 ? '' : 's'}</span>
       </header>
+
+      {inventoryAccessError && (
+        <div role="alert" className="px-3 py-2 bg-rose-50 text-rose-700 text-xs font-semibold border-b border-rose-200">
+          {inventoryAccessError}
+        </div>
+      )}
 
       {/* Search */}
       <div className="px-3 py-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
@@ -192,7 +290,12 @@ export default function POS() {
                 key={p.id}
                 type="button"
                 onClick={() => {
-                  cart.addProduct({ id: p.id, name: p.name, salePrice: p.salePrice, stock: p.stock });
+                  cart.addProduct({
+                    id: p.id,
+                    name: p.name,
+                    salePrice: p.salePrice,
+                    stock: visibleStockForProduct(p),
+                  });
                   setSearch('');
                 }}
                 className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 border-b last:border-0 border-slate-100 dark:border-slate-800"
@@ -200,7 +303,9 @@ export default function POS() {
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-900 dark:text-white text-sm truncate">{p.name}</p>
                   <p className="text-[11px] text-slate-400">
-                    {getInventoryOwnerName(p, inventoryOwners) ? `${getInventoryOwnerName(p, inventoryOwners)} · ` : ''}{p.category} · stock {p.stock}
+                    {!holdingsEnabled && getInventoryOwnerName(p, inventoryOwners)
+                      ? `${getInventoryOwnerName(p, inventoryOwners)} · `
+                      : ''}{p.category} · stock {visibleStockForProduct(p)}
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-[#365fad] dark:text-[#9fb4df] ml-2 shrink-0">
@@ -228,10 +333,20 @@ export default function POS() {
         ) : (
           cart.items.map((it) => {
             const prod = products.find((p) => p.id === it.productId);
-            const liveStock = prod?.stock ?? it.stockAtAdd;
+            const liveStock = prod ? visibleStockForProduct(prod) : it.stockAtAdd;
             const over = it.quantity > liveStock;
             const linePrice = it.unitPrice - it.lineDiscount;
             const lineTotal = it.quantity * Math.max(0, linePrice);
+            const linePreview = attributedPreview.preview?.lines.find((line) => line.productId === it.productId);
+            const ownerOptions = inventoryOwners.filter((owner) => (
+              operableInventoryOwnerIds.includes(owner.id)
+              && holdings.some((holding) => (
+                holding.productId === it.productId
+                && holding.inventoryOwnerId === owner.id
+                && holding.active
+                && holding.stock > 0
+              ))
+            ));
             return (
               <motion.div
                 key={it.productId}
@@ -247,7 +362,9 @@ export default function POS() {
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
-                      {it.productName}{prod && getInventoryOwnerName(prod, inventoryOwners) ? ` — ${getInventoryOwnerName(prod, inventoryOwners)}` : ''}
+                      {it.productName}{!holdingsEnabled && prod && getInventoryOwnerName(prod, inventoryOwners)
+                        ? ` — ${getInventoryOwnerName(prod, inventoryOwners)}`
+                        : ''}
                     </p>
                     <div className="flex items-center gap-2 mt-1 text-xs">
                       <span className="text-slate-400">{formatCurrency(linePrice)} c/u</span>
@@ -295,6 +412,43 @@ export default function POS() {
                     {formatCurrency(roundPrice(lineTotal))}
                   </span>
                 </div>
+                {holdingsEnabled && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">
+                      Titular preferido
+                    </label>
+                    <select
+                      value={it.preferredOwnerId ?? ''}
+                      onChange={(event) => cart.setItemPreferredOwner(
+                        it.productId,
+                        event.target.value || undefined,
+                      )}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white"
+                    >
+                      <option value="">Automatico (predeterminado y prioridad)</option>
+                      {ownerOptions.map((owner) => (
+                        <option key={owner.id} value={owner.id}>{owner.name}</option>
+                      ))}
+                    </select>
+                    {linePreview && (
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                          Distribucion de stock
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {linePreview.allocations.map((allocation) => (
+                            <span
+                              key={allocation.inventoryOwnerId}
+                              className="px-2 py-1 rounded bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-300 text-[11px] font-semibold"
+                            >
+                              {allocation.inventoryOwnerName}: {allocation.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             );
           })
@@ -403,6 +557,16 @@ export default function POS() {
         </div>
 
         {/* Totals + Cobrar */}
+        {holdingsEnabled && attributedPreview.error && (
+          <div role="alert" className="px-3 py-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300 text-xs font-semibold">
+            {attributedPreview.error}
+          </div>
+        )}
+        {holdingsEnabled && attributedPreview.preview?.mixedOwners && (
+          <p className="px-3 py-2 rounded-lg bg-indigo-50 text-[#365fad] dark:bg-indigo-900/20 dark:text-indigo-300 text-xs font-semibold">
+            Venta mixta: el stock se registrara por titular dentro del mismo ticket.
+          </p>
+        )}
         <div className="sticky bottom-0 -mx-3 px-3 py-2 flex items-center justify-between bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
@@ -422,11 +586,15 @@ export default function POS() {
             </button>
             <button
               type="button"
-              disabled={cart.items.length === 0 || saving}
+              disabled={
+                cart.items.length === 0 || saving || Boolean(inventoryAccessError)
+                || (holdingsEnabled && Boolean(attributedPreview.error))
+              }
               onClick={handleCobrar}
               className={cn(
                 'px-4 sm:px-5 py-3 rounded-xl font-bold text-white shadow-lg transition-all',
-                cart.items.length === 0 || saving
+                cart.items.length === 0 || saving || Boolean(inventoryAccessError)
+                  || (holdingsEnabled && Boolean(attributedPreview.error))
                   ? 'bg-slate-300 cursor-not-allowed'
                   : 'bg-emerald-600 hover:bg-emerald-700 shadow-slate-900/15',
               )}

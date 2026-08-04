@@ -13,6 +13,7 @@ import {
   filterProductsByHoldingOwner,
   getVisibleHoldingEconomics,
   getVisibleInventoryHoldings,
+  getVisibleProductStock,
   getInventoryHoldings,
   saveProductWithHoldings,
   transferInventoryHoldingStock,
@@ -226,7 +227,9 @@ export default function Stock() {
     const visibleProducts = holdingsEnabled
       ? filterProductsByHoldingOwner(products, holdings, 'all')
       : products;
-    return visibleProducts.filter((product) => product.stock > 0);
+    return visibleProducts.filter((product) => (
+      holdingsEnabled ? getVisibleProductStock(product.id, holdings) > 0 : product.stock > 0
+    ));
   }, [holdings, holdingsEnabled, products]);
 
   useEffect(() => () => {

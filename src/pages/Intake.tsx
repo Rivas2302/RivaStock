@@ -4,7 +4,11 @@ import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
 import { Product, StockIntake, InventoryHolding } from '../types';
-import { getInventoryHoldings, receiveInventoryHoldingStock } from '../lib/inventoryHoldings';
+import {
+  getInventoryHoldings,
+  getVisibleProductStock,
+  receiveInventoryHoldingStock,
+} from '../lib/inventoryHoldings';
 import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -416,7 +420,11 @@ export default function Intake() {
                     <span className="flex-1 text-sm truncate">
                       {selectedProduct.name}{getInventoryOwnerName(selectedProduct, inventoryOwners) ? ` — ${getInventoryOwnerName(selectedProduct, inventoryOwners)}` : ''}
                     </span>
-                    <span className="text-xs text-slate-400 shrink-0">Stock: {selectedProduct.stock}</span>
+                    <span className="text-xs text-slate-400 shrink-0">
+                      Stock: {holdingsEnabled
+                        ? getVisibleProductStock(selectedProduct.id, selectedHoldings)
+                        : selectedProduct.stock}
+                    </span>
                     <button
                       type="button"
                       onClick={handleClearProduct}
@@ -462,7 +470,14 @@ export default function Intake() {
                               </span>
                             )}
                           </span>
-                          <span className="text-xs text-slate-400 shrink-0 ml-2">Stock: {p.stock}</span>
+                          <span className="text-xs text-slate-400 shrink-0 ml-2">
+                            Stock: {holdingsEnabled
+                              ? getVisibleProductStock(
+                                p.id,
+                                holdings.filter((holding) => operableInventoryOwnerIds.includes(holding.inventoryOwnerId)),
+                              )
+                              : p.stock}
+                          </span>
                         </button>
                       ))
                     ) : (
