@@ -351,15 +351,18 @@ export async function saveProductWithHoldings(
       p_idempotency_key: input.idempotencyKey,
     },
   );
-  const wrapped = Array.isArray(raw) ? raw[0] : raw;
-  const payload = (wrapped && typeof wrapped === 'object' ? wrapped : {}) as {
+  const firstRow = Array.isArray(raw) ? raw[0] : raw;
+  const row = (firstRow && typeof firstRow === 'object' ? firstRow : {}) as {
     product?: HoldingRow;
     holdings?: HoldingRow[];
   };
-  const productRow = payload.product;
-  const holdingRows = Array.isArray(payload.holdings) ? payload.holdings : [];
+  const productRow = row.product;
+  const holdingRows = Array.isArray(row.holdings) ? row.holdings : [];
+  const product = productRow
+    ? hydrateSharedInventoryProduct(fromDb<SharedInventoryProduct>(productRow))
+    : input.product;
   return {
-    product: hydrateSharedInventoryProduct(fromDb<SharedInventoryProduct>(productRow ?? {})),
+    product,
     holdings: holdingRows.map((row) => fromDb<InventoryHolding>(row)),
   };
 }
