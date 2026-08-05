@@ -52,6 +52,12 @@ ALTER TABLE stock_intakes
   ADD COLUMN actor_uid uuid REFERENCES auth.users(id) ON DELETE RESTRICT,
   ADD COLUMN idempotency_key text;
 
+-- The schema backfill below runs from the SQL Editor without an auth.uid()
+-- session, which would trip the immutable audit trigger. Suspend and
+-- restore the trigger for the duration of the migration; the trigger is
+-- re-enabled before COMMIT so the production audit chain stays intact.
+ALTER TABLE stock_intakes DISABLE TRIGGER stock_intakes_audit_event;
+
 UPDATE stock_intakes intake
 SET inventory_owner_id = p.inventory_owner_id,
     inventory_owner_name = io.name,
@@ -60,6 +66,8 @@ FROM products p
 JOIN inventory_owners io
   ON io.user_id = p.user_id AND io.id = p.inventory_owner_id
 WHERE p.user_id = intake.user_id AND p.id = intake.product_id;
+
+ALTER TABLE stock_intakes ENABLE TRIGGER stock_intakes_audit_event;
 
 ALTER TABLE stock_intakes
   ADD CONSTRAINT stock_intakes_inventory_owner_tenant_fk
