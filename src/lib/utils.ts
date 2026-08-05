@@ -35,8 +35,17 @@ export function uuid(): string {
 
 // Parses a YYYY-MM-DD string as local date to avoid UTC-3 offset shifting the day
 export function formatDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('es-AR');
+  if (!dateStr) return '';
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  const formatter: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  if (dateOnlyMatch) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+    return new Date(year, month - 1, day).toLocaleDateString('es-AR', formatter);
+  }
+  const parsed = new Date(dateStr);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('es-AR', formatter);
 }
 
 // Returns today's date as YYYY-MM-DD in local timezone (avoids UTC offset issues)
