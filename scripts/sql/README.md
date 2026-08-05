@@ -1,9 +1,9 @@
-# Pending migrations: 0036
+# Pending migrations: 0037
 
-Migrations 0033, 0034 and 0035 have already been applied to the Supabase
-project. Migration 0036 is the only one left; it removes a placeholder
-kill switch that 0033/0034 added to `set_inventory_holdings_enabled`
-and that now blocks the operator-facing rollout switch from flipping on.
+Migrations 0033 through 0036 have already been applied. Migration 0037
+adds the read-only `inventory_movements_view` and the
+`list_inventory_movements` RPC that power the new
+**Configuración → Titulares → Historial de movimientos** tab.
 
 ## Apply via Supabase Dashboard
 
@@ -20,7 +20,7 @@ and that now blocks the operator-facing rollout switch from flipping on.
 
 | Step | File | Size | Notes |
 |------|------|------|-------|
-| 1    | `0036_release_owner_aware_rollout.sql` | <1 KB | Replaces `set_inventory_holdings_enabled` with the clean version from 0032 (no `RAISE EXCEPTION` on `p_enabled = true`). Re-asserts the `REVOKE` / `GRANT` to `authenticated`. |
+| 1    | `0037_inventory_movements_history.sql` | ~3 KB | Creates the `inventory_movements_view` (security-invoker, joins `inventory_stock_commands` and adds a `movement_type` column plus a paired `transfer_key`). Adds the paginated `list_inventory_movements` RPC and a `(user_id, created_at DESC)` index for the time-range scan. |
 
 If the run fails, the transaction is rolled back automatically because
 the file is wrapped in `BEGIN; ... COMMIT;`.
@@ -30,40 +30,49 @@ the file is wrapped in `BEGIN; ... COMMIT;`.
 Run the following in the SQL Editor:
 
 ```sql
-SELECT prosrc ~ 'RAISE EXCEPTION.*idempotencia estable' AS still_blocks_rollout
-FROM pg_proc
-WHERE proname = 'set_inventory_holdings_enabled';
+SELECT
+  (SELECT count(*) FROM information_schema.views
+     WHERE table_name = 'inventory_movements_view') AS movements_view,
+  (SELECT count(*) FROM information_schema.routines
+     WHERE routine_name = 'list_inventory_movements') AS list_rpc,
+  (SELECT count(*) FROM pg_indexes
+     WHERE indexname = 'inventory_stock_commands_created_at_idx') AS history_index;
 ```
 
 Expected output:
 
-| column                  | value |
-|-------------------------|-------|
-| `still_blocks_rollout`  | false |
-
-If `true`, the migration did not apply. Re-run
-`0036_release_owner_aware_rollout.sql`.
+| column          | value |
+|-----------------|-------|
+| `movements_view` | 1     |
+| `list_rpc`      | 1     |
+| `history_index` | 1     |
 
 ## Activate the feature
 
-Open the app, go to **Configuración → Titulares**, and flip the
-**Stock compartido por titular** switch. The app calls
-`set_inventory_holdings_enabled(true)` and the new function accepts it.
+The migration only enables the data layer. The operator-facing UI is
+shipped in a follow-up commit; no further SQL is needed from the
+operator.
 
 ## Rollback
 
-If the rollout misbehaves in production, the operator can flip the
-switch off from the same screen. The schema and idempotency tables
-created by 0033/0034/0035 stay in place; only the flag changes. No
-data is destroyed.
+```sql
+DROP VIEW IF EXISTS inventory_movements_view;
+DROP FUNCTION IF EXISTS list_inventory_movements(
+  date, date, uuid, uuid, text, integer, integer
+);
+DROP INDEX IF EXISTS inventory_stock_commands_created_at_idx;
+```
+
+The underlying `inventory_stock_commands` table is untouched.
 
 ## Historical run order (for reference)
 
-These three were applied previously and should already be in place:
+These were applied previously and should already be in place:
 
 | # | File | Purpose |
 |---|------|---------|
 | 1 | `0033_owner_aware_stock.sql`        | Owner-aware stock intake + `inventory_product_commands` |
 | 2 | `0034_attributed_sales.sql`         | `sale_items`, `sale_item_allocations`, attributed RPCs, backfill |
 | 3 | `0035_sales_attribution_ui.sql`     | `toggle_attributed_sale_status` |
-| 4 | `0036_release_owner_aware_rollout.sql` | Drop the kill switch (this run) |
+| 4 | `0036_release_owner_aware_rollout.sql` | Drop the kill switch |
+| 5 | `0037_inventory_movements_history.sql` | Movements view + paginated RPC (this run) |
