@@ -12,6 +12,7 @@ import {
 import { setInventoryHoldingsEnabled } from '../../lib/inventoryHoldings';
 import { showToast } from '../../lib/toast';
 import type { InventoryOwner } from '../../types';
+import MovementHistoryPanel from './MovementHistoryPanel';
 
 export default function InventoryOwnersTab() {
   const { user, refetchToken, holdingsEnabled, refetchData } = useAuth();
@@ -179,6 +180,8 @@ export default function InventoryOwnersTab() {
           {message.text}
         </div>
       )}
+
+      <MovementHistoryPanel />
 
       <form onSubmit={handleCreate} className="flex flex-col gap-2 sm:flex-row">
         <input
