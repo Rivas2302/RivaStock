@@ -14,6 +14,8 @@ BEGIN;
 
 NOTIFY pgrst, 'reload schema';
 
+DROP FUNCTION IF EXISTS save_product_with_holdings(jsonb, jsonb, text);
+
 CREATE OR REPLACE FUNCTION save_product_with_holdings(
   p_product jsonb, p_holdings jsonb, p_idempotency_key text
 )
