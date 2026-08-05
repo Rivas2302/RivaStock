@@ -85,9 +85,15 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   rename_inventory_owner: ['inventory_owners'],
   archive_inventory_owner: ['inventory_owners', 'inventory_holdings', 'products'],
   reorder_inventory_owners: ['inventory_owners'],
+  set_inventory_holdings_enabled: [
+    'inventory_operation_settings',
+    'inventory_holdings',
+    'products',
+    'sales',
+    ...ATTRIBUTED_SALE_TABLES,
+  ],
   mutate_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],
   transfer_inventory_holding_stock: ['inventory_holdings', 'inventory_stock_commands', 'products'],
-  set_inventory_holdings_enabled: ['inventory_operation_settings'],
   save_product_with_holdings: ['products', 'inventory_holdings', 'inventory_stock_commands'],
   receive_inventory_holding_stock: ['products', 'inventory_holdings', 'inventory_stock_commands', 'stock_intakes'],
 };

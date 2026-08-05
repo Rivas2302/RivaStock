@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Archive, ArrowDown, ArrowUp, Check, Edit2, Plus, ShieldCheck, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Check, Edit2, Plus, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { useInventoryOwners } from '../../hooks/useInventoryOwners';
 import { usePermission } from '../../hooks/usePermission';
@@ -9,10 +9,12 @@ import {
   renameInventoryOwner,
   reorderInventoryOwners,
 } from '../../lib/inventoryOwners';
+import { setInventoryHoldingsEnabled } from '../../lib/inventoryHoldings';
+import { showToast } from '../../lib/toast';
 import type { InventoryOwner } from '../../types';
 
 export default function InventoryOwnersTab() {
-  const { user, refetchToken } = useAuth();
+  const { user, refetchToken, holdingsEnabled, refetchData } = useAuth();
   const canReadConfig = usePermission('config', 'read');
   const canManageConfig = usePermission('config', 'write');
   const canManage = canReadConfig && canManageConfig;
@@ -21,6 +23,7 @@ export default function InventoryOwnersTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [rolloutBusy, setRolloutBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
   const run = async (operation: () => Promise<unknown>, success: string) => {
@@ -73,6 +76,33 @@ export default function InventoryOwnersTab() {
     await run(() => archiveInventoryOwner(owner.id), 'Titular archivado.');
   };
 
+  const handleToggleRollout = async () => {
+    if (!user || rolloutBusy) return;
+    const nextEnabled = !holdingsEnabled;
+    const confirmText = nextEnabled
+      ? 'Al activar el stock compartido, cada venta atribuirá unidades a un titular y se registrará la ganancia por titular. ¿Continuar?'
+      : 'Al desactivar el stock compartido, las ventas nuevas dejarán de atribuirse por titular. El histórico se conserva. ¿Continuar?';
+    if (!confirm(confirmText)) return;
+    setRolloutBusy(true);
+    try {
+      await setInventoryHoldingsEnabled(nextEnabled);
+      showToast(
+        nextEnabled
+          ? 'Stock compartido por titular activado.'
+          : 'Stock compartido por titular desactivado.',
+        'success',
+      );
+      refetchData();
+    } catch (error) {
+      const text = error instanceof Error
+        ? error.message.replace(/^\[[^\]]+\]\s*/, '')
+        : 'No se pudo cambiar el modo de stock.';
+      showToast(text, 'error');
+    } finally {
+      setRolloutBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -81,6 +111,65 @@ export default function InventoryOwnersTab() {
           Indicá a quién pertenece la mercadería de cada producto. Las ventas y las finanzas permanecen unificadas en esta cuenta.
         </p>
       </div>
+
+      <section className={`rounded-2xl border p-4 transition-colors ${
+        holdingsEnabled
+          ? 'border-indigo-200 bg-indigo-50/60 dark:border-indigo-900/70 dark:bg-indigo-950/20'
+          : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/40'
+      }`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className={`mt-0.5 rounded-xl p-2 ${
+              holdingsEnabled
+                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
+                : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+            }`}>
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 dark:text-white">Stock compartido por titular</h4>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {holdingsEnabled
+                  ? 'Cada venta atribuye unidades a un titular y registra cuánto ganó cada uno.'
+                  : 'Activá esta opción para repartir el stock entre titulares y registrar la ganancia por venta.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={holdingsEnabled}
+              aria-label="Activar stock compartido por titular"
+              onClick={() => void handleToggleRollout()}
+              disabled={!canManage || rolloutBusy}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                holdingsEnabled
+                  ? 'border-indigo-600 bg-indigo-600'
+                  : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  holdingsEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className={`text-xs font-bold uppercase tracking-wide ${
+              holdingsEnabled
+                ? 'text-indigo-700 dark:text-indigo-300'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}>
+              {holdingsEnabled ? 'Activado' : 'Desactivado'}
+            </span>
+          </div>
+        </div>
+        {!canManage && (
+          <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+            Tu rol no permite activar ni desactivar el modo compartido.
+          </p>
+        )}
+      </section>
 
       {message && (
         <div className={`rounded-xl px-4 py-3 text-sm font-semibold ${message.error

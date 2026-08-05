@@ -7,10 +7,11 @@ const intake = readFileSync(resolve(process.cwd(), 'src/pages/Intake.tsx'), 'utf
 const auth = readFileSync(resolve(process.cwd(), 'src/AuthContext.tsx'), 'utf8');
 
 describe('owner-aware stock UI safety contract', () => {
-  it('does not expose holdings activation before sales and returns are adapted', () => {
+  it('points the user to the rollout switch in Config and keeps the activation RPC out of the page', () => {
     expect(stock).not.toContain('setInventoryHoldingsEnabled');
     expect(stock).not.toContain('Activar stock compartido');
-    expect(stock).toContain('ventas y devoluciones');
+    expect(stock).toContain('/config?tab=owners');
+    expect(stock).toContain('Ir a Configuración');
   });
 
   it('blocks stock and intake when inventory authorization could not be verified', () => {

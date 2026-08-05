@@ -744,9 +744,15 @@ export default function Stock() {
             <div>
               <h3 className="font-bold text-indigo-950 dark:text-indigo-100">Stock compartido por titular</h3>
               <p className="text-sm text-indigo-800 dark:text-indigo-200">
-                La activación está pausada hasta adaptar ventas y devoluciones. Mientras tanto, el stock actual sigue funcionando de forma segura.
+                Activá esta opción desde Configuración para repartir el stock entre titulares y registrar la ganancia por venta.
               </p>
             </div>
+            <a
+              href="/config?tab=owners"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-800"
+            >
+              Ir a Configuración
+            </a>
           </div>
         </section>
       )}

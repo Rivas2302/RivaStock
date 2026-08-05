@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
@@ -40,11 +40,22 @@ import { motion, AnimatePresence } from 'motion/react';
 
 type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
 
+const TABS: ReadonlyArray<Tab> = ['general', 'categories', 'owners', 'prices', 'catalog', 'maintenance', 'equipo'];
+
+function isTab(value: string): value is Tab {
+  return (TABS as ReadonlyArray<string>).includes(value);
+}
+
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Tab>('general');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const tabFromQuery = new URLSearchParams(location.search).get('tab');
+    if (tabFromQuery && isTab(tabFromQuery)) return tabFromQuery;
+    return 'general';
+  });
   const [loading, setLoading] = useState(true);
   
   // Data states
