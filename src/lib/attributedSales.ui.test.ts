@@ -50,8 +50,13 @@ describe('owner-attributed sales UI contract', () => {
     );
   });
 
-  it('forwards the free client name through attributed registration', () => {
-    expect(sales).toContain('p_client: clientName');
+  it('forwards the free client name through attributed edit only (register RPC does not accept it)', () => {
+    expect(sales).toMatch(/p_client:\s*formData\.client[\s\S]*?edit_attributed_sale/);
+    const registerBlock = sales.slice(
+      sales.indexOf("callRpc('register_attributed_sale'"),
+      sales.indexOf("callRpc('register_attributed_sale'", sales.indexOf("callRpc('register_attributed_sale'") + 1),
+    );
+    expect(registerBlock).not.toContain('p_client: clientName');
   });
 
   it('uses readable owners only for projection and operable owners for every mutation guard', () => {

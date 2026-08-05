@@ -343,7 +343,7 @@ export async function getActorInventoryMemberships(
 export async function saveProductWithHoldings(
   input: SaveProductWithHoldingsInput,
 ): Promise<{ product: Product; holdings: InventoryHolding[] }> {
-  const result = await callRpc<{ product: HoldingRow; holdings: HoldingRow[] }>(
+  const raw = await callRpc<unknown>(
     'save_product_with_holdings',
     {
       p_product: input.product,
@@ -351,9 +351,16 @@ export async function saveProductWithHoldings(
       p_idempotency_key: input.idempotencyKey,
     },
   );
+  const wrapped = Array.isArray(raw) ? raw[0] : raw;
+  const payload = (wrapped && typeof wrapped === 'object' ? wrapped : {}) as {
+    product?: HoldingRow;
+    holdings?: HoldingRow[];
+  };
+  const productRow = payload.product;
+  const holdingRows = Array.isArray(payload.holdings) ? payload.holdings : [];
   return {
-    product: hydrateSharedInventoryProduct(fromDb<SharedInventoryProduct>(result.product)),
-    holdings: result.holdings.map((row) => fromDb<InventoryHolding>(row)),
+    product: hydrateSharedInventoryProduct(fromDb<SharedInventoryProduct>(productRow ?? {})),
+    holdings: holdingRows.map((row) => fromDb<InventoryHolding>(row)),
   };
 }
 

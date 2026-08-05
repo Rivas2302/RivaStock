@@ -498,7 +498,6 @@ export default function Sales() {
             p_adjustment_total: formData.adjustment ?? 0,
             p_date: formData.date,
             p_source: 'manual',
-            p_client: clientName,
           };
           registerIntentRef.current = resolveIdempotencyIntent(
             'sale:register', payload, registerIntentRef.current,
