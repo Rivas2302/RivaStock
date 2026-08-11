@@ -233,7 +233,7 @@ useEffect(() => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
         if (existing.quantity >= product.stock && !config?.showOutOfStock) {
-          setMessage('No hay mÃ¡s stock disponible.');
+          setMessage('No hay más stock disponible.');
           setTimeout(() => setMessage(null), 2500);
           return prev;
         }
@@ -281,12 +281,12 @@ useEffect(() => {
     if (!config) return;
     const RATE_LIMIT_MS = 30_000;
     if (Date.now() - lastSubmitAt < RATE_LIMIT_MS) {
-      setMessage(`EsperÃ¡ ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
+      setMessage(`Esperá ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
     if (cart.length === 0) {
-      setMessage('Tu carrito estÃ¡ vacÃ­o.');
+      setMessage('Tu carrito está vacío.');
       setTimeout(() => setMessage(null), 2500);
       return;
     }
@@ -295,12 +295,12 @@ useEffect(() => {
     const email = formData.email.trim();
     const address = formData.address.trim();
     if (name.length < 2 || phone.length < 5 || address.length < 3) {
-      setMessage('Por favor completÃ¡ nombre, WhatsApp y direcciÃ³n.');
+      setMessage('Por favor completá nombre, WhatsApp y dirección.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setMessage('Email invÃ¡lido.');
+      setMessage('Email inválido.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
@@ -399,8 +399,8 @@ if (loading) {
             <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto">
               <XCircle size={48} />
             </div>
-            <h1 className="text-2xl font-black text-slate-900">Sin conexiÃ³n</h1>
-            <p className="text-slate-500">Verifica tu conexiÃ³n a Internet e intenta nuevamente.</p>
+            <h1 className="text-2xl font-black text-slate-900">Sin conexión</h1>
+            <p className="text-slate-500">Verifica tu conexión a Internet e intenta nuevamente.</p>
             <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800">Reintentar</button>
           </div>
         </div>
@@ -413,8 +413,8 @@ if (loading) {
             <XCircle size={48} />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-black text-slate-900">{error || 'CatÃ¡logo no disponible'}</h1>
-            <p className="text-slate-500">Este catÃ¡logo puede haber sido desactivado o la direcciÃ³n es incorrecta.</p>
+            <h1 className="text-2xl font-black text-slate-900">{error || 'Catálogo no disponible'}</h1>
+            <p className="text-slate-500">Este catálogo puede haber sido desactivado o la dirección es incorrecta.</p>
           </div>
           <button 
             onClick={() => window.location.reload()}
@@ -576,7 +576,7 @@ if (loading) {
                 "text-lg md:text-2xl font-medium max-w-2xl mx-auto leading-relaxed",
                 darkMode ? "text-white/60" : "text-slate-600"
               )}>
-                {config.welcomeMessage || 'Descubre nuestra selecciÃ³n exclusiva de productos.'}
+                {config.welcomeMessage || 'Descubre nuestra selección exclusiva de productos.'}
               </p>
               {config.tagline && (
                 <p className={cn(
@@ -607,7 +607,7 @@ if (loading) {
               )} size={20} />
               <input 
                 type="text"
-                placeholder="Busca en nuestra colecciÃ³n..."
+                placeholder="Busca en nuestra colección..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={cn(
@@ -708,7 +708,7 @@ if (loading) {
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
                     {config.showStock && config.showStockQuantity && product.stock <= 5 && product.stock > 0 && (
                       <span className="bg-rose-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
-                        Ãšltimas unidades
+                        Últimas unidades
                       </span>
                     )}
                     {product.stock <= 0 && (
@@ -869,7 +869,7 @@ if (loading) {
                 "text-2xl font-bold tracking-tight",
                 darkMode ? "text-white" : "text-slate-900"
               )}>
-                {products.length === 0 ? 'CatÃ¡logo vacÃ­o' : 'Sin resultados'}
+                {products.length === 0 ? 'Catálogo vacío' : 'Sin resultados'}
               </h3>
               <p className={cn(
                 "font-medium",
@@ -877,7 +877,7 @@ if (loading) {
               )}>
                 {products.length === 0 
                   ? 'Vuelve pronto para ver nuestras novedades.' 
-                  : 'Intenta con otros tÃ©rminos o categorÃ­as.'}
+                  : 'Intenta con otros términos o categorías.'}
               </p>
             </div>
             {products.length > 0 && (
@@ -1093,11 +1093,11 @@ if (loading) {
                       <p className={cn(
                         "text-xl font-bold tracking-tight",
                         darkMode ? "text-white" : "text-slate-900"
-                      )}>Tu carrito estÃ¡ vacÃ­o</p>
+                      )}>Tu carrito está vacío</p>
                       <p className={cn(
                         "text-sm font-medium",
                         darkMode ? "text-white/40" : "text-slate-500"
-                      )}>Explora nuestra colecciÃ³n y aÃ±ade algo especial.</p>
+                      )}>Explora nuestra colección y añade algo especial.</p>
                     </div>
                     <button 
                       onClick={() => setIsCartOpen(false)}
@@ -1250,7 +1250,7 @@ if (loading) {
                       <input 
                         required
                         type="text"
-                        placeholder="DirecciÃ³n de entrega"
+                        placeholder="Dirección de entrega"
                         value={formData.address}
                         onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                         className={cn(
@@ -1432,7 +1432,7 @@ if (loading) {
                 <h3 className={cn(
                   "text-3xl font-black tracking-tight",
                   darkMode ? "text-white" : "text-slate-900"
-                )}>Â¡Pedido Enviado!</h3>
+                )}>¡Pedido Enviado!</h3>
                 <p className={cn(
                   "font-medium leading-relaxed",
                   darkMode ? "text-white/40" : "text-slate-500"
