@@ -128,6 +128,34 @@ export interface Product {
   updatedAt: string;
 }
 
+export type PriceListKind = 'reseller';
+export type PriceListPricingMode = 'default' | 'discount' | 'fixed';
+export type PriceListAvailability = 'in_stock' | 'on_order';
+
+export interface PriceList {
+  id: string;
+  ownerUid: string;
+  name: string;
+  kind: PriceListKind;
+  defaultDiscountPercent: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PriceListItem {
+  id: string;
+  ownerUid: string;
+  priceListId: string;
+  productId: string;
+  pricingMode: PriceListPricingMode;
+  discountPercent: number | null;
+  fixedPrice: number | null;
+  availability: PriceListAvailability;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Sale {
   id: string;
   date: string;

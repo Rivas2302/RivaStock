@@ -9,5 +9,6 @@ coverage/
 .claude/
 LEGACY_*
 scripts/migrate/
+supabase/.temp/*
 # Local AI runtime state
 .atl/
