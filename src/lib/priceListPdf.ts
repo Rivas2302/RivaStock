@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Category, InventoryOwner, Product } from '../types';
+import type { Category, InventoryOwner, PriceListAvailability, Product } from '../types';
 import { roundPrice } from './utils';
 import { getInventoryOwnerName } from './inventoryOwners';
 
@@ -10,6 +10,9 @@ interface PriceListPdfOptions {
   businessName: string;
   currencySymbol?: string;
   inventoryOwners?: InventoryOwner[];
+  title?: string;
+  fileNamePrefix?: string;
+  availabilityByProductId?: Record<string, PriceListAvailability>;
 }
 
 interface CategoryGroup {
@@ -82,6 +85,9 @@ export function createPriceListPdf({
   businessName,
   currencySymbol = '$',
   inventoryOwners = [],
+  title = 'Lista de precios',
+  fileNamePrefix = 'lista-precios',
+  availabilityByProductId,
 }: PriceListPdfOptions): PriceListPdf {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -94,7 +100,7 @@ export function createPriceListPdf({
     month: 'long',
     year: 'numeric',
   });
-  const fileName = `lista-precios-${generatedAt.toISOString().slice(0, 10)}.pdf`;
+  const fileName = `${fileNamePrefix}-${generatedAt.toISOString().slice(0, 10)}.pdf`;
   const safeBusinessName = businessName.trim() || 'Mi Negocio';
   const groups = groupProductsByCategory(products, categories);
 
@@ -105,7 +111,7 @@ export function createPriceListPdf({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(17);
       doc.setTextColor(255, 255, 255);
-      doc.text('LISTA DE PRECIOS', margin.left, 12);
+      doc.text(title.toUpperCase(), margin.left, 12);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(203, 213, 225);
@@ -120,7 +126,7 @@ export function createPriceListPdf({
     doc.text(safeBusinessName, margin.left, 12);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
-    doc.text('Lista de precios', pageWidth / 2, 12, { align: 'center' });
+    doc.text(title, pageWidth / 2, 12, { align: 'center' });
     doc.text(`Actualizada el ${generatedDate}`, pageWidth - margin.right, 12, { align: 'right' });
     doc.setDrawColor(203, 213, 225);
     doc.line(margin.left, 15, pageWidth - margin.right, 15);
@@ -167,16 +173,29 @@ export function createPriceListPdf({
     doc.text(`${group.items.length} producto${group.items.length === 1 ? '' : 's'}`, pageWidth - margin.right - 3, cursorY + 5.9, { align: 'right' });
     cursorY += categoryHeight + 2;
 
+    const showAvailability = Boolean(availabilityByProductId);
     autoTable(doc, {
       startY: cursorY,
       margin: { top: 22, bottom: margin.bottom, left: margin.left, right: margin.right },
-      head: [['Producto', 'Descripción', 'Precio']],
+      head: [showAvailability
+        ? ['Producto', 'Descripción', 'Disponibilidad', 'Precio']
+        : ['Producto', 'Descripción', 'Precio']],
       body: group.items.map((product) => {
         const code = getProductCode(product);
         const ownerName = getInventoryOwnerName(product, inventoryOwners);
         const ownerLabel = ownerName ? ` — ${ownerName}` : '';
         const productLabel = `${product.name}${ownerLabel}`;
-        return [code ? `${productLabel}\nCódigo: ${code}` : productLabel, getProductDescription(product), formatPrice(product.salePrice, currencySymbol)];
+        const cells = [
+          code ? `${productLabel}\nCódigo: ${code}` : productLabel,
+          getProductDescription(product),
+        ];
+        if (showAvailability) {
+          cells.push(
+            availabilityByProductId?.[product.id] === 'on_order' ? 'Por pedido' : 'Disponible',
+          );
+        }
+        cells.push(formatPrice(product.salePrice, currencySymbol));
+        return cells;
       }),
       styles: {
         font: 'helvetica',
@@ -195,7 +214,12 @@ export function createPriceListPdf({
         fontSize: 8,
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: {
+      columnStyles: showAvailability ? {
+        0: { cellWidth: contentWidth * 0.34, fontStyle: 'bold' },
+        1: { cellWidth: contentWidth * 0.30 },
+        2: { cellWidth: contentWidth * 0.17, fontStyle: 'bold' },
+        3: { cellWidth: contentWidth * 0.19, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+      } : {
         0: { cellWidth: contentWidth * 0.42, fontStyle: 'bold' },
         1: { cellWidth: contentWidth * 0.38 },
         2: { cellWidth: contentWidth * 0.20, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },

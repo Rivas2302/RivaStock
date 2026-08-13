@@ -53,7 +53,9 @@ import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import BarcodePrintModal from '../components/BarcodePrintModal';
+import ResellerPriceListModal from '../components/ResellerPriceListModal';
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
+import { addProductToResellerPriceList } from '../lib/priceLists';
 import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -223,6 +225,8 @@ export default function Stock() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const [resellerPriceListOpen, setResellerPriceListOpen] = useState(false);
+  const [creatingProductForReseller, setCreatingProductForReseller] = useState(false);
   const priceListProducts = useMemo(() => {
     const visibleProducts = holdingsEnabled
       ? filterProductsByHoldingOwner(products, holdings, 'all')
@@ -299,15 +303,21 @@ export default function Stock() {
     ));
   }, [holdings, inventoryOwners, operableInventoryOwnerIds]);
 
-  const openProductEditor = (product?: Product, barcode?: string) => {
+  const openProductEditor = (
+    product?: Product,
+    barcode?: string,
+    options?: { forReseller?: boolean },
+  ) => {
+    const forReseller = !product && options?.forReseller === true;
     const next = product ?? {
       id: crypto.randomUUID(),
       name: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
       purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2,
-      showInCatalog: true, notes: '', images: [], barcode,
+      showInCatalog: !forReseller, notes: '', images: [], barcode,
       inventoryOwnerId: primaryOwner?.id,
       ownerUid: user?.uid ?? '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
+    setCreatingProductForReseller(forReseller);
     setEditingProduct(product ?? null);
     productIntentRef.current = null;
     setIsUploadingImage(false);
@@ -326,6 +336,7 @@ export default function Stock() {
     setSaving(true);
 
     try {
+      let savedProduct: Product | null = null;
       const normalizedBarcode = normalizeBarcode(formData.barcode ?? '');
       if (normalizedBarcode) {
         const duplicate = products.find(
@@ -371,9 +382,11 @@ export default function Stock() {
           ...previous.filter((holding) => holding.productId !== result.product.id),
           ...result.holdings,
         ]);
+        savedProduct = result.product;
       } else if (editingProduct) {
         await db.update('products', editingProduct.id, productData);
         setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...productData } as Product : p));
+        savedProduct = { ...editingProduct, ...productData } as Product;
       } else {
         // Idempotency: reject duplicate product name within 5 seconds
         const cutoff = new Date(Date.now() - DUPLICATE_DETECTION_WINDOW_MS).toISOString();
@@ -392,9 +405,21 @@ export default function Stock() {
           createdAt: new Date().toISOString(),
         });
         setProducts(prev => [...prev, created]);
+        savedProduct = created;
+      }
+
+      if (creatingProductForReseller && savedProduct) {
+        try {
+          await addProductToResellerPriceList(savedProduct.id, 'on_order');
+          showToast('Producto creado y agregado como “Por pedido”.', 'success');
+        } catch (listError) {
+          console.error('[Stock] add product to reseller list error:', listError);
+          showToast('El producto se guardó, pero deberás agregarlo manualmente a la lista de revendedores.', 'info');
+        }
       }
 
       setIsModalOpen(false);
+      setCreatingProductForReseller(false);
       productIntentRef.current = null;
       setEditingProduct(null);
       setHoldingDrafts([]);
@@ -424,6 +449,7 @@ export default function Stock() {
     if (productSubmitInFlightRef.current) return;
     productIntentRef.current = null;
     setIsModalOpen(false);
+    setCreatingProductForReseller(false);
   };
 
   const retryImageCleanup = async () => {
@@ -666,6 +692,14 @@ export default function Stock() {
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <button
             type="button"
+            onClick={() => setResellerPriceListOpen(true)}
+            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border bg-indigo-50 dark:bg-indigo-950/30 text-[#284b91] dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-950/50"
+          >
+            <Share2 size={18} />
+            Lista revendedores
+          </button>
+          <button
+            type="button"
             onClick={() => handlePriceList('preview')}
             disabled={isExportingPdf || priceListProducts.length === 0}
             title={
@@ -755,6 +789,24 @@ export default function Stock() {
             </a>
           </div>
         </section>
+      )}
+
+      {user && (
+        <ResellerPriceListModal
+          isOpen={resellerPriceListOpen}
+          onClose={() => setResellerPriceListOpen(false)}
+          ownerUid={user.uid}
+          products={products}
+          categories={categories}
+          businessName={user.businessName}
+          currencySymbol={user.currencySymbol}
+          inventoryOwners={inventoryOwners}
+          canWrite={canWrite}
+          onCreateProduct={() => {
+            setResellerPriceListOpen(false);
+            openProductEditor(undefined, undefined, { forReseller: true });
+          }}
+        />
       )}
 
       <Modal
@@ -1124,9 +1176,18 @@ export default function Stock() {
       <Modal
         isOpen={isModalOpen} 
         onClose={closeProductEditor}
-        title={editingProduct ? 'Editar Producto' : 'Agregar Nuevo Producto'}
+        title={editingProduct
+          ? 'Editar Producto'
+          : creatingProductForReseller
+            ? 'Agregar producto para revendedores'
+            : 'Agregar Nuevo Producto'}
       >
         <form onSubmit={handleSave} className="operational-page space-y-6">
+          {creatingProductForReseller && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
+              Este producto se agregará a la lista de revendedores como <strong>Por pedido</strong> y no se publicará automáticamente en el catálogo minorista.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre del Producto</label>
