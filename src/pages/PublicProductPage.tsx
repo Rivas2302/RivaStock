@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fromDb } from '../lib/db';
-import { Product, CatalogConfig } from '../types';
+import type { CatalogConfig, PublicCatalogProduct } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
+import { getPublicCatalogProducts } from '../lib/publicCatalog';
 import {
   ArrowLeft,
   Copy,
@@ -17,7 +18,7 @@ import {
 
 export default function PublicProductPage() {
   const { slug, productId } = useParams<{ slug: string; productId: string }>();
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] = useState<PublicCatalogProduct | null>(null);
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [inventoryOwnerName, setInventoryOwnerName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -33,39 +34,28 @@ export default function PublicProductPage() {
         return;
       }
 
-      const [catalogRes, productRes, ownerLabels] = await Promise.all([
+      const [catalogRes, publicProducts, ownerLabels] = await Promise.all([
         supabase
           .from('catalog_config')
           .select('*')
           .eq('slug', slug)
           .eq('enabled', true)
           .limit(1),
-        supabase
-          .from('products')
-          .select('*')
-          .eq('id', productId)
-          .eq('show_in_catalog', true)
-          .single(),
+        getPublicCatalogProducts(slug),
         getPublicInventoryOwnerLabels(slug, productId),
       ]);
 
       const catalogRow = catalogRes.data?.[0];
-      const productRow = productRes.data;
+      const publicProduct = publicProducts.find((item) => item.id === productId);
 
-      if (!catalogRow || !productRow) {
-        setError('Producto no encontrado');
-        setLoading(false);
-        return;
-      }
-
-      if (productRow.user_id !== catalogRow.user_id) {
+      if (!catalogRow || !publicProduct) {
         setError('Producto no encontrado');
         setLoading(false);
         return;
       }
 
       setConfig(fromDb<CatalogConfig>(catalogRow));
-      setProduct(fromDb<Product>(productRow));
+      setProduct(publicProduct);
       setInventoryOwnerName(ownerLabels[0]?.inventoryOwnerName ?? '');
       setLoading(false);
     };

@@ -1,11 +1,12 @@
 ﻿import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, invalidateDbCache, toDb } from '../lib/db';
+import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
-import { supabase } from '../lib/supabase';
-import { Product, CatalogConfig, Category, Order } from '../types';
-import { formatCurrency, cn, roundPrice, uuid } from '../lib/utils';
+import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog } from '../types';
+import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
+import { createPublicCatalogOrder, getPublicCatalogProducts, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import {
   ShoppingBag,
   Search,
@@ -31,6 +32,8 @@ import {
   Share2,
   Copy,
   Check,
+  KeyRound,
+  Store,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -40,7 +43,8 @@ export default function PublicCatalog() {
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
   const [config, setConfig] = useState<CatalogConfig | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<PublicCatalogProduct[]>([]);
+  const [retailProducts, setRetailProducts] = useState<PublicCatalogProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [inventoryOwnerLabels, setInventoryOwnerLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -58,10 +62,18 @@ export default function PublicCatalog() {
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
+  const [cart, setCart] = useState<{ product: PublicCatalogProduct; quantity: number }[]>([]);
+  const [channel, setChannel] = useState<CatalogChannel>('retail');
+  const [resellerAvailable, setResellerAvailable] = useState(false);
+  const [resellerCatalog, setResellerCatalog] = useState<PublicResellerCatalog | null>(null);
+  const [resellerAccessCode, setResellerAccessCode] = useState('');
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [isAccessOpen, setIsAccessOpen] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [selectedProductForLightbox, setSelectedProductForLightbox] = useState<Product | null>(null);
+  const [selectedProductForLightbox, setSelectedProductForLightbox] = useState<PublicCatalogProduct | null>(null);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -73,7 +85,7 @@ export default function PublicCatalog() {
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
 
-  const handleShareProduct = async (product: Product, action: 'copy' | 'whatsapp') => {
+  const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
     const url = `${window.location.origin}/catalogo/${slug}/${product.id}`;
     if (action === 'copy') {
       await navigator.clipboard.writeText(url);
@@ -188,26 +200,21 @@ useEffect(() => {
         setConfig(foundConfig);
 
         // 2. Fetch products and categories concurrently via Supabase
-        const [allProducts, cats, ownerLabels] = await withTimeout(
+        const [allProducts, cats, ownerLabels, hasResellerCatalog] = await withTimeout(
           Promise.all([
-            db.findBy<Product>('products', [
-              { field: 'ownerUid',       value: foundConfig.ownerUid },
-              { field: 'showInCatalog',  value: true },
-            ]),
+            getPublicCatalogProducts(slug),
             db.list<Category>('categories', foundConfig.ownerUid),
             getPublicInventoryOwnerLabels(slug),
+            getResellerCatalogStatus(slug),
           ]),
           'load products+categories',
         );
         if (cancelled) return;
 
-        // Respect showOutOfStock setting
-        const visibleProducts = foundConfig.showOutOfStock
-          ? allProducts
-          : allProducts.filter(p => p.stock > 0);
-
-        setProducts(visibleProducts);
+        setProducts(allProducts);
+        setRetailProducts(allProducts);
         setCategories(cats);
+        setResellerAvailable(hasResellerCatalog);
         setInventoryOwnerLabels(Object.fromEntries(ownerLabels.map((label) => [label.productId, label.inventoryOwnerName])));
       } catch (err) {
         if (cancelled) return;
@@ -226,13 +233,19 @@ useEffect(() => {
     return () => { cancelled = true; };
   }, [slug]);
 
-  const addToCart = (product: Product) => {
-    if (product.stock <= 0 && !config?.showOutOfStock) return;
+  const isProductOrderable = (product: PublicCatalogProduct): boolean => (
+    channel === 'reseller'
+      ? product.availability === 'on_order' || product.stock > 0
+      : product.stock > 0
+  );
+
+  const addToCart = (product: PublicCatalogProduct) => {
+    if (!isProductOrderable(product)) return;
 
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        if (existing.quantity >= product.stock && !config?.showOutOfStock) {
+        if (product.availability !== 'on_order' && existing.quantity >= product.stock) {
           setMessage('No hay más stock disponible.');
           setTimeout(() => setMessage(null), 2500);
           return prev;
@@ -254,7 +267,9 @@ useEffect(() => {
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.product.id !== productId) return item;
-      const max = config?.showOutOfStock ? Number.MAX_SAFE_INTEGER : item.product.stock;
+      const max = item.product.availability === 'on_order'
+        ? Number.MAX_SAFE_INTEGER
+        : item.product.stock;
       const newQty = Math.min(max, Math.max(1, item.quantity + delta));
       return { ...item, quantity: newQty };
     }));
@@ -275,6 +290,54 @@ useEffect(() => {
 
     return { cartItemCount, cartTotal, filteredProducts };
   }, [activeCategory, cart, deferredSearch, products]);
+
+  const commercialRuleMessage = resellerCatalog
+    ? getCommercialRuleMessage(resellerCatalog)
+    : null;
+  const commercialRuleSatisfied = channel !== 'reseller' || !resellerCatalog
+    ? true
+    : isCommercialRuleSatisfied(resellerCatalog, cartTotal, cartItemCount);
+
+  const selectRetailCatalog = () => {
+    if (channel !== 'retail') setCart([]);
+    setChannel('retail');
+    setProducts(retailProducts);
+    setActiveCategory('all');
+  };
+
+  const selectResellerCatalog = () => {
+    if (resellerCatalog) {
+      if (channel !== 'reseller') setCart([]);
+      setChannel('reseller');
+      setProducts(resellerCatalog.products);
+      setActiveCategory('all');
+      return;
+    }
+    setAccessError(null);
+    setAccessCodeInput('');
+    setIsAccessOpen(true);
+  };
+
+  const handleUnlockReseller = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!slug || unlocking) return;
+    setUnlocking(true);
+    setAccessError(null);
+    try {
+      const unlocked = await unlockResellerCatalog(slug, accessCodeInput);
+      setResellerCatalog(unlocked);
+      setResellerAccessCode(accessCodeInput.trim());
+      setChannel('reseller');
+      setProducts(unlocked.products);
+      setCart([]);
+      setActiveCategory('all');
+      setIsAccessOpen(false);
+    } catch {
+      setAccessError('El código no es válido. Revisalo e intentá nuevamente.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,32 +367,29 @@ useEffect(() => {
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
       return;
     }
-
-    const order: Order = {
-      id: uuid(),
-      ownerUid: config.ownerUid,
-      date: new Date().toISOString(),
-      customerName: name,
-      customerPhone: phone,
-      customerEmail: email,
-      customerAddress: address,
-      customerMessage: formData.message.trim(),
-      items: cart.map(item => ({
-        productId: item.product.id,
-        productName: item.product.name,
-        quantity: item.quantity,
-        price: item.product.salePrice,
-      })),
-      total: cartTotal,
-      status: 'Nuevo',
-      isRead: false,
-    };
+    if (!commercialRuleSatisfied) {
+      setMessage(commercialRuleMessage ?? 'El pedido no cumple la compra mínima.');
+      setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+      return;
+    }
 
     try {
-      const { error: insertError } = await supabase
-        .from('orders')
-        .insert(toDb(order as unknown as Record<string, unknown>));
-      if (insertError) throw new Error(insertError.message);
+      await createPublicCatalogOrder({
+        slug: slug ?? '',
+        channel,
+        accessCode: channel === 'reseller' ? resellerAccessCode : '',
+        customer: {
+          name,
+          phone,
+          email,
+          address,
+          message: formData.message.trim(),
+        },
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+        })),
+      });
       invalidateDbCache('orders');
       setLastSubmitAt(Date.now());
       setIsSuccess(true);
@@ -338,7 +398,7 @@ useEffect(() => {
       setFormData({ name: '', phone: '', email: '', address: '', message: '' });
     } catch (err) {
       console.error('[checkout] insert failed:', err);
-      setMessage('Error al procesar el pedido. Por favor intenta de nuevo.');
+      setMessage(err instanceof Error ? err.message : 'Error al procesar el pedido. Intentá nuevamente.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
     }
   };
@@ -348,6 +408,8 @@ useEffect(() => {
       if (e.key !== 'Escape') return;
       if (selectedProductForLightbox) {
         setSelectedProductForLightbox(null);
+      } else if (isAccessOpen) {
+        setIsAccessOpen(false);
       } else if (isCheckoutOpen) {
         setIsCheckoutOpen(false);
       } else if (isCartOpen) {
@@ -356,11 +418,11 @@ useEffect(() => {
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [selectedProductForLightbox, isCheckoutOpen, isCartOpen]);
+  }, [selectedProductForLightbox, isAccessOpen, isCheckoutOpen, isCartOpen]);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
-    if (selectedProductForLightbox || isCartOpen || isCheckoutOpen) {
+    if (selectedProductForLightbox || isAccessOpen || isCartOpen || isCheckoutOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -368,7 +430,7 @@ useEffect(() => {
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [selectedProductForLightbox, isCartOpen, isCheckoutOpen]);
+  }, [selectedProductForLightbox, isAccessOpen, isCartOpen, isCheckoutOpen]);
 
 if (loading) {
     return (
@@ -445,6 +507,61 @@ if (loading) {
           >
             {message}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isAccessOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <motion.button
+              type="button"
+              aria-label="Cerrar acceso para revendedores"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsAccessOpen(false)}
+              className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className={cn(
+                "relative z-10 w-full max-w-md rounded-[2rem] border p-7 shadow-2xl",
+                darkMode ? "border-white/10 bg-[#111] text-white" : "border-slate-100 bg-white text-slate-900",
+              )}
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
+                <KeyRound size={26} />
+              </div>
+              <div className="mt-5 text-center">
+                <h3 className="text-2xl font-black">Acceso para revendedores</h3>
+                <p className={cn("mt-2 text-sm font-medium", darkMode ? "text-white/50" : "text-slate-500")}>
+                  Ingresá el código comercial para ver precios exclusivos y productos por pedido.
+                </p>
+              </div>
+              <form onSubmit={handleUnlockReseller} className="mt-6 space-y-4">
+                <input
+                  type="password"
+                  value={accessCodeInput}
+                  onChange={(event) => setAccessCodeInput(event.target.value)}
+                  placeholder="Código de acceso"
+                  autoFocus
+                  autoComplete="current-password"
+                  className={cn(
+                    "w-full rounded-2xl border px-4 py-3.5 text-center font-bold outline-none focus:ring-2 focus:ring-indigo-500",
+                    darkMode ? "border-white/10 bg-white/5 text-white" : "border-slate-200 bg-slate-50",
+                  )}
+                />
+                {accessError && <p role="alert" className="text-center text-sm font-semibold text-rose-500">{accessError}</p>}
+                <button
+                  type="submit"
+                  disabled={unlocking || accessCodeInput.trim().length === 0}
+                  className="w-full rounded-full bg-indigo-600 py-4 font-black text-white transition-all hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {unlocking ? 'Verificando...' : 'Ingresar'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -621,6 +738,36 @@ if (loading) {
             
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
               <button
+                onClick={selectRetailCatalog}
+                className={cn(
+                  "px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap border-2",
+                  channel === 'retail'
+                    ? "text-white border-transparent shadow-lg"
+                    : darkMode
+                      ? "bg-white/5 border-white/5 text-white/40 hover:text-white"
+                      : "bg-slate-100 border-slate-100 text-slate-500 hover:bg-slate-200"
+                )}
+                style={channel === 'retail' ? { backgroundColor: accentColor, boxShadow: `0 10px 20px -5px ${accentColor}60` } : {}}
+              >
+                Tienda
+              </button>
+              {resellerAvailable && (
+                <button
+                  onClick={selectResellerCatalog}
+                  className={cn(
+                    "px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap border-2 flex items-center gap-2",
+                    channel === 'reseller'
+                      ? "text-white border-transparent shadow-lg"
+                      : darkMode
+                        ? "bg-white/5 border-white/5 text-white/40 hover:text-white"
+                        : "bg-indigo-50 border-indigo-100 text-indigo-700 hover:bg-indigo-100"
+                  )}
+                  style={channel === 'reseller' ? { backgroundColor: accentColor, boxShadow: `0 10px 20px -5px ${accentColor}60` } : {}}
+                >
+                  <Store size={14} /> Revendedores
+                </button>
+              )}
+              <button
                 onClick={() => setActiveCategory('all')}
                 className={cn(
                   "px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap border-2",
@@ -658,6 +805,20 @@ if (loading) {
 
       {/* Product Grid */}
       <main className="max-w-7xl mx-auto px-6 py-24">
+        {channel === 'reseller' && (
+          <div className={cn(
+            "mb-10 rounded-[2rem] border p-6 sm:flex sm:items-center sm:justify-between sm:gap-6",
+            darkMode ? "border-indigo-400/20 bg-indigo-500/10" : "border-indigo-100 bg-indigo-50",
+          )}>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Canal exclusivo</p>
+              <h2 className={cn("mt-1 text-2xl font-black", darkMode ? "text-white" : "text-slate-900")}>Precios para revendedores</h2>
+            </div>
+            <p className={cn("mt-3 text-sm font-semibold sm:mt-0", darkMode ? "text-white/60" : "text-indigo-800")}>
+              {commercialRuleMessage ?? 'Sin compra mínima'} · Los productos “Por pedido” no requieren stock inmediato.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product) => (
@@ -711,7 +872,11 @@ if (loading) {
                         Últimas unidades
                       </span>
                     )}
-                    {product.stock <= 0 && (
+                    {channel === 'reseller' && product.availability === 'on_order' ? (
+                      <span className="bg-indigo-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
+                        Por pedido
+                      </span>
+                    ) : product.stock <= 0 && (
                       <span className="bg-white/10 backdrop-blur-md text-white/60 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
                         Agotado
                       </span>
@@ -768,13 +933,15 @@ if (loading) {
                           "text-[10px] font-bold uppercase tracking-widest",
                           darkMode ? "text-white/20" : "text-slate-400"
                         )}>
-                          {config.showStockQuantity ? 'Disponible' : `Stock: ${product.stock}`}
+                          {channel === 'reseller' && product.availability === 'on_order'
+                            ? 'Por pedido'
+                            : config.showStockQuantity ? 'Disponible' : `Stock: ${product.stock}`}
                         </p>
                       )}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <div className="relative">
+                      {channel === 'retail' && <div className="relative">
                         <button
                           onClick={e => {
                             e.stopPropagation();
@@ -829,16 +996,16 @@ if (loading) {
                             </button>
                           </div>
                         )}
-                      </div>
+                      </div>}
 
                       <button
                         onClick={() => addToCart(product)}
-                        disabled={product.stock <= 0}
+                        disabled={!isProductOrderable(product)}
                         className={cn(
                           "w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all active:scale-90 disabled:opacity-20 disabled:grayscale",
-                          product.stock > 0 ? "hover:scale-110 hover:shadow-indigo-500/40" : ""
+                          isProductOrderable(product) ? "hover:scale-110 hover:shadow-indigo-500/40" : ""
                         )}
-                        style={product.stock > 0 ? { backgroundColor: accentColor, boxShadow: `0 10px 30px -5px ${accentColor}80` } : {}}
+                        style={isProductOrderable(product) ? { backgroundColor: accentColor, boxShadow: `0 10px 30px -5px ${accentColor}80` } : {}}
                       >
                         <Plus size={28} />
                       </button>
@@ -1131,12 +1298,28 @@ if (loading) {
                       darkMode ? "text-white" : "text-slate-900"
                     )}>{formatCurrency(cartTotal)}</span>
                   </div>
+                  {channel === 'reseller' && commercialRuleMessage && (
+                    <div className={cn(
+                      "rounded-2xl px-4 py-3 text-sm font-bold",
+                      commercialRuleSatisfied
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-900",
+                    )}>
+                      {commercialRuleSatisfied ? 'Compra mínima alcanzada' : commercialRuleMessage}
+                    </div>
+                  )}
                   <button 
                     onClick={() => {
+                      if (!commercialRuleSatisfied) {
+                        setMessage(commercialRuleMessage ?? 'El pedido no cumple la compra mínima.');
+                        setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+                        return;
+                      }
                       setIsCartOpen(false);
                       setIsCheckoutOpen(true);
                     }}
-                    className="w-full text-white py-5 rounded-full font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
+                    disabled={!commercialRuleSatisfied}
+                    className="w-full text-white py-5 rounded-full font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ backgroundColor: accentColor, boxShadow: `0 20px 40px -5px ${accentColor}60` }}
                   >
                     Confirmar Pedido
@@ -1454,4 +1637,3 @@ if (loading) {
     </div>
   );
 }
-
