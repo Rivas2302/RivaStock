@@ -145,6 +145,8 @@ export interface PriceList {
   minimumRule: MinimumOrderRule;
   minimumOrderAmount: number;
   minimumOrderQuantity: number;
+  minimumProfitMarginPercent: number;
+  targetResellerDiscountPercent: number;
   createdAt: string;
   updatedAt: string;
 }

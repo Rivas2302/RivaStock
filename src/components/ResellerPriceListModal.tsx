@@ -7,6 +7,7 @@ import {
   PackagePlus,
   Save,
   Search,
+  Sparkles,
   Store,
 } from 'lucide-react';
 import type {
@@ -21,6 +22,7 @@ import type {
 } from '../types';
 import {
   configureResellerPriceList,
+  configureResellerPricingAdvisor,
   ensureResellerPriceList,
   loadResellerPriceList,
   saveResellerPriceList,
@@ -29,6 +31,7 @@ import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } f
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
 import { getVisibleHoldingEconomics } from '../lib/inventoryHoldings';
+import { getResellerPricingAdvice } from '../lib/resellerPricingAdvisor';
 import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import Modal from './Modal';
@@ -84,6 +87,8 @@ export default function ResellerPriceListModal({
   const [minimumRule, setMinimumRule] = useState<MinimumOrderRule>('none');
   const [minimumOrderAmount, setMinimumOrderAmount] = useState(0);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(0);
+  const [minimumProfitMarginPercent, setMinimumProfitMarginPercent] = useState(25);
+  const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -114,6 +119,8 @@ export default function ResellerPriceListModal({
         setMinimumRule(loaded.list.minimumRule);
         setMinimumOrderAmount(loaded.list.minimumOrderAmount);
         setMinimumOrderQuantity(loaded.list.minimumOrderQuantity);
+        setMinimumProfitMarginPercent(loaded.list.minimumProfitMarginPercent);
+        setTargetResellerDiscountPercent(loaded.list.targetResellerDiscountPercent);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
       } catch (loadError) {
         if (!cancelled) {
@@ -139,6 +146,35 @@ export default function ResellerPriceListModal({
       || product.category.toLocaleLowerCase('es-AR').includes(normalized)
     ));
   }, [products, search]);
+
+  const pricingAdviceByProductId = useMemo(() => {
+    const productById = new Map(products.map((product) => [product.id, product]));
+    return new Map(items.flatMap((item) => {
+      const product = productById.get(item.productId);
+      if (!product) return [];
+      const economics = holdingsEnabled
+        ? getVisibleHoldingEconomics(product, holdings, 'all')
+        : { purchaseCostRange: [product.purchasePrice, product.purchasePrice] as [number, number] };
+      const advice = getResellerPricingAdvice({
+        retailPrice: product.salePrice,
+        purchaseCost: economics.purchaseCostRange[1],
+        currentResellerPrice: resolvePriceListPrice(product.salePrice, discount, item),
+        minimumOwnerMarginPercent: minimumProfitMarginPercent,
+        targetResellerDiscountPercent,
+      });
+      return [[product.id, advice] as const];
+    }));
+  }, [discount, holdings, holdingsEnabled, items, minimumProfitMarginPercent, products, targetResellerDiscountPercent]);
+
+  const adviceSummary = useMemo(() => {
+    const values = Array.from(pricingAdviceByProductId.values());
+    return {
+      balanced: values.filter((advice) => advice.status === 'balanced').length,
+      review: values.filter((advice) => ['low_margin', 'not_competitive'].includes(advice.status)).length,
+      critical: values.filter((advice) => advice.status === 'loss').length,
+      missing: values.filter((advice) => advice.status === 'missing_cost').length,
+    };
+  }, [pricingAdviceByProductId]);
 
   const updateItem = (productId: string, updates: Partial<PriceListItem>) => {
     setItems((current) => current.map((item) => (
@@ -172,7 +208,12 @@ export default function ResellerPriceListModal({
         minimumOrderAmount,
         minimumOrderQuantity,
       });
-      setList(configured);
+      const configuredAdvisor = await configureResellerPricingAdvisor({
+        listId: list.id,
+        minimumProfitMarginPercent,
+        targetResellerDiscountPercent,
+      });
+      setList({ ...configured, ...configuredAdvisor });
       setAccessCode('');
       showToast('Lista de revendedores guardada.', 'success');
     } catch (saveError) {
@@ -268,6 +309,60 @@ export default function ResellerPriceListModal({
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">%</span>
               </div>
             </label>
+          </section>
+
+          <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_11rem_11rem] lg:items-end">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={19} className="text-violet-600" />
+                  <h4 className="font-bold text-slate-900 dark:text-white">Asistente de precios</h4>
+                </div>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  Compara costo, precio minorista y precio revendedor. Usa el costo más alto cuando un producto tiene costos mixtos.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">{adviceSummary.balanced} saludables</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{adviceSummary.review} para revisar</span>
+                  <span className="rounded-full bg-rose-100 px-2.5 py-1 text-rose-800">{adviceSummary.critical} con pérdida</span>
+                  {adviceSummary.missing > 0 && (
+                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{adviceSummary.missing} sin costo</span>
+                  )}
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Margen propio mínimo</span>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="95"
+                    step="1"
+                    value={minimumProfitMarginPercent}
+                    disabled={!canWrite}
+                    onChange={(event) => setMinimumProfitMarginPercent(Math.min(95, Math.max(0, Number(event.target.value))))}
+                    className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 pr-8 font-bold dark:border-violet-800 dark:bg-slate-950 dark:text-white"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
+                </div>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Descuento atractivo</span>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={targetResellerDiscountPercent}
+                    disabled={!canWrite}
+                    onChange={(event) => setTargetResellerDiscountPercent(Math.min(100, Math.max(0, Number(event.target.value))))}
+                    className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 pr-8 font-bold dark:border-violet-800 dark:bg-slate-950 dark:text-white"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
+                </div>
+              </label>
+            </div>
           </section>
 
           <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-2">
@@ -398,6 +493,7 @@ export default function ResellerPriceListModal({
               const profitMargin = resolvedPrice && economics.purchaseCost !== null
                 ? ((resolvedPrice - economics.purchaseCost) / resolvedPrice) * 100
                 : null;
+              const pricingAdvice = pricingAdviceByProductId.get(product.id);
               return (
                 <article
                   key={product.id}
@@ -504,6 +600,56 @@ export default function ResellerPriceListModal({
                         ? `Ganancia estimada: ${formatCurrency(minimumProfit)} a ${formatCurrency(maximumProfit)}`
                         : `Ganancia: ${formatCurrency(minimumProfit)}${profitMargin === null ? '' : ` (${profitMargin.toFixed(1)}%)`}`}
                     </p>
+                  )}
+                  {item && pricingAdvice && (
+                    <div className={cn(
+                      'mt-3 rounded-xl border p-3 text-sm',
+                      pricingAdvice.status === 'balanced' && 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200',
+                      pricingAdvice.status === 'loss' && 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200',
+                      pricingAdvice.status === 'low_margin' && 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200',
+                      pricingAdvice.status === 'not_competitive' && 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200',
+                      pricingAdvice.status === 'missing_cost' && 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200',
+                    )}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-bold">
+                            {pricingAdvice.status === 'balanced' && 'Precio saludable'}
+                            {pricingAdvice.status === 'loss' && 'Alerta: venta con pérdida'}
+                            {pricingAdvice.status === 'low_margin' && 'Margen demasiado bajo'}
+                            {pricingAdvice.status === 'not_competitive' && 'Precio poco atractivo o sin margen suficiente'}
+                            {pricingAdvice.status === 'missing_cost' && 'No se puede calcular todavía'}
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed opacity-90">{pricingAdvice.message}</p>
+                          {pricingAdvice.currentOwnerMarginPercent !== null && pricingAdvice.currentResellerMarginPercent !== null && (
+                            <p className="mt-2 text-xs font-semibold">
+                              Tu margen: {pricingAdvice.currentOwnerMarginPercent.toFixed(1)}% · Descuento revendedor: {pricingAdvice.currentResellerMarginPercent.toFixed(1)}%
+                              {pricingAdvice.maximumSafeDiscountPercent !== null && ` · Máximo seguro: ${pricingAdvice.maximumSafeDiscountPercent.toFixed(1)}%`}
+                            </p>
+                          )}
+                          {pricingAdvice.suggestedPrice !== null && pricingAdvice.status !== 'balanced' && (
+                            <p className="mt-1 text-xs font-bold">
+                              Sugerencia: {pricingAdvice.suggestedDiscountPercent === null
+                                ? `precio mínimo ${formatCurrency(pricingAdvice.suggestedPrice)}`
+                                : `${pricingAdvice.suggestedDiscountPercent.toFixed(1)}% → ${formatCurrency(pricingAdvice.suggestedPrice)}`}
+                            </p>
+                          )}
+                        </div>
+                        {pricingAdvice.status !== 'balanced' && pricingAdvice.suggestedDiscountPercent !== null && (
+                          <button
+                            type="button"
+                            disabled={!canWrite}
+                            onClick={() => updateItem(product.id, {
+                              pricingMode: 'discount',
+                              discountPercent: pricingAdvice.suggestedDiscountPercent,
+                              fixedPrice: null,
+                            })}
+                            className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                          >
+                            Aplicar {pricingAdvice.suggestedDiscountPercent.toFixed(1)}%
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </article>
               );

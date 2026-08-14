@@ -19,6 +19,8 @@ const normalizePriceList = (value: RawPriceList): PriceList => {
     minimumRule: list.minimumRule ?? 'none',
     minimumOrderAmount: Number(list.minimumOrderAmount ?? 0),
     minimumOrderQuantity: Number(list.minimumOrderQuantity ?? 0),
+    minimumProfitMarginPercent: Number(list.minimumProfitMarginPercent ?? 25),
+    targetResellerDiscountPercent: Number(list.targetResellerDiscountPercent ?? 15),
   };
 };
 
@@ -87,6 +89,21 @@ export async function configureResellerPriceList(input: {
     p_minimum_order_quantity: Math.max(0, Math.floor(input.minimumOrderQuantity)),
   });
   if (error) throw new Error(`[configure_reseller_price_list] ${error.message}`);
+  invalidateDbCache('price_lists');
+  return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
+}
+
+export async function configureResellerPricingAdvisor(input: {
+  listId: string;
+  minimumProfitMarginPercent: number;
+  targetResellerDiscountPercent: number;
+}): Promise<PriceList> {
+  const { data, error } = await supabase.rpc('configure_reseller_pricing_advisor', {
+    p_list_id: input.listId,
+    p_minimum_profit_margin_percent: Math.min(95, Math.max(0, input.minimumProfitMarginPercent)),
+    p_target_reseller_discount_percent: Math.min(100, Math.max(0, input.targetResellerDiscountPercent)),
+  });
+  if (error) throw new Error(`[configure_reseller_pricing_advisor] ${error.message}`);
   invalidateDbCache('price_lists');
   return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
 }
