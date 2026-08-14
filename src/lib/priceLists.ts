@@ -1,4 +1,5 @@
 import type {
+  MinimumOrderRule,
   PriceList,
   PriceListAvailability,
   PriceListItem,
@@ -6,6 +7,20 @@ import type {
 import { db, fromDb, invalidateDbCache } from './db';
 import { supabase } from './supabase';
 import { clampPriceListDiscount } from './priceListPricing';
+
+type RawPriceList = PriceList & { accessCodeHash?: string | null };
+
+const normalizePriceList = (value: RawPriceList): PriceList => {
+  const { accessCodeHash, ...list } = value;
+  return {
+    ...list,
+    publicEnabled: Boolean(list.publicEnabled),
+    accessCodeConfigured: Boolean(accessCodeHash),
+    minimumRule: list.minimumRule ?? 'none',
+    minimumOrderAmount: Number(list.minimumOrderAmount ?? 0),
+    minimumOrderQuantity: Number(list.minimumOrderQuantity ?? 0),
+  };
+};
 
 export async function loadResellerPriceList(ownerUid: string): Promise<{
   list: PriceList | null;
@@ -20,7 +35,7 @@ export async function loadResellerPriceList(ownerUid: string): Promise<{
   const items = await db.findBy<PriceListItem>('price_list_items', [
     { field: 'priceListId', value: list.id },
   ]);
-  return { list, items };
+  return { list: normalizePriceList(list as RawPriceList), items };
 }
 
 export async function ensureResellerPriceList(defaultDiscountPercent = 20): Promise<PriceList> {
@@ -29,7 +44,7 @@ export async function ensureResellerPriceList(defaultDiscountPercent = 20): Prom
   });
   if (error) throw new Error(`[ensure_reseller_price_list] ${error.message}`);
   invalidateDbCache('price_lists', 'price_list_items');
-  return fromDb<PriceList>(data as Record<string, unknown>);
+  return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
 }
 
 export async function saveResellerPriceList(
@@ -52,7 +67,28 @@ export async function saveResellerPriceList(
   });
   if (error) throw new Error(`[save_reseller_price_list] ${error.message}`);
   invalidateDbCache('price_lists', 'price_list_items');
-  return fromDb<PriceList>(data as Record<string, unknown>);
+  return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
+}
+
+export async function configureResellerPriceList(input: {
+  listId: string;
+  publicEnabled: boolean;
+  accessCode?: string;
+  minimumRule: MinimumOrderRule;
+  minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+}): Promise<PriceList> {
+  const { data, error } = await supabase.rpc('configure_reseller_price_list', {
+    p_list_id: input.listId,
+    p_public_enabled: input.publicEnabled,
+    p_access_code: input.accessCode?.trim() ?? '',
+    p_minimum_rule: input.minimumRule,
+    p_minimum_order_amount: Math.max(0, input.minimumOrderAmount),
+    p_minimum_order_quantity: Math.max(0, Math.floor(input.minimumOrderQuantity)),
+  });
+  if (error) throw new Error(`[configure_reseller_price_list] ${error.message}`);
+  invalidateDbCache('price_lists');
+  return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
 }
 
 export async function addProductToResellerPriceList(

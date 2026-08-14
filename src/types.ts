@@ -131,6 +131,8 @@ export interface Product {
 export type PriceListKind = 'reseller';
 export type PriceListPricingMode = 'default' | 'discount' | 'fixed';
 export type PriceListAvailability = 'in_stock' | 'on_order';
+export type MinimumOrderRule = 'none' | 'amount' | 'quantity' | 'both';
+export type CatalogChannel = 'retail' | 'reseller';
 
 export interface PriceList {
   id: string;
@@ -138,6 +140,11 @@ export interface PriceList {
   name: string;
   kind: PriceListKind;
   defaultDiscountPercent: number;
+  publicEnabled: boolean;
+  accessCodeConfigured: boolean;
+  minimumRule: MinimumOrderRule;
+  minimumOrderAmount: number;
+  minimumOrderQuantity: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -350,6 +357,21 @@ export interface Order {
   status: 'Nuevo' | 'En Proceso' | 'Entregado' | 'Cancelado';
   isRead: boolean;
   ownerUid: string;
+  channel?: CatalogChannel;
+  priceListId?: string | null;
+}
+
+export interface PublicCatalogProduct extends Product {
+  availability: PriceListAvailability | 'out_of_stock';
+}
+
+export interface PublicResellerCatalog {
+  enabled: boolean;
+  priceListId: string;
+  minimumRule: MinimumOrderRule;
+  minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  products: PublicCatalogProduct[];
 }
 
 export interface CatalogConfig {
