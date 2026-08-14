@@ -2,22 +2,33 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Download,
   Eye,
+  KeyRound,
   Loader2,
   PackagePlus,
   Save,
   Search,
+  Store,
 } from 'lucide-react';
 import type {
   Category,
+  InventoryHolding,
   InventoryOwner,
+  MinimumOrderRule,
   PriceList,
   PriceListItem,
   PriceListPricingMode,
   Product,
 } from '../types';
-import { ensureResellerPriceList, loadResellerPriceList, saveResellerPriceList } from '../lib/priceLists';
+import {
+  configureResellerPriceList,
+  ensureResellerPriceList,
+  loadResellerPriceList,
+  saveResellerPriceList,
+} from '../lib/priceLists';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
+import { getCommercialRuleMessage } from '../lib/commercialRules';
+import { getVisibleHoldingEconomics } from '../lib/inventoryHoldings';
 import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import Modal from './Modal';
@@ -31,6 +42,8 @@ interface ResellerPriceListModalProps {
   businessName: string;
   currencySymbol?: string;
   inventoryOwners: InventoryOwner[];
+  holdings: InventoryHolding[];
+  holdingsEnabled: boolean;
   canWrite: boolean;
   onCreateProduct: () => void;
 }
@@ -58,12 +71,19 @@ export default function ResellerPriceListModal({
   businessName,
   currencySymbol,
   inventoryOwners,
+  holdings,
+  holdingsEnabled,
   canWrite,
   onCreateProduct,
 }: ResellerPriceListModalProps) {
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);
+  const [publicEnabled, setPublicEnabled] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [minimumRule, setMinimumRule] = useState<MinimumOrderRule>('none');
+  const [minimumOrderAmount, setMinimumOrderAmount] = useState(0);
+  const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,6 +109,11 @@ export default function ResellerPriceListModal({
         if (cancelled) return;
         setList(loaded.list);
         setDiscount(loaded.list.defaultDiscountPercent);
+        setPublicEnabled(loaded.list.publicEnabled);
+        setAccessCode('');
+        setMinimumRule(loaded.list.minimumRule);
+        setMinimumOrderAmount(loaded.list.minimumOrderAmount);
+        setMinimumOrderQuantity(loaded.list.minimumOrderQuantity);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
       } catch (loadError) {
         if (!cancelled) {
@@ -132,10 +157,23 @@ export default function ResellerPriceListModal({
 
   const handleSave = async () => {
     if (!list || !canWrite || saving) return;
+    if (publicEnabled && !list.accessCodeConfigured && accessCode.trim().length < 6) {
+      showToast('Definí un código de acceso de al menos 6 caracteres.', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      const saved = await saveResellerPriceList(list.id, discount, items);
-      setList(saved);
+      await saveResellerPriceList(list.id, discount, items);
+      const configured = await configureResellerPriceList({
+        listId: list.id,
+        publicEnabled,
+        accessCode,
+        minimumRule,
+        minimumOrderAmount,
+        minimumOrderQuantity,
+      });
+      setList(configured);
+      setAccessCode('');
       showToast('Lista de revendedores guardada.', 'success');
     } catch (saveError) {
       console.error('[ResellerPriceList] save error:', saveError);
@@ -151,6 +189,11 @@ export default function ResellerPriceListModal({
     setGenerating(true);
     try {
       const draftList = { ...list, defaultDiscountPercent: discount };
+      const commercialNotice = getCommercialRuleMessage({
+        minimumRule,
+        minimumOrderAmount,
+        minimumOrderQuantity,
+      });
       const pdf = createPriceListPdf({
         products: buildPriceListProducts(products, draftList, items),
         categories,
@@ -160,6 +203,7 @@ export default function ResellerPriceListModal({
         title: 'Lista de precios para revendedores',
         fileNamePrefix: 'lista-revendedores',
         availabilityByProductId: buildAvailabilityMap(items),
+        commercialNotice,
       });
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
@@ -226,6 +270,94 @@ export default function ResellerPriceListModal({
             </label>
           </section>
 
+          <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-3">
+                  <Store className="mt-0.5 text-[#365fad]" size={20} />
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white">Catálogo público para revendedores</h4>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      Aparece como una sección protegida dentro de tu catálogo público.
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={publicEnabled}
+                  disabled={!canWrite}
+                  onChange={(event) => setPublicEnabled(event.target.checked)}
+                  aria-label="Publicar catálogo para revendedores"
+                  className="mt-1 h-5 w-5 rounded border-slate-300 text-[#365fad] focus:ring-[#365fad]"
+                />
+              </div>
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <KeyRound size={15} /> Código de acceso
+                </span>
+                <input
+                  type="password"
+                  value={accessCode}
+                  disabled={!canWrite}
+                  onChange={(event) => setAccessCode(event.target.value)}
+                  placeholder={list.accessCodeConfigured ? 'Dejar vacío para conservarlo' : 'Mínimo 6 caracteres'}
+                  autoComplete="new-password"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
+                {list.accessCodeConfigured && (
+                  <span className="mt-1 block text-xs font-semibold text-emerald-600">Código configurado</span>
+                )}
+              </label>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">Regla comercial</span>
+                <select
+                  value={minimumRule}
+                  disabled={!canWrite}
+                  onChange={(event) => setMinimumRule(event.target.value as MinimumOrderRule)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                >
+                  <option value="none">Sin compra mínima</option>
+                  <option value="amount">Monto mínimo</option>
+                  <option value="quantity">Cantidad mínima</option>
+                  <option value="both">Monto y cantidad mínimos</option>
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className={cn('block', !['amount', 'both'].includes(minimumRule) && 'opacity-50')}>
+                  <span className="mb-1 block text-xs font-semibold text-slate-500">Monto mínimo</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={minimumOrderAmount}
+                    disabled={!canWrite || !['amount', 'both'].includes(minimumRule)}
+                    onChange={(event) => setMinimumOrderAmount(Number(event.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  />
+                </label>
+                <label className={cn('block', !['quantity', 'both'].includes(minimumRule) && 'opacity-50')}>
+                  <span className="mb-1 block text-xs font-semibold text-slate-500">Unidades mínimas</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={minimumOrderQuantity}
+                    disabled={!canWrite || !['quantity', 'both'].includes(minimumRule)}
+                    onChange={(event) => setMinimumOrderQuantity(Number(event.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  />
+                </label>
+              </div>
+              {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) && (
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                  {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity })}
+                </p>
+              )}
+            </div>
+          </section>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -253,6 +385,18 @@ export default function ResellerPriceListModal({
               const item = itemByProductId.get(product.id);
               const resolvedPrice = item
                 ? resolvePriceListPrice(product.salePrice, discount, item)
+                : null;
+              const economics = holdingsEnabled
+                ? getVisibleHoldingEconomics(product, holdings, 'all')
+                : {
+                    purchaseCost: product.purchasePrice,
+                    purchaseCostRange: [product.purchasePrice, product.purchasePrice] as [number, number],
+                    hasMixedPurchaseCosts: false,
+                  };
+              const minimumProfit = resolvedPrice === null ? null : resolvedPrice - economics.purchaseCostRange[1];
+              const maximumProfit = resolvedPrice === null ? null : resolvedPrice - economics.purchaseCostRange[0];
+              const profitMargin = resolvedPrice && economics.purchaseCost !== null
+                ? ((resolvedPrice - economics.purchaseCost) / resolvedPrice) * 100
                 : null;
               return (
                 <article
@@ -352,6 +496,13 @@ export default function ResellerPriceListModal({
                   {item && item.pricingMode !== 'default' && (
                     <p className="mt-2 text-right text-sm font-bold text-emerald-700 dark:text-emerald-300">
                       Precio revendedor: {formatCurrency(resolvedPrice ?? 0)}
+                    </p>
+                  )}
+                  {item && minimumProfit !== null && maximumProfit !== null && (
+                    <p className="mt-1 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {economics.hasMixedPurchaseCosts
+                        ? `Ganancia estimada: ${formatCurrency(minimumProfit)} a ${formatCurrency(maximumProfit)}`
+                        : `Ganancia: ${formatCurrency(minimumProfit)}${profitMargin === null ? '' : ` (${profitMargin.toFixed(1)}%)`}`}
                     </p>
                   )}
                 </article>

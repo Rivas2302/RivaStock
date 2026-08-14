@@ -148,6 +148,9 @@ export default function Orders() {
                     {!order.isRead && (
                       <span className="bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Nuevo</span>
                     )}
+                    {order.channel === 'reseller' && (
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded uppercase">Revendedor</span>
+                    )}
                   </div>
                   <span className="text-xs text-slate-400 font-medium">{formatDate(order.date.split('T')[0])}</span>
                 </div>

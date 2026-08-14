@@ -13,6 +13,7 @@ interface PriceListPdfOptions {
   title?: string;
   fileNamePrefix?: string;
   availabilityByProductId?: Record<string, PriceListAvailability>;
+  commercialNotice?: string | null;
 }
 
 interface CategoryGroup {
@@ -88,11 +89,12 @@ export function createPriceListPdf({
   title = 'Lista de precios',
   fileNamePrefix = 'lista-precios',
   availabilityByProductId,
+  commercialNotice,
 }: PriceListPdfOptions): PriceListPdf {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = { top: 34, bottom: 18, left: 14, right: 14 };
+  const margin = { top: commercialNotice ? 43 : 34, bottom: 18, left: 14, right: 14 };
   const contentWidth = pageWidth - margin.left - margin.right;
   const generatedAt = new Date();
   const generatedDate = generatedAt.toLocaleDateString('es-AR', {
@@ -144,6 +146,15 @@ export function createPriceListPdf({
   };
 
   drawPageHeader(1);
+
+  if (commercialNotice) {
+    doc.setFillColor(238, 242, 255);
+    doc.roundedRect(margin.left, 31, contentWidth, 8, 1.5, 1.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(55, 65, 81);
+    doc.text(commercialNotice, margin.left + 3, 36.2);
+  }
 
   if (groups.length === 0) {
     doc.setFont('helvetica', 'normal');

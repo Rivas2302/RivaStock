@@ -801,6 +801,8 @@ export default function Stock() {
           businessName={user.businessName}
           currencySymbol={user.currencySymbol}
           inventoryOwners={inventoryOwners}
+          holdings={holdings}
+          holdingsEnabled={holdingsEnabled}
           canWrite={canWrite}
           onCreateProduct={() => {
             setResellerPriceListOpen(false);
