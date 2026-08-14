@@ -96,6 +96,8 @@ export default function ResellerPriceListModal({
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; fileName: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -128,6 +130,7 @@ export default function ResellerPriceListModal({
         setMinimumProfitMarginPercent(loaded.list.minimumProfitMarginPercent);
         setTargetResellerDiscountPercent(loaded.list.targetResellerDiscountPercent);
         setAdvisorFilter('all');
+        setSettingsExpanded(false);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
       } catch (loadError) {
         if (!cancelled) {
@@ -140,6 +143,10 @@ export default function ResellerPriceListModal({
     void load();
     return () => { cancelled = true; };
   }, [canWrite, isOpen, ownerUid]);
+
+  useEffect(() => () => {
+    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+  }, [pdfPreview]);
 
   const itemByProductId = useMemo(
     () => new Map(items.map((item) => [item.productId, item])),
@@ -240,7 +247,10 @@ export default function ResellerPriceListModal({
 
   const handlePdf = (action: 'preview' | 'download') => {
     if (!list || generating || items.length === 0) return;
-    const previewWindow = action === 'preview' ? window.open('', '_blank') : null;
+    const useNativePdfPreview = action === 'preview' && window.matchMedia(
+      '(max-width: 767px), (hover: none) and (pointer: coarse)',
+    ).matches;
+    const previewWindow = useNativePdfPreview ? window.open('', '_blank') : null;
     setGenerating(true);
     try {
       const draftList = { ...list, defaultDiscountPercent: discount };
@@ -262,9 +272,14 @@ export default function ResellerPriceListModal({
       });
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
-        if (previewWindow && !previewWindow.closed) previewWindow.location.replace(url);
-        else window.open(url, '_blank');
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        if (previewWindow && !previewWindow.closed) {
+          previewWindow.location.replace(url);
+          window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          showToast('El PDF se abrió en el visor de tu dispositivo.', 'success');
+        } else {
+          setPdfPreview({ url, fileName: pdf.fileName });
+          showToast('Vista previa del PDF generada.', 'success');
+        }
       } else {
         const link = document.createElement('a');
         link.href = url;
@@ -284,11 +299,12 @@ export default function ResellerPriceListModal({
   };
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Lista de precios para revendedores"
-      className="max-w-6xl h-[calc(100dvh-2rem)]"
+      className="h-[100dvh] max-h-[100dvh] w-full max-w-6xl rounded-none sm:h-[calc(100dvh_-_2rem)] sm:max-h-[calc(100dvh_-_2rem)] sm:w-[calc(100%_-_2rem)] sm:rounded-2xl"
     >
       {loading ? (
         <div className="flex min-h-64 items-center justify-center">
@@ -299,11 +315,28 @@ export default function ResellerPriceListModal({
           {error}
         </div>
       ) : list ? (
-        <div className="flex h-full min-h-0 flex-col gap-5">
+        <div className="flex h-full min-h-0 flex-col gap-3 sm:gap-5">
+          <button
+            type="button"
+            onClick={() => setSettingsExpanded((current) => !current)}
+            aria-expanded={settingsExpanded}
+            className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-900 sm:rounded-2xl sm:p-4"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 dark:text-white sm:text-base">Configuración y asistente</p>
+              <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {discount}% de descuento · {adviceSummary.review + adviceSummary.critical + adviceSummary.missing} alertas · {publicEnabled ? 'Publicado' : 'Oculto'}
+              </p>
+            </div>
+            <ChevronDown className={cn('shrink-0 text-slate-500 transition-transform', settingsExpanded && 'rotate-180')} size={20} aria-hidden="true" />
+          </button>
+
+          {settingsExpanded && (
+          <div className="shrink-0 space-y-3 sm:space-y-5">
           <details className="group rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900 dark:bg-indigo-950/20">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
               <div>
-                <h4 className="font-bold text-slate-900 dark:text-white">Precio automático con excepciones</h4>
+                <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Precio automático con excepciones</h4>
                 <p className="mt-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">Descuento general: {discount}%</p>
               </div>
               <ChevronDown className="shrink-0 text-indigo-600 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
@@ -334,11 +367,11 @@ export default function ResellerPriceListModal({
           </details>
 
           <details className="group rounded-2xl border border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
               <div className="flex min-w-0 items-center gap-2">
                 <Sparkles size={19} className="shrink-0 text-violet-600" />
                 <div className="min-w-0">
-                  <h4 className="font-bold text-slate-900 dark:text-white">Asistente de precios</h4>
+                  <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Asistente de precios</h4>
                   <p className="mt-0.5 truncate text-xs font-semibold text-violet-700 dark:text-violet-300">
                     {adviceSummary.review} para revisar · {adviceSummary.critical} con pérdida · {adviceSummary.missing} sin costo
                   </p>
@@ -455,11 +488,11 @@ export default function ResellerPriceListModal({
           </details>
 
           <details className="group rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
               <div className="flex min-w-0 items-center gap-2">
                 <Store className="shrink-0 text-[#365fad]" size={20} />
                 <div className="min-w-0">
-                  <h4 className="font-bold text-slate-900 dark:text-white">Catálogo público para revendedores</h4>
+                  <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Catálogo público para revendedores</h4>
                   <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {publicEnabled ? 'Publicado' : 'Oculto'} · {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) || 'Sin compra mínima'}
                   </p>
@@ -555,6 +588,8 @@ export default function ResellerPriceListModal({
             </div>
             </div>
           </details>
+          </div>
+          )}
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
@@ -601,14 +636,14 @@ export default function ResellerPriceListModal({
                 <article
                   key={product.id}
                   className={cn(
-                    'rounded-2xl border p-4 transition-colors',
+                    'rounded-xl border p-3 transition-colors sm:rounded-2xl sm:p-4',
                     item
                       ? 'border-indigo-200 bg-white dark:border-indigo-800 dark:bg-slate-900'
                       : 'border-slate-200 bg-slate-50/70 opacity-75 dark:border-slate-800 dark:bg-slate-900/40',
                   )}
                 >
-                  <div className="grid gap-4 lg:grid-cols-[minmax(12rem,1fr)_11rem_11rem_10rem] lg:items-end">
-                    <div className="flex items-start gap-3">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(12rem,1fr)_11rem_11rem_10rem] lg:items-end lg:gap-4">
+                    <div className="col-span-2 flex items-start gap-3 lg:col-span-1">
                       <input
                         type="checkbox"
                         checked={Boolean(item)}
@@ -625,7 +660,7 @@ export default function ResellerPriceListModal({
                       </div>
                     </div>
 
-                    <label className="block">
+                    <label className="col-span-2 block lg:col-span-1">
                       <span className="mb-1 block text-xs font-semibold text-slate-500">Regla de precio</span>
                       <select
                         value={item?.pricingMode ?? 'default'}
@@ -643,7 +678,7 @@ export default function ResellerPriceListModal({
                       </select>
                     </label>
 
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="mb-1 block text-xs font-semibold text-slate-500">
                         {item?.pricingMode === 'fixed' ? 'Precio' : item?.pricingMode === 'discount' ? 'Descuento' : 'Precio calculado'}
                       </span>
@@ -677,7 +712,7 @@ export default function ResellerPriceListModal({
                       )}
                     </label>
 
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="mb-1 block text-xs font-semibold text-slate-500">Disponibilidad</span>
                       <select
                         value={item?.availability ?? 'on_order'}
@@ -769,27 +804,55 @@ export default function ResellerPriceListModal({
             )}
           </div>
 
-          <footer className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:pt-4">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:text-sm">
               {items.length} producto{items.length === 1 ? '' : 's'} incluido{items.length === 1 ? '' : 's'}
             </p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={() => handlePdf('preview')} disabled={generating || items.length === 0} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
+            <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+              <button type="button" onClick={() => handlePdf('preview')} disabled={generating || items.length === 0} className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-2 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 sm:gap-2 sm:px-3 sm:text-base">
                 {generating ? <Loader2 size={17} className="animate-spin" /> : <Eye size={17} />}
                 Ver PDF
               </button>
-              <button type="button" onClick={() => handlePdf('download')} disabled={generating || items.length === 0} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
+              <button type="button" onClick={() => handlePdf('download')} disabled={generating || items.length === 0} className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-2 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 sm:gap-2 sm:px-3 sm:text-base">
                 <Download size={17} />
                 Descargar
               </button>
-              <button type="button" onClick={handleSave} disabled={!canWrite || saving} className="inline-flex items-center gap-2 rounded-xl bg-[#365fad] px-4 py-2 font-semibold text-white disabled:opacity-50">
+              <button type="button" onClick={handleSave} disabled={!canWrite || saving} className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#365fad] px-2 py-2 text-xs font-semibold text-white disabled:opacity-50 sm:gap-2 sm:px-4 sm:text-base">
                 {saving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
-                Guardar lista
+                <span>Guardar<span className="hidden sm:inline"> lista</span></span>
               </button>
             </div>
           </footer>
         </div>
       ) : null}
     </Modal>
+
+    <Modal
+      isOpen={pdfPreview !== null}
+      onClose={() => setPdfPreview(null)}
+      title="Vista previa de lista para revendedores"
+      className="h-[100dvh] max-h-[100dvh] w-full max-w-6xl rounded-none sm:h-[calc(100dvh_-_2rem)] sm:max-h-[calc(100dvh_-_2rem)] sm:w-[calc(100%_-_2rem)] sm:rounded-2xl"
+    >
+      {pdfPreview && (
+        <div className="flex h-full min-h-0 flex-col gap-3">
+          <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-600 dark:text-slate-300">Revisá el documento o abrilo con el visor de tu dispositivo.</p>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <a href={pdfPreview.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                <Eye size={17} /> Abrir PDF
+              </a>
+              <a href={pdfPreview.url} download={pdfPreview.fileName} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#365fad] px-3 py-2 text-sm font-semibold text-white">
+                <Download size={17} /> Descargar
+              </a>
+            </div>
+          </div>
+          <iframe src={pdfPreview.url} title="Vista previa de la lista para revendedores" className="hidden min-h-0 flex-1 rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 sm:block" />
+          <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 p-6 text-center dark:border-slate-700 sm:hidden">
+            <p className="max-w-sm text-sm text-slate-600 dark:text-slate-300">En celulares, usá <strong>Abrir PDF</strong> para verlo con el visor del dispositivo.</p>
+          </div>
+        </div>
+      )}
+    </Modal>
+    </>
   );
 }
