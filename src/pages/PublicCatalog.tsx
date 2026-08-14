@@ -34,8 +34,11 @@ import {
   Check,
   KeyRound,
   Store,
+  Clock3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+const ON_ORDER_EXPLANATION = 'Estos productos no tienen stock inmediato: se encargan especialmente y requieren un plazo adicional. Antes de confirmar la compra te informaremos la disponibilidad y la demora estimada.';
 
 export default function PublicCatalog() {
   const { slug } = useParams<{ slug: string }>();
@@ -297,6 +300,8 @@ useEffect(() => {
   const commercialRuleSatisfied = channel !== 'reseller' || !resellerCatalog
     ? true
     : isCommercialRuleSatisfied(resellerCatalog, cartTotal, cartItemCount);
+  const cartHasOnOrderProducts = channel === 'reseller'
+    && cart.some((item) => item.product.availability === 'on_order');
 
   const selectRetailCatalog = () => {
     if (channel !== 'retail') setCart([]);
@@ -804,22 +809,32 @@ if (loading) {
       </div>
 
       {/* Product Grid */}
-      <main className="max-w-7xl mx-auto px-6 py-24">
+      <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-24">
         {channel === 'reseller' && (
           <div className={cn(
-            "mb-10 rounded-[2rem] border p-6 sm:flex sm:items-center sm:justify-between sm:gap-6",
+            "mb-8 rounded-2xl border p-4 sm:mb-10 sm:rounded-[2rem] sm:p-6",
             darkMode ? "border-indigo-400/20 bg-indigo-500/10" : "border-indigo-100 bg-indigo-50",
           )}>
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Canal exclusivo</p>
-              <h2 className={cn("mt-1 text-2xl font-black", darkMode ? "text-white" : "text-slate-900")}>Precios para revendedores</h2>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Canal exclusivo</p>
+                <h2 className={cn("mt-1 text-xl font-black sm:text-2xl", darkMode ? "text-white" : "text-slate-900")}>Precios para revendedores</h2>
+                <p className={cn("mt-2 text-sm font-semibold", darkMode ? "text-white/60" : "text-indigo-800")}>{commercialRuleMessage ?? 'Sin compra mínima'}</p>
+              </div>
+              <div className={cn(
+                "flex gap-3 rounded-2xl border px-4 py-3 lg:max-w-2xl",
+                darkMode ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : "border-amber-200 bg-amber-50 text-amber-950",
+              )}>
+                <Clock3 className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-black">¿Qué significa “Por pedido”?</p>
+                  <p className="mt-1 text-sm font-medium leading-relaxed opacity-90">{ON_ORDER_EXPLANATION}</p>
+                </div>
+              </div>
             </div>
-            <p className={cn("mt-3 text-sm font-semibold sm:mt-0", darkMode ? "text-white/60" : "text-indigo-800")}>
-              {commercialRuleMessage ?? 'Sin compra mínima'} · Los productos “Por pedido” no requieren stock inmediato.
-            </p>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4">
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product) => (
               <motion.div
@@ -873,8 +888,8 @@ if (loading) {
                       </span>
                     )}
                     {channel === 'reseller' && product.availability === 'on_order' ? (
-                      <span className="bg-indigo-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
-                        Por pedido
+                      <span className="rounded-full bg-amber-500/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl backdrop-blur-md">
+                        Por pedido · sin stock inmediato
                       </span>
                     ) : product.stock <= 0 && (
                       <span className="bg-white/10 backdrop-blur-md text-white/60 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
@@ -916,6 +931,15 @@ if (loading) {
                         {product.description}
                       </p>
                     )}
+                    {channel === 'reseller' && product.availability === 'on_order' && (
+                      <div className={cn(
+                        "flex gap-2 rounded-xl border px-3 py-2 text-xs font-semibold leading-relaxed",
+                        darkMode ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : "border-amber-200 bg-amber-50 text-amber-900",
+                      )}>
+                        <Clock3 className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
+                        <span>Sin entrega inmediata. La disponibilidad y la demora se confirman después de recibir tu pedido.</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-end justify-between mt-6 relative">
@@ -934,7 +958,7 @@ if (loading) {
                           darkMode ? "text-white/20" : "text-slate-400"
                         )}>
                           {channel === 'reseller' && product.availability === 'on_order'
-                            ? 'Por pedido'
+                            ? 'Por pedido · demora a confirmar'
                             : config.showStockQuantity ? 'Disponible' : `Stock: ${product.stock}`}
                         </p>
                       )}
@@ -1138,7 +1162,7 @@ if (loading) {
               )}
             >
               <div className={cn(
-                "p-8 border-b flex items-center justify-between",
+                "flex items-center justify-between border-b p-4 sm:p-8",
                 darkMode ? "border-white/5" : "border-slate-100"
               )}>
                 <div className="flex items-center gap-3 select-none">
@@ -1164,12 +1188,12 @@ if (loading) {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
                 {cart.map((item) => (
                   <div 
                     key={item.product.id} 
                     className={cn(
-                      "flex gap-4 p-4 rounded-2xl border transition-all duration-300",
+                      "flex gap-3 rounded-2xl border p-3 transition-all duration-300 sm:gap-4 sm:p-4",
                       darkMode 
                         ? "bg-[#1a1a1a] border-[#2a2a2a] hover:border-white/10" 
                         : "bg-white border-slate-100 shadow-sm"
@@ -1203,6 +1227,11 @@ if (loading) {
                         <p className="text-sm font-black" style={{ color: accentColor }}>
                           {formatCurrency(item.product.salePrice)}
                         </p>
+                        {channel === 'reseller' && item.product.availability === 'on_order' && (
+                          <p className="flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-300">
+                            <Clock3 size={13} aria-hidden="true" /> Por pedido · demora a confirmar
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center justify-between mt-2">
                         <div className={cn(
@@ -1279,7 +1308,7 @@ if (loading) {
 
               {cart.length > 0 && (
                 <div className={cn(
-                  "p-8 border-t space-y-6",
+                  "space-y-4 border-t p-4 sm:space-y-6 sm:p-8",
                   darkMode ? "bg-[#0a0a0a] border-white/5" : "bg-slate-50 border-slate-100"
                 )}>
                   <div className="flex items-center justify-between">
@@ -1306,6 +1335,15 @@ if (loading) {
                         : "bg-amber-100 text-amber-900",
                     )}>
                       {commercialRuleSatisfied ? 'Compra mínima alcanzada' : commercialRuleMessage}
+                    </div>
+                  )}
+                  {cartHasOnOrderProducts && (
+                    <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                      <Clock3 className="mt-0.5 shrink-0" size={19} aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-black">Tu carrito incluye productos por pedido</p>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed">No están disponibles para entrega inmediata. Te contactaremos para confirmar disponibilidad y demora antes de cerrar la compra.</p>
+                      </div>
                     </div>
                   )}
                   <button 
@@ -1365,6 +1403,18 @@ if (loading) {
                 </div>
 
                 <form onSubmit={handleCheckout} className="space-y-6">
+                  {cartHasOnOrderProducts && (
+                    <label className={cn(
+                      "flex cursor-pointer gap-3 rounded-2xl border p-4 text-sm",
+                      darkMode ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : "border-amber-200 bg-amber-50 text-amber-950",
+                    )}>
+                      <input required type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 rounded border-amber-300 text-amber-600 focus:ring-amber-500" />
+                      <span>
+                        <strong className="block">Entiendo las condiciones de los productos por pedido</strong>
+                        <span className="mt-1 block font-medium leading-relaxed opacity-90">No tienen stock inmediato y la disponibilidad y demora serán confirmadas antes de coordinar la entrega.</span>
+                      </span>
+                    </label>
+                  )}
                   <div className="space-y-4">
                     <div className="relative group">
                       <User className={cn(
