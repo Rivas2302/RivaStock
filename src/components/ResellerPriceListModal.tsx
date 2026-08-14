@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ChevronDown,
   Download,
   Eye,
   KeyRound,
@@ -299,14 +300,21 @@ export default function ResellerPriceListModal({
         </div>
       ) : list ? (
         <div className="flex h-full min-h-0 flex-col gap-5">
-          <section className="grid gap-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900 dark:bg-indigo-950/20 md:grid-cols-[minmax(0,1fr)_15rem]">
-            <div>
-              <h4 className="font-bold text-slate-900 dark:text-white">Precio automático con excepciones</h4>
+          <details className="group rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900 dark:bg-indigo-950/20">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white">Precio automático con excepciones</h4>
+                <p className="mt-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">Descuento general: {discount}%</p>
+              </div>
+              <ChevronDown className="shrink-0 text-indigo-600 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
+            </summary>
+            <div className="grid gap-4 border-t border-indigo-100 p-4 dark:border-indigo-900 md:grid-cols-[minmax(0,1fr)_15rem]">
+              <div>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                 El descuento general se aplica a todos los productos en modo automático. Podés definir otro descuento o un precio fijo en productos puntuales.
               </p>
-            </div>
-            <label className="block">
+              </div>
+              <label className="block">
               <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">Descuento general</span>
               <div className="relative">
                 <input
@@ -321,15 +329,27 @@ export default function ResellerPriceListModal({
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">%</span>
               </div>
-            </label>
-          </section>
+              </label>
+            </div>
+          </details>
 
-          <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-900 dark:bg-violet-950/20">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_11rem_11rem] lg:items-end">
+          <details className="group rounded-2xl border border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-center gap-2">
+                <Sparkles size={19} className="shrink-0 text-violet-600" />
+                <div className="min-w-0">
+                  <h4 className="font-bold text-slate-900 dark:text-white">Asistente de precios</h4>
+                  <p className="mt-0.5 truncate text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    {adviceSummary.review} para revisar · {adviceSummary.critical} con pérdida · {adviceSummary.missing} sin costo
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className="shrink-0 text-violet-600 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
+            </summary>
+            <div className="grid gap-4 border-t border-violet-200 p-4 dark:border-violet-900 lg:grid-cols-[minmax(0,1fr)_11rem_11rem] lg:items-end">
               <div>
                 <div className="flex items-center gap-2">
-                  <Sparkles size={19} className="text-violet-600" />
-                  <h4 className="font-bold text-slate-900 dark:text-white">Asistente de precios</h4>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">Sugerencias y filtros</p>
                 </div>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                   Compara costo, precio minorista y precio revendedor. Usa el costo más alto cuando un producto tiene costos mixtos. Tocá un contador para filtrar.
@@ -432,15 +452,28 @@ export default function ResellerPriceListModal({
                 </div>
               </label>
             </div>
-          </section>
+          </details>
 
-          <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-2">
+          <details className="group rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-center gap-2">
+                <Store className="shrink-0 text-[#365fad]" size={20} />
+                <div className="min-w-0">
+                  <h4 className="font-bold text-slate-900 dark:text-white">Catálogo público para revendedores</h4>
+                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {publicEnabled ? 'Publicado' : 'Oculto'} · {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) || 'Sin compra mínima'}
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
+            </summary>
+            <div className="grid gap-4 border-t border-slate-200 p-4 dark:border-slate-800 lg:grid-cols-2">
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex gap-3">
                   <Store className="mt-0.5 text-[#365fad]" size={20} />
                   <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white">Catálogo público para revendedores</h4>
+                    <h4 className="font-bold text-slate-900 dark:text-white">Publicación y acceso</h4>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                       Aparece como una sección protegida dentro de tu catálogo público.
                     </p>
@@ -520,7 +553,8 @@ export default function ResellerPriceListModal({
                 </p>
               )}
             </div>
-          </section>
+            </div>
+          </details>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
