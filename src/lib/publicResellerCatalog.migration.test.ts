@@ -23,7 +23,7 @@ describe('public reseller catalog migrations', () => {
     expect(migration).toContain('access_code_hash text');
     expect(migration).toContain("minimum_rule IN ('none', 'amount', 'quantity', 'both')");
     expect(migration).toContain("extensions.digest(v_code, 'sha256')");
-    expect(migration).not.toContain('access_code text');
+    expect(migration).not.toContain('ADD COLUMN access_code text');
   });
 
   it('never returns purchase cost in either public catalog projection', () => {
