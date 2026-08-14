@@ -31,7 +31,11 @@ import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } f
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
 import { getVisibleHoldingEconomics } from '../lib/inventoryHoldings';
-import { getResellerPricingAdvice } from '../lib/resellerPricingAdvisor';
+import {
+  getResellerPricingAdvice,
+  matchesResellerPricingAdviceFilter,
+  type ResellerPricingAdviceFilter,
+} from '../lib/resellerPricingAdvisor';
 import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import Modal from './Modal';
@@ -90,6 +94,7 @@ export default function ResellerPriceListModal({
   const [minimumProfitMarginPercent, setMinimumProfitMarginPercent] = useState(25);
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
+  const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -121,6 +126,7 @@ export default function ResellerPriceListModal({
         setMinimumOrderQuantity(loaded.list.minimumOrderQuantity);
         setMinimumProfitMarginPercent(loaded.list.minimumProfitMarginPercent);
         setTargetResellerDiscountPercent(loaded.list.targetResellerDiscountPercent);
+        setAdvisorFilter('all');
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
       } catch (loadError) {
         if (!cancelled) {
@@ -138,7 +144,7 @@ export default function ResellerPriceListModal({
     () => new Map(items.map((item) => [item.productId, item])),
     [items],
   );
-  const visibleProducts = useMemo(() => {
+  const searchMatchedProducts = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase('es-AR');
     if (!normalized) return products;
     return products.filter((product) => (
@@ -175,6 +181,13 @@ export default function ResellerPriceListModal({
       missing: values.filter((advice) => advice.status === 'missing_cost').length,
     };
   }, [pricingAdviceByProductId]);
+
+  const visibleProducts = useMemo(() => (
+    searchMatchedProducts.filter((product) => matchesResellerPricingAdviceFilter(
+      pricingAdviceByProductId.get(product.id)?.status,
+      advisorFilter,
+    ))
+  ), [advisorFilter, pricingAdviceByProductId, searchMatchedProducts]);
 
   const updateItem = (productId: string, updates: Partial<PriceListItem>) => {
     setItems((current) => current.map((item) => (
@@ -319,16 +332,72 @@ export default function ResellerPriceListModal({
                   <h4 className="font-bold text-slate-900 dark:text-white">Asistente de precios</h4>
                 </div>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Compara costo, precio minorista y precio revendedor. Usa el costo más alto cuando un producto tiene costos mixtos.
+                  Compara costo, precio minorista y precio revendedor. Usa el costo más alto cuando un producto tiene costos mixtos. Tocá un contador para filtrar.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">{adviceSummary.balanced} saludables</span>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{adviceSummary.review} para revisar</span>
-                  <span className="rounded-full bg-rose-100 px-2.5 py-1 text-rose-800">{adviceSummary.critical} con pérdida</span>
+                  <button
+                    type="button"
+                    onClick={() => setAdvisorFilter('all')}
+                    aria-pressed={advisorFilter === 'all'}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 transition-all',
+                      advisorFilter === 'all' ? 'border-violet-600 bg-violet-600 text-white shadow-sm' : 'border-violet-200 bg-white text-violet-700 hover:border-violet-400 dark:bg-slate-900',
+                    )}
+                  >
+                    Todos ({products.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvisorFilter('balanced')}
+                    aria-pressed={advisorFilter === 'balanced'}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 transition-all',
+                      advisorFilter === 'balanced' ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm' : 'border-emerald-200 bg-emerald-100 text-emerald-800 hover:border-emerald-500',
+                    )}
+                  >
+                    {adviceSummary.balanced} saludables
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvisorFilter('review')}
+                    aria-pressed={advisorFilter === 'review'}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 transition-all',
+                      advisorFilter === 'review' ? 'border-amber-700 bg-amber-700 text-white shadow-sm' : 'border-amber-200 bg-amber-100 text-amber-800 hover:border-amber-500',
+                    )}
+                  >
+                    {adviceSummary.review} para revisar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvisorFilter('critical')}
+                    aria-pressed={advisorFilter === 'critical'}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 transition-all',
+                      advisorFilter === 'critical' ? 'border-rose-700 bg-rose-700 text-white shadow-sm' : 'border-rose-200 bg-rose-100 text-rose-800 hover:border-rose-500',
+                    )}
+                  >
+                    {adviceSummary.critical} con pérdida
+                  </button>
                   {adviceSummary.missing > 0 && (
-                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{adviceSummary.missing} sin costo</span>
+                    <button
+                      type="button"
+                      onClick={() => setAdvisorFilter('missing')}
+                      aria-pressed={advisorFilter === 'missing'}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 transition-all',
+                        advisorFilter === 'missing' ? 'border-slate-700 bg-slate-700 text-white shadow-sm' : 'border-slate-300 bg-slate-200 text-slate-700 hover:border-slate-500',
+                      )}
+                    >
+                      {adviceSummary.missing} sin costo
+                    </button>
                   )}
                 </div>
+                {advisorFilter !== 'all' && (
+                  <p className="mt-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    Filtro activo: se muestran {visibleProducts.length} producto{visibleProducts.length === 1 ? '' : 's'}.
+                  </p>
+                )}
               </div>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Margen propio mínimo</span>
@@ -655,7 +724,14 @@ export default function ResellerPriceListModal({
               );
             })}
             {visibleProducts.length === 0 && (
-              <p className="py-10 text-center text-sm text-slate-500">No encontramos productos.</p>
+              <div className="py-10 text-center text-sm text-slate-500">
+                <p>{advisorFilter === 'all' ? 'No encontramos productos.' : 'No hay productos dentro de este grupo.'}</p>
+                {advisorFilter !== 'all' && (
+                  <button type="button" onClick={() => setAdvisorFilter('all')} className="mt-2 font-bold text-violet-700 hover:underline dark:text-violet-300">
+                    Mostrar todos
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

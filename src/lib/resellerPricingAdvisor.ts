@@ -7,6 +7,8 @@ export type ResellerPricingAdviceStatus =
   | 'not_competitive'
   | 'balanced';
 
+export type ResellerPricingAdviceFilter = 'all' | 'balanced' | 'review' | 'critical' | 'missing';
+
 export interface ResellerPricingAdvice {
   status: ResellerPricingAdviceStatus;
   currentOwnerMarginPercent: number | null;
@@ -23,6 +25,18 @@ interface PricingAdvisorInput {
   currentResellerPrice: number;
   minimumOwnerMarginPercent: number;
   targetResellerDiscountPercent: number;
+}
+
+export function matchesResellerPricingAdviceFilter(
+  status: ResellerPricingAdviceStatus | undefined,
+  filter: ResellerPricingAdviceFilter,
+): boolean {
+  if (filter === 'all') return true;
+  if (!status) return false;
+  if (filter === 'balanced') return status === 'balanced';
+  if (filter === 'review') return status === 'low_margin' || status === 'not_competitive';
+  if (filter === 'critical') return status === 'loss';
+  return status === 'missing_cost';
 }
 
 const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));

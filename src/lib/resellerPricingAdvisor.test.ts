@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getResellerPricingAdvice } from './resellerPricingAdvisor';
+import { getResellerPricingAdvice, matchesResellerPricingAdviceFilter } from './resellerPricingAdvisor';
 
 const base = {
   retailPrice: 100_000,
@@ -10,6 +10,16 @@ const base = {
 };
 
 describe('reseller pricing advisor', () => {
+  it('groups advisor statuses into actionable filters', () => {
+    expect(matchesResellerPricingAdviceFilter('balanced', 'balanced')).toBe(true);
+    expect(matchesResellerPricingAdviceFilter('low_margin', 'review')).toBe(true);
+    expect(matchesResellerPricingAdviceFilter('not_competitive', 'review')).toBe(true);
+    expect(matchesResellerPricingAdviceFilter('loss', 'critical')).toBe(true);
+    expect(matchesResellerPricingAdviceFilter('missing_cost', 'missing')).toBe(true);
+    expect(matchesResellerPricingAdviceFilter(undefined, 'review')).toBe(false);
+    expect(matchesResellerPricingAdviceFilter(undefined, 'all')).toBe(true);
+  });
+
   it('recognizes a balanced price', () => {
     const advice = getResellerPricingAdvice(base);
     expect(advice.status).toBe('balanced');
