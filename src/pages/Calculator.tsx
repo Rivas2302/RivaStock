@@ -202,7 +202,7 @@ export default function Calculator() {
             </button>
 
             {batchResults.length > 0 && (
-              <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-bold uppercase">
                     <tr>

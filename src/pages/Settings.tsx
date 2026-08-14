@@ -589,7 +589,7 @@ export default function Settings() {
                     </button>
                   </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left">
                       <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold">
                         <tr>

@@ -727,7 +727,7 @@ export default function Quotes() {
             </div>
 
             {items.length > 0 && (
-              <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-500 dark:text-slate-400 uppercase">
                     <tr>
