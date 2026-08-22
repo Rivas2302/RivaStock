@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, ImageOff, Loader2, ScanLine, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
@@ -11,11 +11,13 @@ import {
   getProductSku,
   getProductVariantModel,
   getVisibleQuickPriceProducts,
+  initialQuickPriceLoadState,
+  quickPriceLoadReducer,
   resolveSelectedProduct,
   searchProducts,
 } from '../lib/quickPriceLookup';
 import { formatCurrency, roundPrice } from '../lib/utils';
-import type { InventoryHolding, Product } from '../types';
+import type { Product } from '../types';
 
 export default function QuickPrice() {
   const navigate = useNavigate();
@@ -26,47 +28,76 @@ export default function QuickPrice() {
     inventoryAccessError,
     allowedInventoryOwnerIds,
   } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadState, dispatchLoad] = useReducer(
+    quickPriceLoadReducer,
+    initialQuickPriceLoadState,
+  );
   const [search, setSearch] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectionUnavailable, setSelectionUnavailable] = useState(false);
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const userUid = user?.uid;
+  const allowedOwnersScope = holdingsEnabled
+    ? [...allowedInventoryOwnerIds].sort().join(',')
+    : 'legacy';
+  const catalogScopeKey = [
+    userUid ?? 'anonymous',
+    holdingsEnabled ? 'holdings' : 'legacy',
+    allowedOwnersScope,
+    inventoryAccessError ? 'access-error' : 'access-ok',
+  ].join('|');
+  const scopeMatches = loadState.scopeKey === catalogScopeKey;
+  const products = scopeMatches ? loadState.products : [];
+  const holdings = scopeMatches ? loadState.holdings : [];
+  const loadError = scopeMatches ? loadState.error : null;
+  const loading = !inventoryAccessError && (!scopeMatches || loadState.status === 'loading');
+  const previousScopeRef = useRef(catalogScopeKey);
 
   useEffect(() => {
-    if (!user || inventoryAccessError) {
-      setProducts([]);
-      setHoldings([]);
-      setLoading(false);
+    if (previousScopeRef.current === catalogScopeKey) return;
+    previousScopeRef.current = catalogScopeKey;
+    setSelectedProductId(null);
+    setSelectionUnavailable(false);
+    setUnknownCode(null);
+    setSearch('');
+    setScannerOpen(false);
+  }, [catalogScopeKey]);
+
+  useEffect(() => {
+    if (!userUid || inventoryAccessError) {
+      dispatchLoad({ type: 'start', scopeKey: catalogScopeKey });
+      dispatchLoad({ type: 'success', scopeKey: catalogScopeKey, products: [], holdings: [] });
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
+    dispatchLoad({ type: 'start', scopeKey: catalogScopeKey });
     Promise.all([
-      db.list<Product>('products', user.uid),
-      holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
+      db.list<Product>('products', userUid),
+      holdingsEnabled ? getInventoryHoldings(userUid) : Promise.resolve([]),
     ])
       .then(([loadedProducts, loadedHoldings]) => {
         if (cancelled) return;
-        setProducts(loadedProducts);
-        setHoldings(loadedHoldings);
+        dispatchLoad({
+          type: 'success',
+          scopeKey: catalogScopeKey,
+          products: loadedProducts,
+          holdings: loadedHoldings,
+        });
       })
       .catch((error) => {
         if (cancelled) return;
         console.error('[QuickPrice] fetch error:', error);
-        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar los productos');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        dispatchLoad({
+          type: 'failure',
+          scopeKey: catalogScopeKey,
+          error: error instanceof Error ? error.message : 'No se pudieron cargar los productos',
+        });
       });
 
     return () => { cancelled = true; };
-  }, [holdingsEnabled, inventoryAccessError, refetchToken, user]);
+  }, [catalogScopeKey, holdingsEnabled, inventoryAccessError, refetchToken, userUid]);
 
   const visibleHoldings = useMemo(() => (
     holdings.filter((holding) => allowedInventoryOwnerIds.includes(holding.inventoryOwnerId))

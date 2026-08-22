@@ -5,6 +5,61 @@ const SKU_KEYS = ['sku', 'codigo', 'código', 'code'];
 const VARIANT_KEYS = ['variante', 'variant'];
 const MODEL_KEYS = ['modelo', 'model'];
 
+export interface QuickPriceLoadState {
+  status: 'loading' | 'ready' | 'error';
+  scopeKey: string | null;
+  products: Product[];
+  holdings: InventoryHolding[];
+  error: string | null;
+}
+
+export type QuickPriceLoadAction =
+  | { type: 'start'; scopeKey: string }
+  | { type: 'success'; scopeKey: string; products: Product[]; holdings: InventoryHolding[] }
+  | { type: 'failure'; scopeKey: string; error: string };
+
+export const initialQuickPriceLoadState: QuickPriceLoadState = {
+  status: 'loading',
+  scopeKey: null,
+  products: [],
+  holdings: [],
+  error: null,
+};
+
+export function quickPriceLoadReducer(
+  state: QuickPriceLoadState,
+  action: QuickPriceLoadAction,
+): QuickPriceLoadState {
+  if (action.type === 'start') {
+    // Keep a usable catalog visible during focus/online refetches. Only the
+    // first load (or a retry after an initial failure) is blocking.
+    return state.status === 'ready' && state.scopeKey === action.scopeKey
+      ? state
+      : {
+          status: 'loading',
+          scopeKey: action.scopeKey,
+          products: [],
+          holdings: [],
+          error: null,
+        };
+  }
+  if (action.type === 'success') {
+    if (state.scopeKey !== action.scopeKey) return state;
+    return {
+      status: 'ready',
+      scopeKey: action.scopeKey,
+      products: action.products,
+      holdings: action.holdings,
+      error: null,
+    };
+  }
+  if (state.scopeKey !== action.scopeKey) return state;
+  // A background refresh failure must not replace an already usable catalog.
+  return state.status === 'ready'
+    ? state
+    : { ...state, status: 'error', error: action.error };
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')

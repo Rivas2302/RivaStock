@@ -28,7 +28,7 @@ describe('quick price UI contract', () => {
   });
 
   it('uses only read APIs and remains protected by stock read access', () => {
-    expect(page).toContain("db.list<Product>('products', user.uid)");
+    expect(page).toContain("db.list<Product>('products', userUid)");
     expect(page).not.toMatch(/db\.(create|update|delete)\s*(?:<|\()/);
     expect(page).not.toContain('callRpc');
     expect(app).toContain('path="consulta-rapida"');
@@ -42,6 +42,22 @@ describe('quick price UI contract', () => {
     expect(page).toContain('resolveSelectedProduct(visibleProducts, selectedProductId)');
     expect(page).toContain('El producto ya no está disponible');
     expect(page).not.toContain('useState<Product | null>');
+  });
+
+  it('keeps automatic refetches non-blocking and keys data loading by stable owner ID', () => {
+    expect(page).toContain('quickPriceLoadReducer');
+    expect(page).toContain("!scopeMatches || loadState.status === 'loading'");
+    expect(page).toContain('userUid = user?.uid');
+    expect(page).toContain('refetchToken, userUid');
+    expect(page).not.toContain('refetchToken, user]');
+  });
+
+  it('blocks stale catalogs and resets selection when authorization scope changes', () => {
+    expect(page).toContain('loadState.scopeKey === catalogScopeKey');
+    expect(page).toContain("holdingsEnabled ? 'holdings' : 'legacy'");
+    expect(page).toContain('[...allowedInventoryOwnerIds].sort().join');
+    expect(page).toContain('previousScopeRef.current === catalogScopeKey');
+    expect(page).toContain('setSelectedProductId(null)');
   });
 
   it('provides clear entry points from navigation and the dashboard', () => {

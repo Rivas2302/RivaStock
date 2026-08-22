@@ -6,6 +6,8 @@ import {
   getProductSku,
   getProductVariantModel,
   getVisibleQuickPriceProducts,
+  initialQuickPriceLoadState,
+  quickPriceLoadReducer,
   resolveSelectedProduct,
   searchProducts,
 } from './quickPriceLookup';
@@ -27,6 +29,11 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   updatedAt: '2026-01-01',
   ...overrides,
 });
+
+const readyLoadState = (scopeKey: string, products = [product()]) => quickPriceLoadReducer(
+  quickPriceLoadReducer(initialQuickPriceLoadState, { type: 'start', scopeKey }),
+  { type: 'success', scopeKey, products, holdings: [] },
+);
 
 describe('quick price lookup', () => {
   it('matches an exact normalized barcode without mutating the product', () => {
@@ -99,5 +106,91 @@ describe('quick price lookup', () => {
     expect(resolveSelectedProduct([initial], initial.id)).toBe(initial);
     expect(resolveSelectedProduct([refreshed], initial.id)).toBe(refreshed);
     expect(resolveSelectedProduct([], initial.id)).toBeNull();
+  });
+
+  it('finishes the blocking loader for populated and empty successful loads', () => {
+    const scopeKey = 'owner-a|legacy|legacy|access-ok';
+    const started = quickPriceLoadReducer(initialQuickPriceLoadState, {
+      type: 'start',
+      scopeKey,
+    });
+    const populated = quickPriceLoadReducer(started, {
+      type: 'success',
+      scopeKey,
+      products: [product()],
+      holdings: [],
+    });
+    const empty = quickPriceLoadReducer(started, {
+      type: 'success',
+      scopeKey,
+      products: [],
+      holdings: [],
+    });
+
+    expect(populated.status).toBe('ready');
+    expect(populated.products).toHaveLength(1);
+    expect(empty).toMatchObject({ status: 'ready', products: [], holdings: [], error: null });
+  });
+
+  it('finishes loading on failure and never blocks an existing catalog during refetch', () => {
+    const scopeKey = 'owner-a|legacy|legacy|access-ok';
+    const started = quickPriceLoadReducer(initialQuickPriceLoadState, {
+      type: 'start',
+      scopeKey,
+    });
+    const failed = quickPriceLoadReducer(started, {
+      type: 'failure',
+      scopeKey,
+      error: 'Sin conexión',
+    });
+    const ready = readyLoadState(scopeKey);
+    const refreshing = quickPriceLoadReducer(ready, { type: 'start', scopeKey });
+    const backgroundFailure = quickPriceLoadReducer(refreshing, {
+      type: 'failure',
+      scopeKey,
+      error: 'Timeout',
+    });
+
+    expect(failed).toMatchObject({ status: 'error', error: 'Sin conexión' });
+    expect(refreshing.status).toBe('ready');
+    expect(backgroundFailure).toBe(ready);
+  });
+
+  it('blocks and clears a ready catalog when the account scope changes', () => {
+    const ownerAScope = 'owner-a|legacy|legacy|access-ok';
+    const ownerBScope = 'owner-b|legacy|legacy|access-ok';
+    const ownerAReady = readyLoadState(ownerAScope, [product({ ownerUid: 'owner-a' })]);
+
+    const ownerBLoading = quickPriceLoadReducer(ownerAReady, {
+      type: 'start',
+      scopeKey: ownerBScope,
+    });
+
+    expect(ownerBLoading).toMatchObject({
+      status: 'loading',
+      scopeKey: ownerBScope,
+      products: [],
+      holdings: [],
+      error: null,
+    });
+  });
+
+  it('blocks and clears legacy products when switching to holdings scope', () => {
+    const legacyScope = 'owner-a|legacy|legacy|access-ok';
+    const holdingsScope = 'owner-a|holdings|allowed-owner|access-ok';
+    const legacyReady = readyLoadState(legacyScope);
+
+    const holdingsLoading = quickPriceLoadReducer(legacyReady, {
+      type: 'start',
+      scopeKey: holdingsScope,
+    });
+
+    expect(holdingsLoading).toMatchObject({
+      status: 'loading',
+      scopeKey: holdingsScope,
+      products: [],
+      holdings: [],
+      error: null,
+    });
   });
 });
