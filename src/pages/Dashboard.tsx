@@ -16,6 +16,7 @@ import {
   ArrowDownRight,
   Clock,
   FileDown,
+  ScanLine,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -29,7 +30,7 @@ import autoTable from 'jspdf-autotable';
 const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock';
 
 export default function Dashboard() {
-  const { user, refetchToken, refetchData } = useAuth();
+  const { user, refetchToken, refetchData, permissions } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -272,13 +273,24 @@ export default function Dashboard() {
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Panel de Control</h2>
           <p className="text-slate-500 dark:text-slate-400">Resumen general de tu negocio</p>
         </div>
-        <button
-          onClick={handleExportDashboardPDF}
-          className="subtle-action flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300"
-        >
-          <FileDown size={18} />
-          Exportar reporte PDF
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          {permissions.stock.read && (
+            <button
+              onClick={() => navigate('/consulta-rapida')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#365fad] px-4 py-2.5 font-semibold text-white transition-colors hover:bg-[#294d91] sm:w-auto"
+            >
+              <ScanLine size={18} />
+              Consultar precio
+            </button>
+          )}
+          <button
+            onClick={handleExportDashboardPDF}
+            className="subtle-action flex w-full items-center justify-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300 sm:w-auto"
+          >
+            <FileDown size={18} />
+            Exportar reporte PDF
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

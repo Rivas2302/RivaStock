@@ -17,7 +17,8 @@ import {
   Users,
   Building2,
   BarChart3,
-  History
+  History,
+  ScanLine,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -35,6 +36,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: 'Inicio', path: '/', icon: LayoutDashboard, module: null },
+  { name: 'Consulta rápida', path: '/consulta-rapida', icon: ScanLine, module: 'stock' },
   { name: 'Stock', path: '/stock', icon: Package, module: 'stock' },
   { name: 'Ventas', path: '/ventas', icon: ShoppingCart, module: 'ventas' },
   { name: 'Reportes', path: '/reportes', icon: BarChart3, module: 'ventas' },
@@ -61,7 +63,7 @@ export default function Layout() {
     it.module === null || permissions[it.module]?.read === true
   );
   const navGroups = [
-    { label: 'Operación', paths: ['/', '/stock', '/ventas', '/reportes', '/presupuestos'] },
+    { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
     { label: 'Relaciones', paths: ['/clientes', '/proveedores'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
     { label: 'Sistema', paths: ['/trazabilidad', '/config'] },
