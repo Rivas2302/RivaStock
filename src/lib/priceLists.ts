@@ -3,6 +3,7 @@ import type {
   PriceList,
   PriceListAvailability,
   PriceListItem,
+  Product,
   ResellerSupplierList,
 } from '../types';
 import { db, fromDb, invalidateDbCache } from './db';
@@ -137,6 +138,20 @@ export async function toggleResellerSupplierList(
     ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(data as Record<string, unknown>),
     productIds: [],
   };
+}
+
+export async function promoteResellerCatalogProduct(productId: string): Promise<Product> {
+  const { data, error } = await supabase.rpc('promote_reseller_catalog_product', {
+    p_product_id: productId,
+  });
+  if (error) throw new Error(`[promote_reseller_catalog_product] ${error.message}`);
+  invalidateDbCache(
+    'products',
+    'price_list_items',
+    'reseller_supplier_lists',
+    'reseller_supplier_list_items',
+  );
+  return fromDb<Product>(data as Record<string, unknown>);
 }
 
 export async function configureResellerPriceList(input: {

@@ -118,6 +118,8 @@ export interface Product {
   imageUrl?: string;
   images?: string[];
   showInCatalog: boolean;
+  catalogOnly?: boolean;
+  catalogCost?: number | null;
   notes?: string;
   description?: string;
   barcode?: string;

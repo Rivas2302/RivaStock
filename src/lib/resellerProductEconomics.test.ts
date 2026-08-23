@@ -22,6 +22,19 @@ const holding = (overrides: Partial<InventoryHolding>): InventoryHolding => ({
 });
 
 describe('reseller product economics', () => {
+  it('uses the supplier catalog cost before the product enters inventory', () => {
+    expect(getResellerProductEconomics({
+      ...product,
+      catalogOnly: true,
+      catalogCost: 12000,
+    }, [], true)).toEqual({
+      purchaseCost: 12000,
+      purchaseCostRange: [12000, 12000],
+      hasMixedPurchaseCosts: false,
+      costBasis: 'catalog',
+    });
+  });
+
   it('ignores empty holdings without stock when calculating the current unit cost', () => {
     expect(getResellerProductEconomics(product, [
       holding({ inventoryOwnerId: 'principal', stock: 1, purchaseCost: 16800 }),

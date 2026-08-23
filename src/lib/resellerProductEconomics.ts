@@ -4,7 +4,7 @@ export interface ResellerProductEconomics {
   purchaseCost: number | null;
   purchaseCostRange: [number, number] | null;
   hasMixedPurchaseCosts: boolean;
-  costBasis: 'current_stock' | 'last_known' | 'legacy' | 'missing';
+  costBasis: 'catalog' | 'current_stock' | 'last_known' | 'legacy' | 'missing';
 }
 
 function summarizeCosts(
@@ -35,6 +35,9 @@ export function getResellerProductEconomics(
   holdings: InventoryHolding[],
   holdingsEnabled: boolean,
 ): ResellerProductEconomics {
+  if (product.catalogOnly) {
+    return summarizeCosts([Number(product.catalogCost ?? 0)], 'catalog');
+  }
   if (!holdingsEnabled) {
     return summarizeCosts([product.purchasePrice], 'legacy');
   }
