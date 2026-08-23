@@ -27,4 +27,11 @@ describe('public reseller catalog on-order disclosure', () => {
     expect(catalog).toContain('px-4 py-12 sm:px-6 sm:py-24');
     expect(catalog).toContain('grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-10');
   });
+
+  it('offers explicit stock and on-order filters to reseller buyers', () => {
+    expect(catalog).toContain('Filtrar por disponibilidad');
+    expect(catalog).toContain('En stock (');
+    expect(catalog).toContain('Por pedido (');
+    expect(catalog).toContain('matchesResellerAvailabilityFilter');
+  });
 });

@@ -6,6 +6,10 @@ import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, Pub
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import { createPublicCatalogOrder, getPublicCatalogProducts, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import {
+  matchesResellerAvailabilityFilter,
+  type ResellerAvailabilityFilter,
+} from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import {
   ShoppingBag,
@@ -65,6 +69,7 @@ export default function PublicCatalog() {
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [availabilityFilter, setAvailabilityFilter] = useState<ResellerAvailabilityFilter>('all');
   const [cart, setCart] = useState<{ product: PublicCatalogProduct; quantity: number }[]>([]);
   const [channel, setChannel] = useState<CatalogChannel>('retail');
   const [resellerAvailable, setResellerAvailable] = useState(false);
@@ -288,11 +293,19 @@ useEffect(() => {
         product.name.toLowerCase().includes(searchValue) ||
         product.description?.toLowerCase().includes(searchValue);
       const matchesCategory = activeCategory === 'all' || product.categoryId === activeCategory;
-      return matchesSearch && matchesCategory;
+      const matchesAvailability = channel !== 'reseller'
+        || matchesResellerAvailabilityFilter(product, availabilityFilter);
+      return matchesSearch && matchesCategory && matchesAvailability;
     });
 
     return { cartItemCount, cartTotal, filteredProducts };
-  }, [activeCategory, cart, deferredSearch, products]);
+  }, [activeCategory, availabilityFilter, cart, channel, deferredSearch, products]);
+
+  const availabilityCounts = useMemo(() => ({
+    all: products.length,
+    inStock: products.filter((product) => product.availability === 'in_stock').length,
+    onOrder: products.filter((product) => product.availability === 'on_order').length,
+  }), [products]);
 
   const commercialRuleMessage = resellerCatalog
     ? getCommercialRuleMessage(resellerCatalog)
@@ -308,6 +321,7 @@ useEffect(() => {
     setChannel('retail');
     setProducts(retailProducts);
     setActiveCategory('all');
+    setAvailabilityFilter('all');
   };
 
   const selectResellerCatalog = () => {
@@ -316,6 +330,7 @@ useEffect(() => {
       setChannel('reseller');
       setProducts(resellerCatalog.products);
       setActiveCategory('all');
+      setAvailabilityFilter('all');
       return;
     }
     setAccessError(null);
@@ -336,6 +351,7 @@ useEffect(() => {
       setProducts(unlocked.products);
       setCart([]);
       setActiveCategory('all');
+      setAvailabilityFilter('all');
       setIsAccessOpen(false);
     } catch {
       setAccessError('El código no es válido. Revisalo e intentá nuevamente.');
@@ -804,6 +820,39 @@ if (loading) {
                 </button>
               ))}
             </div>
+            {channel === 'reseller' && (
+              <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar por disponibilidad">
+                <span className={cn(
+                  'mr-1 text-[10px] font-black uppercase tracking-[0.18em]',
+                  darkMode ? 'text-white/40' : 'text-slate-400',
+                )}>
+                  Disponibilidad
+                </span>
+                {([
+                  ['all', `Todos (${availabilityCounts.all})`],
+                  ['in_stock', `En stock (${availabilityCounts.inStock})`],
+                  ['on_order', `Por pedido (${availabilityCounts.onOrder})`],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAvailabilityFilter(value)}
+                    aria-pressed={availabilityFilter === value}
+                    className={cn(
+                      'rounded-full border px-3 py-2 text-xs font-bold transition-colors',
+                      availabilityFilter === value
+                        ? 'border-transparent text-white shadow-sm'
+                        : darkMode
+                          ? 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
+                    )}
+                    style={availabilityFilter === value ? { backgroundColor: accentColor } : {}}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

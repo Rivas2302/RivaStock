@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
+  Building2,
   Download,
   Eye,
   KeyRound,
@@ -10,6 +11,7 @@ import {
   Search,
   Sparkles,
   Store,
+  Power,
 } from 'lucide-react';
 import type {
   Category,
@@ -20,14 +22,20 @@ import type {
   PriceListItem,
   PriceListPricingMode,
   Product,
+  ResellerSupplierList,
+  Supplier,
 } from '../types';
 import {
   configureResellerPriceList,
   configureResellerPricingAdvisor,
   ensureResellerPriceList,
   loadResellerPriceList,
+  loadResellerSupplierLists,
   saveResellerPriceList,
+  saveResellerSupplierList,
+  toggleResellerSupplierList,
 } from '../lib/priceLists';
+import { db } from '../lib/db';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
@@ -96,6 +104,13 @@ export default function ResellerPriceListModal({
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
+  const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [supplierDraftProductIds, setSupplierDraftProductIds] = useState<string[]>([]);
+  const [supplierProductSearch, setSupplierProductSearch] = useState('');
+  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [itemsDirty, setItemsDirty] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; fileName: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,6 +134,10 @@ export default function ResellerPriceListModal({
           loaded = await loadResellerPriceList(ownerUid);
         }
         if (!loaded.list) throw new Error('No se pudo crear la lista de revendedores.');
+        const [loadedSupplierLists, loadedSuppliers] = await Promise.all([
+          loadResellerSupplierLists(loaded.list.id),
+          db.list<Supplier>('suppliers', ownerUid),
+        ]);
         if (cancelled) return;
         setList(loaded.list);
         setDiscount(loaded.list.defaultDiscountPercent);
@@ -132,6 +151,12 @@ export default function ResellerPriceListModal({
         setAdvisorFilter('all');
         setSettingsExpanded(false);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
+        setSupplierLists(loadedSupplierLists);
+        setSuppliers(loadedSuppliers.sort((a, b) => a.name.localeCompare(b.name)));
+        setEditingSupplierId(null);
+        setSupplierDraftProductIds([]);
+        setSupplierProductSearch('');
+        setItemsDirty(false);
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la lista.');
@@ -197,7 +222,31 @@ export default function ResellerPriceListModal({
     ))
   ), [advisorFilter, pricingAdviceByProductId, searchMatchedProducts]);
 
+  const supplierListBySupplierId = useMemo(
+    () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
+    [supplierLists],
+  );
+  const supplierNameByListId = useMemo(() => {
+    const supplierNameById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
+    return new Map(supplierLists.map((supplierList) => [
+      supplierList.id,
+      supplierNameById.get(supplierList.supplierId) ?? 'Proveedor',
+    ]));
+  }, [supplierLists, suppliers]);
+  const supplierDraftProducts = useMemo(() => {
+    const normalized = supplierProductSearch.trim().toLocaleLowerCase('es-AR');
+    if (!normalized) return products;
+    return products.filter((product) => (
+      product.name.toLocaleLowerCase('es-AR').includes(normalized)
+      || product.category.toLocaleLowerCase('es-AR').includes(normalized)
+    ));
+  }, [products, supplierProductSearch]);
+  const visibleSuppliers = useMemo(() => (
+    suppliers.filter((supplier) => supplier.isActive || supplierListBySupplierId.has(supplier.id))
+  ), [supplierListBySupplierId, suppliers]);
+
   const updateItem = (productId: string, updates: Partial<PriceListItem>) => {
+    setItemsDirty(true);
     setItems((current) => current.map((item) => (
       item.productId === productId ? { ...item, ...updates } : item
     )));
@@ -205,6 +254,7 @@ export default function ResellerPriceListModal({
 
   const toggleProduct = (product: Product) => {
     if (!list || !canWrite) return;
+    setItemsDirty(true);
     setItems((current) => {
       const exists = current.some((item) => item.productId === product.id);
       if (exists) return current.filter((item) => item.productId !== product.id);
@@ -236,12 +286,86 @@ export default function ResellerPriceListModal({
       });
       setList({ ...configured, ...configuredAdvisor });
       setAccessCode('');
+      setItemsDirty(false);
       showToast('Lista de revendedores guardada.', 'success');
     } catch (saveError) {
       console.error('[ResellerPriceList] save error:', saveError);
       showToast(saveError instanceof Error ? saveError.message : 'No se pudo guardar la lista.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const reloadSupplierLists = async () => {
+    if (!list) return;
+    const [loaded, loadedSupplierLists] = await Promise.all([
+      loadResellerPriceList(ownerUid),
+      loadResellerSupplierLists(list.id),
+    ]);
+    setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
+    setSupplierLists(loadedSupplierLists);
+    setItemsDirty(false);
+  };
+
+  const openSupplierEditor = (supplierId: string) => {
+    const supplierList = supplierListBySupplierId.get(supplierId);
+    setEditingSupplierId(supplierId);
+    setSupplierDraftProductIds(supplierList?.productIds ?? []);
+    setSupplierProductSearch('');
+  };
+
+  const toggleSupplierDraftProduct = (productId: string) => {
+    setSupplierDraftProductIds((current) => (
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId]
+    ));
+  };
+
+  const handleSaveSupplierList = async () => {
+    if (!list || !editingSupplierId || !canWrite || supplierSaving) return;
+    if (itemsDirty) {
+      showToast('Guardá primero los cambios de productos de la lista principal.', 'error');
+      return;
+    }
+    setSupplierSaving(true);
+    try {
+      await saveResellerSupplierList({
+        priceListId: list.id,
+        supplierId: editingSupplierId,
+        productIds: supplierDraftProductIds,
+      });
+      await reloadSupplierLists();
+      showToast('Lista del proveedor guardada.', 'success');
+    } catch (supplierError) {
+      console.error('[ResellerPriceList] supplier list save error:', supplierError);
+      showToast(supplierError instanceof Error ? supplierError.message : 'No se pudo guardar la lista del proveedor.', 'error');
+    } finally {
+      setSupplierSaving(false);
+    }
+  };
+
+  const handleToggleSupplierList = async (supplierList: ResellerSupplierList) => {
+    if (!canWrite || supplierSaving) return;
+    if (itemsDirty) {
+      showToast('Guardá primero los cambios de productos de la lista principal.', 'error');
+      return;
+    }
+    setSupplierSaving(true);
+    try {
+      await toggleResellerSupplierList(supplierList.id, !supplierList.enabled);
+      await reloadSupplierLists();
+      showToast(
+        supplierList.enabled
+          ? 'Lista por pedido pausada y productos ocultos.'
+          : 'Lista por pedido habilitada en el catálogo.',
+        'success',
+      );
+    } catch (supplierError) {
+      console.error('[ResellerPriceList] supplier list toggle error:', supplierError);
+      showToast(supplierError instanceof Error ? supplierError.message : 'No se pudo cambiar el estado de la lista.', 'error');
+    } finally {
+      setSupplierSaving(false);
     }
   };
 
@@ -591,6 +715,126 @@ export default function ResellerPriceListModal({
           </div>
           )}
 
+          <details className="group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-center gap-2">
+                <Building2 className="shrink-0 text-amber-700 dark:text-amber-300" size={20} />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white sm:text-base">Listas por proveedor</h4>
+                  <p className="truncate text-xs font-semibold text-amber-800 dark:text-amber-200">
+                    {supplierLists.filter((supplierList) => supplierList.enabled).length} activas · publicá productos por pedido con un click
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className="shrink-0 text-amber-700 transition-transform group-open:rotate-180 dark:text-amber-300" size={20} aria-hidden="true" />
+            </summary>
+            <div className="max-h-[min(60dvh,34rem)] space-y-3 overflow-y-auto border-t border-amber-200 p-3 dark:border-amber-900 sm:p-4">
+              <p className="text-sm leading-relaxed text-amber-950 dark:text-amber-100">
+                Armá una lista con los productos que conseguís en cada proveedor. Al habilitarla, todos se publican como “Por pedido”; al pausarla, se ocultan sin perder la selección.
+              </p>
+              {visibleSuppliers.map((supplier) => {
+                const supplierList = supplierListBySupplierId.get(supplier.id);
+                const editing = editingSupplierId === supplier.id;
+                return (
+                  <article key={supplier.id} className="rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900 dark:bg-slate-900">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-slate-900 dark:text-white">{supplier.name}</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          {supplierList?.productIds.length ?? 0} producto{supplierList?.productIds.length === 1 ? '' : 's'} · {supplierList?.enabled ? 'Visible por pedido' : 'Pausada'}
+                          {!supplier.isActive && ' · Proveedor inactivo'}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:flex">
+                        <button
+                          type="button"
+                          onClick={() => openSupplierEditor(supplier.id)}
+                          disabled={!canWrite || supplierSaving}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          {supplierList ? 'Editar productos' : 'Crear lista'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => supplierList && void handleToggleSupplierList(supplierList)}
+                          disabled={!canWrite || supplierSaving || !supplierList || supplierList.productIds.length === 0}
+                          aria-pressed={supplierList?.enabled ?? false}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                            supplierList?.enabled ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-700 hover:bg-emerald-800',
+                          )}
+                        >
+                          <Power size={14} />
+                          {supplierList?.enabled ? 'Pausar' : 'Habilitar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {editing && (
+                      <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input
+                            type="search"
+                            value={supplierProductSearch}
+                            onChange={(event) => setSupplierProductSearch(event.target.value)}
+                            placeholder="Buscar productos para este proveedor..."
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </div>
+                        <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2">
+                          {supplierDraftProducts.map((product) => (
+                            <label key={product.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-2.5 text-sm dark:border-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={supplierDraftProductIds.includes(product.id)}
+                                disabled={!canWrite || supplierSaving}
+                                onChange={() => toggleSupplierDraftProduct(product.id)}
+                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-700 focus:ring-amber-600"
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate font-bold text-slate-800 dark:text-slate-100">{product.name}</span>
+                                <span className="block text-xs text-slate-500">{product.category} · Stock: {product.stock}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-xs font-semibold text-slate-500">
+                            {supplierDraftProductIds.length} producto{supplierDraftProductIds.length === 1 ? '' : 's'} seleccionado{supplierDraftProductIds.length === 1 ? '' : 's'}
+                          </p>
+                          <div className="grid grid-cols-2 gap-2 sm:flex">
+                            <button
+                              type="button"
+                              onClick={() => setEditingSupplierId(null)}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                            >
+                              Cerrar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveSupplierList()}
+                              disabled={!canWrite || supplierSaving}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800 disabled:opacity-50"
+                            >
+                              {supplierSaving && <Loader2 size={14} className="animate-spin" />}
+                              Guardar lista
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+              {visibleSuppliers.length === 0 && (
+                <p className="rounded-xl border border-dashed border-amber-300 p-4 text-center text-sm font-semibold text-amber-900 dark:border-amber-800 dark:text-amber-100">
+                  Primero creá un proveedor en la sección Proveedores.
+                </p>
+              )}
+            </div>
+          </details>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -657,6 +901,11 @@ export default function ResellerPriceListModal({
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           Minorista: {formatCurrency(product.salePrice)} · Stock: {product.stock}
                         </p>
+                        {item?.supplierListId && (
+                          <p className="mt-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+                            Lista: {supplierNameByListId.get(item.supplierListId) ?? 'Proveedor'}
+                          </p>
+                        )}
                       </div>
                     </div>
 
