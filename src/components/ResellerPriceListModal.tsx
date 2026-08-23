@@ -39,7 +39,7 @@ import { db } from '../lib/db';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
-import { getVisibleHoldingEconomics } from '../lib/inventoryHoldings';
+import { getResellerProductEconomics } from '../lib/resellerProductEconomics';
 import {
   getResellerPricingAdvice,
   matchesResellerPricingAdviceFilter,
@@ -191,12 +191,10 @@ export default function ResellerPriceListModal({
     return new Map(items.flatMap((item) => {
       const product = productById.get(item.productId);
       if (!product) return [];
-      const economics = holdingsEnabled
-        ? getVisibleHoldingEconomics(product, holdings, 'all')
-        : { purchaseCostRange: [product.purchasePrice, product.purchasePrice] as [number, number] };
+      const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
       const advice = getResellerPricingAdvice({
         retailPrice: product.salePrice,
-        purchaseCost: economics.purchaseCostRange[1],
+        purchaseCost: economics.purchaseCost ?? 0,
         currentResellerPrice: resolvePriceListPrice(product.salePrice, discount, item),
         minimumOwnerMarginPercent: minimumProfitMarginPercent,
         targetResellerDiscountPercent,
@@ -863,17 +861,12 @@ export default function ResellerPriceListModal({
               const resolvedPrice = item
                 ? resolvePriceListPrice(product.salePrice, discount, item)
                 : null;
-              const economics = holdingsEnabled
-                ? getVisibleHoldingEconomics(product, holdings, 'all')
-                : {
-                    purchaseCost: product.purchasePrice,
-                    purchaseCostRange: [product.purchasePrice, product.purchasePrice] as [number, number],
-                    hasMixedPurchaseCosts: false,
-                  };
-              const minimumProfit = resolvedPrice === null ? null : resolvedPrice - economics.purchaseCostRange[1];
-              const maximumProfit = resolvedPrice === null ? null : resolvedPrice - economics.purchaseCostRange[0];
-              const profitMargin = resolvedPrice && economics.purchaseCost !== null
-                ? ((resolvedPrice - economics.purchaseCost) / resolvedPrice) * 100
+              const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
+              const unitProfit = resolvedPrice === null || economics.purchaseCost === null
+                ? null
+                : resolvedPrice - economics.purchaseCost;
+              const profitMargin = resolvedPrice && unitProfit !== null
+                ? (unitProfit / resolvedPrice) * 100
                 : null;
               const pricingAdvice = pricingAdviceByProductId.get(product.id);
               return (
@@ -899,7 +892,7 @@ export default function ResellerPriceListModal({
                       <div className="min-w-0">
                         <p className="truncate font-bold text-slate-900 dark:text-white">{product.name}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Minorista: {formatCurrency(product.salePrice)} · Stock: {product.stock}
+                          Minorista: {formatCurrency(product.salePrice)} · Costo: {economics.purchaseCost === null ? 'sin cargar' : formatCurrency(economics.purchaseCost)} · Stock: {product.stock}
                         </p>
                         {item?.supplierListId && (
                           <p className="mt-1 text-xs font-bold text-amber-700 dark:text-amber-300">
@@ -981,12 +974,27 @@ export default function ResellerPriceListModal({
                       Precio revendedor: {formatCurrency(resolvedPrice ?? 0)}
                     </p>
                   )}
-                  {item && minimumProfit !== null && maximumProfit !== null && (
-                    <p className="mt-1 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      {economics.hasMixedPurchaseCosts
-                        ? `Ganancia estimada: ${formatCurrency(minimumProfit)} a ${formatCurrency(maximumProfit)}`
-                        : `Ganancia: ${formatCurrency(minimumProfit)}${profitMargin === null ? '' : ` (${profitMargin.toFixed(1)}%)`}`}
-                    </p>
+                  {item && (
+                    <div className="mt-1 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {unitProfit === null ? (
+                        <p className="font-bold text-rose-600 dark:text-rose-300">Ganancia no disponible: falta cargar el costo.</p>
+                      ) : (
+                        <>
+                          <p>
+                            {economics.costBasis === 'last_known'
+                              ? 'Ganancia según último costo'
+                              : economics.hasMixedPurchaseCosts
+                                ? 'Ganancia mínima por unidad'
+                                : 'Ganancia por unidad'}: {formatCurrency(unitProfit)}{profitMargin === null ? '' : ` (${profitMargin.toFixed(1)}%)`}
+                          </p>
+                          {economics.hasMixedPurchaseCosts && economics.purchaseCostRange && (
+                            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              Cálculo conservador con el costo más alto. Costos cargados: {formatCurrency(economics.purchaseCostRange[0])} a {formatCurrency(economics.purchaseCostRange[1])}.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                   {item && pricingAdvice && (
                     <div className={cn(
