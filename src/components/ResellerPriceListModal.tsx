@@ -6,6 +6,8 @@ import {
   Eye,
   KeyRound,
   Loader2,
+  Pencil,
+  PackageCheck,
   PackagePlus,
   Save,
   Search,
@@ -61,7 +63,15 @@ interface ResellerPriceListModalProps {
   holdings: InventoryHolding[];
   holdingsEnabled: boolean;
   canWrite: boolean;
-  onCreateProduct: () => void;
+  onCreateProduct: (context?: SupplierProductCreationContext) => void;
+  onEditCatalogProduct: (product: Product) => void;
+  onPromoteToStock: (product: Product) => void;
+}
+
+export interface SupplierProductCreationContext {
+  priceListId: string;
+  supplierId: string;
+  productIds: string[];
 }
 
 const buildDraftItem = (product: Product, list: PriceList, index: number): PriceListItem => ({
@@ -91,6 +101,8 @@ export default function ResellerPriceListModal({
   holdingsEnabled,
   canWrite,
   onCreateProduct,
+  onEditCatalogProduct,
+  onPromoteToStock,
 }: ResellerPriceListModalProps) {
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
@@ -770,15 +782,29 @@ export default function ResellerPriceListModal({
 
                     {editing && (
                       <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                          <input
-                            type="search"
-                            value={supplierProductSearch}
-                            onChange={(event) => setSupplierProductSearch(event.target.value)}
-                            placeholder="Buscar productos para este proveedor..."
-                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                          />
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <div className="relative min-w-0 flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                              type="search"
+                              value={supplierProductSearch}
+                              onChange={(event) => setSupplierProductSearch(event.target.value)}
+                              placeholder="Buscar productos para este proveedor..."
+                              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => list && onCreateProduct({
+                              priceListId: list.id,
+                              supplierId: supplier.id,
+                              productIds: supplierDraftProductIds,
+                            })}
+                            disabled={!canWrite || supplierSaving}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                          >
+                            <PackagePlus size={14} /> Crear para esta lista
+                          </button>
                         </div>
                         <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2">
                           {supplierDraftProducts.map((product) => (
@@ -846,7 +872,7 @@ export default function ResellerPriceListModal({
             </div>
             <button
               type="button"
-              onClick={onCreateProduct}
+              onClick={() => onCreateProduct()}
               disabled={!canWrite}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 font-semibold text-white transition-colors hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900"
             >
@@ -894,6 +920,31 @@ export default function ResellerPriceListModal({
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           Minorista: {formatCurrency(product.salePrice)} · Costo: {economics.purchaseCost === null ? 'sin cargar' : formatCurrency(economics.purchaseCost)} · Stock: {product.stock}
                         </p>
+                        {product.catalogOnly && (
+                          <>
+                            <p className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                              Solo catálogo · no está en stock
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => onEditCatalogProduct(product)}
+                                disabled={!canWrite}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <Pencil size={12} /> Editar ficha
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onPromoteToStock(product)}
+                                disabled={!canWrite}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                              >
+                                <PackageCheck size={12} /> Agregar al stock
+                              </button>
+                            </div>
+                          </>
+                        )}
                         {item?.supplierListId && (
                           <p className="mt-1 text-xs font-bold text-amber-700 dark:text-amber-300">
                             Lista: {supplierNameByListId.get(item.supplierListId) ?? 'Proveedor'}

@@ -53,9 +53,13 @@ import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import BarcodePrintModal from '../components/BarcodePrintModal';
-import ResellerPriceListModal from '../components/ResellerPriceListModal';
+import ResellerPriceListModal, { type SupplierProductCreationContext } from '../components/ResellerPriceListModal';
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
-import { addProductToResellerPriceList } from '../lib/priceLists';
+import {
+  addProductToResellerPriceList,
+  promoteResellerCatalogProduct,
+  saveResellerSupplierList,
+} from '../lib/priceLists';
 import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -227,12 +231,16 @@ export default function Stock() {
   const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
   const [resellerPriceListOpen, setResellerPriceListOpen] = useState(false);
   const [creatingProductForReseller, setCreatingProductForReseller] = useState(false);
+  const [supplierProductCreationContext, setSupplierProductCreationContext] = useState<SupplierProductCreationContext | null>(null);
+  const [promotingCatalogProduct, setPromotingCatalogProduct] = useState(false);
+  const [returnToResellerList, setReturnToResellerList] = useState(false);
   const priceListProducts = useMemo(() => {
     const visibleProducts = holdingsEnabled
       ? filterProductsByHoldingOwner(products, holdings, 'all')
       : products;
     return visibleProducts.filter((product) => (
-      holdingsEnabled ? getVisibleProductStock(product.id, holdings) > 0 : product.stock > 0
+      !product.catalogOnly
+      && (holdingsEnabled ? getVisibleProductStock(product.id, holdings) > 0 : product.stock > 0)
     ));
   }, [holdings, holdingsEnabled, products]);
 
@@ -306,26 +314,46 @@ export default function Stock() {
   const openProductEditor = (
     product?: Product,
     barcode?: string,
-    options?: { forReseller?: boolean },
+    options?: {
+      forReseller?: boolean;
+      promoteToStock?: boolean;
+      returnToResellerList?: boolean;
+      supplierContext?: SupplierProductCreationContext;
+    },
   ) => {
-    const forReseller = !product && options?.forReseller === true;
-    const next = product ?? {
+    const promoteToStock = Boolean(product?.catalogOnly && options?.promoteToStock);
+    const forReseller = Boolean(options?.forReseller || (product?.catalogOnly && !promoteToStock));
+    const next = product ? {
+      ...product,
+      purchasePrice: promoteToStock ? Number(product.catalogCost ?? 0) : product.purchasePrice,
+      minStock: promoteToStock ? 2 : product.minStock,
+    } : {
       id: crypto.randomUUID(),
       name: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
       purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2,
       showInCatalog: !forReseller, notes: '', images: [], barcode,
+      catalogOnly: forReseller,
+      catalogCost: forReseller ? 0 : null,
       inventoryOwnerId: primaryOwner?.id,
       ownerUid: user?.uid ?? '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     setCreatingProductForReseller(forReseller);
+    setPromotingCatalogProduct(promoteToStock);
+    setSupplierProductCreationContext(options?.supplierContext ?? null);
+    setReturnToResellerList(Boolean(options?.returnToResellerList || forReseller || promoteToStock));
     setEditingProduct(product ?? null);
     productIntentRef.current = null;
     setIsUploadingImage(false);
     setFormData(next);
-    setHoldingDrafts(buildHoldingDrafts(
+    const nextHoldingDrafts = buildHoldingDrafts(
       operableOwners,
-      product ? holdings.filter((holding) => holding.productId === product.id) : [],
+      product && !product.catalogOnly ? holdings.filter((holding) => holding.productId === product.id) : [],
+    ).map((draft, index) => (
+      promoteToStock && index === 0
+        ? { ...draft, purchaseCost: Number(product?.catalogCost ?? 0) }
+        : draft
     ));
+    setHoldingDrafts(forReseller ? [] : nextHoldingDrafts);
     setIsModalOpen(true);
   };
 
@@ -337,6 +365,19 @@ export default function Stock() {
 
     try {
       let savedProduct: Product | null = null;
+      if (creatingProductForReseller && Number(formData.catalogCost ?? 0) <= 0) {
+        showToast('Cargá el costo del proveedor para calcular la ganancia.', 'error');
+        return;
+      }
+      if (promotingCatalogProduct) {
+        const promotionStock = holdingsEnabled
+          ? holdingDrafts.reduce((total, draft) => total + draft.stock, 0)
+          : Number(formData.stock ?? 0);
+        if (promotionStock <= 0) {
+          showToast('Cargá una cantidad mayor que cero para incorporar el producto al stock.', 'error');
+          return;
+        }
+      }
       const normalizedBarcode = normalizeBarcode(formData.barcode ?? '');
       if (normalizedBarcode) {
         const duplicate = products.find(
@@ -356,7 +397,31 @@ export default function Stock() {
         updatedAt: new Date().toISOString()
       } as Product;
 
-      if (holdingsEnabled) {
+      if (creatingProductForReseller) {
+        const catalogProductData = {
+          ...productData,
+          stock: 0,
+          minStock: 0,
+          purchasePrice: 0,
+          showInCatalog: false,
+          catalogOnly: true,
+          catalogCost: Number(formData.catalogCost ?? 0),
+        } as Product;
+        if (editingProduct) {
+          await db.update('products', editingProduct.id, catalogProductData);
+          savedProduct = { ...editingProduct, ...catalogProductData };
+          setProducts((previous) => previous.map((product) => (
+            product.id === editingProduct.id ? savedProduct as Product : product
+          )));
+        } else {
+          savedProduct = await db.create<Product>('products', {
+            ...catalogProductData,
+            id: catalogProductData.id || crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+          });
+          setProducts((previous) => [...previous, savedProduct as Product]);
+        }
+      } else if (holdingsEnabled) {
         const intent = resolveIdempotencyIntent('product', {
           editingProductId: editingProduct?.id ?? null,
           formData,
@@ -384,9 +449,16 @@ export default function Stock() {
         ]);
         savedProduct = result.product;
       } else if (editingProduct) {
-        await db.update('products', editingProduct.id, productData);
-        setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...productData } as Product : p));
-        savedProduct = { ...editingProduct, ...productData } as Product;
+        const inventoryProductData = promotingCatalogProduct
+          ? {
+              ...productData,
+              catalogOnly: true,
+              catalogCost: editingProduct.catalogCost ?? null,
+            }
+          : productData;
+        await db.update('products', editingProduct.id, inventoryProductData);
+        setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...inventoryProductData } as Product : p));
+        savedProduct = { ...editingProduct, ...inventoryProductData } as Product;
       } else {
         // Idempotency: reject duplicate product name within 5 seconds
         const cutoff = new Date(Date.now() - DUPLICATE_DETECTION_WINDOW_MS).toISOString();
@@ -408,18 +480,38 @@ export default function Stock() {
         savedProduct = created;
       }
 
-      if (creatingProductForReseller && savedProduct) {
+      if (creatingProductForReseller && savedProduct && !editingProduct) {
         try {
-          await addProductToResellerPriceList(savedProduct.id, 'on_order');
-          showToast('Producto creado y agregado como “Por pedido”.', 'success');
+          if (supplierProductCreationContext) {
+            await saveResellerSupplierList({
+              priceListId: supplierProductCreationContext.priceListId,
+              supplierId: supplierProductCreationContext.supplierId,
+              productIds: [...supplierProductCreationContext.productIds, savedProduct.id],
+            });
+            showToast('Producto creado exclusivamente para la lista del proveedor.', 'success');
+          } else {
+            await addProductToResellerPriceList(savedProduct.id, 'on_order');
+            showToast('Producto de catálogo creado y agregado como “Por pedido”.', 'success');
+          }
         } catch (listError) {
           console.error('[Stock] add product to reseller list error:', listError);
           showToast('El producto se guardó, pero deberás agregarlo manualmente a la lista de revendedores.', 'info');
         }
       }
 
+      if (promotingCatalogProduct && savedProduct) {
+        const promoted = await promoteResellerCatalogProduct(savedProduct.id);
+        savedProduct = promoted;
+        setProducts((previous) => previous.map((product) => (
+          product.id === promoted.id ? promoted : product
+        )));
+        showToast('Producto incorporado al stock y separado de la lista por pedido.', 'success');
+      }
+
       setIsModalOpen(false);
       setCreatingProductForReseller(false);
+      setPromotingCatalogProduct(false);
+      setSupplierProductCreationContext(null);
       productIntentRef.current = null;
       setEditingProduct(null);
       setHoldingDrafts([]);
@@ -432,10 +524,14 @@ export default function Stock() {
         stock: 0,
         minStock: 2,
         showInCatalog: true,
+        catalogOnly: false,
+        catalogCost: null,
         notes: '',
         images: [],
         inventoryOwnerId: primaryOwner?.id,
       });
+      if (returnToResellerList) setResellerPriceListOpen(true);
+      setReturnToResellerList(false);
     } catch (error) {
       console.error('[Stock] save product error:', error);
       showToast(error instanceof Error ? error.message : 'No se pudo guardar el producto.', 'error');
@@ -450,6 +546,10 @@ export default function Stock() {
     productIntentRef.current = null;
     setIsModalOpen(false);
     setCreatingProductForReseller(false);
+    setPromotingCatalogProduct(false);
+    setSupplierProductCreationContext(null);
+    if (returnToResellerList) setResellerPriceListOpen(true);
+    setReturnToResellerList(false);
   };
 
   const retryImageCleanup = async () => {
@@ -491,9 +591,11 @@ export default function Stock() {
   };
 
   const autoCalculatePrice = () => {
-    const purchase = holdingsEnabled
-      ? holdingDrafts.find((draft) => draft.active)?.purchaseCost ?? 0
-      : Number(formData.purchasePrice) || 0;
+    const purchase = creatingProductForReseller
+      ? Number(formData.catalogCost) || 0
+      : holdingsEnabled
+        ? holdingDrafts.find((draft) => draft.active)?.purchaseCost ?? 0
+        : Number(formData.purchasePrice) || 0;
     const range = priceRanges.find(r =>
       purchase >= r.minPrice && (r.maxPrice === null || purchase <= r.maxPrice)
     );
@@ -601,9 +703,12 @@ export default function Stock() {
     [holdings, holdingsEnabled, ownerFilter],
   );
   const ownerVisibleProducts = useMemo(
-    () => holdingsEnabled
-      ? filterProductsByHoldingOwner(products, visibleHoldings, 'all')
-      : products,
+    () => {
+      const inventoryProducts = products.filter((product) => !product.catalogOnly);
+      return holdingsEnabled
+        ? filterProductsByHoldingOwner(inventoryProducts, visibleHoldings, 'all')
+        : inventoryProducts;
+    },
     [holdingsEnabled, products, visibleHoldings],
   );
   const restockRecommendations = useMemo(
@@ -804,9 +909,27 @@ export default function Stock() {
           holdings={holdings}
           holdingsEnabled={holdingsEnabled}
           canWrite={canWrite}
-          onCreateProduct={() => {
+          onCreateProduct={(context) => {
             setResellerPriceListOpen(false);
-            openProductEditor(undefined, undefined, { forReseller: true });
+            openProductEditor(undefined, undefined, {
+              forReseller: true,
+              returnToResellerList: true,
+              supplierContext: context,
+            });
+          }}
+          onEditCatalogProduct={(product) => {
+            setResellerPriceListOpen(false);
+            openProductEditor(product, undefined, {
+              forReseller: true,
+              returnToResellerList: true,
+            });
+          }}
+          onPromoteToStock={(product) => {
+            setResellerPriceListOpen(false);
+            openProductEditor(product, undefined, {
+              promoteToStock: true,
+              returnToResellerList: true,
+            });
           }}
         />
       )}
@@ -1179,15 +1302,26 @@ export default function Stock() {
         isOpen={isModalOpen} 
         onClose={closeProductEditor}
         title={editingProduct
-          ? 'Editar Producto'
+          ? promotingCatalogProduct
+            ? 'Agregar producto al stock'
+            : editingProduct.catalogOnly
+              ? 'Editar producto de catálogo'
+              : 'Editar Producto'
           : creatingProductForReseller
-            ? 'Agregar producto para revendedores'
+            ? supplierProductCreationContext
+              ? 'Crear producto para la lista del proveedor'
+              : 'Agregar producto para revendedores'
             : 'Agregar Nuevo Producto'}
       >
         <form onSubmit={handleSave} className="operational-page space-y-6">
           {creatingProductForReseller && (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
-              Este producto se agregará a la lista de revendedores como <strong>Por pedido</strong> y no se publicará automáticamente en el catálogo minorista.
+              Este producto existirá solamente en el catálogo revendedor como <strong>Por pedido</strong>. No aparecerá en Stock ni en el catálogo minorista hasta que elijas “Agregar al stock”.
+            </div>
+          )}
+          {promotingCatalogProduct && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+              Cargá la existencia real y su costo. Al guardar, el producto dejará de depender de la lista del proveedor y pasará a tu inventario como disponible.
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1222,7 +1356,7 @@ export default function Stock() {
               </select>
             </div>
 
-            {!holdingsEnabled && <div>
+            {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular de la mercadería</label>
               <select
                 required
@@ -1245,7 +1379,7 @@ export default function Stock() {
               </select>
             </div>}
 
-            {!holdingsEnabled && <div>
+            {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Inicial</label>
               <input 
                 type="number"
@@ -1257,7 +1391,7 @@ export default function Stock() {
               />
             </div>}
 
-            {!holdingsEnabled && <div>
+            {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Compra</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
@@ -1272,7 +1406,28 @@ export default function Stock() {
               </div>
             </div>}
 
-            {holdingsEnabled && (
+            {creatingProductForReseller && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Costo del proveedor</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    value={formData.catalogCost ?? 0}
+                    onChange={(event) => setFormData((current) => ({
+                      ...current,
+                      catalogCost: Number(event.target.value),
+                    }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-8 pr-4 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+            )}
+
+            {holdingsEnabled && !creatingProductForReseller && (
               <div className="md:col-span-2 space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white">Existencias por titular</h3>
@@ -1350,7 +1505,7 @@ export default function Stock() {
               </div>
             </div>
 
-            {!holdingsEnabled && <div>
+            {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Mínimo (Alerta)</label>
               <input 
                 type="number"
@@ -1418,7 +1573,7 @@ export default function Stock() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 pt-6">
+            {!creatingProductForReseller && <div className="flex items-center gap-3 pt-6">
               <button 
                 type="button"
                 onClick={() => setFormData(prev => ({ ...prev, showInCatalog: !prev.showInCatalog }))}
@@ -1433,6 +1588,16 @@ export default function Stock() {
                 )} />
               </button>
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Mostrar en Catálogo</span>
+            </div>}
+
+            <div className="md:col-span-2">
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Descripción pública</label>
+              <textarea
+                value={formData.description ?? ''}
+                onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Descripción que verá el cliente en el catálogo"
+                className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
             </div>
 
             <div className="md:col-span-2">
@@ -1473,7 +1638,15 @@ export default function Stock() {
                 (isUploadingImage || saving) ? "bg-indigo-400" : "bg-[#365fad] hover:bg-[#284b91] shadow-slate-900/10"
               )}
             >
-              {isUploadingImage ? 'Subiendo imagen...' : saving ? 'Guardando...' : (editingProduct ? 'Guardar Cambios' : 'Crear Producto')}
+              {isUploadingImage
+                ? 'Subiendo imagen...'
+                : saving
+                  ? 'Guardando...'
+                  : promotingCatalogProduct
+                    ? 'Agregar al stock'
+                    : editingProduct
+                      ? 'Guardar Cambios'
+                      : 'Crear Producto'}
             </button>
           </div>
         </form>
