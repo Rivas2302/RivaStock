@@ -160,7 +160,19 @@ export interface PriceListItem {
   discountPercent: number | null;
   fixedPrice: number | null;
   availability: PriceListAvailability;
+  supplierListId?: string | null;
   sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResellerSupplierList {
+  id: string;
+  ownerUid: string;
+  priceListId: string;
+  supplierId: string;
+  enabled: boolean;
+  productIds: string[];
   createdAt: string;
   updatedAt: string;
 }

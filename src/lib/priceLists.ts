@@ -3,6 +3,7 @@ import type {
   PriceList,
   PriceListAvailability,
   PriceListItem,
+  ResellerSupplierList,
 } from '../types';
 import { db, fromDb, invalidateDbCache } from './db';
 import { supabase } from './supabase';
@@ -60,6 +61,7 @@ export async function saveResellerPriceList(
     discountPercent: item.pricingMode === 'discount' ? clampPriceListDiscount(item.discountPercent ?? 0) : null,
     fixedPrice: item.pricingMode === 'fixed' ? Math.max(0, item.fixedPrice ?? 0) : null,
     availability: item.availability,
+    supplierListId: item.supplierListId ?? null,
     sortOrder: index,
   }));
   const { data, error } = await supabase.rpc('save_reseller_price_list', {
@@ -70,6 +72,71 @@ export async function saveResellerPriceList(
   if (error) throw new Error(`[save_reseller_price_list] ${error.message}`);
   invalidateDbCache('price_lists', 'price_list_items');
   return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
+}
+
+export async function loadResellerSupplierLists(priceListId: string): Promise<ResellerSupplierList[]> {
+  const { data: rawLists, error: listsError } = await supabase
+    .from('reseller_supplier_lists')
+    .select('*')
+    .eq('price_list_id', priceListId)
+    .order('created_at');
+  if (listsError) throw new Error(`[load_reseller_supplier_lists] ${listsError.message}`);
+
+  const listIds = (rawLists ?? []).map((row) => String(row.id));
+  const { data: rawItems, error: itemsError } = listIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from('reseller_supplier_list_items')
+      .select('supplier_list_id,product_id,sort_order')
+      .in('supplier_list_id', listIds)
+      .order('sort_order');
+  if (itemsError) throw new Error(`[load_reseller_supplier_list_items] ${itemsError.message}`);
+
+  const productIdsByList = new Map<string, string[]>();
+  for (const item of rawItems ?? []) {
+    const listId = String(item.supplier_list_id);
+    productIdsByList.set(listId, [...(productIdsByList.get(listId) ?? []), String(item.product_id)]);
+  }
+
+  return (rawLists ?? []).map((row) => ({
+    ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(row as Record<string, unknown>),
+    productIds: productIdsByList.get(String(row.id)) ?? [],
+  }));
+}
+
+export async function saveResellerSupplierList(input: {
+  priceListId: string;
+  supplierId: string;
+  productIds: string[];
+}): Promise<ResellerSupplierList> {
+  const productIds = Array.from(new Set(input.productIds));
+  const { data, error } = await supabase.rpc('save_reseller_supplier_list', {
+    p_list_id: input.priceListId,
+    p_supplier_id: input.supplierId,
+    p_product_ids: productIds,
+  });
+  if (error) throw new Error(`[save_reseller_supplier_list] ${error.message}`);
+  invalidateDbCache('price_list_items', 'reseller_supplier_lists', 'reseller_supplier_list_items');
+  return {
+    ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(data as Record<string, unknown>),
+    productIds,
+  };
+}
+
+export async function toggleResellerSupplierList(
+  supplierListId: string,
+  enabled: boolean,
+): Promise<ResellerSupplierList> {
+  const { data, error } = await supabase.rpc('toggle_reseller_supplier_list', {
+    p_supplier_list_id: supplierListId,
+    p_enabled: enabled,
+  });
+  if (error) throw new Error(`[toggle_reseller_supplier_list] ${error.message}`);
+  invalidateDbCache('price_list_items', 'reseller_supplier_lists');
+  return {
+    ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(data as Record<string, unknown>),
+    productIds: [],
+  };
 }
 
 export async function configureResellerPriceList(input: {
