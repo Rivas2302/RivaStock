@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { getRestockRecommendations } from '../lib/stockIntelligence';
-import { Product, Sale, CashFlowEntry, Order } from '../types';
-import { formatCurrency, cn, roundPrice, formatDate } from '../lib/utils';
+import { Product, Sale, CashFlowEntry, Order, InventoryHolding, InventoryOwner } from '../types';
+import { getInventoryHoldings } from '../lib/inventoryHoldings';
+import { filterInventoryOwnersByMembership, sortInventoryOwners } from '../lib/inventoryOwners';
+import { getStockValuation, selectStockValuationOwner } from '../lib/stockValuation';
+import { formatCurrency, cn, formatDate } from '../lib/utils';
 import {
   TrendingUp,
   TrendingDown,
@@ -27,12 +30,18 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock';
+const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id';
 
 export default function Dashboard() {
-  const { user, refetchToken, refetchData, permissions } = useAuth();
+  const {
+    user, refetchToken, refetchData, permissions, holdingsEnabled,
+    allowedInventoryOwnerIds, defaultInventoryOwnerId, inventoryAccessError,
+  } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
+  const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
+  const [owners, setOwners] = useState<InventoryOwner[]>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashFlow, setCashFlow] = useState<CashFlowEntry[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -40,7 +49,14 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || inventoryAccessError) {
+      setProducts([]);
+      setHoldings([]);
+      setOwners([]);
+      setError(inventoryAccessError);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -48,13 +64,16 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
       try {
-        // Products first: the KPI grid paints as soon as this returns. On a
-        // cold Supabase start this is the slow query, so unblocking the UI
-        // here means the user sees a real dashboard within seconds instead
-        // of waiting for every table to wake up in lockstep.
-        const p = await db.listColumns<Product>('products', user.uid, DASHBOARD_PRODUCT_COLUMNS);
+        // Never paint aggregate product stock before owner-specific data is ready.
+        const [p, h, o] = await Promise.all([
+          db.listColumns<Product>('products', user.uid, DASHBOARD_PRODUCT_COLUMNS),
+          holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
+          db.list<InventoryOwner>('inventory_owners', user.uid),
+        ]);
         if (cancelled) return;
         setProducts(p);
+        setHoldings(h);
+        setOwners(sortInventoryOwners(o));
         setLoading(false);
 
         const results = await Promise.allSettled([
@@ -82,7 +101,18 @@ export default function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [user, refetchToken]);
+  }, [user, refetchToken, holdingsEnabled, inventoryAccessError]);
+
+  const visibleOwners = useMemo(
+    () => filterInventoryOwnersByMembership(owners, allowedInventoryOwnerIds),
+    [owners, allowedInventoryOwnerIds],
+  );
+  const valuationOwner = selectStockValuationOwner(visibleOwners, selectedOwnerId, defaultInventoryOwnerId);
+  const valuation = useMemo(
+    () => getStockValuation(products, holdings, visibleOwners, valuationOwner?.id ?? null, holdingsEnabled),
+    [products, holdings, visibleOwners, valuationOwner?.id, holdingsEnabled],
+  );
+  const stockScope = valuationOwner?.name ?? 'Sin titular disponible';
 
   const { kpis, lowStockProducts, recentSales } = useMemo(() => {
     let totalCollected = 0;
@@ -124,14 +154,10 @@ export default function Dashboard() {
       }
     }
 
-    let stockValue = 0;
-    let totalInvested = 0;
     let outOfStockCount = 0;
     const lowStockProducts: Product[] = [];
 
     for (const product of products) {
-      stockValue += roundPrice(product.salePrice) * product.stock;
-      totalInvested += product.purchasePrice * product.stock;
       if (product.stock === 0) outOfStockCount += 1;
       if (product.stock <= product.minStock) {
         lowStockProducts.push(product);
@@ -144,16 +170,16 @@ export default function Dashboard() {
         { title: 'Efectivo Disponible', value: cashIncome - cashExpenses, icon: ArrowUpRight, color: 'emerald' },
         { title: 'Transferencias Disp.', value: bankIncome - bankExpenses, icon: ArrowUpRight, color: 'blue' },
         { title: 'Cobros Pendientes', value: pendingSales, icon: Clock, color: 'amber' },
-        { title: 'Valor en Stock', value: stockValue, icon: Package, color: 'violet' },
-        { title: 'Total Invertido', value: totalInvested, icon: TrendingDown, color: 'rose' },
-        { title: 'Ganancia Potencial', value: stockValue - totalInvested, icon: TrendingUp, color: 'emerald' },
+        { title: 'Valor en Stock', value: valuation.stockValue, icon: Package, color: 'violet', scope: stockScope },
+        { title: 'Total Invertido', value: valuation.totalInvested, icon: TrendingDown, color: 'rose', scope: stockScope },
+        { title: 'Ganancia Potencial', value: valuation.potentialProfit, icon: TrendingUp, color: 'emerald', scope: stockScope },
         { title: 'Productos sin Stock', value: outOfStockCount, icon: AlertTriangle, color: 'rose', isCurrency: false },
         { title: 'Ventas del Mes', value: thisMonthSales, icon: ShoppingCart, color: 'indigo' },
       ],
       lowStockProducts,
       recentSales: sales.slice(0, 5),
     };
-  }, [cashFlow, products, sales]);
+  }, [cashFlow, products, sales, valuation, stockScope]);
 
   const restockRecommendations = useMemo(
     () => getRestockRecommendations(products, sales),
@@ -173,18 +199,7 @@ export default function Dashboard() {
     });
   }, [sales]);
 
-  const stockByCategoryData = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const p of products) {
-      if (!map[p.category]) map[p.category] = 0;
-      map[p.category] += roundPrice(p.salePrice) * p.stock;
-    }
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .filter(d => d.value > 0)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-  }, [products]);
+  const stockByCategoryData = valuation.stockByCategory.slice(0, 8);
 
   const monthlyBalanceData = useMemo(() => {
     const now = new Date();
@@ -216,7 +231,7 @@ export default function Dashboard() {
       startY: 35,
       head: [['Indicador', 'Valor']],
       body: kpis.map(k => [
-        k.title,
+        k.scope ? `${k.title} — ${k.scope}` : k.title,
         k.isCurrency === false ? String(k.value) : formatCurrency(k.value as number),
       ]),
       styles: { fontSize: 10 },
@@ -293,6 +308,29 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="dashboard-panel p-4 space-y-2">
+        <label htmlFor="stock-valuation-owner" className="block text-sm font-semibold text-slate-900 dark:text-white">
+          Titular para valoración de stock
+        </label>
+        <select
+          id="stock-valuation-owner"
+          value={valuationOwner?.id ?? ''}
+          onChange={event => setSelectedOwnerId(event.target.value)}
+          disabled={visibleOwners.length === 0}
+          className="w-full sm:w-auto rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+        >
+          {visibleOwners.length === 0 && <option value="">Sin titular disponible</option>}
+          {visibleOwners.map(owner => (
+            <option key={owner.id} value={owner.id}>
+              {owner.name}{owner.archivedAt ? ' (archivado)' : ''}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Valor en stock (a precio de venta), inversión, ganancia potencial y categorías corresponden al titular seleccionado. Los demás indicadores son generales del negocio.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {kpis.map((kpi, i) => (
           <motion.div
@@ -316,6 +354,7 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{kpi.title}</p>
+            {kpi.scope && <p className="text-xs text-slate-500 dark:text-slate-400">{kpi.scope}</p>}
             <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
               {kpi.isCurrency === false ? kpi.value : formatCurrency(kpi.value as number)}
             </p>
@@ -341,7 +380,7 @@ export default function Dashboard() {
 
         {/* Stock by Category Pie */}
         <div className="dashboard-panel p-6">
-          <h3 className="font-bold text-slate-900 dark:text-white mb-4">Valor en stock por categoría</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-4">Valor en stock por categoría — {stockScope}</h3>
           {stockByCategoryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
