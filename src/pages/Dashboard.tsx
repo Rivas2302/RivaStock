@@ -27,12 +27,14 @@ import {
   PieChart, Pie, Cell, Legend,
   LineChart, Line,
 } from 'recharts';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import { loadPdfRuntime } from '../lib/pdfRuntime';
+import { showToast } from '../lib/toast';
 
 const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id';
 
 export default function Dashboard() {
+  const [exporting, setExporting] = useState(false);
   const {
     user, refetchToken, refetchData, permissions, holdingsEnabled,
     allowedInventoryOwnerIds, defaultInventoryOwnerId, inventoryAccessError,
@@ -220,36 +222,45 @@ export default function Dashboard() {
 
   const PIE_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#14b8a6'];
 
-  const handleExportDashboardPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text(`${user?.businessName || 'Mi Negocio'} — Panel de Control`, 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
+  const handleExportDashboardPDF = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { jsPDF, autoTable } = await loadPdfRuntime();
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text(`${user?.businessName || 'Mi Negocio'} — Panel de Control`, 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
 
-    autoTable(doc, {
-      startY: 35,
-      head: [['Indicador', 'Valor']],
-      body: kpis.map(k => [
-        k.scope ? `${k.title} — ${k.scope}` : k.title,
-        k.isCurrency === false ? String(k.value) : formatCurrency(k.value as number),
-      ]),
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [99, 102, 241] },
-    });
+      autoTable(doc, {
+        startY: 35,
+        head: [['Indicador', 'Valor']],
+        body: kpis.map(k => [
+          k.scope ? `${k.title} — ${k.scope}` : k.title,
+          k.isCurrency === false ? String(k.value) : formatCurrency(k.value as number),
+        ]),
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [99, 102, 241] },
+      });
 
-    const afterKpi = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
-    doc.setFontSize(13);
-    doc.text('Ventas por mes (últimos 6 meses)', 14, afterKpi);
-    autoTable(doc, {
-      startY: afterKpi + 5,
-      head: [['Mes', 'Ventas cobradas']],
-      body: monthlySalesData.map(d => [d.label, formatCurrency(d.total)]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [99, 102, 241] },
-    });
+      const afterKpi = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      doc.setFontSize(13);
+      doc.text('Ventas por mes (últimos 6 meses)', 14, afterKpi);
+      autoTable(doc, {
+        startY: afterKpi + 5,
+        head: [['Mes', 'Ventas cobradas']],
+        body: monthlySalesData.map(d => [d.label, formatCurrency(d.total)]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [99, 102, 241] },
+      });
 
-    doc.save(`panel-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`panel-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      showToast('No se pudo exportar el PDF.', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) return <div className="animate-pulse space-y-8">
@@ -300,6 +311,7 @@ export default function Dashboard() {
           )}
           <button
             onClick={handleExportDashboardPDF}
+            disabled={exporting}
             className="subtle-action flex w-full items-center justify-center gap-2 px-4 py-2.5 font-semibold transition-colors dark:text-slate-300 sm:w-auto"
           >
             <FileDown size={18} />

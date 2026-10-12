@@ -1,6 +1,4 @@
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfRuntime } from './pdfRuntime';
 import { formatDate, formatCurrency, roundPrice } from './utils';
 import type { ReportSaleRow, ReportKpis } from '../types';
 
@@ -26,13 +24,14 @@ interface ExportToExcelOptions {
  * Currency cells receive a proper number format using the provided symbol
  * so Excel displays them as money (not as a string).
  */
-export function exportToExcel<T>(
+export async function exportToExcel<T>(
   rows: T[],
   columns: ExcelColumn<T>[],
   fileName: string,
   sheetName = 'Reporte',
   options: ExportToExcelOptions = {},
-): void {
+): Promise<void> {
+  const XLSX = await import('xlsx');
   const headerRow = columns.map(c => c.header);
 
   const dataMatrix: (string | number | null)[][] = rows.map(row =>
@@ -167,6 +166,7 @@ export async function exportToPDF(
   ctx: PdfReportContext,
   options: ExportToPdfOptions,
 ): Promise<void> {
+  const { jsPDF, autoTable } = await loadPdfRuntime();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 14;
@@ -302,13 +302,13 @@ export async function exportToPDF(
  * formatting for money columns. The currency symbol is derived from the
  * user-supplied prefix; we do NOT bake the symbol into the cell text.
  */
-export function exportSalesReportToExcel(
+export async function exportSalesReportToExcel(
   rows: ReportSaleRow[],
   kpis: ReportKpis,
   fileName: string,
   currencySymbol: string,
   rangeLabel: string,
-): void {
+): Promise<void> {
   const columns: ExcelColumn<ReportSaleRow>[] = [
     { header: 'Fecha',            value: r => formatDate(r.date),                       width: 14 },
     { header: 'Producto',         value: r => r.productName,                            width: 32 },
@@ -330,7 +330,7 @@ export function exportSalesReportToExcel(
     { label: 'Pendiente de cobro',       value: formatCurrency(roundPrice(kpis.pendingAmount)) },
   ];
 
-  exportToExcel(rows, columns, fileName, 'Ventas', { summary });
+  await exportToExcel(rows, columns, fileName, 'Ventas', { summary });
 }
 
 /**

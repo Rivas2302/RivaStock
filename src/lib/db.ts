@@ -163,28 +163,31 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
       const data = await timeoutPromise(existing.promise as Promise<T>, PENDING_PROMISE_TIMEOUT_MS, key);
       return shallowClone(data);
     } catch (err) {
-      queryCache.delete(key);
+      if (queryCache.get(key) === existing) queryCache.delete(key);
       throw err;
     }
   }
 
   const pending = timeoutPromise(loader(), PENDING_PROMISE_TIMEOUT_MS, key);
-  queryCache.set(key, {
+  const entry: CacheEntry = {
     expiresAt: now + QUERY_CACHE_TTL_MS,
     hasValue: false,
     promise: pending,
-  });
+  };
+  queryCache.set(key, entry);
 
   try {
     const value = await pending;
-    queryCache.set(key, {
+    // An invalidated/in-flight query must never overwrite a newer read or
+    // repopulate cache after logout. Callers still receive their own result.
+    if (queryCache.get(key) === entry) queryCache.set(key, {
       expiresAt: Date.now() + QUERY_CACHE_TTL_MS,
       hasValue: true,
       value,
     });
     return shallowClone(value);
   } catch (error) {
-    queryCache.delete(key);
+    if (queryCache.get(key) === entry) queryCache.delete(key);
     throw error;
   }
 }
@@ -324,6 +327,33 @@ export function normalizeSalesReport(data: unknown): SalesReportData {
 class SupabaseDB {
   private isProfile(col: string): boolean {
     return tableName(col) === 'profiles';
+  }
+
+  /** Restock needs paid quantities in a recent window, not lifetime economics.
+   * Keyset paging continues until empty even when PostgREST caps rows below
+   * the requested batch size. The full matching window is never truncated.
+   */
+  async recentPaidSales<T>(ownerUid: string, fromDate: string, toDate: string): Promise<T[]> {
+    const key = cacheKey('recentPaidSales', 'sales', { ownerUid, fromDate, toDate });
+    return readWithCache(key, async () => {
+      const rows: T[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        let query = supabase.from('sales')
+          .select('id,date,status,product_id,quantity,items')
+          .eq('user_id', ownerUid).eq('status', 'Pagado')
+          .gte('date', fromDate).lte('date', toDate)
+          .order('id', { ascending: true }).limit(500);
+        if (cursor) query = query.gt('id', cursor);
+        const { data, error } = await query;
+        if (error) throw new Error(`[db.recentPaidSales] ${error.message}`);
+        if (!data?.length) return rows;
+        rows.push(...data.map(row => fromDb<T>(row)));
+        const nextCursor = String(data[data.length - 1].id);
+        if (nextCursor === cursor) throw new Error('Recent sales pagination did not advance.');
+        cursor = nextCursor;
+      }
+    });
   }
 
   async list<T>(collectionName: string, ownerUid?: string): Promise<T[]> {

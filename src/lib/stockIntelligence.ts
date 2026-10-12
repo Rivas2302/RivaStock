@@ -23,16 +23,6 @@ export interface HoldingRestockRecommendation extends RestockRecommendation {
 const LOOKBACK_DAYS = 30;
 const TARGET_COVERAGE_DAYS = 14;
 
-function saleUnitsForProduct(sale: Sale, productId: string): number {
-  if (sale.items?.length) {
-    return sale.items
-      .filter((item) => item.productId === productId)
-      .reduce((total, item) => total + Number(item.quantity || 0), 0);
-  }
-
-  return sale.productId === productId ? Number(sale.quantity || 0) : 0;
-}
-
 function isPaidSaleInLookback(sale: Sale, now: Date): boolean {
   if (sale.status !== 'Pagado') return false;
 
@@ -51,13 +41,26 @@ export function getRestockRecommendations(
   now = new Date(),
 ): RestockRecommendation[] {
   const relevantSales = sales.filter((sale) => isPaidSaleInLookback(sale, now));
+  const unitsByProduct = new Map<string, number>();
+  for (const sale of relevantSales) {
+    // Sum duplicate lines within each ticket first, matching legacy rounding
+    // and accumulation order without rescanning every ticket per product.
+    const ticketUnits = new Map<string, number>();
+    if (sale.items?.length) {
+      for (const item of sale.items) {
+        ticketUnits.set(item.productId, (ticketUnits.get(item.productId) ?? 0) + Number(item.quantity || 0));
+      }
+    } else {
+      ticketUnits.set(sale.productId, Number(sale.quantity || 0));
+    }
+    for (const [productId, units] of ticketUnits) {
+      unitsByProduct.set(productId, (unitsByProduct.get(productId) ?? 0) + units);
+    }
+  }
 
   return products
     .map((product) => {
-      const unitsSoldLast30Days = relevantSales.reduce(
-        (total, sale) => total + saleUnitsForProduct(sale, product.id),
-        0,
-      );
+      const unitsSoldLast30Days = unitsByProduct.get(product.id) ?? 0;
       const averageDailySales = unitsSoldLast30Days / LOOKBACK_DAYS;
       const coverageDays = averageDailySales > 0 ? product.stock / averageDailySales : null;
       const targetStock = Math.max(

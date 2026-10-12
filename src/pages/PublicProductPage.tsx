@@ -5,7 +5,7 @@ import { fromDb } from '../lib/db';
 import type { CatalogConfig, PublicCatalogProduct } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
-import { getPublicCatalogProducts } from '../lib/publicCatalog';
+import { getPublicCatalogProduct } from '../lib/publicCatalog';
 import {
   ArrowLeft,
   Copy,
@@ -27,6 +27,11 @@ export default function PublicProductPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setProduct(null);
+    setImageIndex(0);
     const init = async () => {
       if (!slug || !productId) {
         setError('Producto no encontrado');
@@ -34,19 +39,19 @@ export default function PublicProductPage() {
         return;
       }
 
-      const [catalogRes, publicProducts, ownerLabels] = await Promise.all([
+      const [catalogRes, publicProduct, ownerLabels] = await Promise.all([
         supabase
           .from('catalog_config')
           .select('*')
           .eq('slug', slug)
           .eq('enabled', true)
           .limit(1),
-        getPublicCatalogProducts(slug),
+        getPublicCatalogProduct(slug, productId),
         getPublicInventoryOwnerLabels(slug, productId),
       ]);
+      if (cancelled) return;
 
       const catalogRow = catalogRes.data?.[0];
-      const publicProduct = publicProducts.find((item) => item.id === productId);
 
       if (!catalogRow || !publicProduct) {
         setError('Producto no encontrado');
@@ -61,9 +66,11 @@ export default function PublicProductPage() {
     };
 
     init().catch(() => {
+      if (cancelled) return;
       setError('Error al cargar el producto');
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, [slug, productId]);
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';

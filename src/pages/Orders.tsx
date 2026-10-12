@@ -1,4 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
@@ -102,6 +104,7 @@ export default function Orders() {
     () => orders.filter((order) => deferredStatusFilter === 'all' || order.status === deferredStatusFilter),
     [deferredStatusFilter, orders],
   );
+  const pagination = usePagination(filteredOrders);
 
   return (
     <div className="business-page operational-page space-y-6">
@@ -128,7 +131,7 @@ export default function Orders() {
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {Array.isArray(filteredOrders) && filteredOrders.length > 0 ? filteredOrders.map((order) => (
+        {Array.isArray(filteredOrders) && filteredOrders.length > 0 ? pagination.rows.map((order) => (
           <motion.div
             key={order.id}
             layout
@@ -255,6 +258,7 @@ export default function Orders() {
           </div>
         )}
       </div>
+      <Pagination {...pagination} />
     </div>
   );
 }

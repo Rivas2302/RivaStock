@@ -1,4 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
@@ -12,6 +14,7 @@ import {
   buildHoldingDrafts,
   filterProductsByHoldingOwner,
   getVisibleHoldingEconomics,
+  indexHoldingsByProduct,
   getVisibleInventoryHoldings,
   getVisibleProductStock,
   getInventoryHoldings,
@@ -24,6 +27,7 @@ import { failedStorageCleanupPaths } from '../lib/storageCleanup';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
+import { getRecentRestockSales } from '../lib/recentSales';
 import { showToast } from '../lib/toast';
 import { Product, Category, PriceRange, Sale, InventoryHolding, InventoryHoldingDraft } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
@@ -75,6 +79,7 @@ export default function Stock() {
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
+  const holdingsByProduct = useMemo(() => indexHoldingsByProduct(holdings), [holdings]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
@@ -128,7 +133,7 @@ export default function Stock() {
         db.list<Product>('products', user.uid),
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
-        db.list<Sale>('sales', user.uid),
+        holdingsEnabled ? Promise.resolve([]) : getRecentRestockSales(user.uid),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       setProducts(p);
@@ -157,7 +162,7 @@ export default function Stock() {
           db.list<Product>('products', user.uid),
           db.list<Category>('categories', user.uid),
           db.list<PriceRange>('price_ranges', user.uid),
-          db.list<Sale>('sales', user.uid),
+          holdingsEnabled ? Promise.resolve([]) : getRecentRestockSales(user.uid),
           holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
@@ -240,9 +245,9 @@ export default function Stock() {
       : products;
     return visibleProducts.filter((product) => (
       !product.catalogOnly
-      && (holdingsEnabled ? getVisibleProductStock(product.id, holdings) > 0 : product.stock > 0)
+      && (holdingsEnabled ? getVisibleProductStock(product.id, holdingsByProduct.get(product.id) ?? []) > 0 : product.stock > 0)
     ));
-  }, [holdings, holdingsEnabled, products]);
+  }, [holdings, holdingsByProduct, holdingsEnabled, products]);
 
   useEffect(() => () => {
     if (priceListPreview) URL.revokeObjectURL(priceListPreview.url);
@@ -267,7 +272,7 @@ export default function Stock() {
     setIsExportingPdf(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      const pdf = createPriceListPdf({
+      const pdf = await createPriceListPdf({
         products: priceListProducts,
         categories,
         businessName: user.businessName,
@@ -702,6 +707,8 @@ export default function Stock() {
     () => holdingsEnabled ? getVisibleInventoryHoldings(holdings, ownerFilter) : [],
     [holdings, holdingsEnabled, ownerFilter],
   );
+  const visibleHoldingsByProduct = useMemo(() => indexHoldingsByProduct(visibleHoldings), [visibleHoldings]);
+  const inventoryOwnersById = useMemo(() => new Map(inventoryOwners.map(owner => [owner.id, owner])), [inventoryOwners]);
   const ownerVisibleProducts = useMemo(
     () => {
       const inventoryProducts = products.filter((product) => !product.catalogOnly);
@@ -730,7 +737,7 @@ export default function Stock() {
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     const matchesOwner = holdingsEnabled || ownerFilter === 'all' || p.inventoryOwnerId === ownerFilter;
     const visibleStock = holdingsEnabled
-      ? getVisibleHoldingEconomics(p, visibleHoldings, 'all').stock
+      ? getVisibleHoldingEconomics(p, visibleHoldingsByProduct.get(p.id) ?? [], 'all').stock
       : p.stock;
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'disponible' && visibleStock > 0) ||
@@ -738,12 +745,13 @@ export default function Stock() {
       (statusFilter === 'reponer' && restockProductIds.has(p.id));
     return matchesSearch && matchesCategory && matchesOwner && matchesStatus;
     });
-  }, [categoryFilter, deferredSearch, holdingsEnabled, inventoryOwners, ownerFilter, ownerVisibleProducts, restockProductIds, statusFilter, visibleHoldings]);
+  }, [categoryFilter, deferredSearch, holdingsEnabled, inventoryOwners, ownerFilter, ownerVisibleProducts, restockProductIds, statusFilter, visibleHoldingsByProduct]);
 
   const selectableIds = useMemo(
     () => filteredProducts.filter((p) => !normalizeBarcode(p.barcode ?? '')).map((p) => p.id),
     [filteredProducts],
   );
+  const pagination = usePagination(filteredProducts);
   const allSelectableSelected = selectableIds.length > 0 &&
     selectableIds.every((id) => selectedIds.has(id));
   const toggleSelectAll = () => {
@@ -1122,11 +1130,11 @@ export default function Stock() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? filteredProducts.map((p) => {
+              {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? pagination.rows.map((p) => {
                 const hasBarcode = Boolean(normalizeBarcode(p.barcode ?? ''));
                 const isGenerating = generatingFor === p.id;
                 const economics = holdingsEnabled
-                  ? getVisibleHoldingEconomics(p, visibleHoldings, 'all')
+                  ? getVisibleHoldingEconomics(p, visibleHoldingsByProduct.get(p.id) ?? [], 'all')
                   : {
                     stock: p.stock,
                     minStock: p.minStock,
@@ -1174,10 +1182,9 @@ export default function Stock() {
                         <span className="text-[10px] bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
                           {p.category}
                         </span>
-                        {holdingsEnabled ? visibleHoldings
-                          .filter((holding) => holding.productId === p.id)
+                        {holdingsEnabled ? (visibleHoldingsByProduct.get(p.id) ?? [])
                           .map((holding) => {
-                            const owner = inventoryOwners.find((item) => item.id === holding.inventoryOwnerId);
+                            const owner = inventoryOwnersById.get(holding.inventoryOwnerId);
                             return owner ? (
                               <span key={holding.id} className="ml-1 text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded font-bold">
                                 {owner.name}: {holding.stock}
@@ -1294,6 +1301,7 @@ export default function Stock() {
               )}
             </tbody>
           </table>
+          <Pagination {...pagination} />
         </div>
       </div>
 

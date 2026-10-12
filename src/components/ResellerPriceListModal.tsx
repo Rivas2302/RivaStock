@@ -379,7 +379,7 @@ export default function ResellerPriceListModal({
     }
   };
 
-  const handlePdf = (action: 'preview' | 'download') => {
+  const handlePdf = async (action: 'preview' | 'download') => {
     if (!list || generating || items.length === 0) return;
     const useNativePdfPreview = action === 'preview' && window.matchMedia(
       '(max-width: 767px), (hover: none) and (pointer: coarse)',
@@ -393,7 +393,7 @@ export default function ResellerPriceListModal({
         minimumOrderAmount,
         minimumOrderQuantity,
       });
-      const pdf = createPriceListPdf({
+      const pdf = await createPriceListPdf({
         products: buildPriceListProducts(products, draftList, items),
         categories,
         businessName,

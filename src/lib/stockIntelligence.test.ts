@@ -33,6 +33,25 @@ const sale = (overrides: Partial<Sale> = {}): Sale => ({
 });
 
 describe('getRestockRecommendations', () => {
+  it('preserves duplicate ticket lines, legacy quantities and inclusive lookback boundaries', () => {
+    const sales = [
+      sale({ items: [
+        { productId: 'product-1', productName: 'Base', quantity: 2, price: 200 },
+        { productId: 'product-1', productName: 'Base', quantity: 3, price: 200 },
+        { productId: 'other', productName: 'Other', quantity: 99, price: 200 },
+      ] }),
+      sale({ quantity: 4, items: [] }),
+      sale({ date: '2026-06-12', quantity: 1 }),
+      sale({ date: '2026-06-11', quantity: 99 }),
+      sale({ date: '2026-07-13', quantity: 99 }),
+      sale({ date: 'invalid', quantity: 99 }),
+      sale({ status: 'Pendiente', quantity: 99 }),
+    ];
+    const before = JSON.stringify(sales);
+    const [result] = getRestockRecommendations([product()], sales, new Date('2026-07-12T12:00:00'));
+    expect(result.unitsSoldLast30Days).toBe(10);
+    expect(JSON.stringify(sales)).toBe(before);
+  });
   it('uses recent paid itemized sales to calculate coverage and suggested quantity', () => {
     const result = getRestockRecommendations(
       [product()],

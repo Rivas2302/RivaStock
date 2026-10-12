@@ -1,3 +1,5 @@
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
@@ -162,6 +164,7 @@ export default function Quotes() {
       return matchSearch && matchStatus;
     });
   }, [quotes, search, statusFilter]);
+  const pagination = usePagination(filteredQuotes);
 
   const generateNumber = async (): Promise<string> => {
     try {
@@ -496,7 +499,7 @@ export default function Quotes() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredQuotes.map(q => {
+              {pagination.rows.map(q => {
                 const effective = getEffectiveStatus(q);
                 const expiresDate = new Date(q.expiresAt);
                 const daysLeft = Math.ceil((expiresDate.getTime() - Date.now()) / 86400000);
@@ -577,6 +580,7 @@ export default function Quotes() {
               )}
             </tbody>
           </table>
+          <Pagination {...pagination} />
         </div>
       </div>
 

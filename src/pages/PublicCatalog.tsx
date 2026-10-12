@@ -41,6 +41,8 @@ import {
   Clock3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 
 const ON_ORDER_EXPLANATION = 'Estos productos no tienen stock inmediato: se encargan especialmente y requieren un plazo adicional. Antes de confirmar la compra te informaremos la disponibilidad y la demora estimada.';
 
@@ -283,9 +285,12 @@ useEffect(() => {
     }));
   };
 
-  const { cartItemCount, cartTotal, filteredProducts } = useMemo(() => {
+  const { cartItemCount, cartTotal } = useMemo(() => {
     const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
     const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
+    return { cartItemCount, cartTotal };
+  }, [cart]);
+  const filteredProducts = useMemo(() => {
     const searchValue = deferredSearch.toLowerCase();
 
     const filteredProducts = products.filter((product) => {
@@ -298,8 +303,9 @@ useEffect(() => {
       return matchesSearch && matchesCategory && matchesAvailability;
     });
 
-    return { cartItemCount, cartTotal, filteredProducts };
-  }, [activeCategory, availabilityFilter, cart, channel, deferredSearch, products]);
+    return filteredProducts;
+  }, [activeCategory, availabilityFilter, channel, deferredSearch, products]);
+  const pagination = usePagination(filteredProducts, 48);
 
   const availabilityCounts = useMemo(() => ({
     all: products.length,
@@ -885,7 +891,7 @@ if (loading) {
         )}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4">
           <AnimatePresence mode="popLayout">
-            {filteredProducts.map((product) => (
+            {pagination.rows.map((product) => (
               <motion.div
                 key={product.id}
                 layout
@@ -1095,6 +1101,7 @@ if (loading) {
             ))}
           </AnimatePresence>
         </div>
+        <Pagination {...pagination} />
 
         {filteredProducts.length === 0 && (
           <div className="text-center py-40 space-y-6">

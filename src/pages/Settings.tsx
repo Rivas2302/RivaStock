@@ -5,6 +5,7 @@ import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
+import { optimizeUploadImage } from '../lib/imageOptimization';
 import {
   Category,
   PriceRange,
@@ -830,7 +831,8 @@ export default function Settings() {
                                 try {
                                   setIsUploadingBanner(true);
                                   setBannerUploadProgress(50);
-                                  const url = await uploadToStorage(`${user.uid}/banner`, file, file.type);
+                                  const optimized = await optimizeUploadImage(file, 1920);
+                                  const url = await uploadToStorage(`${user.uid}/banner`, optimized, optimized.type);
                                   setBannerUploadProgress(100);
                                   await handleUpdateCatalog({ bannerUrl: url });
                                   showMessage('Banner actualizado correctamente');

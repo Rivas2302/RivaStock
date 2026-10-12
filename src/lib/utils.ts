@@ -49,8 +49,7 @@ export function formatDate(dateStr: string): string {
 }
 
 // Returns today's date as YYYY-MM-DD in local timezone (avoids UTC offset issues)
-export function todayString(): string {
-  const now = new Date();
+export function todayString(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 

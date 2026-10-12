@@ -23,6 +23,8 @@ import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 import '../styles/business-redesign.css';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
@@ -259,6 +261,7 @@ export default function CashFlow() {
       totalPendingIncome,
     };
   }, [deferredSearch, entries, typeFilter]);
+  const pagination = usePagination(filteredEntries);
 
   const handleExport = async (format: 'excel' | 'pdf') => {
     if (!user || exporting) return;
@@ -283,7 +286,7 @@ export default function CashFlow() {
 
     try {
       if (format === 'excel') {
-        exportToExcel(rows, [
+        await exportToExcel(rows, [
           { header: 'Fecha', value: row => row.fecha, width: 14 },
           { header: 'Tipo', value: row => row.tipo, width: 12 },
           { header: 'Descripción', value: row => row.descripcion, width: 34 },
@@ -475,7 +478,7 @@ export default function CashFlow() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredEntries.map((e) => (
+              {pagination.rows.map((e) => (
                 <tr key={e.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(e.date)}</td>
                   <td className="px-6 py-4">
@@ -560,6 +563,7 @@ export default function CashFlow() {
               )}
             </tbody>
           </table>
+          <Pagination {...pagination} />
         </div>
       </div>
 

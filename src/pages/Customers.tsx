@@ -1,3 +1,5 @@
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
@@ -94,6 +96,7 @@ export default function Customers() {
     if (!q) return customers;
     return customers.filter(c => c.nameLower.includes(q) || c.phone?.includes(q));
   }, [customers, search]);
+  const pagination = usePagination(filteredCustomers);
 
   const loadTransactions = async (customerId: string) => {
     setLoadingTx(true);
@@ -379,7 +382,7 @@ export default function Customers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredCustomers.map(c => (
+              {pagination.rows.map(c => (
                 <tr key={c.id} className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-900 dark:text-white">{c.name}</p>
@@ -436,6 +439,7 @@ export default function Customers() {
               )}
             </tbody>
           </table>
+          <Pagination {...pagination} />
         </div>
       </div>
 

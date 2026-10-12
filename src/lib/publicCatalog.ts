@@ -32,6 +32,19 @@ export async function getPublicCatalogProducts(slug: string): Promise<PublicCata
   return (Array.isArray(data) ? data : []).map((product) => normalizePublicProduct(product as PublicProductPayload));
 }
 
+export async function getPublicCatalogProduct(slug: string, productId: string): Promise<PublicCatalogProduct | null> {
+  const { data, error } = await supabase.rpc('get_public_catalog_product', {
+    p_slug: slug, p_product_id: productId,
+  });
+  // Permit frontend-first deployment; only a missing RPC uses the legacy
+  // catalog. Permission, connection and other server errors must not be hidden.
+  if (error?.code === 'PGRST202' || error?.code === '42883') {
+    return (await getPublicCatalogProducts(slug)).find(product => product.id === productId) ?? null;
+  }
+  if (error) throw new Error(`[get_public_catalog_product] ${error.message}`);
+  return data ? normalizePublicProduct(data as PublicProductPayload) : null;
+}
+
 export async function getResellerCatalogStatus(slug: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('get_reseller_catalog_status', { p_slug: slug });
   if (error) throw new Error(`[get_reseller_catalog_status] ${error.message}`);

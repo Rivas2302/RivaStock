@@ -29,8 +29,8 @@ const category: Category = {
 };
 
 describe('price list PDF', () => {
-  it('generates a non-empty PDF blob for the reseller preview', () => {
-    const pdf = createPriceListPdf({
+  it('generates a non-empty PDF blob for the reseller preview', async () => {
+    const pdf = await createPriceListPdf({
       products: [product],
       categories: [category],
       businessName: 'RivaStock',

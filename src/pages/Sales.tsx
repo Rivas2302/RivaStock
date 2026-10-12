@@ -1,4 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
@@ -36,6 +38,7 @@ import {
   isQuoteSale,
 } from '../lib/sales';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import { showToast } from '../lib/toast';
 import {
   buildAttributedSaleCommandItems,
   getSaleRefundEligibility,
@@ -99,6 +102,7 @@ export default function Sales() {
   });
 
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [preferredOwnerId, setPreferredOwnerId] = useState<string>('');
@@ -123,68 +127,82 @@ export default function Sales() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showExportMenu]);
 
-  const handleExportExcel = () => {
-    if (!user) return;
-    const generatedAt = new Date().toISOString().slice(0, 10);
-    exportToExcel(filteredSales, [
-      { header: 'Fecha', value: sale => formatDate(sale.date), width: 14 },
-      { header: 'Producto', value: sale => sale.productName, width: 30 },
-      { header: 'Cliente', value: sale => sale.client || '-', width: 24 },
-      { header: 'Cantidad', value: sale => sale.quantity, width: 10 },
-      { header: 'Precio Unitario', value: sale => sale.unitPrice === null ? '-' : roundPrice(sale.unitPrice), width: 16 },
-      { header: 'Ajuste', value: sale => sale.adjustment ?? 0, width: 12 },
-      { header: 'Total', value: sale => roundPrice(sale.total), width: 16 },
-      { header: 'Método de Pago', value: sale => sale.paymentMethod || '-', width: 18 },
-      { header: 'Estado', value: sale => sale.status, width: 14 },
-      { header: 'Vista', value: sale => sale.viewLabel, width: 16 },
-    ], `ventas-${generatedAt}.xlsx`, 'Ventas', {
-      currencySymbol: user.currencySymbol,
-      summary: [
-        { label: 'Negocio', value: user.businessName },
-        { label: 'Filtro de estado', value: statusFilter === 'all' ? 'Todos' : statusFilter },
-        { label: 'Búsqueda', value: search.trim() || 'Sin filtro' },
-        { label: 'Ventas exportadas', value: String(filteredSales.length) },
-      ],
-    });
-    setShowExportMenu(false);
+  const handleExportExcel = async () => {
+    if (!user || exporting) return;
+    setExporting(true);
+    try {
+      const generatedAt = new Date().toISOString().slice(0, 10);
+      await exportToExcel(filteredSales, [
+        { header: 'Fecha', value: sale => formatDate(sale.date), width: 14 },
+        { header: 'Producto', value: sale => sale.productName, width: 30 },
+        { header: 'Cliente', value: sale => sale.client || '-', width: 24 },
+        { header: 'Cantidad', value: sale => sale.quantity, width: 10 },
+        { header: 'Precio Unitario', value: sale => sale.unitPrice === null ? '-' : roundPrice(sale.unitPrice), width: 16 },
+        { header: 'Ajuste', value: sale => sale.adjustment ?? 0, width: 12 },
+        { header: 'Total', value: sale => roundPrice(sale.total), width: 16 },
+        { header: 'Método de Pago', value: sale => sale.paymentMethod || '-', width: 18 },
+        { header: 'Estado', value: sale => sale.status, width: 14 },
+        { header: 'Vista', value: sale => sale.viewLabel, width: 16 },
+      ], `ventas-${generatedAt}.xlsx`, 'Ventas', {
+        currencySymbol: user.currencySymbol,
+        summary: [
+          { label: 'Negocio', value: user.businessName },
+          { label: 'Filtro de estado', value: statusFilter === 'all' ? 'Todos' : statusFilter },
+          { label: 'Búsqueda', value: search.trim() || 'Sin filtro' },
+          { label: 'Ventas exportadas', value: String(filteredSales.length) },
+        ],
+      });
+      setShowExportMenu(false);
+    } catch {
+      showToast('No se pudo exportar el archivo Excel.', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleExportPDF = async () => {
-    if (!user) return;
-    const generatedAt = new Date().toISOString().slice(0, 10);
-    const filters = [
-      statusFilter === 'all' ? 'Todos los estados' : `Estado: ${statusFilter}`,
-      search.trim() ? `Búsqueda: ${search.trim()}` : null,
-    ].filter(Boolean).join(' · ');
-    await exportToPDF({
-      businessName: user.businessName,
-      currencySymbol: user.currencySymbol,
-      rangeLabel: filters,
-    }, {
-      title: 'Informe de ventas',
-      columns: [
-        { header: 'Fecha', dataKey: 'fecha' },
-        { header: 'Producto', dataKey: 'producto' },
-        { header: 'Cliente', dataKey: 'cliente' },
-        { header: 'Cant.', dataKey: 'cantidad' },
-        { header: 'Total', dataKey: 'total' },
-        { header: 'Método', dataKey: 'metodo' },
-        { header: 'Estado', dataKey: 'estado' },
-        { header: 'Vista', dataKey: 'vista' },
-      ],
-      rows: filteredSales.map((sale) => ({
-        fecha: formatDate(sale.date),
-        producto: sale.productName,
-        cliente: sale.client || '-',
-        cantidad: sale.quantity,
-        total: formatCurrency(roundPrice(sale.total)),
-        metodo: sale.paymentMethod || '-',
-        estado: sale.status,
-        vista: sale.viewLabel,
-      })),
-      fileName: `ventas-${generatedAt}.pdf`,
-    });
-    setShowExportMenu(false);
+    if (!user || exporting) return;
+    setExporting(true);
+    try {
+      const generatedAt = new Date().toISOString().slice(0, 10);
+      const filters = [
+        statusFilter === 'all' ? 'Todos los estados' : `Estado: ${statusFilter}`,
+        search.trim() ? `Búsqueda: ${search.trim()}` : null,
+      ].filter(Boolean).join(' · ');
+      await exportToPDF({
+        businessName: user.businessName,
+        currencySymbol: user.currencySymbol,
+        rangeLabel: filters,
+      }, {
+        title: 'Informe de ventas',
+        columns: [
+          { header: 'Fecha', dataKey: 'fecha' },
+          { header: 'Producto', dataKey: 'producto' },
+          { header: 'Cliente', dataKey: 'cliente' },
+          { header: 'Cant.', dataKey: 'cantidad' },
+          { header: 'Total', dataKey: 'total' },
+          { header: 'Método', dataKey: 'metodo' },
+          { header: 'Estado', dataKey: 'estado' },
+          { header: 'Vista', dataKey: 'vista' },
+        ],
+        rows: filteredSales.map((sale) => ({
+          fecha: formatDate(sale.date),
+          producto: sale.productName,
+          cliente: sale.client || '-',
+          cantidad: sale.quantity,
+          total: formatCurrency(roundPrice(sale.total)),
+          metodo: sale.paymentMethod || '-',
+          estado: sale.status,
+          vista: sale.viewLabel,
+        })),
+        fileName: `ventas-${generatedAt}.pdf`,
+      });
+      setShowExportMenu(false);
+    } catch {
+      showToast('No se pudo exportar el PDF.', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const filteredCreditCustomers = useMemo(() => {
@@ -621,20 +639,18 @@ export default function Sales() {
     }
   };
 
+  // Attribution changes only with the underlying dataset/scope, not each
+  // search keystroke. Keep complete economics separate from display pages.
+  const projectedSales = useMemo(() => projectAttributedSales(
+    sales, saleAllocations, saleItems, allowedInventoryOwnerIds, ownerFilter, holdingsEnabled,
+  ), [sales, saleAllocations, saleItems, allowedInventoryOwnerIds, ownerFilter, holdingsEnabled]);
+
   const { filteredSales, totalCollected, totalPending, totalSold } = useMemo(() => {
     let totalSold = 0;
     let totalCollected = 0;
     let totalPending = 0;
     const searchValue = deferredSearch.toLowerCase();
 
-    const projectedSales = projectAttributedSales(
-      sales,
-      saleAllocations,
-      saleItems,
-      allowedInventoryOwnerIds,
-      ownerFilter,
-      holdingsEnabled,
-    );
     const filteredSales = projectedSales.filter((sale) => {
       const roundedTotal = roundPrice(sale.total);
       totalSold += roundedTotal;
@@ -657,10 +673,8 @@ export default function Sales() {
     });
 
     return { filteredSales, totalCollected, totalPending, totalSold };
-  }, [
-    allowedInventoryOwnerIds, deferredSearch, holdingsEnabled, ownerFilter,
-    saleAllocations, saleItems, sales, statusFilter,
-  ]);
+  }, [deferredSearch, projectedSales, statusFilter]);
+  const pagination = usePagination(filteredSales);
 
   return (
     <div className="operational-page space-y-6">
@@ -683,6 +697,7 @@ export default function Sales() {
               <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-56 max-w-[calc(100vw_-_2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm z-20 overflow-hidden">
                 <button
                   onClick={handleExportExcel}
+                  disabled={exporting}
                   className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3"
                 >
                   <FileSpreadsheet size={16} className="text-emerald-600" />
@@ -690,6 +705,7 @@ export default function Sales() {
                 </button>
                 <button
                   onClick={handleExportPDF}
+                  disabled={exporting}
                   className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800"
                 >
                   <FileDown size={16} className="text-rose-600" />
@@ -839,7 +855,7 @@ export default function Sales() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredSales.map((s) => (
+              {pagination.rows.map((s) => (
                 <React.Fragment key={s.id}>
                   <tr className="table-row text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 dark:text-slate-300 whitespace-nowrap">{formatDate(s.date)}</td>
@@ -1039,6 +1055,7 @@ export default function Sales() {
               )}
             </tbody>
           </table>
+          <Pagination {...pagination} />
         </div>
       </div>
 

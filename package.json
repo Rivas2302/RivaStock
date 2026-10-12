@@ -10,7 +10,10 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest run src",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "perf:bundle": "node scripts/performance-report.mjs",
+    "perf:check": "node scripts/performance-report.mjs --check",
+    "perf:restock": "node --import tsx scripts/benchmark-restock.mjs"
   },
   "engines": {
     "node": ">=20"

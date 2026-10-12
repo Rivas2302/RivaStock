@@ -242,6 +242,17 @@ export interface VisibleHoldingEconomics {
   hasMixedPurchaseCosts: boolean;
 }
 
+/** Index an already authorized dataset; never widen the actor's scope. */
+export function indexHoldingsByProduct(holdings: InventoryHolding[]): Map<string, InventoryHolding[]> {
+  const byProduct = new Map<string, InventoryHolding[]>();
+  for (const holding of holdings) {
+    const group = byProduct.get(holding.productId) ?? [];
+    group.push(holding);
+    byProduct.set(holding.productId, group);
+  }
+  return byProduct;
+}
+
 export function getVisibleHoldingEconomics(
   product: Pick<Product, 'id'>,
   holdings: InventoryHolding[],

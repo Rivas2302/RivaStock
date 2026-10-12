@@ -1,7 +1,10 @@
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db } from '../lib/db';
+import { showToast } from '../lib/toast';
 import { formatCurrency, formatDate, roundPrice, todayString, cn } from '../lib/utils';
 import {
   exportSalesReportToExcel,
@@ -110,6 +113,7 @@ export default function Reports() {
   const [error, setError]         = useState<string | null>(null);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [logoUrl, setLogoUrl]     = useState<string | undefined>(undefined);
+  const pagination = usePagination(report?.sales ?? []);
 
   // Load logo (catalog config) for the PDF header
   useEffect(() => {
@@ -196,18 +200,21 @@ export default function Reports() {
     }));
   }, [report]);
 
-  const handleExportExcel = () => {
-    if (!report || !user) return;
+  const handleExportExcel = async () => {
+    if (!report || !user || exporting) return;
     setExporting('excel');
     try {
       const fileName = `reporte-ventas-${filters.from}_a_${filters.to}.xlsx`;
-      exportSalesReportToExcel(
+      await exportSalesReportToExcel(
         report.sales,
         report.kpis,
         fileName,
         user.currencySymbol || '$',
         rangeLabel(filters.from, filters.to),
       );
+    } catch (err) {
+      console.error('Excel export error:', err);
+      showToast('No se pudo exportar el archivo Excel.', 'error');
     } finally {
       // Defer state reset to next tick so the spinner is visible briefly
       setTimeout(() => setExporting(null), 250);
@@ -228,6 +235,7 @@ export default function Reports() {
       });
     } catch (err) {
       console.error('PDF export error:', err);
+      showToast('No se pudo exportar el PDF.', 'error');
     } finally {
       setTimeout(() => setExporting(null), 250);
     }
@@ -630,7 +638,7 @@ export default function Reports() {
                       </td>
                     </tr>
                   ) : (
-                    report.sales.map((s, idx) => (
+                    pagination.rows.map((s, idx) => (
                       <tr
                         key={`${s.id}-${idx}`}
                         className="text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
@@ -662,6 +670,7 @@ export default function Reports() {
                   )}
                 </tbody>
               </table>
+              <Pagination {...pagination} />
             </div>
           </div>
         </>

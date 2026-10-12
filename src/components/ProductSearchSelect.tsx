@@ -32,6 +32,7 @@ export default function ProductSearchSelect({
   });
   const [isOpen, setIsOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastValueRef = useRef(value);
@@ -66,7 +67,7 @@ export default function ProductSearchSelect({
     );
   }, [products, inputText, inventoryOwners]);
 
-  useEffect(() => { setHighlighted(0); }, [filtered]);
+  useEffect(() => { setHighlighted(0); setVisibleCount(50); }, [filtered]);
 
   const handleSelect = (product: Product) => {
     lastValueRef.current = product.id;
@@ -92,6 +93,7 @@ export default function ProductSearchSelect({
       e.preventDefault();
       if (!isOpen) { setIsOpen(true); return; }
       setHighlighted(i => Math.min(i + 1, filtered.length - 1));
+      setVisibleCount(count => Math.max(count, highlighted + 2));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlighted(i => Math.max(i - 1, 0));
@@ -166,7 +168,7 @@ export default function ProductSearchSelect({
               </div>
             ) : (
               <ul className="max-h-56 overflow-y-auto py-1">
-                {filtered.map((p, idx) => (
+                {filtered.slice(0, visibleCount).map((p, idx) => (
                   <li key={p.id}>
                     <button
                       type="button"
@@ -209,6 +211,13 @@ export default function ProductSearchSelect({
                     </button>
                   </li>
                 ))}
+                {visibleCount < filtered.length && (
+                  <li>
+                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setVisibleCount(count => count + 50)} className="w-full px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                      Mostrar más ({filtered.length - visibleCount})
+                    </button>
+                  </li>
+                )}
               </ul>
             )}
           </motion.div>

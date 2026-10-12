@@ -341,6 +341,13 @@ export function projectAttributedSales(
   if (allowedOwnerIds.length === 0) return [];
   const allowed = new Set(allowedOwnerIds);
   const allocationsBySale = new Map<string, SaleItemAllocation[]>();
+  const snapshotIdsBySale = new Map<string, Set<string>>();
+  for (const item of visibleSaleItems) {
+    if (item.reversedAt) continue;
+    const ids = snapshotIdsBySale.get(item.saleIdSnapshot) ?? new Set<string>();
+    ids.add(item.id);
+    snapshotIdsBySale.set(item.saleIdSnapshot, ids);
+  }
   for (const allocation of allocations) {
     if (
       allocation.reversedAt
@@ -374,9 +381,7 @@ export function projectAttributedSales(
     const items = [...itemsById.values()];
     const total = roundMoney(items.reduce((sum, item) => sum + item.revenue, 0));
     const expectedLineCount = sale.items?.length ?? 1;
-    const snapshotLineIds = new Set(visibleSaleItems
-      .filter((item) => item.saleIdSnapshot === sale.id && !item.reversedAt)
-      .map((item) => item.id));
+    const snapshotLineIds = snapshotIdsBySale.get(sale.id) ?? new Set<string>();
     const hasAllLines = snapshotLineIds.size === expectedLineCount
       && items.length === expectedLineCount
       && items.every((item) => snapshotLineIds.has(item.saleItemId));

@@ -12,16 +12,21 @@ export default defineConfig(() => {
       },
     },
     build: {
+      manifest: true,
       target: ['chrome79', 'firefox67', 'safari13.1'],
       chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (!id.includes('node_modules')) return;
-            if (id.includes('@supabase')) return 'supabase';
-            if (id.includes('lucide-react') || id.includes('motion')) return 'ui-vendor';
-            if (id.includes('recharts')) return 'charts-vendor';
-            if (id.includes('react') || id.includes('scheduler')) return 'react-vendor';
+            const normalized = id.replace(/\\/g, '/');
+            if (!normalized.includes('/node_modules/')) return;
+            // Recharts also uses clsx: assigning it explicitly prevents the
+            // app's tiny class-name helper from eagerly loading all charts.
+            if (/\/node_modules\/(clsx|tailwind-merge)\//.test(normalized)) return 'shared-vendor';
+            if (normalized.includes('/node_modules/@supabase/')) return 'supabase';
+            if (/\/node_modules\/(lucide-react|motion|framer-motion|motion-dom|motion-utils)\//.test(normalized)) return 'ui-vendor';
+            if (normalized.includes('/node_modules/recharts/')) return 'charts-vendor';
+            if (/\/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(normalized)) return 'react-vendor';
           },
         },
       },

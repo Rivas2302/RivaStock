@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfRuntime } from './pdfRuntime';
+import type jsPDF from 'jspdf';
 import type { Category, InventoryOwner, PriceListAvailability, Product } from '../types';
 import { roundPrice } from './utils';
 import { getInventoryOwnerName } from './inventoryOwners';
@@ -62,7 +62,9 @@ const groupProductsByCategory = (products: Product[], categories: Category[]): C
 
   for (const product of products) {
     const category = product.category?.trim() || 'Sin categoría';
-    buckets.set(category, [...(buckets.get(category) ?? []), product]);
+    const items = buckets.get(category) ?? [];
+    items.push(product);
+    buckets.set(category, items);
   }
 
   const ordered = categories.flatMap((category) => {
@@ -80,7 +82,7 @@ const groupProductsByCategory = (products: Product[], categories: Category[]): C
   }));
 };
 
-export function createPriceListPdf({
+export async function createPriceListPdf({
   products,
   categories,
   businessName,
@@ -90,7 +92,8 @@ export function createPriceListPdf({
   fileNamePrefix = 'lista-precios',
   availabilityByProductId,
   commercialNotice,
-}: PriceListPdfOptions): PriceListPdf {
+}: PriceListPdfOptions): Promise<PriceListPdf> {
+  const { jsPDF, autoTable } = await loadPdfRuntime();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
-import { BarcodeFormat, DecodeHintType } from '@zxing/library';
+import type { IScannerControls } from '@zxing/browser';
 import { BarcodeCooldown, normalizeBarcode } from '../lib/barcode';
 import { scanFeedback } from '../lib/sound';
 
@@ -32,16 +31,6 @@ interface State {
   /** Tap a point in the video (normalized 0..1) to focus there. */
   focusAt: (xNorm: number, yNorm: number) => void;
 }
-
-const FORMATS: BarcodeFormat[] = [
-  BarcodeFormat.EAN_13,
-  BarcodeFormat.EAN_8,
-  BarcodeFormat.UPC_A,
-  BarcodeFormat.UPC_E,
-  BarcodeFormat.CODE_128,
-  BarcodeFormat.CODE_39,
-  BarcodeFormat.QR_CODE,
-];
 
 // Labels we want to AVOID — these are auxiliary lenses that focus poorly for barcodes.
 // Multi-camera phones (specially Samsung) expose ultra-wide, telephoto, macro, depth, etc.
@@ -274,12 +263,20 @@ export function useBarcodeScanner({
     setTorchOn(false);
     torchOnRef.current = false;
 
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, FORMATS);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    const reader = new BrowserMultiFormatReader(hints);
-
     (async () => {
+      const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+        import('@zxing/browser'),
+        import('@zxing/library'),
+      ]);
+      if (cancelled) return;
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
+        BarcodeFormat.QR_CODE,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      const reader = new BrowserMultiFormatReader(hints);
       // 1. Pick the best rear camera (avoids ultra-wide / macro / front on multi-cam phones)
       const deviceId = await pickRearCameraId();
       if (cancelled) return;
@@ -367,7 +364,11 @@ export function useBarcodeScanner({
           setStatus('error');
           setError(classifyError(err));
         });
-    })();
+    })().catch((err) => {
+      if (cancelled) return;
+      setStatus('error');
+      setError(classifyError(err));
+    });
 
     return () => {
       cancelled = true;

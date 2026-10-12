@@ -7,6 +7,8 @@ import type { AuditEvent } from '../types';
 import { formatAuditEventTimestamp } from '../lib/auditEvent';
 import { getAuditDetailRows, getAuditSnapshots, formatAuditValue } from '../lib/auditDetails';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 import { cn } from '../lib/utils';
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -123,6 +125,7 @@ export default function AuditTrail() {
       return matchesEntity && matchesSearch;
     });
   }, [deferredSearch, entityFilter, events]);
+  const pagination = usePagination(filteredEvents);
 
   const handleExport = async (format: 'excel' | 'pdf') => {
     if (!user || exporting) return;
@@ -143,7 +146,7 @@ export default function AuditTrail() {
 
     try {
       if (format === 'excel') {
-        exportToExcel(rows, [
+        await exportToExcel(rows, [
           { header: 'Fecha', value: row => row.fecha, width: 22 },
           { header: 'Acción', value: row => row.accion, width: 18 },
           { header: 'Entidad', value: row => row.entidad, width: 18 },
@@ -214,7 +217,7 @@ export default function AuditTrail() {
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {loading ? <div className="p-10 text-center text-slate-500">Cargando historial...</div> : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredEvents.map((event) => (
+            {pagination.rows.map((event) => (
               <div key={event.id} className="flex items-center justify-between gap-4 p-4 sm:px-6">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"><History size={18} /></div>
@@ -231,6 +234,7 @@ export default function AuditTrail() {
         )}
       </div>
 
+      <Pagination {...pagination} />
       <Modal isOpen={selectedEvent !== null} onClose={() => setSelectedEvent(null)} title="Detalle del evento">
         {selectedEvent && (
           <div className="space-y-5">

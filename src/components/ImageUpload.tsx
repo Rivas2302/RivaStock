@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
+import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
 
 const MAX_IMAGES = 4;
 
@@ -36,6 +37,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   }, [productId, currentImages]);
 
   const handleFiles = async (files: FileList) => {
+    if (processing) return;
     const remaining = MAX_IMAGES - images.length;
     if (remaining <= 0) return;
 
@@ -57,9 +59,12 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     onUploadStart?.();
 
     try {
+      // Decode sequentially to bound peak memory on mobile devices.
+      const prepared: File[] = [];
+      for (const file of toProcess) prepared.push(await optimizeUploadImage(file));
       const urls = await Promise.all(
-        toProcess.map((f, i) => {
-          const ext = f.type === 'image/png' ? 'png' : 'webp';
+        prepared.map((f, i) => {
+          const ext = imageFileExtension(f);
           const path = `${ownerUid}/products/${productId}/${Date.now()}_${i}.${ext}`;
           return uploadToStorage(path, f, f.type);
         })
