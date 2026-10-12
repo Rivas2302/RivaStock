@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { QUERY_CACHE_TTL_MS } from './constants';
+import { retryRead } from './readRecovery';
 import { uuid } from './utils';
 import type { SalesReportData } from '../types';
 
@@ -140,7 +141,7 @@ function timeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Prom
     const timer = setTimeout(() => {
       reject(new Error(
         `La base de datos tardó más de ${Math.round(ms / 1000)}s en responder. ` +
-        `Probá recargar; si persiste, el proyecto puede estar en cold start (${label}).`
+        `Volvé a intentar cuando se restablezca la conexión (${label}).`
       ));
     }, ms);
     promise.then(
@@ -168,7 +169,7 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
     }
   }
 
-  const pending = timeoutPromise(loader(), PENDING_PROMISE_TIMEOUT_MS, key);
+  const pending = timeoutPromise(retryRead(loader), PENDING_PROMISE_TIMEOUT_MS, key);
   const entry: CacheEntry = {
     expiresAt: now + QUERY_CACHE_TTL_MS,
     hasValue: false,

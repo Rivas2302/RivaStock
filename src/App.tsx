@@ -44,11 +44,25 @@ function withSuspense(element: React.ReactNode) {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, authError, refetchData, logout } = useAuth();
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50 dark:bg-slate-950">
         <Loader2 className="animate-spin text-indigo-600" size={48} />
+      </div>
+    );
+  }
+  if (authError) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
+        <section role="alert" className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+          <h2 className="text-lg font-bold">No pudimos conectar con tu cuenta</h2>
+          <p className="mt-2 text-sm">{authError}</p>
+          <div className="mt-4 flex gap-3">
+            <button type="button" onClick={refetchData} className="rounded-lg bg-indigo-600 px-4 py-2 text-white">Reintentar conexión</button>
+            <button type="button" onClick={() => void logout()} className="rounded-lg border border-slate-300 px-4 py-2 dark:border-slate-600">Cerrar sesión</button>
+          </div>
+        </section>
       </div>
     );
   }

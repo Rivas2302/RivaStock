@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { from } = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock('./supabase', () => ({ supabase: { from } }));
@@ -12,8 +12,24 @@ function deferred<T>() {
 }
 
 beforeEach(() => { clearDbCache(); from.mockReset(); });
+afterEach(() => vi.useRealTimers());
 
 describe('query cache invalidation during requests', () => {
+  it('shares one bounded recovery attempt between simultaneous readers', async () => {
+    vi.useFakeTimers();
+    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: null, error: { message: 'AbortError: Lock broken by another request' } }) });
+    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: [{ id: 'recovered' }], error: null }) });
+    const readers = Promise.all([db.list('inventory_owners'), db.list('inventory_owners')]);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await readers).toEqual([[{ id: 'recovered' }], [{ id: 'recovered' }]]);
+    expect(from).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('never replays a write when it encounters the same lock error', async () => {
+    from.mockReturnValue({ insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: { message: 'Lock broken by another request' } }) }) }) });
+    await expect(db.create('products', { id: 'product-1' })).rejects.toThrow('Lock broken');
+    expect(from).toHaveBeenCalledOnce();
+  });
   it('does not let an old read replace a newer cached result', async () => {
     const old = deferred<{ data: { id: string }[]; error: null }>();
     from.mockReturnValueOnce({ select: () => old.promise });

@@ -2,11 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { UserProfile, PermissionMatrix, ALL_TRUE_PERMISSIONS } from './types';
 import { supabase } from './lib/supabase';
 import { clearDbCache, invalidateDbCache, fromDb } from './lib/db';
+import { retryRead, withDeadline } from './lib/readRecovery';
 import type { Session } from '@supabase/supabase-js';
-import {
-  INVENTORY_ACCESS_ERROR_MESSAGE,
-  resolveInventoryAccessState,
-} from './lib/inventoryAccess';
+import { resolveInventoryAccessState } from './lib/inventoryAccess';
 import { resolveAccountActor } from './lib/accountActor';
 
 interface LoadedAuth {
@@ -35,6 +33,7 @@ interface AuthContextType {
   holdingsEnabled: boolean;
   inventoryAccessError: string | null;
   loading: boolean;
+  authError: string | null;
   refetchToken: number;
   refetchData: () => void;
   login: (email: string, password: string) => Promise<void>;
@@ -46,14 +45,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function loadProfile(session: Session): Promise<LoadedAuth | null> {
+async function loadProfile(session: Session, signal: AbortSignal): Promise<LoadedAuth> {
   try {
     const collaboratorResult = await supabase
       .from('collaborators')
       .select('id, owner_uid, permissions')
       .eq('user_uid', session.user.id)
       .is('revoked_at', null)
-      .maybeSingle();
+      .abortSignal(signal).maybeSingle();
+    if (collaboratorResult.error) throw collaboratorResult.error;
     const accountActor = resolveAccountActor({
       actorUid: session.user.id,
       collaborator: collaboratorResult.data ? {
@@ -66,22 +66,14 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
     });
     const { isOwner, ownerUid, collaboratorId, permissions } = accountActor;
 
-    let profile: UserProfile | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data, error } = await supabase.rpc('get_owner_profile');
-      if (!error && data && data.length > 0) {
-        profile = fromDb<UserProfile>(data[0], true);
-        profile.uid = ownerUid;
-        break;
-      }
-      await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
-    }
-    if (!profile) throw new Error('No se pudo cargar el perfil. Recargá la página.');
+    const profileResult = await supabase.rpc('get_owner_profile').abortSignal(signal);
+    if (profileResult.error) throw profileResult.error;
+    if (!profileResult.data?.length) throw new Error('No se pudo verificar el perfil de la cuenta.');
+    const profile = fromDb<UserProfile>(profileResult.data[0], true);
+    profile.uid = ownerUid;
 
-    // Inventory-owner scope queries are best-effort: a failure here must NOT
-    // prevent the rest of the app (Stock, Sales, etc.) from loading. We log
-    // and fall back to the legacy single-owner model so the user keeps
-    // working with their existing products.
+    // A genuinely missing rollout schema may use the legacy model. Network,
+    // lock and permission errors must never silently broaden inventory scope.
     let inventoryAccess: ReturnType<typeof resolveInventoryAccessState>;
     try {
       const [membershipsResult, settingsResult, ownersResult] = await Promise.all([
@@ -89,23 +81,27 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
           .from('inventory_owner_memberships')
           .select('inventory_owner_id, is_default, can_operate')
           .eq('user_id', ownerUid)
-          .eq('actor_uid', session.user.id),
+          .eq('actor_uid', session.user.id).abortSignal(signal),
         supabase
           .from('inventory_operation_settings')
           .select('holdings_enabled')
           .eq('user_id', ownerUid)
-          .maybeSingle(),
+          .abortSignal(signal).maybeSingle(),
         supabase
           .from('inventory_owners')
           .select('id')
-          .eq('user_id', ownerUid),
+          .eq('user_id', ownerUid).abortSignal(signal),
       ]);
       const memberships = membershipsResult.data ?? [];
       const queryErrors = [membershipsResult.error, settingsResult.error, ownersResult.error]
-        .filter((error): error is NonNullable<typeof error> => Boolean(error))
-        .map((error) => error.message);
+        .filter((error): error is NonNullable<typeof error> => Boolean(error));
       if (queryErrors.length > 0) {
-        console.warn('[Auth] inventory-owner scope queries failed; falling back to legacy model.', queryErrors);
+        const missingSchema = (error: { code: string } | null) => error && ['42P01', 'PGRST205'].includes(error.code);
+        // A missing membership table does not authorize falling back if the
+        // account is already using owner-aware inventory.
+        const legacyVerified = missingSchema(settingsResult.error) || settingsResult.data?.holdings_enabled === false;
+        if (!queryErrors.every(missingSchema) || !legacyVerified) throw queryErrors[0];
+        console.warn('[Auth] inventory-owner schema not installed; using legacy model.');
         inventoryAccess = {
           allowedInventoryOwnerIds: [],
           operableInventoryOwnerIds: [],
@@ -126,14 +122,7 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
         });
       }
     } catch (inventoryErr) {
-      console.warn('[Auth] inventory-owner scope unavailable; falling back to legacy model.', inventoryErr);
-      inventoryAccess = {
-        allowedInventoryOwnerIds: [],
-        operableInventoryOwnerIds: [],
-        defaultInventoryOwnerId: null,
-        holdingsEnabled: false,
-        inventoryAccessError: null,
-      };
+      throw inventoryErr;
     }
 
     return {
@@ -146,7 +135,7 @@ async function loadProfile(session: Session): Promise<LoadedAuth | null> {
     };
   } catch (err) {
     console.error('[Auth] loadProfile error:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -154,83 +143,211 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth]                 = useState<LoadedAuth | null>(null);
   const [authUser, setAuthUser]         = useState<{ uid: string; email: string } | null>(null);
   const [loading, setLoading]           = useState(true);
+  const [authError, setAuthError]       = useState<string | null>(null);
   const [isReady, setIsReady]           = useState(false);
   const [refetchToken, setRefetchToken] = useState(0);
   const currentUserIdRef                = useRef<string | null>(null);
+  const authVersionRef = useRef(0);
+  const mountedRef = useRef(false);
+  const authRef = useRef<LoadedAuth | null>(null);
+  const profileJobRef = useRef<{
+    actorUid: string; version: number; controller: AbortController;
+    refreshData: boolean; promise: Promise<boolean>;
+  } | null>(null);
+  const refreshJobRef = useRef<Promise<void> | null>(null);
+  const refreshControllerRef = useRef<AbortController | null>(null);
+  const scheduledRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
-  const refetchData = useCallback(() => {
+  const clearAuthState = useCallback(() => {
+    authVersionRef.current++;
+    refreshControllerRef.current?.abort();
+    refreshControllerRef.current = null;
+    refreshJobRef.current = null;
+    currentUserIdRef.current = null;
+    profileJobRef.current?.controller.abort();
+    profileJobRef.current = null;
+    authRef.current = null;
     clearDbCache();
-    setRefetchToken(t => t + 1);
-    void supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) return;
-      const loaded = await loadProfile(data.session);
-      setAuth(loaded);
-    });
+    setAuth(null);
+    setAuthUser(null);
+    setAuthError(null);
+    setLoading(false);
   }, []);
 
-  const init = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
-        const loaded = await loadProfile(session);
-        if (loaded) {
-          currentUserIdRef.current = session.user.id;
-          setAuth(loaded);
-        } else {
-          console.warn('[Auth] Initial profile load failed; user must reload.');
+  const activateSession = useCallback((session: Session) => {
+    if (currentUserIdRef.current !== session.user.id) {
+      authVersionRef.current++;
+      refreshControllerRef.current?.abort();
+      refreshControllerRef.current = null;
+      refreshJobRef.current = null;
+      profileJobRef.current?.controller.abort();
+      profileJobRef.current = null;
+      currentUserIdRef.current = session.user.id;
+      authRef.current = null;
+      clearDbCache();
+      setAuth(null);
+      setLoading(true);
+    }
+    setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
+  }, []);
+
+  const requestProfile = useCallback((session: Session, refreshData = false): Promise<boolean> => {
+    if (!mountedRef.current) return Promise.resolve(false);
+    activateSession(session);
+    const existing = profileJobRef.current;
+    if (existing?.actorUid === session.user.id && existing.version === authVersionRef.current) {
+      existing.refreshData ||= refreshData;
+      return existing.promise;
+    }
+    const job = {
+      actorUid: session.user.id, version: authVersionRef.current,
+      controller: new AbortController(), refreshData,
+      promise: Promise.resolve(false),
+    };
+    profileJobRef.current = job;
+    const isCurrent = () => mountedRef.current && authVersionRef.current === job.version
+      && currentUserIdRef.current === job.actorUid;
+    setAuthError(null);
+    if (!authRef.current) setLoading(true);
+    job.promise = (async () => {
+      try {
+        const loaded = await withDeadline(
+          signal => retryRead(() => loadProfile(session, signal), signal),
+          25_000, job.controller.signal,
+        );
+        if (!isCurrent()) return false;
+        authRef.current = loaded;
+        setAuth(loaded);
+        if (job.refreshData) setRefetchToken(token => token + 1);
+        return true;
+      } catch (error) {
+        if (!isCurrent()) return false;
+        // Fail closed, but retain the actual auth session so reconnecting does
+        // not require a page reload or signing in again.
+        authRef.current = null;
+        clearDbCache();
+        setAuth(null);
+        setAuthError('No se pudo verificar la conexión con tu cuenta. Podés reintentar sin recargar la página.');
+        console.error('[Auth] profile verification failed:', error);
+        return false;
+      } finally {
+        if (isCurrent()) setLoading(false);
+        if (profileJobRef.current === job) profileJobRef.current = null;
+      }
+    })();
+    return job.promise;
+  }, [activateSession]);
+
+  const readSession = useCallback((parentSignal?: AbortSignal) => withDeadline(signal => retryRead(async () => {
+    const result = await supabase.auth.getSession();
+    if (result.error) throw result.error;
+    return result.data.session;
+  }, signal), 20_000, parentSignal), []);
+
+  const refetchData = useCallback(() => {
+    if (refreshJobRef.current) return;
+    const controller = new AbortController();
+    refreshControllerRef.current = controller;
+    const version = authVersionRef.current;
+    clearDbCache();
+    setAuthError(null);
+    if (!authRef.current) setLoading(true);
+    const refresh = (async () => {
+      try {
+        const session = await readSession(controller.signal);
+        if (!mountedRef.current || version !== authVersionRef.current) return;
+        if (!session) { clearAuthState(); return; }
+        await requestProfile(session, true);
+      } catch (error) {
+        if (!mountedRef.current || version !== authVersionRef.current) return;
+        authRef.current = null;
+        setAuth(null);
+        setAuthError('No se pudo restablecer la conexión. Volvé a intentar en unos segundos.');
+        setLoading(false);
+        console.error('[Auth] session refresh failed:', error);
+      } finally {
+        if (refreshJobRef.current === refresh) {
+          refreshJobRef.current = null;
+          refreshControllerRef.current = null;
         }
       }
+    })();
+    refreshJobRef.current = refresh;
+  }, [clearAuthState, readSession, requestProfile]);
+
+  const init = useCallback(async () => {
+    const version = authVersionRef.current;
+    try {
+      const session = await readSession();
+      if (!mountedRef.current || version !== authVersionRef.current) return;
+      // Register listeners only after SDK initialization, but before loading
+      // profile data so sign-out/account changes can cancel that work.
+      setIsReady(true);
+      if (session) {
+        await requestProfile(session);
+      } else {
+        setLoading(false);
+      }
     } catch (err) {
+      if (!mountedRef.current || version !== authVersionRef.current) return;
       console.error('[Auth] Init failed:', err);
-    } finally {
+      setAuthError('No se pudo establecer la conexión. Podés reintentar sin recargar la página.');
       setLoading(false);
       setIsReady(true);
     }
-  }, []);
+  }, [readSession, requestProfile]);
 
   useEffect(() => {
-    init();
+    mountedRef.current = true;
+    void init();
+    return () => {
+      mountedRef.current = false;
+      authVersionRef.current++;
+      refreshControllerRef.current?.abort();
+      refreshControllerRef.current = null;
+      refreshJobRef.current = null;
+      profileJobRef.current?.controller.abort();
+      profileJobRef.current = null;
+      for (const timer of scheduledRef.current) clearTimeout(timer);
+      scheduledRef.current.clear();
+    };
   }, [init]);
 
   useEffect(() => {
     if (!isReady) return;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
-          currentUserIdRef.current = null;
-          clearDbCache();
-          setAuth(null);
-          setAuthUser(null);
+          clearAuthState();
           return;
         }
 
         if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          if (currentUserIdRef.current === session.user.id) return;
+          if (currentUserIdRef.current === session.user.id && authRef.current) return;
         }
-
-        setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
-        const sameUser = currentUserIdRef.current === session.user.id;
-        const loaded = await loadProfile(session);
-
-        if (loaded) {
-          currentUserIdRef.current = session.user.id;
-          setAuth(loaded);
-          return;
-        }
-
-        setAuth(null);
-        if (sameUser) {
-          console.warn('[Auth] Profile re-fetch failed during', event, '— blocking access until reload.');
-        } else {
-          console.error('[Auth] Profile fetch failed for new session; user not signed in.');
-        }
+        if (event === 'INITIAL_SESSION' && currentUserIdRef.current === session.user.id
+          && (authRef.current || profileJobRef.current)) return;
+        activateSession(session);
+        const version = authVersionRef.current;
+        // Supabase invokes this callback inside its exclusive session lock.
+        // Return synchronously; even a fire-and-forget immediate SDK call can
+        // deadlock. Start database work in a later macrotask after lock release.
+        const timer = setTimeout(() => {
+          scheduledRef.current.delete(timer);
+          if (!mountedRef.current || version !== authVersionRef.current) return;
+          void requestProfile(session);
+        }, 0);
+        scheduledRef.current.add(timer);
       },
     );
 
-    return () => subscription.unsubscribe();
-  }, [isReady]);
+    return () => {
+      subscription.unsubscribe();
+      for (const timer of scheduledRef.current) clearTimeout(timer);
+      scheduledRef.current.clear();
+    };
+  }, [activateSession, clearAuthState, isReady, requestProfile]);
 
   const login = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -247,10 +364,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    currentUserIdRef.current = null;
-    clearDbCache();
-    setAuth(null);
-    setAuthUser(null);
+    clearAuthState();
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -281,8 +395,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUser = (updatedUser: UserProfile) => {
-    currentUserIdRef.current = updatedUser.uid;
+    // updatedUser.uid is the account owner, not necessarily the signed-in actor.
     invalidateDbCache('users');
+    if (authRef.current) authRef.current = { ...authRef.current, profile: updatedUser };
     setAuth(prev => prev ? { ...prev, profile: updatedUser } : null);
   };
 
@@ -303,6 +418,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ? auth.inventoryAccessError
           : null,
         loading,
+        authError,
         refetchToken,
         refetchData,
         login,

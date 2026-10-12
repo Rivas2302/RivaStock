@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { fetchWithDeadline } from './readRecovery';
 
 function normalizeSupabaseUrl(value: string | undefined): string {
   const trimmedValue = value?.trim() ?? '';
@@ -36,7 +37,7 @@ export const supabase: SupabaseClient =
       flowType: 'implicit',
     },
     global: {
-      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(65_000) }),
+      fetch: fetchWithDeadline,
     },
   });
 
