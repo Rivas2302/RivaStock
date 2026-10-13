@@ -6,11 +6,12 @@ import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
+import { formatFinancialAmount as formatCurrency, roundFinancialAmount as roundPrice, buildSaleSettlements } from '../lib/financialSettlement';
 import {
   Product, Sale, Customer, CustomerTransaction, InventoryHolding,
   SaleItemAllocation, SaleItemSnapshot,
 } from '../types';
-import { formatCurrency, cn, roundPrice, formatDate, todayString } from '../lib/utils';
+import { cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
   ScanLine,
@@ -71,6 +72,7 @@ export default function Sales() {
   const [saleAllocations, setSaleAllocations] = useState<SaleItemAllocation[]>([]);
   const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
@@ -227,25 +229,26 @@ export default function Sales() {
       salesResult, productsResult, customersResult, customerTransactionsResult,
       itemsResult, allocationsResult, holdingsResult,
     ] = await Promise.allSettled([
-      db.list<Sale>('sales', user.uid),
+      db.listAll<Sale>('sales', user.uid),
       db.list<Product>('products', user.uid),
-      db.list<Customer>('customers', user.uid),
-      holdingsEnabled ? db.list<CustomerTransaction>('customer_transactions', user.uid) : Promise.resolve([]),
-      holdingsEnabled ? db.list<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
-      holdingsEnabled ? db.list<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+      db.listAll<Customer>('customers', user.uid),
+      db.listAll<CustomerTransaction>('customer_transactions', user.uid),
+      holdingsEnabled ? db.listAll<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
+      holdingsEnabled ? db.listAll<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
       holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
     ]);
 
     if (
       salesResult.status === 'rejected'
+      || customerTransactionsResult.status === 'rejected'
       || (holdingsEnabled && (
         itemsResult.status === 'rejected'
         || allocationsResult.status === 'rejected'
         || holdingsResult.status === 'rejected'
-        || customerTransactionsResult.status === 'rejected'
       ))
     ) {
       console.error('No se pudo verificar la atribucion de ventas');
+      setLoadError('No se pudieron verificar las ventas y sus pagos.');
       setSales([]);
       setSaleItems([]);
       setSaleAllocations([]);
@@ -255,6 +258,7 @@ export default function Sales() {
       return;
     }
 
+    setLoadError(null);
     setSales(salesResult.value.sort((a, b) => {
       const dc = b.date.localeCompare(a.date);
       if (dc !== 0) return dc;
@@ -298,25 +302,26 @@ export default function Sales() {
         salesResult, productsResult, customersResult, customerTransactionsResult,
         itemsResult, allocationsResult, holdingsResult,
       ] = await Promise.allSettled([
-        db.list<Sale>('sales', user.uid),
+        db.listAll<Sale>('sales', user.uid),
         db.list<Product>('products', user.uid),
-        db.list<Customer>('customers', user.uid),
-        holdingsEnabled ? db.list<CustomerTransaction>('customer_transactions', user.uid) : Promise.resolve([]),
-        holdingsEnabled ? db.list<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
-        holdingsEnabled ? db.list<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+        db.listAll<Customer>('customers', user.uid),
+        db.listAll<CustomerTransaction>('customer_transactions', user.uid),
+        holdingsEnabled ? db.listAll<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
+        holdingsEnabled ? db.listAll<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       if (cancelled) return;
       if (
         salesResult.status === 'rejected'
+      || customerTransactionsResult.status === 'rejected'
         || (holdingsEnabled && (
           itemsResult.status === 'rejected'
           || allocationsResult.status === 'rejected'
           || holdingsResult.status === 'rejected'
-          || customerTransactionsResult.status === 'rejected'
         ))
       ) {
         console.error('No se pudo verificar la atribucion de ventas');
+        setLoadError('No se pudieron verificar las ventas y sus pagos.');
         setSales([]);
         setSaleItems([]);
         setSaleAllocations([]);
@@ -326,6 +331,7 @@ export default function Sales() {
         return;
       }
       if (salesResult.status === 'fulfilled') {
+        setLoadError(null);
         setSales(salesResult.value.sort((a, b) => {
           const dc = b.date.localeCompare(a.date);
           if (dc !== 0) return dc;
@@ -569,8 +575,14 @@ export default function Sales() {
     }
   };
 
+  const settlements = useMemo(() => buildSaleSettlements(sales, customerTransactions), [sales, customerTransactions]);
+  const protectedSaleIds = useMemo(() => new Set(customerTransactions
+    .filter(transaction => transaction.accountPayment && transaction.relatedSaleId)
+    .map(transaction => transaction.relatedSaleId)), [customerTransactions]);
+  const statusBusyRef = useRef(false);
+
   const handleToggleStatus = async (projection: OwnerSaleProjection) => {
-    if (statusSavingSaleId) return;
+    if (statusBusyRef.current || !canWrite) return;
     const sale = sales.find((candidate) => candidate.id === projection.id);
     if (!sale) return;
     if (isQuoteSale(sale)) {
@@ -582,7 +594,17 @@ export default function Sales() {
       alert(mutationDenial);
       return;
     }
+    const settlement = settlements.get(sale.id);
+    if (settlement?.customerId) {
+      if (sale.status === 'Pagado' || settlement.pending <= 0) {
+        alert('Esta venta ya está cobrada. No se puede volver a cobrar ni anular el pago cambiando su estado.');
+        return;
+      }
+      navigate(`/clientes?customer=${encodeURIComponent(settlement.customerId)}&sale=${encodeURIComponent(sale.id)}`);
+      return;
+    }
     const newStatus = isPendingSaleStatus(sale.status) ? 'Pagado' : 'Pendiente';
+    statusBusyRef.current = true;
     setStatusSavingSaleId(sale.id);
     try {
       if (holdingsEnabled) {
@@ -603,6 +625,7 @@ export default function Sales() {
       console.error('Error al cambiar estado:', error);
       alert(error instanceof Error ? error.message : 'Error al cambiar el estado.');
     } finally {
+      statusBusyRef.current = false;
       setStatusSavingSaleId(null);
     }
   };
@@ -610,6 +633,10 @@ export default function Sales() {
   const handleDelete = async (projection: OwnerSaleProjection) => {
     const sale = sales.find((candidate) => candidate.id === projection.id);
     if (!sale) return;
+    if (protectedSaleIds.has(sale.id)) {
+      alert('Esta venta tiene cobros de cuenta corriente registrados. No se puede eliminar su historial de pagos.');
+      return;
+    }
     const mutationDenial = saleMutationDenialReason(sale, projection);
     if (mutationDenial) {
       alert(mutationDenial);
@@ -655,10 +682,12 @@ export default function Sales() {
       const roundedTotal = roundPrice(sale.total);
       totalSold += roundedTotal;
 
-      if (sale.status === 'Pagado') {
-        totalCollected += roundedTotal;
-      } else if (isPendingSaleStatus(sale.status)) {
-        totalPending += roundedTotal;
+      const settlement = settlements.get(sale.id);
+      const fullTotal = settlement?.total ?? sale.total;
+      const fraction = fullTotal > 0 ? sale.total / fullTotal : 0;
+      if (settlement) {
+        totalCollected += settlement.paid * fraction;
+        totalPending += settlement.pending * fraction;
       }
 
       const matchesSearch =
@@ -673,8 +702,10 @@ export default function Sales() {
     });
 
     return { filteredSales, totalCollected, totalPending, totalSold };
-  }, [deferredSearch, projectedSales, statusFilter]);
+  }, [deferredSearch, projectedSales, statusFilter, settlements, sales]);
   const pagination = usePagination(filteredSales);
+
+  if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
 
   return (
     <div className="operational-page space-y-6">
@@ -929,13 +960,13 @@ export default function Sales() {
                       title={!canWrite
                         ? 'Sin permiso'
                         : projectedSaleMutationDenialReason(s)
-                          ?? (s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado')}
+                          ?? (settlements.get(s.id)?.customerId ? 'Gestionar cobro en la ficha del cliente' : s.status === 'Pagado' ? 'Click para marcar como Pendiente' : 'Click para marcar como Pagado')}
                       className={cn(
                         "px-2 py-1 rounded-full text-[10px] font-bold uppercase cursor-pointer transition-opacity hover:opacity-70 disabled:opacity-50 disabled:cursor-not-allowed",
                         s.status === 'Pagado' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                       )}
                     >
-                      {s.status}
+                      {s.status === 'Pagado' ? 'Pagado' : `Pendiente: ${formatCurrency((settlements.get(s.id)?.pending ?? s.total) * (settlements.get(s.id)?.total ? s.total / settlements.get(s.id)!.total : 1))}`}
                     </button>
                     ) : (
                       <span
@@ -961,6 +992,10 @@ export default function Sales() {
                         onClick={() => {
                           const sale = sales.find((candidate) => candidate.id === s.id);
                           if (!sale) return;
+                          if (protectedSaleIds.has(sale.id)) {
+                            alert('Esta venta tiene cobros de cuenta corriente registrados. No se puede reescribir su historial de pagos.');
+                            return;
+                          }
                           const editPlan = getSalesPageEditPlan(sale);
                           if ('reason' in editPlan) {
                             alert(editPlan.reason);

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { from } = vi.hoisted(() => ({ from: vi.fn() }));
-vi.mock('./supabase', () => ({ supabase: { from } }));
-import { clearDbCache, db, invalidateDbCache } from './db';
+const { from, rpc } = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
+vi.mock('./supabase', () => ({ supabase: { from, rpc } }));
+import { callRpc, clearDbCache, db, invalidateDbCache } from './db';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -11,10 +11,22 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-beforeEach(() => { clearDbCache(); from.mockReset(); });
+beforeEach(() => { clearDbCache(); from.mockReset(); rpc.mockReset(); });
 afterEach(() => vi.useRealTimers());
 
 describe('query cache invalidation during requests', () => {
+  it.each(['register_customer_payment_v2', 'reconcile_customer_balance', 'toggle_sale_status'])('invalidates the linked ledger and sale after %s', async (name) => {
+    let revision = 'old';
+    from.mockImplementation(() => ({select: () => Promise.resolve({data:[{id:revision}],error:null})}));
+    expect(await db.list('sales')).toEqual([{id:'old'}]);
+    expect(await db.list('customer_transactions')).toEqual([{id:'old'}]);
+    revision = 'new';
+    rpc.mockResolvedValue({data:null,error:null});
+    await callRpc(name, {});
+    expect(await db.list('sales')).toEqual([{id:'new'}]);
+    expect(await db.list('customer_transactions')).toEqual([{id:'new'}]);
+    expect(rpc).toHaveBeenCalledOnce();
+  });
   it('shares one bounded recovery attempt between simultaneous readers', async () => {
     vi.useFakeTimers();
     from.mockReturnValueOnce({ select: () => Promise.resolve({ data: null, error: { message: 'AbortError: Lock broken by another request' } }) });
@@ -63,6 +75,24 @@ describe('query cache invalidation during requests', () => {
 });
 
 describe('recent paid sales query', () => {
+  it('loads the complete financial ledger despite a lower server row cap', async () => {
+    const calls: [string, unknown[]][] = [];
+    const batches = [[{ id: 'a', amount: -10 }], [{ id: 'b', amount: -20 }], []];
+    from.mockImplementation(() => {
+      const builder: Record<string, unknown> = {};
+      for (const method of ['select', 'eq', 'order', 'limit', 'gt']) {
+        builder[method] = (...args: unknown[]) => { calls.push([method, args]); return builder; };
+      }
+      builder.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: batches.shift(), error: null }).then(resolve);
+      return builder;
+    });
+    expect(await db.listAll('customer_transactions', 'account', [{field:'customerId',value:'customer'}]))
+      .toEqual([{id:'a',amount:-10},{id:'b',amount:-20}]);
+    expect(calls.filter(([method, args]) => method === 'eq' && args[0] === 'user_id')).toHaveLength(3);
+    expect(calls.filter(([method, args]) => method === 'eq' && args[0] === 'customer_id')).toHaveLength(3);
+    expect(calls).toContainEqual(['gt', ['id', 'a']]);
+    expect(calls).toContainEqual(['gt', ['id', 'b']]);
+  });
   it('continues past a server cap smaller than the requested batch and scopes every page', async () => {
     const calls: [string, unknown[]][] = [];
     const batches = [[{ id: 'a', product_id: 'one', quantity: 3 }], [{ id: 'b', product_id: 'two', quantity: 5 }], []];

@@ -318,6 +318,7 @@ export interface StockIntake {
 }
 
 export interface CashFlowEntry {
+  financialCommandId?: string;
   id: string;
   date: string;
   createdAt?: string;
@@ -542,6 +543,8 @@ export interface Supplier {
 }
 
 export interface CustomerTransaction {
+  financialCommandId?: string;
+  accountPayment?: boolean;
   id: string;
   ownerUid: string;
   customerId: string;

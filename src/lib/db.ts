@@ -72,8 +72,10 @@ const RPC_INVALIDATIONS: Record<string, string[]> = {
   edit_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   edit_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   intake_stock: ['products', 'stock_intakes', 'inventory_holdings'],
-  reconcile_customer_balance: ['customers'],
-  register_customer_payment: ['customers', 'cash_flow'],
+  reconcile_customer_balance: ['customers', 'customer_transactions', 'sales', 'cash_flow'],
+  register_customer_payment: ['customers', 'customer_transactions', 'sales', 'cash_flow', 'cash_flow_allocations'],
+  register_customer_payment_v2: ['customers', 'customer_transactions', 'sales', 'cash_flow', 'cash_flow_allocations'],
+  register_customer_adjustment: ['customers', 'customer_transactions'],
   register_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   register_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   toggle_sale_status: ['sales', 'cash_flow', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
@@ -354,6 +356,31 @@ class SupabaseDB {
         if (nextCursor === cursor) throw new Error('Recent sales pagination did not advance.');
         cursor = nextCursor;
       }
+    });
+  }
+
+  /** Financial totals must never silently stop at the server's row limit. */
+  async listAll<T>(collectionName: string, ownerUid: string, filters: { field: string; value: unknown }[] = []): Promise<T[]> {
+    const tbl = tableName(collectionName);
+    const key = cacheKey('listAll', collectionName, { ownerUid, filters });
+    return readWithCache(key, async () => {
+      const rows: T[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        let query = supabase.from(tbl).select('*').eq('user_id', ownerUid)
+          .order('id', { ascending: true }).limit(500);
+        for (const filter of filters) query = query.eq(colToDb(filter.field, false), filter.value as string);
+        if (cursor) query = query.gt('id', cursor);
+        const { data, error } = await query;
+        if (error) throw new Error(`[db.listAll:${tbl}] ${error.message}`);
+        if (!data?.length) break;
+        rows.push(...data.map(row => fromDb<T>(row, false)));
+        const next = String(data[data.length - 1].id);
+        if (next === cursor) throw new Error(`Invalid pagination cursor: ${tbl}`);
+        cursor = next;
+        // Even a short page may be a lower server cap; continue until empty.
+      }
+      return rows;
     });
   }
 
@@ -644,7 +671,11 @@ export async function callRpc<T>(
   const { data, error } = await supabase.rpc(name, params);
   if (error) throw new Error(`[rpc:${name}] ${error.message}`);
   const invalidations = RPC_INVALIDATIONS[name];
-  if (invalidations) invalidateDbCache(...invalidations);
+  if (invalidations) {
+    invalidateDbCache(...invalidations);
+    // Every sales mutation can change the linked customer ledger.
+    if (invalidations.includes('sales')) invalidateDbCache('customer_transactions');
+  }
   return data as T;
 }
 

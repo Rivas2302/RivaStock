@@ -32,7 +32,7 @@ describe('owner-attributed sales UI contract', () => {
   });
 
   it('loads authorized allocation snapshots, filters by owner, and uses attributed edit/refund commands', () => {
-    expect(sales).toContain("db.list<SaleItemAllocation>('sale_item_allocations'");
+    expect(sales).toContain("db.listAll<SaleItemAllocation>('sale_item_allocations'");
     expect(sales).toContain('projectAttributedSales');
     expect(sales).toContain("callRpc('edit_attributed_sale'");
     expect(sales).toContain("callRpc('refund_attributed_sale'");

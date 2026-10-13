@@ -1,11 +1,14 @@
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db, callRpc } from '../lib/db';
+import { formatFinancialAmount as formatCurrency, roundFinancialAmount } from '../lib/financialSettlement';
+import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { Customer, CustomerTransaction } from '../types';
-import { formatCurrency, cn, todayString, formatDate } from '../lib/utils';
+import { cn, todayString, formatDate } from '../lib/utils';
 import {
   Plus, Search, Edit2, Trash2, Eye, Users,
   TrendingUp, TrendingDown, Minus, CheckCircle2, RefreshCw
@@ -15,11 +18,22 @@ import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 
 export default function Customers() {
+  const [searchParams] = useSearchParams();
+  const linkedCustomerId = searchParams.get('customer');
+  const linkedSaleId = searchParams.get('sale');
+  const openedLink = useRef<string | null>(null);
+  const targetSaleId = useRef<string | null>(null);
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('clientes', 'write');
   const canDelete = usePermission('clientes', 'delete');
+  const paymentIntent = useRef<IdempotencyIntent | null>(null);
+  const adjustmentIntent = useRef<IdempotencyIntent | null>(null);
+  const mutationBusy = useRef(false);
+  const transactionRequest = useRef(0);
+  const activeCustomerId = useRef<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -36,6 +50,9 @@ export default function Customers() {
   const [fichaCustomer, setFichaCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+
+  useEffect(() => () => { activeCustomerId.current = null; transactionRequest.current++; }, [user?.uid]);
 
   // Payment form
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -64,10 +81,12 @@ export default function Customers() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const c = await db.list<Customer>('customers', user.uid);
+      const c = await db.listAll<Customer>('customers', user.uid);
       setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
+      setLoadError(null);
     } catch (err) {
       console.error('[Customers] fetchData error:', err);
+      setLoadError('No se pudieron verificar los saldos de clientes.');
     } finally {
       setLoading(false);
     }
@@ -78,12 +97,14 @@ export default function Customers() {
     let cancelled = false;
     (async () => {
       try {
-        const c = await db.list<Customer>('customers', user.uid);
+        const c = await db.listAll<Customer>('customers', user.uid);
         if (cancelled) return;
         setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
+        setLoadError(null);
       } catch (err) {
         if (cancelled) return;
         console.error('[Customers] fetch error:', err);
+        setLoadError('No se pudieron verificar los saldos de clientes.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -99,19 +120,34 @@ export default function Customers() {
   const pagination = usePagination(filteredCustomers);
 
   const loadTransactions = async (customerId: string) => {
+    const request = ++transactionRequest.current;
+    setLedgerError(null);
     setLoadingTx(true);
     try {
-      const txs = await db.findBy<CustomerTransaction>('customer_transactions', [
+      const txs = await db.listAll<CustomerTransaction>('customer_transactions', user!.uid, [
         { field: 'customerId', value: customerId },
-        { field: 'ownerUid', value: user!.uid },
       ]);
-      setTransactions(txs.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)));
+      if (request !== transactionRequest.current || activeCustomerId.current !== customerId) return;
+      setTransactions(txs.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
+      if (targetSaleId.current) {
+        const remaining = txs.filter(tx => tx.relatedSaleId === targetSaleId.current).reduce((sum, tx) => sum + tx.amount, 0);
+        setPaymentAmount(remaining > 0 ? (Math.round(remaining * 100) / 100).toString() : '');
+      }
+    } catch (error) {
+      if (request === transactionRequest.current && activeCustomerId.current === customerId) {
+        setTransactions([]);
+        setLedgerError(error instanceof Error ? error.message : 'No se pudo cargar la cuenta.');
+      }
     } finally {
-      setLoadingTx(false);
+      if (request === transactionRequest.current) setLoadingTx(false);
     }
   };
 
   const openFicha = (c: Customer) => {
+    if (mutationBusy.current) return;
+    targetSaleId.current = null;
+    activeCustomerId.current = c.id;
+    setTransactions([]);
     setFichaCustomer(c);
     setFichaTab('history');
     setPaymentAmount('');
@@ -123,6 +159,18 @@ export default function Customers() {
     loadTransactions(c.id);
     setIsFichaOpen(true);
   };
+
+  useEffect(() => {
+    const link = `${linkedCustomerId}:${linkedSaleId}`;
+    if (!linkedCustomerId || openedLink.current === link) return;
+    const customer = customers.find(candidate => candidate.id === linkedCustomerId);
+    if (!customer) return;
+    openedLink.current = link;
+    openFicha(customer);
+    targetSaleId.current = linkedSaleId;
+    setFichaTab('payment');
+    setPaymentNote(linkedSaleId ? 'Cobro de venta' : 'Cobro de cuenta corriente');
+  }, [linkedCustomerId, linkedSaleId, customers]);
 
   const openEdit = (c: Customer) => {
     setEditingCustomer(c);
@@ -189,30 +237,44 @@ export default function Customers() {
   };
 
   const handleDelete = async (c: Customer) => {
+    if (!canDelete) return;
     if (c.currentBalance !== 0) {
       alert('No podés eliminar un cliente con saldo pendiente.');
       return;
     }
     if (!confirm(`¿Eliminar a ${c.name}?`)) return;
-    await db.delete('customers', c.id);
-    fetchData();
+    try {
+      await db.delete('customers', c.id);
+      await fetchData();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'No se pudo eliminar el cliente.', 'error');
+    }
   };
 
   const handleRegisterPayment = async () => {
-    if (!user || !fichaCustomer || savingPayment) return;
+    if (!user || !fichaCustomer || !canWrite || mutationBusy.current) return;
     const amount = parseFloat(paymentAmount);
-    if (!amount || amount <= 0 || !paymentNote.trim()) {
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6 || !paymentNote.trim()) {
       alert('Ingresá monto y nota.');
       return;
     }
+    if (!targetSaleId.current && amount > Math.max(0, fichaCustomer.currentBalance)
+      && !confirm('El cobro supera el saldo del cliente. El excedente quedará como saldo a favor. ¿Continuar?')) return;
+    mutationBusy.current = true;
     setSavingPayment(true);
     try {
-      await callRpc('register_customer_payment', {
+      const payload = {
         p_customer_id:    fichaCustomer.id,
         p_amount:         amount,
         p_payment_method: paymentMethod,
         p_description:    paymentNote.trim(),
-      });
+        p_sale_id: targetSaleId.current,
+      };
+      paymentIntent.current = resolveIdempotencyIntent('customer:payment', payload, paymentIntent.current);
+      await callRpc('register_customer_payment_v2', { ...payload, p_idempotency_key: paymentIntent.current.key });
+      paymentIntent.current = null;
+      setPaymentAmount('');
+      setPaymentNote('');
       const [updated] = await Promise.all([
         db.get<Customer>('customers', fichaCustomer.id),
         loadTransactions(fichaCustomer.id),
@@ -230,58 +292,57 @@ export default function Customers() {
       console.error('Error al registrar pago:', error);
       showMessage(error instanceof Error ? error.message : 'Error al registrar el pago.', 'error');
     } finally {
+      mutationBusy.current = false;
       setSavingPayment(false);
     }
   };
 
   const handleRegisterAdjustment = async () => {
-    if (!user || !fichaCustomer || savingAdj) return;
-    const amount = parseFloat(adjAmount);
-    if (!amount || amount <= 0 || !adjNote.trim()) {
-      alert('Ingresá monto y nota.');
+    if (!user || !fichaCustomer || !canWrite || mutationBusy.current) return;
+    const amount = Number(adjAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6 || !adjNote.trim()) {
+      alert('Ingresá un monto válido con hasta dos decimales y una nota.');
       return;
     }
+    mutationBusy.current = true;
     setSavingAdj(true);
     try {
-      const now = new Date().toISOString();
-      const signedAmount = adjIsPositive ? amount : -amount;
-      await db.create<CustomerTransaction>('customer_transactions', {
-        id: crypto.randomUUID(),
-        ownerUid: user.uid,
-        customerId: fichaCustomer.id,
-        type: 'adjustment',
-        amount: signedAmount,
-        description: adjNote.trim(),
-        date: todayString(),
-        createdAt: now,
-      });
-      const newBalance = fichaCustomer.currentBalance + signedAmount;
-      await db.update<Customer>('customers', fichaCustomer.id, {
-        currentBalance: newBalance,
-        updatedAt: now,
-      });
-      setFichaCustomer(prev => prev ? { ...prev, currentBalance: newBalance } : null);
-      setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? { ...c, currentBalance: newBalance } : c));
+      const payload = { p_customer_id: fichaCustomer.id, p_amount: adjIsPositive ? amount : -amount, p_description: adjNote.trim() };
+      adjustmentIntent.current = resolveIdempotencyIntent('customer:adjustment', payload, adjustmentIntent.current);
+      await callRpc('register_customer_adjustment', { ...payload, p_idempotency_key: adjustmentIntent.current.key });
+      adjustmentIntent.current = null;
       setAdjAmount('');
       setAdjNote('');
+      const updated = await db.get<Customer>('customers', fichaCustomer.id);
+      if (updated) {
+        setFichaCustomer(updated);
+        setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
+      }
+      await loadTransactions(fichaCustomer.id);
       setFichaTab('history');
-      loadTransactions(fichaCustomer.id);
       showMessage('Ajuste registrado');
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'No se pudo registrar el ajuste.', 'error');
     } finally {
+      mutationBusy.current = false;
       setSavingAdj(false);
     }
   };
 
   const handleReconcile = async () => {
-    if (!fichaCustomer || reconciling) return;
+    if (!fichaCustomer || !canWrite || mutationBusy.current) return;
+    if (!confirm('Se recalculará el saldo y los cobros sin venta asociada se aplicarán a las ventas pendientes más antiguas. No se generarán nuevos ingresos en Caja. ¿Continuar?')) return;
+    mutationBusy.current = true;
     setReconciling(true);
     try {
       const newBalance = await callRpc<number>('reconcile_customer_balance', { p_customer_id: fichaCustomer.id });
+      await loadTransactions(fichaCustomer.id);
       setFichaCustomer(prev => prev ? { ...prev, currentBalance: newBalance } : null);
       setCustomers(prev => prev.map(c => c.id === fichaCustomer.id ? { ...c, currentBalance: newBalance } : c));
     } catch (err) {
       alert((err as Error).message);
     } finally {
+      mutationBusy.current = false;
       setReconciling(false);
     }
   };
@@ -290,7 +351,7 @@ export default function Customers() {
   const txWithBalance = useMemo(() => {
     let running = 0;
     return transactions.map(tx => {
-      running += tx.amount;
+      running = roundFinancialAmount(running + tx.amount);
       return { ...tx, runningBalance: running };
     });
   }, [transactions]);
@@ -320,6 +381,8 @@ export default function Customers() {
       </div>
     );
   }
+
+  if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
 
   return (
     <div className="business-page operational-page space-y-6">
@@ -510,7 +573,7 @@ export default function Customers() {
       {/* Ficha Modal */}
       <Modal
         isOpen={isFichaOpen}
-        onClose={() => setIsFichaOpen(false)}
+        onClose={() => { if (mutationBusy.current) return; activeCustomerId.current = null; transactionRequest.current++; setIsFichaOpen(false); }}
         title="Ficha del Cliente"
         className="max-w-2xl"
       >
@@ -533,9 +596,9 @@ export default function Customers() {
                 </p>
                 <button
                   onClick={handleReconcile}
-                  disabled={reconciling}
+                  disabled={!canWrite || reconciling || savingPayment || savingAdj}
                   className="mt-1 flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
-                  title="Recalcular saldo desde transacciones"
+                  title="Recalcular saldo y aplicar cobros anteriores a ventas pendientes"
                 >
                   <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} />
                   Reconciliar
@@ -544,6 +607,7 @@ export default function Customers() {
             </div>
 
             {/* Action tabs */}
+            {ledgerError && <div role="alert" className="text-rose-600"><p>{ledgerError}</p><button onClick={() => loadTransactions(fichaCustomer.id)}>Reintentar historial</button></div>}
             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
               {([
                 { key: 'history', label: 'Historial' },
@@ -566,7 +630,7 @@ export default function Customers() {
             {/* Payment form */}
             {fichaTab === 'payment' && (
               <div className="space-y-3">
-                <p className="text-sm text-slate-500 dark:text-slate-400">Registrá un pago del cliente para reducir su saldo.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{targetSaleId.current ? 'El cobro se aplicará a la venta seleccionada.' : 'El cobro se aplicará primero a las ventas pendientes más antiguas. El excedente quedará como saldo a favor.'} Solo el importe cobrado ingresará en Caja.</p>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Monto *</label>
                   <input
@@ -603,7 +667,7 @@ export default function Customers() {
                 </div>
                 <button
                   type="button"
-                  disabled={savingPayment || !canWrite}
+                  disabled={savingPayment || savingAdj || reconciling || loadingTx || !!ledgerError || !canWrite}
                   onClick={handleRegisterPayment}
                   title={!canWrite ? 'Sin permiso' : undefined}
                   className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
@@ -617,7 +681,7 @@ export default function Customers() {
             {/* Adjustment form */}
             {fichaTab === 'adjustment' && (
               <div className="space-y-3">
-                <p className="text-sm text-slate-500 dark:text-slate-400">Ajuste manual del saldo. La nota es obligatoria.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Ajuste manual del saldo. No registra un cobro ni cancela ventas. La nota es obligatoria.</p>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tipo</label>
                   <div className="flex gap-2">

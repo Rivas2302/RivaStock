@@ -2,8 +2,9 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { db } from '../lib/db';
-import { CashClosing, CashFlowEntry } from '../types';
-import { formatCurrency, cn, formatDate, todayString } from '../lib/utils';
+import { CashClosing, CashFlowEntry, Sale, CustomerTransaction } from '../types';
+import { formatFinancialAmount as formatCurrency, buildSaleSettlements, isManagedCashEntry } from '../lib/financialSettlement';
+import { cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
   Search,
@@ -25,14 +26,19 @@ import '../styles/business-redesign.css';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
+import { getExpenseCategories, matchesExpenseCategory } from '../lib/expenseCategories';
 
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('caja', 'write');
   const [entries, setEntries] = useState<CashFlowEntry[]>([]);
+  const [pendingSales, setPendingSales] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [expenseCategory, setExpenseCategory] = useState('');
+  const expenseCategories = useMemo(() => getExpenseCategories(entries), [entries]);
   const deferredSearch = useDeferredValue(search);
   
   // Modal states
@@ -93,7 +99,20 @@ export default function CashFlow() {
     }
   };
 
-  const isSaleManagedEntry = (entry: CashFlowEntry) => entry.source === 'Venta' && !!entry.saleId;
+  const isSaleManagedEntry = isManagedCashEntry;
+
+  const loadFinancialData = async () => {
+    const [cash, sales, transactions] = await Promise.all([
+      db.listAll<CashFlowEntry>('cash_flow', user!.uid),
+      db.listAll<Sale>('sales', user!.uid),
+      db.listAll<CustomerTransaction>('customer_transactions', user!.uid),
+    ]);
+    const settlements = buildSaleSettlements(sales, transactions);
+    // Receivables are not cash. Count only invoices without a pending cash row.
+    const represented = new Set(cash.filter(entry => entry.status === 'Pendiente' && entry.type === 'Ingreso').map(entry => entry.saleId));
+    const pending = sales.reduce((sum, sale) => sum + (represented.has(sale.id) ? 0 : settlements.get(sale.id)!.pending), 0);
+    return { cash, pending };
+  };
 
   const handleToggleStatus = async (entry: CashFlowEntry) => {
     if (!user) return;
@@ -109,7 +128,9 @@ export default function CashFlow() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
+      const { cash: cf, pending } = await loadFinancialData();
+      setPendingSales(pending);
+      setLoadError(null);
       setEntries(cf.sort((a, b) => {
         const dc = b.date.localeCompare(a.date);
         if (dc !== 0) return dc;
@@ -117,6 +138,7 @@ export default function CashFlow() {
       }));
     } catch (err) {
       console.error('[CashFlow] fetchData error:', err);
+      setLoadError('No se pudieron verificar los cobros y pendientes.');
     } finally {
       setLoading(false);
     }
@@ -127,8 +149,10 @@ export default function CashFlow() {
     let cancelled = false;
     (async () => {
       try {
-        const cf = await db.list<CashFlowEntry>('cash_flow', user.uid);
+        const { cash: cf, pending } = await loadFinancialData();
         if (cancelled) return;
+        setPendingSales(pending);
+        setLoadError(null);
         setEntries(cf.sort((a, b) => {
           const dc = b.date.localeCompare(a.date);
           if (dc !== 0) return dc;
@@ -137,6 +161,7 @@ export default function CashFlow() {
       } catch (err) {
         if (cancelled) return;
         console.error('[CashFlow] fetch error:', err);
+        setLoadError('No se pudieron verificar los cobros y pendientes.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -216,7 +241,7 @@ export default function CashFlow() {
     totalPendingIncome,
   } = useMemo(() => {
     let totalCollected = 0;
-    let totalPendingIncome = 0;
+    let totalPendingIncome = pendingSales;
     let totalExpenses = 0;
     let totalPendingExpenses = 0;
     let cashIncome = 0;
@@ -247,7 +272,7 @@ export default function CashFlow() {
         (typeFilter === 'gastos' && entry.type === 'Gasto') ||
         (typeFilter === 'pendientes' && entry.status === 'Pendiente');
 
-      return matchesSearch && matchesType;
+      return matchesSearch && matchesType && (typeFilter !== 'gastos' || matchesExpenseCategory(entry, expenseCategory));
     });
 
     return {
@@ -260,7 +285,7 @@ export default function CashFlow() {
       totalPendingExpenses,
       totalPendingIncome,
     };
-  }, [deferredSearch, entries, typeFilter]);
+  }, [deferredSearch, entries, typeFilter, pendingSales, expenseCategory]);
   const pagination = usePagination(filteredEntries);
 
   const handleExport = async (format: 'excel' | 'pdf') => {
@@ -269,6 +294,7 @@ export default function CashFlow() {
     const generatedAt = new Date().toISOString().slice(0, 10);
     const filterSummary = [
       typeFilter === 'all' ? 'Todos los movimientos' : typeFilter,
+      typeFilter === 'gastos' && expenseCategory ? `Categoría: ${expenseCategories.find(category => category.value === expenseCategory)?.label ?? expenseCategory}` : null,
       deferredSearch.trim() ? `búsqueda: ${deferredSearch.trim()}` : null,
     ].filter(Boolean).join(' · ');
     const rows = filteredEntries.map((entry) => ({
@@ -329,6 +355,8 @@ export default function CashFlow() {
       setExporting(null);
     }
   };
+
+  if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
 
   return (
     <div className="business-page operational-page space-y-6">
@@ -447,7 +475,7 @@ export default function CashFlow() {
           {['all', 'ingresos', 'gastos', 'pendientes'].map((filter) => (
             <button
               key={filter}
-              onClick={() => setTypeFilter(filter)}
+              onClick={() => { setTypeFilter(filter); setExpenseCategory(''); }}
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-semibold transition-all border",
                 typeFilter === filter
@@ -462,6 +490,24 @@ export default function CashFlow() {
       </div>
 
       {/* Unified List */}
+      {typeFilter === 'gastos' && (
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="w-full sm:max-w-xs">
+            <label htmlFor="expense-category-filter" className="block text-sm font-medium mb-1 dark:text-slate-300">Categoría de gasto</label>
+            <select
+              id="expense-category-filter"
+              value={expenseCategory}
+              onChange={event => setExpenseCategory(event.target.value)}
+              className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl dark:text-white"
+            >
+              <option value="">Todas las categorías</option>
+              {expenseCategories.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+            </select>
+          </div>
+          <p className="text-sm text-slate-500">{filteredEntries.length} gastos encontrados</p>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -525,7 +571,7 @@ export default function CashFlow() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     {isSaleManagedEntry(e) ? (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Generado por venta — editá la venta</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">Cobro protegido — gestioná su origen</span>
                     ) : (
                       <div className="flex items-center justify-end gap-2">
 <button
