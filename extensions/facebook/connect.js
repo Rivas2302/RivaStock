@@ -1,16 +1,43 @@
-// Extension-owned page only: no externally_connectable or web page bridge.
+// Connection approval and permission request stay inside the extension page.
 const form = document.querySelector('#connect');
 const status = document.querySelector('#status');
 const saved = await chrome.storage.local.get(['connection', 'status','paused']);
+const {pendingConnection} = await chrome.storage.session.get('pendingConnection');
+if (!saved.connection && pendingConnection?.expiresAt > Date.now()) {
+  document.querySelector('#url').value=pendingConnection.url;
+  document.querySelector('#key').value=pendingConnection.key;
+  document.querySelector('#code').value=pendingConnection.code;
+  form.hidden=false;
+  document.querySelector('#start').hidden=true;
+}
+let currentConnection=saved.connection;
+let currentPaused=saved.paused!==false;
 const toggle = document.querySelector('#toggle');
 toggle.disabled = !saved.connection;
 toggle.textContent = saved.paused === false ? 'Pausar cola' : 'Activar cola';
 toggle.addEventListener('click',async () => {
-  const {paused}=await chrome.storage.local.get('paused');
-  await chrome.storage.local.set({paused:paused===false});
-  toggle.textContent=paused===false?'Activar cola':'Pausar cola';
-  await chrome.runtime.sendMessage({type:'poll'});
-  status.textContent=(await chrome.storage.local.get('status')).status;
+  if(!currentConnection)return;
+  toggle.disabled=true;
+  try {
+    // Request optional hosts again when activating an older reloaded copy.
+    // Keep this first asynchronous API inside the explicit click gesture.
+    if(currentPaused) {
+      const granted=await chrome.permissions.request({origins:[`${currentConnection.url}/*`,'https://www.facebook.com/*']});
+      if(!granted)throw new Error('Para publicar, Chrome necesita permiso para Facebook y tu proyecto de RivaStock.');
+    }
+    const {paused}=await chrome.storage.local.get('paused');
+    await chrome.storage.local.set({paused:paused===false,status:paused===false?'Cola pausada. El envío en curso puede terminar.':'Cola activa. Revisando publicaciones aprobadas…'});
+    await chrome.runtime.sendMessage({type:'poll'});
+    status.textContent=(await chrome.storage.local.get('status')).status;
+  } catch(error) { status.textContent=error.message; }
+  finally {toggle.disabled=!currentConnection;}
+});
+chrome.storage.onChanged.addListener((changes,area) => {
+  if(area!=='local')return;
+  if(changes.connection)currentConnection=changes.connection.newValue;
+  if(changes.paused)currentPaused=changes.paused.newValue!==false;
+  if(changes.status)status.textContent=changes.status.newValue??'';
+  toggle.textContent=currentPaused?'Activar cola':'Pausar cola';
 });
 status.textContent = saved.status ?? (saved.connection ? 'Computadora vinculada.' : 'Sin conexión.');
 if (saved.connection) form.hidden = true;
@@ -19,6 +46,9 @@ form.addEventListener('submit', async event => {
   const button = form.querySelector('button');
   button.disabled = true;
   try {
+    if(!pendingConnection || pendingConnection.expiresAt <= Date.now()) throw new Error('La conexión venció. Presioná Conectar esta PC en RivaStock otra vez.');
+    const local=await chrome.storage.local.get(['connection','activeJob']);
+    if(local.connection || local.activeJob) throw new Error('Hay una conexión o envío pendiente. Revisalo antes de conectar otra cuenta.');
     const url = new URL(document.querySelector('#url').value.trim());
     if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Usá la URL HTTPS de tu proyecto Supabase.');
     const key = document.querySelector('#key').value.trim();
@@ -38,7 +68,8 @@ form.addEventListener('submit', async event => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || 'No se pudo conectar.');
-    await chrome.storage.local.set({ connection: { url: url.origin, key, token: result.token, deviceId: result.deviceId }, status: 'Computadora vinculada. Cola pausada.',paused:true });
+    await chrome.storage.local.set({ connection: { url: url.origin, key, token: result.token, deviceId: result.deviceId }, status: 'Computadora vinculada. Cola activa.',paused:false });
+    await chrome.storage.session.remove('pendingConnection');
     toggle.disabled=false;
     document.querySelector('#code').value = '';
     form.hidden = true;
@@ -56,5 +87,6 @@ document.querySelector('#disconnect').addEventListener('click', async () => {
   if (connection) await chrome.permissions.remove({ origins: [`${connection.url}/*`] });
   await chrome.storage.local.set({ status: 'Desconectada. Revocá el dispositivo en RivaStock.' });
   status.textContent = 'Desconectada. Revocá el dispositivo en RivaStock.';
-  form.hidden = false;
+  form.hidden = true;
+  document.querySelector('#start').hidden=false;
 });

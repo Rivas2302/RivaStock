@@ -9,6 +9,7 @@ import { formatCurrency } from '../lib/utils';
 import { marketplaceCategories } from '../../extensions/facebook/marketplace-contract.js';
 import { inspectedFacebookGroup } from '../../extensions/facebook/group-contract.js';
 import { groupPublicationText } from '../lib/facebookPublications';
+import { connectFacebookComputer } from '../lib/facebookConnection';
 
 export default function FacebookPublicationModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const { ownerUid, isOwner } = useAuth();
@@ -22,7 +23,6 @@ export default function FacebookPublicationModal({ product, onClose }: { product
   const [publications, setPublications] = useState<FacebookPublication[]>([]);
   const [groupName, setGroupName] = useState(inspectedFacebookGroup.name);
   const [groupUrl, setGroupUrl] = useState(inspectedFacebookGroup.url);
-  const [pairingCode, setPairingCode] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [ready, setReady] = useState(false);
@@ -126,10 +126,9 @@ export default function FacebookPublicationModal({ product, onClose }: { product
         {!publications.length && <p className="text-sm text-slate-500">Todavía no hay publicaciones aprobadas.</p>}
       </section>
       {isOwner && canConfigure && <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer font-bold">Vincular computadora</summary><div className="mt-3 space-y-3 text-sm">
-        <p>Instalá la extensión local y copiá este código en su configuración. Vence en 5 minutos y permite procesar únicamente esta cola.</p>
-        <button type="button" disabled={busy || !ready} className="rounded-xl border p-3" onClick={() => run(async () => { const result = await facebookRpc<{ code: string }>('pair_facebook_device', { p_name: 'Chrome de RivaStock' }); setPairingCode(result.code); await refresh(); })}>Generar código de conexión</button>
-        {pairingCode && <label className="block">Código de conexión<input className={inputClass} readOnly value={pairingCode} /></label>}
-        {devices.map(device => <div key={device.id} className="flex flex-wrap items-center gap-2"><span>{device.name} · {deviceConnected(device) ? 'Conectada' : 'Desconectada'}</span><button type="button" disabled={busy} className="rounded-lg border p-2" onClick={() => run(async () => { await facebookRpc('revoke_facebook_device', { p_device: device.id }); setPairingCode(''); await refresh(); })}>Desvincular</button></div>)}
+        <p>Con la extensión instalada en Chrome, conectá esta PC y aceptá sus permisos. No necesitás copiar claves ni códigos.</p>
+        <button type="button" disabled={busy || !ready} className="rounded-xl border p-3" onClick={() => run(async () => { await connectFacebookComputer(); setNotice('Completá la conexión en la pestaña de la extensión.'); await refresh(); })}>Conectar esta PC</button>
+        {devices.map(device => <div key={device.id} className="flex flex-wrap items-center gap-2"><span>{device.name} · {deviceConnected(device) ? 'Conectada' : 'Desconectada'}</span><button type="button" disabled={busy} className="rounded-lg border p-2" onClick={() => run(async () => { await facebookRpc('revoke_facebook_device', { p_device: device.id }); await refresh(); })}>Desvincular</button></div>)}
       </div></details>}
     </div>
   </Modal>;

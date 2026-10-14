@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/package-facebook-extension.mjs",
+    "prebuild": "node scripts/package-facebook-extension.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

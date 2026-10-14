@@ -1,44 +1,66 @@
-# Publish approved RivaStock products from Chrome
+# Publicar productos de RivaStock desde Chrome
 
-The local implementation prepares an existing product, persists its approved content and destinations, and processes that queue through the Chrome extension. Marketplace and direct text/photo posts in **Vende de todo - Gral. Pico** are supported. Production migration/deployment and a new real publication through the installed extension remain to be authorized and validated; the earlier real Khamrah test used browser automation, not this queue.
+**Subir los cambios de la web no alcanza.** La automatización necesita la base de datos preparada y una extensión instalada, vinculada y con la cola activa en la computadora que tiene Facebook abierto.
 
-## Install and connect
+## Preparación inicial
 
-1. Review `supabase/migrations/0049_facebook_publications.sql`. Apply it after the existing migrations in local/staging first. Production application requires explicit authorization. This migration has not been applied to production.
-2. Build/deploy the matching RivaStock interface. Open `chrome://extensions`, enable Developer mode, select **Load unpacked**, and choose the repository's `extensions/facebook` folder. No extension build is required. Reload an older installed copy after updating these files.
-3. Keep Facebook signed in in that same Chrome profile. As the RivaStock account owner, open **Stock → Publicar en Facebook → Vincular computadora**, then generate the connection code.
-4. Open the extension. Enter the public Supabase project URL, its public anon/publishable key, and the code. Never enter a service key or a Facebook password. Grant access to that project and `www.facebook.com` when Chrome asks.
-5. Click **Activar cola** in the extension. Pairing initially pauses processing. Chrome must stay running. Use **Pausar cola** to stop taking additional jobs; an already running job finishes or requires attention.
+1. **Base de datos:** aplicar las migraciones pendientes `0049_facebook_publications.sql` y `0050_facebook_device_renewal.sql`, en ese orden. Si 0049 ya está aplicada, aplicar solo 0050. Subir el código no aplica migraciones automáticamente. Los cambios en producción requieren autorización específica.
+2. **Web:** desplegar los cambios de RivaStock. En Stock debe aparecer el botón para publicar en Facebook.
+3. **Extensión:** en RivaStock, abrir **Configuración → Facebook → Descargar extensión**. Extraer el ZIP en una carpeta permanente. En Chrome, abrir `chrome://extensions`, activar **Modo de desarrollador**, elegir **Cargar descomprimida** y seleccionar esa carpeta. No hace falta acceder al repositorio. Chrome exige confirmar este paso en el navegador.
+4. **Actualizaciones:** si la extensión ya estaba instalada, actualizar sus archivos locales y pulsar **Recargar** en su tarjeta de `chrome://extensions`. El despliegue de Vercel no actualiza la extensión instalada.
+5. **Facebook:** iniciar sesión en Facebook en ese mismo perfil de Chrome y mantener la computadora encendida y Chrome abierto.
 
-The code expires after five minutes and can be redeemed once. The device capability expires after 30 days. **Desvincular** in RivaStock revokes it on the server; disconnecting the extension only removes its local copy. Heartbeats run every minute and during active work; RivaStock reports a disconnected computer after 150 seconds without a heartbeat.
+## Vincular y activar
 
-## Publish a product
+1. En Chrome de la PC, como titular, abrir **Configuración → Facebook → Conectar esta PC**. También está disponible desde **Stock → Publicar en Facebook → Vincular computadora**.
+2. Se abre la extensión: pulsar **Conectar y activar esta PC** y aceptar los permisos de Chrome. Listo: la cola queda activa; no hay claves ni códigos para copiar.
 
-From Stock, open **Publicar en Facebook**, review or edit the publication-only title, description and price, select/order up to ten existing photos, and configure category, condition and location. Save the prefilled group if needed. Select Marketplace, the compatible group, or both. The group preview shows the exact text that will be submitted. Check the approval box and press **Confirmar y publicar**.
+La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.2.0 actualizada. La identidad estable de esta versión puede cambiar el ID de una instalación anterior: verificar que quede habilitada solamente la versión nueva. Un dispositivo anterior puede revocarse desde RivaStock. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
 
-The original product and stock are not modified. The approved snapshot and each destination are committed atomically. Jobs remain pending while Chrome is disconnected or its queue is paused. Cancel individual pending destinations in publication history. Running jobs cannot be cancelled or blindly retried.
+El ZIP se genera automáticamente antes de cada compilación y al iniciar el desarrollo, con una lista explícita de archivos de la extensión. No incluye archivos de configuración privados ni sesiones. La descarga usa los mismos archivos que el repositorio. Para instalar mediante un botón que lleve a la tienda de Chrome, será necesario publicar y aprobar la extensión en Chrome Web Store; esta versión todavía usa la instalación local.
 
-The extension opens its own Facebook tabs and leaves them available for inspection. Results are shown per destination with links when the interface provides verifiable evidence. A created Marketplace listing under review is **Pendiente de aprobación**, not publicly published. A direct group post must match the approved text, current Facebook author and a newly observed post id before it is recorded as published. Administrator approval requirements are not inferred from another successful post.
+El código se transfiere automáticamente, vence en cinco minutos y se usa una sola vez. Con la migración 0050, la conexión se renueva automáticamente con su actividad. Tras 30 días sin conexión, hay que vincular otra vez. **Desvincular** revoca el acceso inmediatamente. La extensión conserva los permisos y la conexión entre reinicios de Chrome. RivaStock muestra la computadora desconectada después de 150 segundos sin señal.
 
-## Failure and recovery
+## Publicar
 
-- Session expiration, verification, restrictions, missing/ambiguous controls, photo failures or unsupported destinations pause the queue and mark the assigned destination **Requiere atención**. Resolve Facebook's verification yourself; the extension does not evade it.
-- A submit checkpoint is committed before the final click. A second checkpoint is rejected by the database. If the worker restarts afterward, it checks the existing tab for evidence and never repeats that click.
-- A captured result is persisted locally before writing it to the server. A lost acknowledgement retries only that idempotent write. Interrupted server leases become attention after five minutes, never pending.
-- Existing Marketplace titles or already visible identical group content stop a new attempt for review. The client also retains its confirmation intent across reopening/reloading. Changed content is refused while that intent exists. Additional publication cycles for the same product are not enabled in this first version.
-- Uncertain outcomes are not automatically retried. Inspect the preserved tab and publication history before authorizing any separate publication. Queue approval never authorizes bypassing Facebook restrictions.
+1. Abrir **Publicar en Facebook** desde un producto existente.
+2. Revisar título, descripción, precio, fotos y orden. Elegir categoría de Facebook, condición y ubicación. Los cambios afectan solo esta publicación, no el producto original.
+3. Elegir Marketplace, **Vende de todo - Gral. Pico**, o ambos. Guardar el grupo precompletado si aún no aparece en la lista. Para el grupo se muestra el texto exacto que se enviará junto con las fotos.
+4. Marcar la aprobación y pulsar **Confirmar y publicar**.
+5. Consultar el resultado de cada destino en el historial del producto. La extensión abre los formularios en pestañas de Facebook en segundo plano; no hace falta copiar textos ni descargar fotos manualmente.
 
-## Scope and permissions
+Los trabajos pendientes se conservan si la computadora está desconectada o la cola está pausada. Se pueden cancelar por destino antes de que comiencen. Pausar la cola no cancela un envío que ya está en curso.
 
-Only Marketplace and `https://www.facebook.com/groups/PicoVendedeTodo` (canonical id `710102875717376`) have inspected adapters. Other groups can be saved, but cannot be selected until their forms are verified. The selected mechanism is a direct text/photo group post; it does not share a Marketplace listing or silently select other groups in Marketplace's audience step.
+## Si no pasa nada
 
-The extension requests storage, alarms and scripting plus optional host access to the configured Supabase project and Facebook. It does not request cookies, general tabs access, all-sites access, passwords or service credentials. Photos must belong to the existing product and be public JPG/PNG/WebP assets in that project's Supabase storage, up to 10 MB each. Device secrets are hashed in a table with no client access. Stock read/write and tenant permissions, including collaborator revocation, are checked when approving, claiming and authorizing the final submission.
+Abrir la extensión y leer su mensaje:
 
-Category/condition labels and the photo controls were inspected in the Spanish UI. Marketplace location must be resolved unambiguously to the approved city; the adapter stops if it cannot verify a match. Facebook UI changes can require further inspection. Published results attest to observed UI evidence; the server validates destination ownership and link shape, not external Facebook content through a private API.
+| Mensaje o situación | Qué comprobar |
+| --- | --- |
+| Sin conexión | Instalar la extensión y completar la vinculación. |
+| Conectada. Cola pausada. | Pulsar **Activar cola**. |
+| Conectada. Sin trabajos pendientes. | Comprobar que se confirmó el producto y que su destino sigue pendiente en el historial. |
+| La computadora aparece desconectada en RivaStock | Mantener Chrome abierto y revisar el mensaje de la extensión; la conexión puede haber vencido o haberse revocado. |
+| Error al conectar esta PC | Comprobar la extensión 0.2.0, recargar RivaStock y verificar las migraciones pendientes. |
+| Falta permiso para Facebook | Recargar la extensión actualizada, pulsar **Activar cola** y aceptar el permiso que solicita Chrome. |
+| Requiere atención o conexión pausada | Leer el error del destino y revisar la pestaña de Facebook que dejó abierta la extensión. No volver a confirmar a ciegas. |
 
-## What was actually verified
+La extensión muestra su progreso mientras prepara y envía. Si se necesita diagnosticar un fallo, informar el mensaje exacto de la extensión y el estado del destino en RivaStock. **No compartir contraseñas, códigos de sesión ni claves secretas.**
 
-On October 14, 2026, the user approved **Perfume Khamrah Dukhan (rojo)**, ARS 43,000, new, General Pico, category **Salud y belleza**, its one existing product photo, and both destinations. The public description in RivaStock was empty. The approved text was:
+## Límites de esta versión
+
+- Los destinos verificados son Marketplace y `https://www.facebook.com/groups/PicoVendedeTodo`, también identificado como `710102875717376`. Otros grupos se pueden guardar, pero no seleccionar hasta verificar sus formularios.
+- La publicación en el grupo es de texto y fotos; no comparte el anuncio de Marketplace.
+- Se usan hasta diez fotos JPG, PNG o WebP del producto, alojadas en el almacenamiento público de ese proyecto Supabase, de hasta 10 MB cada una.
+- La ubicación debe coincidir con una ciudad identificada sin ambigüedad por Facebook. Si cambian los controles, hay sesión vencida, verificación o restricciones, la cola se pausa. No se evaden las verificaciones.
+- Un anuncio creado y en revisión se registra como **Pendiente de aprobación**, no como publicado al público. Para el grupo se comprueba el contenido aprobado, el autor y un identificador nuevo del post.
+- Una interrupción después de autorizar el clic final no vuelve a pulsar Publicar. Se busca evidencia del resultado; si sigue siendo desconocido, queda para revisión.
+- Si se pierde la respuesta al guardar un resultado, solo se reintenta guardar ese resultado, no publicar nuevamente.
+- Los anuncios existentes con el mismo título y el contenido idéntico ya visible en el grupo detienen un intento para revisión. Nuevos ciclos de publicación para el mismo producto y los lotes quedan fuera de esta primera versión.
+
+## Qué se probó realmente
+
+El 14 de octubre de 2026 se publicó, con aprobación explícita, **Perfume Khamrah Dukhan (rojo)** a **$43.000**, condición **Nuevo**, en **General Pico**, con su foto existente. Su descripción pública en RivaStock estaba vacía; se aprobó este texto:
 
 ```text
 Perfume Khamrah Dukhan (rojo)
@@ -47,19 +69,17 @@ Precio: $43.000
 Disponible en General Pico.
 ```
 
-Browser automation uploaded the real photo and submitted each destination once:
-
-| Destination | Verified evidence |
+| Destino | Evidencia comprobada |
 | --- | --- |
-| Marketplace | https://www.facebook.com/marketplace/item/1111109635218150/ — seller detail displayed **Esta publicación está en revisión** |
-| Direct group post | https://www.facebook.com/groups/PicoVendedeTodo/posts/29224111830556433 — permalink displayed the approved text and photo |
+| Marketplace | https://www.facebook.com/marketplace/item/1111109635218150/ — el detalle indicó **Esta publicación está en revisión**. |
+| Grupo | https://www.facebook.com/groups/PicoVendedeTodo/posts/29224111830556433 — se verificaron el texto y la foto en el enlace del post. |
 
-The original product was not edited. These publications already exist: **do not enqueue Khamrah again as an extension test**. This real test establishes the UI workflow, not a successful production queue/extension run.
+**Khamrah ya está publicado: no utilizarlo otra vez como prueba.** Ese envío se realizó mediante automatización del navegador; no demuestra por sí solo que funcione la cola de producción con la extensión instalada.
 
-Local verification also loads the actual MV3 extension into disposable Chromium, injects its real content scripts, uploads real `File` objects to controlled replicas of the inspected forms, processes two approved queue destinations and saves destination-specific evidence. Its Supabase responses and Facebook pages are controlled fixtures, and Facebook DNS is denied. The SQL migration is separately executed in PGlite with authenticated/anonymous roles to test authorization, isolation, immutable snapshots, idempotency, one-time pairing, exclusive claims, submit checkpoints, recovery and destination-matching results.
+Además, una prueba local instala la extensión real en un Chrome descartable, ejecuta sus scripts, carga archivos reales en formularios controlados y procesa dos destinos aprobados. Facebook y las respuestas de Supabase son simulados en esa prueba; no genera anuncios reales. La migración también se ejecuta en PostgreSQL local mediante PGlite para comprobar permisos, aislamiento, confirmación, duplicados, vinculación, cola y resultados.
 
-## Release gate
+## Verificación técnica y puesta en marcha
 
-Run `npm run verify` and `npx playwright test e2e/facebook-publications.spec.ts e2e/facebook-extension.spec.ts`. Review the migration and source, obtain explicit production migration/deployment authorization, install/connect the extension in the real Chrome profile, and validate a **new separately approved product** through the complete queue. That last real extension run is still pending; it must not be represented as complete based on controlled tests.
+Ejecutar `npm run verify` y `npx playwright test e2e/facebook-publications.spec.ts e2e/facebook-extension.spec.ts`. Antes de dar por terminada la integración, instalar y activar la extensión real y verificar **un producto nuevo, aprobado por el usuario**, desde la cola de producción. Esa validación integral real sigue pendiente.
 
-Chrome API references: [script injection](https://developer.chrome.com/docs/extensions/reference/api/scripting), [worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle).
+Referencias técnicas de Chrome: [ejecución de scripts](https://developer.chrome.com/docs/extensions/reference/api/scripting) y [ciclo de vida de la extensión](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle).

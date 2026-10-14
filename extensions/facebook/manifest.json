@@ -2,11 +2,29 @@
   "manifest_version": 3,
   "minimum_chrome_version": "110",
   "name": "RivaStock · Facebook",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Publica productos aprobados de RivaStock usando la sesión local de Facebook.",
-  "permissions": ["storage", "alarms", "scripting"],
-  "optional_host_permissions": ["https://*.supabase.co/*", "https://www.facebook.com/*"],
-  "background": { "service_worker": "worker.js", "type": "module" },
-  "action": { "default_popup": "connect.html" },
-  "options_page": "connect.html"
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://*.supabase.co/*",
+    "https://www.facebook.com/*"
+  ],
+  "background": {
+    "service_worker": "worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "connect.html"
+  },
+  "options_page": "connect.html",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoZ8X5tEIp90IER7l2NRrDerB/xyDoD9oMo9eKyVL2fUJZl0znvJK058ekk81wvWNmSoKOQlXJuniu0k5GqwZ5OsyfIa40ztkG9u5HsPHO0v1Y3f4YU874H7598D0EXLit3mQNng4dtPhXe7iq3KwxnkZUf7AWRxpfItxRZYcPDVnZmKvXFv2nGltCM/kx5H1uac3/ro+SD0eygT9vkinpVhr1g93Owi11BkWr6G64U1B0KHgDItBb9pXqB83Bblu/JhyK3veATm6gStFSY+qVXeXpqEY1Pv5aUTl6hnAhsAO3bc0rSq0PCj4lYjij+xjhDFzFAbzi8QqzQOTjSTx4wIDAQAB",
+  "externally_connectable": {
+    "matches": [
+      "https://rivastock.vercel.app/*"
+    ]
+  }
 }

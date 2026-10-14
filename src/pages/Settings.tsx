@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
+import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import { optimizeUploadImage } from '../lib/imageOptimization';
 import {
@@ -39,9 +40,9 @@ import CatalogQRModal from '../components/CatalogQRModal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
-type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
+type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo' | 'facebook';
 
-const TABS: ReadonlyArray<Tab> = ['general', 'categories', 'owners', 'prices', 'catalog', 'maintenance', 'equipo'];
+const TABS: ReadonlyArray<Tab> = ['general', 'categories', 'owners', 'prices', 'catalog', 'maintenance', 'equipo', 'facebook'];
 
 function isTab(value: string): value is Tab {
   return (TABS as ReadonlyArray<string>).includes(value);
@@ -338,6 +339,7 @@ export default function Settings() {
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
     { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
+    { id: 'facebook', label: 'Facebook', icon: Globe },
     ...(isOwner ? [{ id: 'equipo' as Tab, label: 'Equipo', icon: Users }] : []),
   ];
 
@@ -389,6 +391,7 @@ export default function Settings() {
               )}
             </AnimatePresence>
             <AnimatePresence mode="wait">
+              {activeTab === 'facebook' && <motion.div key="facebook" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><FacebookExtensionSettings/></motion.div>}
               {activeTab === 'general' && (
                 <motion.div
                   key="general"

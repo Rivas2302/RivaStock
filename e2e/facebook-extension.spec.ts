@@ -34,7 +34,7 @@ test('installed extension processes two approved destinations with real file inp
   // Test-only pregrant avoids an OS permission prompt in disposable Chromium.
   // Production requests this same host from the user in the connection UI.
   const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));
-  manifest.host_permissions=['https://www.facebook.com/*'];
+  manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];
   writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
   const context=await chromium.launchPersistentContext(join(temporary,'profile'),{
     channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND'],
@@ -73,7 +73,11 @@ test('installed extension processes two approved destinations with real file inp
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
-    await control.evaluate(async () => {await (globalThis as any).chrome.runtime.sendMessage({type:'poll'})});
+    await control.getByRole('button',{name:'Pausar cola',exact:true}).click();
+    await expect(control.getByRole('button',{name:'Activar cola',exact:true})).toBeEnabled();
+    expect(await worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(0);
+    await control.getByRole('button',{name:'Activar cola',exact:true}).click();
+    await expect(control.getByRole('button',{name:'Pausar cola',exact:true})).toBeEnabled();
     const initial=await worker.evaluate(async () => (globalThis as any).chrome.storage.local.get(['paused','status','activeJob']));
     const pages=await Promise.all(context.pages().filter(page=>page.url().startsWith('https://www.facebook.com')).map(async page=>({url:page.url(),body:await page.locator('body').innerText()})));
     expect(initial.paused,JSON.stringify({initial,pages})).toBe(false);
@@ -87,5 +91,45 @@ test('installed extension processes two approved destinations with real file inp
     expect(await group.evaluate(()=>(window as any).groupSubmits)).toBe(1);
     expect(await group.evaluate(()=>(window as any).groupUploads)).toMatchObject([{type:undefined,size:68}].map(({size})=>({size})));
     expect(await worker.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('activeJob')).activeJob)).toBeUndefined();
+  } finally {await context.close();}
+});
+
+test('website links the installed extension without copying credentials and activates on consent',async () => {
+  test.setTimeout(60000);
+  const temporary=mkdtempSync(join(tmpdir(),'rivastock-pairing-test-'));
+  const extension=join(temporary,'extension');cpSync(resolve('extensions/facebook'),extension,{recursive:true});
+  const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));
+  manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];
+  writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
+  const context=await chromium.launchPersistentContext(join(temporary,'profile'),{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND, MAP test.supabase.co ~NOTFOUND, MAP rivastock.vercel.app ~NOTFOUND']});
+  try {
+    await context.route('https://rivastock.vercel.app/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><h1>Pairing fixture</h1>'}));
+    let redeemed=0;
+    await context.route('https://test.supabase.co/**',async route => {
+      const body=route.request().postDataJSON();
+      if(route.request().url().endsWith('/redeem_facebook_device')) {
+        expect(body).toEqual({p_code:'a'.repeat(64)});redeemed++;
+        await route.fulfill({json:{token:'fixture-secret',deviceId:'fixture-device'}});
+      } else await route.fulfill({json:body.p_operation==='claim'?null:{connected:true}});
+    });
+    const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
+    const id=new URL(worker.url()).hostname;
+    const web=await context.newPage();await web.goto('https://rivastock.vercel.app/config?tab=facebook');
+    const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
+    expect(installed).toEqual({installed:true});
+    const controlEvent=context.waitForEvent('page');
+    const response=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connect',url:'https://test.supabase.co',key:'sb_publishable_test',code:'a'.repeat(64)},resolve)),id);
+    expect(response).toEqual({pending:true});
+    const control=await controlEvent;
+    await expect(control.getByRole('button',{name:'Conectar y activar esta PC'})).toBeVisible();
+    expect(redeemed).toBe(0);
+    await control.getByRole('button',{name:'Conectar y activar esta PC'}).click();
+    await expect(control.getByRole('button',{name:'Pausar cola',exact:true})).toBeEnabled();
+    expect(redeemed).toBe(1);
+    const state=await worker.evaluate(async ()=>(globalThis as any).chrome.storage.local.get(['connection','paused']));
+    expect(state).toMatchObject({connection:{token:'fixture-secret',deviceId:'fixture-device'},paused:false});
+    expect(await worker.evaluate(async ()=>(await (globalThis as any).chrome.storage.session.get('pendingConnection')).pendingConnection)).toBeUndefined();
+    // The web page gets only a readiness acknowledgement, never the token.
+    expect(JSON.stringify(response)).not.toContain('fixture-secret');
   } finally {await context.close();}
 });

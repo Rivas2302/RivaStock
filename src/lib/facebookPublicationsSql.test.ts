@@ -25,8 +25,27 @@ beforeAll(async () => {
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${collaborator}','${owner}');
     SET test.uid='${owner}';`);
   await db.exec(readFileSync('supabase/migrations/0049_facebook_publications.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/0050_facebook_device_renewal.sql','utf8'));
 },30000);
 afterAll(async () => { await db?.close(); });
+
+it('renews valid connections without reviving expired ones or exposing the base RPC',async () => {
+  await db.exec(`SET ROLE authenticated; SET test.uid='${owner}'`);
+  const pair=(await db.query<{result:{code:string;deviceId:string}}>(`SELECT pair_facebook_device('Renewal') AS result`)).rows[0].result;
+  await db.exec('SET ROLE anon');
+  const token=(await db.query<{result:{token:string}}>(`SELECT redeem_facebook_device($1) AS result`,[pair.code])).rows[0].result.token;
+  await expect(db.query(`SELECT facebook_worker_base($1,'heartbeat')`,[token])).rejects.toThrow('permission denied');
+  await db.exec('RESET ROLE');
+  await db.query(`UPDATE facebook_device_secrets SET token_expires_at=now()+interval '1 minute' WHERE device_id=$1`,[pair.deviceId]);
+  await db.exec('SET ROLE anon');
+  await db.query(`SELECT facebook_worker($1,'heartbeat')`,[token]);
+  await db.exec('RESET ROLE');
+  expect((await db.query<{renewed:boolean}>(`SELECT token_expires_at>now()+interval '29 days' AS renewed FROM facebook_device_secrets WHERE device_id=$1`,[pair.deviceId])).rows[0].renewed).toBe(true);
+  await db.query(`UPDATE facebook_device_secrets SET token_expires_at=now()-interval '1 minute' WHERE device_id=$1`,[pair.deviceId]);
+  await db.exec('SET ROLE anon');
+  await expect(db.query(`SELECT facebook_worker($1,'heartbeat')`,[token])).rejects.toThrow();
+  await db.exec('RESET ROLE');
+});
 const approve = (key = intent, body = content, groups = [group]) => db.query<{id:string}>(`SELECT approve_facebook_publication($1,$2,$3::jsonb,$4::uuid[],true) AS id`,[product,key,JSON.stringify(body),groups]);
 
 it('authorizes tenants, freezes approved data and deduplicates confirmation',async () => {

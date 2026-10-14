@@ -29,6 +29,7 @@ describe('Facebook publication preparation',() => {
     await expect(fetchPublicationPhotos({photos:['https://evil.test/photo.jpg']},'https://test.supabase.co')).rejects.toThrow('almacenamiento');
     const manifest=JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8'));
     expect(manifest.permissions).toEqual(['storage','alarms','scripting']);
-    expect(manifest.host_permissions).toBeUndefined(); expect(manifest.externally_connectable).toBeUndefined();
+    expect(manifest.host_permissions).toBeUndefined();
+    expect(manifest.externally_connectable).toEqual({matches:['https://rivastock.vercel.app/*']});
   });
 });

@@ -1,4 +1,6 @@
 import { facebookAdapter } from './adapter.js';
+import { registerPairing } from './pairing.js';
+registerPairing();
 
 let polling = false;
 export async function rpc(config, name, args) {
@@ -52,6 +54,7 @@ async function poll() {
     if (paused !== false) { await chrome.storage.local.set({status:'Conectada. Cola pausada.'}); return; }
     const job = await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'claim' });
     if (!job) { await chrome.storage.local.set({ status: 'Conectada. Sin trabajos pendientes.' }); return; }
+    await chrome.storage.local.set({status:`Preparando ${job.destination.name ?? 'publicación'} en una pestaña de Facebook…`});
     try {
       // Persist the claim before any fetch/navigation so a service-worker restart
       // cannot forget an assigned job. Never resubmit a recovered active job.
@@ -60,6 +63,7 @@ async function poll() {
       await chrome.storage.local.set({activeJob:active});
       await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'checkpoint',p_delivery:job.id});
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'}});
+      await chrome.storage.local.set({status:`Enviando ${job.destination.name ?? 'publicación'}… No cierres Chrome.`});
       await facebookAdapter.action(active.tabId,'submit',job.content);
       const result = await facebookAdapter.reconcile(active);
       const completed={...active,stage:'result',result};
