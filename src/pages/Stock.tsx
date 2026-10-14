@@ -59,6 +59,7 @@ import { ImageUpload } from '../components/ImageUpload';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
 const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
+const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
 const ResellerPriceListModal = lazy(() => import('../components/ResellerPriceListModal'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import {
@@ -75,6 +76,7 @@ export default function Stock() {
     allowedInventoryOwnerIds, operableInventoryOwnerIds,
   } = useAuth();
   const canWrite = usePermission('stock', 'write');
+  const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
@@ -1239,6 +1241,7 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button disabled={!canWrite} title="Publicar en Facebook" aria-label={`Publicar ${p.name} en Facebook`} onClick={() => setFacebookProduct(p)} className="p-2 text-slate-400 hover:text-[#365fad] disabled:opacity-50"><Share2 size={18} /></button>
                       {hasBarcode ? (
                         <button
                           disabled={isGenerating}
@@ -1310,6 +1313,7 @@ export default function Stock() {
       </div>
 
       {/* Add/Edit Modal */}
+      {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onClose={() => setFacebookProduct(null)} /></Suspense>}
       <Modal
         isOpen={isModalOpen} 
         onClose={closeProductEditor}

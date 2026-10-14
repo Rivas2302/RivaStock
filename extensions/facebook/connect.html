@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectar RivaStock</title><link rel="stylesheet" href="connect.css"></head>
+<body><main><h1>RivaStock · Facebook</h1><p>Conectá esta computadora con tu cuenta y mantené Facebook abierto con tu sesión. Solo se procesan publicaciones aprobadas en RivaStock.</p>
+<form id="connect"><label>URL pública de Supabase<input id="url" type="url" required placeholder="https://proyecto.supabase.co"></label><label>Clave pública anon de Supabase<input id="key" required autocomplete="off"></label><label>Código de conexión de RivaStock<input id="code" required autocomplete="off"></label><button type="submit">Conectar computadora</button></form>
+<p id="status" role="status"></p><button id="toggle" type="button">Activar cola</button><button id="disconnect" type="button">Desconectar esta extensión</button><p>Activar procesa únicamente trabajos aprobados en RivaStock. Para revocar el acceso en el servidor, usá «Desvincular». No se leen ni envían cookies de Facebook.</p></main><script type="module" src="connect.js"></script></body></html>

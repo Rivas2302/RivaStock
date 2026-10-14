@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "110",
+  "name": "RivaStock · Facebook",
+  "version": "0.1.0",
+  "description": "Publica productos aprobados de RivaStock usando la sesión local de Facebook.",
+  "permissions": ["storage", "alarms", "scripting"],
+  "optional_host_permissions": ["https://*.supabase.co/*", "https://www.facebook.com/*"],
+  "background": { "service_worker": "worker.js", "type": "module" },
+  "action": { "default_popup": "connect.html" },
+  "options_page": "connect.html"
+}
