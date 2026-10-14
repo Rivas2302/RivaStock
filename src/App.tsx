@@ -16,6 +16,7 @@ const CashFlow = lazy(() => import('./pages/CashFlow'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Automations = lazy(() => import('./pages/Automations'));
 const PublicCatalog = lazy(() => import('./pages/PublicCatalog'));
 const Quotes = lazy(() => import('./pages/Quotes'));
 const QuotePublic = lazy(() => import('./pages/QuotePublic'));
@@ -98,6 +99,7 @@ function AppRoutes() {
           <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
           <Route path="calculadora" element={withSuspense(<Calculator />)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
+          <Route path="automatizaciones" element={withSuspense(<RequirePermission module="stock"><Automations /></RequirePermission>)} />
           <Route path="trazabilidad" element={withSuspense(<RequirePermission module="config"><AuditTrail /></RequirePermission>)} />
         </Route>
 

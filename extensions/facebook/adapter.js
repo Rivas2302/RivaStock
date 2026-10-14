@@ -47,7 +47,10 @@ export const facebookAdapter = {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     if(marketplace) {
-      await this.action(tab.id,'check_existing',job.content);
+      if(job.content.allowRepublish!==true) {
+        const previous=await this.action(tab.id,'check_existing',job.content);
+        if(previous.existing)return {job,deviceId:config.deviceId,projectUrl:config.url,tabId:tab.id,existing:true,result:{status:'submitted',url:previous.url,message:'Anuncio anterior encontrado; no se creó otro.'}};
+      }
       await chrome.tabs.update(tab.id,{url:job.destination.url});
       for(let attempt=0;attempt<60;attempt++) {
         const current=await chrome.tabs.get(tab.id);

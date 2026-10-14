@@ -15,7 +15,7 @@ export function publicConnection(message) {
 export function trustedPairingSender(sender) {
   try {
     const url = new URL(sender.url);
-    return !sender.id && sender.tab?.id !== undefined && sender.frameId === 0 && url.origin === 'https://rivastock.vercel.app' && ['/stock','/config'].includes(url.pathname);
+    return !sender.id && sender.tab?.id !== undefined && sender.frameId === 0 && url.origin === 'https://rivastock.vercel.app' && ['/stock','/config','/automatizaciones'].includes(url.pathname);
   } catch { return false; }
 }
 

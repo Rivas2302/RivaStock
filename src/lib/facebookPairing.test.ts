@@ -8,6 +8,7 @@ it('accepts only the first-party stock page in the top frame',() => {
   const sender={url:'https://rivastock.vercel.app/stock',tab:{id:1},frameId:0};
   expect(trustedPairingSender(sender)).toBe(true);
   expect(trustedPairingSender({...sender,url:'https://rivastock.vercel.app/config?tab=facebook'})).toBe(true);
+  expect(trustedPairingSender({...sender,url:'https://rivastock.vercel.app/automatizaciones?view=configuration'})).toBe(true);
   for(const change of [{url:'https://evil.test/stock'},{url:'https://rivastock.vercel.app.evil.test/stock'},{url:'https://rivastock.vercel.app/ventas'},{frameId:1},{id:'another-extension'},{tab:undefined}]) expect(trustedPairingSender({...sender,...change})).toBe(false);
 });
 it('accepts only public project credentials and a short-lived pairing code',() => {

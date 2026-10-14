@@ -1,5 +1,20 @@
 // Connection approval and permission request stay inside the extension page.
 const form = document.querySelector('#connect');
+const version=document.createElement('p');
+version.textContent=`Versión ${chrome.runtime.getManifest().version}`;
+document.querySelector('h1').after(version);
+const diagnose=document.createElement('button');
+diagnose.type='button';diagnose.textContent='Revisar formulario de Facebook';
+const report=document.createElement('pre');report.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';report.hidden=true;
+document.querySelector('main').append(diagnose,report);
+diagnose.addEventListener('click',async()=>{
+  diagnose.disabled=true;
+  try {
+    const details=await chrome.runtime.sendMessage({type:'diagnose'});
+    report.textContent=JSON.stringify(details,null,2);report.hidden=false;
+  } catch(error){report.textContent=error.message;report.hidden=false;}
+  finally{diagnose.disabled=false;}
+});
 const status = document.querySelector('#status');
 const saved = await chrome.storage.local.get(['connection', 'status','paused']);
 const {pendingConnection} = await chrome.storage.session.get('pendingConnection');
@@ -25,9 +40,8 @@ toggle.addEventListener('click',async () => {
       const granted=await chrome.permissions.request({origins:[`${currentConnection.url}/*`,'https://www.facebook.com/*']});
       if(!granted)throw new Error('Para publicar, Chrome necesita permiso para Facebook y tu proyecto de RivaStock.');
     }
-    const {paused}=await chrome.storage.local.get('paused');
-    await chrome.storage.local.set({paused:paused===false,status:paused===false?'Cola pausada. El envío en curso puede terminar.':'Cola activa. Revisando publicaciones aprobadas…'});
-    await chrome.runtime.sendMessage({type:'poll'});
+    const result=await chrome.runtime.sendMessage({type:'queue-control',paused:!currentPaused});
+    if(result?.error)throw new Error(result.error);
     status.textContent=(await chrome.storage.local.get('status')).status;
   } catch(error) { status.textContent=error.message; }
   finally {toggle.disabled=!currentConnection;}
@@ -70,6 +84,7 @@ form.addEventListener('submit', async event => {
     if (!response.ok) throw new Error(result.message || 'No se pudo conectar.');
     await chrome.storage.local.set({ connection: { url: url.origin, key, token: result.token, deviceId: result.deviceId }, status: 'Computadora vinculada. Cola activa.',paused:false });
     await chrome.storage.session.remove('pendingConnection');
+    await chrome.storage.local.remove('lastIssue');
     toggle.disabled=false;
     document.querySelector('#code').value = '';
     form.hidden = true;

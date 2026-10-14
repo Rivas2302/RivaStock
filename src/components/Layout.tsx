@@ -19,6 +19,7 @@ import {
   BarChart3,
   History,
   ScanLine,
+  Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -50,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Calculadora', path: '/calculadora', icon: Calculator, module: null },
   { name: 'Trazabilidad', path: '/trazabilidad', icon: History, module: 'config' },
   { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
+  { name: 'Automatizaciones', path: '/automatizaciones', icon: Zap, module: 'stock' },
 ];
 
 export default function Layout() {
@@ -67,7 +69,7 @@ export default function Layout() {
     { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
     { label: 'Relaciones', paths: ['/clientes', '/proveedores', '/compras'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
-    { label: 'Sistema', paths: ['/trazabilidad', '/config'] },
+    { label: 'Sistema', paths: ['/automatizaciones', '/trazabilidad', '/config'] },
   ].map((group) => ({
     ...group,
     items: navItems.filter((item) => group.paths.includes(item.path)),

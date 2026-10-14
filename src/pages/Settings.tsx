@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
-import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import { optimizeUploadImage } from '../lib/imageOptimization';
 import {
@@ -391,7 +390,7 @@ export default function Settings() {
               )}
             </AnimatePresence>
             <AnimatePresence mode="wait">
-              {activeTab === 'facebook' && <motion.div key="facebook" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><FacebookExtensionSettings/></motion.div>}
+              {activeTab === 'facebook' && <Navigate to="/automatizaciones?view=configuration" replace/>}
               {activeTab === 'general' && (
                 <motion.div
                   key="general"

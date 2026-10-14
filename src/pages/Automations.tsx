@@ -1,0 +1,63 @@
+import {lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
+import {Link,useSearchParams} from 'react-router-dom';
+import {Zap,Send,MessagesSquare,ChartNoAxesCombined,RefreshCw,Monitor,Settings2,Clock3,History} from 'lucide-react';
+import {useAuth} from '../AuthContext';
+import {usePermission} from '../hooks/usePermission';
+import {supabase} from '../lib/supabase';
+import {db} from '../lib/db';
+import type {Product} from '../types';
+import {automationSections} from '../lib/automations';
+import {deliveryState,deviceConnected,facebookRpc,type FacebookPublication,type FacebookDevice} from '../lib/facebookPublications';
+import PublicationHistory from '../components/automations/PublicationHistory';
+import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
+import FacebookGroupsSettings from '../components/automations/FacebookGroupsSettings';
+const FacebookPublicationModal=lazy(()=>import('../components/FacebookPublicationModal'));
+
+export default function Automations() {
+  const {ownerUid,isOwner}=useAuth();const canConfigure=usePermission('config','write');
+  const [params,setParams]=useSearchParams();const section=automationSections.find(s=>s.id===params.get('section'))??automationSections[0];
+  const view=['history','queue','configuration'].includes(params.get('view')??'')?params.get('view')!:'history';const parsedPage=Number(params.get('page'));const page=Number.isSafeInteger(parsedPage)&&parsedPage>=0&&parsedPage<=100000?parsedPage:0;const productId=params.get('product');
+  const queryKey=`${ownerUid}:${page}:${view}`;const currentQuery=useRef(queryKey);currentQuery.current=queryKey;
+  const [publications,setPublications]=useState<FacebookPublication[]>([]);const [devices,setDevices]=useState<FacebookDevice[]>([]);
+  const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);const [more,setMore]=useState(false);
+  const [search,setSearch]=useState('');const [filter,setFilter]=useState('all');const [product,setProduct]=useState<Product|null>(null);
+  function navigate(patch:Record<string,string>){setParams(current=>{const next=new URLSearchParams(current);for(const [key,value] of Object.entries(patch)){if(value)next.set(key,value);else next.delete(key);}return next;});}
+  const refresh=useCallback(async()=>{
+    let query=supabase.from('facebook_publications').select(`id,product_id,repeat_of,content,approved_at,facebook_deliveries${view==='queue'?'!inner':''}(*)`).order('approved_at',{ascending:false}).order('id',{ascending:false}).range(page*50,page*50+50);
+    if(view==='queue')query=query.in('facebook_deliveries.status',['pending','running']);
+    const [history,pcs]=await Promise.all([view==='configuration'?Promise.resolve({data:[],error:null}):query,supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,queue_command_at,execution_state,current_activity').is('revoked_at',null)]);
+    if(currentQuery.current!==`${ownerUid}:${page}:${view}`)return;
+    if(history.error||pcs.error)throw new Error('No se pudo actualizar Automatizaciones. Verificá la conexión y la migración 0052. Los estados visibles pueden estar desactualizados.');
+    const rows=history.data as unknown as FacebookPublication[];setMore(rows.length>50);setPublications(rows.slice(0,50));setDevices(pcs.data as FacebookDevice[]);setError('');
+  },[ownerUid,page,view]);
+  useEffect(()=>{
+    let active=true;setLoading(true);setPublications([]);
+    if(!section.available){setLoading(false);return;}
+    const load=async()=>{try{if(active)await refresh();}catch(error){if(active)setError((error as Error).message);}finally{if(active)setLoading(false);}};
+    void load();const timer=setInterval(()=>void load(),10000);return()=>{active=false;clearInterval(timer);};
+  },[refresh,section.available]);
+  useEffect(()=>{
+    let active=true;setProduct(null);
+    if(productId)void db.get<Product>('products',productId).then(value=>{if(active){setProduct(value);if(!value)setError('No se encontró el producto o no tenés permiso para consultarlo.');}}).catch(()=>{if(active)setError('No se pudo cargar el producto.');});
+    return()=>{active=false;};
+  },[productId,ownerUid]);
+  async function queue(device:FacebookDevice){setBusy(true);setError('');try{const enabled=device.queue_enabled===false||device.execution_state==='paused';await facebookRpc('set_facebook_queue_enabled',{p_device:device.id,p_enabled:enabled});setNotice(enabled?'Activación solicitada. La PC la recibirá al conectarse.':'Cola pausada para nuevos trabajos. Un envío en curso puede terminar.');await refresh();}catch(error){setError((error as Error).message);}finally{setBusy(false);}}
+  const jobs=publications.flatMap(p=>p.facebook_deliveries);
+  const visible=publications.filter(p=>p.content.title.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es'))&&(filter==='all'||p.facebook_deliveries.some(d=>deliveryState(d)===filter)));
+  const icons=[Send,MessagesSquare,ChartNoAxesCombined];
+  return <div className="space-y-6 text-slate-900 dark:text-white"><header className="flex flex-wrap items-start justify-between gap-4"><div><p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-300"><Zap size={16}/>Centro de control</p><h2 className="text-2xl font-bold md:text-3xl">Automatizaciones</h2><p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Gestioná las tareas aprobadas, sus conexiones y resultados desde un solo lugar.</p></div><button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold dark:border-slate-700 dark:bg-slate-900" disabled={busy} onClick={()=>void refresh().catch(e=>setError(e.message))}><RefreshCw size={16}/>Actualizar</button></header>
+    <nav aria-label="Secciones de automatizaciones" className="grid grid-cols-3 gap-2 sm:gap-3">{automationSections.map((item,index)=>{const Icon=icons[index];return <button key={item.id} aria-current={section.id===item.id?'page':undefined} onClick={()=>navigate({section:item.id,page:'',product:''})} className={`flex flex-col items-start gap-2 rounded-2xl border p-3 text-left transition-colors sm:flex-row sm:items-center sm:gap-3 sm:p-4 ${section.id===item.id?'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40':'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}><Icon size={22} className="shrink-0 text-indigo-500"/><span><span className="block break-words text-xs font-bold sm:text-base">{item.label}</span><span className="text-xs text-slate-500 dark:text-slate-400">{item.available?'Disponible':'Próximamente'}</span></span></button>;})}</nav>
+    {error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}{notice&&<p role="status" className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">{notice}</p>}
+    {!section.available?<section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h3 className="text-xl font-bold">{section.label} · Próximamente</h3><p className="mx-auto mt-3 max-w-lg text-sm text-slate-500">{section.description}</p>{section.id==='communication'&&<p className="mt-3 text-sm text-slate-500">Messenger, WhatsApp, Instagram, TikTok y respuestas con IA no están habilitados.</p>}</section>:<>
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><div className="flex items-center gap-2 font-bold"><Monitor size={18}/>Conexión y ejecución</div>{!devices.length&&!loading&&<p className="text-sm text-slate-500">No hay una PC vinculada. Abrí Configuración de publicaciones para conectarla.</p>}{devices.map(device=><div key={device.id} className="flex flex-wrap items-center justify-between gap-3 text-sm"><div><p className="font-semibold">{device.name} · {!deviceConnected(device)?'PC sin conexión':device.queue_enabled===false?'Cola pausada':device.execution_state==='active'?'Cola activa':device.execution_state==='paused'?'Pausada en la PC':'Estado de cola sin confirmar'}</p><p className="text-xs text-slate-500">{device.current_activity??'La conexión de la PC no confirma por sí sola que la cola esté activa.'}</p></div>{isOwner&&canConfigure&&<button disabled={busy} onClick={()=>void queue(device)} className="rounded-xl border px-3 py-2 font-semibold disabled:opacity-50">{device.queue_enabled===false||device.execution_state==='paused'?'Activar cola':'Pausar cola'}</button>}</div>)}<p className="text-xs text-slate-500">Las órdenes se aplican al conectarse la PC. Los envíos en curso pueden terminar. Sin conexión, los trabajos se conservan.</p></section>
+      <nav aria-label="Gestión de publicaciones" className="flex flex-wrap gap-2">{[{id:'history',name:'Historial',Icon:History},{id:'queue',name:'Cola y progreso',Icon:Clock3},{id:'configuration',name:'Configuración',Icon:Settings2}].map(item=><button key={item.id} aria-pressed={view===item.id} onClick={()=>navigate({view:item.id,page:''})} className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold ${view===item.id?'bg-indigo-600 text-white':'bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-200'}`}><item.Icon size={16}/>{item.name}</button>)}</nav>
+      {view==='configuration'?<div className="grid items-start gap-5 xl:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"><FacebookExtensionSettings/></div><FacebookGroupsSettings/></div>:<>
+        <div className="flex flex-wrap gap-3"><label className="min-w-0 flex-1"><span className="sr-only">Buscar en esta página</span><input aria-label="Buscar en esta página" placeholder="Buscar producto en esta página…" value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-600 dark:bg-slate-900"/></label><select aria-label="Filtrar estado" value={filter} onChange={e=>setFilter(e.target.value)} className="max-w-full rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-600 dark:bg-slate-900"><option value="all">Todos los estados</option>{[['pending','Pendientes'],['running','En ejecución'],['submitted','Enviadas'],['pending_approval','Pendientes de aprobación'],['published','Publicadas'],['failed','Preparaciones fallidas'],['unknown','Resultados desconocidos'],['cancelled','Canceladas']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+        <p className="text-xs text-slate-500">En esta página: {jobs.filter(d=>d.status==='running').length} en ejecución · {jobs.filter(d=>deliveryState(d)==='unknown').length} con resultado desconocido. Actualización cada 10 segundos.</p>
+        {loading?<p role="status" className="p-6 text-center text-slate-500">Cargando publicaciones…</p>:<PublicationHistory publications={visible} onRefresh={refresh} showProductLink/>}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm"><button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={page===0} onClick={()=>navigate({page:String(page-1)})}>Anterior</button><span>Página {page+1} · hasta 50 publicaciones</span><button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={!more} onClick={()=>navigate({page:String(page+1)})}>Siguiente</button></div><Link className="inline-block rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white" to="/stock">Elegir producto en Stock</Link>
+      </>}
+    </>}
+    {product&&<Suspense fallback={<p role="status">Cargando producto…</p>}><FacebookPublicationModal key={product.id} product={product} onClose={()=>navigate({product:''})}/></Suspense>}
+  </div>;
+}

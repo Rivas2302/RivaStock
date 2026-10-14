@@ -11,17 +11,43 @@ export function groupPublicationText(content: PublicationContent): string {
   return `${content.title}\n\n${content.description}\n\nPrecio: ARS ${content.price.toFixed(2)}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
 export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct' }
-export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null }
+export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null }
 export interface FacebookDelivery {
   id: string; status: string; message: string | null; evidence_url: string | null;
   submitted_at?: string | null;
+  destination_key?: string;
   destination: { name: string; url: string; mechanism: string };
 }
-export interface FacebookPublication { id: string; content: PublicationContent; approved_at: string; facebook_deliveries: FacebookDelivery[] }
+export interface FacebookPublication { id: string; product_id?: string; repeat_of?: string | null; content: PublicationContent & {selection?:{marketplace:boolean;groups:string[]}}; approved_at: string; facebook_deliveries: FacebookDelivery[] }
 export const publicationStatus: Record<string, string> = {
   pending: 'Pendiente', running: 'En ejecución', submitted: 'Enviado', published: 'Publicado',
   pending_approval: 'Pendiente de aprobación', attention: 'Requiere atención', cancelled: 'Cancelado',
 };
+export function deliveryState(delivery:FacebookDelivery) {
+  if(delivery.status==='attention') return delivery.submitted_at===null?'failed':'unknown';
+  return delivery.status;
+}
+export function deliveryLabel(delivery:FacebookDelivery) {
+  const state=deliveryState(delivery);
+  return state==='failed'?'Preparación fallida':state==='unknown'?'Resultado desconocido':publicationStatus[state]??state;
+}
+export function publicationBlock(publications:FacebookPublication[],marketplace:boolean,groups:string[]) {
+  const selected=(d:FacebookDelivery)=>d.destination.mechanism==='marketplace'?marketplace:d.destination_key?groups.includes(d.destination_key):groups.length>0;
+  // Older responses without destination keys treat group jobs conservatively.
+  const jobs=publications.flatMap(p=>p.facebook_deliveries).filter(selected);
+  if(jobs.some(d=>['pending','running'].includes(d.status)))return 'Ya hay un trabajo pendiente o en ejecución para este destino. Consultá su historial.';
+  if(jobs.some(d=>deliveryState(d)==='unknown'))return 'Hay un resultado desconocido. Revisá Facebook y registrá la revisión en el historial antes de crear otro envío.';
+  return null;
+}
+export function safeFacebookEvidence(delivery:FacebookDelivery) {
+  const url=delivery.evidence_url;
+  if(!url)return null;
+  try {
+    const parsed=new URL(url);
+    if(parsed.origin!=='https://www.facebook.com'||parsed.username||parsed.password||parsed.search||parsed.hash)return null;
+    return /^\/(marketplace\/item\/\d+|groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+)\/?$/.test(parsed.pathname)?url:null;
+  }catch{return null;}
+}
 export function productPhotos(product: Product): string[] {
   return [...new Set([...(product.images ?? []), product.imageUrl].filter((url): url is string => Boolean(url)))];
 }
@@ -59,9 +85,9 @@ export async function facebookRpc<T>(name: string, args: Record<string, unknown>
 export async function loadFacebookPublicationData(productId: string) {
   const results = await Promise.all([
     supabase.from('facebook_groups').select('id,name,url,mechanism').order('name'),
-    supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at').is('revoked_at', null),
-    supabase.from('facebook_publications').select('id,content,approved_at,facebook_deliveries(*)').eq('product_id', productId).order('approved_at', { ascending: false }).limit(20),
+    supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at', null),
+    supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries(*)').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
   ]);
-  for (const result of results) if (result.error) throw new Error('No se pudo cargar Facebook. Verificá la conexión y que esté instalada la migración 0049.');
+  for (const result of results) if (result.error) throw new Error('No se pudo cargar Publicaciones. Verificá la conexión y las migraciones de Automatizaciones.');
   return { groups: results[0].data as FacebookGroup[], devices: results[1].data as FacebookDevice[], publications: results[2].data as unknown as FacebookPublication[] };
 }

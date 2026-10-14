@@ -19,7 +19,7 @@ export default function FacebookExtensionSettings() {
     let active=true;
     async function refresh() {
       const found=await facebookExtensionInstalled();
-      const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at').is('revoked_at',null);
+      const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at',null);
       if(!active)return;
       setInstalled(found);
       if(error)setError('No se pudo consultar la conexión de Facebook.');

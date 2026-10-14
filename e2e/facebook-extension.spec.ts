@@ -12,14 +12,14 @@ const marketplaceForm = `<!doctype html><html lang="es"><body>
 <input aria-label="Promocionar tras publicar" role="switch" type="checkbox"><input aria-label="Ocultar a amigos" role="switch" type="checkbox">
 <input type="file" multiple accept="image/*,image/heif,image/heic"><button id="next" disabled>Siguiente</button>
 <script>
-document.querySelector('[aria-labelledby="category"]').onclick=()=>{const b=document.createElement('button');b.textContent='Salud y belleza Envío disponible';b.onclick=()=>b.remove();document.body.append(b)};
-document.querySelector('[aria-labelledby="condition"]').onclick=()=>{const b=document.createElement('div');b.role='option';b.textContent='Nuevo';b.onclick=()=>b.remove();document.body.append(b)};
+document.querySelector('[aria-labelledby="category"]').onmousedown=()=>{const control=document.querySelector('[aria-labelledby="category"]');control.setAttribute('aria-expanded','true');const menu=document.createElement('div');menu.style.cssText='height:100px;overflow-y:auto';const spacer=document.createElement('div');spacer.style.height='500px';const first=document.createElement('div');first.role='button';first.textContent='Herramientas';menu.append(first,spacer);let added=false;menu.onscroll=()=>{if(menu.scrollTop<200||added)return;added=true;const option=document.createElement('div');option.role='button';option.innerHTML='<span>Salud y belleza</span><span>Envío disponible</span>';option.onclick=()=>{control.setAttribute('aria-expanded','false');control.append(document.createTextNode('Salud y belleza'));menu.remove()};menu.append(option)};document.body.append(menu)};
+document.querySelector('[aria-labelledby="condition"]').onmousedown=()=>{const control=document.querySelector('[aria-labelledby="condition"]');control.setAttribute('aria-expanded','true');const b=document.createElement('div');b.role='option';b.textContent='Nuevo';b.onclick=()=>{control.setAttribute('aria-expanded','false');control.append(document.createTextNode('Nuevo'));b.remove()};document.body.append(b)};
 document.querySelector('[aria-label="Ubicación"]').oninput=e=>{e.target.setAttribute('aria-expanded','true');const b=document.createElement('li');b.role='option';b.textContent='General PicoCiudad';b.onclick=()=>{e.target.value='General Pico';e.target.setAttribute('aria-expanded','false');b.remove()};document.body.append(b)};
 document.querySelector('input[type=file]').onchange=e=>{window.uploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size,type:f.type}));document.querySelector('#next').disabled=false};
 document.querySelector('#next').onclick=()=>{history.pushState({},'','?step=audience');const h=document.createElement('h1');h.textContent='Publicar en más lugares';document.body.append(h);const b=document.createElement('button');b.textContent='Publicar';b.onclick=()=>{sessionStorage.setItem('submitted','yes');location.href='/marketplace/you/selling'};document.body.append(b)};
 </script></body></html>`;
 const seller = `<!doctype html><html><body><a href="/marketplace/you/selling">Tus publicaciones</a><h1>Tus publicaciones</h1><input placeholder="Buscar en tus publicaciones"><div id="list"></div><script>
-if(sessionStorage.getItem('submitted')){const b=document.createElement('button');b.setAttribute('aria-label','Perfume de prueba');b.textContent='Perfume de prueba $43000 Disponible';b.onclick=()=>{document.querySelector('#list').innerHTML='<h2>Esta publicación está en revisión</h2><a href="/marketplace/item/987654321/">Perfume de prueba $43000 Disponible General Pico</a>'};document.querySelector('#list').append(b)};
+if(sessionStorage.getItem('submitted')){const card=document.createElement('button');card.setAttribute('aria-label','Perfume de prueba');card.textContent='Perfume de prueba $43.000 En revisión';card.onclick=()=>{window.wrongCardClicks=(window.wrongCardClicks||0)+1};const thumbnail=document.createElement('button');thumbnail.setAttribute('aria-label','Perfume de prueba');thumbnail.onclick=()=>{if(document.querySelector('[role=dialog]'))return;const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<h2>Esta publicación está en revisión</h2><a href="/marketplace/item/987654321/">Perfume de prueba $43.000 General Pico</a><a href="/marketplace/item/987654321/">Marketplace</a>';document.body.append(dialog)};document.querySelector('#list').append(thumbnail,card)};
 </script></body></html>`;
 const groupForm = `<!doctype html><html><body><div><a href="/groups/710102875717376/user/111/">Perfil de Test</a><button id="open">Escribe algo...</button></div><script>
 document.querySelector('#open').onclick=()=>{const d=document.createElement('div');d.role='dialog';d.innerHTML='<h2>Crear publicación</h2><div role="textbox" contenteditable="true" aria-label="Crea una publicación pública..."></div><div><button aria-label="Foto/video">Foto/video</button><input type="file" multiple accept="image/*,video/*"></div><input type="file" multiple accept="image/*,video/*"><button id="publish" disabled>Publicar</button>';
@@ -71,6 +71,12 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
+    await expect(control.getByText('Versión 0.3.0',{exact:true})).toBeVisible();
+    const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
+    await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
+    await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
+    await expect(control.locator('pre')).toContainText('"version": "0.3.0"');
+    await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
     await control.getByRole('button',{name:'Pausar cola',exact:true}).click();
@@ -114,7 +120,7 @@ test('website links the installed extension without copying credentials and acti
     });
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     const id=new URL(worker.url()).hostname;
-    const web=await context.newPage();await web.goto('https://rivastock.vercel.app/config?tab=facebook');
+    const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones?view=configuration');
     const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
     expect(installed).toEqual({installed:true});
     const controlEvent=context.waitForEvent('page');
@@ -132,4 +138,30 @@ test('website links the installed extension without copying credentials and acti
     // The web page gets only a readiness acknowledgement, never the token.
     expect(JSON.stringify(response)).not.toContain('fixture-secret');
   } finally {await context.close();}
+});
+
+test('records an existing Marketplace listing without opening a create form or clicking Publish',async()=>{
+  test.setTimeout(60000);
+  const temporary=mkdtempSync(join(tmpdir(),'rivastock-existing-test-'));const extension=join(temporary,'extension');cpSync(resolve('extensions/facebook'),extension,{recursive:true});
+  const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
+  const context=await chromium.launchPersistentContext(join(temporary,'profile'),{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND']});
+  try {
+    let createForms=0;
+    await context.addInitScript(()=>sessionStorage.setItem('submitted','yes'));
+    await context.route('https://www.facebook.com/**',async route=>{if(new URL(route.request().url()).pathname.includes('/create/item'))createForms++;await route.fulfill({contentType:'text/html',body:seller});});
+    const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
+    await worker.evaluate(async()=>{
+      const runtime=(globalThis as any).chrome;const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
+      runtime.tabs.create=async(options:any)=>{const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));return update(tab.id,{url:options.url});};
+      const operations:any[]=[];(globalThis as any).operations=operations;let claimed=false;
+      globalThis.fetch=async(_url:any,options:any)=>{const args=JSON.parse(options.body);operations.push(args);return Response.json(args.p_operation==='claim'?!claimed?(claimed=true,{id:'existing',content:{title:'Perfume de prueba',price:43000,photos:[],selection:{marketplace:true}},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}}):null:{saved:true});};
+      await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture',deviceId:'fixture-device'},paused:false});
+    });
+    const control=await context.newPage();await control.goto(`chrome-extension://${new URL(worker.url()).hostname}/connect.html`);
+    await control.evaluate(async()=>{await (globalThis as any).chrome.runtime.sendMessage({type:'poll'});});
+    await expect.poll(async()=>worker.evaluate(()=>(globalThis as any).operations.some((op:any)=>op.p_operation==='record_existing')),{timeout:20000}).toBe(true);
+    const operations=await worker.evaluate(()=>(globalThis as any).operations);
+    expect(operations).toContainEqual(expect.objectContaining({p_operation:'record_existing',p_delivery:'existing',p_url:'https://www.facebook.com/marketplace/item/987654321/'}));
+    expect(operations.some((op:any)=>['checkpoint','result'].includes(op.p_operation))).toBe(false);expect(createForms).toBe(0);
+  } finally{await context.close();}
 });

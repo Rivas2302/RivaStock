@@ -56,9 +56,8 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   expect(approvals).toHaveLength(1); expect(approvals[0].p_content.title).toBe('Silla lista para Facebook'); expect(approvals[0].p_groups).toHaveLength(1);
   expect(approvals[0].p_content.groupText).toContain('Silla lista para Facebook\n\nSilla nueva de prueba');
   expect(approvals[0].p_content.groupText).toContain('Precio: ARS 1500.00');
-  await dialog.getByRole('button',{name:'Confirmar y publicar'}).click();
-  await expect.poll(() => approvals.length).toBe(2);
-  expect(approvals[1].p_intent).toBe(approvals[0].p_intent); expect(publications).toHaveLength(1);
+  await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toBeDisabled();
+  expect(approvals).toHaveLength(1); expect(publications).toHaveLength(1);
   await dialog.getByRole('button',{name:'Cancelar envío pendiente'}).first().click();
   await expect(dialog.getByText('Marketplace: Cancelado',{exact:true})).toBeVisible();
   await dialog.getByRole('button',{name:'Cerrar',exact:true}).click();

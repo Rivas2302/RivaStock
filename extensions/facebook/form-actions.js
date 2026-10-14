@@ -12,12 +12,26 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (elements.length !== 1) throw new Error('El formulario cambió o hay controles ambiguos. No se repitió el envío.');
     return elements[0];
   };
-  const wait = async find => {
+  const wait = async (find, stage = 'respuesta del formulario') => {
     for (let attempt = 0; attempt < 60; attempt++) {
       const result = find(); if (result) return result;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    throw new Error('Facebook no respondió a tiempo. Verificá el resultado antes de repetir.');
+    throw new Error(`Facebook no respondió a tiempo durante: ${stage}. Verificá el resultado antes de repetir.`);
+  };
+  const progress=stage=>{
+    if(typeof chrome!=='undefined'&&chrome.runtime?.id) void chrome.runtime.sendMessage({type:'progress',stage}).catch(()=>{});
+  };
+  const activate=element=>{
+    element.scrollIntoView({block:'nearest'});
+    element.focus();
+    const box=element.getBoundingClientRect();
+    const options={bubbles:true,cancelable:true,view:window,clientX:box.x+box.width/2,clientY:box.y+box.height/2,button:0};
+    element.dispatchEvent(new PointerEvent('pointerdown',{...options,pointerId:1,pointerType:'mouse',isPrimary:true}));
+    element.dispatchEvent(new MouseEvent('mousedown',options));
+    element.dispatchEvent(new PointerEvent('pointerup',{...options,pointerId:1,pointerType:'mouse',isPrimary:true}));
+    element.dispatchEvent(new MouseEvent('mouseup',options));
+    element.click();
   };
   const buttons = (name, root = document, prefix = false) => Array.from(root.querySelectorAll('button,[role="button"]'))
     .filter(visible).filter(element => prefix ? accessibleName(element).startsWith(name) : accessibleName(element) === name);
@@ -39,6 +53,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (/restring|bloque|no puedes publicar|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
   };
   safety();
+  if(action==='diagnose') {
+    return {
+      path:location.pathname,
+      categories:Array.from(document.querySelectorAll('button,[role="button"],[role="option"],[role="menuitem"]')).filter(visible).map(accessibleName).filter(name=>name.includes('Envío disponible')||name==='Salud y belleza'),
+      combos:Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).map(element=>({label:accessibleName(element),display:text(element),expanded:element.getAttribute('aria-expanded')})),
+      descriptionCount:Array.from(document.querySelectorAll('textarea')).filter(element=>visible(element)&&element.closest('label')?.textContent.includes('Descripción')).length,
+      photoInputs:Array.from(document.querySelectorAll('input[type="file"]')).map(element=>({accept:element.getAttribute('accept'),multiple:element.multiple,count:element.files.length})),
+      next:buttons('Siguiente').map(element=>({enabled:enabled(element)})),
+      publish:buttons('Publicar').map(element=>({enabled:enabled(element)})),
+    };
+  }
   const photoIds = () => Array.from(document.querySelectorAll('a[href]')).flatMap(element => {
     try { const value = new URL(element.href).searchParams.get('set'); return value?.startsWith('gm.') ? [value.slice(3)] : []; } catch { return []; }
   });
@@ -69,7 +94,19 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       await new Promise(resolve=>setTimeout(resolve,250));
     }
     if(stable<4)throw new Error('No se pudo verificar la lista de anuncios existentes. No se envió.');
-    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element)===normalize(content.title))) throw new Error('Ya existe un anuncio con este título. Verificá Facebook antes de publicar otro.');
+    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element)===normalize(content.title))) {
+      const matches=buttons(content.title);
+      const thumbnails=matches.filter(element=>!text(element));
+      const cards=matches.filter(element=>text(element).includes(content.title)&&/\$\s*[\d.,]+/.test(text(element)));
+      const candidates=thumbnails.length?thumbnails:cards;
+      if(candidates.length!==1)throw new Error('Ya hay anuncios con este título. Revisá Facebook: no se creó otro ni se pudo identificar un enlace único.');
+      activate(candidates[0]);
+      const links=()=>Array.from(document.querySelectorAll('a[href]')).filter(element=>text(element).includes(content.title)&&/^\/marketplace\/item\/\d+\/?$/.test(new URL(element.href).pathname));
+      await wait(()=>links().length>0,'consultar el enlace del anuncio que ya existe');
+      const urls=[...new Set(links().map(element=>new URL(element.href).origin+new URL(element.href).pathname))];
+      if(urls.length!==1)throw new Error('Hay varios anuncios con este título. No se creó otro.');
+      return {existing:true,url:urls[0]};
+    }
     return {clear:true};
   }
   if (action === 'marketplace_prepare') {
@@ -78,20 +115,52 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const title = field('Título', 'input[type="text"]'); const price = field('Precio', 'input[type="text"]');
     if (title.value || price.value) throw new Error('Hay un borrador existente. No se sobrescribió.');
     setValue(title, content.title); setValue(price, String(content.price));
-    combo('Categoría').click();
-    await wait(() => buttons(content.category).length || buttons(`${content.category} Envío disponible`).length);
-    one([...buttons(content.category), ...buttons(`${content.category} Envío disponible`)]).click();
-    combo('Estado').click();
+    progress('Seleccionando categoría');
+    const scrollable=()=>Array.from(document.querySelectorAll('*')).filter(element=>visible(element)&&element.scrollHeight>element.clientHeight+8&&/auto|scroll/.test(getComputedStyle(element).overflowY));
+    const previousScrollers=new Set(scrollable());
+    const categoryControl=combo('Categoría');
+    activate(categoryControl);
+    const categoryName=element=>normalize(accessibleName(element).replace(/\s*Envío disponible$/,''));
+    const choices=()=>Array.from(document.querySelectorAll('button,[role="button"],[role="option"],[role="menuitem"]')).filter(visible).filter(element=>categoryName(element)===normalize(content.category));
+    let found=false;
+    // Some menus render category rows only as their own scroll area moves.
+    // Scroll only a newly opened menu, never the page or the form sidebar.
+    for(let attempt=0;attempt<40;attempt++) {
+      safety();
+      const matches=choices();
+      if(matches.length) {
+        const choice=one(matches);
+        choice.scrollIntoView({block:'nearest'});
+        activate(choice);found=true;break;
+      }
+      const menus=scrollable().filter(element=>!previousScrollers.has(element)&&element.querySelector('button,[role="button"],[role="option"],[role="menuitem"]'));
+      if(menus.length>1)throw new Error('Hay más de un menú de categorías. No se eligió una categoría a ciegas.');
+      if(menus.length===1) {
+        const menu=menus[0];
+        menu.scrollTop=Math.min(menu.scrollTop+Math.max(80,menu.clientHeight*0.7),menu.scrollHeight-menu.clientHeight);
+        menu.dispatchEvent(new Event('scroll',{bubbles:true}));
+      }
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    if(!found)throw new Error(`No se encontró la categoría «${content.category}» en el menú de Facebook. No se envió.`);
+    await wait(()=>text(categoryControl).includes(content.category)&&categoryControl.getAttribute('aria-expanded')!=='true','confirmar la categoría seleccionada');
+    progress('Seleccionando estado');
+    const conditionControl=combo('Estado');
+    activate(conditionControl);
     const condition = { new: 'Nuevo', like_new: 'Usado - Como nuevo', good: 'Usado - Buen estado', fair: 'Usado - Aceptable' }[content.condition];
-    await wait(() => Array.from(document.querySelectorAll('[role="option"]')).some(element => visible(element) && text(element) === condition));
-    one(Array.from(document.querySelectorAll('[role="option"]')).filter(visible).filter(element => text(element) === condition)).click();
+    await wait(() => Array.from(document.querySelectorAll('[role="option"]')).some(element => visible(element) && text(element) === condition),'buscar el estado del producto');
+    activate(one(Array.from(document.querySelectorAll('[role="option"]')).filter(visible).filter(element => text(element) === condition)));
+    await wait(()=>text(conditionControl).includes(condition)&&conditionControl.getAttribute('aria-expanded')!=='true','confirmar el estado seleccionado');
+    progress('Completando descripción y ubicación');
     if (!Array.from(document.querySelectorAll('textarea')).some(element => visible(element) && element.closest('label')?.textContent.includes('Descripción'))) button('Más detalles', document, true).click();
-    setValue(field('Descripción', 'textarea'), content.description);
+    await wait(()=>Array.from(document.querySelectorAll('textarea')).some(element=>visible(element)&&element.closest('label')?.textContent.includes('Descripción')),'abrir los detalles del producto');
+    const description=field('Descripción', 'textarea');
+    setValue(description, content.description);
     const place = one(Array.from(document.querySelectorAll('input[aria-label="Ubicación"][role="combobox"]')).filter(visible));
     if (normalize(place.value) !== normalize(content.location)) {
       setValue(place,content.location);
       const options=()=>Array.from(document.querySelectorAll('li[role="option"]')).filter(visible).filter(element=>normalize(text(element).replace(/Ciudad$/,'')).toLowerCase()===normalize(content.location).toLowerCase());
-      await wait(()=>options().length>0);
+      await wait(()=>options().length>0,'buscar la ciudad');
       one(options()).click();
       await wait(()=>normalize(place.value).toLowerCase()===normalize(content.location).toLowerCase()&&place.getAttribute('aria-expanded')!=='true');
     }
@@ -100,10 +169,13 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if (control?.checked || control?.getAttribute('aria-checked') === 'true') throw new Error('Facebook cambió las preferencias de publicación. Revisá la pestaña.');
     }
     const input = one(Array.from(document.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*')));
+    progress('Cargando fotos');
     attach(input);
-    await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)));
+    await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente');
+    if(title.value!==content.title||normalize(description.value)!==normalize(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
+    progress('Verificando destinos antes de publicar');
     button('Siguiente').click();
-    await wait(() => /Publicar en más lugares/.test(document.body.innerText) && buttons('Publicar').length === 1);
+    await wait(() => /Publicar en más lugares/.test(document.body.innerText) && buttons('Publicar').length === 1,'abrir el paso final de Marketplace');
     if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
     return { ready: true, baseline: [] };
   }
@@ -154,10 +226,21 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   if (action === 'result') {
     if (content.selection?.marketplace && location.pathname.startsWith('/marketplace')) {
       if (buttons('Cerrar cuadro de diálogo de promoción de publicación').length === 1) { button('Cerrar cuadro de diálogo de promoción de publicación').click(); return { waiting: true }; }
-      const exact = buttons(content.title).filter(element => text(element).includes(String(content.price)) || text(element).includes('Disponible'));
-      if (exact.length === 1) { exact[0].click(); return { waiting: true }; }
       const links = Array.from(document.querySelectorAll('a[href]')).filter(element => text(element).includes(content.title) && /^\/marketplace\/item\/\d+\/?$/.test(new URL(element.href).pathname));
-      if (links.length === 1) return { status: /Esta publicación está en revisión/.test(document.body.innerText) ? 'pending_approval' : 'submitted', url: new URL(links[0].href).origin + new URL(links[0].href).pathname, message: 'Anuncio creado. La aprobación pública se registra solo con evidencia explícita.' };
+      const urls=[...new Set(links.map(element=>new URL(element.href).origin+new URL(element.href).pathname))];
+      if (urls.length === 1) return { status: /Esta publicación está en revisión/.test(document.body.innerText) ? 'pending_approval' : 'submitted', url: urls[0], message: 'Anuncio creado. La aprobación pública se registra solo con evidencia explícita.' };
+      if(urls.length>1)throw new Error('Hay varios anuncios con el mismo título. Revisá el resultado; no se repetirá el envío.');
+      // Read the opened detail before clicking again: list cards remain in the
+      // DOM behind a dialog. Facebook has a separate, empty thumbnail button
+      // and a text card with the same accessible name; the thumbnail opens
+      // the "Tu publicación" detail containing the public item link.
+      if(Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))return {waiting:true};
+      const exact=buttons(content.title);
+      const thumbnails=exact.filter(element=>!text(element));
+      const cards=exact.filter(element=>text(element).includes(content.title)&&/\$\s*[\d.,]+/.test(text(element)));
+      const candidates=thumbnails.length?thumbnails:cards;
+      if(candidates.length>1)throw new Error('Hay varios anuncios con el mismo título. Revisá Facebook.');
+      if(candidates.length===1) {activate(candidates[0]);return {waiting:true};}
     } else {
       const candidates = Array.from(document.querySelectorAll('a[href]')).filter(element => {
         try { const value = new URL(element.href).searchParams.get('set'); return value?.startsWith('gm.') && !baseline.includes(value.slice(3)); } catch { return false; }

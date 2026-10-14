@@ -3,6 +3,14 @@ import { registerPairing } from './pairing.js';
 registerPairing();
 
 let polling = false;
+export async function ensureQueueAlarm() {
+  const {connection}=await chrome.storage.local.get('connection');
+  if(!connection)return;
+  if(!await chrome.alarms.get('rivastock-queue')) await chrome.alarms.create('rivastock-queue',{periodInMinutes:1});
+}
+// MV3 alarms may disappear across browser sessions or extension updates.
+// Recreate them whenever the worker is loaded, without changing user pause.
+void ensureQueueAlarm().catch(()=>{});
 export async function rpc(config, name, args) {
   const response = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
     method: 'POST', headers: { apikey: config.key, ...(config.key.startsWith('ey') ? { Authorization: `Bearer ${config.key}` } : {}), 'Content-Type': 'application/json' },
@@ -17,9 +25,16 @@ async function poll() {
   polling = true;
   let heartbeatTimer;
   try {
-    const { connection, paused, activeJob } = await chrome.storage.local.get(['connection','paused','activeJob']);
+    const saved=await chrome.storage.local.get(['connection','paused','activeJob','lastIssue','status','queueCommandAt']);
+    const {connection,activeJob,lastIssue}=saved;let paused=saved.paused;
     if (!connection) return;
-    await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'heartbeat' });
+    const heartbeat=await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'heartbeat',p_status:paused===false?'active':'paused',p_message:saved.status??null });
+    if(heartbeat?.queue_command_at&&heartbeat.queue_command_at!==saved.queueCommandAt) {
+      paused=!heartbeat.queue_enabled;
+      const message=paused?'Cola pausada desde RivaStock.':'Cola activa desde RivaStock.';
+      await chrome.storage.local.set({paused,queueCommandAt:heartbeat.queue_command_at,status:message});
+      await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'heartbeat',p_status:paused?'paused':'active',p_message:message});
+    }
     // Refresh the actual device heartbeat during long photo/form work. The
     // storage API call also lets MV3 observe ongoing activity; jobs still have
     // a persisted recovery checkpoint if Chrome terminates the worker.
@@ -41,29 +56,37 @@ async function poll() {
           await saveResult(connection, {...activeJob,result});
         } catch (error) {
           await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'attention',p_delivery:activeJob.job.id,p_message:error.message});
-          await chrome.storage.local.set({paused:true,status:error.message});
+          await chrome.storage.local.set({status:error.message,lastIssue:error.message});
           await chrome.storage.local.remove('activeJob');
         }
       } else {
         await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'attention',p_delivery:activeJob.job.id,p_message:'Preparación interrumpida. Revisá la pestaña; no se repitió el envío.'});
-        await chrome.storage.local.set({paused:true,status:'Preparación interrumpida. Revisá Facebook.'});
+        await chrome.storage.local.set({status:'Preparación interrumpida. Revisá Facebook. La cola continúa activa.',lastIssue:'Preparación interrumpida. Revisá Facebook.'});
         await chrome.storage.local.remove('activeJob');
       }
       return;
     }
     if (paused !== false) { await chrome.storage.local.set({status:'Conectada. Cola pausada.'}); return; }
     const job = await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'claim' });
-    if (!job) { await chrome.storage.local.set({ status: 'Conectada. Sin trabajos pendientes.' }); return; }
+    if (!job) { await chrome.storage.local.set({ status: lastIssue?`Cola activa. Último envío requiere revisión: ${lastIssue}`:'Conectada. Sin trabajos pendientes.' }); return; }
     await chrome.storage.local.set({status:`Preparando ${job.destination.name ?? 'publicación'} en una pestaña de Facebook…`});
     try {
       // Persist the claim before any fetch/navigation so a service-worker restart
       // cannot forget an assigned job. Never resubmit a recovered active job.
       await chrome.storage.local.set({activeJob:{job,deviceId:connection.deviceId,projectUrl:connection.url,stage:'preparing'}});
+      await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'progress',p_delivery:job.id,p_message:`Preparando ${job.destination.name??'publicación'}`}).catch(()=>{});
       const active = await facebookAdapter.prepare(job,connection);
+      if(active.existing) {
+        const completed={...active,stage:'result'};
+        await chrome.storage.local.set({activeJob:completed});
+        await saveResult(connection,completed);
+        return;
+      }
       await chrome.storage.local.set({activeJob:active});
       await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'checkpoint',p_delivery:job.id});
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'}});
       await chrome.storage.local.set({status:`Enviando ${job.destination.name ?? 'publicación'}… No cierres Chrome.`});
+      await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'progress',p_delivery:job.id,p_message:'Enviando a Facebook; resultado todavía sin confirmar'}).catch(()=>{});
       await facebookAdapter.action(active.tabId,'submit',job.content);
       const result = await facebookAdapter.reconcile(active);
       const completed={...active,stage:'result',result};
@@ -75,22 +98,61 @@ async function poll() {
       const saved=await chrome.storage.local.get('activeJob');
       if (saved.activeJob?.stage==='result') throw error;
       await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'attention', p_delivery: job.id, p_message: error.message });
-      await chrome.storage.local.set({ status: error.message,paused:true });
+      await chrome.storage.local.set({ status: error.message,lastIssue:error.message });
       await chrome.storage.local.remove('activeJob');
     }
   } catch (error) {
-    await chrome.storage.local.set({ status: `Conexión pausada: ${error.message}` });
+    await chrome.storage.local.set({ status: `Sin conexión momentánea. Se reintentará automáticamente: ${error.message}` });
   } finally { clearInterval(heartbeatTimer); polling = false; }
 }
 async function saveResult(connection, active) {
-  await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'result',p_delivery:active.job.id,p_status:active.result.status,p_url:active.result.url,p_message:active.result.message});
-  await chrome.storage.local.set({status:`Resultado guardado: ${active.result.message}`});
+  const saved=await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:active.existing?'record_existing':'result',p_delivery:active.job.id,p_status:active.result.status,p_url:active.result.url,p_message:active.result.message});
+  await chrome.storage.local.set({status:saved?.reviewed?'Este intento ya fue resuelto por una revisión registrada en RivaStock.':`Resultado guardado: ${active.result.message}`});
+  await chrome.storage.local.remove('lastIssue');
   await chrome.storage.local.remove('activeJob');
 }
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'rivastock-queue') void poll(); });
-chrome.runtime.onInstalled.addListener(() => { void chrome.alarms.create('rivastock-queue', { periodInMinutes: 1 }); });
-chrome.runtime.onStartup.addListener(() => { void chrome.alarms.create('rivastock-queue', { periodInMinutes: 1 }); void poll(); });
+chrome.runtime.onInstalled.addListener(() => { void ensureQueueAlarm().then(poll).catch(()=>{}); });
+chrome.runtime.onStartup.addListener(() => { void ensureQueueAlarm().then(poll).catch(()=>{}); });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if(message.type==='queue-control'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')&&typeof message.paused==='boolean') {
+    void (async()=>{
+      try {
+        const {connection}=await chrome.storage.local.get('connection');
+        if(!connection)throw new Error('Conectá esta PC primero.');
+        const command=await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'queue_state',p_status:message.paused?'paused':'active'});
+        await chrome.storage.local.set({paused:message.paused,queueCommandAt:command.queue_command_at??null,status:message.paused?'Cola pausada. El envío en curso puede terminar.':'Cola activa. Revisando publicaciones aprobadas…'});
+        if(!message.paused)await poll();
+        reply({done:true});
+      }catch(error){reply({error:error.message});}
+    })();
+    return true;
+  }
+  if(message.type==='diagnose'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')) {
+    void (async()=>{
+      try {
+        const tabs=await chrome.tabs.query({url:'https://www.facebook.com/marketplace/*'});
+        const forms=tabs.filter(tab=>new URL(tab.url).pathname==='/marketplace/create/item');
+        const focused=forms.filter(tab=>tab.active);
+        const candidates=focused.length===1?focused:forms;
+        if(candidates.length!==1)throw new Error('Abrí un único formulario de Marketplace para revisar.');
+        const details=await facebookAdapter.action(candidates[0].id,'diagnose',{});
+        const {status}=await chrome.storage.local.get('status');
+        reply({version:chrome.runtime.getManifest().version,status,details});
+      } catch(error){reply({error:error.message});}
+    })();
+    return true;
+  }
+  const stages=['Seleccionando categoría','Seleccionando estado','Completando descripción y ubicación','Cargando fotos','Verificando destinos antes de publicar'];
+  if(sender.id===chrome.runtime.id&&sender.tab&&message.type==='progress'&&stages.includes(message.stage)) {
+    void chrome.storage.local.get(['activeJob','connection']).then(async({activeJob,connection})=>{
+      if(activeJob?.tabId===sender.tab.id&&activeJob.stage==='preparing') {
+        await chrome.storage.local.set({status:`${message.stage}…`});
+        if(connection)await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'progress',p_delivery:activeJob.job.id,p_message:message.stage});
+      }
+    }).catch(()=>{});
+    return;
+  }
   if (sender.id !== chrome.runtime.id || message.type !== 'poll') return;
   void poll().then(() => reply({ done: true }));
   return true;
