@@ -1,0 +1,56 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { beforeAll, afterAll, it, expect } from 'vitest';
+
+let db: PGlite;
+const owner = '10000000-0000-4000-8000-000000000001';
+const other = '10000000-0000-4000-8000-000000000002';
+const id = '20000000-0000-4000-8000-000000000001';
+beforeAll(async () => {
+  db = new PGlite();
+  await db.exec(`CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE SCHEMA storage;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT current_setting('test.uid')::uuid $$;
+    CREATE FUNCTION get_owner_uid(uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT $1 $$;
+    CREATE FUNCTION has_permission(uuid,text,text) RETURNS boolean LANGUAGE sql AS $$ SELECT $3 = 'read' OR current_setting('test.write') = 'true' $$;
+    CREATE TABLE profiles(id uuid PRIMARY KEY);
+    CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    CREATE TABLE storage.objects(id uuid DEFAULT gen_random_uuid(),bucket_id text,name text);
+    ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+    CREATE FUNCTION storage.foldername(text) RETURNS text[] LANGUAGE sql AS $$ SELECT string_to_array($1,'/') $$;
+    GRANT USAGE ON SCHEMA public,auth,storage TO authenticated;
+    GRANT SELECT,INSERT,DELETE ON storage.objects TO authenticated;
+    INSERT INTO profiles VALUES ('${owner}'),('${other}');
+    SET test.uid = '${owner}'; SET test.write = 'true';`);
+  await db.exec(readFileSync('supabase/migrations/0048_supplier_orders.sql', 'utf8'));
+}, 30000);
+afterAll(async () => { await db?.close(); });
+
+it('enforces tenant isolation, guide uniqueness, receipt stamps and private PDF access', async () => {
+  await db.exec('SET ROLE authenticated');
+  await db.query(`INSERT INTO supplier_orders(id,user_id,supplier_name,tracking_number) VALUES($1,$2,'Proveedor','001234567890')`, [id,owner]);
+  await expect(db.query(`INSERT INTO supplier_orders(user_id,supplier_name,tracking_number) VALUES($1,'Duplicado','001234567890')`,[owner])).rejects.toThrow();
+  await expect(db.query(`INSERT INTO supplier_orders(user_id,supplier_name,tracking_number) VALUES($1,'Inválido','123')`,[owner])).rejects.toThrow();
+  await expect(db.query(`INSERT INTO supplier_orders(user_id,supplier_name) VALUES($1,'Otra cuenta')`,[other])).rejects.toThrow();
+  await db.exec(`SET test.uid = '${other}'`);
+  expect((await db.query('SELECT * FROM supplier_orders')).rows).toHaveLength(0);
+  await db.exec(`SET test.uid = '${owner}'; SET test.write = 'false'`);
+  expect((await db.query(`UPDATE supplier_orders SET status='received' RETURNING id`)).rows).toHaveLength(0);
+  await db.exec(`SET test.write = 'true'`);
+  const original = (await db.query<{version:string}>(`SELECT updated_at::text AS version FROM supplier_orders`)).rows[0].version;
+  const received = await db.query<{received_at: Date}>(`UPDATE supplier_orders SET status='received' RETURNING received_at`);
+  expect(received.rows[0].received_at).toBeTruthy();
+  expect((await db.query(`UPDATE supplier_orders SET notes='Stale edit' WHERE updated_at=$1::timestamptz RETURNING id`, [original])).rows).toHaveLength(0);
+  expect((await db.query<{received_at: Date|null}>(`UPDATE supplier_orders SET status='ready' RETURNING received_at`)).rows[0].received_at).toBeNull();
+  const path = `${owner}/${id}/file.pdf`;
+  await db.query(`INSERT INTO storage.objects(bucket_id,name) VALUES('supplier-order-documents',$1)`,[path]);
+  await db.query(`UPDATE supplier_orders SET document_path=$1,document_name='pedido.pdf'`,[path]);
+  expect((await db.query(`DELETE FROM storage.objects RETURNING id`)).rows).toHaveLength(0);
+  await db.exec(`SET test.uid = '${other}'`);
+  expect((await db.query(`SELECT * FROM storage.objects`)).rows).toHaveLength(0);
+  await expect(db.query(`INSERT INTO storage.objects(bucket_id,name) VALUES('supplier-order-documents',$1)`,[path])).rejects.toThrow();
+  await db.exec(`SET test.uid = '${owner}'`);
+  await db.query(`UPDATE supplier_orders SET document_path=NULL,document_name=NULL`);
+  expect((await db.query(`DELETE FROM storage.objects RETURNING id`)).rows).toHaveLength(1);
+  await db.exec(`RESET ROLE`);
+  expect((await db.query<{public:boolean}>(`SELECT public FROM storage.buckets`)).rows[0].public).toBe(false);
+});

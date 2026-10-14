@@ -43,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
   { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes' },
   { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores' },
+  { name: 'Compras a proveedores', path: '/compras', icon: Package, module: 'proveedores' },
   { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },
   { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, module: 'pedidos' },
@@ -64,7 +65,7 @@ export default function Layout() {
   );
   const navGroups = [
     { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
-    { label: 'Relaciones', paths: ['/clientes', '/proveedores'] },
+    { label: 'Relaciones', paths: ['/clientes', '/proveedores', '/compras'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
     { label: 'Sistema', paths: ['/trazabilidad', '/config'] },
   ].map((group) => ({

@@ -21,6 +21,7 @@ const Quotes = lazy(() => import('./pages/Quotes'));
 const QuotePublic = lazy(() => import('./pages/QuotePublic'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
+const SupplierOrders = lazy(() => import('./pages/SupplierOrders'));
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -91,6 +92,7 @@ function AppRoutes() {
           <Route path="presupuestos" element={withSuspense(<RequirePermission module="presupuestos"><Quotes /></RequirePermission>)} />
           <Route path="clientes" element={withSuspense(<RequirePermission module="clientes"><Customers /></RequirePermission>)} />
           <Route path="proveedores" element={withSuspense(<RequirePermission module="proveedores"><Suppliers /></RequirePermission>)} />
+          <Route path="compras" element={withSuspense(<RequirePermission module="proveedores"><SupplierOrders /></RequirePermission>)} />
           <Route path="ingresos" element={withSuspense(<RequirePermission module="ingresos"><Intake /></RequirePermission>)} />
           <Route path="caja" element={withSuspense(<RequirePermission module="caja"><CashFlow /></RequirePermission>)} />
           <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
