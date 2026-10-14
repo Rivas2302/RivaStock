@@ -1,4 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { jsPDF } from 'jspdf';
+// Full Chromium includes the built-in PDF viewer; headless shell does not.
+test.use({ channel: 'chromium' });
+
+const pdf = new jsPDF();
+pdf.text('Supplier order fixture', 20, 20);
+const pdfBytes = Buffer.from(pdf.output('arraybuffer'));
+
+const deployment = JSON.parse(readFileSync('vercel.json', 'utf8'));
+const productionCsp = deployment.headers[0].headers.find((header: {key: string}) => header.key === 'Content-Security-Policy').value as string;
+// Keep production frame restrictions; only substitute the mocked Supabase origin.
+const fixtureCsp = productionCsp.replaceAll('https://nkfqhuqrgrpfufdymkcr.supabase.co', 'https://rivastock-test.invalid');
 
 const owner = '10000000-0000-4000-8000-000000000001';
 async function fixture(page: Page) {
@@ -7,9 +20,18 @@ async function fixture(page: Page) {
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (url.hostname === '127.0.0.1') return route.continue();
+    if (['chrome-extension:', 'chrome:', 'blob:', 'data:'].includes(url.protocol)) return route.continue();
+    if (url.hostname === '127.0.0.1') {
+      if (route.request().resourceType() !== 'document') return route.continue();
+      const response = await route.fetch();
+      return route.fulfill({response, headers:{...response.headers(), 'content-security-policy':fixtureCsp}});
+    }
     if (url.hostname === 'formularios.viacargo.com.ar') return route.fulfill({ contentType: 'text/html', body: '<p>Consulta oficial</p>' });
     if (url.hostname !== 'rivastock-test.invalid') return route.abort();
+    if (url.pathname.startsWith('/storage/v1/object/supplier-order-documents/') && route.request().method() === 'GET') {
+      expect(route.request().headers().authorization).toMatch(/^Bearer /);
+      return route.fulfill({contentType:'application/pdf',headers:{'content-security-policy':"sandbox; frame-ancestors 'none'",'content-disposition':'attachment; filename="pedido.pdf"'},body:pdfBytes});
+    }
     const table = url.pathname.split('/').pop();
     let data: unknown = [];
     if (table === 'get_owner_profile') data = [{id:owner,email:'owner@test.invalid',role:'admin',business_name:'Test',display_name:'Owner'}];
@@ -33,6 +55,7 @@ async function fixture(page: Page) {
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
   });
   await page.addInitScript(id => {
+    if (window !== window.top || location.origin !== 'http://127.0.0.1:4173') return;
     const exp = Math.floor(Date.now()/1000)+3600;
     const encode = (value:unknown) => btoa(JSON.stringify(value)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
     localStorage.setItem('rivastock-auth',JSON.stringify({access_token:`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,exp,role:'authenticated'})}.fixture`,refresh_token:'fixture',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id,email:'owner@test.invalid',aud:'authenticated',app_metadata:{},user_metadata:{},created_at:new Date().toISOString()}}));
@@ -41,19 +64,38 @@ async function fixture(page: Page) {
   return { rows, errors };
 }
 
-for (const mobile of [false, true]) test(`registers, tracks and closes a supplier order (${mobile ? 'mobile' : 'desktop'})`, async ({page}) => {
+for (const mobile of [false, true]) test(`registers, tracks and closes a supplier order (${mobile ? 'mobile' : 'desktop'})`, async ({page}, testInfo) => {
   if (mobile) await page.setViewportSize({width:390,height:844});
   const {rows,errors} = await fixture(page);
   await expect(page.getByText('Registra tu primer pedido',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Nuevo pedido'}).click();
   await page.getByLabel('Proveedor',{exact:true}).fill('Proveedor Uno');
-  await page.getByLabel('PDF del pedido (opcional)',{exact:false}).setInputFiles({name:'pedido.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\n%%EOF')});
+  await page.getByLabel('PDF del pedido (opcional)',{exact:false}).setInputFiles({name:'pedido.pdf',mimeType:'application/pdf',buffer:pdfBytes});
   await page.getByRole('button',{name:'Guardar pedido',exact:true}).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(rows).toHaveLength(1);
   expect(rows[0].document_path).toContain(owner);
   expect(rows[0].tracking_number).toBeNull();
   await expect(page.getByText('Sin guía de envío todavía',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Ver PDF',exact:true}).click();
+  const pdfFrame = page.getByTitle('PDF del pedido',{exact:true});
+  await expect(pdfFrame).toHaveAttribute('src',/^blob:/);
+  const blobUrl = await pdfFrame.getAttribute('src');
+  await expect(pdfFrame).toBeVisible();
+  await expect.poll(async () => {
+    for (const frame of page.frames()) {
+      const viewer = frame.locator('pdf-viewer');
+      if (await viewer.count()) return viewer.evaluate(element => {
+        const toolbar = element.shadowRoot?.querySelector('viewer-toolbar') as (HTMLElement & {docLength?: number}) | null;
+        return toolbar?.docLength === 1;
+      });
+    }
+    return false;
+  }).toBe(true);
+  await page.screenshot({path:testInfo.outputPath('pdf-preview.png')});
+  await expect(page.getByRole('link',{name:'Abrir PDF en otra pestaña'})).toHaveAttribute('href',blobUrl!);
+  await page.getByRole('dialog').getByRole('button',{name:'Cerrar',exact:true}).click();
+  await expect(pdfFrame).toBeHidden();
   await page.getByRole('button',{name:'Editar',exact:true}).click();
   await page.getByLabel('Guía de Vía Cargo (opcional)').fill('001234567890');
   await page.getByLabel('Estado del pedido',{exact:true}).selectOption('ready');
@@ -61,6 +103,8 @@ for (const mobile of [false, true]) test(`registers, tracks and closes a supplie
   await expect(page.getByRole('dialog')).toBeHidden();
   await page.getByRole('button',{name:'Seguir envío'}).click();
   await expect(page.locator('iframe')).toHaveAttribute('src','https://formularios.viacargo.com.ar/seguimiento-envio/001234567890');
+  // A src attribute alone does not prove that production CSP permits the frame.
+  await expect(page.frameLocator('iframe').getByText('Consulta oficial',{exact:true})).toBeVisible();
   await page.getByRole('dialog').getByRole('button',{name:'Cerrar',exact:true}).click();
   await page.getByRole('button',{name:'Marcar recibido'}).click();
   await expect(page.locator('article')).toHaveCount(0);

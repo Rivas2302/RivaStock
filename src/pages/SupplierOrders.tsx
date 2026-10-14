@@ -37,6 +37,12 @@ export default function SupplierOrders() {
   const draftId = useRef('');
   const [tracking, setTracking] = useState<SupplierOrder | null>(null);
   const [document, setDocument] = useState<{ url: string; name: string } | null>(null);
+  const [openingDocument, setOpeningDocument] = useState(false);
+  const documentRequest = useRef(0);
+  useEffect(() => () => { documentRequest.current++; }, []);
+  useEffect(() => {
+    return () => { if (document) URL.revokeObjectURL(document.url); };
+  }, [document]);
   const loadSequence = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -130,9 +136,23 @@ export default function SupplierOrders() {
 
   async function openDocument(order: SupplierOrder) {
     if (!order.document_path) return;
-    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(order.document_path, 600);
-    if (error) { showToast('No se pudo abrir el PDF. Intenta nuevamente.', 'error'); return; }
-    setDocument({ url: data.signedUrl, name: order.document_name || 'Pedido.pdf' });
+    const request = ++documentRequest.current;
+    setOpeningDocument(true);
+    try {
+      // Download with the user's session, then render locally. Storage response
+      // headers and signed-link expiration cannot block the embedded viewer.
+      const { data, error } = await supabase.storage.from(BUCKET).download(order.document_path);
+      if (request !== documentRequest.current) return;
+      if (error) throw error;
+      if (await data.slice(0, 5).text() !== '%PDF-') throw new Error('Invalid PDF');
+      if (request !== documentRequest.current) return;
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+      setDocument({ url, name: order.document_name || 'Pedido.pdf' });
+    } catch {
+      if (request === documentRequest.current) showToast('No se pudo abrir el PDF. Intenta nuevamente.', 'error');
+    } finally {
+      if (request === documentRequest.current) setOpeningDocument(false);
+    }
   }
 
   const pending = orders.filter(isPendingOrder);
@@ -164,7 +184,7 @@ export default function SupplierOrders() {
         {order.notes && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-500">{order.notes}</p>}
         {order.received_at && <p className="mt-2 text-sm text-slate-500">Recibido el {formatDate(order.received_at.slice(0, 10))}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
-          {order.document_path && <button className={buttonClass} onClick={() => void openDocument(order)}><FileText size={16} /> Ver PDF</button>}
+          {order.document_path && <button className={buttonClass} disabled={openingDocument} onClick={() => void openDocument(order)}><FileText size={16} /> {openingDocument ? 'Abriendo PDF…' : 'Ver PDF'}</button>}
           {order.tracking_number && <button className={buttonClass} onClick={() => setTracking(order)}><Truck size={16} /> Seguir envío</button>}
           {canWrite && <button className={buttonClass} disabled={busy} onClick={() => openForm(order)}><Pencil size={16} /> Editar</button>}
           {canWrite && isPendingOrder(order) && <button className={`${buttonClass} bg-emerald-700 text-white`} disabled={busy} onClick={() => void markReceived(order)}><Check size={16} /> Marcar recibido</button>}
