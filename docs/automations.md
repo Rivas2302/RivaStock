@@ -8,6 +8,10 @@ Se encontraron como automatizaciones configurables la cola de publicaciones y su
 
 Stock conserva **Publicar en Facebook**. La ventana del producto y el módulo utilizan el mismo historial y las mismas acciones. `Configuración → Facebook` conserva su acceso, redirigiendo a la configuración centralizada.
 
+Desde **Publicaciones → Nueva publicación**, buscá un producto del inventario por nombre y revisá su foto, precio y disponibilidad. Se abre el mismo formulario de Stock, con las publicaciones anteriores y bloqueos por destino. Al confirmar, el módulo muestra el trabajo en Historial; la aprobación no garantiza que Facebook ya lo haya publicado.
+
+**Actualizar** recarga la vista activa y la conexión/cola. En Configuración también consulta los grupos y la detección de la extensión, sin borrar los campos que se estaban editando. Durante la consulta bloquea nuevos clics y muestra progreso; después confirma la actualización aunque no haya cambios, o informa el error para poder reintentar. Esta mejora no necesita otra migración ni actualizar la extensión si ya están instaladas las versiones indicadas abajo.
+
 ## Permisos
 
 | Acción | Permiso existente |

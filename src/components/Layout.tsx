@@ -126,7 +126,7 @@ export default function Layout() {
           <p className="mt-1 text-xs text-slate-400">{user?.businessName}</p>
         </div>
         
-        <nav className="flex-1 px-4 space-y-5 overflow-y-auto">
+        <nav className="flex-1 min-h-0 px-4 pb-6 space-y-5 overflow-y-auto overscroll-contain">
           {navGroups.map((group) => (
             <div key={group.label} className="space-y-1">
               <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -155,7 +155,7 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 mt-auto border-t border-slate-800 space-y-2">
+        <div className="p-4 mt-auto border-t border-slate-800 space-y-2 shrink-0">
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
               {displayInitial}
@@ -238,7 +238,7 @@ export default function Layout() {
                   <X size={24} />
                 </button>
               </div>
-              <nav className="flex-1 min-h-0 px-4 space-y-1 overflow-y-auto overscroll-contain">
+              <nav className="flex-1 min-h-0 px-4 pb-6 space-y-1 overflow-y-auto overscroll-contain">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;

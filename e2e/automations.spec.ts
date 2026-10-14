@@ -15,6 +15,7 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
     if(name==='collaborators')data=role==='owner'?null:{id:'collaborator',owner_uid:owner,permissions:{stock:{read:role!=='denied',write:false,delete:false},config:{read:false,write:false,delete:false}}};
     if(name==='get_owner_profile')data=[{id:owner,role:'admin',business_name:'Test',display_name:'Owner',email:'owner@test.invalid'}];
     if(name==='facebook_devices')data=[device];
+    if(name==='inventory_operation_settings')data={holdings_enabled:false};
     if(name==='facebook_publications') {
       const product=url.searchParams.get('product_id')?.replace('eq.','');
       let result=product?rows.filter(p=>p.product_id===product):rows;
@@ -23,7 +24,9 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
     }
     if(name==='products') {
       const id=url.searchParams.get('id')?.replace('eq.','');const row=rows.find(p=>p.product_id===id);
-      data=row?{id,user_id:owner,name:row.content.title,description:row.content.description,sale_price:1500,purchase_price:1000,stock:3,images:[photo],image_url:photo}:[];
+      const products=rows.map(row=>({id:row.product_id,user_id:owner,name:row.content.title,description:row.content.description,sale_price:1500,purchase_price:1000,stock:3,images:[photo],image_url:photo}));
+      products.push({id:'new-product',user_id:owner,name:'Producto nuevo',description:'Descripción nueva',sale_price:2000,purchase_price:1000,stock:2,images:[photo],image_url:photo});
+      data=id?products.find(item=>item.id===id):products;
     }
     if(['cancel_facebook_delivery','retry_facebook_preparation','review_facebook_delivery','set_facebook_queue_enabled','approve_facebook_publication'].includes(name)) {
       const args=route.request().postDataJSON();calls.push({name,args});
@@ -32,7 +35,7 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
       if(delivery&&name==='retry_facebook_preparation')delivery.status='pending';
       if(delivery&&name==='review_facebook_delivery'){delivery.status=args.p_decision==='found'?'submitted':'cancelled';delivery.evidence_url=args.p_url;}
       if(name==='set_facebook_queue_enabled')device.queue_enabled=args.p_enabled;
-      if(name==='approve_facebook_publication')data='new-publication';
+      if(name==='approve_facebook_publication'){data='new-publication';rows.push({id:'new-publication',product_id:args.p_product,approved_at:new Date().toISOString(),content:args.p_content,facebook_deliveries:[{id:'new-delivery',destination_key:'marketplace',status:'pending',submitted_at:null,destination:{name:'Marketplace',mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},evidence_url:null,message:null}]});}
       else data=null;
     }
     return route.fulfill({json:data});
@@ -90,4 +93,71 @@ test('hides mutating actions for viewers and denies navigation without Stock acc
 test('blocks direct access without Stock permission',async({page})=>{
   await fixture(page,'denied');await page.goto('/automatizaciones');await expect(page).not.toHaveURL(/\/automatizaciones/);
   await expect(page.getByRole('link',{name:'Automatizaciones',exact:true})).toHaveCount(0);
+});
+
+for(const mobile of [false,true])test(`starts publication from inventory (${mobile?'mobile':'desktop'})`,async({page},testInfo)=>{
+  if(mobile)await page.setViewportSize({width:390,height:844});
+  const {calls}=await fixture(page);await page.goto('/automatizaciones');
+  await page.getByRole('button',{name:'Nueva publicación',exact:true}).click();
+  const picker=page.getByRole('dialog',{name:'Nueva publicación',exact:true});
+  await picker.getByRole('textbox').fill('no coincide');
+  await expect(picker.getByText('No hay productos que coincidan',{exact:false})).toBeVisible();
+  await picker.getByRole('textbox').fill('Producto nuevo');
+  await expect(picker.getByRole('button',{name:/Producto nuevo/})).toContainText('2 en stock');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath(`picker-${mobile?'mobile':'desktop'}.png`)});
+  await picker.getByRole('button',{name:/Producto nuevo/}).click();
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await modal.getByLabel('Ubicación', {exact:true}).fill('General Pico');
+  await modal.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
+  await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
+  await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.getByRole('article').filter({hasText:'Producto nuevo'})).toContainText('Pendiente');
+  expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(1);
+  await expect(page).toHaveURL(/automatizaciones/);
+});
+
+test('refresh progress, unchanged success, errors, recovery and unknown block',async({page})=>{
+  await fixture(page);await page.goto('/automatizaciones');
+  await expect(page.getByRole('button',{name:'Actualizar',exact:true})).toBeEnabled();
+  await page.route('**/rest/v1/facebook_devices*',async route=>{
+    await new Promise(resolve=>setTimeout(resolve,400));await route.fulfill({status:400,json:{message:'offline'}});
+  });
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Actualizando…'})).toBeDisabled();
+  await expect(page.getByRole('alert')).toContainText('No se pudo actualizar');
+  await page.unroute('**/rest/v1/facebook_devices*');
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect(page.getByText('Datos actualizados correctamente',{exact:false})).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button',{name:'Nueva publicación',exact:true}).click();
+  await page.getByRole('button',{name:/Resultado por revisar.*en stock/}).click();
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByRole('button',{name:'Preparar otra publicación'})).toBeDisabled();
+  await expect(modal.getByRole('button',{name:'Confirmar y publicar',exact:true})).toBeDisabled();
+});
+
+
+test('refreshes configuration groups and active queue; inventory errors can retry',async({page})=>{
+  await fixture(page);await page.goto('/automatizaciones?view=configuration');
+  await expect(page.getByRole('heading',{name:'Destinos y grupos'})).toBeVisible();
+  await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:[{id:'group',name:'Grupo actualizado',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group'}]}));
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect(page.getByText('Datos actualizados correctamente',{exact:false})).toBeVisible();
+  await expect(page.getByText('Grupo actualizado',{exact:true})).toBeVisible();
+  await page.getByLabel('Nombre del grupo',{exact:true}).fill('Edición en curso');
+  await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({status:400,json:{message:'groups unavailable'}}));
+  await page.getByRole('button',{name:'Actualizar',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('No se pudieron actualizar los grupos');
+  await expect(page.getByLabel('Nombre del grupo',{exact:true})).toHaveValue('Edición en curso');
+  await page.unroute('**/rest/v1/facebook_groups*');
+  await page.getByRole('button',{name:'Cola y progreso',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Producto pendiente',exact:true})).toBeVisible();
+  await page.route('**/rest/v1/products*',route=>route.fulfill({status:400,json:{message:'inventory unavailable'}}));
+  await page.getByRole('button',{name:'Nueva publicación',exact:true}).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('No se pudo cargar el inventario');
+  await page.unroute('**/rest/v1/products*');
+  await page.getByRole('button',{name:'Reintentar carga'}).click();
+  await expect(page.getByRole('button',{name:/Producto nuevo.*en stock/})).toBeVisible();
 });

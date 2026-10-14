@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useState,useImperativeHandle,type Ref} from 'react';
 import {Download,CheckCircle2,Monitor} from 'lucide-react';
 import {useAuth} from '../AuthContext';
 import {usePermission} from '../hooks/usePermission';
@@ -6,7 +6,7 @@ import {supabase} from '../lib/supabase';
 import {connectFacebookComputer,facebookExtensionInstalled} from '../lib/facebookConnection';
 import {deviceConnected,facebookRpc,type FacebookDevice} from '../lib/facebookPublications';
 
-export default function FacebookExtensionSettings() {
+export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>Promise<void>}>}) {
   const {isOwner}=useAuth();
   const canWrite=usePermission('config','write');
   const [installed,setInstalled]=useState(false);
@@ -15,6 +15,12 @@ export default function FacebookExtensionSettings() {
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
   const [copied,setCopied]=useState(false);
+  useImperativeHandle(ref,()=>({refresh:async()=>{
+    const found=await facebookExtensionInstalled();
+    const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at',null);
+    if(error)throw new Error('No se pudo consultar la conexión de Facebook.');
+    setInstalled(found);setDevices(data as FacebookDevice[]);setError('');
+  }}));
   useEffect(()=> {
     let active=true;
     async function refresh() {
@@ -23,7 +29,7 @@ export default function FacebookExtensionSettings() {
       if(!active)return;
       setInstalled(found);
       if(error)setError('No se pudo consultar la conexión de Facebook.');
-      else setDevices(data as FacebookDevice[]);
+      else {setDevices(data as FacebookDevice[]);setError('');}
     }
     void refresh();const timer=setInterval(refresh,10000);
     const onFocus=()=>void refresh();window.addEventListener('focus',onFocus);

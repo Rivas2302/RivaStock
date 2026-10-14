@@ -12,7 +12,7 @@ import { groupPublicationText } from '../lib/facebookPublications';
 import PublicationHistory from './automations/PublicationHistory';
 import {publicationBlock} from '../lib/facebookPublications';
 
-export default function FacebookPublicationModal({ product, onClose }: { product: Product; onClose: () => void }) {
+export default function FacebookPublicationModal({ product, onClose, onApproved }: { product: Product; onClose: () => void; onApproved?: () => void }) {
   const { ownerUid } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const [content, setContent] = useState(() => initialPublication(product));
@@ -77,6 +77,7 @@ export default function FacebookPublicationModal({ product, onClose }: { product
     const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
     localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));
     await facebookRpc('approve_facebook_publication', { ...payload, p_intent: key });
+    onApproved?.();
     setNotice('Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
     await refresh();
     setRepeatOf(null);setApproved(false);
