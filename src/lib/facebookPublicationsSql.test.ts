@@ -26,6 +26,7 @@ beforeAll(async () => {
     SET test.uid='${owner}';`);
   await db.exec(readFileSync('supabase/migrations/0049_facebook_publications.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/0050_facebook_device_renewal.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/0051_facebook_retry_preparation.sql','utf8'));
 },30000);
 afterAll(async () => { await db?.close(); });
 
@@ -131,4 +132,25 @@ it('authorizes a single submit checkpoint and persists only destination-matching
   await db.query(`SELECT facebook_worker($1,'checkpoint',$2)`,[token,groupJob.id]);
   await expect(db.query(`SELECT facebook_worker($1,'result',$2,NULL,'published','https://www.facebook.com/groups/other/posts/2/')`,[token,groupJob.id])).rejects.toThrow('grupo');
   await db.query(`SELECT facebook_worker($1,'result',$2,NULL,'published','https://www.facebook.com/groups/123/posts/2/')`,[token,groupJob.id]);
+});
+
+it('requeues only failed preparations with unchanged approved content and tenant permissions',async()=>{
+  await db.exec(`RESET ROLE; SET ROLE authenticated; SET test.uid='${owner}'`);
+  const publication=(await approve('40000000-0000-4000-8000-000000000009')).rows[0].id;
+  const delivery=(await db.query<{id:string}>(`SELECT id FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='marketplace'`,[publication])).rows[0].id;
+  await db.exec('RESET ROLE');
+  await db.query(`UPDATE facebook_deliveries SET status='attention',claimed_at=now() WHERE id=$1`,[delivery]);
+  await db.exec(`SET ROLE anon`);
+  await expect(db.query(`SELECT retry_facebook_preparation($1)`,[delivery])).rejects.toThrow();
+  await db.exec(`SET ROLE authenticated; SET test.uid='${other}'`);
+  await expect(db.query(`SELECT retry_facebook_preparation($1)`,[delivery])).rejects.toThrow();
+  await db.exec(`SET test.uid='${owner}'`);
+  await db.query(`SELECT retry_facebook_preparation($1)`,[delivery]);
+  expect((await db.query(`SELECT status,claimed_at,submitted_at FROM facebook_deliveries WHERE id=$1`,[delivery])).rows[0]).toEqual({status:'pending',claimed_at:null,submitted_at:null});
+  expect((await db.query<{content:typeof content}>(`SELECT content FROM facebook_publications WHERE id=$1`,[publication])).rows[0].content.title).toBe(content.title);
+  await expect(db.query(`SELECT retry_facebook_preparation($1)`,[delivery])).rejects.toThrow();
+  await db.exec('RESET ROLE');
+  await db.query(`UPDATE facebook_deliveries SET status='attention',submitted_at=now() WHERE id=$1`,[delivery]);
+  await db.exec(`SET ROLE authenticated; SET test.uid='${owner}'`);
+  await expect(db.query(`SELECT retry_facebook_preparation($1)`,[delivery])).rejects.toThrow();
 });

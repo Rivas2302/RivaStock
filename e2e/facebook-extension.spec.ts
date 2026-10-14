@@ -18,7 +18,7 @@ document.querySelector('[aria-label="Ubicación"]').oninput=e=>{e.target.setAttr
 document.querySelector('input[type=file]').onchange=e=>{window.uploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size,type:f.type}));document.querySelector('#next').disabled=false};
 document.querySelector('#next').onclick=()=>{history.pushState({},'','?step=audience');const h=document.createElement('h1');h.textContent='Publicar en más lugares';document.body.append(h);const b=document.createElement('button');b.textContent='Publicar';b.onclick=()=>{sessionStorage.setItem('submitted','yes');location.href='/marketplace/you/selling'};document.body.append(b)};
 </script></body></html>`;
-const seller = `<!doctype html><html><body><button>Tus publicaciones</button><input placeholder="Buscar en tus publicaciones"><div id="list"></div><script>
+const seller = `<!doctype html><html><body><a href="/marketplace/you/selling">Tus publicaciones</a><h1>Tus publicaciones</h1><input placeholder="Buscar en tus publicaciones"><div id="list"></div><script>
 if(sessionStorage.getItem('submitted')){const b=document.createElement('button');b.setAttribute('aria-label','Perfume de prueba');b.textContent='Perfume de prueba $43000 Disponible';b.onclick=()=>{document.querySelector('#list').innerHTML='<h2>Esta publicación está en revisión</h2><a href="/marketplace/item/987654321/">Perfume de prueba $43000 Disponible General Pico</a>'};document.querySelector('#list').append(b)};
 </script></body></html>`;
 const groupForm = `<!doctype html><html><body><div><a href="/groups/710102875717376/user/111/">Perfil de Test</a><button id="open">Escribe algo...</button></div><script>

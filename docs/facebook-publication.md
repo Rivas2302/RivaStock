@@ -4,7 +4,7 @@
 
 ## Preparación inicial
 
-1. **Base de datos:** aplicar las migraciones pendientes `0049_facebook_publications.sql` y `0050_facebook_device_renewal.sql`, en ese orden. Si 0049 ya está aplicada, aplicar solo 0050. Subir el código no aplica migraciones automáticamente. Los cambios en producción requieren autorización específica.
+1. **Base de datos:** aplicar las migraciones pendientes 0049, 0050 y `0051_facebook_retry_preparation.sql`, en ese orden. No repetir las ya aplicadas. La 0051 permite reactivar una preparación fallida antes de autorizar el envío. Subir el código no aplica migraciones automáticamente. Los cambios en producción requieren autorización específica.
 2. **Web:** desplegar los cambios de RivaStock. En Stock debe aparecer el botón para publicar en Facebook.
 3. **Extensión:** en RivaStock, abrir **Configuración → Facebook → Descargar extensión**. Extraer el ZIP en una carpeta permanente. En Chrome, abrir `chrome://extensions`, activar **Modo de desarrollador**, elegir **Cargar descomprimida** y seleccionar esa carpeta. No hace falta acceder al repositorio. Chrome exige confirmar este paso en el navegador.
 4. **Actualizaciones:** si la extensión ya estaba instalada, actualizar sus archivos locales y pulsar **Recargar** en su tarjeta de `chrome://extensions`. El despliegue de Vercel no actualiza la extensión instalada.
@@ -46,6 +46,8 @@ Abrir la extensión y leer su mensaje:
 | Requiere atención o conexión pausada | Leer el error del destino y revisar la pestaña de Facebook que dejó abierta la extensión. No volver a confirmar a ciegas. |
 
 La extensión muestra su progreso mientras prepara y envía. Si se necesita diagnosticar un fallo, informar el mensaje exacto de la extensión y el estado del destino en RivaStock. **No compartir contraseñas, códigos de sesión ni claves secretas.**
+
+Cuando un destino queda en **Requiere atención**, consultar su error y corregir la causa. Si aparece **Reintentar preparación**, el registro confirma que no se autorizó el envío: ese botón devuelve el mismo contenido aprobado a la cola, sin crear otra publicación. Activar la cola si está pausada. Si no aparece, pudo haberse enviado y se debe revisar Facebook; no se habilita un reenvío automático de resultado desconocido.
 
 ## Límites de esta versión
 

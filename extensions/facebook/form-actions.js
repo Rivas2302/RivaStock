@@ -51,8 +51,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   };
   const combo = label => one(Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).filter(element => accessibleName(element) === label));
   if (action === 'check_existing') {
-    await wait(() => buttons('Tus publicaciones').length===1);
-    const search=one(Array.from(document.querySelectorAll('input')).filter(visible).filter(element => element.getAttribute('placeholder')==='Buscar en tus publicaciones' || element.getAttribute('aria-label')==='Buscar en tus publicaciones'));
+    if (location.pathname.replace(/\/$/,'') !== '/marketplace/you/selling') throw new Error('No se abrió la lista de publicaciones de Marketplace.');
+    // The navigation item and list heading can both say "Tus publicaciones".
+    // Wait for the actual list search control, independent of navigation role.
+    const searches=()=>Array.from(document.querySelectorAll('input')).filter(visible).filter(element => element.getAttribute('placeholder')==='Buscar en tus publicaciones' || element.getAttribute('aria-label')==='Buscar en tus publicaciones');
+    await wait(() => searches().length>0);
+    const search=one(searches());
     setValue(search,content.title);
     // Observe a stable filtered UI, including any loading indicators, before
     // deciding that no matching listing is visible. Existing titles require
@@ -65,7 +69,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       await new Promise(resolve=>setTimeout(resolve,250));
     }
     if(stable<4)throw new Error('No se pudo verificar la lista de anuncios existentes. No se envió.');
-    if(buttons(content.title).length) throw new Error('Ya existe un anuncio con este título. Verificá Facebook antes de publicar otro.');
+    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element)===normalize(content.title))) throw new Error('Ya existe un anuncio con este título. Verificá Facebook antes de publicar otro.');
     return {clear:true};
   }
   if (action === 'marketplace_prepare') {

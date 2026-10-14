@@ -14,6 +14,7 @@ export interface FacebookGroup { id: string; name: string; url: string; mechanis
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null }
 export interface FacebookDelivery {
   id: string; status: string; message: string | null; evidence_url: string | null;
+  submitted_at?: string | null;
   destination: { name: string; url: string; mechanism: string };
 }
 export interface FacebookPublication { id: string; content: PublicationContent; approved_at: string; facebook_deliveries: FacebookDelivery[] }

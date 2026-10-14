@@ -30,7 +30,10 @@ export const facebookAdapter = {
   async action(tabId, action, content, photos = [], baseline = []) {
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: facebookFormAction, args: [action, content, photos, baseline] });
     if (results.length !== 1 || !results[0].result) throw new Error('No se pudo verificar el formulario de Facebook.');
-    if(results[0].result.error)throw new Error(results[0].result.error);
+    if(results[0].result.error) {
+      const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
+      throw new Error(`${stage}: ${results[0].result.error}`);
+    }
     return results[0].result;
   },
   async prepare(job, config) {
