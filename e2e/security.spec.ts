@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const protectedRoutes = ['/', '/stock', '/ventas', '/reportes', '/pos', '/presupuestos', '/clientes', '/proveedores', '/ingresos', '/caja', '/pedidos', '/config', '/trazabilidad'];
+const protectedRoutes = ['/', '/stock', '/ventas', '/reportes', '/pos', '/presupuestos', '/clientes', '/proveedores', '/compras', '/ingresos', '/caja', '/pedidos', '/config', '/trazabilidad'];
 
 for (const route of protectedRoutes) {
   test(`blocks anonymous access to ${route}`, async ({ page }) => {

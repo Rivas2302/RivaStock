@@ -15,6 +15,16 @@ beforeEach(() => { clearDbCache(); from.mockReset(); rpc.mockReset(); });
 afterEach(() => vi.useRealTimers());
 
 describe('query cache invalidation during requests', () => {
+  it('bounds retained query results across long sessions', async () => {
+    from.mockReturnValue({select:()=>({eq:()=>Promise.resolve({data:[{id:'result'}],error:null})})});
+    await db.find('products','name','old');
+    for (let index=0; index<128; index++) await db.find('products','name',`search-${index}`);
+    const calls = from.mock.calls.length;
+    await db.find('products','name','search-127');
+    expect(from.mock.calls.length).toBe(calls);
+    await db.find('products','name','old');
+    expect(from.mock.calls.length).toBe(calls+1);
+  });
   it.each(['register_customer_payment_v2', 'reconcile_customer_balance', 'toggle_sale_status'])('invalidates the linked ledger and sale after %s', async (name) => {
     let revision = 'old';
     from.mockImplementation(() => ({select: () => Promise.resolve({data:[{id:revision}],error:null})}));

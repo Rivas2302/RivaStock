@@ -22,10 +22,21 @@ interface CacheEntry {
 }
 
 const queryCache = new Map<string, CacheEntry>();
+const MAX_CACHED_QUERIES = 128;
 const OFFLINE_QUEUE_KEY = 'rivastock:offline-mutations';
 const OFFLINE_QUEUE_EVENT = 'rivastock:offline-queue-changed';
+let databaseActor: string | null = null;
+const syncJobs = new Map<string, Promise<void>>();
+
+export function setDatabaseActor(actor: string | null): void {
+  if (databaseActor === actor) return;
+  databaseActor = actor;
+  clearDbCache();
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+}
 
 type OfflineMutation = {
+  queueId: string;
   operation: 'create' | 'update' | 'delete';
   collectionName: string;
   id?: string;
@@ -36,15 +47,22 @@ function isOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
-function readOfflineQueue(): OfflineMutation[] {
-  if (typeof localStorage === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) ?? '[]') as OfflineMutation[]; }
+function readOfflineQueue(actor = databaseActor): OfflineMutation[] {
+  if (!actor || typeof localStorage === 'undefined') return [];
+  // Legacy, unscoped queues cannot be safely attributed to the current user.
+  // Keep them untouched for manual recovery; never replay them under a new login.
+  try {
+    const parsed = JSON.parse(localStorage.getItem(`${OFFLINE_QUEUE_KEY}:${actor}`) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(item => item && typeof item.queueId === 'string'
+      && typeof item.collectionName === 'string' && ['create', 'update', 'delete'].includes(item.operation));
+  }
   catch { return []; }
 }
 
-function writeOfflineQueue(queue: OfflineMutation[]): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+function writeOfflineQueue(queue: OfflineMutation[], actor = databaseActor): void {
+  if (!actor || typeof localStorage === 'undefined') throw new Error('No se pudo verificar la sesión para guardar cambios sin conexión.');
+  localStorage.setItem(`${OFFLINE_QUEUE_KEY}:${actor}`, JSON.stringify(queue));
   window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
 }
 
@@ -153,6 +171,16 @@ function timeoutPromise<T>(promise: Promise<T>, ms: number, label: string): Prom
   });
 }
 
+function reserveCacheSlot(now: number): void {
+  for (const [cachedKey, entry] of queryCache) {
+    if (!entry.promise && entry.expiresAt <= now) queryCache.delete(cachedKey);
+  }
+  for (const [cachedKey, entry] of queryCache) {
+    if (queryCache.size < MAX_CACHED_QUERIES) break;
+    if (!entry.promise) queryCache.delete(cachedKey);
+  }
+}
+
 async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const existing = queryCache.get(key);
@@ -171,6 +199,8 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
     }
   }
 
+  // Evict completed entries only: pending readers must still share one request.
+  reserveCacheSlot(now);
   const pending = timeoutPromise(retryRead(loader), PENDING_PROMISE_TIMEOUT_MS, key);
   const entry: CacheEntry = {
     expiresAt: now + QUERY_CACHE_TTL_MS,
@@ -183,11 +213,15 @@ async function readWithCache<T>(key: string, loader: () => Promise<T>): Promise<
     const value = await pending;
     // An invalidated/in-flight query must never overwrite a newer read or
     // repopulate cache after logout. Callers still receive their own result.
-    if (queryCache.get(key) === entry) queryCache.set(key, {
-      expiresAt: Date.now() + QUERY_CACHE_TTL_MS,
-      hasValue: true,
-      value,
-    });
+    if (queryCache.get(key) === entry) {
+      queryCache.delete(key);
+      reserveCacheSlot(Date.now());
+      queryCache.set(key, {
+        expiresAt: Date.now() + QUERY_CACHE_TTL_MS,
+        hasValue: true,
+        value,
+      });
+    }
     return shallowClone(value);
   } catch (error) {
     if (queryCache.get(key) === entry) queryCache.delete(key);
@@ -235,8 +269,8 @@ export function toDb(obj: Record<string, unknown>, isProfile = false): Record<st
   return out;
 }
 
-function enqueueOfflineMutation(mutation: OfflineMutation): void {
-  writeOfflineQueue([...readOfflineQueue(), mutation]);
+function enqueueOfflineMutation(mutation: Omit<OfflineMutation, 'queueId'>): void {
+  writeOfflineQueue([...readOfflineQueue(), { ...mutation, queueId: uuid() }]);
 }
 
 /** Convert a DB snake_case row to a TS camelCase object */
@@ -627,35 +661,51 @@ class SupabaseDB {
 
 export const db = new SupabaseDB();
 
-export async function syncOfflineMutations(): Promise<void> {
-  if (isOffline()) return;
-  const queue = readOfflineQueue();
-  const remaining: OfflineMutation[] = [];
-
-  for (let index = 0; index < queue.length; index += 1) {
-    const mutation = queue[index];
+async function drainOfflineQueue(actor: string): Promise<void> {
+  while (!isOffline() && databaseActor === actor) {
+    const mutation = readOfflineQueue(actor)[0];
+    if (!mutation) return;
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || data.session?.user.id !== actor || databaseActor !== actor) return;
+    // Pin the token used to authorize this operation, even if another tab signs in.
+    const authorization = `Bearer ${data.session.access_token}`;
     const table = tableName(mutation.collectionName);
     let error: Error | null = null;
 
     if (mutation.operation === 'create') {
-      const result = await supabase.from(table).insert(mutation.row ?? {});
+      const result = await supabase.from(table).insert(mutation.row ?? {}).setHeader('Authorization', authorization);
       error = result.error;
     } else if (mutation.operation === 'update') {
-      const result = await supabase.from(table).update(mutation.row ?? {}).eq('id', mutation.id ?? '');
+      const result = await supabase.from(table).update(mutation.row ?? {}).eq('id', mutation.id ?? '').setHeader('Authorization', authorization);
       error = result.error;
     } else {
-      const result = await supabase.from(table).delete().eq('id', mutation.id ?? '');
+      const result = await supabase.from(table).delete().eq('id', mutation.id ?? '').setHeader('Authorization', authorization);
       error = result.error;
     }
 
-    if (error) {
-      remaining.push(...queue.slice(index));
-      break;
-    }
+    if (error) return;
+    // Read again so changes queued while the request was in flight are retained.
+    writeOfflineQueue(readOfflineQueue(actor).filter(item => item.queueId !== mutation.queueId), actor);
     invalidateDbCache(mutation.collectionName);
   }
+}
 
-  writeOfflineQueue(remaining);
+export function syncOfflineMutations(): Promise<void> {
+  const actor = databaseActor;
+  if (!actor || isOffline()) return Promise.resolve();
+  const existing = syncJobs.get(actor);
+  if (existing) return existing;
+  const job = (async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.locks) {
+        await navigator.locks.request(`rivastock-offline:${actor}`, () => drainOfflineQueue(actor));
+      } else await drainOfflineQueue(actor);
+    } catch {
+      // Retain the queue on connection/storage failures; retry on reconnection.
+    }
+  })().finally(() => { syncJobs.delete(actor); });
+  syncJobs.set(actor, job);
+  return job;
 }
 
 if (typeof window !== 'undefined') {

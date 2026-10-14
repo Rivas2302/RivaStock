@@ -50,6 +50,18 @@ test('a real SDK auth event releases its lock before profile queries run', async
   expect(errors).toEqual([]);
 });
 
+test('profile and collaborator verification start in parallel', async ({ page }) => {
+  let release!: () => void;
+  const profileStarted = new Promise<void>(resolve => { release = resolve; });
+  const errors = await mountFixture(page, async (_route, url) => {
+    if (url.pathname.endsWith('/rpc/get_owner_profile')) release();
+    if (url.pathname.endsWith('/collaborators')) await profileStarted;
+    return false;
+  });
+  await expect(page.getByRole('heading', { name: 'Panel de Control', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('dashboard recovers a transient stolen-lock read without reloading the page', async ({ page }) => {
   let attempts = 0;
   const errors = await mountFixture(page, async (route, url) => {

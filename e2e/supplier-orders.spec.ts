@@ -9,7 +9,7 @@ pdf.text('Supplier order fixture', 20, 20);
 const pdfBytes = Buffer.from(pdf.output('arraybuffer'));
 
 const deployment = JSON.parse(readFileSync('vercel.json', 'utf8'));
-const productionCsp = deployment.headers[0].headers.find((header: {key: string}) => header.key === 'Content-Security-Policy').value as string;
+const productionCsp = deployment.headers.flatMap((rule: {headers: {key: string; value: string}[]}) => rule.headers).find((header: {key: string}) => header.key === 'Content-Security-Policy').value as string;
 // Keep production frame restrictions; only substitute the mocked Supabase origin.
 const fixtureCsp = productionCsp.replaceAll('https://nkfqhuqrgrpfufdymkcr.supabase.co', 'https://rivastock-test.invalid');
 

@@ -149,6 +149,17 @@ test('login does not eagerly download charts, scanner, Excel or PDF tooling', as
   for (const file of optionalFiles) expect(downloaded.some(url => url.endsWith(file))).toBe(false);
 });
 
+test('stock loads optional pricing and label dialogs only when requested', async ({ page }) => {
+  await fixture(page, 100);
+  const manifest = JSON.parse(readFileSync('dist/.vite/manifest.json', 'utf8'));
+  const optional = ['src/components/BarcodePrintModal.tsx', 'src/components/ResellerPriceListModal.tsx'].map(key => manifest[key].file);
+  const downloaded: string[] = [];
+  page.on('request', request => downloaded.push(request.url()));
+  await page.goto('/stock');
+  await expect(page.locator('tbody tr')).toHaveCount(50);
+  for (const file of optional) expect(downloaded.some(url => url.endsWith(file))).toBe(false);
+});
+
 test('mobile production fixture records cold and warm stock rendering metrics', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const { errors, requests } = await fixture(page, 10_000);

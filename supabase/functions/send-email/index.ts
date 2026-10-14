@@ -1,23 +1,16 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { Webhook } from 'https://esm.sh/standardwebhooks@1.0.0';
+import { handleEmailHook, type HookPayload } from './handler.ts';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const SUPABASE_URL   = Deno.env.get('SUPABASE_URL')!;
 const FROM_ADDRESS   = 'RivaStock <onboarding@resend.dev>';
 
-interface HookPayload {
-  user: { email: string };
-  email_data: {
-    token:             string;
-    token_hash:        string;
-    redirect_to:       string;
-    email_action_type: string;
-    site_url:          string;
-  };
-}
-
 function buildConfirmationUrl(payload: HookPayload): string {
   const { token_hash, email_action_type, redirect_to } = payload.email_data;
-  return `${SUPABASE_URL}/auth/v1/verify?token=${token_hash}&type=${email_action_type}&redirect_to=${encodeURIComponent(redirect_to)}`;
+  const url = new URL('/auth/v1/verify', SUPABASE_URL);
+  url.search = new URLSearchParams({ token: token_hash, type: email_action_type, redirect_to }).toString();
+  return url.toString().replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }
 
 function buildEmail(payload: HookPayload): { subject: string; html: string } {
@@ -86,9 +79,10 @@ function buildEmail(payload: HookPayload): { subject: string; html: string } {
   }
 }
 
-serve(async (req) => {
-  try {
-    const payload: HookPayload = await req.json();
+serve(req => handleEmailHook(req, {
+  secret: Deno.env.get('SEND_EMAIL_HOOK_SECRET'),
+  verify: (secret, body, headers) => new Webhook(secret).verify(body, headers),
+  send: async (payload, webhookId) => {
     const { subject, html } = buildEmail(payload);
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -96,6 +90,7 @@ serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
+        'Idempotency-Key': `auth-hook/${webhookId}`,
       },
       body: JSON.stringify({
         from:    FROM_ADDRESS,
@@ -103,17 +98,13 @@ serve(async (req) => {
         subject,
         html,
       }),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('[send-email] Resend error:', err);
-      return new Response(JSON.stringify({ error: 'Email send failed' }), { status: 500 });
+      console.error('[send-email] Provider status:', res.status);
     }
 
-    return new Response(JSON.stringify({}), { status: 200 });
-  } catch (err) {
-    console.error('[send-email] Unexpected error:', err);
-    return new Response(JSON.stringify({ error: 'Internal error' }), { status: 500 });
-  }
-});
+    return res.ok;
+  },
+}));

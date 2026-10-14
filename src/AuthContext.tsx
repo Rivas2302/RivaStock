@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserProfile, PermissionMatrix, ALL_TRUE_PERMISSIONS } from './types';
 import { supabase } from './lib/supabase';
-import { clearDbCache, invalidateDbCache, fromDb } from './lib/db';
+import { clearDbCache, invalidateDbCache, fromDb, setDatabaseActor, syncOfflineMutations } from './lib/db';
 import { retryRead, withDeadline } from './lib/readRecovery';
 import type { Session } from '@supabase/supabase-js';
 import { resolveInventoryAccessState } from './lib/inventoryAccess';
@@ -47,12 +47,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadProfile(session: Session, signal: AbortSignal): Promise<LoadedAuth> {
   try {
-    const collaboratorResult = await supabase
-      .from('collaborators')
-      .select('id, owner_uid, permissions')
-      .eq('user_uid', session.user.id)
-      .is('revoked_at', null)
-      .abortSignal(signal).maybeSingle();
+    // Both endpoints authorize from the session; neither depends on the other's result.
+    const [collaboratorResult, profileResult] = await Promise.all([
+      supabase.from('collaborators').select('id, owner_uid, permissions')
+        .eq('user_uid', session.user.id).is('revoked_at', null).abortSignal(signal).maybeSingle(),
+      supabase.rpc('get_owner_profile').abortSignal(signal),
+    ]);
     if (collaboratorResult.error) throw collaboratorResult.error;
     const accountActor = resolveAccountActor({
       actorUid: session.user.id,
@@ -66,7 +66,6 @@ async function loadProfile(session: Session, signal: AbortSignal): Promise<Loade
     });
     const { isOwner, ownerUid, collaboratorId, permissions } = accountActor;
 
-    const profileResult = await supabase.rpc('get_owner_profile').abortSignal(signal);
     if (profileResult.error) throw profileResult.error;
     if (!profileResult.data?.length) throw new Error('No se pudo verificar el perfil de la cuenta.');
     const profile = fromDb<UserProfile>(profileResult.data[0], true);
@@ -159,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const scheduledRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const clearAuthState = useCallback(() => {
+    setDatabaseActor(null);
     authVersionRef.current++;
     refreshControllerRef.current?.abort();
     refreshControllerRef.current = null;
@@ -176,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const activateSession = useCallback((session: Session) => {
     if (currentUserIdRef.current !== session.user.id) {
+      setDatabaseActor(null);
       authVersionRef.current++;
       refreshControllerRef.current?.abort();
       refreshControllerRef.current = null;
@@ -217,6 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (!isCurrent()) return false;
         authRef.current = loaded;
+        setDatabaseActor(session.user.id);
+        void syncOfflineMutations();
         setAuth(loaded);
         if (job.refreshData) setRefetchToken(token => token + 1);
         return true;
@@ -225,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Fail closed, but retain the actual auth session so reconnecting does
         // not require a page reload or signing in again.
         authRef.current = null;
+        setDatabaseActor(null);
         clearDbCache();
         setAuth(null);
         setAuthError('No se pudo verificar la conexión con tu cuenta. Podés reintentar sin recargar la página.');

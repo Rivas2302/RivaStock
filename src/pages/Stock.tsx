@@ -1,4 +1,5 @@
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import DeferredMount from '../components/DeferredMount';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -56,8 +57,9 @@ import {
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
-import BarcodePrintModal from '../components/BarcodePrintModal';
-import ResellerPriceListModal, { type SupplierProductCreationContext } from '../components/ResellerPriceListModal';
+import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
+const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
+const ResellerPriceListModal = lazy(() => import('../components/ResellerPriceListModal'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import {
   addProductToResellerPriceList,
@@ -905,6 +907,7 @@ export default function Stock() {
       )}
 
       {user && (
+        <DeferredMount active={resellerPriceListOpen}><Suspense fallback={<p role="status">Cargando lista de precios…</p>}>
         <ResellerPriceListModal
           isOpen={resellerPriceListOpen}
           onClose={() => setResellerPriceListOpen(false)}
@@ -940,6 +943,7 @@ export default function Stock() {
             });
           }}
         />
+        </Suspense></DeferredMount>
       )}
 
       <Modal
@@ -1755,7 +1759,7 @@ export default function Stock() {
         }}
       />
 
-      <BarcodePrintModal
+      <DeferredMount active={printProduct !== null}><Suspense fallback={<p role="status">Cargando etiquetas…</p>}><BarcodePrintModal
         isOpen={printProduct !== null}
         onClose={() => setPrintProduct(null)}
         product={printProduct ?? {
@@ -1773,7 +1777,7 @@ export default function Stock() {
           updatedAt: '',
           barcode: '',
         }}
-      />
+      /></Suspense></DeferredMount>
     </div>
   );
 }
