@@ -86,7 +86,7 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
   expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
-for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing']) {
+for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing', 'html-whitespace']) {
   test(`Lexical preparation and final validation: ${mutation}`,async({page})=>{
     await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`
       <div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
@@ -96,6 +96,13 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
         dialog.innerHTML='<div data-lexical-editor="true" contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
         dialog.querySelector('[contenteditable]').addEventListener('paste',event=>{
           event.preventDefault();event.target.innerHTML=event.clipboardData.getData('text/html');
+          if(${mutation==='html-whitespace'}) {
+            // Reproduce the HTML import that removed the approved trailing title
+            // space in the inspected Facebook composer. NBSP is not collapsed.
+            for(const p of event.target.children) {
+              if(p.textContent)p.textContent=p.textContent.replace(/ +/g,' ').replace(/^ | $/g,'');
+            }
+          }
         });
         dialog.querySelector('input').onchange=()=>{
           window.uploadCount=(window.uploadCount||0)+1;
@@ -108,7 +115,16 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
       </script>`}));
     await page.goto('https://www.facebook.com/groups/123');
     const content={groupText:'Monopoly\n\nAl mejor precio! 🎲\n\nPrecio: ARS 14000.00\nEstado: Nuevo\nUbicación: General Pico\nCategoría: Juguetes y juegos',selection:{marketplace:false}};
+    if(mutation==='html-whitespace')content.groupText=content.groupText.replace('Monopoly','Monopoly ').replace('Al mejor precio!', ' Al  mejor precio! ').replace('General Pico','General Pîco');
     const photos=[{type:'image/png',data:'AQ==',extension:'png'}];
+    if(mutation==='html-whitespace') {
+      const previous=facebookFormAction.toString().replace(/['"]&nbsp;['"]\.repeat\(spaces.length\)/, 'spaces');
+      expect(previous).not.toBe(facebookFormAction.toString());
+      const rejected=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:previous,content,photos});
+      expect(rejected.error).toContain('antes de cargar fotos');
+      expect(await page.evaluate(()=>window.uploadCount)).toBeUndefined();
+      await page.reload();
+    }
     if(mutation==='none') {
       const previous=facebookFormAction.toString().replace(/!matchesEditor\(editor,\s*approved\)/, 'lines(editor.innerText).trim()!==approved.trim()');
       expect(previous).not.toBe(facebookFormAction.toString());
@@ -128,7 +144,7 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
       if(mutation==='spacing')editor.firstElementChild!.textContent=' Monopoly';
     },mutation);
     const result=await page.evaluate(({source,content,baseline})=>new Function('return ('+source+')')()('submit',content,[],baseline),{source:facebookFormAction.toString(),content,baseline:prepared.baseline});
-    if(mutation==='none') {
+    if(mutation==='none'||mutation==='html-whitespace') {
       expect(result).toEqual({clicked:true});
       expect(await page.evaluate(()=>window.sent)).toBe(1);
     } else {

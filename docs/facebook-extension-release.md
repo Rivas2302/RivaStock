@@ -1,3 +1,13 @@
+# Facebook 0.5.3: conservar espacios al pegar en Lexical
+
+La versión 0.5.2 estaba instalada y seguía fallando: el título aprobado de Monopoly terminaba con un espacio, mientras el importador HTML de Facebook lo eliminaba. Ahora los espacios iniciales, finales y repetidos se codifican como espacios no separables al pegar; la comparación existente los interpreta como espacios normales. Los espacios simples entre palabras se conservan normales para permitir el ajuste de línea. No se relaja la comparación del contenido aprobado.
+
+La prueba de regresión reproduce el rechazo anterior antes de cargar fotos y verifica preparación y envío simulado con la corrección. El pegado manual del mismo HTML en el borrador real confirmó ocho párrafos y coincidencia exacta con el texto reconstruido a partir del contenido aprobado visible, incluido `"Monopoly "`. No se publicaron mensajes ni se cargaron fotos en Facebook real. La automatización instalada completa todavía requiere validación después de actualizar.
+
+Actualizar con el ZIP 0.5.3 generado en `public/downloads/rivastock-facebook.zip`, reemplazar los archivos de la carpeta existente y recargar la extensión. No requiere nuevas migraciones. Antes de reintentar, cerrar el borrador de prueba sin publicarlo para no dejar dos editores abiertos. El despliegue web no actualiza por sí solo la extensión instalada.
+
+---
+
 # Facebook 0.5.2: validación de párrafos del editor
 
 Corrige el rechazo «El texto del editor no coincide con el aprobado» cuando Facebook representa el texto mediante párrafos Lexical. La inspección del editor real del 15/10/2026 confirmó que `innerText` agregaba hasta cinco saltos entre textos separados por una línea vacía. Ahora se leen las fronteras de párrafos y sus saltos explícitos, con la misma comparación en preparación y envío. Los cambios de precio, contenido, espacios y líneas internas siguen bloqueando el envío.

@@ -8,7 +8,7 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.2';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.3';}}
 export function errorCode(error){
   if(error.code&&/^[A-Z_]+$/.test(error.code))return error.code;
   const value=error.message??'';

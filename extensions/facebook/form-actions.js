@@ -364,7 +364,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(editor.hasAttribute('data-lexical-editor')) {
       // Use Lexical's public paste handler so paragraph nodes enter its model.
       const transfer=new DataTransfer();transfer.setData('text/plain',approved);
-      const escape=value=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      // Lexical's HTML importer collapses ordinary HTML whitespace, including
+      // trailing title spaces. NBSP survives import; lines() compares it as space.
+      const escape=value=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/(^ +| +$| {2,})/g,spaces=>'&nbsp;'.repeat(spaces.length));
       transfer.setData('text/html',approved.split('\n').map(l=>'<p>'+(l?escape(l):'<br>')+'</p>').join(''));
       editor.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
       await new Promise(resolve=>setTimeout(resolve,0));
@@ -397,7 +399,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-    return { ready: true, baseline: [photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`] };
+    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`] };
   }
   if (action === 'submit') {
     const previousPhotos=baseline.find(value=>value.startsWith('prepared-photos:'));
@@ -443,6 +445,25 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(photoCount!==undefined&&buttons('Eliminar archivo adjunto de la publicación',root).length!==Number(photoCount))throw new Error('Las fotos cambiaron después de preparar la publicación. No se envió.');
     const publish = button('Publicar', root);
     if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
+    const flow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
+    if(group&&flow){
+      checkFlow();
+      const record={flow,started:Date.now(),notices:[]};
+      const old=new Set(Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(text));
+      const save=()=>document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify(record));
+      save();
+      // Observe before clicking: a toast may disappear between reconciliation polls.
+      const observer=new MutationObserver(()=>{
+        for(const node of Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible)){
+          const message=text(node);
+          if(old.has(message)||!/^Tu publicación (se publicó|se creó|está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/i.test(message))continue;
+          record.notices.push({message,urls:Array.from(node.querySelectorAll('a[href]')).map(link=>link.href)});
+        }
+        if(record.notices.length){observer.disconnect();save();}
+      });
+      observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+      setTimeout(()=>observer.disconnect(),30000);
+    }
     publish.click(); return { clicked: true };
   }
   if (action === 'result') {
@@ -467,25 +488,48 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
     if(!group)return {waiting:true};
-    if(location.pathname.replace(/\/$/,'')!==group)return {error:'Cambió la página del grupo. Resultado desconocido.'};
+    const currentPost=groupPostUrl(location.href);
+    const sameGroup=url=>new URL(url).pathname.split('/').slice(0,3).join('/').replace('/PicoVendedeTodo','/710102875717376')===group.replace('/PicoVendedeTodo','/710102875717376');
+    if(location.pathname.replace(/\/$/,'')!==group&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
+    let receipt=null;
+    try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));if(value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000)receipt=value;}catch{}
+    for(const saved of receipt?.notices??[]){
+      const node=document.createElement('div');node.textContent=saved.message;
+      for(const href of saved.urls){const link=document.createElement('a');link.href=href;node.append(link);}
+      if(!baseline.includes(noticeKey(node)))newNotices.push(node);
+    }
+    const composerOpen=()=>!!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
     const pendingNotice=newNotices.find(node=>/^Tu publicación (está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/.test(text(node)));
     if(pendingNotice&&!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]'))return {status:'pending_approval',url:null,message:'Facebook indicó explícitamente que este envío espera aprobación de los administradores.'};
     // A sale composer never stores an authorId; do not fabricate success.
     if(baseline.includes('sale:approved'))return {waiting:true};
     const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
     const expectedPhotos=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
+    // A same-tab post navigation is accepted only for this recorded final click.
+    if(currentPost&&receipt&&!composerOpen()){
+      const node=document.createElement('div');node.textContent='Tu publicación se publicó';
+      const link=document.createElement('a');link.href=currentPost;node.append(link);newNotices.push(node);
+    }
     for(const notice of newNotices){
       const links=[...new Set(Array.from(notice.querySelectorAll('a[href]')).map(link=>groupPostUrl(link.href)).filter(Boolean))];
       if(links.length!==1||!/^Tu publicación (se publicó|se creó)/i.test(text(notice)))continue;
       const url=links[0];
-      if(baseline.includes(url)||new URL(url).pathname.split('/').slice(0,3).join('/').replace('/PicoVendedeTodo','/710102875717376')!==group.replace('/PicoVendedeTodo','/710102875717376'))continue;
+      if(baseline.includes(url)||!sameGroup(url))continue;
       const postMatch=url.match(/\/(posts|permalink)\/(\d+)\/?$/); if(!postMatch)continue;
       const postId=postMatch[2];
+      if(baseline.includes(postId)||baseline.some(value=>value.match(/\/(?:posts|permalink)\/(\d+)\/?$/)?.[1]===postId))continue;
       const photoLinks=Array.from(document.querySelectorAll('a[href]')).filter(visible).filter(element=>{try{const set=new URL(element.href).searchParams.get('set');return set?.endsWith('.'+postId);}catch{return false;}});
       if(!photoLinks.length)continue;
-      const postScope=photoLinks[0].closest('article,section,[role="article"]')??photoLinks[0].parentElement;
+      let postScope=photoLinks[0].parentElement;
+      // Observed Facebook posts use ordinary divs, not article/section elements.
+      while(postScope&&postScope!==document.body){
+        if(buttons('Acciones en esta publicación de ',postScope,true).length>1){postScope=null;break;}
+        if(Array.from(postScope.querySelectorAll('a[href]')).some(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}})&&normalize(postScope.innerText).includes(normalize(content.groupText)))break;
+        postScope=postScope.parentElement;
+      }
+      if(postScope===document.body)continue;
       if(!postScope||!visible(postScope))continue;
       const authorLink=Array.from(postScope.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
       if(!authorId||!authorLink)continue;
@@ -495,8 +539,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
         const postPhotos=new Set(Array.from(postScope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{try{const url=new URL(link.href);return url.searchParams.get('set')?.endsWith('.'+postId)?[url.searchParams.get('fbid')??url.origin+url.pathname]:[];}catch{return [];}})).size;
         if(postPhotos!==Number(expectedPhotos))continue;
       }
-      return {status:'published',url:`${location.origin}${location.pathname.replace(/\/$/,'')}/posts/${postId}`,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
+      return {status:currentPost?'submitted':'published',url,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
     }
+    // Explicit new acknowledgement establishes receipt, even without a permalink.
+    if(!composerOpen()&&newNotices.some(node=>/^Tu publicación (se publicó|se creó)([.!\s]|$)/i.test(text(node))&&!node.querySelector('a[href]')))return {status:'submitted',url:null,message:'Facebook confirmó la recepción del envío. Visibilidad pública sin verificar.'};
     return {waiting:true};
   }
   if(action==='result_search'){
