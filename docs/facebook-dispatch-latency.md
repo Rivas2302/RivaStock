@@ -1,5 +1,7 @@
 # Inicio automático y latencia de publicaciones
 
+> **Versión actual: 0.5.0.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
+
 La extensión 0.4.6 recibe un aviso local inmediatamente después de guardar una aprobación. Ese aviso solo despierta la comprobación de trabajos: no aprueba contenido, no activa una cola pausada y no sustituye las validaciones del servidor.
 
 ## Qué espera se eliminó

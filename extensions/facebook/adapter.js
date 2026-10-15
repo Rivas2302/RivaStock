@@ -31,7 +31,7 @@ export const facebookAdapter = {
     if (results.length !== 1 || !results[0].result) throw new Error('No se pudo verificar el formulario de Facebook.');
     if(results[0].result.error) {
       const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
-      const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;throw error;
+      const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;error.code=results[0].result.code??'FORM_VARIANT_UNSUPPORTED';throw error;
     }
     return results[0].result;
   },
@@ -42,7 +42,7 @@ export const facebookAdapter = {
     config.onTiming?.('photos_ms',performance.now()-started);
     const marketplace=job.destination.mechanism==='marketplace';
     const tab = await chrome.tabs.create({ url: marketplace?'https://www.facebook.com/marketplace/you/selling':job.destination.url, active: false });
-    await chrome.storage.local.set({ activeJob: { job, deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'preparing', baseline: [] } });
+    await chrome.storage.local.set({ activeJob: { ...config.journalIdentity, job, deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'preparing', baseline: [] } });
     for (let attempt = 0; attempt < 60; attempt++) {
       if ((await chrome.tabs.get(tab.id)).status === 'complete') break;
       await new Promise(resolve => setTimeout(resolve, 500));

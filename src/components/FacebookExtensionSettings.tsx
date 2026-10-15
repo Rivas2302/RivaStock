@@ -3,31 +3,33 @@ import {Download,CheckCircle2,Monitor} from 'lucide-react';
 import {useAuth} from '../AuthContext';
 import {usePermission} from '../hooks/usePermission';
 import {supabase} from '../lib/supabase';
-import {connectFacebookComputer,facebookExtensionInstalled} from '../lib/facebookConnection';
+import {connectFacebookComputer,facebookExtensionInfo} from '../lib/facebookConnection';
 import {deviceConnected,facebookRpc,type FacebookDevice} from '../lib/facebookPublications';
 
 export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>Promise<void>}>}) {
   const {isOwner}=useAuth();
   const canWrite=usePermission('config','write');
   const [installed,setInstalled]=useState(false);
+  const [extensionVersion,setExtensionVersion]=useState<string|null>(null);
+  const [compatible,setCompatible]=useState(false);
   const [devices,setDevices]=useState<FacebookDevice[]>([]);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
   const [copied,setCopied]=useState(false);
   useImperativeHandle(ref,()=>({refresh:async()=>{
-    const found=await facebookExtensionInstalled();
-    const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at',null);
+    const info=await facebookExtensionInfo();const found=info?.installed===true;setExtensionVersion(info?.version??null);setCompatible(info?.protocol===2);
+    const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at',null);
     if(error)throw new Error('No se pudo consultar la conexión de Facebook.');
     setInstalled(found);setDevices(data as FacebookDevice[]);setError('');
   }}));
   useEffect(()=> {
     let active=true;
     async function refresh() {
-      const found=await facebookExtensionInstalled();
-      const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at',null);
+      const info=await facebookExtensionInfo();const found=info?.installed===true;
+      const {data,error}=await supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at',null);
       if(!active)return;
-      setInstalled(found);
+      setInstalled(found);setExtensionVersion(info?.version??null);setCompatible(info?.protocol===2);
       if(error)setError('No se pudo consultar la conexión de Facebook.');
       else {setDevices(data as FacebookDevice[]);setError('');}
     }
@@ -43,13 +45,15 @@ export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>P
   return <section className="space-y-6" aria-labelledby="facebook-extension-heading">
     <div><h3 id="facebook-extension-heading" className="text-xl font-bold text-slate-900 dark:text-white">Publicaciones en Facebook</h3><p className="mt-2 text-slate-500 dark:text-slate-400">Instalá la extensión en Chrome de una PC. Después podés aprobar publicaciones desde RivaStock en tu celular o cualquier computadora.</p></div>
     <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">{installed?<CheckCircle2 size={20}/>:<Monitor size={20}/>} {installed?'Extensión detectada en este navegador':'Extensión sin detectar en este navegador'}</p>
+    {installed&&<p className="text-sm">Versión local: {extensionVersion??'No informada'} · {compatible?'Recuperación de intentos compatible':'Actualización necesaria a 0.5.0'}</p>}
     <div className="flex flex-wrap gap-3"><a className={button} href="/downloads/rivastock-facebook.zip" download="rivastock-facebook.zip"><Download size={18}/>Descargar extensión</a>
-      {isOwner && canWrite && <button className={button} disabled={busy||!installed} onClick={()=>void run(async()=>{await connectFacebookComputer();setNotice('En la pestaña de la extensión, presioná Conectar y activar esta PC y aceptá los permisos de Chrome.');})}>Conectar esta PC</button>}
+      {isOwner && canWrite && <button className={button} disabled={busy||!installed} onClick={()=>void run(async()=>{setNotice(await connectFacebookComputer(devices.map(device=>device.id)));})}>Conectar esta PC</button>}
     </div>
     {!installed && <div className="rounded-2xl bg-slate-50 p-4 text-slate-700 dark:bg-slate-800 dark:text-slate-200"><h4 className="font-bold">Instalación inicial en la PC</h4><ol className="mt-3 list-decimal space-y-3 pl-5"><li>Descargá el archivo y extraelo en una carpeta que puedas conservar.</li><li>Abrí <code>chrome://extensions</code> en Chrome y activá <strong>Modo de desarrollador</strong>. <button type="button" className="underline" onClick={()=>void run(async()=>{await navigator.clipboard.writeText('chrome://extensions');setCopied(true);})}>{copied?'Dirección copiada':'Copiar dirección'}</button></li><li>Presioná <strong>Cargar descomprimida</strong> y elegí la carpeta donde extrajiste el archivo.</li><li>Volvé a esta pantalla y presioná <strong>Conectar esta PC</strong>.</li></ol><p className="mt-4 text-sm">Chrome requiere confirmar la instalación en el navegador. En Android y iPhone, usá la conexión de tu PC para enviar publicaciones.</p></div>}
     <p className="text-sm text-slate-500 dark:text-slate-400">Mantené la PC encendida, Chrome abierto y Facebook con la sesión iniciada en ese mismo perfil. La conexión se conserva entre reinicios y se renueva mientras siga activa.</p>
     {!isOwner && <p className="text-sm text-slate-500">El titular de la cuenta debe vincular la PC.</p>}
     {notice && <p role="status" className="text-emerald-700 dark:text-emerald-400">{notice}</p>}{error && <p role="alert" className="text-rose-600 dark:text-rose-400">{error}</p>}
-    {devices.map(device=><div key={device.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><span className="text-slate-700 dark:text-slate-200">{device.name} · {deviceConnected(device)?'Conectada':'Sin conexión reciente'}</span>{isOwner&&canWrite&&<button className="rounded-lg border px-3 py-2 text-sm dark:text-white" disabled={busy} onClick={()=>void run(async()=>{await facebookRpc('revoke_facebook_device',{p_device:device.id});setDevices(current=>current.filter(item=>item.id!==device.id));setNotice('Computadora desvinculada.');})}>Desvincular</button>}</div>)}
+    {isOwner&&canWrite&&<div className="space-y-2"><button className={button} disabled={busy||!devices.length||devices.some(device=>device.worker_protocol!==2)} onClick={()=>void run(async()=>{await facebookRpc('set_facebook_worker_protocol',{p_required:2});setNotice('Se exige protocolo 2 para esta cuenta. Las extensiones anteriores no podrán tomar trabajos nuevos.');})}>Exigir extensión actualizada para esta cuenta</button><p className="text-xs text-slate-500">Actualizá o desvinculá las PCs anteriores antes de activar esta protección. Los trabajos ya autorizados conservan su recuperación.</p></div>}
+    {devices.map(device=><div key={device.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><span className="text-slate-700 dark:text-slate-200">{device.name} · {deviceConnected(device)?'Conectada':'Sin conexión reciente'} · {device.queue_enabled===false?'Cola pausada':'Cola habilitada'}{device.extension_version?' · Extensión '+device.extension_version:''}</span>{isOwner&&canWrite&&<button className="rounded-lg border px-3 py-2 text-sm dark:text-white" disabled={busy} onClick={()=>void run(async()=>{await facebookRpc('revoke_facebook_device',{p_device:device.id});setDevices(current=>current.filter(item=>item.id!==device.id));setNotice('Computadora desvinculada.');})}>Desvincular</button>}</div>)}
   </section>;
 }

@@ -52,3 +52,10 @@ it('acknowledges a scoped publication hint immediately without approving or enab
     expect(await send(hint)).toMatchObject({accepted:true});expect(wake).toHaveBeenCalledWith(expect.objectContaining({source:'local',received:expect.any(Number)}));
   }finally{vi.unstubAllGlobals();}
 });
+
+it('reports connection state without credentials, stored content or another account identity',async()=>{
+ let listener:any;vi.stubGlobal('chrome',{runtime:{onMessageExternal:{addListener:(fn:any)=>listener=fn}},storage:{local:{get:async()=>({connection:{deviceId:'pc',url:'https://test.supabase.co',token:'secret'},activeJob:{job:{content:'private'}},paused:true})}}});
+ try{const {registerPairing}=await import('../../extensions/facebook/pairing.js');registerPairing();const sender={url:'https://rivastock.vercel.app/automatizaciones',tab:{id:1},frameId:0};
+ const status=await new Promise<any>(reply=>listener({type:'rivastock-connection-status',projectUrl:'https://test.supabase.co',deviceIds:['pc']},sender,reply));expect(status).toMatchObject({hasConnection:true,matches:true,hasActiveJob:true,paused:true});expect(JSON.stringify(status)).not.toMatch(/secret|private|deviceId/);
+ }finally{vi.unstubAllGlobals();}
+});

@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -38,5 +39,8 @@ export function extensionArchive(root) {
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const root=fileURLToPath(new URL('../',import.meta.url));
   mkdirSync(resolve(root,'public/downloads'),{recursive:true});
-  writeFileSync(resolve(root,'public/downloads/rivastock-facebook.zip'),extensionArchive(root));
+  const archive=extensionArchive(root);
+  writeFileSync(resolve(root,'public/downloads/rivastock-facebook.zip'),archive);
+  const manifest=JSON.parse(readFileSync(resolve(root,'extensions/facebook/manifest.json'),'utf8'));
+  writeFileSync(resolve(root,'public/downloads/rivastock-facebook-version.json'),JSON.stringify({version:manifest.version,protocol:2,sha256:createHash('sha256').update(archive).digest('hex'),files:extensionFiles},null,2)+'\n');
 }

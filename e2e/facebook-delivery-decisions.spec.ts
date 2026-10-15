@@ -29,6 +29,29 @@ test('does not confuse old title cards with the result of an explicitly approved
   expect(await run(page,'result',{...approved,selection:{marketplace:true}},['marketplace:new-explicit'])).toEqual({waiting:true});
 });
 
+test('rejects Marketplace results without a causal new notice',async({page})=>{
+  const baseline=['marketplace:new-explicit'];
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<a href="/marketplace/item/901/">Reloj smartwatch 7 mayas</a>'}));
+  await page.goto('https://www.facebook.com/marketplace/you/selling');
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Otro aviso</div><a href="/marketplace/item/902/">Reloj smartwatch 7 mayas</a>'}));
+  await page.reload();
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},[...baseline,'notice:Otro aviso'])).toEqual({waiting:true});
+});
+
+test('accepts only a causal notice or direct item URL for Marketplace result',async({page})=>{
+  const baseline=[];
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación se creó <a href="/marketplace/item/902/">Ver publicación</a></div>'}));
+  await page.goto('https://www.facebook.com/marketplace/you/selling');
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toMatchObject({status:'submitted',url:'https://www.facebook.com/marketplace/item/902/'});
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación está en revisión <a href="/marketplace/item/903/">Ver publicación</a></div>'}));
+  await page.reload();
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toMatchObject({status:'pending_approval',url:'https://www.facebook.com/marketplace/item/903/'});
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación se creó <a href="/marketplace/item/902/">Ver publicación</a><a href="/marketplace/item/904/">Otra</a></div>'}));
+  await page.reload();
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
+});
+
 test('reads links from each row detail without reactivating sold or exhausted listings',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones">
     <section><button aria-label="Reloj smartwatch 7 mayas" data-id="901"><img alt="Foto"></button><button aria-label="Reloj smartwatch 7 mayas">Reloj smartwatch 7 mayas $27.000 Vendido</button><button id="reactivate">Marcar como disponible</button></section>
@@ -45,7 +68,7 @@ for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs
     <script>document.execCommand=()=>{window.legacyWrite=true;return true};
     document.querySelector('#open').onclick=()=>{const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<div role="textbox" aria-label="Crea una publicación pública..." contenteditable="true" data-lexical-editor="true" style="white-space:pre-wrap"></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button id="publish" disabled>Publicar</button>';
     dialog.addEventListener('paste',event=>{event.preventDefault();const value=event.clipboardData.getData('text/plain');const editor=dialog.querySelector('[contenteditable]');editor.textContent=${corrupt?'value.replace(/\\n/g,\'\')':'value'};});
-    dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;dialog.insertAdjacentHTML('beforeend','<img alt="Foto"><button>Eliminar archivo adjunto de la publicación</button><button>Eliminar archivo adjunto de la publicación</button>');dialog.querySelector('#publish').disabled=false};dialog.querySelector('#publish').onclick=()=>window.sent=true;document.body.append(dialog)};</script>`}));
+    dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};dialog.querySelector('#publish').onclick=()=>window.sent=true;document.body.append(dialog)};</script>`}));
   await page.goto('https://www.facebook.com/groups/1025526211387819');
   const result=await run(page,'group_prepare',approved,[],photos);
   expect(await page.evaluate(()=>window.legacyWrite)).toBeUndefined();
@@ -122,4 +145,14 @@ for(const failure of ['missing photo','unloaded image'])test(`blocks sale prepar
   const content={...approved,targetGroupUrl:'https://www.facebook.com/groups/630127860416020',deliveryResolution:{action:'group_sale'}};
   const result=await run(page,'group_sale_prepare',content,[],photos);
   expect(result.error).toContain('verificar fotos');expect(await page.evaluate(()=>window.prepared)).toBeUndefined();expect(await page.evaluate(()=>window.sent)).toBeUndefined();
+});
+
+test('blocks final Marketplace submission when price or audience changed after preparation',async({page})=>{
+ await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<h1>Publicar en más lugares</h1><label><span>Título</span><input value="Reloj smartwatch 7 mayas"></label><label><span>Precio</span><input value="1"></label><button onclick="window.sent=(window.sent||0)+1">Publicar</button>'}));await page.goto('https://www.facebook.com/marketplace/create/item');
+ await page.evaluate(()=>document.documentElement.setAttribute('data-rivastock-flow','fixture'));
+ const content={...approved,title:'Reloj smartwatch 7 mayas',price:43000,selection:{marketplace:true}};const baseline=['variant:marketplace','flow:fixture'];
+ expect((await run(page,'submit',content,baseline)).error).toContain('datos cambiaron');
+ await page.locator('label').filter({hasText:'Precio'}).locator('input').fill('43000');
+ await page.evaluate(()=>{const node=document.createElement('input');node.type='checkbox';node.checked=true;document.body.append(node);});
+ expect((await run(page,'submit',content,baseline)).error).toContain('destinos adicionales');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });

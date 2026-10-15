@@ -7,7 +7,7 @@ import {supabase} from '../lib/supabase';
 import {db} from '../lib/db';
 import type {Product} from '../types';
 import {automationSections} from '../lib/automations';
-import {deliveryState,deviceConnected,facebookRpc,type FacebookPublication,type FacebookDevice} from '../lib/facebookPublications';
+import {facebookDeliveryFields,refreshFacebookDeliveryStates,deliveryState,deviceConnected,facebookRpc,type FacebookPublication,type FacebookDevice} from '../lib/facebookPublications';
 import PublicationHistory from '../components/automations/PublicationHistory';
 import PublicationProductPicker from '../components/automations/PublicationProductPicker';
 import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
@@ -27,9 +27,10 @@ export default function Automations() {
   const [search,setSearch]=useState('');const [filter,setFilter]=useState('all');const [product,setProduct]=useState<Product|null>(null);
   function navigate(patch:Record<string,string>){setParams(current=>{const next=new URLSearchParams(current);for(const [key,value] of Object.entries(patch)){if(value)next.set(key,value);else next.delete(key);}return next;});}
   const refresh=useCallback(async()=>{
-    let query=supabase.from('facebook_publications').select(`id,product_id,repeat_of,content,approved_at,facebook_deliveries${view==='queue'?'!inner':''}(*)`).order('approved_at',{ascending:false}).order('id',{ascending:false}).range(page*50,page*50+50);
+    await refreshFacebookDeliveryStates();
+    let query=supabase.from('facebook_publications').select(`id,product_id,repeat_of,content,approved_at,facebook_deliveries${view==='queue'?'!inner':''}(${facebookDeliveryFields})`).order('approved_at',{ascending:false}).order('id',{ascending:false}).range(page*50,page*50+50);
     if(view==='queue')query=query.in('facebook_deliveries.status',['pending','running']);
-    const [history,pcs]=await Promise.all([view==='configuration'?Promise.resolve({data:[],error:null}):query,supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,queue_command_at,execution_state,current_activity').is('revoked_at',null)]);
+    const [history,pcs]=await Promise.all([view==='configuration'?Promise.resolve({data:[],error:null}):query,supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,queue_command_at,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at',null)]);
     if(currentQuery.current!==`${ownerUid}:${page}:${view}`)return;
     if(history.error||pcs.error)throw new Error('No se pudo actualizar Automatizaciones. Verificá la conexión y la migración 0052. Los estados visibles pueden estar desactualizados.');
     const rows=history.data as unknown as FacebookPublication[];setMore(rows.length>50);setPublications(rows.slice(0,50));setDevices(pcs.data as FacebookDevice[]);setError('');

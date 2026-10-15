@@ -1,5 +1,6 @@
 import type { Product } from '../types';
 import { supabase } from './supabase';
+import { formatCurrency } from './utils';
 import { marketplaceConditions } from '../../extensions/facebook/marketplace-contract.js';
 
 export interface PublicationContent {
@@ -8,7 +9,7 @@ export interface PublicationContent {
   groupText?: string;
 }
 export function groupPublicationText(content: PublicationContent): string {
-  return `${content.title}\n\n${content.description}\n\nPrecio: ARS ${content.price.toFixed(2)}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
+  return `${content.title}\n\n${content.description}\n\nPrecio: ${formatCurrency(content.price).replace(/\s/g,'')}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
 export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null }
 export function groupCompatibility(group:FacebookGroup):string|null {
@@ -21,8 +22,15 @@ export function validateGroupSelection(groups:FacebookGroup[],selected:string[])
   for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;const url=normalizeGroupUrl(group.url).replace(/\/PicoVendedeTodo$/,'/710102875717376');if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
   return null;
 }
-export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null }
+export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
+export interface FacebookAttempt {id:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string}}[]}
+export const facebookDeliveryFields='*,facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,events:facebook_delivery_attempt_events(type,created_at,data))';
+export async function refreshFacebookDeliveryStates(){
+ const {error}=await supabase.rpc('refresh_facebook_delivery_states');
+ if(error&&!['PGRST202','42883'].includes(error.code))throw new Error('No se pudo comprobar si hay ejecuciones interrumpidas.');
+}
 export interface FacebookDelivery {
+  recovery_required?:boolean;active_attempt_id?:string|null;facebook_delivery_attempts?:FacebookAttempt[];
   id: string; status: string; message: string | null; evidence_url: string | null;
   issue?: {kind:string;message:string;candidates?:{title:string;summary:string;status:string|null;url:string|null}[];fields?:{label:string;supported?:boolean;options?:{value:string;label:string}[]|null}[]}|null;
   resolution?: {action:string;url?:string|null;observedStatus?:string|null}|null;
@@ -37,11 +45,13 @@ export const publicationStatus: Record<string, string> = {
   pending_approval: 'Pendiente de aprobación', attention: 'Requiere atención', cancelled: 'Cancelado',
 };
 export function deliveryState(delivery:FacebookDelivery) {
+  if(delivery.recovery_required)return 'unknown';
   if(delivery.status==='attention') return delivery.submitted_at===null?'failed':'unknown';
   return delivery.status;
 }
 export function deliveryLabel(delivery:FacebookDelivery) {
   const state=deliveryState(delivery);
+  if(delivery.recovery_required)return 'Evidencia nueva: revisión requerida';
   if(delivery.resolution?.action==='existing')return 'Anuncio vinculado';
   if(delivery.issue?.kind==='marketplace_conflict')return 'Decisión requerida';
   return state==='failed'?'Preparación fallida':state==='unknown'?'Resultado desconocido':publicationStatus[state]??state;
@@ -100,10 +110,11 @@ export async function facebookRpc<T>(name: string, args: Record<string, unknown>
   return data as T;
 }
 export async function loadFacebookPublicationData(productId: string) {
+  await refreshFacebookDeliveryStates();
   const results = await Promise.all([
     supabase.from('facebook_groups').select('id,name,url,mechanism,member_count_text,member_count_updated_at').order('name'),
-    supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at', null),
-    supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries(*)').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
+    supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at', null),
+    supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries('+facebookDeliveryFields+')').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
   ]);
   for (const result of results) if (result.error) throw new Error('No se pudo cargar Publicaciones. Verificá la conexión y las migraciones de Automatizaciones.');
   return { groups: results[0].data as FacebookGroup[], devices: results[1].data as FacebookDevice[], publications: results[2].data as unknown as FacebookPublication[] };

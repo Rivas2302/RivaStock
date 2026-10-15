@@ -112,20 +112,20 @@ form.addEventListener('submit', async event => {
     toggle.disabled=false;
     document.querySelector('#code').value = '';
     form.hidden = true;
-    await chrome.alarms.create('rivastock-queue', { periodInMinutes: 1 });
-    await chrome.runtime.sendMessage({ type: 'poll' });
+    await chrome.runtime.sendMessage({ type: 'connection-ready' });
     status.textContent = (await chrome.storage.local.get('status')).status;
   } catch (error) { status.textContent = error.message; }
   finally { button.disabled = false; }
 });
-document.querySelector('#disconnect').addEventListener('click', async () => {
-  const { connection } = await chrome.storage.local.get('connection');
-  await chrome.storage.local.remove('connection');
-  toggle.disabled=true;
-  await chrome.alarms.clear('rivastock-queue');
-  if (connection) await chrome.permissions.remove({ origins: [`${connection.url}/*`] });
-  await chrome.storage.local.set({ status: 'Desconectada. Revocá el dispositivo en RivaStock.' });
-  status.textContent = 'Desconectada. Revocá el dispositivo en RivaStock.';
-  form.hidden = true;
-  document.querySelector('#start').hidden=false;
+document.querySelector('#disconnect').addEventListener('click',async()=>{
+ const button=document.querySelector('#disconnect');button.disabled=true;
+ try{
+  const result=await chrome.runtime.sendMessage({type:'disconnect-local',archive:document.querySelector('#archive-recovery').checked});
+  if(result?.error)throw new Error(result.error);
+  status.textContent=(await chrome.storage.local.get('status')).status;
+  form.hidden=true;document.querySelector('#start').hidden=false;
+ }catch(error){status.textContent=error.message;}
+ finally{button.disabled=!currentConnection;}
 });
+const recovery=(await chrome.storage.local.get('recoveryArchive')).recoveryArchive;
+if(recovery){const node=document.querySelector('#recovery-notice');node.hidden=false;node.textContent='Hay una referencia de recuperación archivada. Revisá el intento anterior en RivaStock; no vuelvas a aprobarlo a ciegas.';}

@@ -10,6 +10,7 @@ if ($Remove) {
     Write-Output 'Inicio automatico de RivaStock desactivado.'
     exit
 }
+if (-not $ChromeProfileDirectory) { throw 'Indicá -ChromeProfileDirectory con la carpeta del perfil que tiene la extensión vinculada (chrome://version, Ruta del perfil).' }
 if ($ChromeProfileDirectory -and $ChromeProfileDirectory -notmatch '^[a-zA-Z0-9 _-]+$') {
     throw 'Invalid Chrome profile directory.'
 }

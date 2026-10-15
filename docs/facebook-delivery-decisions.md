@@ -1,5 +1,7 @@
 # Recuperar publicaciones que requieren una decisión
 
+> **Versión actual: 0.5.0.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
+
 La extensión **0.4.8** separa los conflictos de anuncios, los errores de preparación y los formularios de venta. Las decisiones se registran por destino; recuperar uno no repite los demás.
 
 ## Actualización

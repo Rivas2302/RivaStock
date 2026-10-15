@@ -55,7 +55,7 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   await expect(dialog.getByText('Marketplace: Pendiente',{exact:true})).toBeVisible();
   expect(approvals).toHaveLength(1); expect(approvals[0].p_content.title).toBe('Silla lista para Facebook'); expect(approvals[0].p_groups).toHaveLength(1);
   expect(approvals[0].p_content.groupText).toContain('Silla lista para Facebook\n\nSilla nueva de prueba');
-  expect(approvals[0].p_content.groupText).toContain('Precio: ARS 1500.00');
+  expect(approvals[0].p_content.groupText).toContain('Precio: $1.500');
   await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toBeDisabled();
   expect(approvals).toHaveLength(1); expect(publications).toHaveLength(1);
   await dialog.getByRole('button',{name:'Cancelar envío pendiente'}).first().click();

@@ -1,5 +1,7 @@
 # Publicar productos de RivaStock desde Chrome
 
+> **Versión actual: 0.5.0.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
+
 La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.4](automations.md). El acceso desde el producto continúa disponible.
 
 **Subir los cambios de la web no alcanza.** La automatización necesita la base de datos preparada y una extensión instalada, vinculada y con la cola activa en la computadora que tiene Facebook abierto.
@@ -51,7 +53,7 @@ Abrir la extensión y leer su mensaje:
 | Conectada. Cola pausada. | Pulsar **Activar cola**. |
 | Conectada. Sin trabajos pendientes. | Comprobar que se confirmó el producto y que su destino sigue pendiente en el historial. |
 | La computadora aparece desconectada en RivaStock | Mantener Chrome abierto y revisar el mensaje de la extensión; la conexión puede haber vencido o haberse revocado. |
-| Error al conectar esta PC | Comprobar la extensión 0.2.0, recargar RivaStock y verificar las migraciones pendientes. |
+| Error al conectar esta PC | Comprobar la extensión 0.5.0, recargar RivaStock y verificar las migraciones pendientes. |
 | Falta permiso para Facebook | Recargar la extensión actualizada, pulsar **Activar cola** y aceptar el permiso que solicita Chrome. |
 | Requiere atención o conexión pausada | Leer el error del destino y revisar la pestaña de Facebook que dejó abierta la extensión. No volver a confirmar a ciegas. |
 

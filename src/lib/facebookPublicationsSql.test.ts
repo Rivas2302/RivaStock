@@ -24,9 +24,9 @@ beforeAll(async () => {
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${collaborator}','${owner}');
     SET test.uid='${owner}';`);
-  await db.exec(readFileSync('supabase/migrations/0049_facebook_publications.sql','utf8'));
-  await db.exec(readFileSync('supabase/migrations/0050_facebook_device_renewal.sql','utf8'));
-  await db.exec(readFileSync('supabase/migrations/0051_facebook_retry_preparation.sql','utf8'));
+  for (const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql']) {
+    await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  }
 },30000);
 afterAll(async () => { await db?.close(); });
 

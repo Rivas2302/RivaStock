@@ -16,3 +16,5 @@ supabase/.temp/*
 .atl/
 public/downloads/rivastock-facebook.zip
 public/downloads/rivastock-facebook/
+
+public/downloads/rivastock-facebook-version.json

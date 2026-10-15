@@ -32,7 +32,7 @@ it('keeps the queue active after a failed product and continues with the next ap
   const memory:any={connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'},paused:false};
   const jobs=[{id:'first',content:{title:'First'},destination:{}},{id:'second',content:{title:'Second'},destination:{}}];
   const reports:any[]=[];
-  const worker=persistentWorker(memory,async(_url:any,options:any)=>{const args=JSON.parse(options.body);reports.push(args);return {ok:true,json:async()=>args.p_operation==='claim'?jobs.shift()??null:{saved:true}}});
+  const worker=persistentWorker(memory,async(_url:any,options:any)=>{const args=JSON.parse(options.body);reports.push(args);return {ok:true,json:async()=>args.p_operation==='claim'?jobs.shift()??null:{saved:true,authorized:true}}});
   const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
   vi.spyOn(facebookAdapter,'prepare').mockRejectedValueOnce(new Error('Category unavailable')).mockImplementationOnce(async(job,connection)=>({job,deviceId:connection.deviceId,projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[]}));
   const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});
@@ -193,7 +193,7 @@ it('does not authorize or submit if the queue is paused during preparation',asyn
 it('records a structured conflict without checkpointing and keeps other destinations processable',async()=>{
   vi.resetModules();const memory:any={connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'},paused:false};
   const jobs=[{id:'conflict',content:{},destination:{}},{id:'safe',content:{},destination:{}}],reports:any[]=[];
-  const worker=persistentWorker(memory,async(_url:any,options:any)=>{const args=JSON.parse(options.body);reports.push(args);return {ok:true,json:async()=>args.p_operation==='claim'?jobs.shift()??null:{saved:true}}});
+  const worker=persistentWorker(memory,async(_url:any,options:any)=>{const args=JSON.parse(options.body);reports.push(args);return {ok:true,json:async()=>args.p_operation==='claim'?jobs.shift()??null:{saved:true,authorized:true}}});
   const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
   const issue={kind:'marketplace_conflict',message:'Decisión requerida',candidates:[{title:'Reloj',status:'Vendido',url:null}]};
   vi.spyOn(facebookAdapter,'prepare').mockRejectedValueOnce(Object.assign(new Error(issue.message),{issue})).mockImplementationOnce(async(job,connection)=>({job,deviceId:connection.deviceId,projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[]}));

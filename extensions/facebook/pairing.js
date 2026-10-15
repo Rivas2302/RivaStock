@@ -22,7 +22,18 @@ export function trustedPairingSender(sender) {
 export function registerPairing({wakeGroups,wakePublications} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
-    if (message?.type === 'rivastock-installed') { reply({installed:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function'}); return; }
+    if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function'}); return; }
+    if(['rivastock-connection-status','rivastock-open-connection'].includes(message?.type)){
+      void (async()=>{
+        try{
+          if(message.type==='rivastock-open-connection'){await chrome.tabs.create({url:chrome.runtime.getURL('connect.html'),active:true});reply({opened:true});return;}
+          const state=await chrome.storage.local.get(['connection','activeJob','paused','lastErrorCode','recoveryArchive']);
+          const pending=await chrome.storage.session?.get('pendingConnection');
+          const matches=Boolean(state.connection&&state.connection.url===message.projectUrl&&Array.isArray(message.deviceIds)&&message.deviceIds.includes(state.connection.deviceId));
+          reply({pairingPending:Boolean(pending?.pendingConnection?.expiresAt>Date.now()),hasConnection:Boolean(state.connection),matches,hasActiveJob:Boolean(state.activeJob),paused:state.paused!==false,errorCode:state.lastErrorCode??null,recoveryPending:Boolean(state.recoveryArchive)});
+        }catch{reply({error:'No se pudo consultar el estado local de la extensión.'});}
+      })();return true;
+    }
     if(message?.type==='rivastock-wake-publications'&&typeof wakePublications==='function'){
       const received=performance.now();
       const receivedAt=new Date().toISOString();
