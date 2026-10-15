@@ -106,7 +106,7 @@ test('result_search finds a post by author and title when the confirmation notic
     {groupText:'Ventilador 18" 100w\n\nPrecio: $60.000',selection:{marketplace:false}},
     [],['author:111','group:/groups/123']
   ),{source:facebookFormAction.toString()});
-  expect(result).toMatchObject({url:'https://www.facebook.com/groups/123/posts/987'});
+  expect(result).toMatchObject({candidateUrl:'https://www.facebook.com/groups/123/posts/987'});
 });
 
 test('result_search ignores posts already in the baseline before publishing',async({page})=>{
@@ -117,6 +117,43 @@ test('result_search ignores posts already in the baseline before publishing',asy
   const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
     {groupText:'Ventilador',selection:{marketplace:false}},
     [],['author:111','group:/groups/123','https://www.facebook.com/groups/123/posts/987']
+  ),{source:facebookFormAction.toString()});
+  expect(result).toEqual({notFound:true});
+});
+
+test('result_search returns notFound when two posts from same author match',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
+    '<article><a href="/groups/123/user/111/">Perfil</a><a href="/groups/123/posts/987">P1</a><p>Ventilador</p></article>'+
+    '<article><a href="/groups/123/user/111/">Perfil</a><a href="/groups/123/posts/988">P2</a><p>Ventilador</p></article>'
+  }));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
+    {groupText:'Ventilador',selection:{marketplace:false}},
+    [],['author:111','group:/groups/123']
+  ),{source:facebookFormAction.toString()});
+  expect(result).toEqual({notFound:true});
+});
+
+test('result_search returns notFound when post belongs to another author',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
+    '<article><a href="/groups/123/user/999/">Otro</a><a href="/groups/123/posts/987">P</a><p>Ventilador</p></article>'
+  }));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
+    {groupText:'Ventilador',selection:{marketplace:false}},
+    [],['author:111','group:/groups/123']
+  ),{source:facebookFormAction.toString()});
+  expect(result).toEqual({notFound:true});
+});
+
+test('result_search returns notFound when post URL belongs to a different group',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
+    '<article><a href="/groups/123/user/111/">Perfil</a><a href="/groups/456/posts/987">P</a><p>Ventilador</p></article>'
+  }));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
+    {groupText:'Ventilador',selection:{marketplace:false}},
+    [],['author:111','group:/groups/123']
   ),{source:facebookFormAction.toString()});
   expect(result).toEqual({notFound:true});
 });

@@ -489,16 +489,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const authorId=baseline.find(v=>v.startsWith('author:'))?.slice(7);
     const group=baseline.find(v=>v.startsWith('group:'))?.slice(6);
     if(!authorId||!group||location.pathname.replace(/\/$/,'')!==group)return {notFound:true};
-    const title=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
+    const firstLine=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
+    const candidates=new Set();
     for(const section of Array.from(document.querySelectorAll('article,section,[role="article"]')).filter(visible)){
       const authorLink=Array.from(section.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
       if(!authorLink)continue;
-      const url=Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(Boolean)[0];
-      if(!url||baseline.includes(url))continue;
-      if(title&&!text(section).includes(title))continue;
-      return {url};
+      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>u&&new URL(u).pathname.startsWith(group+'/')&&!baseline.includes(u)))];
+      if(sectionUrls.length!==1)continue;
+      if(firstLine&&!text(section).includes(firstLine))continue;
+      candidates.add(sectionUrls[0]);
     }
-    return {notFound:true};
+    return candidates.size===1?{candidateUrl:[...candidates][0]}:{notFound:true};
   }
   throw new Error('Acción no autorizada.');
   } catch(error) { return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }

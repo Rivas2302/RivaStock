@@ -7,8 +7,8 @@ let polling = false;
 let pendingSignal=null;
 let readingGroups = false;
 
-const capabilities=['attempts','causal-results','recovery'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.0';}}
+const capabilities=['attempts','causal-results','recovery','result-candidates'];
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.1';}}
 export function errorCode(error){
   if(error.code&&/^[A-Z_]+$/.test(error.code))return error.code;
   const value=error.message??'';
@@ -97,12 +97,13 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
   if(polling){pendingSignal=signal;return;}
   polling=true;const lifetime=globalThis.chrome;let heartbeatTimer;let drain=false;
   try{
-    const saved=await chrome.storage.local.get(['connection','paused','activeJob','lastIssue','status','queueCommandAt','pendingClaim','workerProtocol']);
+    const saved=await chrome.storage.local.get(['connection','paused','activeJob','lastIssue','status','queueCommandAt','pendingClaim','workerProtocol','serverFeatures']);
+    let serverFeatures=saved.serverFeatures??[];
     const {connection,activeJob}=saved;if(!connection)return;
     let protocol=saved.workerProtocol??1;let heartbeat;
     // Upgrade only on an explicit V2 handshake. A missing endpoint is the only safe fallback.
     if(chrome.runtime.getManifest){
-      try{heartbeat=await workerRpc(connection,'heartbeat',{protocol:2,status:saved.paused===false?'active':'paused'});if(heartbeat?.worker_protocol===2)protocol=2;}
+      try{heartbeat=await workerRpc(connection,'heartbeat',{protocol:2,status:saved.paused===false?'active':'paused'});if(heartbeat?.worker_protocol===2){protocol=2;serverFeatures=heartbeat.features??[];await chrome.storage.local.set({serverFeatures});}}
       catch(error){if(!['PGRST202','42883'].includes(error.code)||protocol>=2)throw error;}
     }
     if(!heartbeat||protocol<2)heartbeat=await workerRpc(connection,'heartbeat',{protocol:1,status:saved.paused===false?'active':'paused',message:saved.status??null});
@@ -139,7 +140,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await saveResult(connection,completed);drain=true;
       }catch(error){
         if((await chrome.storage.local.get('activeJob')).activeJob?.stage==='result')throw error;
-        await markAttention(connection,activeJob,error.message,error.issue,error.code);drain=true;
+        await markAttention(connection,activeJob,error.message,error.issue,error.code,error.candidateUrl,serverFeatures);drain=true;
       }
       return;
     }
@@ -179,7 +180,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     }catch(error){
       const journal=(await chrome.storage.local.get('activeJob')).activeJob;
       if(journal?.stage==='result')throw error;
-      await markAttention(connection,journal??active,error.message,error.issue,error.code);drain=true;
+      await markAttention(connection,journal??active,error.message,error.issue,error.code,error.candidateUrl,serverFeatures);drain=true;
     }
   }catch(error){
     const code=errorCode(error);await chrome.storage.local.set({lastErrorCode:code,status:code==='NETWORK_TEMPORARY'?'Sin conexión momentánea. Se reintentará automáticamente.':code==='DEVICE_REVOKED'||code==='TOKEN_EXPIRED'?'La vinculación venció o fue revocada. Revisá la conexión antes de continuar.':'La ejecución requiere revisión: '+code});
@@ -188,9 +189,13 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(next||(drain&&chain))setTimeout(()=>{if(globalThis.chrome===lifetime)void poll(next??{source:'drain',received:performance.now(),receivedAt:new Date().toISOString()},true);},0);
   }
 }
-async function markAttention(connection,active,message,issue,code){
-  await workerRpc(connection,issue?'issue':'attention',{protocol:active.protocol??1,delivery:active.job.id,attempt:active.attemptId,message:issue&&(active.protocol??1)<2?JSON.stringify(issue):message,data:issue?{issue,message}:undefined});
-  await chrome.storage.local.set({status:message,lastIssue:message,lastErrorCode:code??(['submitting','authorizing'].includes(active.stage)?'RESULT_UNKNOWN':'PREPARATION_INTERRUPTED')});await chrome.storage.local.remove('activeJob');
+async function markAttention(connection,active,message,issue,code,candidateUrl,serverFeatures){
+  const useCandidate=candidateUrl&&(active.protocol??1)>=2&&['submitting','authorizing'].includes(active.stage)&&(serverFeatures??[]).includes('result-candidates');
+  const attentionData=issue?{issue,message}:useCandidate?{message,candidateUrl}:undefined;
+  await workerRpc(connection,issue?'issue':'attention',{protocol:active.protocol??1,delivery:active.job.id,attempt:active.attemptId,message:issue&&(active.protocol??1)<2?JSON.stringify(issue):message,data:attentionData});
+  const displayMsg=useCandidate?'Resultado desconocido: posible publicación encontrada. Confirmala en RivaStock.':message;
+  await chrome.storage.local.set({status:displayMsg,lastIssue:displayMsg,lastErrorCode:code??(['submitting','authorizing'].includes(active.stage)?'RESULT_UNKNOWN':'PREPARATION_INTERRUPTED')});
+  await chrome.storage.local.remove('activeJob');
 }
 let maintaining=false;
 async function maintainGroups(connection){

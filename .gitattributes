@@ -1,0 +1,2 @@
+extensions/facebook/** text eol=lf
+public/downloads/*.zip binary
