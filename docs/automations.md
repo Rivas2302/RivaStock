@@ -1,6 +1,6 @@
 # Automatizaciones de RivaStock
 
-> **Versión actual: 0.5.0.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
+> **Versión actual: 0.5.1.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
 
 La versión 0.4.8 corrige la verificación de fotos del formulario de venta y agrega [resolución de anuncios anteriores, corrección del editor y preparación de ventas](facebook-delivery-decisions.md). Requiere la migración 0059, después de 0058, y actualizar web y extensión.
 

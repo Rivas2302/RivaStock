@@ -1,3 +1,28 @@
+# Facebook 0.5.1: candidatas y compuerta de capacidad
+
+La versión 0.5.1 agrega detección de candidatas tras resultado desconocido y una compuerta de capacidad: las PCs que no informen `result-candidates` reciben `PROTOCOL_UNSUPPORTED` al tomar trabajos nuevos y deben actualizarse. **Las PCs con 0.5.0 pueden seguir recuperando o persistiendo sus intentos en curso.**
+
+## Orden de salida obligatorio (D-A2)
+
+Ejecutar en este orden. No invertirlos.
+
+1. **Verificar el estado actual** con Q1 de `docs/automation/TASKS.md`. Si `m0057–m0063` no son todas `true`, aplicarlas antes que 0064. Con la cola **pausada**:
+2. **Base de datos:** aplicar `0064_facebook_result_candidates.sql`. Con la cola pausada, la migración es no disruptiva: agrega `'candidate'` al CHECK de eventos, crea la función actualizada con la compuerta de capacidad y el retorno de `features`. Rollback: sin acción destructiva; si falla, corregir hacia adelante con 0065.
+3. **Desplegar la web** (`git push origin main` en `main`, requiere [AUT]). El ZIP se regenera en Vercel; verificar que `rivastock.vercel.app/downloads/rivastock-facebook-version.json` muestre `0.5.1` y comparar SHA-256 con el calculado localmente.
+4. **Actualizar la extensión:** descargar el ZIP nuevo desde RivaStock, extraerlo sobre la misma carpeta cargada en Chrome, pulsar Recargar en `chrome://extensions`. Verificar **0.5.1** en el panel y señal reciente en RivaStock.
+5. **Exigir extensión actualizada** (protocolo 2) desde Configuración → Facebook, una vez que la PC muestre `extension_version='0.5.1'`, `worker_protocol=2` y `capabilities` incluye `result-candidates`. Las PCs con 0.5.0 quedan bloqueadas para trabajos nuevos hasta actualizarse.
+6. **Revisar trabajos existentes** (A13) antes de reanudar la cola.
+
+## Qué ve la PC con 0.5.0 después de 0064
+
+Al intentar tomar un trabajo nuevo recibe `PROTOCOL_UNSUPPORTED` y no ejecuta la publicación. Sus intentos en curso se pueden recuperar normalmente. El mensaje local muestra el código de error. No hace falta desvincular; alcanza con actualizar y recargar.
+
+## Confirmación de candidata desde la web
+
+Cuando el resultado es desconocido y la PC encontró una candidata, la tarjeta de la entrega muestra «Facebook no confirmó el envío, pero se encontró una publicación que parece ser esta», un enlace «Ver posible publicación» y el botón «Es esta publicación». Un clic confirma y cierra el ciclo sin crear otra publicación. El flujo «Registrar revisión» sigue disponible para los casos donde la candidata no corresponde o no se encontró ninguna.
+
+---
+
 # Facebook 0.5.0: actualización y recuperación
 
 La versión 0.5.0 incorpora intentos identificados, autorización única del clic, recuperación tras reinicios y un flujo de vinculación que distingue una PC ya conectada de un intento interrumpido. Está preparada para validación instalada; **no está certificada todavía contra la sesión real de Facebook del negocio**.

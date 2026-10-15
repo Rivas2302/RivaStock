@@ -1,6 +1,6 @@
 # Publicar productos de RivaStock desde Chrome
 
-> **Versión actual: 0.5.0.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
+> **Versión actual: 0.5.1.** Seguir [actualización, migraciones y recuperación](facebook-extension-release.md). Las secciones de versiones anteriores de este documento conservan contexto histórico; no sustituyen esa guía.
 
 La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.4](automations.md). El acceso desde el producto continúa disponible.
 
@@ -16,7 +16,7 @@ La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [n
 
 ## Funcionamiento continuo e inicio con Windows
 
-La extensión 0.5.0 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
+La extensión 0.5.1 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
 
 En Windows, ejecutar una vez `scripts/configure-facebook-startup.ps1` crea **RivaStock Facebook.lnk** en la carpeta de inicio del usuario, para abrir Chrome y Marketplace al iniciar sesión. No requiere administrador. Usa el perfil habitual de Chrome; si se necesita uno específico, pasar `-ChromeProfileDirectory 'Profile 1'` con el nombre real de su carpeta. Para desactivarlo, ejecutar el mismo archivo con `-Remove`.
 
@@ -27,7 +27,7 @@ El inicio se produce al entrar a Windows, no antes del PIN o contraseña. La PC 
 1. En Chrome de la PC, como titular, abrir **Configuración → Facebook → Conectar esta PC**. También está disponible desde **Stock → Publicar en Facebook → Vincular computadora**.
 2. Se abre la extensión: pulsar **Conectar y activar esta PC** y aceptar los permisos de Chrome. Listo: la cola queda activa; no hay claves ni códigos para copiar.
 
-La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.5.0 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.5.0** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
+La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.5.1 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.5.1** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
 
 El ZIP se genera automáticamente antes de cada compilación y al iniciar el desarrollo, con una lista explícita de archivos de la extensión. No incluye archivos de configuración privados ni sesiones. La descarga usa los mismos archivos que el repositorio. Para instalar mediante un botón que lleve a la tienda de Chrome, será necesario publicar y aprobar la extensión en Chrome Web Store; esta versión todavía usa la instalación local.
 
@@ -53,7 +53,7 @@ Abrir la extensión y leer su mensaje:
 | Conectada. Cola pausada. | Pulsar **Activar cola**. |
 | Conectada. Sin trabajos pendientes. | Comprobar que se confirmó el producto y que su destino sigue pendiente en el historial. |
 | La computadora aparece desconectada en RivaStock | Mantener Chrome abierto y revisar el mensaje de la extensión; la conexión puede haber vencido o haberse revocado. |
-| Error al conectar esta PC | Comprobar la extensión 0.5.0, recargar RivaStock y verificar las migraciones pendientes. |
+| Error al conectar esta PC | Comprobar la extensión 0.5.1, recargar RivaStock y verificar las migraciones pendientes. |
 | Falta permiso para Facebook | Recargar la extensión actualizada, pulsar **Activar cola** y aceptar el permiso que solicita Chrome. |
 | Requiere atención o conexión pausada | Leer el error del destino y revisar la pestaña de Facebook que dejó abierta la extensión. No volver a confirmar a ciegas. |
 
@@ -69,7 +69,7 @@ Cuando un destino queda en **Requiere atención**, consultar su error y corregir
 - La publicación en el grupo es de texto y fotos; no comparte el anuncio de Marketplace.
 - Se usan hasta diez fotos JPG, PNG o WebP del producto, alojadas en el almacenamiento público de ese proyecto Supabase, de hasta 10 MB cada una.
 - La ubicación debe coincidir con una ciudad identificada sin ambigüedad por Facebook. Si cambian los controles, hay sesión vencida, verificación o restricciones, el destino queda con un error y los demás conservan su resultado. No se evaden las verificaciones.
-- Un anuncio creado y en revisión se registra como **Pendiente de aprobación**, no como publicado al público. Para el grupo se comprueba el contenido aprobado, el autor y un identificador nuevo del post.
+- Un anuncio creado y en revisión se registra como **Pendiente de aprobación**, no como publicado al público. Para el grupo se busca causal y candidamente: se comprueba contenido aprobado, autor y una única URL nueva del post; si se encuentra exactamente una candidata, se presenta para confirmación con un clic.
 - Una interrupción después de autorizar el clic final no vuelve a pulsar Publicar. Se busca evidencia del resultado; si sigue siendo desconocido, queda para revisión.
 - Si se pierde la respuesta al guardar un resultado, solo se reintenta guardar ese resultado, no publicar nuevamente.
 - Los anuncios existentes con el mismo título y el contenido idéntico ya visible en el grupo detienen un intento para revisión. Repetir para el mismo producto exige una decisión explícita y otra aprobación; los resultados desconocidos bloquean nuevos envíos al destino.
