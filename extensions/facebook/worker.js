@@ -19,12 +19,19 @@ export async function syncGroups(connection,background=false) {
         const pulse=setInterval(()=>void chrome.storage.local.set({groupDiscoveryHeartbeat:Date.now()}).catch(()=>{}),15000);
         try {
           await chrome.storage.local.set({groupDiscovery:{phase:'reading',message:'Leyendo Tus grupos con la sesión de Facebook…',checkedAt:Date.now()}});
-          const data=await discoverJoinedGroups();
-          const targets=request.member_targets??[];
-          data.memberCounts=await discoverGroupMembers(targets).catch(()=>[]);
-          await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
+          const data=request.resumeMembers?null:await discoverJoinedGroups();
+          let members=request.resumeMembers?request:await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:{...data,readAllMembers:true,memberCounts:[]}});
+          if(!Array.isArray(members?.member_targets))throw new Error('Aplicá la migración 0057 para consultar los miembros de todos los grupos.');
+          while(members.offset<members.total){
+            const targets=members.member_targets.slice(members.offset,members.offset+3);
+            await chrome.storage.local.set({groupDiscovery:{phase:'reading',message:`Consultando miembros: ${members.offset} de ${members.total} grupos…`,checkedAt:Date.now()}});
+            const counts=await discoverGroupMembers(targets);
+            const next=await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'members_batch',p_request:request.id,p_data:{offset:members.offset,memberCounts:counts}});
+            if(!next||next.offset<=members.offset)throw new Error('La lectura de miembros no avanzó. El progreso guardado se conserva.');
+            members=next;
+          }
           await chrome.storage.local.remove('groupDiscoveryIssue');
-          await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`${data.groups.length} grupos leídos${data.partial?' · Listado parcial':''}.`,checkedAt:Date.now()}});
+          await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`Miembros consultados: ${members.total} de ${members.total} grupos${data?.partial?' · Listado parcial':''}.`,checkedAt:Date.now()}});
         }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message,groupDiscoveryIssueStage:'read',groupDiscovery:{phase:'error',message:error.message,checkedAt:Date.now()}});await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
         finally{clearInterval(pulse);}
       };
@@ -109,7 +116,7 @@ async function poll() {
     }
     // Read-only discovery also works with the publication queue paused. A
     // discovery error must never block other destinations or submitted jobs.
-    await syncGroups(connection).catch(()=>{});
+    await syncGroups(connection,true).catch(()=>{});
     // A user can pause or disconnect while header reads are in progress.
     const current=await chrome.storage.local.get(['paused','connection']);
     if(current.connection?.deviceId!==connection.deviceId||current.connection?.token!==connection.token)return;

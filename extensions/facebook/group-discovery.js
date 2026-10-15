@@ -59,7 +59,7 @@ export async function discoverGroupMembers(urls) {
       }
       const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readGroupMembers,args:[url]});
       counts.push({url,memberCount:results[0]?.result??null});
-    }catch{/* An unreadable header must not discard the joined-group list. */}
+    }catch{counts.push({url,memberCount:null});/* Keep the batch moving past unreadable groups. */}
     finally{if(tab)await chrome.tabs.remove(tab.id).catch(()=>{});}
   }
   return counts;

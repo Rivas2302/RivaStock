@@ -71,8 +71,18 @@ Se inspeccionaron sin publicar el listado real de grupos, la pantalla de destino
 
 ## Actualización de grupos y escritura 0.4.4
 
+Si aparece **Cantidad de miembros inválida**, aplicar `0056_facebook_member_whitespace.sql` después de 0055 y volver a actualizar los grupos. Corrige la validación de espacios especiales de Facebook y evita que una cantidad ilegible descarte el listado completo. Este arreglo funciona con la extensión 0.4.4: no requiere reinstalarla, volver a vincular la PC ni desplegar la web. No repetir 0055 si ya está aplicada.
+
 Aplicar `0055_facebook_group_members.sql` después de 0054 antes de desplegar la app. Reemplazar los archivos de la extensión con el ZIP actualizado y recargarla; no requiere volver a vincular la PC.
 
-La lista muestra la cantidad de miembros solo cuando Facebook la expone, conservando cifras aproximadas y la fecha de observación. Cada actualización consulta como máximo tres cabeceras de grupos guardados priorizando los que todavía no se consultaron y luego los consultados hace más tiempo. En una lista nueva, esas consultas comienzan en la siguiente actualización. Una lectura parcial o sin cifra conserva el último valor disponible; no se inventan cantidades.
+La lista muestra la cantidad de miembros solo cuando Facebook la expone, conservando cifras aproximadas y la fecha de observación. Con la extensión 0.4.5 y la migración 0057, una actualización consulta todos los grupos guardados en tandas automáticas de hasta tres. No hace falta repetir el botón por cada tanda. Una lectura parcial o sin cifra conserva el último valor disponible; no se inventan cantidades.
 
 La preparación escribe el texto por párrafos y vuelve a localizar el editor tras cada operación. Se mantiene la comprobación del contenido aprobado y de todas las fotos. Las pruebas de navegador usan páginas controladas; queda pendiente verificar la preparación y el envío en Facebook real. No se publicaron productos reales como prueba.
+
+## Consultar miembros de todos los grupos (0.4.5)
+
+1. Aplicar `0057_facebook_all_group_members.sql` después de 0056. No repetir migraciones aplicadas.
+2. Desplegar la web para ver el avance de cada tanda y actualizar la extensión con el ZIP 0.4.5. No requiere volver a vincular.
+3. Pulsar Actualizar grupos una vez y mantener Chrome abierto. La PC recorre todos los grupos guardados, guarda cada tanda y muestra cuántos consultó del total.
+
+Una lectura activa interrumpida por reiniciar Chrome puede continuar desde la última tanda confirmada si se retoma dentro de cinco minutos; después, se puede solicitar otra actualización conservando las cantidades guardadas. Los errores explícitos se muestran y requieren volver a consultar. Si Facebook no muestra la cantidad, no se inventa: se conserva el dato anterior o se indica que no está disponible. Un listado parcial de Facebook no permite descubrir grupos que aún no cargó. Esta acción solo lee información; no publica contenido. Las verificaciones usan datos controlados, no una ejecución completa en la sesión real.

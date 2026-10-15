@@ -43,7 +43,7 @@ test('installed extension processes two approved destinations with real file inp
     await context.route('https://rivastock.vercel.app/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><h1>Group discovery control</h1>'}));
     await context.route('https://www.facebook.com/**',async route => {
       const path=new URL(route.request().url()).pathname;
-      await route.fulfill({contentType:'text/html; charset=utf-8',body:path.includes('/groups/joins/')?'<section><h2>Todos los grupos a los que te uniste (2)</h2><ul><li><a href="/groups/123">Group one</a></li><li><a href="/groups/456">Group two</a></li></ul></section>':path.includes('/create/item')?marketplaceForm:path.includes('/you/selling')?seller:groupForm});
+      await route.fulfill({contentType:'text/html; charset=utf-8',body:path.includes('/groups/joins/')?'<section><h2>Todos los grupos a los que te uniste (7)</h2><ul>'+[123,456,789,901,902,903,904].map(id=>'<li><a href="/groups/'+id+'">Group '+id+'</a></li>').join('')+'</ul></section>':path.includes('/create/item')?marketplaceForm:path.includes('/you/selling')?seller:groupForm});
     });
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(async () => {
@@ -57,13 +57,19 @@ test('installed extension processes two approved destinations with real file inp
         return realUpdate(tab.id,{url:options.url});
       };
       const content={title:'Perfume de prueba',description:'Descripción aprobada',groupText:'Perfume de prueba\n\nPrecio: ARS 43000.00\nDisponible en General Pico.',price:43000,condition:'new',category:'Salud y belleza',location:'General Pico',photos:['https://test.supabase.co/storage/v1/object/public/photos/test.png'],selection:{marketplace:true}};
-      const state={groups:[] as any[],publicationsEnabled:false,refreshRequests:0,refreshMissing:false,discoveryRequested:true,operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',content,destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',content:{...content,photos:[...content.photos,'https://test.supabase.co/storage/v1/object/public/photos/second.png']},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'}}]};
+      const state={groups:[] as any[],memberCounts:[] as any[],memberTargets:[] as string[],memberOffset:0,publicationsEnabled:false,refreshRequests:0,refreshMissing:false,discoveryRequested:true,operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',content,destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',content:{...content,photos:[...content.photos,'https://test.supabase.co/storage/v1/object/public/photos/second.png']},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'}}]};
       (globalThis as any).fixtureState=state;
       globalThis.fetch=async (input:any,options:any) => {
         const url=String(input); if(!url.startsWith('https://test.supabase.co/')) throw new Error('Unexpected network target');
         if(url.includes('/storage/'))return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII='),c=>c.charCodeAt(0)),{headers:{'content-type':'image/png'}});
         if(url.endsWith('/request_facebook_groups_from_device')){if(state.refreshMissing)return Response.json({code:'PGRST202',message:'missing RPC'},{status:404});state.discoveryRequested=false;state.refreshRequests++;return Response.json('request-made');}
-        if(url.endsWith('/facebook_group_discovery')){const args=JSON.parse(options.body);if(args.p_operation==='claim'){if(state.discoveryRequested)return Response.json(null);state.discoveryRequested=true;return Response.json({id:'sync-request',member_targets:['https://www.facebook.com/groups/123']});}if(args.p_operation==='result'){state.groups=args.p_data.groups;(state as any).memberCounts=args.p_data.memberCounts;}return Response.json({saved:true});}
+        if(url.endsWith('/facebook_group_discovery')){
+          const args=JSON.parse(options.body);
+          if(args.p_operation==='claim'){if(state.discoveryRequested)return Response.json(null);state.discoveryRequested=true;return Response.json({id:'sync-request'});}
+          if(args.p_operation==='result'){state.groups=args.p_data.groups;state.memberTargets=state.groups.map(g=>g.url);return Response.json({offset:0,total:state.memberTargets.length,member_targets:state.memberTargets});}
+          if(args.p_operation==='members_batch'){state.memberCounts.push(...args.p_data.memberCounts);state.memberOffset+=args.p_data.memberCounts.length;return Response.json({offset:state.memberOffset,total:state.memberTargets.length,member_targets:state.memberTargets});}
+          return Response.json({saved:true});
+        }
         const args=JSON.parse(options.body); state.operations.push(args); let result:any={connected:true};
         if(args.p_operation==='queue_state')state.publicationsEnabled=args.p_status==='active';
         if(args.p_operation==='claim') result=state.publicationsEnabled?state.jobs.shift()??null:null;
@@ -75,12 +81,12 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
-    await expect(control.getByText('Versión 0.4.4',{exact:true})).toBeVisible();
+    await expect(control.getByText('Versión 0.4.5',{exact:true})).toBeVisible();
     const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
     await control.getByText('Diagnóstico avanzado',{exact:true}).click();
     await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
     await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
-    await expect(control.locator('pre')).toContainText('"version": "0.4.4"');
+    await expect(control.locator('pre')).toContainText('"version": "0.4.5"');
     await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
@@ -92,9 +98,10 @@ test('installed extension processes two approved destinations with real file inp
     expect(wake).toMatchObject({accepted:true,state:'waiting'});
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.groups.length)).toBe(0);
     await control.getByRole('button',{name:'Actualizar grupos',exact:true}).click();
-    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.groups.length),{timeout:15000}).toBe(2);
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.groups.length),{timeout:15000}).toBe(7);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.refreshRequests)).toBe(1);
-    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.memberCounts)).toEqual([{url:'https://www.facebook.com/groups/123',memberCount:'49,5 mil miembros'}]);
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.memberCounts.length),{timeout:20000}).toBe(7);
+    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.memberCounts.every((g:any)=>g.memberCount==='49,5 mil miembros'))).toBe(true);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.results.length)).toBe(0);
     expect(await worker.evaluate(async()=> (await (globalThis as any).chrome.storage.local.get('paused')).paused)).toBe(true);
     await web.close();
@@ -106,7 +113,7 @@ test('installed extension processes two approved destinations with real file inp
     await expect.poll(async () => worker.evaluate(() => (globalThis as any).fixtureState.results.length),{timeout:20000}).toBe(1);
     await control.evaluate(async () => {await (globalThis as any).chrome.runtime.sendMessage({type:'poll'})});
     await expect.poll(async () => worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(2);
-    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.groups)).toEqual([{name:'Group one',url:'https://www.facebook.com/groups/123'},{name:'Group two',url:'https://www.facebook.com/groups/456'}]);
+    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.groups)).toEqual([123,456,789,901,902,903,904].map(id=>({name:'Group '+id,url:'https://www.facebook.com/groups/'+id})));
     const results=await worker.evaluate(() => (globalThis as any).fixtureState.results);
     expect(results[0]).toMatchObject({p_delivery:'market',p_status:'pending_approval',p_url:'https://www.facebook.com/marketplace/item/987654321/'});
     expect(results[1]).toMatchObject({p_delivery:'group',p_status:'published',p_url:'https://www.facebook.com/groups/PicoVendedeTodo/posts/123456789'});
@@ -142,7 +149,7 @@ test('website links the installed extension without copying credentials and acti
     const id=new URL(worker.url()).hostname;
     const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones?view=configuration');
     const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
-    expect(installed).toMatchObject({installed:true,version:'0.4.4',groupsWake:true});
+    expect(installed).toMatchObject({installed:true,version:'0.4.5',groupsWake:true});
     const controlEvent=context.waitForEvent('page');
     const response=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connect',url:'https://test.supabase.co',key:'sb_publishable_test',code:'a'.repeat(64)},resolve)),id);
     expect(response).toEqual({pending:true});

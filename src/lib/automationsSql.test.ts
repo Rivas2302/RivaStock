@@ -17,7 +17,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators VALUES('${staff}','${owner}',true);
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql','0055_facebook_group_members.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql','0055_facebook_group_members.sql','0056_facebook_member_whitespace.sql','0057_facebook_all_group_members.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
 },30000);
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec(`RESET ROLE;SET ROLE authenticated;SET test.uid='${id}'`);
@@ -145,7 +145,6 @@ it('persists approximate member counts by URL without erasing them on partial re
   const claim=(await db.query<{data:{member_targets:string[]}}>(`SELECT facebook_group_discovery($1,'claim') AS data`,[token])).rows[0].data;
   expect(claim.member_targets.length).toBeLessThanOrEqual(3);
   const url='https://www.facebook.com/groups/456';
-  await expect(db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify({groups:[{name:'Same label',url,memberCount:'inventado'}]})])).rejects.toThrow('miembros');
   await db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify({groups:[{name:'Same label',url,memberCount:'49,5 mil miembros'}],partial:true})]);
   await actor();
   const read=()=>db.query<{member_count_text:string|null;member_count_updated_at:string|null}>(`SELECT member_count_text,member_count_updated_at FROM facebook_groups WHERE url=$1`,[url]);
@@ -157,6 +156,49 @@ it('persists approximate member counts by URL without erasing them on partial re
   expect((await db.query<{member_count_text:string|null}>(`SELECT member_count_text FROM facebook_groups WHERE url='https://www.facebook.com/groups/123'`)).rows[0].member_count_text).toBeNull();
   await actor(other);expect((await read()).rows).toHaveLength(0);
   await db.exec('SET ROLE anon');await expect(db.query(`SELECT facebook_group_discovery_before_members($1,'claim')`,[token])).rejects.toThrow('permission denied');
+});
+
+it('accepts Facebook nonbreaking whitespace and preserves other groups when one member count is unreadable',async()=>{
+  await actor();
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups_from_device($1) AS id`,[token])).rows[0].id;
+  await db.exec('SET ROLE anon');await db.query(`SELECT facebook_group_discovery($1,'claim')`,[token]);
+  const data={groups:[
+    {name:'Con espacios de Facebook',url:'https://www.facebook.com/groups/456',memberCount:'49,5\u00a0mil\u202fmiembros'},
+    {name:'Otro destino válido',url:'https://www.facebook.com/groups/123',memberCount:'2,9\n mil\tmiembros'},
+    {name:'Cantidad no interpretable',url:'https://www.facebook.com/groups/789',memberCount:'dato incompleto'},
+  ],partial:false};
+  await db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify(data)]);
+  await actor();
+  const rows=(await db.query<{url:string;member_count_text:string|null}>(`SELECT url,member_count_text FROM facebook_groups ORDER BY url`)).rows;
+  expect(rows.find(row=>row.url.endsWith('/456'))?.member_count_text).toBe('49,5 mil miembros');
+  expect(rows.find(row=>row.url.endsWith('/123'))?.member_count_text).toBe('2,9 mil miembros');
+  expect(rows.find(row=>row.url.endsWith('/789'))?.member_count_text).toBeNull();
+  const sync=(await db.query<{status:string;message:string}>(`SELECT status,message FROM facebook_group_sync`)).rows[0];
+  expect(sync.status).toBe('done');expect(sync.message).toContain('1 grupo');
+});
+
+it('automatically checkpoints every group in ordered batches and resumes without rewriting completed batches',async()=>{
+  await actor();
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups_from_device($1) AS id`,[token])).rows[0].id;
+  await db.exec('SET ROLE anon');await db.query(`SELECT facebook_group_discovery($1,'claim')`,[token]);
+  const groups=Array.from({length:7},(_,i)=>({name:'Grupo '+i,url:'https://www.facebook.com/groups/'+(900+i)}));
+  type Progress={offset:number;total:number;member_targets:string[]};
+  let progress=(await db.query<{data:Progress}>(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb) AS data`,[token,request,JSON.stringify({groups,partial:false,memberCounts:[],readAllMembers:true})])).rows[0].data;
+  expect(progress.total).toBeGreaterThanOrEqual(7);
+  await expect(db.query(`SELECT facebook_group_discovery('invalid','members_batch',$1,$2::jsonb)`,[request,JSON.stringify({offset:0,memberCounts:[]})])).rejects.toThrow();
+  const first={offset:0,memberCounts:progress.member_targets.slice(0,3).map(url=>({url,memberCount:'50 miembros'}))};
+  await expect(db.query(`SELECT facebook_group_discovery($1,'members_batch',$2,$3::jsonb)`,[token,request,JSON.stringify({...first,memberCounts:first.memberCounts.map(x=>({...x,url:'https://www.facebook.com/groups/alien'}))})])).rejects.toThrow('tanda asignada');
+  const batch=(body:unknown)=>db.query<{data:Progress}>(`SELECT facebook_group_discovery($1,'members_batch',$2,$3::jsonb) AS data`,[token,request,JSON.stringify(body)]);
+  progress=(await batch(first)).rows[0].data;expect(progress.offset).toBe(3);
+  expect((await batch(first)).rows[0].data.offset).toBe(3);
+  const resumed=(await db.query<{data:Progress&{resumeMembers:boolean}}>(`SELECT facebook_group_discovery($1,'claim') AS data`,[token])).rows[0].data;
+  expect(resumed.resumeMembers).toBe(true);expect(resumed.offset).toBe(3);
+  await actor();expect((await db.query<{status:string;message:string}>(`SELECT status,message FROM facebook_group_sync`)).rows[0]).toMatchObject({status:'running',message:expect.stringContaining('3 de ')});
+  await db.exec('SET ROLE anon');
+  while(progress.offset<progress.total)progress=(await batch({offset:progress.offset,memberCounts:progress.member_targets.slice(progress.offset,progress.offset+3).map(url=>({url,memberCount:url.endsWith('/906')?null:'51 miembros'}))})).rows[0].data;
+  await actor();expect((await db.query<{status:string}>(`SELECT status FROM facebook_group_sync`)).rows[0].status).toBe('done');
+  expect((await db.query<{count:number}>(`SELECT count(*)::integer AS count FROM facebook_groups WHERE url LIKE '%/90_' AND member_count_text IS NOT NULL`)).rows[0].count).toBe(6);
+  await actor(other);expect((await db.query(`SELECT * FROM facebook_group_sync`)).rows).toHaveLength(0);
 });
 
 it('requests a refresh directly from a valid PC without enabling publications or trusting another account',async()=>{

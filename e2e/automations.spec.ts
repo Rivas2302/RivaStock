@@ -241,6 +241,23 @@ test('ends a stalled group wait despite a future server timestamp and accepts a 
   await expect(modal.getByRole('button',{name:'Actualizar grupos desde la PC'})).toBeEnabled();
 });
 
+test('keeps a long member read active as batches advance and refreshes intermediate counts',async({page})=>{
+  await page.clock.install();await fixture(page);
+  let message='Miembros consultados: 0 de 20.';let count:string|null=null;
+  await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:{id:'long-read',device_id:'device',status:'running',requested_at:'2026-10-14T12:00:00Z',finished_at:null,message}}));
+  await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:[{id:'group',name:'Grupo con avance',url:'https://www.facebook.com/groups/123',mechanism:'group_direct',member_count_text:count}]}));
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByText('Miembros consultados: 0 de 20.',{exact:true})).toBeVisible();
+  await page.clock.fastForward(60000);
+  message='Miembros consultados: 3 de 20.';count='49,5 mil miembros';
+  await page.clock.runFor(5000);
+  await expect(modal.getByText(/49,5 mil miembros/)).toBeVisible();
+  await page.clock.fastForward(60000);
+  await expect(modal.getByRole('button',{name:'Actualizando grupos…'})).toBeDisabled();
+  await expect(modal.getByText(/La PC inició la lectura pero no la completó/)).toHaveCount(0);
+});
+
 test('explains when the local extension cannot wake a queued group request',async({page})=>{
   await fixture(page);
   await page.addInitScript(()=>{const chrome=(window as any).chrome??{};chrome.runtime={sendMessage:(_id:any,_message:any,callback:any)=>callback({installed:true,version:'0.3.0'})};(window as any).chrome=chrome;});
@@ -248,7 +265,7 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
-  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.4/)).toBeVisible();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.5/)).toBeVisible();
 });
 
 test('wakes a restored pending group request and exposes the actual extension error',async({page})=>{
