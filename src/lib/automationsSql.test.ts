@@ -17,7 +17,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators VALUES('${staff}','${owner}',true);
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql','0055_facebook_group_members.sql','0056_facebook_member_whitespace.sql','0057_facebook_all_group_members.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql','0055_facebook_group_members.sql','0056_facebook_member_whitespace.sql','0057_facebook_all_group_members.sql','0058_facebook_dispatch_timing.sql','0059_facebook_delivery_decisions.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
 },30000);
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec(`RESET ROLE;SET ROLE authenticated;SET test.uid='${id}'`);
@@ -73,7 +73,7 @@ it('blocks unknown outcomes until an explicit audited review, then requires a se
   expect(job.content.allowRepublish).toBe(true);
   await expect(db.query(`SELECT facebook_worker($1,'record_existing',$2,NULL,NULL,'https://evil.test')`,[token,job.id])).rejects.toThrow('verificar');
   await db.query(`SELECT facebook_worker($1,'record_existing',$2,NULL,NULL,'https://www.facebook.com/marketplace/item/123/')`,[token,job.id]);
-  await actor();const recorded=(await db.query<{status:string;evidence_url:string;submitted_at:null}>(`SELECT status,evidence_url,submitted_at FROM facebook_deliveries WHERE id=$1`,[job.id])).rows[0];
+  await actor();await db.query(`SELECT resolve_facebook_delivery($1,'existing','https://www.facebook.com/marketplace/item/123/')`,[job.id]);const recorded=(await db.query<{status:string;evidence_url:string;submitted_at:null}>(`SELECT status,evidence_url,submitted_at FROM facebook_deliveries WHERE id=$1`,[job.id])).rows[0];
   expect(recorded).toEqual({status:'submitted',evidence_url:'https://www.facebook.com/marketplace/item/123/',submitted_at:null});
   await actor(other);expect((await db.query('SELECT * FROM facebook_publications')).rows).toHaveLength(0);expect((await db.query('SELECT * FROM facebook_delivery_reviews')).rows).toHaveLength(0);
 });
@@ -199,6 +199,57 @@ it('automatically checkpoints every group in ordered batches and resumes without
   await actor();expect((await db.query<{status:string}>(`SELECT status FROM facebook_group_sync`)).rows[0].status).toBe('done');
   expect((await db.query<{count:number}>(`SELECT count(*)::integer AS count FROM facebook_groups WHERE url LIKE '%/90_' AND member_count_text IS NOT NULL`)).rows[0].count).toBe(6);
   await actor(other);expect((await db.query(`SELECT * FROM facebook_group_sync`)).rows).toHaveLength(0);
+});
+
+it('records scoped dispatch measurements and schedules due maintenance without changing pause',async()=>{
+  await actor();await db.query(`SELECT set_facebook_queue_enabled($1,false)`,[device]);
+  const job=(await db.query<{id:string}>(`SELECT id FROM facebook_deliveries WHERE device_id=$1 ORDER BY claimed_at DESC LIMIT 1`,[device])).rows[0].id;
+  await db.exec('SET ROLE anon');
+  await expect(db.query(`SELECT facebook_worker($1,'checkpoint',$2)`,[token,job])).rejects.toThrow('Cola pausada');
+  const timing={source:'local',receipt_to_claim_ms:15,claim_rpc_ms:5,receipt_to_preparation_ms:20};
+  await db.query(`SELECT facebook_worker($1,'latency',$2,$3)`,[token,job,JSON.stringify(timing)]);
+  await expect(db.query(`SELECT facebook_worker($1,'latency',$2,$3)`,[token,job,JSON.stringify({...timing,claim_rpc_ms:-1})])).rejects.toThrow('Duración');
+  await expect(db.query(`SELECT facebook_worker('invalid','latency',$1,$2)`,[job,JSON.stringify(timing)])).rejects.toThrow();
+  await actor();const stored=(await db.query<{execution_timing:Record<string,number|string>}>(`SELECT execution_timing FROM facebook_deliveries WHERE id=$1`,[job])).rows[0].execution_timing;
+  expect(stored).toMatchObject(timing);expect(stored.approval_to_claim_ms).toBeGreaterThanOrEqual(0);
+  expect((await db.query<{data:unknown}>(`SELECT request_facebook_groups_if_due($1) AS data`,[token])).rows[0].data).toBeNull();
+  await db.exec(`RESET ROLE;UPDATE facebook_group_sync SET finished_at=now()-interval '25 hours' WHERE user_id='${owner}';SET ROLE anon`);
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups_if_due($1) AS id`,[token])).rows[0].id;expect(request).toBeTruthy();
+  expect((await db.query<{id:unknown}>(`SELECT request_facebook_groups_if_due($1) AS id`,[token])).rows[0].id).toBeNull();
+  await actor();expect((await db.query<{queue_enabled:boolean}>(`SELECT queue_enabled FROM facebook_devices WHERE id=$1`,[device])).rows[0].queue_enabled).toBe(false);
+  await actor(other);expect((await db.query(`SELECT * FROM facebook_deliveries WHERE id=$1`,[job])).rows).toHaveLength(0);
+});
+
+it('resolves listing conflicts and sale fields only by explicit scoped decisions before submission',async()=>{
+  const fixtureProduct='20000000-0000-4000-8000-000000000099';
+  await db.exec('RESET ROLE');await db.query('INSERT INTO products VALUES($1,$2,NULL,NULL)',[fixtureProduct,owner]);
+  const pub=(await db.query<{id:string}>("INSERT INTO facebook_publications(user_id,product_id,approved_by,intent_key,content) VALUES($1,$2,$1,gen_random_uuid(),$3) RETURNING id",[owner,fixtureProduct,JSON.stringify(content)])).rows[0].id;
+  async function deliveryFor(key:string,mechanism='marketplace'){
+    await db.exec('RESET ROLE');return (await db.query<{id:string}>("INSERT INTO facebook_deliveries(publication_id,destination_key,destination,status,device_id) VALUES($1,$2,$3,'running',$4) RETURNING id",[pub,key,JSON.stringify({name:key,mechanism,url:mechanism==='marketplace'?'https://www.facebook.com/marketplace/create/item':'https://www.facebook.com/groups/'+key}),device])).rows[0].id;
+  }
+  const id=await deliveryFor('marketplace');await db.exec('SET ROLE anon');
+  const conflict={kind:'marketplace_conflict',message:'Anuncios homónimos',candidates:[{title:'Reloj smartwatch 7 mayas',status:'Vendido',url:'https://www.facebook.com/marketplace/item/901/'},{title:'Reloj smartwatch 7 mayas',status:'Agotado',url:'https://www.facebook.com/marketplace/item/902/'}]};
+  await db.query("SELECT facebook_worker($1,'issue',$2,$3)",[token,id,JSON.stringify(conflict)]);
+  await actor();await expect(db.query('SELECT retry_facebook_preparation($1)',[id])).rejects.toThrow('decisión');
+  await actor(other);await expect(db.query("SELECT resolve_facebook_delivery($1,'new')",[id])).rejects.toThrow('permiso');
+  await actor();await expect(db.query("SELECT resolve_facebook_delivery($1,'existing','https://evil.test')",[id])).rejects.toThrow('enlace');
+  await db.query("SELECT resolve_facebook_delivery($1,'new')",[id]);
+  await db.query('SELECT set_facebook_queue_enabled($1,true)',[device]);await db.exec('SET ROLE anon');
+  let claimed:any;
+  for(let index=0;index<10;index++){const job=(await db.query<{data:any}>("SELECT facebook_worker($1,'claim') AS data",[token])).rows[0].data;if(!job)break;if(job.id===id){claimed=job;break;}await db.query("SELECT facebook_worker($1,'attention',$2,'Controlled fixture')",[token,job.id]);}
+  expect(claimed.content.allowRepublish).toBe(true);expect(claimed.content.deliveryResolution.action).toBe('new');
+  await db.query("SELECT facebook_worker($1,'checkpoint',$2)",[token,id]);await db.query("SELECT facebook_worker($1,'attention',$2,'Unknown')",[token,id]);
+  await actor();await expect(db.query("SELECT resolve_facebook_delivery($1,'new')",[id])).rejects.toThrow('pudo comenzar');
+  const linked=await deliveryFor('marketplace-linked');await db.exec('SET ROLE anon');await db.query("SELECT facebook_worker($1,'issue',$2,$3)",[token,linked,JSON.stringify(conflict)]);
+  await actor();await db.query("SELECT resolve_facebook_delivery($1,'existing','https://www.facebook.com/marketplace/item/902/')",[linked]);
+  expect((await db.query<{status:string;evidence_url:string}>("SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1",[linked])).rows[0]).toMatchObject({status:'submitted',evidence_url:'https://www.facebook.com/marketplace/item/902/'});
+  const sale=await deliveryFor('630127860416020','group_direct');await db.exec('SET ROLE anon');
+  await db.query("SELECT facebook_worker($1,'issue',$2,$3)",[token,sale,JSON.stringify({kind:'group_sale_fields',message:'Campos adicionales',fields:[{label:'Marca',options:null}]})]);
+  await actor();await expect(db.query("SELECT resolve_facebook_delivery($1,'group_sale')",[sale])).rejects.toThrow('Marca');
+  await db.query("SELECT resolve_facebook_delivery($1,'group_sale',NULL,$2)",[sale,JSON.stringify({Marca:'Riva'})]);
+  expect((await db.query<{resolution:any}>("SELECT resolution FROM facebook_deliveries WHERE id=$1",[sale])).rows[0].resolution).toMatchObject({action:'group_sale',fields:{Marca:'Riva'}});
+  expect((await db.query("SELECT * FROM facebook_delivery_decisions WHERE delivery_id=ANY($1::uuid[])",[[id,linked,sale]])).rows).toHaveLength(3);
+  await actor(other);expect((await db.query('SELECT * FROM facebook_delivery_decisions')).rows).toHaveLength(0);
 });
 
 it('requests a refresh directly from a valid PC without enabling publications or trusting another account',async()=>{

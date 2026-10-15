@@ -24,8 +24,11 @@ export function validateGroupSelection(groups:FacebookGroup[],selected:string[])
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null }
 export interface FacebookDelivery {
   id: string; status: string; message: string | null; evidence_url: string | null;
+  issue?: {kind:string;message:string;candidates?:{title:string;summary:string;status:string|null;url:string|null}[];fields?:{label:string;supported?:boolean;options?:{value:string;label:string}[]|null}[]}|null;
+  resolution?: {action:string;url?:string|null;observedStatus?:string|null}|null;
   submitted_at?: string | null;
   destination_key?: string;
+  execution_timing?: {source?:string;approval_to_claim_ms?:number;receipt_to_preparation_ms?:number;claim_rpc_ms?:number;photos_ms?:number;navigation_ms?:number;preparation_ms?:number};
   destination: { name: string; url: string; mechanism: string };
 }
 export interface FacebookPublication { id: string; product_id?: string; repeat_of?: string | null; content: PublicationContent & {selection?:{marketplace:boolean;groups:string[]}}; approved_at: string; facebook_deliveries: FacebookDelivery[] }
@@ -39,6 +42,8 @@ export function deliveryState(delivery:FacebookDelivery) {
 }
 export function deliveryLabel(delivery:FacebookDelivery) {
   const state=deliveryState(delivery);
+  if(delivery.resolution?.action==='existing')return 'Anuncio vinculado';
+  if(delivery.issue?.kind==='marketplace_conflict')return 'Decisión requerida';
   return state==='failed'?'Preparación fallida':state==='unknown'?'Resultado desconocido':publicationStatus[state]??state;
 }
 export function publicationBlock(publications:FacebookPublication[],marketplace:boolean,groups:string[],knownGroups:FacebookGroup[]=[]) {

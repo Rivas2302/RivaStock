@@ -1,7 +1,7 @@
 import { facebookExtensionId } from './facebookExtensionId';
 import { facebookRpc } from './facebookPublications';
 
-type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;accepted?:boolean;state?:string};
+type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;publicationsWake?:boolean;accepted?:boolean;state?:string};
 type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: ExtensionResponse|undefined)=>void)=>void };
 function extensionMessage(message:unknown) {
   const runtime = (window as Window & {chrome?:{runtime?:Runtime}}).chrome?.runtime;
@@ -28,10 +28,21 @@ export async function facebookExtensionInstalled() {
   try {return (await extensionMessage({type:'rivastock-installed'})).installed===true;}
   catch {return false;}
 }
+export async function wakeFacebookPublications(deviceIds:string[],requestStarted?:number):Promise<void> {
+  const sent=performance.now();
+  const sentAt=new Date().toISOString();
+  try{
+    const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
+    const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
+    // Send immediately after approval; no detection round trip on this path.
+    const result=await extensionMessage({type:'rivastock-wake-publications',deviceIds,projectUrl});
+    if(result.accepted)try{const acknowledged=performance.now();sessionStorage.setItem('facebook-last-wake',JSON.stringify({sentAt,acknowledgementMs:acknowledged-sent,...(requestStarted===undefined?{}:{approvalRoundTripMs:sent-requestStarted,requestToAcknowledgementMs:acknowledged-requestStarted})}));}catch{/* Optional diagnostics only. */}
+  }catch{/* The approved job remains queued for the remote PC's alarm. */}
+}
 export async function wakeFacebookGroups(deviceId:string):Promise<string|null> {
   let installed:ExtensionResponse;
   try{installed=await extensionMessage({type:'rivastock-installed'});}catch{return null;}
-  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.5 y recargala en Chrome. El pedido remoto se conserva.`;
+  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.7 y recargala en Chrome. El pedido remoto se conserva.`;
   const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
   const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
   const result=await extensionMessage({type:'rivastock-wake-groups',deviceId,projectUrl});

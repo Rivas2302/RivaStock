@@ -39,3 +39,16 @@ it('wakes only group discovery from the linked project and device',async()=>{
     const reply=vi.fn();listener({type:'rivastock-wake-groups'},{...sender,url:'https://evil.test'},reply);expect(reply).not.toHaveBeenCalled();expect(wake).toHaveBeenCalledTimes(1);
   }finally{vi.unstubAllGlobals();}
 });
+
+it('acknowledges a scoped publication hint immediately without approving or enabling the queue',async()=>{
+  let listener:any;const wake=vi.fn();
+  vi.stubGlobal('chrome',{runtime:{onMessageExternal:{addListener:(fn:any)=>listener=fn}},storage:{local:{get:async()=>({connection:{deviceId:'pc',url:'https://test.supabase.co'},paused:true})}}});
+  try{
+    const {registerPairing}=await import('../../extensions/facebook/pairing.js');registerPairing({wakePublications:wake});
+    const sender={url:'https://rivastock.vercel.app/stock',tab:{id:1},frameId:0};
+    const send=(message:any)=>new Promise<any>(resolve=>listener(message,sender,resolve));
+    const hint={type:'rivastock-wake-publications',deviceIds:['pc'],projectUrl:'https://test.supabase.co'};
+    expect(await send({...hint,deviceIds:['other']})).toHaveProperty('error');expect(wake).not.toHaveBeenCalled();
+    expect(await send(hint)).toMatchObject({accepted:true});expect(wake).toHaveBeenCalledWith(expect.objectContaining({source:'local',received:expect.any(Number)}));
+  }finally{vi.unstubAllGlobals();}
+});

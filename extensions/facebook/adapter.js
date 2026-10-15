@@ -31,13 +31,15 @@ export const facebookAdapter = {
     if (results.length !== 1 || !results[0].result) throw new Error('No se pudo verificar el formulario de Facebook.');
     if(results[0].result.error) {
       const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
-      throw new Error(`${stage}: ${results[0].result.error}`);
+      const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;throw error;
     }
     return results[0].result;
   },
   async prepare(job, config) {
+    const started=performance.now();
     validateFacebookDestination(job.destination);
     const photos = await fetchPublicationPhotos(job.content, config.url);
+    config.onTiming?.('photos_ms',performance.now()-started);
     const marketplace=job.destination.mechanism==='marketplace';
     const tab = await chrome.tabs.create({ url: marketplace?'https://www.facebook.com/marketplace/you/selling':job.destination.url, active: false });
     await chrome.storage.local.set({ activeJob: { job, deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'preparing', baseline: [] } });
@@ -47,8 +49,7 @@ export const facebookAdapter = {
     }
     if(marketplace) {
       if(job.content.allowRepublish!==true) {
-        const previous=await this.action(tab.id,'check_existing',job.content);
-        if(previous.existing)return {job,deviceId:config.deviceId,projectUrl:config.url,tabId:tab.id,existing:true,result:{status:'submitted',url:previous.url,message:'Anuncio anterior encontrado; no se creó otro.'}};
+        await this.action(tab.id,'check_existing',job.content);
       }
       await chrome.tabs.update(tab.id,{url:job.destination.url});
       for(let attempt=0;attempt<60;attempt++) {
@@ -57,7 +58,8 @@ export const facebookAdapter = {
         await new Promise(resolve=>setTimeout(resolve,500));
       }
     }
-    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : 'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url}, photos);
+    config.onTiming?.('navigation_ms',performance.now()-started);
+    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url}, photos);
     if (!result.ready) throw new Error('El formulario no está listo.');
     return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline: result.baseline };
   },

@@ -3,6 +3,8 @@
 export async function facebookFormAction(action, content, photos = [], baseline = []) {
   try {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();
+  const lines = value => (value ?? '').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ');
+  const issue = (kind,message,details={}) => {const error=new Error(message);error.issue={kind,message,...details};throw error;};
   const visible = element => element.getClientRects().length > 0;
   const text = element => normalize(element.textContent);
   const accessibleName = element => element.getAttribute('aria-label') ??
@@ -50,7 +52,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (location.hostname !== 'www.facebook.com' || /\/(login|checkpoint|recover)\b/.test(location.pathname)) throw new Error('Sesión de Facebook vencida o verificación requerida.');
     if (document.querySelector('input[type="password"],iframe[src*="captcha"]')) throw new Error('Facebook requiere iniciar sesión o resolver una verificación.');
     const alerts = Array.from(document.querySelectorAll('[role="alert"]')).map(text).join(' ');
-    if (/restring|bloque|no puedes publicar|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
+    if(/no (puedes|tenés permiso para|tienes permiso para) publicar/i.test(alerts))throw new Error('Facebook indicó que esta cuenta no tiene permiso para publicar.');
+    if (/restring|bloque|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
   };
   safety();
   if(action==='diagnose') {
@@ -94,19 +97,45 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       await new Promise(resolve=>setTimeout(resolve,250));
     }
     if(stable<4)throw new Error('No se pudo verificar la lista de anuncios existentes. No se envió.');
-    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element)===normalize(content.title))) {
-      const matches=buttons(content.title);
-      const thumbnails=matches.filter(element=>!text(element));
-      const cards=matches.filter(element=>text(element).includes(content.title)&&/\$\s*[\d.,]+/.test(text(element)));
-      const candidates=thumbnails.length?thumbnails:cards;
-      if(candidates.length!==1)throw new Error('Ya hay anuncios con este título. Revisá Facebook: no se creó otro ni se pudo identificar un enlace único.');
-      activate(candidates[0]);
-      const links=()=>Array.from(document.querySelectorAll('a[href]')).filter(element=>text(element).includes(content.title)&&/^\/marketplace\/item\/\d+\/?$/.test(new URL(element.href).pathname));
-      await wait(()=>links().length>0,'consultar el enlace del anuncio que ya existe');
-      const urls=[...new Set(links().map(element=>new URL(element.href).origin+new URL(element.href).pathname))];
-      if(urls.length!==1)throw new Error('Hay varios anuncios con este título. No se creó otro.');
-      return {existing:true,url:urls[0]};
+    const titleKey=normalize(content.title).toLocaleLowerCase('es');
+    const cards=Array.from(document.querySelectorAll('button,[role="button"],a[href]')).filter(visible)
+      .filter(element=>accessibleName(element).toLocaleLowerCase('es').includes(titleKey)&&/\$\s*[\d.,]+/.test(text(element)));
+    const candidates=cards.slice(0,20).map(element=>{
+      const links=[element,...element.querySelectorAll('a[href]')].flatMap(link=>{try{const url=new URL(link.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
+      const raw=element.innerText||text(element);
+      return {title:accessibleName(element),summary:raw.slice(0,600),status:raw.slice(raw.search(/\$\s*[\d.,]+/)).replace(/^\$\s*[\d.,]+\s*/,'').match(/^(Vendido|Agotado|Disponible|Activo|En revisión)\b/i)?.[0]??null,url:[...new Set(links)].length===1?links[0]:null};
+    });
+    // Read each identifiable row's detail, never a title-selected winner.
+    // Only its empty thumbnail is safe to open; action buttons are excluded.
+    for(const [index,candidate] of candidates.entries()) {
+      if(candidate.url)continue;
+      if(Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))break;
+      let card=cards[index];
+      if(!card?.isConnected){const matches=buttons(candidate.title).filter(node=>(node.innerText||text(node)).startsWith(candidate.summary));if(matches.length!==1)continue;card=matches[0];}
+      let scope=card.parentElement;let thumbnail=null;
+      while(scope&&scope!==document.body) {
+        const same=buttons(candidate.title,scope);
+        const previews=same.filter(node=>!text(node)&&node.querySelector('img'));
+        if(previews.length===1&&same.filter(node=>/\$\s*[\d.,]+/.test(text(node))).length===1){thumbnail=previews[0];break;}
+        if(previews.length>1)break;scope=scope.parentElement;
+      }
+      if(!thumbnail)continue;
+      activate(thumbnail);
+      let detail=null;
+      for(let attempt=0;attempt<12;attempt++) {
+        const dialogs=Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
+        if(dialogs.length===1&&text(dialogs[0]).startsWith('Tu publicación')){detail=dialogs[0];break;}
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      if(!detail)break;
+      const urls=[...new Set(Array.from(detail.querySelectorAll('a[href]')).flatMap(link=>{const url=new URL(link.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}))];
+      if(urls.length===1)candidate.url=urls[0];
+      const close=buttons('Cerrar',detail);if(close.length!==1)break;
+      activate(close[0]);
+      for(let attempt=0;attempt<12&&detail.isConnected&&visible(detail);attempt++)await new Promise(resolve=>setTimeout(resolve,100));
     }
+    if(candidates.length)issue('marketplace_conflict','Hay anuncios anteriores que podrían corresponder a este producto. Elegí vincular uno o aprobá explícitamente una publicación nueva.',{candidates});
+    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element).toLocaleLowerCase('es')===titleKey))issue('marketplace_conflict','Hay coincidencias de título sin información suficiente para identificar el anuncio.',{candidates:[]});
     return {clear:true};
   }
   if (action === 'marketplace_prepare') {
@@ -177,7 +206,55 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     button('Siguiente').click();
     await wait(() => /Publicar en más lugares/.test(document.body.innerText) && buttons('Publicar').length === 1,'abrir el paso final de Marketplace');
     if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
-    return { ready: true, baseline: [] };
+    return { ready: true, baseline: content.allowRepublish===true?['marketplace:new-explicit']:[] };
+  }
+  if(action==='group_sale_prepare') {
+    const target=new URL(content.targetGroupUrl).pathname.replace(/\/$/,'');
+    if(location.pathname.replace(/\/$/,'')!==target)throw new Error('El grupo no corresponde al destino aprobado.');
+    if(Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))throw new Error('Hay un formulario abierto. No se sobrescribió.');
+    await wait(()=>buttons('Vender algo').length===1,'cargar Vender algo');activate(button('Vender algo'));
+    const sale=await wait(()=>buttons('Artículo en venta',document,true).length===1&&buttons('Artículo en venta',document,true)[0],'elegir Artículo en venta');activate(sale);
+    const dialog=await wait(()=>Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible).find(node=>text(node).includes('Artículo en venta')&&node.querySelector('input[type="file"]')),'abrir el formulario de venta');
+    const saleField=(label,selector)=>one(Array.from(dialog.querySelectorAll('label')).filter(visible).filter(node=>Array.from(node.querySelectorAll('span')).some(span=>text(span)===label)).flatMap(node=>node.matches(selector)?[node]:Array.from(node.querySelectorAll(selector))));
+    const title=saleField('Título','input');const price=saleField('Precio','input');
+    if(title.value||price.value)throw new Error('El formulario de venta contiene un borrador.');
+    setValue(title,content.title);setValue(price,String(content.price));
+    const conditionControl=saleField('Estado','[role="combobox"]');
+    // Facebook uses the label itself as the combobox in this composer.
+    activate(conditionControl);
+    const condition={new:'Nuevo',like_new:'Usado - Como nuevo',good:'Usado - Buen estado',fair:'Usado - Aceptable'}[content.condition];
+    activate(await wait(()=>Array.from(document.querySelectorAll('[role="option"]')).filter(visible).find(node=>text(node)===condition),'elegir el estado'));
+    await wait(()=>text(conditionControl).includes(condition),'confirmar el estado de la venta');
+    if(!Array.from(dialog.querySelectorAll('textarea')).some(visible))activate(button('Más detalles',dialog,true));
+    const description=await wait(()=>{try{return saleField('Descripción','textarea');}catch{return null;}},'abrir la descripción');
+    setValue(description,content.description);
+    const place=one(Array.from(dialog.querySelectorAll('input[aria-label="Ubicación"]')).filter(visible));
+    if(normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) {
+      setValue(place,content.location);
+      const options=await wait(()=>{const options=Array.from(document.querySelectorAll('[role="option"]')).filter(visible).filter(node=>normalize(text(node).replace(/Ciudad$/,'')).toLowerCase()===normalize(content.location).toLowerCase());return options.length===1?options[0]:null;},'confirmar la ubicación');activate(options);
+    }
+    const extraFields=Array.from(dialog.querySelectorAll('input[required],textarea[required],select[required],[aria-required="true"]')).filter(visible).filter(node=>![title,price,description,place,conditionControl].includes(node));
+    const missing=[];
+    for(const control of extraFields) {
+      const label=control.getAttribute('aria-label')||text(control.closest('label')??control);
+      const value=content.deliveryResolution?.fields?.[label];
+      const options=control.tagName==='SELECT'?Array.from(control.options).map(option=>({value:option.value,label:option.text})):null;
+      if(!value||!['INPUT','TEXTAREA','SELECT'].includes(control.tagName)||options&&!options.some(option=>option.value===value))missing.push({label,options,supported:['INPUT','TEXTAREA','SELECT'].includes(control.tagName)&&!['file','checkbox','radio'].includes(control.type)});
+      else if(control.tagName==='SELECT'){control.value=value;control.dispatchEvent(new Event('change',{bubbles:true}));}else setValue(control,value);
+    }
+    if(missing.length)issue('group_sale_fields','El formulario requiere datos adicionales. Completalos y aprobá el formato de venta desde RivaStock.',{fields:missing.slice(0,12)});
+    attach(one(Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(node=>(node.accept??'').split(',').includes('image/*'))));
+    await wait(()=>buttons('Eliminar archivo adjunto de la publicación',dialog).length===photos.length&&enabled(button('Siguiente',dialog)),'verificar fotos del formulario de venta');
+    if(title.value!==content.title||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase())throw new Error('Los datos de venta no coinciden con los aprobados.');
+    const notices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>'notice:'+text(node));
+    activate(button('Siguiente',dialog));
+    await wait(()=>buttons('Publicar').length===1,'abrir la confirmación de venta');
+    const final=button('Publicar').closest('[role="dialog"]');
+    // Never infer the audience from a group name. Require its observed URL.
+    const selected=final?Array.from(final.querySelectorAll('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')):[];
+    const identified=selected.map(control=>{const row=control.closest('label')??control.parentElement;return Array.from(row.querySelectorAll('a[href]')).map(link=>{const url=new URL(link.href);return url.origin===location.origin?url.pathname.replace(/\/$/,''):null;});});
+    if(selected.length!==1||identified[0]?.length!==1||identified[0][0]!==target)issue('group_sale_audience','No se pudo verificar que la venta se enviará únicamente al grupo aprobado. Revisá el formulario; no se autorizó Publicar.');
+    return {ready:true,baseline:[...notices,'group:'+target,'sale:approved']};
   }
   if (action === 'group_prepare') {
     const target=content.targetGroupUrl?new URL(content.targetGroupUrl).pathname.replace(/\/$/,''):location.pathname.replace(/\/$/,'');
@@ -186,7 +263,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(!/^\/groups\/[A-Za-z0-9._-]+$/.test(actual)||canonical(target)!==canonical(actual))throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
     if(document.querySelector('[role="dialog"] [contenteditable="true"]'))throw new Error('Hay un borrador abierto en el grupo. No se sobrescribió.');
     const before = [...new Set(photoIds())];
-    await wait(() => buttons('Escribe algo...').length === 1,'grupo sin editor de texto y fotos compatible o sin permiso para publicar');
+    await wait(() => {
+      if(buttons('Vender algo').length===1&&buttons('Escribe algo...').length!==1)issue('group_sale_required','Este grupo utiliza un formulario de venta. Revisá y aprobá ese formato desde RivaStock.');
+      const denial=Array.from(document.querySelectorAll('[role="alert"]')).filter(visible).some(node=>/no (puedes|tenés permiso para|tienes permiso para) publicar/i.test(text(node)));
+      if(denial)throw new Error('Facebook indicó que esta cuenta no tiene permiso para publicar en el grupo.');
+      return buttons('Escribe algo...').length===1;
+    },'cargar el editor del grupo; no se pudo determinar su disponibilidad');
     if(normalize(document.body.innerText).includes(normalize(content.groupText)))throw new Error('El grupo ya muestra el contenido aprobado. Verificá el post antes de publicar otro.');
     let authorId=null;
     let authorScope=button('Escribe algo...');
@@ -203,26 +285,34 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (!dialog || text(editor)) throw new Error('El editor del grupo contiene un borrador. No se sobrescribió.');
     const anonymous = dialog.querySelector('[role="switch"][aria-label="Publicar de forma anónima"]');
     if (anonymous?.getAttribute('aria-checked') === 'true') throw new Error('El editor está en modo anónimo. No se envió.');
-    // Some editors flatten embedded newlines in insertText. Insert paragraph
-    // boundaries separately and resolve the live editor after each input.
     const liveEditor = () => {
       if (!dialog.isConnected) throw new Error('Facebook reemplazó el formulario. No se envió.');
       return one(Array.from(dialog.querySelectorAll('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]')));
     };
-    const edit = async (command, value) => {
-      editor = liveEditor(); editor.focus();
-      const selection = window.getSelection();
-      const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
-      selection.removeAllRanges(); selection.addRange(range);
-      if (!document.execCommand(command, false, value)) throw new Error('Facebook no aceptó la escritura del contenido. No se envió.');
-      await new Promise(resolve => setTimeout(resolve, 0));
-    };
-    for (const [index, line] of content.groupText.replace(/\r\n?/g, '\n').split('\n').entries()) {
-      if (index) await edit('insertParagraph');
-      if (line) await edit('insertText', line);
+    editor.focus();
+    const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);selection.removeAllRanges();selection.addRange(range);
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const approved=lines(content.groupText);
+    if(editor.hasAttribute('data-lexical-editor')) {
+      // Use Lexical's public paste handler so paragraph nodes enter its model.
+      const transfer=new DataTransfer();transfer.setData('text/plain',approved);
+      const escape=value=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      transfer.setData('text/html','<p>'+approved.split('\n').map(escape).join('<br>')+'</p>');
+      editor.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
+      await new Promise(resolve=>setTimeout(resolve,0));
+    } else {
+      const edit=async(command,value)=>{
+        editor=liveEditor();editor.focus();const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);selection.removeAllRanges();selection.addRange(range);
+        if(!document.execCommand(command,false,value))throw new Error('Facebook no aceptó la escritura del contenido.');
+        await new Promise(resolve=>setTimeout(resolve,0));
+      };
+      for(const [index,line] of approved.split('\n').entries()) {
+        if(index)await edit('insertLineBreak');
+        if(line)await edit('insertText',line);
+      }
     }
-    editor = liveEditor();
-    if (normalize(editor.innerText) !== normalize(content.groupText)) throw new Error('El texto del editor no coincide con el aprobado.');
+    editor=liveEditor();
+    if(lines(editor.innerText)!==approved)throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
     // the input closest to Foto/video; refuse ties instead of guessing.
@@ -234,22 +324,39 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     await wait(() => enabled(button('Publicar', dialog)) && dialog.querySelector('img') && buttons('Eliminar archivo adjunto de la publicación', dialog).length === photos.length,'carga y verificación de todas las fotos del grupo');
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
-    return { ready: true, baseline: [...before,...alerts,`author:${authorId}`,`group:${actual}`] };
+    return { ready: true, baseline: [...before,...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`] };
   }
   if (action === 'submit') {
     // The worker must obtain an atomic database checkpoint before calling this
     // action. This function never retries the final click.
     const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"]');
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
-    if(group&&(!editor||location.pathname.replace(/\/$/,'')!==group))throw new Error('Cambió el editor o el grupo antes de enviar. No se envió.');
-    const root = editor?.closest('[role="dialog"]') ?? document;
-    if (editor && normalize(editor.innerText) !== normalize(content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
+    const sale=baseline.includes('sale:approved');
+    if(group&&((!editor&&!sale)||location.pathname.replace(/\/$/,'')!==group))throw new Error('Cambió el editor o el grupo antes de enviar. No se envió.');
+    const root = editor?.closest('[role="dialog"]') ?? (sale?button('Publicar').closest('[role="dialog"]'):document);
+    if(!root)throw new Error('Cambió el formulario antes de enviar.');
+    if(sale){
+      const checked=Array.from(root.querySelectorAll('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'));
+      const links=checked.length===1?Array.from((checked[0].closest('label')??checked[0].parentElement).querySelectorAll('a[href]')):[];
+      if(checked.length!==1||links.length!==1||new URL(links[0].href).origin!==location.origin||new URL(links[0].href).pathname.replace(/\/$/,'')!==group)throw new Error('Cambió el destino de la venta.');
+    }
+    if (editor && lines(editor.innerText) !== lines(content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
+    const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
+    if(photoCount!==undefined&&buttons('Eliminar archivo adjunto de la publicación',root).length!==Number(photoCount))throw new Error('Las fotos cambiaron después de preparar la publicación. No se envió.');
     const publish = button('Publicar', root);
     if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
     publish.click(); return { clicked: true };
   }
   if (action === 'result') {
     if (content.selection?.marketplace && location.pathname.startsWith('/marketplace')) {
+      if(baseline.includes('marketplace:new-explicit')) {
+        if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname))return {status:'submitted',url:location.origin+location.pathname,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
+        const notices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible).filter(node=>/Tu publicación (se publicó|se creó|está en revisión)/i.test(text(node)));
+        const links=notices.flatMap(node=>Array.from(node.querySelectorAll('a[href]'))).filter(link=>new URL(link.href).origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(new URL(link.href).pathname));
+        const urls=[...new Set(links.map(link=>new URL(link.href).origin+new URL(link.href).pathname))];
+        if(urls.length===1)return {status:'submitted',url:urls[0],message:'Facebook indicó el enlace del nuevo envío. Aprobación pública sin verificar.'};
+        return {waiting:true};
+      }
       if (buttons('Cerrar cuadro de diálogo de promoción de publicación').length === 1) { button('Cerrar cuadro de diálogo de promoción de publicación').click(); return { waiting: true }; }
       const links = Array.from(document.querySelectorAll('a[href]')).filter(element => text(element).includes(content.title) && /^\/marketplace\/item\/\d+\/?$/.test(new URL(element.href).pathname));
       const urls=[...new Set(links.map(element=>new URL(element.href).origin+new URL(element.href).pathname))];
@@ -293,5 +400,5 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return { waiting: true };
   }
   throw new Error('Acción no autorizada.');
-  } catch(error) { return { error: error.message }; }
+  } catch(error) { return { error: error.message, ...(error.issue?{issue:error.issue}:{}) }; }
 }

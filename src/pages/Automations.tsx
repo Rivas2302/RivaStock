@@ -12,6 +12,7 @@ import PublicationHistory from '../components/automations/PublicationHistory';
 import PublicationProductPicker from '../components/automations/PublicationProductPicker';
 import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
 import FacebookGroupsSettings from '../components/automations/FacebookGroupsSettings';
+import {wakeFacebookPublications} from '../lib/facebookConnection';
 const FacebookPublicationModal=lazy(()=>import('../components/FacebookPublicationModal'));
 
 export default function Automations() {
@@ -51,7 +52,7 @@ export default function Automations() {
     if(productId)void db.get<Product>('products',productId).then(value=>{if(active){setProduct(value);if(!value)setError('No se encontró el producto o no tenés permiso para consultarlo.');}}).catch(()=>{if(active)setError('No se pudo cargar el producto.');});
     return()=>{active=false;};
   },[productId,ownerUid]);
-  async function queue(device:FacebookDevice){setBusy(true);setError('');try{const enabled=device.queue_enabled===false||device.execution_state==='paused';await facebookRpc('set_facebook_queue_enabled',{p_device:device.id,p_enabled:enabled});setNotice(enabled?'Activación solicitada. La PC la recibirá al conectarse.':'Cola pausada para nuevos trabajos. Un envío en curso puede terminar.');await refresh();}catch(error){setError((error as Error).message);}finally{setBusy(false);}}
+  async function queue(device:FacebookDevice){setBusy(true);setError('');try{const enabled=device.queue_enabled===false||device.execution_state==='paused';await facebookRpc('set_facebook_queue_enabled',{p_device:device.id,p_enabled:enabled});void wakeFacebookPublications([device.id]);setNotice(enabled?'Activación solicitada. La PC la recibirá al conectarse.':'Cola pausada para nuevos trabajos. Un envío en curso puede terminar.');await refresh();}catch(error){setError((error as Error).message);}finally{setBusy(false);}}
   const jobs=publications.flatMap(p=>p.facebook_deliveries);
   const visible=publications.filter(p=>p.content.title.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es'))&&(filter==='all'||p.facebook_deliveries.some(d=>deliveryState(d)===filter)));
   const icons=[Send,MessagesSquare,ChartNoAxesCombined];

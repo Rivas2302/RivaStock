@@ -19,10 +19,25 @@ export function trustedPairingSender(sender) {
   } catch { return false; }
 }
 
-export function registerPairing({wakeGroups} = {}) {
+export function registerPairing({wakeGroups,wakePublications} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
-    if (message?.type === 'rivastock-installed') { reply({installed:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function'}); return; }
+    if (message?.type === 'rivastock-installed') { reply({installed:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function'}); return; }
+    if(message?.type==='rivastock-wake-publications'&&typeof wakePublications==='function'){
+      const received=performance.now();
+      const receivedAt=new Date().toISOString();
+      void (async()=>{
+        try{
+          const {connection}=await chrome.storage.local.get('connection');
+          if(!connection||connection.url!==message.projectUrl||!Array.isArray(message.deviceIds)||!message.deviceIds.includes(connection.deviceId))throw new Error('La extensión no corresponde a las computadoras vinculadas de esta cuenta.');
+          // This is a scheduling hint only. Claim/checkpoint still enforce
+          // account, explicit approval, pause and duplicate protection.
+          wakePublications({source:'local',received,receivedAt});
+          reply({accepted:true,receivedAt});
+        }catch(error){reply({error:error.message});}
+      })();
+      return true;
+    }
     if(message?.type==='rivastock-wake-groups'&&typeof wakeGroups==='function'){
       void (async()=>{
         try{

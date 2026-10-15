@@ -90,6 +90,15 @@ test('hides mutating actions for viewers and denies navigation without Stock acc
   for(const name of ['Cancelar envío pendiente','Reintentar preparación','Registrar revisión','Pausar cola'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
 });
 
+test('shows execution measurements on demand without an extra notification',async({page})=>{
+  const {rows}=await fixture(page);
+  (rows[0].facebook_deliveries[0] as any).execution_timing={source:'local',approval_to_claim_ms:150,receipt_to_preparation_ms:35,claim_rpc_ms:10,preparation_ms:500};
+  await page.goto('/automatizaciones');
+  await page.getByText('Tiempos de ejecución',{exact:true}).click();
+  await expect(page.getByText(/Desde la recepción hasta iniciar la preparación/)).toBeVisible();
+  await expect(page.getByText('Origen: aviso local',{exact:true})).toBeVisible();
+});
+
 test('blocks direct access without Stock permission',async({page})=>{
   await fixture(page,'denied');await page.goto('/automatizaciones');await expect(page).not.toHaveURL(/\/automatizaciones/);
   await expect(page.getByRole('link',{name:'Automatizaciones',exact:true})).toHaveCount(0);
@@ -265,7 +274,7 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
-  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.5/)).toBeVisible();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.7/)).toBeVisible();
 });
 
 test('wakes a restored pending group request and exposes the actual extension error',async({page})=>{
@@ -287,4 +296,35 @@ test('prefers the most recently connected PC over an old unresponsive connection
   await expect(modal.getByRole('combobox',{name:'PC para consultar'})).toHaveValue('current');
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
   await expect.poll(()=>chosen).toBe('current');
+});
+
+for(const mobile of [false,true])test(`resolves sold/exhausted listing candidates inside RivaStock (${mobile?'mobile':'desktop'})`,async({page},testInfo)=>{
+  if(mobile)await page.setViewportSize({width:390,height:844});
+  const {rows,calls}=await fixture(page);const delivery=rows[2].facebook_deliveries[0];
+  Object.assign(delivery,{message:'Hay anuncios anteriores. Revisá los candidatos.',issue:{kind:'marketplace_conflict',message:'Anuncios anteriores',candidates:[{title:'Reloj smartwatch 7 mayas',summary:'$27.000 · Vendido',status:'Vendido',url:'https://www.facebook.com/marketplace/item/901/'},{title:'Reloj smartwatch 7 mayas',summary:'$26.000 · Agotado',status:'Agotado',url:null}]}});
+  let fail=true;
+  await page.route('**/rest/v1/rpc/resolve_facebook_delivery',async route=>{const args=route.request().postDataJSON();calls.push({name:'resolve_facebook_delivery',args});if(fail){fail=false;return route.fulfill({status:503,json:{message:'Conexión temporalmente no disponible'}});}Object.assign(delivery,{status:args.p_decision==='existing'?'submitted':'pending',issue:null,resolution:{action:args.p_decision},evidence_url:args.p_url});return route.fulfill({json:null});});
+  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Preparación con error'});
+  await expect(card.getByText('Estado observado: Vendido')).toBeVisible();await expect(card.getByText('Estado observado: Agotado')).toBeVisible();
+  await expect(card.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(0);
+  await card.getByRole('region',{name:'Resolver destino'}).screenshot({path:testInfo.outputPath(mobile?'listing-conflict-mobile.png':'listing-conflict-desktop.png')});
+  const next=card.getByRole('button',{name:mobile?'Aprobar una publicación nueva':'Vincular anuncio existente'});await expect(next).toBeDisabled();
+  await card.getByRole('checkbox',{name:'Revisé el contenido aprobado'}).check();
+  if(!mobile)await card.getByLabel('Enlace del anuncio que verificaste').fill('https://www.facebook.com/marketplace/item/902/');
+  await next.click();await expect(card.getByRole('alert')).toContainText('Conexión temporalmente');await next.click();
+  await expect(card.getByRole('region',{name:'Resolver destino'})).toHaveCount(0);
+  expect(calls.filter(call=>call.name==='resolve_facebook_delivery')).toHaveLength(2);
+  expect(calls.filter(call=>call.name==='resolve_facebook_delivery')[1].args).toMatchObject({p_delivery:'delivery-2',p_decision:mobile?'new':'existing'});
+  expect(rows[0].facebook_deliveries[0].status).toBe('published');expect(rows[1].facebook_deliveries[0].status).toBe('attention');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath(mobile?'listing-decision-mobile.png':'listing-decision-desktop.png')});
+});
+
+test('requires approval of sale format and extra fields from RivaStock',async({page})=>{
+  const {rows}=await fixture(page);const delivery=rows[2].facebook_deliveries[0];Object.assign(delivery,{destination:{name:'Grupo de compraventa',mechanism:'group_direct',url:'https://www.facebook.com/groups/630127860416020'},message:'Campos adicionales',issue:{kind:'group_sale_fields',message:'Campos adicionales',fields:[{label:'Marca',options:null}]}});
+  let decision:any;await page.route('**/rest/v1/rpc/resolve_facebook_delivery',async route=>{decision=route.request().postDataJSON();Object.assign(delivery,{status:'pending',issue:null});return route.fulfill({json:null});});
+  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Preparación con error'});const button=card.getByRole('button',{name:'Aprobar artículo en venta y continuar'});
+  await card.getByRole('checkbox',{name:'Revisé el contenido aprobado'}).check();await expect(button).toBeDisabled();await card.getByLabel('Marca',{exact:true}).fill('Riva');await button.click();
+  await expect.poll(()=>decision).toMatchObject({p_delivery:'delivery-2',p_decision:'group_sale',p_fields:{Marca:'Riva'}});
+  await expect(card.getByRole('region',{name:'Resolver destino'})).toHaveCount(0);
 });

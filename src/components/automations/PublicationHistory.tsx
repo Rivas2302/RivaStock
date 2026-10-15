@@ -1,3 +1,4 @@
+import PublicationDecision from './PublicationDecision';
 import {useState} from 'react';
 import {Link} from 'react-router-dom';
 import {ExternalLink,AlertTriangle,CheckCircle2,Clock3} from 'lucide-react';
@@ -9,6 +10,7 @@ function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:
   const canWrite=usePermission('stock','write');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const [review,setReview]=useState(false);const [checked,setChecked]=useState(false);const [url,setUrl]=useState('');
+  const decision=Boolean(delivery.issue)||delivery.destination.mechanism==='marketplace'&&/anuncio|título/i.test(delivery.message??'');
   const state=deliveryState(delivery);const evidence=safeFacebookEvidence(delivery);
   async function action(name:string,args:Record<string,unknown>) {
     if(busy)return;setBusy(true);setError('');
@@ -19,16 +21,21 @@ function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:
   return <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800/60">
     <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold">{delivery.destination.name}: <span className="sr-only">{deliveryLabel(delivery)}</span></h4><span aria-hidden="true" className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${['failed','unknown'].includes(state)?'bg-amber-100 text-amber-900':state==='published'?'bg-emerald-100 text-emerald-900':'bg-indigo-100 text-indigo-900'}`}>{['failed','unknown'].includes(state)?<AlertTriangle size={14}/>:state==='published'?<CheckCircle2 size={14}/>:<Clock3 size={14}/>} {deliveryLabel(delivery)}</span></div>
     {delivery.message&&<p className="break-words text-slate-600 dark:text-slate-300">{delivery.message}</p>}
-    {state==='submitted'&&<p>Facebook recibió el envío o se informó un anuncio existente. La aprobación pública no está verificada.</p>}
+    {delivery.execution_timing&&Object.keys(delivery.execution_timing).length>0&&<details className="text-xs text-slate-500"><summary className="cursor-pointer">Tiempos de ejecución</summary><dl className="mt-2 space-y-1">{([
+      ['approval_to_claim_ms','Desde la aprobación hasta tomar el trabajo'],['receipt_to_preparation_ms','Desde la recepción hasta iniciar la preparación'],['claim_rpc_ms','Consulta del trabajo'],['photos_ms','Descarga de fotos'],['navigation_ms','Fotos y navegación acumuladas'],['preparation_ms','Preparación completa'],
+    ] as const).map(([key,label])=>{const ms=delivery.execution_timing?.[key];return typeof ms==='number'?<div key={key}><dt className="inline">{label}: </dt><dd className="inline">{(ms/1000).toLocaleString('es-AR',{maximumFractionDigits:3})} s</dd></div>:null;})}<div>Origen: {delivery.execution_timing.source==='local'?'aviso local':delivery.execution_timing.source==='drain'?'continuación de cola':'comprobación periódica'}</div></dl></details>}
+    {delivery.resolution?.action==='existing'&&<p>Anuncio vinculado sin modificarlo. Estado observado al consultar: {delivery.resolution.observedStatus||'No disponible'}. La disponibilidad actual no está verificada.</p>}
+    {state==='submitted'&&delivery.resolution?.action!=='existing'&&<p>Facebook recibió el envío o se informó un anuncio existente. La aprobación pública no está verificada.</p>}
     {state==='pending_approval'&&<p>Facebook recibió la publicación y todavía está revisándola.</p>}
     {state==='unknown'&&<p>No se pudo comprobar el resultado después de autorizar el envío. Otro envío está bloqueado hasta revisar Facebook.</p>}
-    {state==='failed'&&<p>La preparación se detuvo antes de autorizar Publicar. Corregí la causa y reintentá este mismo trabajo.</p>}
+    {state==='failed'&&!decision&&<p>La preparación se detuvo antes de autorizar Publicar. Corregí la causa y reintentá este mismo trabajo.</p>}
     <div className="flex flex-wrap gap-2">{evidence&&<a className={`${button} inline-flex items-center gap-2`} href={evidence} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/>Ver publicación</a>}
       {!evidence&&<a className={button} href={delivery.destination.mechanism==='marketplace'?'https://www.facebook.com/marketplace/you/selling':/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(delivery.destination.url)?delivery.destination.url:'https://www.facebook.com/marketplace/'} target="_blank" rel="noopener noreferrer">Revisar en Facebook</a>}
       {canWrite&&state==='pending'&&<button disabled={busy} className={button} onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar envío pendiente</button>}
-      {canWrite&&state==='failed'&&!delivery.evidence_url&&<button disabled={busy} className={button} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
+      {canWrite&&state==='failed'&&!delivery.evidence_url&&!decision&&<button disabled={busy} className={button} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
       {canWrite&&state==='unknown'&&<button disabled={busy} className={button} onClick={()=>setReview(!review)}>Registrar revisión</button>}
     </div>
+    {canWrite&&state==='failed'&&decision&&<PublicationDecision delivery={delivery} onRefresh={onRefresh}/>}
     {review&&<div className="space-y-3 rounded-lg border border-amber-300 p-3"><p className="font-semibold">Revisá tus publicaciones y pendientes de aprobación en Facebook antes de continuar.</p><label className="flex gap-2"><input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)}/>Ya revisé el destino y sus publicaciones pendientes.</label><label className="block">Enlace si encontraste la publicación<input type="url" className="mt-1 w-full rounded-lg border bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white" value={url} onChange={e=>setUrl(e.target.value)}/></label><div className="flex flex-wrap gap-2"><button className={button} disabled={busy||!checked||!url.trim()} onClick={()=>void action('review_facebook_delivery',{p_decision:'found',p_url:url.trim()})}>Encontré la publicación</button><button className={button} disabled={busy||!checked||Boolean(url.trim())} onClick={()=>void action('review_facebook_delivery',{p_decision:'not_found',p_url:null})}>No la encontré; cerrar este intento</button></div><p className="text-xs">Tu decisión quedará registrada. Cerrar el intento no crea otra publicación automáticamente.</p></div>}
     {error&&<p role="alert" className="text-rose-600 dark:text-rose-400">{error}</p>}
   </div>;

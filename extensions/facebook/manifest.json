@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "minimum_chrome_version": "110",
+  "minimum_chrome_version": "120",
   "name": "RivaStock · Facebook",
-  "version": "0.4.5",
+  "version": "0.4.7",
   "description": "Publica productos aprobados de RivaStock usando la sesión local de Facebook.",
   "permissions": [
     "storage",

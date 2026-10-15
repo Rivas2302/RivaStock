@@ -11,6 +11,7 @@ import FacebookGroupPicker from './automations/FacebookGroupPicker';
 import { groupPublicationText } from '../lib/facebookPublications';
 import PublicationHistory from './automations/PublicationHistory';
 import {publicationBlock,validateGroupSelection} from '../lib/facebookPublications';
+import {wakeFacebookPublications} from '../lib/facebookConnection';
 
 export default function FacebookPublicationModal({ product, onClose, onApproved }: { product: Product; onClose: () => void; onApproved?: () => void }) {
   const { ownerUid } = useAuth();
@@ -80,7 +81,9 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
     if (previous && previous.payload !== serialized && !repeatOf) throw new Error('Hay una confirmación anterior. Revisá su resultado antes de preparar otro contenido.');
     const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
     localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));
+    const requestStarted=performance.now();
     await facebookRpc('approve_facebook_publication', { ...payload, p_intent: key });
+    void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
     onApproved?.();
     setNotice('Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
     await refresh();
