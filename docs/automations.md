@@ -14,13 +14,15 @@ Desde **Publicaciones → Nueva publicación**, buscá un producto del inventari
 
 ## Selección y lectura de grupos
 
-**Actualizar grupos desde la PC** solicita a la PC elegida una lectura de `Facebook → Tus grupos`. Funciona desde el celular y con la cola de publicaciones pausada, pero necesita Chrome abierto, sesión iniciada y extensión 0.4.2. Los estados solicitado, leyendo, terminado, parcial o error se muestran en RivaStock. En la misma PC, la web avisa inmediatamente a la extensión para procesar solo la lectura, sin activar publicaciones. Desde otro dispositivo depende de la comprobación periódica. Si no responde en 90 segundos, la pantalla explica si el pedido no fue tomado o si la lectura se interrumpió y permite volver a consultar. Al reabrir una publicación se vuelve a avisar a la extensión una vez por pedido pendiente. La PC sugerida es la de conexión más reciente; se puede elegir otra explícitamente. El panel de la extensión separa Publicaciones y Grupos, muestra el error de lectura y permite Revisar grupos ahora sin activar envíos. Abrirlo comprueba el pedido pendiente; mantenerlo abierto no es necesario. El límite usa tiempo local transcurrido, sin depender de diferencias de reloj con el servidor. El servidor conserva un pedido activo hasta cinco minutos; consultar nuevamente no lo duplica. Actualizar de 0.4.0 a 0.4.2 no requiere otra migración ni volver a vincular la PC.
+**Actualizar grupos desde la PC** solicita a la PC elegida una lectura de `Facebook → Tus grupos`. Funciona desde el celular y con la cola de publicaciones pausada, pero necesita Chrome abierto, sesión iniciada y extensión 0.4.3. Los estados solicitado, leyendo, terminado, parcial o error se muestran en RivaStock. En la misma PC, la web avisa inmediatamente a la extensión para procesar solo la lectura, sin activar publicaciones. Desde otro dispositivo depende de la comprobación periódica. Si no responde en 90 segundos, la pantalla explica si el pedido no fue tomado o si la lectura se interrumpió y permite volver a consultar. Al reabrir una publicación se vuelve a avisar a la extensión una vez por pedido pendiente. La PC sugerida es la de conexión más reciente; se puede elegir otra explícitamente. El panel de la extensión separa Publicaciones y Grupos, muestra el error de lectura y permite Actualizar grupos sin activar envíos. Abrirlo comprueba el pedido pendiente; mantenerlo abierto no es necesario. El límite usa tiempo local transcurrido, sin depender de diferencias de reloj con el servidor. El servidor conserva un pedido activo hasta cinco minutos; consultar nuevamente no lo duplica. Actualizar no requiere volver a vincular la PC. El botón directo de la extensión requiere la migración 0054.
 
 Solo se importan nombres y URLs presentes en el listado de grupos a los que se unió la sesión; se excluyen solicitudes pendientes. No se extraen cookies, APIs privadas ni identificadores ocultos. La carga es acotada y puede ser parcial: conserva los grupos anteriores y no promete listar todos. Pertenecer a un grupo no demuestra que sea de compra/venta o que permita publicar. No se inventan cantidad de miembros, privacidad ni permisos.
 
 El selector permite buscar por nombre o URL y elegir hasta 20 grupos, con Marketplace opcional. Conserva la selección del borrador por cuenta/producto en ese navegador; la aprobación guarda todos los destinos en el servidor. Actualizar o filtrar no cambia la selección. La vista previa muestra texto exacto, fotos y URLs.
 
 Los grupos usan **publicaciones independientes de texto y fotos**. Compartir el anuncio de Marketplace mediante “Publicar en más lugares” no está implementado. Cada grupo pasa una comprobación del formulario, autor, fotos y destino en la PC antes de autorizar un único envío. Formularios distintos, borradores, falta de permisos, restricciones o controles ambiguos dejan un error por destino. La compatibilidad se informa como pendiente de comprobar; no se garantiza por el nombre ni por pertenecer al grupo.
+
+Desde la extensión, **Actualizar grupos** crea un pedido para su propia conexión y ejecuta la lectura, aunque no hubiera un pedido previo en RivaStock. Usa la misma validación de vencimiento y revocación, no activa la cola ni aprueba productos. Un pedido pendiente puede trasladarse a esta PC; una lectura en curso en otra PC se respeta. Abrir el panel solo consulta pedidos existentes. El error histórico de conexión vencida se retira si una consulta posterior valida correctamente la conexión. Una conexión realmente vencida sigue bloqueada.
 
 ## Permisos
 
@@ -53,9 +55,9 @@ Un anuncio anterior creado fuera de la integración no aparece mágicamente en e
 
 ## Despliegue
 
-1. Aplicar **0053_facebook_group_discovery.sql** después de 0052 y sus predecesoras. No repetir migraciones ya instaladas.
+1. Aplicar **0054_facebook_group_refresh_from_device.sql** después de 0053 y sus predecesoras. No repetir migraciones ya instaladas.
 2. Desplegar la web.
-3. Actualizar la extensión a **0.4.2**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
+3. Actualizar la extensión a **0.4.3**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
 
 La cola remota bloquea nuevos trabajos en el servidor, incluso si hay una extensión anterior. Para aplicar activación remota, progreso y reporte del estado real de la PC se necesita 0.3.0. Las órdenes llegan en la siguiente comprobación; la PC apagada las recibe al conectarse. Un trabajo ya en curso puede terminar.
 

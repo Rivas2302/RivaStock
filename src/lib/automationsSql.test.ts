@@ -17,7 +17,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators VALUES('${staff}','${owner}',true);
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
 },30000);
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec(`RESET ROLE;SET ROLE authenticated;SET test.uid='${id}'`);
@@ -136,4 +136,24 @@ it('synchronizes joined groups by URL through scoped PC capabilities and preserv
   const alias=(await db.query<{id:string}>(`INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Alias',$2) RETURNING id`,[owner,`${url}/`])).rows[0].id;
   await expect(db.query(`SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('desconocido');
   await expect(db.query(`SELECT approve_facebook_publication_before_groups($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('permission denied');
+});
+
+it('requests a refresh directly from a valid PC without enabling publications or trusting another account',async()=>{
+  await actor();await db.query(`SELECT set_facebook_queue_enabled($1,false)`,[device]);
+  await db.exec('RESET ROLE;DELETE FROM facebook_group_sync');await db.exec('SET ROLE anon');
+  await expect(db.query(`SELECT request_facebook_groups_from_device('invalid')`)).rejects.toThrow('vencida');
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups_from_device($1) AS id`,[token])).rows[0].id;expect(request).toBeTruthy();
+  await actor();expect((await db.query<{device_id:string;status:string}>(`SELECT device_id,status FROM facebook_group_sync`)).rows[0]).toEqual({device_id:device,status:'requested'});
+  expect((await db.query<{queue_enabled:boolean}>(`SELECT queue_enabled FROM facebook_devices WHERE id=$1`,[device])).rows[0].queue_enabled).toBe(false);
+  const second=(await db.query<{data:{code:string;deviceId:string}}>(`SELECT pair_facebook_device('Second PC') AS data`)).rows[0].data;
+  await db.exec('SET ROLE anon');const secondToken=(await db.query<{data:{token:string}}>(`SELECT redeem_facebook_device($1) AS data`,[second.code])).rows[0].data.token;
+  await db.query(`SELECT request_facebook_groups_from_device($1)`,[secondToken]);
+  await db.query(`SELECT facebook_group_discovery($1,'claim')`,[secondToken]);
+  await expect(db.query(`SELECT request_facebook_groups_from_device($1)`,[token])).rejects.toThrow('Otra PC');
+  await actor(other);const foreign=(await db.query<{data:{code:string;deviceId:string}}>(`SELECT pair_facebook_device('Other tenant') AS data`)).rows[0].data;
+  await db.exec('SET ROLE anon');const foreignToken=(await db.query<{data:{token:string}}>(`SELECT redeem_facebook_device($1) AS data`,[foreign.code])).rows[0].data.token;
+  await db.query(`SELECT request_facebook_groups_from_device($1)`,[foreignToken]);
+  await actor();expect((await db.query<{device_id:string}>(`SELECT device_id FROM facebook_group_sync`)).rows[0].device_id).toBe(second.deviceId);
+  await db.exec(`RESET ROLE;UPDATE facebook_devices SET revoked_at=now() WHERE id='${device}';SET ROLE anon`);
+  await expect(db.query(`SELECT request_facebook_groups_from_device($1)`,[token])).rejects.toThrow('vencida');
 });

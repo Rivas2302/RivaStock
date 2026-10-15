@@ -44,13 +44,13 @@ function renderGroups(state){
   const previous=document.querySelector('#group-last-error');previous.hidden=!state.groupDiscoveryIssue||Boolean(error);previous.textContent=state.groupDiscoveryIssue?`Último error de grupos: ${state.groupDiscoveryIssue}`:'';
   document.querySelector('#group-checked').textContent=group?.checkedAt?`Última comprobación: ${new Date(group.checkedAt).toLocaleTimeString('es-AR')}`:'';
 }
-async function checkGroups(){
+async function checkGroups(refresh=false){
   if(!currentConnection)return;groupsCheck.disabled=true;
-  try{const result=await chrome.runtime.sendMessage({type:'groups-check'});if(result?.error)throw new Error(result.error);await chrome.storage.local.get(['groupDiscovery','groupDiscoveryIssue']).then(renderGroups);}
+  try{const result=await chrome.runtime.sendMessage({type:refresh?'groups-refresh':'groups-check'});if(result?.error)throw new Error(result.error);await chrome.storage.local.get(['groupDiscovery','groupDiscoveryIssue']).then(renderGroups);}
   catch(error){groupStatus.textContent=error.message;groupStatus.className='activity error';groupStatus.setAttribute('role','alert');}
   finally{groupsCheck.disabled=!currentConnection;}
 }
-groupsCheck.addEventListener('click',()=>void checkGroups());renderConnection();renderGroups(saved);
+groupsCheck.addEventListener('click',()=>void checkGroups(true));renderConnection();renderGroups(saved);
 if(currentConnection)void checkGroups();
 toggle.addEventListener('click',async () => {
   if(!currentConnection)return;

@@ -162,6 +162,6 @@ it('reports a group claim failure immediately without claiming a publication',as
 
 it('reports no assigned group request without waking the publication queue',async()=>{
   vi.resetModules();const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'};
-  const memory:any={connection,paused:true};const publicationRequest=vi.fn();persistentWorker(memory,publicationRequest);
-  try{const {syncGroups}=await import('../../extensions/facebook/worker.js');expect(await syncGroups(connection,true)).toEqual({state:'waiting'});expect(memory.groupDiscovery.phase).toBe('waiting');expect(publicationRequest).not.toHaveBeenCalled();expect(memory.paused).toBe(true);}finally{vi.unstubAllGlobals();}
+  const memory:any={connection,paused:true,groupDiscoveryIssue:'Conexión vencida o revocada'};const publicationRequest=vi.fn();persistentWorker(memory,publicationRequest);
+  try{const {syncGroups}=await import('../../extensions/facebook/worker.js');expect(await syncGroups(connection,true)).toEqual({state:'waiting'});expect(memory.groupDiscovery.phase).toBe('waiting');expect(memory.groupDiscoveryIssue).toBeUndefined();expect(publicationRequest).not.toHaveBeenCalled();expect(memory.paused).toBe(true);}finally{vi.unstubAllGlobals();}
 });
