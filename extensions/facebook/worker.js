@@ -1,5 +1,6 @@
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
+import { discoverJoinedGroups } from './group-discovery.js';
 registerPairing();
 
 let polling = false;
@@ -66,6 +67,17 @@ async function poll() {
       }
       return;
     }
+    // Read-only discovery also works with the publication queue paused. A
+    // discovery error must never block other destinations or submitted jobs.
+    try {
+      const request=await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'claim'});
+      if(typeof request?.id==='string'){
+        try {
+          const data=await discoverJoinedGroups();
+          await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
+        }catch(error){await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
+      }
+    }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message});}
     if (paused !== false) { await chrome.storage.local.set({status:'Conectada. Cola pausada.'}); return; }
     const job = await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'claim' });
     if (!job) { await chrome.storage.local.set({ status: lastIssue?`Cola activa. Último envío requiere revisión: ${lastIssue}`:'Conectada. Sin trabajos pendientes.' }); return; }
@@ -87,7 +99,7 @@ async function poll() {
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'}});
       await chrome.storage.local.set({status:`Enviando ${job.destination.name ?? 'publicación'}… No cierres Chrome.`});
       await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'progress',p_delivery:job.id,p_message:'Enviando a Facebook; resultado todavía sin confirmar'}).catch(()=>{});
-      await facebookAdapter.action(active.tabId,'submit',job.content);
+      await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);
       const result = await facebookAdapter.reconcile(active);
       const completed={...active,stage:'result',result};
       await chrome.storage.local.set({activeJob:completed});
@@ -122,7 +134,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         if(!connection)throw new Error('Conectá esta PC primero.');
         const command=await rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'queue_state',p_status:message.paused?'paused':'active'});
         await chrome.storage.local.set({paused:message.paused,queueCommandAt:command.queue_command_at??null,status:message.paused?'Cola pausada. El envío en curso puede terminar.':'Cola activa. Revisando publicaciones aprobadas…'});
-        if(!message.paused)await poll();
+        if(!message.paused)void poll();
         reply({done:true});
       }catch(error){reply({error:error.message});}
     })();

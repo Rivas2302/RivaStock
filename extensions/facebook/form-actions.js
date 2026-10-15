@@ -180,8 +180,13 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return { ready: true, baseline: [] };
   }
   if (action === 'group_prepare') {
+    const target=content.targetGroupUrl?new URL(content.targetGroupUrl).pathname.replace(/\/$/,''):location.pathname.replace(/\/$/,'');
+    const actual=location.pathname.replace(/\/$/,'');
+    const canonical=path=>path.replace('/PicoVendedeTodo','/710102875717376');
+    if(!/^\/groups\/[A-Za-z0-9._-]+$/.test(actual)||canonical(target)!==canonical(actual))throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
+    if(document.querySelector('[role="dialog"] [contenteditable="true"]'))throw new Error('Hay un borrador abierto en el grupo. No se sobrescribió.');
     const before = [...new Set(photoIds())];
-    await wait(() => buttons('Escribe algo...').length === 1);
+    await wait(() => buttons('Escribe algo...').length === 1,'grupo sin editor de texto y fotos compatible o sin permiso para publicar');
     if(normalize(document.body.innerText).includes(normalize(content.groupText)))throw new Error('El grupo ya muestra el contenido aprobado. Verificá el post antes de publicar otro.');
     let authorId=null;
     let authorScope=button('Escribe algo...');
@@ -210,13 +215,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     while (scope !== dialog && !scope.querySelector('input[type="file"][multiple]')) scope = scope.parentElement;
     const associated = inputs.filter(input => scope.contains(input));
     attach(one(associated));
-    await wait(() => enabled(button('Publicar', dialog)) && dialog.querySelector('img') && buttons('Eliminar archivo adjunto de la publicación', dialog).length === 1);
-    return { ready: true, baseline: [...before,`author:${authorId}`] };
+    await wait(() => enabled(button('Publicar', dialog)) && dialog.querySelector('img') && buttons('Eliminar archivo adjunto de la publicación', dialog).length === photos.length,'carga y verificación de todas las fotos del grupo');
+    if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
+    const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
+    return { ready: true, baseline: [...before,...alerts,`author:${authorId}`,`group:${actual}`] };
   }
   if (action === 'submit') {
     // The worker must obtain an atomic database checkpoint before calling this
     // action. This function never retries the final click.
     const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"]');
+    const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
+    if(group&&(!editor||location.pathname.replace(/\/$/,'')!==group))throw new Error('Cambió el editor o el grupo antes de enviar. No se envió.');
     const root = editor?.closest('[role="dialog"]') ?? document;
     if (editor && normalize(editor.innerText) !== normalize(content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
     const publish = button('Publicar', root);
@@ -242,6 +251,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if(candidates.length>1)throw new Error('Hay varios anuncios con el mismo título. Revisá Facebook.');
       if(candidates.length===1) {activate(candidates[0]);return {waiting:true};}
     } else {
+      const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
+      if(group&&location.pathname.replace(/\/$/,'')!==group)throw new Error('Cambió la página del grupo. Resultado desconocido.');
+      const pending=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible).map(text).filter(value=>!baseline.includes(`notice:${value}`));
+      if(group&&!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"]')&&pending.some(value=>/^Tu publicación (está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/.test(value)))return {status:'pending_approval',url:null,message:'Facebook indicó explícitamente que este envío espera aprobación de los administradores.'};
       const candidates = Array.from(document.querySelectorAll('a[href]')).filter(element => {
         try { const value = new URL(element.href).searchParams.get('set'); return value?.startsWith('gm.') && !baseline.includes(value.slice(3)); } catch { return false; }
       }).filter(element => {

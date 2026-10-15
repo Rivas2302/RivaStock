@@ -8,7 +8,7 @@ function persistentWorker(memory:any,request:any) {
     alarms:{get:async(name:string)=>alarms.get(name),create:async(name:string,options:any)=>{alarms.set(name,options)},onAlarm:{addListener:vi.fn()}},
     runtime:{id:'own',onInstalled:{addListener:vi.fn()},onStartup:{addListener:(callback:any)=>{startup=callback}},onMessage:{addListener:(callback:any)=>{listener=callback}}},
   });
-  vi.stubGlobal('fetch',request);
+  vi.stubGlobal('fetch',(url:any,options:any)=>String(url).endsWith('/facebook_group_discovery')?Promise.resolve({ok:true,json:async()=>null}):request(url,options));
   return {alarms,startup:()=>startup(),poll:()=>new Promise(resolve=>listener({type:'poll'},{id:'own'},resolve))};
 }
 
@@ -90,7 +90,7 @@ it('heartbeats the linked account but never claims or submits while the queue is
     expect(request).not.toHaveBeenCalled();
     listener({type:'poll'},{id:'own-extension'},reply);
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
     const [url,options]=request.mock.calls[0] as unknown as [string,RequestInit];
     expect(url).toBe('https://test.supabase.co/rest/v1/rpc/facebook_worker');
     expect(JSON.parse(options.body as string)).toEqual({p_token:connection.token,p_operation:'heartbeat',p_status:'paused',p_message:null});

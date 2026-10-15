@@ -23,7 +23,7 @@ if(sessionStorage.getItem('submitted')){const card=document.createElement('butto
 </script></body></html>`;
 const groupForm = `<!doctype html><html><body><div><a href="/groups/710102875717376/user/111/">Perfil de Test</a><button id="open">Escribe algo...</button></div><script>
 document.querySelector('#open').onclick=()=>{const d=document.createElement('div');d.role='dialog';d.innerHTML='<h2>Crear publicación</h2><div role="textbox" contenteditable="true" aria-label="Crea una publicación pública..."></div><div><button aria-label="Foto/video">Foto/video</button><input type="file" multiple accept="image/*,video/*"></div><input type="file" multiple accept="image/*,video/*"><button id="publish" disabled>Publicar</button>';
-document.body.append(d);d.querySelector('input').onchange=e=>{window.groupUploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size}));const img=document.createElement('img');img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';d.append(img);const remove=document.createElement('button');remove.textContent='Eliminar archivo adjunto de la publicación';d.append(remove);d.querySelector('#publish').disabled=false};
+document.body.append(d);d.querySelector('input').onchange=e=>{window.groupUploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size}));const img=document.createElement('img');img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';d.append(img);for(const file of e.target.files){const remove=document.createElement('button');remove.textContent='Eliminar archivo adjunto de la publicación';d.append(remove);}d.querySelector('#publish').disabled=false};
 d.querySelector('#publish').onclick=()=>{window.groupSubmits=(window.groupSubmits||0)+1;const value=d.querySelector('[contenteditable]').innerText;d.remove();const p=document.createElement('section');p.innerHTML='<button aria-label="Acciones en esta publicación de Test">...</button><a href="/groups/710102875717376/user/111/">Test</a><p></p><a href="/photo/?fbid=1&set=gm.123456789">Foto</a>';p.querySelector('p').textContent=value;document.body.append(p)};
 };</script></body></html>`;
 
@@ -42,7 +42,7 @@ test('installed extension processes two approved destinations with real file inp
   try {
     await context.route('https://www.facebook.com/**',async route => {
       const path=new URL(route.request().url()).pathname;
-      await route.fulfill({contentType:'text/html; charset=utf-8',body:path.includes('/create/item')?marketplaceForm:path.includes('/you/selling')?seller:groupForm});
+      await route.fulfill({contentType:'text/html; charset=utf-8',body:path.includes('/groups/joins/')?'<section><h2>Todos los grupos a los que te uniste (2)</h2><ul><li><a href="/groups/123">Group one</a></li><li><a href="/groups/456">Group two</a></li></ul></section>':path.includes('/create/item')?marketplaceForm:path.includes('/you/selling')?seller:groupForm});
     });
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(async () => {
@@ -56,11 +56,12 @@ test('installed extension processes two approved destinations with real file inp
         return realUpdate(tab.id,{url:options.url});
       };
       const content={title:'Perfume de prueba',description:'Descripción aprobada',groupText:'Perfume de prueba\n\nPrecio: ARS 43000.00\nDisponible en General Pico.',price:43000,condition:'new',category:'Salud y belleza',location:'General Pico',photos:['https://test.supabase.co/storage/v1/object/public/photos/test.png'],selection:{marketplace:true}};
-      const state={operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',content,destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',content,destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'}}]};
+      const state={groups:[] as any[],discoveryRequested:false,operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',content,destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',content:{...content,photos:[...content.photos,'https://test.supabase.co/storage/v1/object/public/photos/second.png']},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'}}]};
       (globalThis as any).fixtureState=state;
       globalThis.fetch=async (input:any,options:any) => {
         const url=String(input); if(!url.startsWith('https://test.supabase.co/')) throw new Error('Unexpected network target');
         if(url.includes('/storage/'))return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII='),c=>c.charCodeAt(0)),{headers:{'content-type':'image/png'}});
+        if(url.endsWith('/facebook_group_discovery')){const args=JSON.parse(options.body);if(args.p_operation==='claim'){if(state.discoveryRequested)return Response.json(null);state.discoveryRequested=true;return Response.json({id:'sync-request'});}if(args.p_operation==='result')state.groups=args.p_data.groups;return Response.json({saved:true});}
         const args=JSON.parse(options.body); state.operations.push(args); let result:any={connected:true};
         if(args.p_operation==='claim') result=state.jobs.shift()??null;
         if(args.p_operation==='checkpoint'){if(state.checkpoint.includes(args.p_delivery))throw new Error('Duplicate submit checkpoint');state.checkpoint.push(args.p_delivery);result={authorized:true}}
@@ -71,11 +72,11 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
-    await expect(control.getByText('Versión 0.3.0',{exact:true})).toBeVisible();
+    await expect(control.getByText('Versión 0.4.0',{exact:true})).toBeVisible();
     const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
     await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
     await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
-    await expect(control.locator('pre')).toContainText('"version": "0.3.0"');
+    await expect(control.locator('pre')).toContainText('"version": "0.4.0"');
     await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
@@ -87,15 +88,16 @@ test('installed extension processes two approved destinations with real file inp
     const initial=await worker.evaluate(async () => (globalThis as any).chrome.storage.local.get(['paused','status','activeJob']));
     const pages=await Promise.all(context.pages().filter(page=>page.url().startsWith('https://www.facebook.com')).map(async page=>({url:page.url(),body:await page.locator('body').innerText()})));
     expect(initial.paused,JSON.stringify({initial,pages})).toBe(false);
-    await expect.poll(async () => worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(1);
+    await expect.poll(async () => worker.evaluate(() => (globalThis as any).fixtureState.results.length),{timeout:20000}).toBe(1);
     await control.evaluate(async () => {await (globalThis as any).chrome.runtime.sendMessage({type:'poll'})});
     await expect.poll(async () => worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(2);
+    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.groups)).toEqual([{name:'Group one',url:'https://www.facebook.com/groups/123'},{name:'Group two',url:'https://www.facebook.com/groups/456'}]);
     const results=await worker.evaluate(() => (globalThis as any).fixtureState.results);
     expect(results[0]).toMatchObject({p_delivery:'market',p_status:'pending_approval',p_url:'https://www.facebook.com/marketplace/item/987654321/'});
     expect(results[1]).toMatchObject({p_delivery:'group',p_status:'published',p_url:'https://www.facebook.com/groups/PicoVendedeTodo/posts/123456789'});
     const group=context.pages().find(page=>page.url().includes('/groups/'))!;
     expect(await group.evaluate(()=>(window as any).groupSubmits)).toBe(1);
-    expect(await group.evaluate(()=>(window as any).groupUploads)).toMatchObject([{type:undefined,size:68}].map(({size})=>({size})));
+    expect(await group.evaluate(()=>(window as any).groupUploads)).toMatchObject([{size:68},{size:68}]);
     expect(await worker.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('activeJob')).activeJob)).toBeUndefined();
   } finally {await context.close();}
 });
@@ -154,7 +156,7 @@ test('records an existing Marketplace listing without opening a create form or c
       const runtime=(globalThis as any).chrome;const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
       runtime.tabs.create=async(options:any)=>{const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));return update(tab.id,{url:options.url});};
       const operations:any[]=[];(globalThis as any).operations=operations;let claimed=false;
-      globalThis.fetch=async(_url:any,options:any)=>{const args=JSON.parse(options.body);operations.push(args);return Response.json(args.p_operation==='claim'?!claimed?(claimed=true,{id:'existing',content:{title:'Perfume de prueba',price:43000,photos:[],selection:{marketplace:true}},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}}):null:{saved:true});};
+      globalThis.fetch=async(_url:any,options:any)=>{if(String(_url).endsWith('/facebook_group_discovery'))return Response.json(null);const args=JSON.parse(options.body);operations.push(args);return Response.json(args.p_operation==='claim'?!claimed?(claimed=true,{id:'existing',content:{title:'Perfume de prueba',price:43000,photos:[],selection:{marketplace:true}},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}}):null:{saved:true});};
       await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture',deviceId:'fixture-device'},paused:false});
     });
     const control=await context.newPage();await control.goto(`chrome-extension://${new URL(worker.url()).hostname}/connect.html`);

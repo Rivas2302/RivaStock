@@ -11,6 +11,16 @@ export function groupPublicationText(content: PublicationContent): string {
   return `${content.title}\n\n${content.description}\n\nPrecio: ARS ${content.price.toFixed(2)}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
 export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct' }
+export function groupCompatibility(group:FacebookGroup):string|null {
+  if(group.mechanism!=='group_direct')return 'Este flujo de grupo no está implementado.';
+  try{normalizeGroupUrl(group.url);return null;}catch{return 'Falta una URL válida del grupo. No se puede identificar el destino por su nombre.';}
+}
+export function validateGroupSelection(groups:FacebookGroup[],selected:string[]):string|null {
+  if(selected.length>20)return 'Podés elegir hasta 20 grupos.';
+  const urls=new Set<string>();
+  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;const url=normalizeGroupUrl(group.url).replace(/\/PicoVendedeTodo$/,'/710102875717376');if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
+  return null;
+}
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null }
 export interface FacebookDelivery {
   id: string; status: string; message: string | null; evidence_url: string | null;
@@ -31,8 +41,10 @@ export function deliveryLabel(delivery:FacebookDelivery) {
   const state=deliveryState(delivery);
   return state==='failed'?'Preparación fallida':state==='unknown'?'Resultado desconocido':publicationStatus[state]??state;
 }
-export function publicationBlock(publications:FacebookPublication[],marketplace:boolean,groups:string[]) {
-  const selected=(d:FacebookDelivery)=>d.destination.mechanism==='marketplace'?marketplace:d.destination_key?groups.includes(d.destination_key):groups.length>0;
+export function publicationBlock(publications:FacebookPublication[],marketplace:boolean,groups:string[],knownGroups:FacebookGroup[]=[]) {
+  const key=(url:string)=>url.replace(/\/$/,'').replace(/\/PicoVendedeTodo$/,'/710102875717376');
+  const urls=new Set(knownGroups.filter(group=>groups.includes(group.id)).map(group=>key(group.url)));
+  const selected=(d:FacebookDelivery)=>d.destination.mechanism==='marketplace'?marketplace:urls.has(key(d.destination.url??''))||(d.destination_key?groups.includes(d.destination_key):groups.length>0);
   // Older responses without destination keys treat group jobs conservatively.
   const jobs=publications.flatMap(p=>p.facebook_deliveries).filter(selected);
   if(jobs.some(d=>['pending','running'].includes(d.status)))return 'Ya hay un trabajo pendiente o en ejecución para este destino. Consultá su historial.';

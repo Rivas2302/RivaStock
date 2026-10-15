@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
 vi.mock('./supabase', () => ({supabase:{}}));
-import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected } from './facebookPublications';
+import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection } from './facebookPublications';
 import type { Product } from '../types';
 import { facebookAdapter,validateFacebookDestination,fetchPublicationPhotos } from '../../extensions/facebook/adapter.js';
 import { readFileSync } from 'node:fs';
@@ -22,9 +22,9 @@ describe('Facebook publication preparation',() => {
     expect(deviceConnected({id:'1',name:'PC',last_seen_at:new Date(now).toISOString(),revoked_at:null},now)).toBe(true);
     expect(deviceConnected({id:'1',name:'PC',last_seen_at:new Date(now-180000).toISOString(),revoked_at:null},now)).toBe(false);
   });
-  it('limits execution to inspected destinations without cookie or broad tab access',async () => {
+  it('validates group URLs before runtime composer checks without cookie or broad tab access',async () => {
     expect(facebookAdapter.ready).toBe(true);
-    expect(() => validateFacebookDestination({mechanism:'group_direct',url:'https://www.facebook.com/groups/unknown'})).toThrow();
+    expect(() => validateFacebookDestination({mechanism:'group_direct',url:'https://www.facebook.com/groups/unknown'})).not.toThrow();
     expect(() => validateFacebookDestination({mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'})).not.toThrow();
     await expect(fetchPublicationPhotos({photos:['https://evil.test/photo.jpg']},'https://test.supabase.co')).rejects.toThrow('almacenamiento');
     const manifest=JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8'));
@@ -32,4 +32,12 @@ describe('Facebook publication preparation',() => {
     expect(manifest.host_permissions).toBeUndefined();
     expect(manifest.externally_connectable).toEqual({matches:['https://rivastock.vercel.app/*']});
   });
+});
+
+it('rejects duplicate group identities, missing destinations and excessive selections',()=>{
+ const groups=[{id:'a',name:'Same',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group_direct' as const},{id:'b',name:'Different label',url:'https://www.facebook.com/groups/710102875717376',mechanism:'group_direct' as const},{id:'c',name:'Same',url:'https://www.facebook.com/groups/123',mechanism:'group_direct' as const}];
+ expect(validateGroupSelection(groups,['a','b'])).toContain('más de una vez');
+ expect(validateGroupSelection(groups,['a','c'])).toBeNull();
+ expect(validateGroupSelection(groups,['missing'])).toContain('ya no está disponible');
+ expect(validateGroupSelection(groups,Array(21).fill('a'))).toContain('20');
 });

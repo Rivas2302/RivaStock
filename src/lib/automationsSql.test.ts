@@ -17,7 +17,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators VALUES('${staff}','${owner}',true);
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
 },30000);
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec(`RESET ROLE;SET ROLE authenticated;SET test.uid='${id}'`);
@@ -102,4 +102,38 @@ it('prevents retrying an old preparation alongside a newer pending approval',asy
   const pending=(await db.query<{id:string}>(`SELECT id FROM facebook_deliveries WHERE publication_id=$1`,[next])).rows[0].id;
   await db.query(`SELECT cancel_facebook_delivery($1)`,[pending]);await db.query(`SELECT retry_facebook_preparation($1)`,[job.id]);
   expect((await db.query<{status:string}>(`SELECT status FROM facebook_deliveries WHERE id=$1`,[job.id])).rows[0].status).toBe('pending');
+});
+
+it('synchronizes joined groups by URL through scoped PC capabilities and preserves stable IDs',async()=>{
+  await actor(other);await expect(db.query(`SELECT request_facebook_groups($1)`,[device])).rejects.toThrow('revocada');
+  await actor();
+  await db.query(`INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Original','https://www.facebook.com/groups/PicoVendedeTodo')`,[owner]);
+  const existing=(await db.query<{id:string}>(`SELECT id FROM facebook_groups WHERE user_id=$1`,[owner])).rows[0].id;
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups($1) AS id`,[device])).rows[0].id;
+  expect((await db.query<{id:string}>(`SELECT request_facebook_groups($1) AS id`,[device])).rows[0].id).toBe(request);
+  await db.exec('SET ROLE anon');
+  await expect(db.query(`SELECT facebook_group_discovery('invalid','claim')`)).rejects.toThrow();
+  const job=(await db.query<{data:{id:string}}>(`SELECT facebook_group_discovery($1,'claim') AS data`,[token])).rows[0].data;expect(job.id).toBe(request);
+  expect((await db.query<{data:unknown}>(`SELECT facebook_group_discovery($1,'claim') AS data`,[token])).rows[0].data).toBeNull();
+  await expect(db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify({groups:[{name:'Bad',url:'https://evil.test/groups/1'}]})])).rejects.toThrow('identidad');
+  const data={groups:[{name:'Updated',url:'https://www.facebook.com/groups/710102875717376'},{name:'Same label',url:'https://www.facebook.com/groups/123'},{name:'Same label',url:'https://www.facebook.com/groups/456'}],partial:true};
+  await db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify(data)]);
+  await actor();
+  const groups=(await db.query<{id:string;name:string}>(`SELECT id,name FROM facebook_groups WHERE user_id=$1`,[owner])).rows;
+  expect(groups).toHaveLength(3);expect(groups.find(g=>g.id===existing)?.name).toBe('Updated');
+  expect((await db.query<{message:string}>(`SELECT message FROM facebook_group_sync`)).rows[0].message).toContain('parcial');
+  await actor(other);expect((await db.query(`SELECT * FROM facebook_group_sync`)).rows).toHaveLength(0);
+  await actor();const ids=(await db.query<{id:string}>(`SELECT id FROM facebook_groups WHERE name='Same label'`)).rows.map(r=>r.id);
+  const last=(await db.query<{id:string}>(`SELECT id FROM facebook_publications ORDER BY approved_at DESC,id DESC LIMIT 1`)).rows[0].id;
+  const body={...content,groupText:'Approved text'};
+  const approved=(await db.query<{id:string}>(`SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,$3::uuid[],false,$4) AS id`,[product,JSON.stringify(body),ids,last])).rows[0].id;
+  const jobs=(await db.query<{id:string;destination_key:string}>(`SELECT id,destination_key FROM facebook_deliveries WHERE publication_id=$1`,[approved])).rows;
+  expect(jobs).toHaveLength(2);
+  await db.exec(`RESET ROLE`);await db.query(`UPDATE facebook_deliveries SET status='attention',submitted_at=now(),message='Unknown' WHERE id=$1`,[jobs[0].id]);
+  await actor();await expect(db.query(`SELECT retry_facebook_preparation($1)`,[jobs[0].id])).rejects.toThrow();
+  expect((await db.query<{status:string}>(`SELECT status FROM facebook_deliveries WHERE id=$1`,[jobs[1].id])).rows[0].status).toBe('pending');
+  const url=(await db.query<{url:string}>(`SELECT url FROM facebook_groups WHERE id=$1`,[jobs[0].destination_key])).rows[0].url;
+  const alias=(await db.query<{id:string}>(`INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Alias',$2) RETURNING id`,[owner,`${url}/`])).rows[0].id;
+  await expect(db.query(`SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('desconocido');
+  await expect(db.query(`SELECT approve_facebook_publication_before_groups($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('permission denied');
 });

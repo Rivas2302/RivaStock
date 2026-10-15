@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 
 // Explicit allowlist: the download contains extension code only, never local
 // credentials, browser data, source maps or repository configuration.
-export const extensionFiles=['manifest.json','worker.js','adapter.js','form-actions.js','marketplace-contract.js','group-contract.js','pairing.js','connect.html','connect.js','connect.css'];
+export const extensionFiles=['manifest.json','worker.js','adapter.js','form-actions.js','marketplace-contract.js','group-contract.js','group-discovery.js','pairing.js','connect.html','connect.js','connect.css'];
 function crc32(bytes) {
   let crc=0xffffffff;
   for(const byte of bytes) {

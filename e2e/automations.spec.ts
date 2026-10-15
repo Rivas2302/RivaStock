@@ -161,3 +161,64 @@ test('refreshes configuration groups and active queue; inventory errors can retr
   await page.getByRole('button',{name:'Reintentar carga'}).click();
   await expect(page.getByRole('button',{name:/Producto nuevo.*en stock/})).toBeVisible();
 });
+
+for(const mobile of [false,true])test(`selects multiple group identities and persists selection (${mobile?'mobile':'desktop'})`,async({page},testInfo)=>{
+  if(mobile)await page.setViewportSize({width:390,height:844});
+  await fixture(page);
+  const groups=[{id:'g1',name:'Grupo de prueba',url:'https://www.facebook.com/groups/123',mechanism:'group_direct'},{id:'g2',name:'Grupo de prueba',url:'https://www.facebook.com/groups/456',mechanism:'group_direct'},{id:'unsupported',name:'Flujo de venta',url:'https://www.facebook.com/groups/789',mechanism:'marketplace_share'}];
+  await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:groups}));
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await modal.getByRole('checkbox',{name:'Seleccionar Grupo de prueba (https://www.facebook.com/groups/123)',exact:true}).check();
+  await modal.getByRole('checkbox',{name:'Seleccionar Grupo de prueba (https://www.facebook.com/groups/456)',exact:true}).check();
+  await expect(modal.getByRole('checkbox',{name:/Seleccionar Flujo de venta/})).toBeDisabled();
+  await modal.getByLabel('Marketplace',{exact:true}).uncheck();
+  await modal.getByRole('textbox',{name:'Buscar grupos'}).fill('123');
+  await expect(modal.getByText('2 de 20 grupos seleccionados',{exact:true})).toBeVisible();
+  await modal.getByRole('textbox',{name:'Buscar grupos'}).fill('');
+  await page.reload();
+  await expect(modal.getByRole('checkbox',{name:/Seleccionar Grupo de prueba.*123/})).toBeChecked();
+  await expect(modal.getByRole('checkbox',{name:/Seleccionar Grupo de prueba.*456/})).toBeChecked();
+  await expect(modal.getByLabel('Marketplace',{exact:true})).not.toBeChecked();
+  await modal.getByLabel('Ubicación',{exact:true}).fill('General Pico');
+  await modal.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
+  await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
+  await modal.getByRole('textbox',{name:'Buscar grupos'}).scrollIntoViewIfNeeded();
+  expect(await modal.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath(`group-selector-${mobile?'mobile':'desktop'}.png`)});
+  const response=page.waitForRequest('**/rpc/approve_facebook_publication');
+  await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
+  const request=await response;expect(request.postDataJSON().p_groups).toEqual(['g1','g2']);expect(request.postDataJSON().p_marketplace).toBe(false);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath(`groups-${mobile?'mobile':'desktop'}.png`)});
+});
+
+test('requests remote group discovery without losing selected destinations',async({page})=>{
+  await fixture(page);let sync:any=null;let requests=0;
+  const groups=[{id:'group',name:'Grupo real identificado',url:'https://www.facebook.com/groups/123',mechanism:'group_direct'}];
+  await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:groups}));
+  await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:sync}));
+  await page.route('**/rpc/request_facebook_groups',route=>{requests++;expect(route.request().postDataJSON()).toEqual({p_device:'device'});sync={status:'done',requested_at:new Date().toISOString(),finished_at:new Date().toISOString(),message:'Listado parcial: destinos anteriores conservados.'};return route.fulfill({json:'request-id'});});
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const selected=modal.getByRole('checkbox',{name:/Seleccionar Grupo real identificado/});await selected.check();
+  await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
+  await expect(modal.getByRole('button',{name:'Actualizando grupos…'})).toBeDisabled();
+  await expect(modal.getByText('Listado parcial: destinos anteriores conservados.')).toBeVisible({timeout:10000});
+  await expect(selected).toBeChecked();expect(requests).toBe(1);
+});
+
+test('preserves partial group results and only offers a safe preparation retry',async({page})=>{
+  const {rows,calls}=await fixture(page);
+  rows.push({...rows[0],id:'partial',content:{...rows[0].content,title:'Envío parcial'},facebook_deliveries:[
+    {...rows[0].facebook_deliveries[0],id:'group-done',destination_key:'g1',destination:{name:'Grupo publicado',mechanism:'group_direct',url:'https://www.facebook.com/groups/123'},evidence_url:'https://www.facebook.com/groups/123/posts/1/'},
+    {...rows[1].facebook_deliveries[0],id:'group-unknown',destination_key:'g2',destination:{name:'Grupo desconocido',mechanism:'group_direct',url:'https://www.facebook.com/groups/456'}},
+    {...rows[2].facebook_deliveries[0],id:'group-failed',destination_key:'g3',destination:{name:'Grupo fallido',mechanism:'group_direct',url:'https://www.facebook.com/groups/789'}}]});
+  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Envío parcial'});
+  await expect(card.getByRole('heading',{name:'Grupo publicado: Publicado'})).toBeVisible();
+  await expect(card.getByRole('heading',{name:'Grupo desconocido: Resultado desconocido'})).toBeVisible();
+  await expect(card.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(1);
+  await card.getByRole('button',{name:'Reintentar preparación'}).click();
+  expect(calls.filter(call=>call.name==='retry_facebook_preparation')).toEqual([{name:'retry_facebook_preparation',args:{p_delivery:'group-failed'}}]);
+  await expect(card.getByRole('heading',{name:'Grupo publicado: Publicado'})).toBeVisible();
+});

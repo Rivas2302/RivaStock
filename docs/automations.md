@@ -10,7 +10,17 @@ Stock conserva **Publicar en Facebook**. La ventana del producto y el módulo ut
 
 Desde **Publicaciones → Nueva publicación**, buscá un producto del inventario por nombre y revisá su foto, precio y disponibilidad. Se abre el mismo formulario de Stock, con las publicaciones anteriores y bloqueos por destino. Al confirmar, el módulo muestra el trabajo en Historial; la aprobación no garantiza que Facebook ya lo haya publicado.
 
-**Actualizar** recarga la vista activa y la conexión/cola. En Configuración también consulta los grupos y la detección de la extensión, sin borrar los campos que se estaban editando. Durante la consulta bloquea nuevos clics y muestra progreso; después confirma la actualización aunque no haya cambios, o informa el error para poder reintentar. Esta mejora no necesita otra migración ni actualizar la extensión si ya están instaladas las versiones indicadas abajo.
+**Actualizar** recarga la vista activa y la conexión/cola. En Configuración también consulta los grupos y la detección de la extensión, sin borrar los campos que se estaban editando. Durante la consulta bloquea nuevos clics y muestra progreso; después confirma la actualización aunque no haya cambios, o informa el error para poder reintentar.
+
+## Selección y lectura de grupos
+
+**Actualizar grupos desde la PC** solicita a la PC elegida una lectura de `Facebook → Tus grupos`. Funciona desde el celular y con la cola de publicaciones pausada, pero necesita Chrome abierto, sesión iniciada y extensión 0.4.0. Los estados solicitado, leyendo, terminado, parcial o error se muestran en RivaStock. Una lectura interrumpida puede solicitarse nuevamente después de cinco minutos.
+
+Solo se importan nombres y URLs presentes en el listado de grupos a los que se unió la sesión; se excluyen solicitudes pendientes. No se extraen cookies, APIs privadas ni identificadores ocultos. La carga es acotada y puede ser parcial: conserva los grupos anteriores y no promete listar todos. Pertenecer a un grupo no demuestra que sea de compra/venta o que permita publicar. No se inventan cantidad de miembros, privacidad ni permisos.
+
+El selector permite buscar por nombre o URL y elegir hasta 20 grupos, con Marketplace opcional. Conserva la selección del borrador por cuenta/producto en ese navegador; la aprobación guarda todos los destinos en el servidor. Actualizar o filtrar no cambia la selección. La vista previa muestra texto exacto, fotos y URLs.
+
+Los grupos usan **publicaciones independientes de texto y fotos**. Compartir el anuncio de Marketplace mediante “Publicar en más lugares” no está implementado. Cada grupo pasa una comprobación del formulario, autor, fotos y destino en la PC antes de autorizar un único envío. Formularios distintos, borradores, falta de permisos, restricciones o controles ambiguos dejan un error por destino. La compatibilidad se informa como pendiente de comprobar; no se garantiza por el nombre ni por pertenecer al grupo.
 
 ## Permisos
 
@@ -43,9 +53,9 @@ Un anuncio anterior creado fuera de la integración no aparece mágicamente en e
 
 ## Despliegue
 
-1. Aplicar la migración **0052_automations_publication_management.sql** sobre 0049–0051 ya instaladas. No repetir migraciones anteriores.
+1. Aplicar **0053_facebook_group_discovery.sql** después de 0052 y sus predecesoras. No repetir migraciones ya instaladas.
 2. Desplegar la web.
-3. Actualizar la extensión a **0.3.0**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
+3. Actualizar la extensión a **0.4.0**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
 
 La cola remota bloquea nuevos trabajos en el servidor, incluso si hay una extensión anterior. Para aplicar activación remota, progreso y reporte del estado real de la PC se necesita 0.3.0. Las órdenes llegan en la siguiente comprobación; la PC apagada las recibe al conectarse. Un trabajo ya en curso puede terminar.
 
@@ -55,4 +65,4 @@ Las pruebas usan PostgreSQL local mediante PGlite y navegadores con respuestas c
 
 El historial muestra hasta 50 publicaciones por página, con paginación; la cola consulta específicamente pendientes y trabajos en ejecución. Los filtros y contadores corresponden a la página visible. La actualización es cada diez segundos.
 
-No se aplicó la migración en producción ni se desplegó desde esta tarea. No se verificó el recorrido nuevo completo contra Facebook real. Los anuncios externos no se importan en segundo plano y las aprobaciones posteriores de Facebook no se sincronizan automáticamente. La sesión de Facebook y las verificaciones continúan dependiendo del navegador de la PC.
+Se inspeccionaron sin publicar el listado real de grupos, la pantalla de destinos de Marketplace y el editor vacío del grupo conocido. La pantalla de Marketplace expone nombres sin URLs en sus casillas; Tus grupos sí expone enlaces. La versión anterior solo permitía un grupo y exigía exactamente un adjunto. No se aplicó la migración en producción ni se desplegó desde esta tarea. El envío nuevo completo contra Facebook real sigue pendiente de autorización concreta. Los anuncios externos no se importan en segundo plano y las aprobaciones posteriores de Facebook no se sincronizan automáticamente. La sesión y las verificaciones continúan dependiendo del navegador de la PC.

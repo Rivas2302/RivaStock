@@ -1,8 +1,7 @@
 import { facebookFormAction } from './form-actions.js';
-import { inspectedFacebookGroup } from './group-contract.js';
 export function validateFacebookDestination(destination) {
   if (destination.mechanism === 'marketplace' && destination.url === 'https://www.facebook.com/marketplace/create/item') return;
-  if (destination.mechanism === 'group_direct' && [inspectedFacebookGroup.url, `https://www.facebook.com/groups/${inspectedFacebookGroup.canonicalId}`].includes(destination.url.replace(/\/$/, ''))) return;
+  if (destination.mechanism === 'group_direct' && /^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(destination.url)) return;
   throw new Error('Este destino todavía no tiene un formulario verificado. No se envió.');
 }
 export async function fetchPublicationPhotos(content, projectUrl) {
@@ -58,7 +57,7 @@ export const facebookAdapter = {
         await new Promise(resolve=>setTimeout(resolve,500));
       }
     }
-    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : 'group_prepare', job.content, photos);
+    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : 'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url}, photos);
     if (!result.ready) throw new Error('El formulario no está listo.');
     return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline: result.baseline };
   },
