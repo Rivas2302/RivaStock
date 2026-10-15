@@ -17,7 +17,7 @@ try{
  evidence.engine=(await admin.query('SELECT version()')).rows[0].version;
  await admin.query("CREATE ROLE anon;CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;CREATE TABLE profiles(id uuid PRIMARY KEY);CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);GRANT USAGE ON SCHEMA public,auth TO anon,authenticated;");
  const membership=await readFile('supabase/migrations/0019_collaborators_schema.sql','utf8');await admin.query(membership.slice(0,membership.indexOf('-- ─────────── handle_new_user')));
- for(const file of (await readdir('supabase/migrations')).filter(f=>/^00(49|5[0-9]|6[0-3])_/.test(f)).sort())await admin.query(await readFile('supabase/migrations/'+file,'utf8'));
+ for(const file of (await readdir('supabase/migrations')).filter(f=>/^00(49|5[0-9]|6[0-4])_/.test(f)).sort())await admin.query(await readFile('supabase/migrations/'+file,'utf8'));
  const owner=crypto.randomUUID(),other=crypto.randomUUID(),staff=crypto.randomUUID();
  await admin.query('INSERT INTO auth.users SELECT unnest($1::uuid[])',[[owner,other,staff]]);await admin.query('INSERT INTO profiles SELECT id FROM auth.users');
  await admin.query('INSERT INTO collaborators(owner_uid,user_uid,email,permissions) VALUES($1,$2,$3,$4::jsonb)',[owner,staff,'staff@test.invalid',JSON.stringify({stock:{read:true,write:true},config:{write:false}})]);

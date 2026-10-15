@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -31,7 +31,7 @@ beforeEach(async()=>{
  await actor();
  const pair=(await db.query<{data:any}>("SELECT pair_facebook_device('Test') AS data")).rows[0].data;device=pair.deviceId;
  await db.exec('SET ROLE anon');token=(await db.query<{data:any}>('SELECT redeem_facebook_device($1) AS data',[pair.code])).rows[0].data.token;
- await worker('heartbeat',null,{version:'0.5.0',capabilities:['attempts','causal-results','recovery']});
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
 });
 async function approve(groups:string[]=[],marketplace=true,repeat:string|null=null){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,$3::uuid[],$4,$5) AS id',[product,JSON.stringify(content),groups,marketplace,repeat])).rows[0].id;}
 async function worker(op:string,attempt:string|null=null,data:any={},delivery:string|null=null){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_worker_v2($1,$2,$3,$4,$5::jsonb) AS data',[token,op,delivery,attempt,JSON.stringify(data)])).rows[0].data;}
@@ -122,4 +122,68 @@ it('rejects secret-bearing diagnostics before persisting any event',async()=>{
 
 it('does not authorize a listing decision based on words in an error message',async()=>{
  await approve();const a=await claim();await worker('attention',a.attemptId,{message:'No se pudo completar el título del anuncio'});await actor();await expect(db.query("SELECT resolve_facebook_delivery($1,'new')",[a.id])).rejects.toThrow('No hay un conflicto');
+});
+
+it('heartbeat returns features array with result-candidates',async()=>{
+ const hb=await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ expect(hb.features).toEqual(['result-candidates']);
+});
+
+it('claim with 0.5.0 capabilities raises PROTOCOL_UNSUPPORTED',async()=>{
+ // Downgrade the device to simulate 0.5.0 (no result-candidates)
+ await worker('heartbeat',null,{version:'0.5.0',capabilities:['attempts','causal-results','recovery']});
+ await approve();
+ await expect(claim()).rejects.toThrow('PROTOCOL_UNSUPPORTED');
+});
+
+it('claim after updating capabilities to include result-candidates succeeds',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ await approve();const a=await claim();expect(a.attemptId).toBeTruthy();
+});
+
+it('attention with authorized attempt and valid candidateUrl records one candidate event',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ const g=await group();await approve([g],false);const a=await claim();
+ await worker('checkpoint',a.attemptId);
+ const candidateUrl='https://www.facebook.com/groups/123/posts/987';
+ await worker('attention',a.attemptId,{message:'Unknown',candidateUrl});
+ const events=await inspect("SELECT type,data FROM facebook_delivery_attempt_events WHERE type='candidate'");
+ expect(events.rows).toHaveLength(1);expect(events.rows[0].data.url).toBe(candidateUrl);
+ expect((await inspect('SELECT status,submitted_at FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0]).toMatchObject({status:'attention'});
+ expect((await inspect('SELECT submitted_at FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].submitted_at).not.toBeNull();
+});
+
+it('repeating attention with same candidateUrl keeps exactly one event',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ const g=await group();await approve([g],false);const a=await claim();
+ await worker('checkpoint',a.attemptId);
+ const candidateUrl='https://www.facebook.com/groups/123/posts/987';
+ await worker('attention',a.attemptId,{message:'Unknown',candidateUrl});
+ await worker('attention',a.attemptId,{message:'Unknown',candidateUrl});
+ expect((await inspect("SELECT * FROM facebook_delivery_attempt_events WHERE type='candidate'")).rows).toHaveLength(1);
+});
+
+it('attention with candidateUrl from another group records no event',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ const g=await group('https://www.facebook.com/groups/123');await approve([g],false);const a=await claim();
+ await worker('checkpoint',a.attemptId);
+ const candidateUrl='https://www.facebook.com/groups/999/posts/5';
+ await worker('attention',a.attemptId,{message:'Unknown',candidateUrl});
+ expect((await inspect("SELECT * FROM facebook_delivery_attempt_events WHERE type='candidate'")).rows).toHaveLength(0);
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].status).toBe('attention');
+});
+
+it('attention without authorization records no candidate event',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ const g=await group();await approve([g],false);const a=await claim();
+ // No checkpoint — no authorized_at
+ const candidateUrl='https://www.facebook.com/groups/123/posts/987';
+ await worker('attention',a.attemptId,{message:'No auth',candidateUrl});
+ expect((await inspect("SELECT * FROM facebook_delivery_attempt_events WHERE type='candidate'")).rows).toHaveLength(0);
+});
+
+it('unknown key in attention data raises DIAGNOSTIC_INVALID',async()=>{
+ await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
+ await approve();const a=await claim();
+ await expect(worker('attention',a.attemptId,{message:'X',unknownKey:'Y'})).rejects.toThrow('DIAGNOSTIC_INVALID');
 });
