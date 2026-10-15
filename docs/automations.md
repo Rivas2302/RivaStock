@@ -1,6 +1,6 @@
 # Automatizaciones de RivaStock
 
-La versión 0.4.7 agrega [resolución de anuncios anteriores, corrección del editor y preparación de ventas](facebook-delivery-decisions.md). Requiere la migración 0059, después de 0058, y actualizar web y extensión.
+La versión 0.4.8 corrige la verificación de fotos del formulario de venta y agrega [resolución de anuncios anteriores, corrección del editor y preparación de ventas](facebook-delivery-decisions.md). Requiere la migración 0059, después de 0058, y actualizar web y extensión.
 
 La versión 0.4.6 incorpora aviso inmediato de publicaciones desde la PC, tiempos por destino y sincronización de grupos en segundo plano. Ver [mediciones, límites y actualización](facebook-dispatch-latency.md). Requiere la migración 0058 después de 0057, la web actualizada y Chrome 120 o posterior.
 
@@ -24,7 +24,7 @@ Solo se importan nombres y URLs presentes en el listado de grupos a los que se u
 
 El selector permite buscar por nombre o URL y elegir hasta 20 grupos, con Marketplace opcional. Conserva la selección del borrador por cuenta/producto en ese navegador; la aprobación guarda todos los destinos en el servidor. Actualizar o filtrar no cambia la selección. La vista previa muestra texto exacto, fotos y URLs.
 
-Los grupos usan **publicaciones independientes de texto y fotos**; si únicamente ofrecen **Vender algo**, se solicita aprobar explícitamente el formato de artículo en venta y sus campos adicionales desde el historial. El envío se bloquea si no se identifica el destino final por URL. Compartir el anuncio de Marketplace mediante “Publicar en más lugares” no está implementado. Cada grupo pasa una comprobación del formulario, autor, fotos y destino en la PC antes de autorizar un único envío. Formularios distintos, borradores, falta de permisos, restricciones o controles ambiguos dejan un error por destino. La compatibilidad se informa como pendiente de comprobar; no se garantiza por el nombre ni por pertenecer al grupo.
+Los grupos usan **publicaciones independientes de texto y fotos**; si únicamente ofrecen **Vender algo**, se solicita aprobar explícitamente el formato de artículo en venta y sus campos adicionales desde el historial. El envío se bloquea si no se identifica el destino final por URL o por el contexto verificable del grupo de origen. Compartir el anuncio de Marketplace mediante “Publicar en más lugares” no está implementado. Cada grupo pasa una comprobación del formulario, autor, fotos y destino en la PC antes de autorizar un único envío. Formularios distintos, borradores, falta de permisos, restricciones o controles ambiguos dejan un error por destino. La compatibilidad se informa como pendiente de comprobar; no se garantiza por el nombre ni por pertenecer al grupo.
 
 Desde la extensión, **Actualizar grupos** crea un pedido para su propia conexión y ejecuta la lectura, aunque no hubiera un pedido previo en RivaStock. Usa la misma validación de vencimiento y revocación, no activa la cola ni aprueba productos. Un pedido pendiente puede trasladarse a esta PC; una lectura en curso en otra PC se respeta. Abrir el panel solo consulta pedidos existentes. El error histórico de conexión vencida se retira si una consulta posterior valida correctamente la conexión. Una conexión realmente vencida sigue bloqueada.
 

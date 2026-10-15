@@ -1,14 +1,22 @@
 # Recuperar publicaciones que requieren una decisión
 
-La extensión **0.4.7** separa los conflictos de anuncios, los errores de preparación y los formularios de venta. Las decisiones se registran por destino; recuperar uno no repite los demás.
+La extensión **0.4.8** separa los conflictos de anuncios, los errores de preparación y los formularios de venta. Las decisiones se registran por destino; recuperar uno no repite los demás.
 
 ## Actualización
 
 1. Aplicar `0059_facebook_delivery_decisions.sql` después de las migraciones anteriores, incluida `0058` si está pendiente.
 2. Desplegar la web y descargar el ZIP regenerado de `public/downloads/rivastock-facebook.zip`.
-3. Reemplazar los archivos de la extensión instalada y recargarla en Chrome. Comprobar **Versión 0.4.7**. No cambian el identificador ni los permisos de la extensión.
+3. Reemplazar los archivos de la extensión instalada y recargarla en Chrome. Comprobar **Versión 0.4.8**. No cambian el identificador ni los permisos de la extensión.
 
-No se aplicó esta migración a producción ni se desplegó la web durante el desarrollo.
+No se aplicó esta migración a producción ni se desplegó la web durante el desarrollo. Si ya se aplicó 0059 para la versión 0.4.7, 0.4.8 no requiere otra migración.
+
+### Corrección 0.4.8: fotos y confirmación de venta
+
+La inspección del borrador real confirmó que las fotos estaban cargadas: Facebook muestra **Eliminar foto 1 de 1**, **Foto de la publicación** y **Fotos 1/42**. La versión anterior esperaba el botón del editor de texto (**Eliminar archivo adjunto de la publicación**) y vencía antes de Siguiente. Ahora se comprueban las etiquetas propias de venta, índices únicos, total, contador del formulario, imágenes efectivamente cargadas y Siguiente habilitado. No se omite la verificación ni se aumenta la espera para ocultar el fallo.
+
+Se consultó Siguiente en el borrador existente sin publicar y se volvió al paso original. El paso real **Compartir en más lugares** no expone URLs en sus casillas. Se admite su grupo de origen únicamente con procedencia comprobada: URL inalterada, enlace de miembros de ese identificador, encabezado correspondiente y una única casilla principal anterior a **Agrega tu publicación en otros grupos**. Marketplace debe seguir ofrecido como destino para agregar, con el resto sin seleccionar. Se vuelve a verificar antes de enviar; una coincidencia de nombre por sí sola no alcanza. El flujo alternativo con enlace explícito conserva su validación estricta.
+
+Las regresiones incluyen la preparación con esos controles, fotos faltantes o no cargadas aunque Siguiente esté habilitado, cambio de identidad del grupo, selección adicional y resultado pendiente de aprobación en un formulario controlado. El clic Publicar de estas pruebas ocurre solamente en la réplica local.
 
 ## Causas verificadas y comportamiento
 
@@ -26,7 +34,7 @@ En el historial del producto, un conflicto muestra los candidatos sin elegir uno
 
 **Aprobar una publicación nueva** autoriza recuperar ese mismo destino con el contenido aprobado y evita volver al bloqueo por los títulos anteriores. No queda habilitada si se ingresó una URL para vincular. En estos envíos, una tarjeta anterior con el mismo título tampoco sirve como prueba del nuevo resultado: se exige el enlace del resultado de envío o una navegación al artículo. Sin evidencia suficiente, el resultado queda desconocido.
 
-Para un formulario de venta se explica el cambio de formato y se exige **Aprobar artículo en venta y continuar**. Los campos adicionales nativos de texto o selección se completan desde RivaStock; controles incompatibles se informan y bloquean. No se comparte silenciosamente un anuncio de Marketplace ni se autorizan destinos adicionales. Si el paso final no expone una selección inequívoca del grupo por URL, queda **Revisión del formulario necesaria** y no se pulsa Publicar.
+Para un formulario de venta se explica el cambio de formato y se exige **Aprobar artículo en venta y continuar**. Los campos adicionales nativos de texto o selección se completan desde RivaStock; controles incompatibles se informan y bloquean. No se comparte silenciosamente un anuncio de Marketplace ni se autorizan destinos adicionales. Si el paso final no expone una selección inequívoca del grupo por URL ni permite verificar el contexto de origen descrito arriba, queda **Revisión del formulario necesaria** y no se pulsa Publicar.
 
 La base valida cuenta, permisos actuales y originales, estado previo al envío, destino y otros trabajos pendientes o desconocidos. Registra actor, fecha y decisión. Un resultado desconocido conserva la revisión existente y no admite resolverlo como un conflicto previo al envío. Las extensiones anteriores tampoco pueden vincular automáticamente mediante `record_existing`: generan un conflicto para revisión.
 
@@ -36,4 +44,4 @@ Se agregaron regresiones de base de datos, trabajador, interfaz de escritorio/ce
 
 La inspección real fue de solo lectura: se consultó un anuncio anterior y se abrió/cerró un formulario de venta vacío. Se dejó intacto el borrador del usuario en el grupo de texto. **No se publicaron productos, cargaron fotos, reactivaron ni eliminaron anuncios reales.**
 
-Falta validar la inserción corregida y el envío completo contra Facebook real. En particular, no se avanzó al paso final real de la venta porque requería completar contenido: su compatibilidad y los enlaces/resultados posteriores no están confirmados. El código detiene el envío cuando no puede verificarlos; no se declara soporte completo basándose en las pruebas controladas.
+Falta validar la inserción corregida y el envío completo contra Facebook real. Se inspeccionó el paso final real de la venta usando el borrador ya preparado, sin enviar y volviendo al paso original. Los enlaces y resultados posteriores a Publicar siguen sin confirmar contra Facebook real. El código detiene el envío cuando no puede verificarlos; no se declara soporte completo basándose en las pruebas controladas.

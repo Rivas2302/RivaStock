@@ -208,9 +208,36 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
     return { ready: true, baseline: content.allowRepublish===true?['marketplace:new-explicit']:[] };
   }
+  const saleOriginName=target=>{
+    if(location.pathname.replace(/\/$/,'')!==target)return null;
+    const main=document.querySelector('main,[role="main"]');if(!main)return null;
+    const headings=Array.from(main.querySelectorAll('h1,[role="heading"][aria-level="1"]')).filter(visible);
+    const members=Array.from(main.querySelectorAll('a[href]')).some(link=>{const url=new URL(link.href);return url.origin===location.origin&&url.pathname.replace(/\/$/,'')===target+'/members';});
+    return members&&headings.length===1?text(headings[0]):null;
+  };
+  const verifySaleAudience=(root,target,originName)=>{
+    const selected=Array.from(root.querySelectorAll('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'));
+    if(selected.length!==1)return false;
+    const row=selected[0].closest('label')??selected[0].parentElement;
+    const links=Array.from(row.querySelectorAll('a[href]'));
+    if(links.length===1){const url=new URL(links[0].href);return url.origin===location.origin&&url.pathname.replace(/\/$/,'')===target;}
+    // Observed group sale confirmation omits group URLs. Identify its source
+    // from the unchanged page URL + members link, then its dedicated primary
+    // choice before the additional-group section. Names alone never identify it.
+    if(links.length||!originName||saleOriginName(target)!==originName)return false;
+    const headings=Array.from(root.querySelectorAll('h1,h2,[role="heading"]'));
+    const title=headings.filter(node=>text(node)==='Compartir en más lugares');
+    const others=headings.filter(node=>text(node)==='Agrega tu publicación en otros grupos');
+    if(title.length!==1||others.length!==1)return false;
+    const before=(a,b)=>Boolean(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING);
+    const primary=Array.from(root.querySelectorAll('[role="checkbox"],input[type="checkbox"]')).filter(node=>before(title[0],node)&&before(node,others[0]));
+    const offer=buttons('Marketplace',root,true);
+    return primary.length===1&&primary[0]===selected[0]&&normalize(primary[0].innerText).startsWith(originName+' ')&&offer.length===1&&offer[0].getAttribute('aria-pressed')!=='true'&&offer[0].getAttribute('aria-checked')!=='true'&&text(root).includes('Agrega tu publicación en Marketplace');
+  };
   if(action==='group_sale_prepare') {
     const target=new URL(content.targetGroupUrl).pathname.replace(/\/$/,'');
     if(location.pathname.replace(/\/$/,'')!==target)throw new Error('El grupo no corresponde al destino aprobado.');
+    const originName=saleOriginName(target);
     if(Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))throw new Error('Hay un formulario abierto. No se sobrescribió.');
     await wait(()=>buttons('Vender algo').length===1,'cargar Vender algo');activate(button('Vender algo'));
     const sale=await wait(()=>buttons('Artículo en venta',document,true).length===1&&buttons('Artículo en venta',document,true)[0],'elegir Artículo en venta');activate(sale);
@@ -244,17 +271,21 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     if(missing.length)issue('group_sale_fields','El formulario requiere datos adicionales. Completalos y aprobá el formato de venta desde RivaStock.',{fields:missing.slice(0,12)});
     attach(one(Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(node=>(node.accept??'').split(',').includes('image/*'))));
-    await wait(()=>buttons('Eliminar archivo adjunto de la publicación',dialog).length===photos.length&&enabled(button('Siguiente',dialog)),'verificar fotos del formulario de venta');
+    progress('Verificando fotos del artículo en venta');
+    await wait(()=>{
+      const controls=Array.from(dialog.querySelectorAll('button,[role="button"]')).filter(visible).map(accessibleName).map(name=>name.match(/^Eliminar foto (\d+) de (\d+)$/)).filter(Boolean);
+      const indexes=new Set(controls.map(match=>Number(match[1])));
+      const images=Array.from(dialog.querySelectorAll('img[alt="Foto de la publicación"]')).filter(visible);
+      const counter=text(dialog).match(/Fotos\s*[·:]?\s*(\d+)\s*\/\s*(\d+)/);
+      return controls.length===photos.length&&indexes.size===photos.length&&controls.every(match=>Number(match[2])===photos.length&&Number(match[1])>=1&&Number(match[1])<=photos.length)&&images.length===photos.length&&images.every(image=>image.complete&&image.naturalWidth>0)&&counter&&Number(counter[1])===photos.length&&enabled(button('Siguiente',dialog));
+    },'verificar fotos del formulario de venta');
     if(title.value!==content.title||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase())throw new Error('Los datos de venta no coinciden con los aprobados.');
     const notices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>'notice:'+text(node));
     activate(button('Siguiente',dialog));
     await wait(()=>buttons('Publicar').length===1,'abrir la confirmación de venta');
     const final=button('Publicar').closest('[role="dialog"]');
-    // Never infer the audience from a group name. Require its observed URL.
-    const selected=final?Array.from(final.querySelectorAll('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')):[];
-    const identified=selected.map(control=>{const row=control.closest('label')??control.parentElement;return Array.from(row.querySelectorAll('a[href]')).map(link=>{const url=new URL(link.href);return url.origin===location.origin?url.pathname.replace(/\/$/,''):null;});});
-    if(selected.length!==1||identified[0]?.length!==1||identified[0][0]!==target)issue('group_sale_audience','No se pudo verificar que la venta se enviará únicamente al grupo aprobado. Revisá el formulario; no se autorizó Publicar.');
-    return {ready:true,baseline:[...notices,'group:'+target,'sale:approved']};
+    if(!final||!verifySaleAudience(final,target,originName))issue('group_sale_audience','No se pudo verificar que la venta se enviará únicamente al grupo aprobado. Revisá el formulario; no se autorizó Publicar.');
+    return {ready:true,baseline:[...notices,'group:'+target,'sale:approved',...(originName?['sale:origin:'+originName]:[])]};
   }
   if (action === 'group_prepare') {
     const target=content.targetGroupUrl?new URL(content.targetGroupUrl).pathname.replace(/\/$/,''):location.pathname.replace(/\/$/,'');
@@ -335,11 +366,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(group&&((!editor&&!sale)||location.pathname.replace(/\/$/,'')!==group))throw new Error('Cambió el editor o el grupo antes de enviar. No se envió.');
     const root = editor?.closest('[role="dialog"]') ?? (sale?button('Publicar').closest('[role="dialog"]'):document);
     if(!root)throw new Error('Cambió el formulario antes de enviar.');
-    if(sale){
-      const checked=Array.from(root.querySelectorAll('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'));
-      const links=checked.length===1?Array.from((checked[0].closest('label')??checked[0].parentElement).querySelectorAll('a[href]')):[];
-      if(checked.length!==1||links.length!==1||new URL(links[0].href).origin!==location.origin||new URL(links[0].href).pathname.replace(/\/$/,'')!==group)throw new Error('Cambió el destino de la venta.');
-    }
+    if(sale&&!verifySaleAudience(root,group,baseline.find(value=>value.startsWith('sale:origin:'))?.slice(12)))throw new Error('Cambió el destino de la venta.');
     if (editor && lines(editor.innerText) !== lines(content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
     const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
     if(photoCount!==undefined&&buttons('Eliminar archivo adjunto de la publicación',root).length!==Number(photoCount))throw new Error('Las fotos cambiaron después de preparar la publicación. No se envió.');

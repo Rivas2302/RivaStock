@@ -274,7 +274,7 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
-  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.7/)).toBeVisible();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.8/)).toBeVisible();
 });
 
 test('wakes a restored pending group request and exposes the actual extension error',async({page})=>{
