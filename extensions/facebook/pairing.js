@@ -19,10 +19,21 @@ export function trustedPairingSender(sender) {
   } catch { return false; }
 }
 
-export function registerPairing() {
+export function registerPairing({wakeGroups} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
-    if (message?.type === 'rivastock-installed') { reply({installed:true}); return; }
+    if (message?.type === 'rivastock-installed') { reply({installed:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function'}); return; }
+    if(message?.type==='rivastock-wake-groups'&&typeof wakeGroups==='function'){
+      void (async()=>{
+        try{
+          const {connection}=await chrome.storage.local.get('connection');
+          if(!connection||connection.deviceId!==message.deviceId||connection.url!==message.projectUrl)throw new Error('Esta extensión no está vinculada a la PC elegida y a esta cuenta. Revisá la conexión en Configuración.');
+          // Only wake the read-only group request, never the publication queue.
+          await wakeGroups(connection);reply({accepted:true});
+        }catch(error){reply({error:error.message});}
+      })();
+      return true;
+    }
     if (message?.type !== 'rivastock-connect') return;
     void (async () => {
       try {

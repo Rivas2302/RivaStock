@@ -40,6 +40,7 @@ test('installed extension processes two approved destinations with real file inp
     channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND'],
   });
   try {
+    await context.route('https://rivastock.vercel.app/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><h1>Group discovery control</h1>'}));
     await context.route('https://www.facebook.com/**',async route => {
       const path=new URL(route.request().url()).pathname;
       await route.fulfill({contentType:'text/html; charset=utf-8',body:path.includes('/groups/joins/')?'<section><h2>Todos los grupos a los que te uniste (2)</h2><ul><li><a href="/groups/123">Group one</a></li><li><a href="/groups/456">Group two</a></li></ul></section>':path.includes('/create/item')?marketplaceForm:path.includes('/you/selling')?seller:groupForm});
@@ -72,17 +73,24 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
-    await expect(control.getByText('Versión 0.4.0',{exact:true})).toBeVisible();
+    await expect(control.getByText('Versión 0.4.1',{exact:true})).toBeVisible();
     const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
     await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
     await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
-    await expect(control.locator('pre')).toContainText('"version": "0.4.0"');
+    await expect(control.locator('pre')).toContainText('"version": "0.4.1"');
     await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
     await control.getByRole('button',{name:'Pausar cola',exact:true}).click();
     await expect(control.getByRole('button',{name:'Activar cola',exact:true})).toBeEnabled();
     expect(await worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(0);
+    const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones');
+    const wake=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-wake-groups',deviceId:'fixture-device',projectUrl:'https://test.supabase.co'},resolve)),extensionId);
+    expect(wake).toEqual({accepted:true});
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.groups.length),{timeout:15000}).toBe(2);
+    expect(await worker.evaluate(()=>(globalThis as any).fixtureState.results.length)).toBe(0);
+    expect(await worker.evaluate(async()=> (await (globalThis as any).chrome.storage.local.get('paused')).paused)).toBe(true);
+    await web.close();
     await control.getByRole('button',{name:'Activar cola',exact:true}).click();
     await expect(control.getByRole('button',{name:'Pausar cola',exact:true})).toBeEnabled();
     const initial=await worker.evaluate(async () => (globalThis as any).chrome.storage.local.get(['paused','status','activeJob']));
@@ -124,7 +132,7 @@ test('website links the installed extension without copying credentials and acti
     const id=new URL(worker.url()).hostname;
     const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones?view=configuration');
     const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
-    expect(installed).toEqual({installed:true});
+    expect(installed).toMatchObject({installed:true,version:'0.4.1',groupsWake:true});
     const controlEvent=context.waitForEvent('page');
     const response=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connect',url:'https://test.supabase.co',key:'sb_publishable_test',code:'a'.repeat(64)},resolve)),id);
     expect(response).toEqual({pending:true});

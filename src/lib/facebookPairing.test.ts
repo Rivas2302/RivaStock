@@ -1,4 +1,4 @@
-import {expect,it} from 'vitest';
+import {expect,it,vi} from 'vitest';
 import {publicConnection,trustedPairingSender} from '../../extensions/facebook/pairing.js';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -20,4 +20,22 @@ it('keeps the website extension ID synchronized with the public manifest key',()
   const manifest=JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8'));
   const id=[...createHash('sha256').update(Buffer.from(manifest.key,'base64')).digest('hex').slice(0,32)].map(c=>String.fromCharCode(97+parseInt(c,16))).join('');
   expect(id).toBe(facebookExtensionId);
+});
+
+it('wakes only group discovery from the linked project and device',async()=>{
+  let listener:any;
+  const wake=vi.fn(async()=>{});
+  vi.stubGlobal('chrome',{runtime:{getManifest:()=>({version:'0.4.1'}),onMessageExternal:{addListener:(fn:any)=>listener=fn}},storage:{local:{get:async()=>({connection:{deviceId:'pc',url:'https://test.supabase.co'}})}}});
+  try{
+    const {registerPairing}=await import('../../extensions/facebook/pairing.js');registerPairing({wakeGroups:wake});
+    const sender={url:'https://rivastock.vercel.app/automatizaciones',tab:{id:1},frameId:0};
+    const send=(message:any)=>new Promise<any>(resolve=>listener(message,sender,resolve));
+    expect(await send({type:'rivastock-installed'})).toMatchObject({version:'0.4.1',groupsWake:true});
+    expect(await send({type:'rivastock-wake-groups',deviceId:'another-pc',projectUrl:'https://test.supabase.co'})).toHaveProperty('error');
+    expect(await send({type:'rivastock-wake-groups',deviceId:'pc',projectUrl:'https://other.supabase.co'})).toHaveProperty('error');
+    expect(wake).not.toHaveBeenCalled();
+    expect(await send({type:'rivastock-wake-groups',deviceId:'pc',projectUrl:'https://test.supabase.co'})).toEqual({accepted:true});
+    expect(wake).toHaveBeenCalledTimes(1);
+    const reply=vi.fn();listener({type:'rivastock-wake-groups'},{...sender,url:'https://evil.test'},reply);expect(reply).not.toHaveBeenCalled();expect(wake).toHaveBeenCalledTimes(1);
+  }finally{vi.unstubAllGlobals();}
 });

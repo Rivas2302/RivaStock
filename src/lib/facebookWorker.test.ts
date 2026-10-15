@@ -143,3 +143,19 @@ it('recovers a lost result acknowledgement without submitting to Facebook twice'
     expect(reconcile).toHaveBeenCalledTimes(2); expect(submit).toHaveBeenCalledTimes(1);
   } finally {vi.restoreAllMocks();vi.unstubAllGlobals();}
 });
+
+it('reports a group claim failure immediately without claiming a publication',async()=>{
+  vi.resetModules();
+  const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'};
+  const memory:any={connection,paused:true};
+  persistentWorker(memory,vi.fn());
+  try{
+    const {syncGroups}=await import('../../extensions/facebook/worker.js');
+    const request=vi.fn(async(_url:string,_options:unknown)=>({ok:false,json:async()=>({message:'La lectura requiere actualizar la conexión'})}));
+    vi.stubGlobal('fetch',request);
+    await expect(syncGroups(connection,true)).rejects.toThrow('actualizar la conexión');
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][0]).toBe('https://test.supabase.co/rest/v1/rpc/facebook_group_discovery');
+    expect(memory.groupDiscoveryIssue).toContain('actualizar la conexión');expect(memory.paused).toBe(true);
+  }finally{vi.unstubAllGlobals();}
+});

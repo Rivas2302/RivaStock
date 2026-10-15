@@ -14,7 +14,7 @@ Desde **Publicaciones → Nueva publicación**, buscá un producto del inventari
 
 ## Selección y lectura de grupos
 
-**Actualizar grupos desde la PC** solicita a la PC elegida una lectura de `Facebook → Tus grupos`. Funciona desde el celular y con la cola de publicaciones pausada, pero necesita Chrome abierto, sesión iniciada y extensión 0.4.0. Los estados solicitado, leyendo, terminado, parcial o error se muestran en RivaStock. Una lectura interrumpida puede solicitarse nuevamente después de cinco minutos.
+**Actualizar grupos desde la PC** solicita a la PC elegida una lectura de `Facebook → Tus grupos`. Funciona desde el celular y con la cola de publicaciones pausada, pero necesita Chrome abierto, sesión iniciada y extensión 0.4.1. Los estados solicitado, leyendo, terminado, parcial o error se muestran en RivaStock. En la misma PC, la web avisa inmediatamente a la extensión para procesar solo la lectura, sin activar publicaciones. Desde otro dispositivo depende de la comprobación periódica. Si no responde en 90 segundos, la pantalla explica si el pedido no fue tomado o si la lectura se interrumpió y permite volver a consultar. El límite usa tiempo local transcurrido, sin depender de diferencias de reloj con el servidor. El servidor conserva un pedido activo hasta cinco minutos; consultar nuevamente no lo duplica. Actualizar de 0.4.0 a 0.4.1 no requiere otra migración ni volver a vincular la PC.
 
 Solo se importan nombres y URLs presentes en el listado de grupos a los que se unió la sesión; se excluyen solicitudes pendientes. No se extraen cookies, APIs privadas ni identificadores ocultos. La carga es acotada y puede ser parcial: conserva los grupos anteriores y no promete listar todos. Pertenecer a un grupo no demuestra que sea de compra/venta o que permita publicar. No se inventan cantidad de miembros, privacidad ni permisos.
 
@@ -55,7 +55,7 @@ Un anuncio anterior creado fuera de la integración no aparece mágicamente en e
 
 1. Aplicar **0053_facebook_group_discovery.sql** después de 0052 y sus predecesoras. No repetir migraciones ya instaladas.
 2. Desplegar la web.
-3. Actualizar la extensión a **0.4.0**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
+3. Actualizar la extensión a **0.4.1**, reemplazando los archivos en su carpeta y pulsando Recargar. No requiere nuevos permisos de navegador ni volver a vincular.
 
 La cola remota bloquea nuevos trabajos en el servidor, incluso si hay una extensión anterior. Para aplicar activación remota, progreso y reporte del estado real de la PC se necesita 0.3.0. Las órdenes llegan en la siguiente comprobación; la PC apagada las recibe al conectarse. Un trabajo ya en curso puede terminar.
 

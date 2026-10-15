@@ -1,11 +1,12 @@
 import { facebookExtensionId } from './facebookExtensionId';
 import { facebookRpc } from './facebookPublications';
 
-type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: {installed?:boolean;pending?:boolean;error?:string}|undefined)=>void)=>void };
+type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;accepted?:boolean};
+type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: ExtensionResponse|undefined)=>void)=>void };
 function extensionMessage(message:unknown) {
   const runtime = (window as Window & {chrome?:{runtime?:Runtime}}).chrome?.runtime;
   if (!runtime?.sendMessage) return Promise.reject(new Error('Abrí RivaStock en Chrome de la PC con la extensión instalada.'));
-  return new Promise<{installed?:boolean;pending?:boolean;error?:string}>((resolve,reject) => {
+  return new Promise<ExtensionResponse>((resolve,reject) => {
     const timer=setTimeout(() => reject(new Error('La extensión no respondió. Actualizala y volvé a intentar.')),10000);
     runtime.sendMessage(facebookExtensionId,message,response => {
       clearTimeout(timer);
@@ -26,4 +27,14 @@ export async function connectFacebookComputer() {
 export async function facebookExtensionInstalled() {
   try {return (await extensionMessage({type:'rivastock-installed'})).installed===true;}
   catch {return false;}
+}
+export async function wakeFacebookGroups(deviceId:string):Promise<string|null> {
+  let installed:ExtensionResponse;
+  try{installed=await extensionMessage({type:'rivastock-installed'});}catch{return null;}
+  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.1 y recargala en Chrome. El pedido remoto se conserva.`;
+  const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
+  const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
+  const result=await extensionMessage({type:'rivastock-wake-groups',deviceId,projectUrl});
+  if(!result.accepted)throw new Error('La extensión no confirmó el inicio de la lectura. Revisá la PC vinculada.');
+  return 'Extensión avisada. Esperando que Facebook responda.';
 }

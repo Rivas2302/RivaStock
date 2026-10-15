@@ -1,9 +1,34 @@
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
 import { discoverJoinedGroups } from './group-discovery.js';
-registerPairing();
+registerPairing({wakeGroups:connection=>syncGroups(connection,true)});
 
 let polling = false;
+let readingGroups = false;
+export async function syncGroups(connection,background=false) {
+  if(readingGroups)return;
+  readingGroups=true;
+  let startedInBackground=false;
+  try {
+    const request=await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'claim'});
+    if(typeof request?.id==='string'){
+      const read=async()=>{
+        try {
+          const data=await discoverJoinedGroups();
+          await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
+          await chrome.storage.local.remove('groupDiscoveryIssue');
+        }catch(error){await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
+      };
+      if(background){
+        // Acknowledge only after the server accepts the claim; report an RPC
+        // or capability failure directly to the requesting page.
+        startedInBackground=true;
+        void read().catch(error=>chrome.storage.local.set({groupDiscoveryIssue:error.message})).finally(()=>{readingGroups=false;});
+      }else await read();
+    }
+  }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message});throw error;}
+  finally{if(!startedInBackground)readingGroups=false;}
+}
 export async function ensureQueueAlarm() {
   const {connection}=await chrome.storage.local.get('connection');
   if(!connection)return;
@@ -69,15 +94,7 @@ async function poll() {
     }
     // Read-only discovery also works with the publication queue paused. A
     // discovery error must never block other destinations or submitted jobs.
-    try {
-      const request=await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'claim'});
-      if(typeof request?.id==='string'){
-        try {
-          const data=await discoverJoinedGroups();
-          await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
-        }catch(error){await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
-      }
-    }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message});}
+    await syncGroups(connection).catch(()=>{});
     if (paused !== false) { await chrome.storage.local.set({status:'Conectada. Cola pausada.'}); return; }
     const job = await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'claim' });
     if (!job) { await chrome.storage.local.set({ status: lastIssue?`Cola activa. Último envío requiere revisión: ${lastIssue}`:'Conectada. Sin trabajos pendientes.' }); return; }

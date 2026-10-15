@@ -1,6 +1,6 @@
 # Publicar productos de RivaStock desde Chrome
 
-La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.0](automations.md). El acceso desde el producto continúa disponible.
+La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.1](automations.md). El acceso desde el producto continúa disponible.
 
 **Subir los cambios de la web no alcanza.** La automatización necesita la base de datos preparada y una extensión instalada, vinculada y con la cola activa en la computadora que tiene Facebook abierto.
 
@@ -14,7 +14,7 @@ La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [n
 
 ## Funcionamiento continuo e inicio con Windows
 
-La extensión 0.4.0 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
+La extensión 0.4.1 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
 
 En Windows, ejecutar una vez `scripts/configure-facebook-startup.ps1` crea **RivaStock Facebook.lnk** en la carpeta de inicio del usuario, para abrir Chrome y Marketplace al iniciar sesión. No requiere administrador. Usa el perfil habitual de Chrome; si se necesita uno específico, pasar `-ChromeProfileDirectory 'Profile 1'` con el nombre real de su carpeta. Para desactivarlo, ejecutar el mismo archivo con `-Remove`.
 
@@ -25,7 +25,7 @@ El inicio se produce al entrar a Windows, no antes del PIN o contraseña. La PC 
 1. En Chrome de la PC, como titular, abrir **Configuración → Facebook → Conectar esta PC**. También está disponible desde **Stock → Publicar en Facebook → Vincular computadora**.
 2. Se abre la extensión: pulsar **Conectar y activar esta PC** y aceptar los permisos de Chrome. Listo: la cola queda activa; no hay claves ni códigos para copiar.
 
-La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.4.0 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.4.0** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
+La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.4.1 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.4.1** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
 
 El ZIP se genera automáticamente antes de cada compilación y al iniciar el desarrollo, con una lista explícita de archivos de la extensión. No incluye archivos de configuración privados ni sesiones. La descarga usa los mismos archivos que el repositorio. Para instalar mediante un botón que lleve a la tienda de Chrome, será necesario publicar y aprobar la extensión en Chrome Web Store; esta versión todavía usa la instalación local.
 

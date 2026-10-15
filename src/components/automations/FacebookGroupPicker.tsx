@@ -2,28 +2,36 @@ import {useEffect,useRef,useState} from 'react';
 import {useAuth} from '../../AuthContext';
 import {usePermission} from '../../hooks/usePermission';
 import {supabase} from '../../lib/supabase';
+import {wakeFacebookGroups} from '../../lib/facebookConnection';
 import {facebookRpc,groupCompatibility,type FacebookDevice,type FacebookGroup} from '../../lib/facebookPublications';
 
-type Sync={status:string;message:string|null;requested_at:string;finished_at:string|null};
+type Sync={id?:string;device_id?:string;status:string;message:string|null;requested_at:string;finished_at:string|null};
+async function bounded<T>(action:PromiseLike<T>):Promise<T>{let timer:ReturnType<typeof setTimeout>;try{return await Promise.race([action,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('La consulta no respondió a tiempo. El pedido puede conservarse; volvé a consultar.')),15000);})]);}finally{clearTimeout(timer!);}}
 export default function FacebookGroupPicker({groups,devices,selected,onChange,onRefresh}:{groups:FacebookGroup[];devices:FacebookDevice[];selected?:string[];onChange?:(ids:string[])=>void;onRefresh:()=>Promise<void>}){
   const {ownerUid}=useAuth();const canWrite=usePermission('stock','write');
   const [search,setSearch]=useState('');const [sync,setSync]=useState<Sync|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const [deviceId,setDeviceId]=useState('');const seen=useRef('');const refreshRef=useRef(onRefresh);refreshRef.current=onRefresh;
+  const [hint,setHint]=useState('');const [now,setNow]=useState(()=>performance.now());
+  const observed=useRef({key:'',since:performance.now()});
+  function receive(value:Sync|null){const key=value?.id??value?.requested_at??'';if(observed.current.key!==key)observed.current={key,since:performance.now()};setSync(value);setNow(performance.now());}
   useEffect(()=>{let active=true;
-    async function load(){const {data,error}=await supabase.from('facebook_group_sync').select('status,message,requested_at,finished_at').maybeSingle();if(!active)return;if(error){setError('No se pudo consultar la lectura de grupos. Verificá la conexión y la migración 0053.');return;}
-      const value=data as Sync|null;setSync(value);if(value?.finished_at&&seen.current!==value.finished_at){seen.current=value.finished_at;await refreshRef.current();}
+    async function load(){const {data,error}=await bounded(supabase.from('facebook_group_sync').select('id,device_id,status,message,requested_at,finished_at').maybeSingle());if(!active)return;if(error){setError('No se pudo consultar la lectura de grupos. Verificá la conexión y la migración 0053.');return;}
+      const value=data as Sync|null;receive(value);if(value?.finished_at&&seen.current!==value.finished_at){await bounded(refreshRef.current());if(active)seen.current=value.finished_at;}
     }
-    void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');});const timer=setInterval(()=>void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');}),5000);return()=>{active=false;clearInterval(timer);};
+    void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');});const timer=setInterval(()=>void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');}),5000);const clock=setInterval(()=>{if(active)setNow(performance.now());},1000);return()=>{active=false;clearInterval(timer);clearInterval(clock);};
   },[ownerUid]);
-  const reading=sync&&['requested','running'].includes(sync.status)&&Date.now()-Date.parse(sync.requested_at)<300000;
+  // A server timestamp may be ahead of the PC clock. Bound the wait using
+  // locally observed elapsed time, with a timer independent of network polls.
+  const reading=sync&&['requested','running'].includes(sync.status)&&now-observed.current.since<90000;
   const stale=sync&&['requested','running'].includes(sync.status)&&!reading;
-  async function update(){if(busy)return;setBusy(true);setError('');try{await onRefresh();const pc=devices.find(d=>d.id===deviceId)??devices[0];if(!pc)throw new Error('Vinculá una PC en Configuración para leer Tus grupos de Facebook.');await facebookRpc('request_facebook_groups',{p_device:pc.id});setSync({status:'requested',message:null,requested_at:new Date().toISOString(),finished_at:null});}catch(error){setError((error as Error).message);}finally{setBusy(false);}}
+  async function update(){if(busy)return;setBusy(true);setError('');setHint('');try{await bounded(onRefresh());const pc=devices.find(d=>d.id===deviceId)??devices[0];if(!pc)throw new Error('Vinculá una PC en Configuración para leer Tus grupos de Facebook.');const id=await bounded(facebookRpc<string>('request_facebook_groups',{p_device:pc.id}));receive({id,device_id:pc.id,status:'requested',message:null,requested_at:new Date().toISOString(),finished_at:null});observed.current.since=performance.now();setHint(await wakeFacebookGroups(pc.id)??'Pedido enviado a la PC. Si estás en el celular, Chrome debe permanecer abierto en la computadora vinculada.');}catch(error){setError((error as Error).message);}finally{setBusy(false);}}
   const filtered=groups.filter(group=>`${group.name} ${group.url}`.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es')));
-  return <section className="space-y-3" aria-label="Grupos de Facebook"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="font-bold">Grupos de Facebook</h4><button type="button" disabled={busy||Boolean(reading)||!canWrite} onClick={()=>void update()} className="rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-50">{busy||reading?'Actualizando grupos…':'Actualizar grupos desde la PC'}</button></div>
-    <p className="text-xs text-slate-500">La PC vinculada leerá Tus grupos con su sesión de Facebook, incluso desde un pedido en el celular. Requiere extensión 0.4.0, Chrome abierto y sesión iniciada. La lectura no publica ni selecciona destinos automáticamente.</p>
+  return <section className="space-y-3" aria-label="Grupos de Facebook"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="font-bold">Grupos de Facebook</h4><button type="button" disabled={busy||Boolean(reading)||!canWrite} onClick={()=>void update()} className="rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-50">{busy||reading?'Actualizando grupos…':stale?'Volver a consultar grupos':'Actualizar grupos desde la PC'}</button></div>
+    <p className="text-xs text-slate-500">La PC vinculada leerá Tus grupos con su sesión de Facebook, incluso desde un pedido en el celular. Usá la extensión 0.4.1, Chrome abierto y sesión iniciada. La lectura no publica ni selecciona destinos automáticamente.</p>
     {devices.length>1&&<label className="block text-sm">PC para consultar<select className="mt-1 w-full rounded-xl border p-3 dark:bg-slate-800" value={deviceId||devices[0].id} onChange={event=>setDeviceId(event.target.value)}>{devices.map(device=><option key={device.id} value={device.id}>{device.name}</option>)}</select></label>}
     {reading&&<p role="status" className="text-sm">{sync?.status==='requested'?'Solicitud pendiente: la PC la recibirá en su próxima comprobación.':'Leyendo los enlaces de Tus grupos…'} Los destinos elegidos se conservan.</p>}
-    {stale&&<p role="status" className="text-sm text-amber-700">La PC no completó la lectura. Verificá la extensión y volvé a actualizar.</p>}
+    {hint&&<p role="status" className="break-words text-sm">{hint}</p>}
+    {stale&&<p role="alert" className="text-sm text-amber-700">{sync?.status==='requested'?'La PC no tomó la solicitud en 90 segundos. Estar conectada no confirma que tenga la extensión actualizada. Verificá la versión 0.4.1 y recargala en Chrome.':'La PC inició la lectura pero no la completó en 90 segundos. Revisá la sesión y las verificaciones de Facebook.'} Podés volver a consultar; no se publicará contenido ni se perderán los grupos seleccionados.</p>}
     {sync?.message&&<p role={sync.status==='error'?'alert':'status'} className="break-words text-sm">{sync.message}</p>}{error&&<p role="alert" className="break-words text-sm text-rose-600">{error}</p>}
     <label className="block text-sm">Buscar grupos<input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Nombre o URL del grupo" className="mt-1 w-full rounded-xl border border-slate-300 p-3 dark:border-slate-600 dark:bg-slate-800"/></label>
     {selected&&<p role="status" className="text-sm font-semibold">{selected.length} de 20 grupos seleccionados</p>}

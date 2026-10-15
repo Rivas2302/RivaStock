@@ -219,6 +219,32 @@ test('preserves partial group results and only offers a safe preparation retry',
   await expect(card.getByRole('heading',{name:'Grupo desconocido: Resultado desconocido'})).toBeVisible();
   await expect(card.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(1);
   await card.getByRole('button',{name:'Reintentar preparación'}).click();
-  expect(calls.filter(call=>call.name==='retry_facebook_preparation')).toEqual([{name:'retry_facebook_preparation',args:{p_delivery:'group-failed'}}]);
+  await expect.poll(()=>calls.filter(call=>call.name==='retry_facebook_preparation')).toEqual([{name:'retry_facebook_preparation',args:{p_delivery:'group-failed'}}]);
   await expect(card.getByRole('heading',{name:'Grupo publicado: Publicado'})).toBeVisible();
+});
+
+test('ends a stalled group wait despite a future server timestamp and accepts a late result',async({page})=>{
+  await page.clock.install();await fixture(page);
+  let sync:any={id:'stalled-request',device_id:'device',status:'requested',requested_at:'2099-01-01T00:00:00Z',finished_at:null,message:null};
+  await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:sync}));
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByRole('button',{name:'Actualizando grupos…'})).toBeDisabled();
+  await page.clock.fastForward(91000);
+  await expect(modal.getByRole('alert')).toContainText('La PC no tomó la solicitud en 90 segundos');
+  await expect(modal.getByRole('button',{name:'Volver a consultar grupos'})).toBeEnabled();
+  sync={...sync,status:'done',finished_at:'2099-01-01T00:02:00Z',message:'Lectura completada'};
+  await page.clock.runFor(5000);
+  await expect(modal.getByText('Lectura completada',{exact:true})).toBeVisible();
+  await expect(modal.getByRole('button',{name:'Actualizar grupos desde la PC'})).toBeEnabled();
+});
+
+test('explains when the local extension cannot wake a queued group request',async({page})=>{
+  await fixture(page);
+  await page.addInitScript(()=>{const chrome=(window as any).chrome??{};chrome.runtime={sendMessage:(_id:any,_message:any,callback:any)=>callback({installed:true,version:'0.3.0'})};(window as any).chrome=chrome;});
+  await page.route('**/rpc/request_facebook_groups',route=>route.fulfill({json:'request-id'}));
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.1/)).toBeVisible();
 });
