@@ -1,7 +1,7 @@
 import { facebookExtensionId } from './facebookExtensionId';
 import { facebookRpc } from './facebookPublications';
 
-type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;accepted?:boolean};
+type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;accepted?:boolean;state?:string};
 type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: ExtensionResponse|undefined)=>void)=>void };
 function extensionMessage(message:unknown) {
   const runtime = (window as Window & {chrome?:{runtime?:Runtime}}).chrome?.runtime;
@@ -31,10 +31,11 @@ export async function facebookExtensionInstalled() {
 export async function wakeFacebookGroups(deviceId:string):Promise<string|null> {
   let installed:ExtensionResponse;
   try{installed=await extensionMessage({type:'rivastock-installed'});}catch{return null;}
-  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.1 y recargala en Chrome. El pedido remoto se conserva.`;
+  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.2 y recargala en Chrome. El pedido remoto se conserva.`;
   const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
   const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
   const result=await extensionMessage({type:'rivastock-wake-groups',deviceId,projectUrl});
   if(!result.accepted)throw new Error('La extensión no confirmó el inicio de la lectura. Revisá la PC vinculada.');
+  if(result.state==='waiting')return 'La extensión respondió, pero no encontró un pedido nuevo para esta conexión. Revisá qué PC elegiste en RivaStock; otro intento también puede estar en curso.';
   return 'Extensión avisada. Esperando que Facebook responda.';
 }

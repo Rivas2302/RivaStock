@@ -246,5 +246,26 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
-  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.1/)).toBeVisible();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.2/)).toBeVisible();
+});
+
+test('wakes a restored pending group request and exposes the actual extension error',async({page})=>{
+  await fixture(page);
+  await page.addInitScript(()=>{(window as any).groupWakeCalls=0;const chrome=(window as any).chrome??{};chrome.runtime={sendMessage:(_id:any,message:any,callback:any)=>{if(message.type==='rivastock-installed')callback({installed:true,version:'0.4.1',groupsWake:true});else{(window as any).groupWakeCalls++;callback({error:'No se pudo consultar facebook_group_discovery: permiso denegado'});}}};(window as any).chrome=chrome;});
+  await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:{id:'restored',device_id:'device',status:'requested',requested_at:new Date().toISOString(),finished_at:null,message:null}}));
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByRole('alert')).toContainText('permiso denegado');
+  expect(await page.evaluate(()=>(window as any).groupWakeCalls)).toBe(1);
+});
+
+test('prefers the most recently connected PC over an old unresponsive connection',async({page})=>{
+  await fixture(page);
+  await page.route('**/rest/v1/facebook_devices*',route=>route.fulfill({json:[{id:'old',name:'PC anterior',last_seen_at:null,revoked_at:null},{id:'current',name:'PC actual',last_seen_at:new Date().toISOString(),revoked_at:null}]}));
+  let chosen='';await page.route('**/rpc/request_facebook_groups',route=>{chosen=route.request().postDataJSON().p_device;return route.fulfill({json:'request'});});
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByRole('combobox',{name:'PC para consultar'})).toHaveValue('current');
+  await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
+  await expect.poll(()=>chosen).toBe('current');
 });

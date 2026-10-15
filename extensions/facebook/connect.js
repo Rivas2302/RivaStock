@@ -1,12 +1,8 @@
 // Connection approval and permission request stay inside the extension page.
-const form = document.querySelector('#connect');
-const version=document.createElement('p');
-version.textContent=`Versión ${chrome.runtime.getManifest().version}`;
-document.querySelector('h1').after(version);
-const diagnose=document.createElement('button');
-diagnose.type='button';diagnose.textContent='Revisar formulario de Facebook';
-const report=document.createElement('pre');report.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';report.hidden=true;
-document.querySelector('main').append(diagnose,report);
+const form=document.querySelector('#connect');
+document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
+const diagnose=document.querySelector('#diagnose');
+const report=document.querySelector('#report');
 diagnose.addEventListener('click',async()=>{
   diagnose.disabled=true;
   try {
@@ -16,7 +12,7 @@ diagnose.addEventListener('click',async()=>{
   finally{diagnose.disabled=false;}
 });
 const status = document.querySelector('#status');
-const saved = await chrome.storage.local.get(['connection', 'status','paused']);
+const saved = await chrome.storage.local.get(['connection', 'status','paused','groupDiscovery','groupDiscoveryIssue']);
 const {pendingConnection} = await chrome.storage.session.get('pendingConnection');
 if (!saved.connection && pendingConnection?.expiresAt > Date.now()) {
   document.querySelector('#url').value=pendingConnection.url;
@@ -30,6 +26,32 @@ let currentPaused=saved.paused!==false;
 const toggle = document.querySelector('#toggle');
 toggle.disabled = !saved.connection;
 toggle.textContent = saved.paused === false ? 'Pausar cola' : 'Activar cola';
+const groupsCheck=document.querySelector('#groups-check');
+const groupStatus=document.querySelector('#group-status');
+function renderConnection(){
+  document.querySelector('#connection-label').textContent=currentConnection?'PC vinculada':'PC sin vincular';
+  document.querySelector('#connection-dot').className=currentConnection?'dot connected':'dot';
+  const badge=document.querySelector('#queue-badge');badge.textContent=!currentConnection?'Sin conexión':currentPaused?'Pausada':'Activa';badge.className=`badge ${currentConnection&&!currentPaused?'active':''}`;
+  document.querySelector('#disconnect').disabled=!currentConnection;groupsCheck.disabled=!currentConnection;
+  document.querySelector('#start').hidden=Boolean(currentConnection)||!form.hidden;
+}
+function renderGroups(state){
+  const group=state.groupDiscovery;const error=group?.phase==='error'?group.message:!group?state.groupDiscoveryIssue:null;
+  const badge=document.querySelector('#group-badge');
+  const names={checking:'Consultando',reading:'Leyendo',done:'Actualizados',waiting:'Sin pedido nuevo',error:'Requiere atención'};
+  badge.textContent=error?'Requiere atención':names[group?.phase]??'Sin consultar';badge.className=`badge ${error?'error':['checking','reading'].includes(group?.phase)?'working':group?.phase==='done'?'active':''}`;
+  groupStatus.textContent=error??group?.message??'Pedí la actualización de grupos desde RivaStock.';groupStatus.className=`activity ${error?'error':''}`;groupStatus.setAttribute('role',error?'alert':'status');
+  const previous=document.querySelector('#group-last-error');previous.hidden=!state.groupDiscoveryIssue||Boolean(error);previous.textContent=state.groupDiscoveryIssue?`Último error de grupos: ${state.groupDiscoveryIssue}`:'';
+  document.querySelector('#group-checked').textContent=group?.checkedAt?`Última comprobación: ${new Date(group.checkedAt).toLocaleTimeString('es-AR')}`:'';
+}
+async function checkGroups(){
+  if(!currentConnection)return;groupsCheck.disabled=true;
+  try{const result=await chrome.runtime.sendMessage({type:'groups-check'});if(result?.error)throw new Error(result.error);await chrome.storage.local.get(['groupDiscovery','groupDiscoveryIssue']).then(renderGroups);}
+  catch(error){groupStatus.textContent=error.message;groupStatus.className='activity error';groupStatus.setAttribute('role','alert');}
+  finally{groupsCheck.disabled=!currentConnection;}
+}
+groupsCheck.addEventListener('click',()=>void checkGroups());renderConnection();renderGroups(saved);
+if(currentConnection)void checkGroups();
 toggle.addEventListener('click',async () => {
   if(!currentConnection)return;
   toggle.disabled=true;
@@ -51,6 +73,8 @@ chrome.storage.onChanged.addListener((changes,area) => {
   if(changes.connection)currentConnection=changes.connection.newValue;
   if(changes.paused)currentPaused=changes.paused.newValue!==false;
   if(changes.status)status.textContent=changes.status.newValue??'';
+  if(changes.connection||changes.paused)renderConnection();
+  if(changes.groupDiscovery||changes.groupDiscoveryIssue)void chrome.storage.local.get(['groupDiscovery','groupDiscoveryIssue']).then(renderGroups);
   toggle.textContent=currentPaused?'Activar cola':'Pausar cola';
 });
 status.textContent = saved.status ?? (saved.connection ? 'Computadora vinculada.' : 'Sin conexión.');

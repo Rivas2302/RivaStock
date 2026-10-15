@@ -29,7 +29,7 @@ export function registerPairing({wakeGroups} = {}) {
           const {connection}=await chrome.storage.local.get('connection');
           if(!connection||connection.deviceId!==message.deviceId||connection.url!==message.projectUrl)throw new Error('Esta extensión no está vinculada a la PC elegida y a esta cuenta. Revisá la conexión en Configuración.');
           // Only wake the read-only group request, never the publication queue.
-          await wakeGroups(connection);reply({accepted:true});
+          const result=await wakeGroups(connection);reply({accepted:true,...result});
         }catch(error){reply({error:error.message});}
       })();
       return true;

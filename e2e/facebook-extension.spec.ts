@@ -73,11 +73,12 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
-    await expect(control.getByText('Versión 0.4.1',{exact:true})).toBeVisible();
+    await expect(control.getByText('Versión 0.4.2',{exact:true})).toBeVisible();
     const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
+    await control.getByText('Diagnóstico avanzado',{exact:true}).click();
     await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
     await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
-    await expect(control.locator('pre')).toContainText('"version": "0.4.1"');
+    await expect(control.locator('pre')).toContainText('"version": "0.4.2"');
     await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
@@ -86,7 +87,7 @@ test('installed extension processes two approved destinations with real file inp
     expect(await worker.evaluate(() => (globalThis as any).fixtureState.results.length)).toBe(0);
     const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones');
     const wake=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-wake-groups',deviceId:'fixture-device',projectUrl:'https://test.supabase.co'},resolve)),extensionId);
-    expect(wake).toEqual({accepted:true});
+    expect(wake).toMatchObject({accepted:true});
     await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.groups.length),{timeout:15000}).toBe(2);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.results.length)).toBe(0);
     expect(await worker.evaluate(async()=> (await (globalThis as any).chrome.storage.local.get('paused')).paused)).toBe(true);
@@ -132,7 +133,7 @@ test('website links the installed extension without copying credentials and acti
     const id=new URL(worker.url()).hostname;
     const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones?view=configuration');
     const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
-    expect(installed).toMatchObject({installed:true,version:'0.4.1',groupsWake:true});
+    expect(installed).toMatchObject({installed:true,version:'0.4.2',groupsWake:true});
     const controlEvent=context.waitForEvent('page');
     const response=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connect',url:'https://test.supabase.co',key:'sb_publishable_test',code:'a'.repeat(64)},resolve)),id);
     expect(response).toEqual({pending:true});
@@ -150,7 +151,7 @@ test('website links the installed extension without copying credentials and acti
   } finally {await context.close();}
 });
 
-test('records an existing Marketplace listing without opening a create form or clicking Publish',async()=>{
+test('records an existing Marketplace listing without opening a create form or clicking Publish',async({},testInfo)=>{
   test.setTimeout(60000);
   const temporary=mkdtempSync(join(tmpdir(),'rivastock-existing-test-'));const extension=join(temporary,'extension');cpSync(resolve('extensions/facebook'),extension,{recursive:true});
   const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
@@ -168,6 +169,11 @@ test('records an existing Marketplace listing without opening a create form or c
       await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture',deviceId:'fixture-device'},paused:false});
     });
     const control=await context.newPage();await control.goto(`chrome-extension://${new URL(worker.url()).hostname}/connect.html`);
+    await worker.evaluate(async()=>{await (globalThis as any).chrome.storage.local.set({groupDiscoveryIssue:'Error de lectura visible en el panel'});});
+    await expect(control.getByText('Último error de grupos: Error de lectura visible en el panel',{exact:true})).toBeVisible();
+    await control.setViewportSize({width:388,height:760});
+    expect(await control.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await control.screenshot({path:testInfo.outputPath('extension-panel.png')});
     await control.evaluate(async()=>{await (globalThis as any).chrome.runtime.sendMessage({type:'poll'});});
     await expect.poll(async()=>worker.evaluate(()=>(globalThis as any).operations.some((op:any)=>op.p_operation==='record_existing')),{timeout:20000}).toBe(true);
     const operations=await worker.evaluate(()=>(globalThis as any).operations);

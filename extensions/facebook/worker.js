@@ -6,18 +6,23 @@ registerPairing({wakeGroups:connection=>syncGroups(connection,true)});
 let polling = false;
 let readingGroups = false;
 export async function syncGroups(connection,background=false) {
-  if(readingGroups)return;
+  if(readingGroups)return {state:'reading'};
   readingGroups=true;
   let startedInBackground=false;
   try {
+    await chrome.storage.local.set({groupDiscovery:{phase:'checking',message:'Consultando el pedido de RivaStock…',checkedAt:Date.now()}});
     const request=await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'claim'});
     if(typeof request?.id==='string'){
       const read=async()=>{
+        const pulse=setInterval(()=>void chrome.storage.local.set({groupDiscoveryHeartbeat:Date.now()}).catch(()=>{}),15000);
         try {
+          await chrome.storage.local.set({groupDiscovery:{phase:'reading',message:'Leyendo Tus grupos con la sesión de Facebook…',checkedAt:Date.now()}});
           const data=await discoverJoinedGroups();
           await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
           await chrome.storage.local.remove('groupDiscoveryIssue');
-        }catch(error){await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
+          await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`${data.groups.length} grupos leídos${data.partial?' · Listado parcial':''}.`,checkedAt:Date.now()}});
+        }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message,groupDiscovery:{phase:'error',message:error.message,checkedAt:Date.now()}});await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
+        finally{clearInterval(pulse);}
       };
       if(background){
         // Acknowledge only after the server accepts the claim; report an RPC
@@ -25,8 +30,11 @@ export async function syncGroups(connection,background=false) {
         startedInBackground=true;
         void read().catch(error=>chrome.storage.local.set({groupDiscoveryIssue:error.message})).finally(()=>{readingGroups=false;});
       }else await read();
+      return {state:background?'reading':'finished'};
     }
-  }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message});throw error;}
+    await chrome.storage.local.set({groupDiscovery:{phase:'waiting',message:'No hay un pedido nuevo asignado a esta conexión. Si RivaStock muestra uno pendiente, revisá la PC elegida; otro intento puede estar en curso.',checkedAt:Date.now()}});
+    return {state:'waiting'};
+  }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message,groupDiscovery:{phase:'error',message:error.message,checkedAt:Date.now()}});throw error;}
   finally{if(!startedInBackground)readingGroups=false;}
 }
 export async function ensureQueueAlarm() {
@@ -144,6 +152,9 @@ chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'rivastock-queue
 chrome.runtime.onInstalled.addListener(() => { void ensureQueueAlarm().then(poll).catch(()=>{}); });
 chrome.runtime.onStartup.addListener(() => { void ensureQueueAlarm().then(poll).catch(()=>{}); });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if(message.type==='groups-check'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')){
+    void (async()=>{try{const {connection}=await chrome.storage.local.get('connection');if(!connection)throw new Error('Vinculá esta PC desde RivaStock primero.');const result=await syncGroups(connection,true);reply({accepted:true,...result});}catch(error){reply({error:error.message});}})();return true;
+  }
   if(message.type==='queue-control'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')&&typeof message.paused==='boolean') {
     void (async()=>{
       try {
