@@ -16,7 +16,9 @@ export async function readJoinedGroups() {
       const url=new URL(link.href);const name=(link.innerText??'').trim();
       if(url.origin!=='https://www.facebook.com'||!/^\/groups\/[A-Za-z0-9._-]+\/?$/.test(url.pathname)||!name||name==='Ver grupo'||name.length>160)continue;
       const id=url.pathname.split('/')[2];const canonical=id==='PicoVendedeTodo'?'710102875717376':id;
-      groups.set(canonical,{name,url:`https://www.facebook.com/groups/${canonical}`});
+      const row=link.closest('li,[role="listitem"]');
+      const memberCount=row?.innerText.match(/[0-9][0-9.,]*(?:\s*(?:mil|millones|M))?(?:\s+de)?\s+(?:miembros|members)\b/i)?.[0]??null;
+      groups.set(canonical,{name,url:`https://www.facebook.com/groups/${canonical}`,...(memberCount?{memberCount}:{})});
     }
     unchanged=groups.size===before?unchanged+1:0;
     if(unchanged>=3)break;
@@ -25,6 +27,42 @@ export async function readJoinedGroups() {
   }
   const expected=Number(title.textContent.match(/\((\d+)\)/)?.[1]);
   return {groups:[...groups.values()],partial:!Number.isFinite(expected)||groups.size<expected,total:Number.isFinite(expected)?expected:null};
+}
+
+// Self-contained injection: read the visible group header, never feed posts.
+export async function readGroupMembers(expectedUrl=location.href) {
+  if(location.origin!=='https://www.facebook.com'||!/^\/groups\/[A-Za-z0-9._-]+\/?$/.test(location.pathname))return null;
+  const canonical=path=>path.replace(/\/$/,'').replace('/PicoVendedeTodo','/710102875717376');
+  if(canonical(new URL(expectedUrl).pathname)!==canonical(location.pathname))return null;
+  for(let attempt=0;attempt<12;attempt++){
+    let scope=document.querySelector('h1');
+    for(let level=0;scope&&scope!==document.body&&scope.tagName!=='MAIN'&&level<4;level++,scope=scope.parentElement){
+      if(scope.querySelector('[role="feed"],[role="article"],article'))break;
+      const match=scope.innerText.match(/[0-9][0-9.,]*(?:\s*(?:mil|millones|M))?(?:\s+de)?\s+(?:miembros|members)\b/i);
+      if(match)return match[0].slice(0,80);
+    }
+    await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  return null;
+}
+
+export async function discoverGroupMembers(urls) {
+  const counts=[];
+  for(const url of [...new Set(urls)].slice(0,3)){
+    if(!/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+$/.test(url))continue;
+    let tab;
+    try{
+      tab=await chrome.tabs.create({url,active:false});
+      for(let attempt=0;attempt<20;attempt++){
+        if((await chrome.tabs.get(tab.id)).status==='complete')break;
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readGroupMembers,args:[url]});
+      counts.push({url,memberCount:results[0]?.result??null});
+    }catch{/* An unreadable header must not discard the joined-group list. */}
+    finally{if(tab)await chrome.tabs.remove(tab.id).catch(()=>{});}
+  }
+  return counts;
 }
 
 export async function discoverJoinedGroups(){

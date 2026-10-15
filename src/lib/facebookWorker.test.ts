@@ -165,3 +165,15 @@ it('reports no assigned group request without waking the publication queue',asyn
   const memory:any={connection,paused:true,groupDiscoveryIssue:'Conexión vencida o revocada'};const publicationRequest=vi.fn();persistentWorker(memory,publicationRequest);
   try{const {syncGroups}=await import('../../extensions/facebook/worker.js');expect(await syncGroups(connection,true)).toEqual({state:'waiting'});expect(memory.groupDiscovery.phase).toBe('waiting');expect(memory.groupDiscoveryIssue).toBeUndefined();expect(publicationRequest).not.toHaveBeenCalled();expect(memory.paused).toBe(true);}finally{vi.unstubAllGlobals();}
 });
+
+it('honors a pause made while group discovery is awaiting its server response',async()=>{
+  vi.resetModules();const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'};
+  const memory:any={connection,paused:false};const publications=vi.fn(async(_url:any,_options:any)=>({ok:true,json:async()=>({connected:true})}));
+  const worker=persistentWorker(memory,publications);
+  vi.stubGlobal('fetch',async(url:any,options:any)=>{
+    if(String(url).endsWith('/facebook_group_discovery')){memory.paused=true;return {ok:true,json:async()=>null};}
+    return publications(url,options);
+  });
+  try{await import('../../extensions/facebook/worker.js');await worker.poll();expect(memory.paused).toBe(true);expect(publications.mock.calls.map(call=>JSON.parse(call[1].body).p_operation)).toEqual(['heartbeat']);}
+  finally{vi.unstubAllGlobals();}
+});

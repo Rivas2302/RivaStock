@@ -165,10 +165,12 @@ test('refreshes configuration groups and active queue; inventory errors can retr
 for(const mobile of [false,true])test(`selects multiple group identities and persists selection (${mobile?'mobile':'desktop'})`,async({page},testInfo)=>{
   if(mobile)await page.setViewportSize({width:390,height:844});
   await fixture(page);
-  const groups=[{id:'g1',name:'Grupo de prueba',url:'https://www.facebook.com/groups/123',mechanism:'group_direct'},{id:'g2',name:'Grupo de prueba',url:'https://www.facebook.com/groups/456',mechanism:'group_direct'},{id:'unsupported',name:'Flujo de venta',url:'https://www.facebook.com/groups/789',mechanism:'marketplace_share'}];
+  const groups=[{id:'g1',name:'Grupo de prueba',url:'https://www.facebook.com/groups/123',mechanism:'group_direct',member_count_text:'49,5 mil miembros',member_count_updated_at:'2026-10-14T12:00:00Z'},{id:'g2',name:'Grupo de prueba',url:'https://www.facebook.com/groups/456',mechanism:'group_direct'},{id:'unsupported',name:'Flujo de venta',url:'https://www.facebook.com/groups/789',mechanism:'marketplace_share'}];
   await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:groups}));
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  await expect(modal.getByText(/49,5 mil miembros/)).toBeVisible();
+  await expect(modal.getByText(/Cantidad de miembros no disponible/).first()).toBeVisible();
   await modal.getByRole('checkbox',{name:'Seleccionar Grupo de prueba (https://www.facebook.com/groups/123)',exact:true}).check();
   await modal.getByRole('checkbox',{name:'Seleccionar Grupo de prueba (https://www.facebook.com/groups/456)',exact:true}).check();
   await expect(modal.getByRole('checkbox',{name:/Seleccionar Flujo de venta/})).toBeDisabled();
@@ -246,7 +248,7 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
-  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.3/)).toBeVisible();
+  await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.4/)).toBeVisible();
 });
 
 test('wakes a restored pending group request and exposes the actual extension error',async({page})=>{

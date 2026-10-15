@@ -198,14 +198,30 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     if(!authorId)throw new Error('No se pudo verificar el perfil que publica en el grupo.');
     button('Escribe algo...').click();
-    const editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]'));
+    let editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]'));
     const dialog = editor.closest('[role="dialog"]');
     if (!dialog || text(editor)) throw new Error('El editor del grupo contiene un borrador. No se sobrescribió.');
     const anonymous = dialog.querySelector('[role="switch"][aria-label="Publicar de forma anónima"]');
     if (anonymous?.getAttribute('aria-checked') === 'true') throw new Error('El editor está en modo anónimo. No se envió.');
-    // Insert text through the browser editing command so Facebook's editor
-    // receives its normal input event instead of replacing its internal DOM.
-    editor.focus(); document.execCommand('insertText', false, content.groupText);
+    // Some editors flatten embedded newlines in insertText. Insert paragraph
+    // boundaries separately and resolve the live editor after each input.
+    const liveEditor = () => {
+      if (!dialog.isConnected) throw new Error('Facebook reemplazó el formulario. No se envió.');
+      return one(Array.from(dialog.querySelectorAll('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]')));
+    };
+    const edit = async (command, value) => {
+      editor = liveEditor(); editor.focus();
+      const selection = window.getSelection();
+      const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+      selection.removeAllRanges(); selection.addRange(range);
+      if (!document.execCommand(command, false, value)) throw new Error('Facebook no aceptó la escritura del contenido. No se envió.');
+      await new Promise(resolve => setTimeout(resolve, 0));
+    };
+    for (const [index, line] of content.groupText.replace(/\r\n?/g, '\n').split('\n').entries()) {
+      if (index) await edit('insertParagraph');
+      if (line) await edit('insertText', line);
+    }
+    editor = liveEditor();
     if (normalize(editor.innerText) !== normalize(content.groupText)) throw new Error('El texto del editor no coincide con el aprobado.');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
@@ -265,7 +281,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
           const matchesAuthor=authorId&&Array.from(ancestor.querySelectorAll('a[href]')).some(link=>new URL(link.href).pathname.endsWith(`/user/${authorId}/`));
           if (menus.length === 1 && matchesAuthor && text(ancestor).includes(content.title)) {
             if (buttons('Ver más',ancestor).length===1) { button('Ver más',ancestor).click(); return false; }
-            if (text(ancestor).includes(normalize(content.groupText))) return true;
+            if (normalize(ancestor.innerText).includes(normalize(content.groupText))) return true;
           }
           ancestor = ancestor.parentElement;
         }

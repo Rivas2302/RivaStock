@@ -17,7 +17,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators VALUES('${staff}','${owner}',true);
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  for(const migration of ['0049_facebook_publications.sql','0050_facebook_device_renewal.sql','0051_facebook_retry_preparation.sql','0052_automations_publication_management.sql','0053_facebook_group_discovery.sql','0054_facebook_group_refresh_from_device.sql','0055_facebook_group_members.sql'])await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
 },30000);
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec(`RESET ROLE;SET ROLE authenticated;SET test.uid='${id}'`);
@@ -136,6 +136,27 @@ it('synchronizes joined groups by URL through scoped PC capabilities and preserv
   const alias=(await db.query<{id:string}>(`INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Alias',$2) RETURNING id`,[owner,`${url}/`])).rows[0].id;
   await expect(db.query(`SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('desconocido');
   await expect(db.query(`SELECT approve_facebook_publication_before_groups($1,gen_random_uuid(),$2::jsonb,ARRAY[$3::uuid],false,$4)`,[product,JSON.stringify(body),alias,approved])).rejects.toThrow('permission denied');
+});
+
+it('persists approximate member counts by URL without erasing them on partial reads',async()=>{
+  await actor();
+  const request=(await db.query<{id:string}>(`SELECT request_facebook_groups_from_device($1) AS id`,[token])).rows[0].id;
+  await db.exec('SET ROLE anon');
+  const claim=(await db.query<{data:{member_targets:string[]}}>(`SELECT facebook_group_discovery($1,'claim') AS data`,[token])).rows[0].data;
+  expect(claim.member_targets.length).toBeLessThanOrEqual(3);
+  const url='https://www.facebook.com/groups/456';
+  await expect(db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify({groups:[{name:'Same label',url,memberCount:'inventado'}]})])).rejects.toThrow('miembros');
+  await db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,request,JSON.stringify({groups:[{name:'Same label',url,memberCount:'49,5 mil miembros'}],partial:true})]);
+  await actor();
+  const read=()=>db.query<{member_count_text:string|null;member_count_updated_at:string|null}>(`SELECT member_count_text,member_count_updated_at FROM facebook_groups WHERE url=$1`,[url]);
+  const saved=(await read()).rows[0];expect(saved.member_count_text).toBe('49,5 mil miembros');expect(saved.member_count_updated_at).toBeTruthy();
+  const next=(await db.query<{id:string}>(`SELECT request_facebook_groups_from_device($1) AS id`,[token])).rows[0].id;
+  await db.exec('SET ROLE anon');await db.query(`SELECT facebook_group_discovery($1,'claim')`,[token]);
+  await db.query(`SELECT facebook_group_discovery($1,'result',$2,$3::jsonb)`,[token,next,JSON.stringify({groups:[{name:'Same label',url}],memberCounts:[{url,memberCount:null}],partial:true})]);
+  await actor();expect((await read()).rows[0]).toEqual(saved);
+  expect((await db.query<{member_count_text:string|null}>(`SELECT member_count_text FROM facebook_groups WHERE url='https://www.facebook.com/groups/123'`)).rows[0].member_count_text).toBeNull();
+  await actor(other);expect((await read()).rows).toHaveLength(0);
+  await db.exec('SET ROLE anon');await expect(db.query(`SELECT facebook_group_discovery_before_members($1,'claim')`,[token])).rejects.toThrow('permission denied');
 });
 
 it('requests a refresh directly from a valid PC without enabling publications or trusting another account',async()=>{

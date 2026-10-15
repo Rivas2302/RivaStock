@@ -31,7 +31,7 @@ export async function facebookExtensionInstalled() {
 export async function wakeFacebookGroups(deviceId:string):Promise<string|null> {
   let installed:ExtensionResponse;
   try{installed=await extensionMessage({type:'rivastock-installed'});}catch{return null;}
-  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.3 y recargala en Chrome. El pedido remoto se conserva.`;
+  if(!installed.groupsWake)return `La extensión local${installed.version?` (${installed.version})`:''} no admite iniciar la lectura desde esta pantalla. Actualizala a 0.4.4 y recargala en Chrome. El pedido remoto se conserva.`;
   const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
   const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
   const result=await extensionMessage({type:'rivastock-wake-groups',deviceId,projectUrl});

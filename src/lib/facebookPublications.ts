@@ -10,7 +10,7 @@ export interface PublicationContent {
 export function groupPublicationText(content: PublicationContent): string {
   return `${content.title}\n\n${content.description}\n\nPrecio: ARS ${content.price.toFixed(2)}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
-export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct' }
+export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null }
 export function groupCompatibility(group:FacebookGroup):string|null {
   if(group.mechanism!=='group_direct')return 'Este flujo de grupo no está implementado.';
   try{normalizeGroupUrl(group.url);return null;}catch{return 'Falta una URL válida del grupo. No se puede identificar el destino por su nombre.';}
@@ -96,7 +96,7 @@ export async function facebookRpc<T>(name: string, args: Record<string, unknown>
 }
 export async function loadFacebookPublicationData(productId: string) {
   const results = await Promise.all([
-    supabase.from('facebook_groups').select('id,name,url,mechanism').order('name'),
+    supabase.from('facebook_groups').select('id,name,url,mechanism,member_count_text,member_count_updated_at').order('name'),
     supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity').is('revoked_at', null),
     supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries(*)').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
   ]);

@@ -1,6 +1,6 @@
 # Publicar productos de RivaStock desde Chrome
 
-La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.3](automations.md). El acceso desde el producto continúa disponible.
+La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [navegación, estados, permisos y actualización 0.4.4](automations.md). El acceso desde el producto continúa disponible.
 
 **Subir los cambios de la web no alcanza.** La automatización necesita la base de datos preparada y una extensión instalada, vinculada y con la cola activa en la computadora que tiene Facebook abierto.
 
@@ -14,7 +14,7 @@ La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [n
 
 ## Funcionamiento continuo e inicio con Windows
 
-La extensión 0.4.3 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
+La extensión 0.4.4 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
 
 En Windows, ejecutar una vez `scripts/configure-facebook-startup.ps1` crea **RivaStock Facebook.lnk** en la carpeta de inicio del usuario, para abrir Chrome y Marketplace al iniciar sesión. No requiere administrador. Usa el perfil habitual de Chrome; si se necesita uno específico, pasar `-ChromeProfileDirectory 'Profile 1'` con el nombre real de su carpeta. Para desactivarlo, ejecutar el mismo archivo con `-Remove`.
 
@@ -25,7 +25,7 @@ El inicio se produce al entrar a Windows, no antes del PIN o contraseña. La PC 
 1. En Chrome de la PC, como titular, abrir **Configuración → Facebook → Conectar esta PC**. También está disponible desde **Stock → Publicar en Facebook → Vincular computadora**.
 2. Se abre la extensión: pulsar **Conectar y activar esta PC** y aceptar los permisos de Chrome. Listo: la cola queda activa; no hay claves ni códigos para copiar.
 
-La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.4.3 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.4.3** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
+La vinculación se inicia desde Stock o Configuración de `https://rivastock.vercel.app`; usar la web publicada y la extensión 0.4.4 actualizada. El panel muestra la versión instalada: recargar una carpeta antigua no actualiza su código. Extraer el ZIP nuevo sobre la misma carpeta cargada y pulsar **Recargar**; verificar **Versión 0.4.4** en la extensión. No hace falta volver a vincular al reemplazar los archivos de la misma extensión. La extensión ejecuta los envíos en la PC; desde Android o iPhone se aprueban en la web y se consulta su estado.
 
 El ZIP se genera automáticamente antes de cada compilación y al iniciar el desarrollo, con una lista explícita de archivos de la extensión. No incluye archivos de configuración privados ni sesiones. La descarga usa los mismos archivos que el repositorio. Para instalar mediante un botón que lleve a la tienda de Chrome, será necesario publicar y aprobar la extensión en Chrome Web Store; esta versión todavía usa la instalación local.
 
@@ -97,3 +97,11 @@ Además, una prueba local instala la extensión real en un Chrome descartable, e
 Ejecutar `npm run verify` y `npx playwright test e2e/facebook-publications.spec.ts e2e/facebook-extension.spec.ts`. Antes de dar por terminada la integración, instalar y activar la extensión real y verificar **un producto nuevo, aprobado por el usuario**, desde la cola de producción. Esa validación integral real sigue pendiente.
 
 Referencias técnicas de Chrome: [ejecución de scripts](https://developer.chrome.com/docs/extensions/reference/api/scripting) y [ciclo de vida de la extensión](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle).
+
+## Actualización de grupos y escritura 0.4.4
+
+Aplicar `0055_facebook_group_members.sql` después de 0054 antes de desplegar la app. Reemplazar los archivos de la extensión con el ZIP actualizado y recargarla; no requiere volver a vincular la PC.
+
+La lista muestra la cantidad de miembros solo cuando Facebook la expone, conservando cifras aproximadas y la fecha de observación. Cada actualización consulta como máximo tres cabeceras de grupos guardados priorizando los que todavía no se consultaron y luego los consultados hace más tiempo. En una lista nueva, esas consultas comienzan en la siguiente actualización. Una lectura parcial o sin cifra conserva el último valor disponible; no se inventan cantidades.
+
+La preparación escribe el texto por párrafos y vuelve a localizar el editor tras cada operación. Se mantiene la comprobación del contenido aprobado y de todas las fotos. Las pruebas de navegador usan páginas controladas; queda pendiente verificar la preparación y el envío en Facebook real. No se publicaron productos reales como prueba.

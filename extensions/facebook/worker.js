@@ -1,6 +1,6 @@
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
-import { discoverJoinedGroups } from './group-discovery.js';
+import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true)});
 
 let polling = false;
@@ -20,6 +20,8 @@ export async function syncGroups(connection,background=false) {
         try {
           await chrome.storage.local.set({groupDiscovery:{phase:'reading',message:'Leyendo Tus grupos con la sesión de Facebook…',checkedAt:Date.now()}});
           const data=await discoverJoinedGroups();
+          const targets=request.member_targets??[];
+          data.memberCounts=await discoverGroupMembers(targets).catch(()=>[]);
           await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'result',p_request:request.id,p_data:data});
           await chrome.storage.local.remove('groupDiscoveryIssue');
           await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`${data.groups.length} grupos leídos${data.partial?' · Listado parcial':''}.`,checkedAt:Date.now()}});
@@ -108,6 +110,10 @@ async function poll() {
     // Read-only discovery also works with the publication queue paused. A
     // discovery error must never block other destinations or submitted jobs.
     await syncGroups(connection).catch(()=>{});
+    // A user can pause or disconnect while header reads are in progress.
+    const current=await chrome.storage.local.get(['paused','connection']);
+    if(current.connection?.deviceId!==connection.deviceId||current.connection?.token!==connection.token)return;
+    paused=current.paused;
     if (paused !== false) { await chrome.storage.local.set({status:'Conectada. Cola pausada.'}); return; }
     const job = await rpc(connection, 'facebook_worker', { p_token: connection.token, p_operation: 'claim' });
     if (!job) { await chrome.storage.local.set({ status: lastIssue?`Cola activa. Último envío requiere revisión: ${lastIssue}`:'Conectada. Sin trabajos pendientes.' }); return; }
