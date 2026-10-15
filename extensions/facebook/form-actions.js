@@ -365,7 +365,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
     }
     editor=liveEditor();
-    if(lines(editor.innerText).replace(/\n+$/,'')!==approved.replace(/\n+$/,''))throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
+    if(lines(editor.innerText).trim()!==approved.trim())throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
     // the input closest to Foto/video; refuse ties instead of guessing.
