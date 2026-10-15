@@ -66,6 +66,14 @@ export function publicationBlock(publications:FacebookPublication[],marketplace:
   if(jobs.some(d=>deliveryState(d)==='unknown'))return 'Hay un resultado desconocido. Revisá Facebook y registrá la revisión en el historial antes de crear otro envío.';
   return null;
 }
+export function deliveryCandidate(delivery:FacebookDelivery): string|null {
+  if(deliveryState(delivery)!=='unknown'||delivery.recovery_required)return null;
+  const attempt=[...(delivery.facebook_delivery_attempts??[])].filter(a=>a.authorized_at).sort((a,b)=>b.started_at.localeCompare(a.started_at))[0];
+  if(!attempt)return null;
+  const event=[...(attempt.events??[])].filter(e=>e.type==='candidate').sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
+  if(!event?.data.url)return null;
+  return safeFacebookEvidence({...delivery,evidence_url:event.data.url});
+}
 export function safeFacebookEvidence(delivery:FacebookDelivery) {
   const url=delivery.evidence_url;
   if(!url)return null;

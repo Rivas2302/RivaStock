@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
 vi.mock('./supabase', () => ({supabase:{}}));
-import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection } from './facebookPublications';
+import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection,deliveryCandidate,type FacebookDelivery } from './facebookPublications';
 import type { Product } from '../types';
 import { facebookAdapter,validateFacebookDestination,fetchPublicationPhotos } from '../../extensions/facebook/adapter.js';
 import { readFileSync } from 'node:fs';
@@ -34,6 +34,22 @@ describe('Facebook publication preparation',() => {
   });
 });
 
+const base:FacebookDelivery={id:'d1',status:'attention',message:null,evidence_url:null,submitted_at:'2026-01-01T00:00:00Z',destination:{name:'G',url:'https://www.facebook.com/groups/123',mechanism:'group_direct'}};
+const attempt=(events:any[])=>({id:'a1',started_at:'2026-01-01T00:00:00Z',lease_expires_at:'2026-01-01T01:00:00Z',authorized_at:'2026-01-01T00:01:00Z',finished_at:null,outcome:null,last_error_code:null,events});
+const candidateEvent=(url:string)=>({type:'candidate',created_at:'2026-01-01T00:02:00Z',data:{url}});
+it('deliveryCandidate returns null when no attempts',()=>{expect(deliveryCandidate(base)).toBeNull();});
+it('deliveryCandidate returns validated URL from authorized attempt',()=>{
+ const d={...base,facebook_delivery_attempts:[attempt([candidateEvent('https://www.facebook.com/groups/123/posts/987')])]};
+ expect(deliveryCandidate(d)).toBe('https://www.facebook.com/groups/123/posts/987');
+});
+it('deliveryCandidate returns null for foreign origin URL',()=>{
+ const d={...base,facebook_delivery_attempts:[attempt([candidateEvent('https://evil.test/groups/123/posts/987')])]};
+ expect(deliveryCandidate(d)).toBeNull();
+});
+it('deliveryCandidate returns null when recovery_required',()=>{
+ const d={...base,recovery_required:true,facebook_delivery_attempts:[attempt([candidateEvent('https://www.facebook.com/groups/123/posts/987')])]};
+ expect(deliveryCandidate(d)).toBeNull();
+});
 it('rejects duplicate group identities, missing destinations and excessive selections',()=>{
  const groups=[{id:'a',name:'Same',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group_direct' as const},{id:'b',name:'Different label',url:'https://www.facebook.com/groups/710102875717376',mechanism:'group_direct' as const},{id:'c',name:'Same',url:'https://www.facebook.com/groups/123',mechanism:'group_direct' as const}];
  expect(validateGroupSelection(groups,['a','b'])).toContain('más de una vez');
