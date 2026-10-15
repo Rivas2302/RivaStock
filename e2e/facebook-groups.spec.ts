@@ -86,6 +86,23 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
   expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
+test('group_prepare succeeds when the dialog editor uses aria-label "Escribe algo..." instead of "Crea una publicación pública..."',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
+    <script>
+    document.querySelector('#open').onclick=()=>{
+      const dialog=document.createElement('div');dialog.role='dialog';
+      dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
+      dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      dialog.querySelector('#publish').onclick=()=>{window.sent=true};document.body.append(dialog);
+    };
+    </script>`}));
+  await page.goto('https://www.facebook.com/groups/123');
+  const content={title:'Auricular',groupText:'Auricular\n\nPrecio: ARS 14000.00',selection:{marketplace:false}};
+  const photos=[{name:'uno.png',type:'image/png',data:'AQ==',extension:'png'}];
+  const result=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:facebookFormAction.toString(),content,photos});
+  expect(result).toMatchObject({ready:true});
+});
+
 test('does not count two links to one photo as two approved photos',async({page})=>{
  await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<div role="status">Tu publicación se publicó <a href="/groups/123/posts/987">Ver publicación</a></div><section><button aria-label="Acciones en esta publicación de Perfil">Menú</button><a href="/groups/123/user/111/">Perfil</a><p>Approved text</p><a href="/photo/?set=gm.987&fbid=1">Foto</a><a href="/photo/?set=gm.987&fbid=1">Foto repetida</a></section>'}));await page.goto('https://www.facebook.com/groups/123');
  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result',{title:'Approved',groupText:'Approved text'},[],['group:/groups/123','author:111','photos:2']),{source:facebookFormAction.toString()});expect(result).toEqual({waiting:true});

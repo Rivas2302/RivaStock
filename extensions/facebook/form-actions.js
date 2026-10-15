@@ -70,7 +70,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return {
       path:location.pathname,
       variant:location.pathname.startsWith('/groups/')?'group':'marketplace',
-      groupEditors:document.querySelectorAll('[contenteditable="true"][aria-label="Crea una publicación pública..."]').length,
+      groupEditors:document.querySelectorAll('[contenteditable="true"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]').length,
       categories:Array.from(document.querySelectorAll('button,[role="button"],[role="option"],[role="menuitem"]')).filter(visible).map(accessibleName).filter(name=>name.includes('Envío disponible')||name==='Salud y belleza'),
       combos:Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).map(element=>({label:accessibleName(element),display:text(element),expanded:element.getAttribute('aria-expanded')})),
       descriptionCount:Array.from(document.querySelectorAll('textarea')).filter(element=>visible(element)&&element.closest('label')?.textContent.includes('Descripción')).length,
@@ -333,14 +333,14 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     if(!authorId)throw new Error('No se pudo verificar el perfil que publica en el grupo.');
     button('Escribe algo...').click();
-    let editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]'));
+    let editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]'));
     const dialog = editor.closest('[role="dialog"]');
     if (!dialog || text(editor)) throw new Error('El editor del grupo contiene un borrador. No se sobrescribió.');
     const anonymous = dialog.querySelector('[role="switch"][aria-label="Publicar de forma anónima"]');
     if (anonymous?.getAttribute('aria-checked') === 'true') throw new Error('El editor está en modo anónimo. No se envió.');
     const liveEditor = () => {
       if (!dialog.isConnected) throw new Error('Facebook reemplazó el formulario. No se envió.');
-      return one(Array.from(dialog.querySelectorAll('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."]')));
+      return one(Array.from(dialog.querySelectorAll('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]')));
     };
     editor.focus();
     const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);selection.removeAllRanges();selection.addRange(range);
@@ -412,7 +412,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
       publish.click(); return { clicked: true };
     }
-    const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"]');
+    const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
     const sale=baseline.includes('sale:approved');
     if(group&&((!editor&&!sale)||location.pathname.replace(/\/$/,'')!==group))throw new Error('Cambió el editor o el grupo antes de enviar. No se envió.');
@@ -456,7 +456,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
     const pendingNotice=newNotices.find(node=>/^Tu publicación (está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/.test(text(node)));
-    if(pendingNotice&&!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"]'))return {status:'pending_approval',url:null,message:'Facebook indicó explícitamente que este envío espera aprobación de los administradores.'};
+    if(pendingNotice&&!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]'))return {status:'pending_approval',url:null,message:'Facebook indicó explícitamente que este envío espera aprobación de los administradores.'};
     // A sale composer never stores an authorId; do not fabricate success.
     if(baseline.includes('sale:approved'))return {waiting:true};
     const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
