@@ -1,3 +1,15 @@
+# Facebook 0.5.2: validación de párrafos del editor
+
+Corrige el rechazo «El texto del editor no coincide con el aprobado» cuando Facebook representa el texto mediante párrafos Lexical. La inspección del editor real del 15/10/2026 confirmó que `innerText` agregaba hasta cinco saltos entre textos separados por una línea vacía. Ahora se leen las fronteras de párrafos y sus saltos explícitos, con la misma comparación en preparación y envío. Los cambios de precio, contenido, espacios y líneas internas siguen bloqueando el envío.
+
+El ZIP local se genera en `public/downloads/rivastock-facebook.zip`. Extraerlo sobre la carpeta de la extensión existente y recargarla en Chrome; verificar versión **0.5.2**. No requiere migraciones adicionales respecto de 0.5.1. La web publicada no se actualizó durante esta corrección.
+
+Validación local: `npm run verify` aprobado (412 pruebas, tipos, compilación, presupuesto de rendimiento y cero vulnerabilidades), 72 pruebas de navegador de Facebook/Automatizaciones aprobadas y 20 iteraciones de concurrencia en PostgreSQL real aprobadas. Se corrigieron tres capturas tardías de errores en pruebas y se actualizó el cliente de la prueba de concurrencia para declarar `result-candidates`, manteniendo la prueba de rechazo de clientes antiguos.
+
+**Pendiente:** recargar la extensión instalada y verificar el trabajo real. La inspección del editor fue de solo lectura; no se publicó ni reintentó el trabajo. El acceso automatizado al panel `chrome-extension://` fue bloqueado por la política del navegador.
+
+---
+
 # Facebook 0.5.1: candidatas y compuerta de capacidad
 
 La versión 0.5.1 agrega detección de candidatas tras resultado desconocido y una compuerta de capacidad: las PCs que no informen `result-candidates` reciben `PROTOCOL_UNSUPPORTED` al tomar trabajos nuevos y deben actualizarse. **Las PCs con 0.5.0 pueden seguir recuperando o persistiendo sus intentos en curso.**

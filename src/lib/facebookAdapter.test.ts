@@ -13,8 +13,9 @@ it('reconcile rejects with candidateUrl when result_search finds exactly one can
   });
   const active:any={tabId:1,job:{content:{title:'T',groupText:'T'},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/123'}},baseline:[]};
   const promise=facebookAdapter.reconcile(active);
+  const assertion=expect(promise).rejects.toMatchObject({message:expect.stringContaining('Resultado desconocido'),candidateUrl:'https://www.facebook.com/groups/123/posts/987'});
   await vi.runAllTimersAsync();
-  await expect(promise).rejects.toMatchObject({message:expect.stringContaining('Resultado desconocido'),candidateUrl:'https://www.facebook.com/groups/123/posts/987'});
+  await assertion;
 });
 
 it('reconcile rejects without candidateUrl when result_search finds nothing',async()=>{
@@ -28,9 +29,9 @@ it('reconcile rejects without candidateUrl when result_search finds nothing',asy
     return {};
   });
   const active:any={tabId:1,job:{content:{title:'T',groupText:'T'},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/123'}},baseline:[]};
-  const promise=facebookAdapter.reconcile(active);
+  const promise=facebookAdapter.reconcile(active).catch((error:any)=>error);
   await vi.runAllTimersAsync();
-  const error:any=await promise.catch((e:any)=>e);
+  const error:any=await promise;
   expect(error).toBeInstanceOf(Error);
   expect(error.message).toContain('Resultado desconocido');
   expect(error.candidateUrl).toBeUndefined();
@@ -47,8 +48,8 @@ it('reconcile never resolves with status',async()=>{
     return {};
   });
   const active:any={tabId:1,job:{content:{title:'T',groupText:'T'},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/123'}},baseline:[]};
-  const promise=facebookAdapter.reconcile(active);
+  const promise=facebookAdapter.reconcile(active).catch(()=>null);
   await vi.runAllTimersAsync();
-  const result=await promise.then((v:any)=>v).catch(()=>null);
+  const result=await promise;
   expect(result).toBeNull();
 });

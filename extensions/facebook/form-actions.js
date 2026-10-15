@@ -4,6 +4,21 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   try {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();
   const lines = value => (value ?? '').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ');
+  const editorText = editor => {
+    // innerText inserts layout-dependent separators between Lexical paragraphs.
+    // Read paragraph boundaries explicitly, preserving empty lines and inline breaks.
+    const paragraphs = Array.from(editor.children);
+    if (editor.hasAttribute('data-lexical-editor') && paragraphs.length &&
+        Array.from(editor.childNodes).every(node => node.nodeType === Node.ELEMENT_NODE && node.tagName === 'P')) {
+      const read = node => node.nodeType === Node.TEXT_NODE ? node.textContent :
+        node.nodeName === 'BR' ? '\n' : Array.from(node.childNodes).map(read).join('');
+      return paragraphs.map(paragraph => paragraph.childNodes.length === 1 &&
+        paragraph.firstChild.nodeName === 'BR' ? '' : read(paragraph)).join('\n');
+    }
+    return editor.innerText;
+  };
+  const matchesEditor = (editor, approved) =>
+    lines(editorText(editor)).replace(/\n+$/, '') === lines(approved).replace(/\n+$/, '');
   const parsePriceARS=(value,approved)=>{
     const raw=normalize(value).replace(/^(?:ARS\s*|\$\s*)/i,'');
     if(/^\d+\.\d{1,2}$/.test(raw))return Math.abs(Number(raw)-approved)<0.000001;
@@ -365,7 +380,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
     }
     editor=liveEditor();
-    if(lines(editor.innerText).trim()!==approved.trim())throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
+    if(!matchesEditor(editor,approved))throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
     // the input closest to Foto/video; refuse ties instead of guessing.
@@ -422,7 +437,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(sale)checkFlow();
     if(sale&&!verifySaleAudience(root,group,baseline.find(value=>value.startsWith('sale:origin:'))?.slice(12)))throw new Error('Cambió el destino de la venta.');
     if(editor&&root.querySelector('[role="switch"][aria-label="Publicar de forma anónima"][aria-checked="true"]'))throw new Error('Cambió el perfil de publicación. No se envió.');
-    if (editor && lines(editor.innerText) !== lines(content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
+    if (editor && !matchesEditor(editor,content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
     const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
     if(editor&&photoCount!==undefined&&Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&! /perfil|profile|avatar/i.test(img.alt)&&img.complete&&img.naturalWidth>0).length<Number(photoCount))throw new Error('No están cargadas todas las fotos aprobadas. No se envió.');
     if(photoCount!==undefined&&buttons('Eliminar archivo adjunto de la publicación',root).length!==Number(photoCount))throw new Error('Las fotos cambiaron después de preparar la publicación. No se envió.');

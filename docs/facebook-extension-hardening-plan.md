@@ -1,5 +1,7 @@
 # Plan verificable de confiabilidad de la extensión de Facebook
 
+> **Continuación (15/10/2026):** las tareas pendientes T15/T16 se reemplazan por [el plan de cierre](automation/PLAN.md) y sus [tareas](automation/TASKS.md). Las decisiones D1–D5 de este documento siguen vigentes.
+
 Estado: **implementación local verificada; instalación y validación real pendientes**. Fecha: 15 de octubre de 2026. Base: `f31e393db06d9447abb2dc8f10581be7d27fdcc7`, extensión 0.4.8 y cambios locales existentes. Este documento está en español, como la documentación actual del proyecto.
 
 La auditoría de base encontró protecciones útiles y una suite aprobada, junto con fallos de atribución de evidencia, integridad del formulario y recuperación. Las correcciones locales y su evidencia vigente están en la sección «Revisión e implementación final». La prioridad es cerrar esos caminos, identificar cada intento y hacer verificable la recuperación. No hace falta una reescritura general ni incorporar IA.

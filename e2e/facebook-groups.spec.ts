@@ -86,15 +86,64 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
   expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
-test('editor text comparison strips trailing newlines to tolerate Lexical innerText behavior',()=>{
-  // Regression: some editors (e.g. Facebook Lexical) append a trailing '\n' to innerText.
-  // The fix changes the comparison from strict equality to trimEnd on both sides.
-  const lines=(s:(string|null|undefined))=>(s??'').replace(/\r\n?/g,'\n').replace(/ /g,' ');
-  const groupText='Monopoly\n\nAl mejor precio!';
-  const approved=lines(groupText);
-  const editorInnerText=groupText+'\n'; // trailing newline Lexical adds
-  expect(lines(editorInnerText)===approved).toBe(false);                                           // old comparison fails
-  expect(lines(editorInnerText).replace(/\n+$/,'')===approved.replace(/\n+$/,'')).toBe(true);      // fix passes
+for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing']) {
+  test(`Lexical preparation and final validation: ${mutation}`,async({page})=>{
+    await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`
+      <div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
+      <script>
+      document.querySelector('#open').onclick=()=>{
+        const dialog=document.createElement('div');dialog.role='dialog';
+        dialog.innerHTML='<div data-lexical-editor="true" contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
+        dialog.querySelector('[contenteditable]').addEventListener('paste',event=>{
+          event.preventDefault();event.target.innerHTML=event.clipboardData.getData('text/html');
+        });
+        dialog.querySelector('input').onchange=()=>{
+          window.uploadCount=(window.uploadCount||0)+1;
+          dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><button>Eliminar archivo adjunto de la publicación</button>');
+          dialog.querySelector('#publish').disabled=false;
+        };
+        dialog.querySelector('#publish').onclick=()=>{window.sent=(window.sent||0)+1};
+        document.body.append(dialog);
+      };
+      </script>`}));
+    await page.goto('https://www.facebook.com/groups/123');
+    const content={groupText:'Monopoly\n\nAl mejor precio! 🎲\n\nPrecio: ARS 14000.00\nEstado: Nuevo\nUbicación: General Pico\nCategoría: Juguetes y juegos',selection:{marketplace:false}};
+    const photos=[{type:'image/png',data:'AQ==',extension:'png'}];
+    if(mutation==='none') {
+      const previous=facebookFormAction.toString().replace(/!matchesEditor\(editor,\s*approved\)/, 'lines(editor.innerText).trim()!==approved.trim()');
+      expect(previous).not.toBe(facebookFormAction.toString());
+      const rejected=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:previous,content,photos});
+      expect(rejected.error).toContain('antes de cargar fotos');
+      expect(await page.evaluate(()=>window.uploadCount)).toBeUndefined();
+      await page.reload();
+    }
+    const prepared=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:facebookFormAction.toString(),content,photos});
+    expect(prepared).toMatchObject({ready:true});
+    expect(await page.evaluate(()=>window.uploadCount)).toBe(1);
+    expect(await page.locator('[contenteditable]').innerText()).not.toBe(content.groupText);
+    await page.locator('[contenteditable]').evaluate((editor,mutation)=>{
+      if(mutation==='price')editor.innerHTML=editor.innerHTML.replace('14000','14001');
+      if(mutation==='missing-line')editor.children[1].remove();
+      if(mutation==='extra-line')editor.insertAdjacentHTML('beforeend','<p>Extra</p>');
+      if(mutation==='spacing')editor.firstElementChild!.textContent=' Monopoly';
+    },mutation);
+    const result=await page.evaluate(({source,content,baseline})=>new Function('return ('+source+')')()('submit',content,[],baseline),{source:facebookFormAction.toString(),content,baseline:prepared.baseline});
+    if(mutation==='none') {
+      expect(result).toEqual({clicked:true});
+      expect(await page.evaluate(()=>window.sent)).toBe(1);
+    } else {
+      expect(result.error).toContain('contenido cambió');
+      expect(await page.evaluate(()=>window.sent)).toBeUndefined();
+    }
+  });
+}
+
+test('submit tolerates a browser trailing newline',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<div role="dialog"><div contenteditable="true" role="textbox" aria-label="Escribe algo...">Monopoly<br><br></div><button onclick="window.sent=true">Publicar</button></div>'}));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('submit',{groupText:'Monopoly'},[],['group:/groups/123']),{source:facebookFormAction.toString()});
+  expect(result).toEqual({clicked:true});
+  expect(await page.evaluate(()=>window.sent)).toBe(true);
 });
 
 test('result_search finds a post by author and title when the confirmation notice is already gone',async({page})=>{

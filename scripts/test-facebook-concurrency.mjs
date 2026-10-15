@@ -29,6 +29,10 @@ try{
  async function product(){const id=crypto.randomUUID();await admin.query('INSERT INTO products VALUES($1,$2,$3,ARRAY[$3::text])',[id,owner,body.photos[0]]);return id;}
  const approve=(c,p,key=crypto.randomUUID(),repeat=null)=>c.query('SELECT approve_facebook_publication($1,$2,$3::jsonb,ARRAY[]::uuid[],true,$4) AS id',[p,key,JSON.stringify(body),repeat]);
  const call=(c,pc,op,attempt=null,data={})=>c.query('SELECT facebook_worker_v2($1,$2,NULL,$3,$4::jsonb) AS data',[pc.token,op,attempt,JSON.stringify(data)]).then(r=>r.rows[0].data);
+ // Verify the legacy capability gate, then exercise concurrency with current clients.
+ await assert.rejects(call(a,pc1,'claim',null,{claimKey:crypto.randomUUID()}),/PROTOCOL_UNSUPPORTED/);
+ const {version}=JSON.parse(await readFile('extensions/facebook/manifest.json','utf8'));
+ for(const [client,pc] of [[a,pc1],[b,pc2]])await call(client,pc,'heartbeat',null,{version,capabilities:['attempts','causal-results','recovery','result-candidates']});
  async function cleanup(){await admin.query("TRUNCATE facebook_publications CASCADE");}
  for(let n=0;n<20;n++){
   await cleanup();const p=await product();await actor(a);await actor(b);const key=crypto.randomUUID();const same=await Promise.all([approve(a,p,key),approve(b,p,key)]);assert.equal(same[0].rows[0].id,same[1].rows[0].id);
