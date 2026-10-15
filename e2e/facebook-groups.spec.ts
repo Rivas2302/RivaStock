@@ -86,6 +86,30 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
   expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
+test('result_search finds a post by author and title when the confirmation notice is already gone',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
+    '<article><a href="/groups/123/user/111/">Kevin Riva</a><a href="/groups/123/posts/987">Ver post</a><p>Ventilador 18" 100w\n\nPrecio: $60.000</p></article>'
+  }));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
+    {groupText:'Ventilador 18" 100w\n\nPrecio: $60.000',selection:{marketplace:false}},
+    [],['author:111','group:/groups/123']
+  ),{source:facebookFormAction.toString()});
+  expect(result).toMatchObject({url:'https://www.facebook.com/groups/123/posts/987'});
+});
+
+test('result_search ignores posts already in the baseline before publishing',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
+    '<article><a href="/groups/123/user/111/">Perfil</a><a href="/groups/123/posts/987">Ver post</a><p>Ventilador</p></article>'
+  }));
+  await page.goto('https://www.facebook.com/groups/123');
+  const result=await page.evaluate(({source})=>new Function('return ('+source+')')()('result_search',
+    {groupText:'Ventilador',selection:{marketplace:false}},
+    [],['author:111','group:/groups/123','https://www.facebook.com/groups/123/posts/987']
+  ),{source:facebookFormAction.toString()});
+  expect(result).toEqual({notFound:true});
+});
+
 test('group_prepare succeeds when the dialog editor uses aria-label "Escribe algo..." instead of "Crea una publicación pública..."',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
     <script>

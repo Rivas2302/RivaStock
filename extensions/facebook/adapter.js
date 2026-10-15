@@ -69,6 +69,10 @@ export const facebookAdapter = {
       if (result.status) return result;
       await new Promise(resolve => setTimeout(resolve, 750));
     }
+    if(active.job.destination.mechanism==='group_direct'){
+      const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);
+      if(found?.url)return {status:'submitted',url:found.url,message:'Publicación encontrada en el grupo después del plazo del aviso de confirmación.'};
+    }
     throw new Error('Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.');
   },
 };

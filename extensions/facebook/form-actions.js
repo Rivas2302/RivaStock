@@ -484,6 +484,22 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     return {waiting:true};
   }
+  if(action==='result_search'){
+    const gPostUrl=href=>{try{const u=new URL(href);return u.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(u.pathname)?u.origin+u.pathname:null;}catch{return null;}};
+    const authorId=baseline.find(v=>v.startsWith('author:'))?.slice(7);
+    const group=baseline.find(v=>v.startsWith('group:'))?.slice(6);
+    if(!authorId||!group||location.pathname.replace(/\/$/,'')!==group)return {notFound:true};
+    const title=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
+    for(const section of Array.from(document.querySelectorAll('article,section,[role="article"]')).filter(visible)){
+      const authorLink=Array.from(section.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
+      if(!authorLink)continue;
+      const url=Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(Boolean)[0];
+      if(!url||baseline.includes(url))continue;
+      if(title&&!text(section).includes(title))continue;
+      return {url};
+    }
+    return {notFound:true};
+  }
   throw new Error('Acción no autorizada.');
   } catch(error) { return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }
 }
