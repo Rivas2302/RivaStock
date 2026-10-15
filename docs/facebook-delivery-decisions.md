@@ -4,11 +4,13 @@
 
 La extensión **0.4.8** separa los conflictos de anuncios, los errores de preparación y los formularios de venta. Las decisiones se registran por destino; recuperar uno no repite los demás.
 
-## Actualización
+## Actualización a 0.4.8 (histórico)
 
-1. Aplicar `0059_facebook_delivery_decisions.sql` después de las migraciones anteriores, incluida `0058` si está pendiente.
+La versión actual es **0.5.0**. Para instalar o actualizar, seguir [actualización, migraciones y recuperación](facebook-extension-release.md).
+
+1. Aplicar `0059_facebook_delivery_decisions.sql` después de las migraciones anteriores, incluida `0058` si está pendiente. Esta migración es prerequisito de las migraciones 0060–0063 de la versión 0.5.0.
 2. Desplegar la web y descargar el ZIP regenerado de `public/downloads/rivastock-facebook.zip`.
-3. Reemplazar los archivos de la extensión instalada y recargarla en Chrome. Comprobar **Versión 0.4.8**. No cambian el identificador ni los permisos de la extensión.
+3. Reemplazar los archivos de la extensión instalada y recargarla en Chrome. No cambian el identificador ni los permisos de la extensión.
 
 No se aplicó esta migración a producción ni se desplegó la web durante el desarrollo. Si ya se aplicó 0059 para la versión 0.4.7, 0.4.8 no requiere otra migración.
 
