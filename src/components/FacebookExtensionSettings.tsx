@@ -45,7 +45,7 @@ export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>P
   return <section className="space-y-6" aria-labelledby="facebook-extension-heading">
     <div><h3 id="facebook-extension-heading" className="text-xl font-bold text-slate-900 dark:text-white">Publicaciones en Facebook</h3><p className="mt-2 text-slate-500 dark:text-slate-400">Instalá la extensión en Chrome de una PC. Después podés aprobar publicaciones desde RivaStock en tu celular o cualquier computadora.</p></div>
     <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">{installed?<CheckCircle2 size={20}/>:<Monitor size={20}/>} {installed?'Extensión detectada en este navegador':'Extensión sin detectar en este navegador'}</p>
-    {installed&&<p className="text-sm">Versión local: {extensionVersion??'No informada'} · {compatible?'Recuperación de intentos compatible':'Actualización necesaria a 0.5.0'}</p>}
+    {installed&&<p className="text-sm">Versión local: {extensionVersion??'No informada'} · {compatible?'Recuperación de intentos compatible':'Actualización necesaria a 0.5.1'}</p>}
     <div className="flex flex-wrap gap-3"><a className={button} href="/downloads/rivastock-facebook.zip" download="rivastock-facebook.zip"><Download size={18}/>Descargar extensión</a>
       {isOwner && canWrite && <button className={button} disabled={busy||!installed} onClick={()=>void run(async()=>{setNotice(await connectFacebookComputer(devices.map(device=>device.id)));})}>Conectar esta PC</button>}
     </div>

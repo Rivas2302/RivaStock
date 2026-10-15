@@ -20,7 +20,7 @@ function facebookProjectUrl(){const raw=(import.meta.env.VITE_SUPABASE_URL as st
 export async function facebookExtensionInfo(){try{return await extensionMessage({type:'rivastock-installed'});}catch{return null;}}
 export async function connectFacebookComputer(deviceIds:string[]=[]):Promise<string>{
  const installed=await extensionMessage({type:'rivastock-installed'});
- if(!installed.installed||!installed.connectionStatus)throw new Error('Actualizá la extensión a 0.5.0 y recargala antes de vincular.');
+ if(!installed.installed||!installed.connectionStatus)throw new Error('Actualizá la extensión a 0.5.1 y recargala antes de vincular.');
  const projectUrl=facebookProjectUrl();
  const state=await extensionMessage({type:'rivastock-connection-status',projectUrl,deviceIds});
  if(state.hasConnection||state.hasActiveJob||state.pairingPending){

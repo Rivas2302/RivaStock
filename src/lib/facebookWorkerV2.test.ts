@@ -7,7 +7,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  vi.stubGlobal('chrome',{
   storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
-  runtime:{id:'own',onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
+  runtime:{id:'own',getManifest:()=>({version:'0.5.1'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });
  vi.stubGlobal('fetch',async(_url:any,options:any)=>{
   const args=JSON.parse(options.body);operations.push(args);
@@ -53,4 +53,40 @@ it('requires an explicit archive for unresolved journals and never archives capt
  await expect(f.worker.disconnectLocal(false)).rejects.toThrow('sin resolver');await f.worker.disconnectLocal(true);expect(f.memory.connection).toBeUndefined();expect(f.memory.activeJob).toBeUndefined();expect(f.memory.recoveryArchive.deliveryId).toBe('delivery');expect(JSON.stringify(f.memory.recoveryArchive)).not.toContain('fixture-secret');
  f.memory.connection={url:'https://test.supabase.co',token:'fixture-secret',deviceId:'pc'};f.memory.activeJob={job:f.job,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:{status:'submitted'}};
  await expect(f.worker.disconnectLocal(true)).rejects.toThrow('evidencia');expect(f.memory.activeJob).toBeTruthy();
+});
+it('heartbeat V2 sends result-candidates in capabilities',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates']};
+  if(a.p_operation==='claim')return null;
+  return {connected:true,saved:true};
+ });job=f.job;await f.worker.poll();
+ const hb=f.operations.find((a:any)=>a.p_operation==='heartbeat'&&a.p_data?.capabilities);
+ expect(hb?.p_data?.capabilities).toContain('result-candidates');
+});
+it('sends candidateUrl in attention when server announces result-candidates feature',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates']};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='checkpoint')return {authorized:true,phase:'authorized_now'};
+  return {saved:true};
+ });job=f.job;
+ const candidateUrl='https://www.facebook.com/groups/123/posts/987';
+ f.reconcile.mockRejectedValueOnce(Object.assign(new Error('Resultado desconocido'),{candidateUrl}));
+ await f.worker.poll();
+ const attn=f.operations.find((a:any)=>a.p_operation==='attention');
+ expect(attn?.p_data?.candidateUrl).toBe(candidateUrl);
+ expect(f.operations.some((a:any)=>a.p_operation==='result')).toBe(false);
+});
+it('omits candidateUrl in attention when server does not announce result-candidates',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:[]};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='checkpoint')return {authorized:true,phase:'authorized_now'};
+  return {saved:true};
+ });job=f.job;
+ const candidateUrl='https://www.facebook.com/groups/123/posts/987';
+ f.reconcile.mockRejectedValueOnce(Object.assign(new Error('Resultado desconocido'),{candidateUrl}));
+ await f.worker.poll();
+ const attn=f.operations.find((a:any)=>a.p_operation==='attention');
+ expect(attn?.p_data?.candidateUrl).toBeUndefined();
 });
