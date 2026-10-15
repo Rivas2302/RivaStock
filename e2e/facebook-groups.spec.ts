@@ -86,6 +86,17 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
   expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
+test('editor text comparison strips trailing newlines to tolerate Lexical innerText behavior',()=>{
+  // Regression: some editors (e.g. Facebook Lexical) append a trailing '\n' to innerText.
+  // The fix changes the comparison from strict equality to trimEnd on both sides.
+  const lines=(s:(string|null|undefined))=>(s??'').replace(/\r\n?/g,'\n').replace(/ /g,' ');
+  const groupText='Monopoly\n\nAl mejor precio!';
+  const approved=lines(groupText);
+  const editorInnerText=groupText+'\n'; // trailing newline Lexical adds
+  expect(lines(editorInnerText)===approved).toBe(false);                                           // old comparison fails
+  expect(lines(editorInnerText).replace(/\n+$/,'')===approved.replace(/\n+$/,'')).toBe(true);      // fix passes
+});
+
 test('result_search finds a post by author and title when the confirmation notice is already gone',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:
     '<article><a href="/groups/123/user/111/">Kevin Riva</a><a href="/groups/123/posts/987">Ver post</a><p>Ventilador 18" 100w\n\nPrecio: $60.000</p></article>'

@@ -350,7 +350,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       // Use Lexical's public paste handler so paragraph nodes enter its model.
       const transfer=new DataTransfer();transfer.setData('text/plain',approved);
       const escape=value=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      transfer.setData('text/html','<p>'+approved.split('\n').map(escape).join('<br>')+'</p>');
+      transfer.setData('text/html',approved.split('\n').map(l=>'<p>'+(l?escape(l):'<br>')+'</p>').join(''));
       editor.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
       await new Promise(resolve=>setTimeout(resolve,0));
     } else {
@@ -365,7 +365,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
     }
     editor=liveEditor();
-    if(lines(editor.innerText)!==approved)throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
+    if(lines(editor.innerText).replace(/\n+$/,'')!==approved.replace(/\n+$/,''))throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
     // the input closest to Foto/video; refuse ties instead of guessing.
