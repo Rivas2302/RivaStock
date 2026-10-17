@@ -331,6 +331,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(document.querySelector('[role="dialog"] [contenteditable="true"]'))throw new Error('Hay un borrador abierto en el grupo. No se sobrescribió.');
     const before = [...new Set(photoIds())];
     await wait(() => {
+      if(Array.from(document.querySelectorAll('h2,h3,[role="heading"]')).some(h=>visible(h)&&/este grupo está en pausa/i.test(text(h))))throw new Error('Este grupo está en pausa. No se puede publicar hasta que un administrador lo reactive.');
       if(buttons('Vender algo').length===1&&buttons('Escribe algo...').length!==1)issue('group_sale_required','Este grupo utiliza un formulario de venta. Revisá y aprobá ese formato desde RivaStock.');
       const denial=Array.from(document.querySelectorAll('[role="alert"]')).filter(visible).some(node=>/no (puedes|tenés permiso para|tienes permiso para) publicar/i.test(text(node)));
       if(denial)throw new Error('Facebook indicó que esta cuenta no tiene permiso para publicar en el grupo.');
@@ -488,11 +489,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
     if(!group)return {waiting:true};
+    // Dismiss "Publicación realizada" cross-post suggestions dialog: it blocks the feed
+    // during polling and prevents URL capture from notices or the feed.
+    const crossPostHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/publicación realizada/i.test(text(h)));
+    if(crossPostHeading){const dialog=crossPostHeading.closest('[role="dialog"]');const closeBtn=dialog&&[...dialog.querySelectorAll('button,[role="button"]')].find(b=>/cerrar/i.test(accessibleName(b)));if(closeBtn)closeBtn.click();return {waiting:true};}
     const currentPost=groupPostUrl(location.href);
     const configSeg=group.split('/')[2];
     const onConfiguredPage=location.pathname.replace(/\/$/,'')===group;
     const sameGroup=url=>onConfiguredPage||new URL(url).pathname.split('/')[2]===location.pathname.split('/')[2];
-    if(location.pathname.replace(/\/$/,'')!==group&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
+    // Accept any /groups/ URL: Facebook may redirect name-form → numeric-form after posting.
+    const onAnyGroupPage=/^\/groups\/[A-Za-z0-9._-]+(\/permalink\/\d+)?\/?$/.test(location.pathname);
+    if(!onConfiguredPage&&!onAnyGroupPage&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
     let receipt=null;
