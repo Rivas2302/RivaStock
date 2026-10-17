@@ -7,7 +7,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  vi.stubGlobal('chrome',{
   storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
-  runtime:{id:'own',getManifest:()=>({version:'0.5.1'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
+  runtime:{id:'own',getManifest:()=>({version:'0.5.4'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });
  vi.stubGlobal('fetch',async(_url:any,options:any)=>{
   const args=JSON.parse(options.body);operations.push(args);
@@ -89,4 +89,93 @@ it('omits candidateUrl in attention when server does not announce result-candida
  await f.worker.poll();
  const attn=f.operations.find((a:any)=>a.p_operation==='attention');
  expect(attn?.p_data?.candidateUrl).toBeUndefined();
+});
+it('classifies evidence and normalizes contract, transport and Chrome errors',async()=>{
+ const f=await fixture(()=>({connected:true}));
+ const {evidenceContract,errorCode,errorIsPermanent}=f.worker as any;
+ expect(evidenceContract({status:'submitted',url:'https://www.facebook.com/marketplace/item/1/'})).toBe('result');
+ expect(evidenceContract({status:'pending_approval',url:null})).toBe('result');
+ expect(evidenceContract({status:'submitted',url:null})).toBe('receipt');
+ expect(evidenceContract({})).toBe('none');
+ // PostgreSQL reports every RAISE EXCEPTION as P0001; the domain code is the message.
+ expect(errorCode({code:'P0001',message:'RESULT_EVIDENCE_INVALID'})).toBe('RESULT_EVIDENCE_INVALID');
+ expect(errorCode({code:'P0001',message:'ATTEMPT_STALE'})).toBe('ATTEMPT_STALE');
+ expect(errorCode({code:'PGRST202',message:'Could not find the function'})).toBe('PROTOCOL_UNSUPPORTED');
+ expect(errorCode({message:'Frame with ID 0 was removed.'})).toBe('TAB_LOST');
+ expect(errorCode({message:'Bad request',status:400})).toBe('CONTRACT_REJECTED');
+ expect(errorCode({message:'Too many requests',status:429})).toBe('NETWORK_TEMPORARY');
+ expect(errorCode({message:'Gateway',status:503})).toBe('NETWORK_TEMPORARY');
+ expect(errorCode({message:'Failed to fetch'})).toBe('NETWORK_TEMPORARY');
+ expect(errorIsPermanent({code:'P0001',message:'RESULT_EVIDENCE_INVALID'})).toBe(true);
+ expect(errorIsPermanent({message:'Failed to fetch'})).toBe(false);
+});
+it('parks a receipt without URL instead of sending a result the server rejects',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates','evidence-receipts']};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='checkpoint')return {authorized:true,phase:'authorized_now'};
+  if(a.p_operation==='result')throw Object.assign(new Error('RESULT_EVIDENCE_INVALID'),{code:'P0001'});
+  return {saved:true};
+ });job=f.job;
+ f.reconcile.mockResolvedValueOnce({status:'submitted',url:null,message:'Facebook confirmó la recepción del envío.'} as any);
+ await f.worker.poll();
+ expect(f.operations.some((a:any)=>a.p_operation==='result')).toBe(false);
+ const attn=f.operations.find((a:any)=>a.p_operation==='attention');
+ expect(attn?.p_data?.receipt).toEqual({status:'submitted',message:'Facebook confirmó la recepción del envío.'});
+ expect(f.memory.activeJob).toBeUndefined();
+ expect(f.memory.lastErrorCode).toBe('RESULT_RECEIPT_ONLY');
+ job=null;await f.worker.poll();
+ expect(f.operations.filter((a:any)=>a.p_operation==='claim').length).toBe(2);
+});
+it('omits the receipt when the server does not announce evidence-receipts',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates']};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='checkpoint')return {authorized:true,phase:'authorized_now'};
+  return {saved:true};
+ });job=f.job;
+ f.reconcile.mockResolvedValueOnce({status:'submitted',url:null,message:'Recibo'} as any);
+ await f.worker.poll();
+ const attn=f.operations.find((a:any)=>a.p_operation==='attention');
+ expect(attn?.p_data?.receipt).toBeUndefined();
+ expect(attn?.p_data?.message).toBeTruthy();
+ expect(f.memory.activeJob).toBeUndefined();
+});
+it('releases the queue when the server permanently rejects a captured result',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates','evidence-receipts']};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='result')throw Object.assign(new Error('RESULT_EVIDENCE_INVALID'),{code:'P0001'});
+  return {saved:true};
+ });job=f.job;
+ const url='https://www.facebook.com/groups/999/posts/5/';
+ f.memory.activeJob={job:f.job,attemptId:'attempt',protocol:2,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:{status:'published',url,message:'Capturado'}};
+ await f.worker.poll();
+ const attn=f.operations.find((a:any)=>a.p_operation==='attention');
+ expect(attn?.p_data?.rejectedEvidence).toBe(url);
+ expect(attn?.p_data?.receipt).toEqual({status:'published',message:'Capturado'});
+ expect(f.memory.lastErrorCode).toBe('RESULT_EVIDENCE_INVALID');
+ expect(f.memory.activeJob).toBeUndefined();
+ job=null;await f.worker.poll();
+ expect(f.operations.some((a:any)=>a.p_operation==='claim')).toBe(true);
+});
+it('retries a transport failure with the same payload and parks it once the budget runs out',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['evidence-receipts']};
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='result')throw new Error('Failed to fetch');
+  return {saved:true};
+ });job=f.job;
+ const captured={status:'submitted',url:'https://www.facebook.com/marketplace/item/7/',message:'Capturado'};
+ f.memory.activeJob={job:f.job,attemptId:'attempt',protocol:2,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:captured};
+ await f.worker.poll();
+ expect(f.memory.activeJob.stage).toBe('result');
+ expect(f.memory.activeJob.resultAttempts).toBe(1);
+ expect(f.memory.lastErrorCode).toBe('NETWORK_TEMPORARY');
+ expect(f.operations.some((a:any)=>a.p_operation==='attention')).toBe(false);
+ f.memory.activeJob={...f.memory.activeJob,resultAttempts:19};
+ await f.worker.poll();
+ expect(f.operations.filter((a:any)=>a.p_operation==='result').map((a:any)=>a.p_data)).toEqual([captured,captured]);
+ expect(f.memory.activeJob).toBeUndefined();
+ expect(f.operations.some((a:any)=>a.p_operation==='attention')).toBe(true);
 });

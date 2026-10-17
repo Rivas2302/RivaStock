@@ -93,12 +93,12 @@ test('installed extension processes two approved destinations with real file inp
     });
     const extensionId=new URL(worker.url()).hostname;
     const control=await context.newPage(); await control.goto(`chrome-extension://${extensionId}/connect.html`);
-    await expect(control.getByText('Versión 0.5.3',{exact:true})).toBeVisible();
+    await expect(control.getByText('Versión '+JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8')).version,{exact:true})).toBeVisible();
     const diagnosticForm=await context.newPage();await diagnosticForm.goto('https://www.facebook.com/marketplace/create/item');
     await control.getByText('Diagnóstico avanzado',{exact:true}).click();
     await control.getByRole('button',{name:'Revisar formulario de Facebook',exact:true}).click();
     await expect(control.locator('pre')).toContainText('"descriptionCount": 1');
-    await expect(control.locator('pre')).toContainText('"version": "0.5.3"');
+    await expect(control.locator('pre')).toContainText('"version": "'+JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8')).version+'"');
     await diagnosticForm.close();
     // The popup reads the existing connection; no pairing request or public
     // credential is transmitted to Facebook in this isolated test.
@@ -171,7 +171,8 @@ test('website links the installed extension without copying credentials and acti
     const id=new URL(worker.url()).hostname;
     const web=await context.newPage();await web.goto('https://rivastock.vercel.app/automatizaciones?view=configuration');
     const installed=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-installed'},resolve)),id);
-    expect(installed).toMatchObject({installed:true,version:'0.5.3',groupsWake:true});
+    // The release gate that pins an exact version lives in facebookPackage.test.ts.
+    expect(installed).toMatchObject({installed:true,version:JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8')).version,groupsWake:true});
     const controlEvent=context.waitForEvent('page');
     const response=await web.evaluate(id=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connect',url:'https://test.supabase.co',key:'sb_publishable_test',code:'a'.repeat(64)},resolve)),id);
     expect(response).toEqual({pending:true});

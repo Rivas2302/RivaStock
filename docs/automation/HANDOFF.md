@@ -18,7 +18,7 @@ git status --short --branch
 git log --oneline -8
 ```
 
-- Si hay commits posteriores a `10bd4c3` que tocan `extensions/facebook/`, `supabase/migrations/006*`, `src/lib/facebook*` o `src/components/automations/`, leé su diff y comprobá que los símbolos de tu tarea siguen existiendo y con el comportamiento descrito.
+- Si hay commits posteriores a `150a8c1` que tocan `extensions/facebook/`, `supabase/migrations/006*`, `src/lib/facebook*` o `src/components/automations/`, leé su diff y comprobá que los símbolos de tu tarea siguen existiendo y con el comportamiento descrito.
 - Si existe `supabase/migrations/0064_*` creado por otra persona, **no** lo sobrescribas: renumerá A04 a la siguiente libre y actualizá todas las referencias en `TASKS.md` y `PLAN.md`.
 - Conservá cambios ajenos sin commitear (por ejemplo `.atl/*`). No los incluyas en tus commits.
 

@@ -19,11 +19,11 @@ export function groupCompatibility(group:FacebookGroup):string|null {
 export function validateGroupSelection(groups:FacebookGroup[],selected:string[]):string|null {
   if(selected.length>20)return 'Podés elegir hasta 20 grupos.';
   const urls=new Set<string>();
-  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;const url=normalizeGroupUrl(group.url).replace(/\/PicoVendedeTodo$/,'/710102875717376');if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
+  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;const url=normalizeGroupUrl(group.url);if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
   return null;
 }
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
-export interface FacebookAttempt {id:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string}}[]}
+export interface FacebookAttempt {id:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string;status?:string;message?:string}}[]}
 export const facebookDeliveryFields='*,facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,events:facebook_delivery_attempt_events(type,created_at,data))';
 export async function refreshFacebookDeliveryStates(){
  const {error}=await supabase.rpc('refresh_facebook_delivery_states');
@@ -57,7 +57,7 @@ export function deliveryLabel(delivery:FacebookDelivery) {
   return state==='failed'?'Preparación fallida':state==='unknown'?'Resultado desconocido':publicationStatus[state]??state;
 }
 export function publicationBlock(publications:FacebookPublication[],marketplace:boolean,groups:string[],knownGroups:FacebookGroup[]=[]) {
-  const key=(url:string)=>url.replace(/\/$/,'').replace(/\/PicoVendedeTodo$/,'/710102875717376');
+  const key=(url:string)=>url.replace(/\/$/,'');
   const urls=new Set(knownGroups.filter(group=>groups.includes(group.id)).map(group=>key(group.url)));
   const selected=(d:FacebookDelivery)=>d.destination.mechanism==='marketplace'?marketplace:urls.has(key(d.destination.url??''))||(d.destination_key?groups.includes(d.destination_key):groups.length>0);
   // Older responses without destination keys treat group jobs conservatively.
@@ -66,22 +66,38 @@ export function publicationBlock(publications:FacebookPublication[],marketplace:
   if(jobs.some(d=>deliveryState(d)==='unknown'))return 'Hay un resultado desconocido. Revisá Facebook y registrá la revisión en el historial antes de crear otro envío.';
   return null;
 }
+function lastAuthorizedEvent(delivery:FacebookDelivery,type:string) {
+  const attempt=[...(delivery.facebook_delivery_attempts??[])].filter(a=>a.authorized_at).sort((a,b)=>b.started_at.localeCompare(a.started_at))[0];
+  return [...(attempt?.events??[])].filter(e=>e.type===type).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
+}
 export function deliveryCandidate(delivery:FacebookDelivery): string|null {
   if(deliveryState(delivery)!=='unknown'||delivery.recovery_required)return null;
-  const attempt=[...(delivery.facebook_delivery_attempts??[])].filter(a=>a.authorized_at).sort((a,b)=>b.started_at.localeCompare(a.started_at))[0];
-  if(!attempt)return null;
-  const event=[...(attempt.events??[])].filter(e=>e.type==='candidate').sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
-  if(!event?.data.url)return null;
-  return safeFacebookEvidence({...delivery,evidence_url:event.data.url});
+  return safeFacebookPostUrl(lastAuthorizedEvent(delivery,'candidate')?.data.url??null);
 }
-export function safeFacebookEvidence(delivery:FacebookDelivery) {
-  const url=delivery.evidence_url;
+// Facebook acknowledged the submission without a permalink. This is a receipt to
+// review, never a published state: it carries no verifiable link.
+export function deliveryReceipt(delivery:FacebookDelivery): {status:string;message?:string}|null {
+  if(deliveryState(delivery)!=='unknown')return null;
+  const data=lastAuthorizedEvent(delivery,'receipt')?.data;
+  return data?.status?{status:data.status,...(data.message?{message:data.message}:{})}:null;
+}
+// A capture the server refused for this destination. It is shown for manual
+// verification and never offered as a one-click confirmation: the same
+// validator that rejected it also guards the review.
+export function deliveryRejectedEvidence(delivery:FacebookDelivery): string|null {
+  if(deliveryState(delivery)!=='unknown')return null;
+  return safeFacebookPostUrl(lastAuthorizedEvent(delivery,'evidence_rejected')?.data.url??null);
+}
+export function safeFacebookPostUrl(url:string|null|undefined) {
   if(!url)return null;
   try {
     const parsed=new URL(url);
     if(parsed.origin!=='https://www.facebook.com'||parsed.username||parsed.password||parsed.search||parsed.hash)return null;
     return /^\/(marketplace\/item\/\d+|groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+)\/?$/.test(parsed.pathname)?url:null;
   }catch{return null;}
+}
+export function safeFacebookEvidence(delivery:FacebookDelivery) {
+  return safeFacebookPostUrl(delivery.evidence_url);
 }
 export function productPhotos(product: Product): string[] {
   return [...new Set([...(product.images ?? []), product.imageUrl].filter((url): url is string => Boolean(url)))];

@@ -52,7 +52,8 @@ it('deliveryCandidate returns null when recovery_required',()=>{
 });
 it('rejects duplicate group identities, missing destinations and excessive selections',()=>{
  const groups=[{id:'a',name:'Same',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group_direct' as const},{id:'b',name:'Different label',url:'https://www.facebook.com/groups/710102875717376',mechanism:'group_direct' as const},{id:'c',name:'Same',url:'https://www.facebook.com/groups/123',mechanism:'group_direct' as const}];
- expect(validateGroupSelection(groups,['a','b'])).toContain('más de una vez');
+ expect(validateGroupSelection(groups,['a','b'])).toBeNull(); // different URL forms: alias dedup is server-side via facebook_group_key
+ expect(validateGroupSelection(groups,['a','a'])).toContain('más de una vez'); // same group selected twice
  expect(validateGroupSelection(groups,['a','c'])).toBeNull();
  expect(validateGroupSelection(groups,['missing'])).toContain('ya no está disponible');
  expect(validateGroupSelection(groups,Array(21).fill('a'))).toContain('20');

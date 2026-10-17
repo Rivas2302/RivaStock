@@ -327,8 +327,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   if (action === 'group_prepare') {
     const target=content.targetGroupUrl?new URL(content.targetGroupUrl).pathname.replace(/\/$/,''):location.pathname.replace(/\/$/,'');
     const actual=location.pathname.replace(/\/$/,'');
-    const canonical=path=>path.replace('/PicoVendedeTodo','/710102875717376');
-    if(!/^\/groups\/[A-Za-z0-9._-]+$/.test(actual)||canonical(target)!==canonical(actual))throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
+    if(!/^\/groups\/[A-Za-z0-9._-]+$/.test(actual))throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
     if(document.querySelector('[role="dialog"] [contenteditable="true"]'))throw new Error('Hay un borrador abierto en el grupo. No se sobrescribió.');
     const before = [...new Set(photoIds())];
     await wait(() => {
@@ -472,7 +471,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const groupPostUrl=href=>{try{const url=new URL(href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?url.origin+url.pathname:null;}catch{return null;}};
     if (content.selection?.marketplace && location.pathname.startsWith('/marketplace')) {
       if(location.hostname!=='www.facebook.com')return {waiting:true};
-      if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname))return {status:'submitted',url:location.origin+location.pathname,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
+      const currentItemUrl=location.origin+location.pathname;
+      if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname)&&!baseline.includes(currentItemUrl))return {status:'submitted',url:currentItemUrl,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
       if(buttons('Cerrar cuadro de diálogo de promoción de publicación').length===1){button('Cerrar cuadro de diálogo de promoción de publicación').click();return {waiting:true};}
       const causalPhrase=/Tu publicación (se publicó|se creó|está en revisión)/i;
       for(const notice of Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible)){
@@ -489,7 +489,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
     if(!group)return {waiting:true};
     const currentPost=groupPostUrl(location.href);
-    const sameGroup=url=>new URL(url).pathname.split('/').slice(0,3).join('/').replace('/PicoVendedeTodo','/710102875717376')===group.replace('/PicoVendedeTodo','/710102875717376');
+    const configSeg=group.split('/')[2];
+    const onConfiguredPage=location.pathname.replace(/\/$/,'')===group;
+    const sameGroup=url=>onConfiguredPage||new URL(url).pathname.split('/')[2]===location.pathname.split('/')[2];
     if(location.pathname.replace(/\/$/,'')!==group&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
@@ -539,7 +541,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
         const postPhotos=new Set(Array.from(postScope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{try{const url=new URL(link.href);return url.searchParams.get('set')?.endsWith('.'+postId)?[url.searchParams.get('fbid')??url.origin+url.pathname]:[];}catch{return [];}})).size;
         if(postPhotos!==Number(expectedPhotos))continue;
       }
-      return {status:currentPost?'submitted':'published',url,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
+      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;const normalizedUrl=u.origin+segs.join('/');
+      return {status:currentPost?'submitted':'published',url:normalizedUrl,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
     }
     // Explicit new acknowledgement establishes receipt, even without a permalink.
     if(!composerOpen()&&newNotices.some(node=>/^Tu publicación (se publicó|se creó)([.!\s]|$)/i.test(text(node))&&!node.querySelector('a[href]')))return {status:'submitted',url:null,message:'Facebook confirmó la recepción del envío. Visibilidad pública sin verificar.'};
@@ -549,13 +552,16 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const gPostUrl=href=>{try{const u=new URL(href);return u.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(u.pathname)?u.origin+u.pathname:null;}catch{return null;}};
     const authorId=baseline.find(v=>v.startsWith('author:'))?.slice(7);
     const group=baseline.find(v=>v.startsWith('group:'))?.slice(6);
-    if(!authorId||!group||location.pathname.replace(/\/$/,'')!==group)return {notFound:true};
+    const currentGroupPath=location.pathname.replace(/\/$/,'');
+    if(!authorId||!group||!/^\/groups\/[A-Za-z0-9._-]+$/.test(currentGroupPath))return {notFound:true};
+    const configSeg=group.split('/')[2];
+    const onConfiguredPage=currentGroupPath===group;
     const firstLine=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
     const candidates=new Set();
     for(const section of Array.from(document.querySelectorAll('article,section,[role="article"]')).filter(visible)){
       const authorLink=Array.from(section.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
       if(!authorLink)continue;
-      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>u&&new URL(u).pathname.startsWith(group+'/')&&!baseline.includes(u)))];
+      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>{if(!u||baseline.includes(u))return false;return onConfiguredPage||new URL(u).pathname.split('/')[2]===currentGroupPath.split('/')[2];}))];
       if(sectionUrls.length!==1)continue;
       if(firstLine&&!text(section).includes(firstLine))continue;
       candidates.add(sectionUrls[0]);

@@ -3,7 +3,7 @@ import {useState} from 'react';
 import {Link} from 'react-router-dom';
 import {ExternalLink,AlertTriangle,CheckCircle2,Clock3} from 'lucide-react';
 import {usePermission} from '../../hooks/usePermission';
-import {deliveryLabel,deliveryState,deliveryCandidate,facebookRpc,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
+import {deliveryLabel,deliveryState,deliveryCandidate,deliveryReceipt,deliveryRejectedEvidence,facebookRpc,publicationStatus,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
 
 function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:()=>Promise<void>}) {
@@ -15,7 +15,7 @@ function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:
   const attempts=[...(delivery.facebook_delivery_attempts??[])].sort((a,b)=>b.started_at.localeCompare(a.started_at));
   const current=attempts.find(a=>{const events=a.events??[];const lastReview=events.filter(e=>e.type==='review').map(e=>e.created_at).sort().slice(-1)[0]??'';return events.some(e=>e.type==='contradiction'&&e.created_at>lastReview);})??attempts[0];
   const late=current?.events?.filter(e=>e.type==='contradiction'||delivery.recovery_required&&e.type==='result')??[];
-  const candidate=deliveryCandidate(delivery);
+  const candidate=deliveryCandidate(delivery);const receipt=deliveryReceipt(delivery);const rejected=deliveryRejectedEvidence(delivery);
   async function action(name:string,args:Record<string,unknown>) {
     if(busy)return;setBusy(true);setError('');
     try{await facebookRpc(name,name==='review_facebook_attempt'?{p_attempt:current?.id,...args}:{p_delivery:delivery.id,...args});await onRefresh();setReview(false);setChecked(false);}
@@ -35,6 +35,8 @@ function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:
     {state==='submitted'&&delivery.resolution?.action!=='existing'&&<p>Facebook recibió el envío o se informó un anuncio existente. La aprobación pública no está verificada.</p>}
     {state==='pending_approval'&&<p>Facebook recibió la publicación y todavía está revisándola.</p>}
     {state==='unknown'&&<p>No se pudo comprobar el resultado después de autorizar el envío. Otro envío está bloqueado hasta revisar Facebook.</p>}
+    {receipt&&<p className="rounded-lg border border-slate-300 p-3 dark:border-slate-600">Facebook acusó recibo del envío ({publicationStatus[receipt.status]??receipt.status}) pero no mostró un enlace. La publicación no está verificada: revisá el destino y registrá tu revisión.{receipt.message&&<span className="block break-words text-slate-600 dark:text-slate-300">{receipt.message}</span>}</p>}
+    {rejected&&<div className="space-y-2 rounded-lg border border-amber-300 p-3"><p>Se capturó un enlace que no corresponde al destino aprobado, así que no se guardó como evidencia. Verificalo a mano antes de decidir.</p><a className={`${button} inline-flex items-center gap-2`} href={rejected} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/>Ver el enlace capturado</a></div>}
     {candidate&&canWrite&&<div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-800 dark:bg-indigo-950/40"><p>Facebook no confirmó el envío, pero se encontró una publicación que parece ser esta.</p><div className="flex flex-wrap gap-2"><a className={`${button} inline-flex items-center gap-2`} href={candidate} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/>Ver posible publicación</a><button className={button} disabled={busy} onClick={()=>void action('review_facebook_attempt',{p_decision:'found',p_url:candidate})}>Es esta publicación</button></div></div>}
     {state==='failed'&&!decision&&<p>La preparación se detuvo antes de autorizar Publicar. Corregí la causa y reintentá este mismo trabajo.</p>}
     <div className="flex flex-wrap gap-2">{evidence&&<a className={`${button} inline-flex items-center gap-2`} href={evidence} target="_blank" rel="noopener noreferrer"><ExternalLink size={15}/>Ver publicación</a>}

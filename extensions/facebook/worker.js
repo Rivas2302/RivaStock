@@ -7,17 +7,37 @@ let polling = false;
 let pendingSignal=null;
 let readingGroups = false;
 
-const capabilities=['attempts','causal-results','recovery','result-candidates'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.3';}}
+const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts'];
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.4';}}
+// Contract rejections cannot be resolved by sending the same payload again.
+// PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
+// domain code in the message, so the code never arrives in error.code.
+const PERMANENT_CODES=new Set(['RESULT_EVIDENCE_INVALID','RESULT_INVALID','RESULT_UNKNOWN','DIAGNOSTIC_INVALID',
+ 'PROTOCOL_UNSUPPORTED','CLAIM_KEY_REQUIRED','QUEUE_STATE_INVALID','QUEUE_PAUSED','DEVICE_REVOKED',
+ 'DEVICE_PERMISSION_REVOKED','TOKEN_EXPIRED','ATTEMPT_STALE','ATTEMPT_RECOVERY_REQUIRED','RECOVERY_REQUIRED',
+ 'CONTRACT_REJECTED','TAB_LOST']);
 export function errorCode(error){
-  if(error.code&&/^[A-Z_]+$/.test(error.code))return error.code;
+  if(error.code&&/^[A-Z][A-Z_]+$/.test(error.code))return error.code;
+  if(['PGRST202','42883'].includes(error.code))return 'PROTOCOL_UNSUPPORTED';
   const value=error.message??'';
-  const known=value.match(/^(RESULT_UNKNOWN|PROTOCOL_UNSUPPORTED|QUEUE_PAUSED|ATTEMPT_STALE|RECOVERY_REQUIRED|DIAGNOSTIC_INVALID)\b/)?.[1];if(known)return known;
+  const known=value.match(/^([A-Z][A-Z_]{3,})\b/)?.[1];if(known&&PERMANENT_CODES.has(known))return known;
   if(/DEVICE_REVOKED|revocad/i.test(value))return 'DEVICE_REVOKED';
   if(/TOKEN_EXPIRED|vencida/i.test(value))return 'TOKEN_EXPIRED';
   if(/ATTEMPT_|RECOVERY_REQUIRED/.test(value))return 'ATTEMPT_STALE';
   if(/PROTOCOL_|PGRST202/.test(value))return 'PROTOCOL_UNSUPPORTED';
+  // Chrome destroys the target frame when its tab navigates or closes mid-script.
+  if(/Frame with ID|No frame with id|No tab with id|tab was closed|Cannot access contents|Could not establish connection/i.test(value))return 'TAB_LOST';
+  if([408,429].includes(error.status)||error.status>=500)return 'NETWORK_TEMPORARY';
+  if(error.status>=400)return 'CONTRACT_REJECTED';
   return 'NETWORK_TEMPORARY';
+}
+export function errorIsPermanent(error){return PERMANENT_CODES.has(errorCode(error));}
+// Facebook can acknowledge a submission without exposing a permalink. The server
+// requires evidence for every status but pending_approval, so such a capture is a
+// receipt to review, never a saved result.
+export function evidenceContract(result){
+  if(!result?.status)return 'none';
+  return result.url||result.status==='pending_approval'?'result':'receipt';
 }
 export async function syncGroups(connection,background=false) {
   if(readingGroups)return {state:'reading'};
@@ -77,7 +97,7 @@ export async function rpc(config, name, args) {
   const data = await response.json();
   if (!response.ok) {
     if(name==='request_facebook_groups_from_device'&&['PGRST202','42883'].includes(data.code))throw new Error('Falta aplicar la migración 0054 para actualizar grupos desde la extensión.');
-    const error=new Error(data.message || 'No se pudo conectar con RivaStock.');error.code=data.code;throw error;
+    const error=new Error(data.message || 'No se pudo conectar con RivaStock.');error.code=data.code;error.status=response.status;throw error;
   }
   return data;
 }
@@ -114,6 +134,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       paused=!heartbeat.queue_enabled;await chrome.storage.local.set({paused,queueCommandAt:heartbeat.queue_command_at,status:paused?'Cola pausada desde RivaStock.':'Cola activa desde RivaStock.'});
       await workerRpc(connection,'heartbeat',{protocol,status:paused?'paused':'active'});
     }
+    if(protocol>=2)try{await rpc(connection,'facebook_watchdog',{p_token:connection.token});}catch{}
     heartbeatTimer=setInterval(()=>{
       void (async()=>{
         const current=await chrome.storage.local.get(['activeJob','connection']);
@@ -127,20 +148,20 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(activeJob){
       if(activeJob.deviceId!==connection.deviceId||activeJob.projectUrl!==connection.url){await chrome.storage.local.set({paused:true,status:'Hay un envío de otra conexión pendiente de revisar. No se ejecutó con esta cuenta.'});return;}
       // Captured evidence must be persisted before asking whether the attempt was retired.
-      if(activeJob.stage==='result'){await saveResult(connection,activeJob);drain=true;return;}
+      if(activeJob.stage==='result'){await persistResult(connection,activeJob,serverFeatures);drain=true;return;}
       try{
         if(activeJob.attemptId){
           const recovery=await workerRpc(connection,'recover',{protocol:2,delivery:activeJob.job.id,attempt:activeJob.attemptId});
           if(recovery?.action==='retire'){await chrome.storage.local.remove('activeJob');await chrome.storage.local.set({status:'Intento anterior registrado para revisión; la cola puede continuar.'});drain=true;return;}
           if(recovery?.action!=='reconcile_only')throw new Error('ATTEMPT_STALE');
         }else if(activeJob.stage!=='submitting'&&activeJob.stage!=='authorizing'){
-          await markAttention(connection,activeJob,'Preparación interrumpida. No se repitió el envío.');drain=true;return;
+          await markAttention(connection,activeJob,'Preparación interrumpida. No se repitió el envío.',{serverFeatures});drain=true;return;
         }
         const result=await facebookAdapter.reconcile(activeJob);
-        const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await saveResult(connection,completed);drain=true;
+        const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
       }catch(error){
         if((await chrome.storage.local.get('activeJob')).activeJob?.stage==='result')throw error;
-        await markAttention(connection,activeJob,error.message,error.issue,error.code,error.candidateUrl,serverFeatures);drain=true;
+        await markAttention(connection,activeJob,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,serverFeatures});drain=true;
       }
       return;
     }
@@ -176,11 +197,11 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'},status:'Enviando a Facebook; resultado todavía sin confirmar…'});
       await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);
       const result=await facebookAdapter.reconcile(active);
-      const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await saveResult(connection,completed);drain=true;
+      const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
     }catch(error){
       const journal=(await chrome.storage.local.get('activeJob')).activeJob;
       if(journal?.stage==='result')throw error;
-      await markAttention(connection,journal??active,error.message,error.issue,error.code,error.candidateUrl,serverFeatures);drain=true;
+      await markAttention(connection,journal??active,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,serverFeatures});drain=true;
     }
   }catch(error){
     const code=errorCode(error);await chrome.storage.local.set({lastErrorCode:code,status:code==='NETWORK_TEMPORARY'?'Sin conexión momentánea. Se reintentará automáticamente.':code==='DEVICE_REVOKED'||code==='TOKEN_EXPIRED'?'La vinculación venció o fue revocada. Revisá la conexión antes de continuar.':'La ejecución requiere revisión: '+code});
@@ -189,13 +210,43 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(next||(drain&&chain))setTimeout(()=>{if(globalThis.chrome===lifetime)void poll(next??{source:'drain',received:performance.now(),receivedAt:new Date().toISOString()},true);},0);
   }
 }
-async function markAttention(connection,active,message,issue,code,candidateUrl,serverFeatures){
-  const useCandidate=candidateUrl&&(active.protocol??1)>=2&&['submitting','authorizing'].includes(active.stage)&&(serverFeatures??[]).includes('result-candidates');
-  const attentionData=issue?{issue,message}:useCandidate?{message,candidateUrl}:undefined;
-  await workerRpc(connection,issue?'issue':'attention',{protocol:active.protocol??1,delivery:active.job.id,attempt:active.attemptId,message:issue&&(active.protocol??1)<2?JSON.stringify(issue):message,data:attentionData});
+async function markAttention(connection,active,message,options={}){
+  const {issue,code,candidateUrl,receipt,rejectedEvidence,serverFeatures}=options;
+  const protocol=active.protocol??1;const features=serverFeatures??[];
+  const authorized=['submitting','authorizing','result'].includes(active.stage);
+  const useCandidate=Boolean(candidateUrl)&&protocol>=2&&authorized&&features.includes('result-candidates');
+  // Extra keys reach an older server as a contract violation, so each one is
+  // sent only after its feature was announced in the heartbeat.
+  const useReceipts=protocol>=2&&authorized&&features.includes('evidence-receipts');
+  const attentionData=issue?{issue,message}:{message,
+    ...(useCandidate?{candidateUrl}:{}),
+    ...(useReceipts&&receipt?.status?{receipt:{status:receipt.status,...(receipt.message?{message:receipt.message}:{})}}:{}),
+    ...(useReceipts&&rejectedEvidence?{rejectedEvidence}:{})};
+  await workerRpc(connection,issue?'issue':'attention',{protocol,delivery:active.job.id,attempt:active.attemptId,message:issue&&protocol<2?JSON.stringify(issue):message,data:attentionData});
   const displayMsg=useCandidate?'Resultado desconocido: posible publicación encontrada. Confirmala en RivaStock.':message;
-  await chrome.storage.local.set({status:displayMsg,lastIssue:displayMsg,lastErrorCode:code??(['submitting','authorizing'].includes(active.stage)?'RESULT_UNKNOWN':'PREPARATION_INTERRUPTED')});
+  await chrome.storage.local.set({status:displayMsg,lastIssue:displayMsg,lastErrorCode:code??(authorized?'RESULT_UNKNOWN':'PREPARATION_INTERRUPTED')});
   await chrome.storage.local.remove('activeJob');
+}
+// A journal must never outlive its ability to be persisted. Transport failures
+// are retried with the same payload; a contract rejection or an exhausted budget
+// parks the capture for human review and releases the queue.
+const RESULT_RETRY_LIMIT=20;
+async function persistResult(connection,active,serverFeatures){
+  if(evidenceContract(active.result)==='receipt'){
+    await markAttention(connection,active,'Facebook confirmó la recepción sin publicar un enlace. Confirmá el resultado en RivaStock.',
+      {code:'RESULT_RECEIPT_ONLY',receipt:{status:active.result.status,message:active.result.message},serverFeatures});
+    await closeCompletedTab(active);
+    return;
+  }
+  try{await saveResult(connection,active);}
+  catch(error){
+    const code=errorCode(error);const attempts=(active.resultAttempts??0)+1;
+    await chrome.storage.local.set({activeJob:{...active,resultAttempts:attempts},lastErrorCode:code});
+    if(!errorIsPermanent(error)&&attempts<RESULT_RETRY_LIMIT)throw error;
+    await markAttention(connection,active,`Se capturó un resultado que el servidor no aceptó (${code}). Revisalo en RivaStock antes de otro envío.`,
+      {code,receipt:{status:active.result?.status,message:active.result?.message},rejectedEvidence:active.result?.url??null,serverFeatures});
+    await closeCompletedTab(active);
+  }
 }
 let maintaining=false;
 async function maintainGroups(connection){
@@ -241,13 +292,15 @@ async function saveResult(connection, active) {
 export async function disconnectLocal(archiveUnresolved=false){
  await chrome.storage.local.set({paused:true});
  if(polling)throw new Error('El envío en curso está terminando. La cola quedó pausada; esperá su resultado antes de desconectar.');
- const state=await chrome.storage.local.get(['connection','activeJob','recoveryArchive']);
+ const state=await chrome.storage.local.get(['connection','activeJob','recoveryArchive','serverFeatures']);
  const {connection}=state;let active=state.activeJob;
  if(connection){try{await workerRpc(connection,'queue_state',{data:{status:'paused'}});}catch{/* Local pause remains effective; remote revocation is a separate action. */}}
  if(active){
   if(connection&&active.deviceId===connection.deviceId&&active.projectUrl===connection.url){
    try{
-    if(active.stage==='result'){await saveResult(connection,active);active=null;}
+    // A receipt or a rejected capture is parked for review here too, so an
+    // unsavable result never prevents disconnecting.
+    if(active.stage==='result'){await persistResult(connection,active,state.serverFeatures);active=(await chrome.storage.local.get('activeJob')).activeJob??null;}
     else if(active.attemptId){const result=await workerRpc(connection,'recover',{protocol:2,attempt:active.attemptId,delivery:active.job.id});if(result.action==='retire'){await chrome.storage.local.remove('activeJob');active=null;}}
    }catch{/* The explicit archive path below preserves the unresolved reference. */}
   }

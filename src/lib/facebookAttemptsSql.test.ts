@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -126,7 +126,7 @@ it('does not authorize a listing decision based on words in an error message',as
 
 it('heartbeat returns features array with result-candidates',async()=>{
  const hb=await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
- expect(hb.features).toEqual(['result-candidates']);
+ expect(hb.features).toEqual(['result-candidates','evidence-receipts']);
 });
 
 it('claim with 0.5.0 capabilities raises PROTOCOL_UNSUPPORTED',async()=>{
@@ -186,4 +186,54 @@ it('unknown key in attention data raises DIAGNOSTIC_INVALID',async()=>{
  await worker('heartbeat',null,{version:'0.5.1',capabilities:['attempts','causal-results','recovery','result-candidates']});
  await approve();const a=await claim();
  await expect(worker('attention',a.attemptId,{message:'X',unknownKey:'Y'})).rejects.toThrow('DIAGNOSTIC_INVALID');
+});
+it('still refuses a result without evidence, so the extension must not send one', async () => {
+ await approve();const job=await claim();await worker('checkpoint',job.attemptId);
+ await expect(worker('result',job.attemptId,{status:'submitted',url:null,message:'Recibo'})).rejects.toThrow('RESULT_EVIDENCE_INVALID');
+});
+it('stores an acknowledgement receipt on attention without publishing the delivery', async () => {
+ await approve();const job=await claim();await worker('checkpoint',job.attemptId);
+ const saved=await worker('attention',job.attemptId,{message:'Recibo sin enlace',receipt:{status:'submitted',message:'Facebook confirmó la recepción'}});
+ expect(saved.retired).toBe(true);
+ const events=await inspect("SELECT type,data FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='receipt'",[job.attemptId]);
+ expect(events.rows).toHaveLength(1);
+ expect(events.rows[0].data).toEqual({status:'submitted',message:'Facebook confirmó la recepción'});
+ const delivery=await inspect('SELECT status,evidence_url,submitted_at FROM facebook_deliveries WHERE id=$1',[job.id]);
+ expect(delivery.rows[0].status).toBe('attention');
+ expect(delivery.rows[0].evidence_url).toBeNull();
+ expect(delivery.rows[0].submitted_at).not.toBeNull();
+});
+it('deduplicates a repeated receipt and ignores one from an unauthorized attempt', async () => {
+ const id=await group();await approve([id],true);
+ const first=await claim();await worker('checkpoint',first.attemptId);
+ const receipt={status:'submitted',message:'Mismo recibo'};
+ await worker('attention',first.attemptId,{message:'x',receipt});
+ await worker('attention',first.attemptId,{message:'x',receipt});
+ expect((await inspect("SELECT 1 FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='receipt'",[first.attemptId])).rows).toHaveLength(1);
+ // The second delivery is claimed but never authorized: no click, so no receipt.
+ const second=await claim();
+ const saved=await worker('attention',second.attemptId,{message:'Sin autorizar',receipt:{status:'submitted'}});
+ expect(saved.retired).toBe(true);
+ expect((await inspect("SELECT 1 FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='receipt'",[second.attemptId])).rows).toHaveLength(0);
+});
+it('keeps a rejected capture for review and never turns it into evidence', async () => {
+ const id=await group();await approve([id],false);const job=await claim();await worker('checkpoint',job.attemptId);
+ const foreign='https://www.facebook.com/groups/456/posts/987';
+ await worker('attention',job.attemptId,{message:'Rechazado',rejectedEvidence:foreign});
+ const events=await inspect("SELECT data FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='evidence_rejected'",[job.attemptId]);
+ expect(events.rows[0].data).toEqual({url:foreign});
+ const delivery=await inspect('SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1',[job.id]);
+ expect(delivery.rows[0].status).toBe('attention');
+ expect(delivery.rows[0].evidence_url).toBeNull();
+});
+it('drops malformed evidence without failing attention, so the journal can always retire', async () => {
+ await approve();const job=await claim();await worker('checkpoint',job.attemptId);
+ const saved=await worker('attention',job.attemptId,{message:'Malformado',receipt:{status:'inventado',extra:'x'},rejectedEvidence:'https://evil.test/post/1'});
+ expect(saved.retired).toBe(true);
+ expect((await inspect("SELECT 1 FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type IN ('receipt','evidence_rejected')",[job.attemptId])).rows).toHaveLength(0);
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[job.id])).rows[0].status).toBe('attention');
+});
+it('rejects an unknown key on attention', async () => {
+ await approve();const job=await claim();await worker('checkpoint',job.attemptId);
+ await expect(worker('attention',job.attemptId,{message:'x',inventado:'y'})).rejects.toThrow('DIAGNOSTIC_INVALID');
 });
