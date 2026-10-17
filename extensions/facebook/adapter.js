@@ -71,6 +71,7 @@ export const facebookAdapter = {
     }
     if(active.job.destination.mechanism==='group_direct'){
       const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);
+      if(found?.status)return found;
       const error=new Error('Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.');
       if(typeof found?.candidateUrl==='string')error.candidateUrl=found.candidateUrl;
       throw error;

@@ -573,7 +573,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if(firstLine&&!text(section).includes(firstLine))continue;
       candidates.add(sectionUrls[0]);
     }
-    return candidates.size===1?{candidateUrl:[...candidates][0]}:{notFound:true};
+    if(candidates.size===1){
+      const url=[...candidates][0];
+      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;const normalizedUrl=u.origin+segs.join('/');
+      return {status:'published',url:normalizedUrl,message:'Publicación encontrada en el feed del grupo con autor y texto verificados.'};
+    }
+    return {notFound:true};
   }
   throw new Error('Acción no autorizada.');
   } catch(error) { return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }
