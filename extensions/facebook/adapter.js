@@ -64,14 +64,19 @@ export const facebookAdapter = {
     return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline: result.baseline };
   },
   async reconcile(active) {
+    const isGroup=active.job.destination.mechanism==='group_direct';
+    let receipt=null;
     for (let attempt = 0; attempt < 20; attempt++) {
       const result = await this.action(active.tabId, 'result', active.job.content, [], active.baseline);
-      if (result.status) return result;
+      if(result.status&&result.url)return result;
+      if(result.status&&!isGroup)return result;
+      if(result.status)receipt=receipt??result;
       await new Promise(resolve => setTimeout(resolve, 750));
     }
-    if(active.job.destination.mechanism==='group_direct'){
+    if(isGroup){
       const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);
       if(found?.status)return found;
+      if(receipt)return receipt;
       const error=new Error('Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.');
       if(typeof found?.candidateUrl==='string')error.candidateUrl=found.candidateUrl;
       throw error;

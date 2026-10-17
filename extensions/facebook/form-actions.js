@@ -231,7 +231,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     progress('Cargando fotos');
     attach(input);
     await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente');
-    const previews=()=>Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/foto|vista previa|photo/i.test(img.alt));
+    const previews=()=>Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
     if(previews().length!==photos.length||previews().some(img=>!img.complete||img.naturalWidth===0))throw new Error(`Se esperaban ${photos.length} fotos cargadas; se observaron ${previews().length}. No se envió.`);
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
     progress('Verificando destinos antes de publicar');
@@ -330,8 +330,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(!/^\/groups\/[A-Za-z0-9._-]+$/.test(actual))throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
     if(document.querySelector('[role="dialog"] [contenteditable="true"]'))throw new Error('Hay un borrador abierto en el grupo. No se sobrescribió.');
     const before = [...new Set(photoIds())];
+    if(Array.from(document.querySelectorAll('h2,h3,[role="heading"]')).some(h=>visible(h)&&/este grupo está en pausa/i.test(text(h))))throw new Error('Este grupo está en pausa. No se puede publicar hasta que un administrador lo reactive.');
     await wait(() => {
-      if(Array.from(document.querySelectorAll('h2,h3,[role="heading"]')).some(h=>visible(h)&&/este grupo está en pausa/i.test(text(h))))throw new Error('Este grupo está en pausa. No se puede publicar hasta que un administrador lo reactive.');
       if(buttons('Vender algo').length===1&&buttons('Escribe algo...').length!==1)issue('group_sale_required','Este grupo utiliza un formulario de venta. Revisá y aprobá ese formato desde RivaStock.');
       const denial=Array.from(document.querySelectorAll('[role="alert"]')).filter(visible).some(node=>/no (puedes|tenés permiso para|tienes permiso para) publicar/i.test(text(node)));
       if(denial)throw new Error('Facebook indicó que esta cuenta no tiene permiso para publicar en el grupo.');
@@ -497,9 +497,15 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const configSeg=group.split('/')[2];
     const onConfiguredPage=location.pathname.replace(/\/$/,'')===group;
     const sameGroup=url=>onConfiguredPage||new URL(url).pathname.split('/')[2]===location.pathname.split('/')[2];
-    // Accept any /groups/ URL: Facebook may redirect name-form → numeric-form after posting.
-    const onAnyGroupPage=/^\/groups\/[A-Za-z0-9._-]+(\/permalink\/\d+)?\/?$/.test(location.pathname);
+    // Accept any /groups/ URL: Facebook may redirect name-form → numeric-form after posting,
+    // or navigate directly to the post permalink (e.g. when the post goes into review).
+    const onAnyGroupPage=/^\/groups\/[A-Za-z0-9._-]+(\/(posts|permalink)\/\d+)?\/?$/.test(location.pathname);
     if(!onConfiguredPage&&!onAnyGroupPage&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
+    // Detect "en revisión": Facebook navigated to the post permalink and shows a review dialog.
+    if(currentPost){
+      const reviewHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/esta publicación está en revisión/i.test(text(h)));
+      if(reviewHeading)return {status:'pending_approval',url:currentPost,message:'Facebook indicó que esta publicación está en revisión. Se publicará cuando un administrador la apruebe.'};
+    }
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
     let receipt=null;
