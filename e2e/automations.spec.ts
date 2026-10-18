@@ -367,3 +367,20 @@ test('a failed preparation with an unsupported issue shows its cause and can be 
   await card.getByRole('button',{name:'Cancelar este destino'}).click();
   await expect.poll(()=>calls).toContainEqual({name:'cancel_facebook_delivery',args:{p_delivery:'delivery-2'}});
 });
+
+test('a failed first approval does not lock the product',async({page})=>{
+  await fixture(page);const intents:string[]=[];
+  await page.route('**/rest/v1/rpc/approve_facebook_publication',route=>{intents.push(route.request().postDataJSON().p_intent);return intents.length===1?route.fulfill({status:503,json:{message:'Conexión temporalmente no disponible'}}):route.fulfill({json:'new-publication'});});
+  await page.goto('/automatizaciones?product=new-product');
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
+  await modal.getByLabel('Ubicación',{exact:true}).fill('General Pico');
+  await modal.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
+  await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
+  await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
+  await expect(modal.getByRole('alert')).toContainText('Conexión temporalmente');
+  await modal.getByLabel('Título',{exact:true}).fill('Producto nuevo corregido');
+  await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
+  await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
+  await expect.poll(()=>intents.length).toBe(2);
+  expect(intents[1]).not.toBe(intents[0]);
+});

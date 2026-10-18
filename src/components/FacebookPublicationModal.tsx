@@ -83,10 +83,11 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
     const approvedContent = selectedGroups.length ? { ...content, groupText: groupPublicationText(content) } : content;
     const payload = { p_product: product.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
     const serialized = JSON.stringify(payload);
-    const previous = JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;
-    if (previous && previous.payload !== serialized && !repeatOf) throw new Error('Hay una confirmación anterior. Revisá su resultado antes de preparar otro contenido.');
+    const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
+    // With no publication at all, the earlier intent never reached the server: a new key is safe.
+    if (previous && previous.payload !== serialized && !repeatOf && publications.length) throw new Error('Hay una confirmación anterior. Revisá su resultado antes de preparar otro contenido.');
     const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
-    localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));
+    try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
     const requestStarted=performance.now();
     await facebookRpc('approve_facebook_publication', { ...payload, p_intent: key });
     void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
