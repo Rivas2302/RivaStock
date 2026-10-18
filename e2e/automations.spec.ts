@@ -1,4 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
+// The publication modal is titled by its current view.
+const FACEBOOK_MODAL=/^(Preparar publicación|Gestionar producto|Cargando publicación)$/;
 const owner='10000000-0000-4000-8000-000000000001';
 const staff='10000000-0000-4000-8000-000000000002';
 const photo='https://rivastock-test.invalid/storage/v1/object/public/test/photo.png';
@@ -43,25 +45,36 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
   await page.addInitScript(id=>{const exp=Math.floor(Date.now()/1000)+3600;const encode=(v:unknown)=>btoa(JSON.stringify(v)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');localStorage.setItem('rivastock-auth',JSON.stringify({access_token:`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,exp,role:'authenticated'})}.fixture`,refresh_token:'fixture',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id,email:'test@test.invalid',aud:'authenticated',app_metadata:{},user_metadata:{},created_at:new Date().toISOString()}}));},role==='owner'?owner:staff);
   return {rows,calls,productIds};
 }
+// The history shows publication cards; destinations and their actions live in each detail.
+async function openPublication(page:Page,title:string){
+  await page.getByRole('button',{name:`Ver publicación: ${title}`}).click();
+  await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
+  return page.locator('main');
+}
+async function backToHistory(page:Page){await page.getByRole('button',{name:'Volver al historial'}).click();}
 
 for(const mobile of [false,true])test(`centralizes history, safe actions and future sections (${mobile?'mobile':'desktop'})`,async({page},testInfo)=>{
   if(mobile)await page.setViewportSize({width:390,height:844});
   const {calls}=await fixture(page);await page.goto('/automatizaciones');
   await expect(page.getByRole('heading',{name:'Automatizaciones',exact:true})).toBeVisible();
-  const published=page.getByRole('article').filter({hasText:'Producto publicado'});
+  const published=await openPublication(page,'Producto publicado');
   await expect(published.getByRole('link',{name:'Ver publicación'})).toHaveAttribute('href','https://www.facebook.com/marketplace/item/123/');
-  const unknown=page.getByRole('article').filter({hasText:'Resultado por revisar'});
+  await backToHistory(page);
+  const unknown=await openPublication(page,'Resultado por revisar');
   await expect(unknown.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(0);
   await unknown.getByRole('button',{name:'Registrar revisión'}).click();
   await expect(unknown.getByRole('button',{name:'No la encontré; cerrar este intento'})).toBeDisabled();
   await unknown.getByRole('checkbox',{name:'Ya revisé el destino'}).check();
   await unknown.getByRole('button',{name:'No la encontré; cerrar este intento'}).click();
   await expect.poll(()=>calls.filter(c=>c.name==='review_facebook_delivery').length).toBe(1);expect(calls.filter(c=>c.name==='approve_facebook_publication')).toHaveLength(0);
-  const failed=page.getByRole('article').filter({hasText:'Preparación con error'});
+  await backToHistory(page);
+  const failed=await openPublication(page,'Preparación con error');
   await failed.getByRole('button',{name:'Reintentar preparación'}).click();
   await expect.poll(()=>calls).toContainEqual({name:'retry_facebook_preparation',args:{p_delivery:'delivery-2'}});
-  const pending=page.getByRole('article').filter({hasText:'Producto pendiente'});await pending.getByRole('button',{name:'Cancelar envío pendiente'}).click();
+  await backToHistory(page);
+  const pending=await openPublication(page,'Producto pendiente');await pending.getByRole('button',{name:'Cancelar envío pendiente'}).click();
   await expect.poll(()=>calls).toContainEqual({name:'cancel_facebook_delivery',args:{p_delivery:'delivery-3'}});
+  await backToHistory(page);
   await page.getByRole('button',{name:'Pausar cola',exact:true}).click();await expect.poll(()=>calls).toContainEqual({name:'set_facebook_queue_enabled',args:{p_device:'device',p_enabled:false}});
   await page.getByRole('button',{name:'Comunicación Próximamente'}).click();await expect(page.getByRole('heading',{name:'Comunicación · Próximamente'})).toBeVisible();
   await page.getByRole('button',{name:'Analítica Próximamente'}).click();await expect(page.getByRole('heading',{name:'Analítica · Próximamente'})).toBeVisible();
@@ -74,8 +87,8 @@ for(const mobile of [false,true])test(`centralizes history, safe actions and fut
 
 test('requires a separate decision and approval before publishing again',async({page})=>{
   const {calls,productIds}=await fixture(page);await page.goto(`/automatizaciones?product=${productIds[0]}`);
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});await expect(modal.getByRole('link',{name:'Ver publicación',exact:true})).toBeVisible();
-  await expect(modal.getByRole('button',{name:'Confirmar y publicar',exact:true})).toBeDisabled();
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});await expect(modal.getByRole('link',{name:'Ver publicación',exact:true})).toBeVisible();
+  await expect(modal.getByRole('button',{name:'Confirmar y publicar',exact:true})).toHaveCount(0);
   await modal.getByRole('button',{name:'Preparar otra publicación'}).click();
   await expect(modal.getByRole('button',{name:'Confirmar nueva publicación'})).toBeDisabled();
   await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();await modal.getByRole('button',{name:'Confirmar nueva publicación'}).click();
@@ -87,15 +100,20 @@ test('hides mutating actions for viewers and denies navigation without Stock acc
   await fixture(page,'viewer');await page.goto('/automatizaciones');
   await expect(page.getByRole('heading',{name:'Automatizaciones',exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Producto pendiente'})).toBeVisible();
-  for(const name of ['Cancelar envío pendiente','Reintentar preparación','Registrar revisión','Pausar cola'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Pausar cola',exact:true})).toHaveCount(0);
+  for(const title of ['Producto pendiente','Resultado por revisar','Preparación con error']){
+    await openPublication(page,title);
+    for(const name of ['Cancelar envío pendiente','Reintentar preparación','Registrar revisión'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
+    await backToHistory(page);
+  }
 });
 
 test('shows execution measurements on demand without an extra notification',async({page})=>{
   const {rows}=await fixture(page);
   (rows[0].facebook_deliveries[0] as any).execution_timing={source:'local',approval_to_claim_ms:150,receipt_to_preparation_ms:35,claim_rpc_ms:10,preparation_ms:500};
   await page.goto('/automatizaciones');
-  await page.getByText('Tiempos de ejecución',{exact:true}).click();
-  await expect(page.getByText(/Desde la recepción hasta iniciar la preparación/)).toBeVisible();
+  const published=await openPublication(page,'Producto publicado');await published.getByText('Ver detalles',{exact:true}).click();
+  await expect(published.getByText(/Hasta tomar el trabajo/)).toBeVisible();
   await expect(page.getByText('Origen: aviso local',{exact:true})).toBeVisible();
 });
 
@@ -116,13 +134,13 @@ for(const mobile of [false,true])test(`starts publication from inventory (${mobi
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:testInfo.outputPath(`picker-${mobile?'mobile':'desktop'}.png`)});
   await picker.getByRole('button',{name:/Producto nuevo/}).click();
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await modal.getByLabel('Ubicación', {exact:true}).fill('General Pico');
   await modal.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
   await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
   await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
   await expect(modal).toHaveCount(0);
-  await expect(page.getByRole('article').filter({hasText:'Producto nuevo'})).toContainText('Pendiente');
+  await expect(page.getByRole('button',{name:'Ver publicación: Producto nuevo'})).toContainText('En cola');
   expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(1);
   await expect(page).toHaveURL(/automatizaciones/);
 });
@@ -142,9 +160,9 @@ test('refresh progress, unchanged success, errors, recovery and unknown block',a
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button',{name:'Nueva publicación',exact:true}).click();
   await page.getByRole('button',{name:/Resultado por revisar.*en stock/}).click();
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByRole('button',{name:'Preparar otra publicación'})).toBeDisabled();
-  await expect(modal.getByRole('button',{name:'Confirmar y publicar',exact:true})).toBeDisabled();
+  await expect(modal.getByRole('button',{name:'Confirmar y publicar',exact:true})).toHaveCount(0);
 });
 
 
@@ -177,7 +195,7 @@ for(const mobile of [false,true])test(`selects multiple group identities and per
   const groups=[{id:'g1',name:'Grupo de prueba',url:'https://www.facebook.com/groups/123',mechanism:'group_direct',member_count_text:'49,5 mil miembros',member_count_updated_at:'2026-10-14T12:00:00Z'},{id:'g2',name:'Grupo de prueba',url:'https://www.facebook.com/groups/456',mechanism:'group_direct'},{id:'unsupported',name:'Flujo de venta',url:'https://www.facebook.com/groups/789',mechanism:'marketplace_share'}];
   await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:groups}));
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByText(/49,5 mil miembros/)).toBeVisible();
   await expect(modal.getByText(/Cantidad de miembros no disponible/).first()).toBeVisible();
   await modal.getByRole('checkbox',{name:'Seleccionar Grupo de prueba (https://www.facebook.com/groups/123)',exact:true}).check();
@@ -211,7 +229,7 @@ test('requests remote group discovery without losing selected destinations',asyn
   await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:sync}));
   await page.route('**/rpc/request_facebook_groups',route=>{requests++;expect(route.request().postDataJSON()).toEqual({p_device:'device'});sync={status:'done',requested_at:new Date().toISOString(),finished_at:new Date().toISOString(),message:'Listado parcial: destinos anteriores conservados.'};return route.fulfill({json:'request-id'});});
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   const selected=modal.getByRole('checkbox',{name:/Seleccionar Grupo real identificado/});await selected.check();
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
   await expect(modal.getByRole('button',{name:'Actualizando grupos…'})).toBeDisabled();
@@ -225,13 +243,13 @@ test('preserves partial group results and only offers a safe preparation retry',
     {...rows[0].facebook_deliveries[0],id:'group-done',destination_key:'g1',destination:{name:'Grupo publicado',mechanism:'group_direct',url:'https://www.facebook.com/groups/123'},evidence_url:'https://www.facebook.com/groups/123/posts/1/'},
     {...rows[1].facebook_deliveries[0],id:'group-unknown',destination_key:'g2',destination:{name:'Grupo desconocido',mechanism:'group_direct',url:'https://www.facebook.com/groups/456'}},
     {...rows[2].facebook_deliveries[0],id:'group-failed',destination_key:'g3',destination:{name:'Grupo fallido',mechanism:'group_direct',url:'https://www.facebook.com/groups/789'}}]});
-  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Envío parcial'});
-  await expect(card.getByRole('heading',{name:'Grupo publicado: Publicado'})).toBeVisible();
-  await expect(card.getByRole('heading',{name:'Grupo desconocido: Resultado desconocido'})).toBeVisible();
+  await page.goto('/automatizaciones');const card=await openPublication(page,'Envío parcial');
+  await expect(card.getByRole('article',{name:'Grupo publicado: Publicado'})).toBeVisible();
+  await expect(card.getByRole('article',{name:'Grupo desconocido: Resultado desconocido'})).toBeVisible();
   await expect(card.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(1);
   await card.getByRole('button',{name:'Reintentar preparación'}).click();
   await expect.poll(()=>calls.filter(call=>call.name==='retry_facebook_preparation')).toEqual([{name:'retry_facebook_preparation',args:{p_delivery:'group-failed'}}]);
-  await expect(card.getByRole('heading',{name:'Grupo publicado: Publicado'})).toBeVisible();
+  await expect(card.getByRole('article',{name:'Grupo publicado: Publicado'})).toBeVisible();
 });
 
 test('ends a stalled group wait despite a future server timestamp and accepts a late result',async({page})=>{
@@ -239,7 +257,7 @@ test('ends a stalled group wait despite a future server timestamp and accepts a 
   let sync:any={id:'stalled-request',device_id:'device',status:'requested',requested_at:'2099-01-01T00:00:00Z',finished_at:null,message:null};
   await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:sync}));
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByRole('button',{name:'Actualizando grupos…'})).toBeDisabled();
   await page.clock.fastForward(91000);
   await expect(modal.getByRole('alert')).toContainText('La PC no tomó la solicitud en 90 segundos');
@@ -256,7 +274,7 @@ test('keeps a long member read active as batches advance and refreshes intermedi
   await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:{id:'long-read',device_id:'device',status:'running',requested_at:'2026-10-14T12:00:00Z',finished_at:null,message}}));
   await page.route('**/rest/v1/facebook_groups*',route=>route.fulfill({json:[{id:'group',name:'Grupo con avance',url:'https://www.facebook.com/groups/123',mechanism:'group_direct',member_count_text:count}]}));
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByText('Miembros consultados: 0 de 20.',{exact:true})).toBeVisible();
   await page.clock.fastForward(60000);
   message='Miembros consultados: 3 de 20.';count='49,5 mil miembros';
@@ -272,7 +290,7 @@ test('explains when the local extension cannot wake a queued group request',asyn
   await page.addInitScript(()=>{const chrome=(window as any).chrome??{};chrome.runtime={sendMessage:(_id:any,_message:any,callback:any)=>callback({installed:true,version:'0.3.0'})};(window as any).chrome=chrome;});
   await page.route('**/rpc/request_facebook_groups',route=>route.fulfill({json:'request-id'}));
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
   await expect(modal.getByText(/La extensión local \(0.3.0\).*Actualizala a 0.4.8/)).toBeVisible();
 });
@@ -282,7 +300,7 @@ test('wakes a restored pending group request and exposes the actual extension er
   await page.addInitScript(()=>{(window as any).groupWakeCalls=0;const chrome=(window as any).chrome??{};chrome.runtime={sendMessage:(_id:any,message:any,callback:any)=>{if(message.type==='rivastock-installed')callback({installed:true,version:'0.4.1',groupsWake:true});else{(window as any).groupWakeCalls++;callback({error:'No se pudo consultar facebook_group_discovery: permiso denegado'});}}};(window as any).chrome=chrome;});
   await page.route('**/rest/v1/facebook_group_sync*',route=>route.fulfill({json:{id:'restored',device_id:'device',status:'requested',requested_at:new Date().toISOString(),finished_at:null,message:null}}));
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByRole('alert')).toContainText('permiso denegado');
   expect(await page.evaluate(()=>(window as any).groupWakeCalls)).toBe(1);
 });
@@ -292,7 +310,7 @@ test('prefers the most recently connected PC over an old unresponsive connection
   await page.route('**/rest/v1/facebook_devices*',route=>route.fulfill({json:[{id:'old',name:'PC anterior',last_seen_at:null,revoked_at:null},{id:'current',name:'PC actual',last_seen_at:new Date().toISOString(),revoked_at:null}]}));
   let chosen='';await page.route('**/rpc/request_facebook_groups',route=>{chosen=route.request().postDataJSON().p_device;return route.fulfill({json:'request'});});
   await page.goto('/automatizaciones?product=new-product');
-  const modal=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(modal.getByRole('combobox',{name:'PC para consultar'})).toHaveValue('current');
   await modal.getByRole('button',{name:'Actualizar grupos desde la PC'}).click();
   await expect.poll(()=>chosen).toBe('current');
@@ -304,7 +322,7 @@ for(const mobile of [false,true])test(`resolves sold/exhausted listing candidate
   Object.assign(delivery,{message:'Hay anuncios anteriores. Revisá los candidatos.',issue:{kind:'marketplace_conflict',message:'Anuncios anteriores',candidates:[{title:'Reloj smartwatch 7 mayas',summary:'$27.000 · Vendido',status:'Vendido',url:'https://www.facebook.com/marketplace/item/901/'},{title:'Reloj smartwatch 7 mayas',summary:'$26.000 · Agotado',status:'Agotado',url:null}]}});
   let fail=true;
   await page.route('**/rest/v1/rpc/resolve_facebook_delivery',async route=>{const args=route.request().postDataJSON();calls.push({name:'resolve_facebook_delivery',args});if(fail){fail=false;return route.fulfill({status:503,json:{message:'Conexión temporalmente no disponible'}});}Object.assign(delivery,{status:args.p_decision==='existing'?'submitted':'pending',issue:null,resolution:{action:args.p_decision},evidence_url:args.p_url});return route.fulfill({json:null});});
-  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Preparación con error'});
+  await page.goto('/automatizaciones');const card=await openPublication(page,'Preparación con error');
   await expect(card.getByText('Estado observado: Vendido')).toBeVisible();await expect(card.getByText('Estado observado: Agotado')).toBeVisible();
   await expect(card.getByRole('button',{name:'Reintentar preparación'})).toHaveCount(0);
   await card.getByRole('region',{name:'Resolver destino'}).screenshot({path:testInfo.outputPath(mobile?'listing-conflict-mobile.png':'listing-conflict-desktop.png')});
@@ -323,7 +341,7 @@ for(const mobile of [false,true])test(`resolves sold/exhausted listing candidate
 test('requires approval of sale format and extra fields from RivaStock',async({page})=>{
   const {rows}=await fixture(page);const delivery=rows[2].facebook_deliveries[0];Object.assign(delivery,{destination:{name:'Grupo de compraventa',mechanism:'group_direct',url:'https://www.facebook.com/groups/630127860416020'},message:'Campos adicionales',issue:{kind:'group_sale_fields',message:'Campos adicionales',fields:[{label:'Marca',options:null}]}});
   let decision:any;await page.route('**/rest/v1/rpc/resolve_facebook_delivery',async route=>{decision=route.request().postDataJSON();Object.assign(delivery,{status:'pending',issue:null});return route.fulfill({json:null});});
-  await page.goto('/automatizaciones');const card=page.getByRole('article').filter({hasText:'Preparación con error'});const button=card.getByRole('button',{name:'Aprobar artículo en venta y continuar'});
+  await page.goto('/automatizaciones');const card=await openPublication(page,'Preparación con error');const button=card.getByRole('button',{name:'Aprobar artículo en venta y continuar'});
   await card.getByRole('checkbox',{name:'Revisé el contenido aprobado'}).check();await expect(button).toBeDisabled();await card.getByLabel('Marca',{exact:true}).fill('Riva');await button.click();
   await expect.poll(()=>decision).toMatchObject({p_delivery:'delivery-2',p_decision:'group_sale',p_fields:{Marca:'Riva'}});
   await expect(card.getByRole('region',{name:'Resolver destino'})).toHaveCount(0);

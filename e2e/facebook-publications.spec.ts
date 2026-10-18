@@ -1,4 +1,6 @@
 import {test,expect} from '@playwright/test';
+// The publication modal is titled by its current view.
+const FACEBOOK_MODAL=/^(Preparar publicación|Gestionar producto|Cargando publicación)$/;
 import { inspectMarketplaceForm } from '../extensions/facebook/marketplace-contract.js';
 import { inspectGroupComposer } from '../extensions/facebook/group-contract.js';
 const owner='10000000-0000-4000-8000-000000000001';
@@ -39,7 +41,7 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   },owner);
   await page.goto('/stock');
   await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
-  const dialog=page.getByRole('dialog',{name:'Publicar en Facebook'});
+  const dialog=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(dialog).toBeVisible();
   expect(approvals).toHaveLength(0);
   await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toBeDisabled();
@@ -52,18 +54,21 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   await expect(dialog).toHaveCSS('opacity','1');
   await testInfo.attach(`facebook-review-${mobile?'mobile':'desktop'}`,{body:await page.screenshot(),contentType:'image/png'});
   await dialog.getByRole('button',{name:'Confirmar y publicar'}).click();
-  await expect(dialog.getByText('Marketplace: Pendiente',{exact:true})).toBeVisible();
+  if(mobile)await dialog.getByRole('button',{name:/Silla lista para Facebook/}).first().click();
+  await expect(dialog.getByRole('article',{name:'Marketplace: Pendiente'})).toBeVisible();
   expect(approvals).toHaveLength(1); expect(approvals[0].p_content.title).toBe('Silla lista para Facebook'); expect(approvals[0].p_groups).toHaveLength(1);
   expect(approvals[0].p_content.groupText).toContain('Silla lista para Facebook\n\nSilla nueva de prueba');
   expect(approvals[0].p_content.groupText).toContain('Precio: $1.500');
-  await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toBeDisabled();
+  // The manage view never offers a direct confirmation once a publication exists.
+  await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toHaveCount(0);
   expect(approvals).toHaveLength(1); expect(publications).toHaveLength(1);
   await dialog.getByRole('button',{name:'Cancelar envío pendiente'}).first().click();
-  await expect(dialog.getByText('Marketplace: Cancelado',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('article',{name:'Marketplace: Cancelado'})).toBeVisible();
   await dialog.getByRole('button',{name:'Cerrar',exact:true}).click();
   await expect(page.getByText('Silla de prueba',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
-  await expect(dialog.getByText('Marketplace: Cancelado',{exact:true})).toBeVisible();
+  if(mobile)await dialog.getByRole('button',{name:/Silla lista para Facebook/}).first().click();
+  await expect(dialog.getByRole('article',{name:'Marketplace: Cancelado'})).toBeVisible();
   await expect(dialog).toHaveCSS('opacity','1');
   expect(await dialog.evaluate(element => element.scrollWidth<=element.clientWidth)).toBe(true);
   await testInfo.attach(`facebook-${mobile?'mobile':'desktop'}`,{body:await page.screenshot(),contentType:'image/png'});

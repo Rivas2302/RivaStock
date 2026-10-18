@@ -29,7 +29,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
   // One-liner summary for each state
   const shortStatus=state==='unknown'?'No se pudo verificar el resultado. No se repetirá el envío.':state==='failed'&&!decision?'Preparación fallida antes de autorizar el envío.':state==='submitted'&&delivery.resolution?.action==='existing'?`Anuncio vinculado. Estado observado: ${delivery.resolution.observedStatus||'no disponible'}.`:state==='submitted'?'Facebook recibió el envío. Aprobación pública sin verificar.':state==='pending_approval'?'Facebook está revisando esta publicación.':null;
 
-  return <div className={`space-y-2 rounded-xl bg-slate-50 text-sm dark:bg-slate-800/60 ${compact?'p-2.5':'p-3'}`}>
+  return <article aria-label={`${delivery.destination.name}: ${deliveryLabel(delivery)}`} className={`space-y-2 rounded-xl bg-slate-50 text-sm dark:bg-slate-800/60 ${compact?'p-2.5':'p-3'}`}>
     {/* Header: name + badge */}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="font-semibold">{delivery.destination.name}</h4>
@@ -71,7 +71,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     <div className="flex flex-wrap gap-2">
       {evidence&&<a className={`${btn} inline-flex items-center gap-1.5`} href={evidence} target="_blank" rel="noopener noreferrer"><ExternalLink size={12}/>Ver publicación</a>}
       {!evidence&&<a className={btn} href={fallbackUrl} target="_blank" rel="noopener noreferrer">Revisar en Facebook</a>}
-      {canWrite&&state==='pending'&&<button disabled={busy} className={btn} onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar</button>}
+      {canWrite&&state==='pending'&&<button disabled={busy} className={btn} aria-label="Cancelar envío pendiente" onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar</button>}
       {canWrite&&state==='failed'&&!delivery.evidence_url&&!decision&&<button disabled={busy} className={btn} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
       {canWrite&&state==='unknown'&&<button disabled={busy} className={btn} onClick={()=>setReview(!review)}>Registrar revisión</button>}
     </div>
@@ -104,7 +104,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     </details>}
 
     {error&&<p role="alert" className="text-rose-600 dark:text-rose-400">{error}</p>}
-  </div>;
+  </article>;
 }
 
 function summaryVariant(pub:FacebookPublication):'warning'|'running'|'success'|'neutral' {
