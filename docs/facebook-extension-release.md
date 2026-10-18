@@ -6,9 +6,9 @@ La operación `track` valida el ID contra el guardado en el intento y contra el 
 
 ## Orden de salida (requiere autorización para cada acción productiva)
 
-1. Pausar la cola desde RivaStock.
-2. Confirmar en el inventario de solo lectura que 0049–0071 están aplicadas. Aplicar `0072_facebook_own_content_tracking.sql` una sola vez, después de `0071`. No editar migraciones anteriores.
-3. Desplegar la web con el commit autorizado. El despliegue entrega el ZIP 0.5.9.
+1. Pausar la cola desde RivaStock. **Completado el 18/10/2026; la cola continúa pausada.**
+2. Confirmar los prerrequisitos y aplicar `0072_facebook_own_content_tracking.sql` una sola vez, después de `0071`. **Completado el 18/10/2026** en `RivaStock_Oficial` (`main`, producción), con autorización de la persona usuaria. SQL Editor devolvió `Success. No rows returned`; la verificación posterior confirmó columnas, restricciones, operación `track` y capacidad `own-content-tracking`. `pg_cron` 1.6.4 y un trabajo del watchdog ya estaban presentes. El dashboard no tiene historial de migraciones registrado; la validación se hizo contra el esquema en producción.
+3. Desplegar la web con el commit autorizado. El despliegue entrega el ZIP 0.5.9. **Pendiente de autorización.**
 4. Actualizar la extensión instalada y confirmar que reporta 0.5.9 y la capacidad `own-content-tracking`.
 5. Revisar las entregas abiertas. Reanudar la cola solo cuando la persona usuaria lo autorice.
 6. Certificar A14–A18, un caso por vez y con un producto nuevo aprobado.
@@ -19,7 +19,7 @@ La operación `track` valida el ID contra el guardado en el intento y contra el 
 
 La inspección de solo lectura del 18/10 no encontró IDs estables dentro de las tarjetas de «Tus publicaciones» y la lista mostraba carga en curso. Por eso Marketplace sigue sin autorizar el clic cuando no puede construir un baseline completo con IDs; su resultado queda sin verificar. Tampoco se verificó el DOM de `group_sale` ni los anuncios sin foto. Esas variantes requieren una inspección de solo lectura y una prueba que confirme la misma estructura antes de habilitar su lectura. El mapeo del ID observado en `set=gm`/`set=pcb` a `/groups/<id>/posts/<id>` también requiere certificación real.
 
-**Ninguna migración se aplicó, no hubo push, no se actualizó la extensión instalada ni se reanudó la cola durante esta implementación.**
+**Estado al 18/10/2026:** 0072 está aplicada. No hubo push ni deploy, no se actualizó la extensión instalada y la cola no se reanudó.
 
 ---
 
