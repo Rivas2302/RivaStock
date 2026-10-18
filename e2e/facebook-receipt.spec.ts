@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {facebookFormAction} from '../extensions/facebook/form-actions.js';
 
 for(const scenario of ['toast','permalink','wrong-author','wrong-text','missing-photo','old-post','wrong-group','silent-close']) {
-  test(`group receipt recognizes only causal evidence: ${scenario}`,async({page})=>{
+  test(`group notices and redirects do not resolve a result without an owned ID: ${scenario}`,async({page})=>{
     await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`
       <div role="dialog"><div role="textbox" contenteditable="true" aria-label="Escribe algo...">Monopoly</div>
       <img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
@@ -30,9 +30,7 @@ for(const scenario of ['toast','permalink','wrong-author','wrong-text','missing-
     expect(await run('submit')).toEqual({clicked:true});
     if(scenario==='toast')await expect(page.getByRole('status')).toHaveCount(0);
     const result=await run('result');
-    if(scenario==='toast')expect(result).toMatchObject({status:'submitted',url:null});
-    else if(scenario==='permalink')expect(result).toMatchObject({status:'submitted',url:'https://www.facebook.com/groups/123/permalink/987/'});
-    else expect(result.status).toBeUndefined();
+    expect(result).toEqual({waiting:true});
   });
 }
 
@@ -40,7 +38,7 @@ test('a previously present success notice does not establish receipt',async({pag
   await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<div role="status">Tu publicación se publicó.</div>'}));
   await page.goto('https://www.facebook.com/groups/123');
   const result=await page.evaluate(source=>new Function('return ('+source+')')()('result',{groupText:'Monopoly'},[],['group:/groups/123','notice:Tu publicación se publicó.']),facebookFormAction.toString());
-  expect(result).toEqual({waiting:true,diag:expect.any(Object)});
+  expect(result).toEqual({waiting:true});
 });
 
 const reviewPage=(withReceipt:boolean)=>`<div role="dialog"><h2>Esta publicación está en revisión</h2></div>
@@ -62,10 +60,10 @@ test('review dialog without a click receipt is not evidence',async({page})=>{
   expect(result.status).toBeUndefined();
 });
 
-test('review dialog on a new post after the click is pending approval',async({page})=>{
+test('review dialog alone does not establish a pending owned-content ID',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:reviewPage(true)}));
   await page.goto('https://www.facebook.com/groups/123/posts/50');
-  expect(await runResult(page,reviewBaseline)).toMatchObject({status:'pending_approval',url:'https://www.facebook.com/groups/123/posts/50'});
+  expect(await runResult(page,reviewBaseline)).toEqual({waiting:true});
 });
 
 test('cross-post dialog: only an exact Cerrar button is clicked',async({page})=>{
@@ -91,5 +89,5 @@ test('submit refuses a second click in the same tab',async({page})=>{
 test('an inconclusive group result reports only sanitized diagnostics',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Aviso viejo</div><p>Texto personal</p>'}));
   await page.goto('https://www.facebook.com/groups/123');
-  expect(await runResult(page,reviewBaseline)).toEqual({waiting:true,diag:{page:'alias',post:false,composer:false,notices:1,receipt:false}});
+  expect(await runResult(page,reviewBaseline)).toEqual({waiting:true});
 });

@@ -26,30 +26,30 @@ test('reports sold and exhausted homonyms without opening or choosing any previo
 test('does not confuse old title cards with the result of an explicitly approved new listing',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<a href="/marketplace/item/901/">Reloj smartwatch 7 mayas $27.000 Vendido</a>'}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['marketplace:new-explicit'])).toEqual({waiting:true,diag:expect.any(Object)});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['marketplace:new-explicit'])).toEqual({waiting:true});
 });
 
 test('rejects Marketplace results without a causal new notice',async({page})=>{
   const baseline=['marketplace:new-explicit'];
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<a href="/marketplace/item/901/">Reloj smartwatch 7 mayas</a>'}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true,diag:expect.any(Object)});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Otro aviso</div><a href="/marketplace/item/902/">Reloj smartwatch 7 mayas</a>'}));
   await page.reload();
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},[...baseline,'notice:Otro aviso'])).toEqual({waiting:true,diag:expect.any(Object)});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},[...baseline,'notice:Otro aviso'])).toEqual({waiting:true});
 });
 
-test('accepts only a causal notice or direct item URL for Marketplace result',async({page})=>{
+test('Marketplace notices and item navigation do not resolve an owned-content result',async({page})=>{
   const baseline=[];
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación se creó <a href="/marketplace/item/902/">Ver publicación</a></div>'}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toMatchObject({status:'submitted',url:'https://www.facebook.com/marketplace/item/902/'});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación está en revisión <a href="/marketplace/item/903/">Ver publicación</a></div>'}));
   await page.reload();
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toMatchObject({status:'pending_approval',url:'https://www.facebook.com/marketplace/item/903/'});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Tu publicación se creó <a href="/marketplace/item/902/">Ver publicación</a><a href="/marketplace/item/904/">Otra</a></div>'}));
   await page.reload();
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true,diag:expect.any(Object)});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
 });
 
 test('reads links from each row detail without reactivating sold or exhausted listings',async({page})=>{
@@ -135,7 +135,7 @@ test('verifies observed sale photo controls and the source-group confirmation wi
   expect((await run(page,'submit',content,result.baseline)).error).toContain('destino');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
   await page.getByRole('checkbox',{name:'Otro grupo',exact:true}).evaluate(node=>node.setAttribute('aria-checked','false'));
   expect(await run(page,'submit',content,result.baseline)).toMatchObject({clicked:true});
-  expect(await run(page,'result',content,result.baseline)).toMatchObject({status:'pending_approval',url:null});
+  expect(await run(page,'result',content,result.baseline)).toEqual({waiting:true});
 });
 
 for(const failure of ['missing photo','unloaded image'])test(`blocks sale preparation with ${failure} despite an enabled Next button`,async({page})=>{
@@ -175,5 +175,5 @@ test('marketplace item navigation to another listing is not evidence',async({pag
 test('marketplace item navigation after the click with the approved title is submitted',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:itemPage(approved.title,true)}));
   await page.goto('https://www.facebook.com/marketplace/item/777/');
-  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['variant:marketplace','flow:x'])).toMatchObject({status:'submitted',url:'https://www.facebook.com/marketplace/item/777/'});
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['variant:marketplace','flow:x'])).toEqual({waiting:true});
 });

@@ -94,6 +94,64 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       publish:buttons('Publicar').map(element=>({enabled:enabled(element)})),
     };
   }
+  if(action==='own_content_snapshot') {
+    const path=location.pathname.replace(/\/$/,'');
+    const groupMatch=path.match(/^\/groups\/([A-Za-z0-9._-]+)\/(my_pending_content|my_posted_content|my_declined_content|my_removed_content)$/);
+    if(groupMatch) {
+      const groupSegment=groupMatch[1];
+      const state={my_pending_content:'pending_approval',my_posted_content:'published',my_declined_content:'not_approved',my_removed_content:'not_approved'}[groupMatch[2]];
+      const expectedPath=content.targetGroupUrl?new URL(content.targetGroupUrl).pathname.replace(/\/$/,''):baseline.find(value=>value.startsWith('group:'))?.slice(6);
+      if(expectedPath&&expectedPath.split('/')[2]!==groupSegment)throw new Error('Se abrió la lista de otro grupo.');
+      const root=document.querySelector('main,[role="main"]')??document.body;
+      const signature=()=>normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('a[href]')).map(link=>link.getAttribute('href')).join('|');
+      let last='',stable=0;
+      for(let attempt=0;attempt<12;attempt++) {
+        const current=signature();stable=current===last?stable+1:0;last=current;
+        if(stable>=2)break;
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      const loading=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)||/\bCargando(?:…|\.{3})?/i.test(root.innerText);
+      const headings=Array.from(root.querySelectorAll('h3')).filter(visible).filter(heading=>/publicó en/i.test(text(heading)));
+      const empty=/No hay publicaciones para mostrar/i.test(root.innerText);
+      const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
+      const approvedTitle=normalize(content.title??'').toLocaleLowerCase('es');
+      const itemIds=scope=>[...new Set(Array.from(scope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{
+        try {
+          const url=new URL(link.href);if(url.origin!==location.origin)return [];
+          const set=url.searchParams.get('set')?.match(/^(?:gm|pcb)\.(\d+)$/)?.[1];return set?[set]:[];
+        } catch {return [];}
+      }))];
+      const items=[];
+      for(const heading of headings) {
+        const headingLinks=Array.from(heading.querySelectorAll('a[href]'));
+        const groupLink=headingLinks.some(link=>{try{return new URL(link.href).origin===location.origin&&new URL(link.href).pathname.replace(/\/$/,'')===`/groups/${groupSegment}`;}catch{return false;}});
+        if(!groupLink)continue;
+        let scope=heading.parentElement;
+        while(scope&&scope!==root) {
+          const nested=Array.from(scope.querySelectorAll('h3')).filter(visible).filter(node=>/publicó en/i.test(text(node)));
+          if(nested.length===1) {
+            const ids=itemIds(scope);
+            if(ids.length===1) {
+              const authorMatches=Boolean(authorId&&Array.from(scope.querySelectorAll('a[href]')).some(link=>{
+                try{return new URL(link.href).origin===location.origin&&new URL(link.href).pathname.replace(/\/$/,'')===`/groups/${groupSegment}/user/${authorId}`;}catch{return false;}
+              }));
+              const titleMatches=Boolean(approvedTitle&&normalize(scope.innerText).toLocaleLowerCase('es').includes(approvedTitle));
+              items.push({id:ids[0],state,authorMatches,titleMatches});
+              break;
+            }
+          }
+          scope=scope.parentElement;
+        }
+      }
+      return {complete:stable>=2&&!loading&&(headings.length>0||empty),items};
+    }
+    if(path==='/marketplace/you/selling')return {complete:false,items:[]};
+    throw new Error('No se abrió una lista de contenido propio compatible.');
+  }
+  // Result pages and feed notices are not causal evidence. Only the adapter's
+  // before/after snapshots of owned-content lists may resolve a new attempt.
+  if(action==='result')return {waiting:true};
+  if(action==='result_search')return {notFound:true};
   const photoIds = () => Array.from(document.querySelectorAll('a[href]')).flatMap(element => {
     try { const value = new URL(element.href).searchParams.get('set'); return value?.startsWith('gm.') ? [value.slice(3)] : []; } catch { return []; }
   });
@@ -489,138 +547,6 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       setTimeout(()=>observer.disconnect(),30000);
     }
     publish.click(); return { clicked: true };
-  }
-  if (action === 'result') {
-    const noticeKey=node=>'notice:'+text(node);
-    const marketplaceItemUrl=href=>{try{const url=new URL(href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?url.origin+url.pathname:null;}catch{return null;}};
-    const groupPostUrl=href=>{try{const url=new URL(href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?url.origin+url.pathname:null;}catch{return null;}};
-    if (content.selection?.marketplace && location.pathname.startsWith('/marketplace')) {
-      if(location.hostname!=='www.facebook.com')return {waiting:true};
-      const currentItemUrl=location.origin+location.pathname;
-      // A navigation counts only after this recorded click and onto the approved listing.
-      const clickReceipt=(()=>{try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));return value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000;}catch{return false;}})();
-      const approvedTitle=normalize(content.title).toLowerCase();
-      const showsApprovedTitle=normalize(document.title).toLowerCase().includes(approvedTitle)||Array.from(document.querySelectorAll('h1')).filter(visible).some(heading=>normalize(text(heading)).toLowerCase().includes(approvedTitle));
-      if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname)&&!baseline.includes(currentItemUrl)&&clickReceipt&&approvedTitle&&showsApprovedTitle)return {status:'submitted',url:currentItemUrl,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
-      if(buttons('Cerrar cuadro de diálogo de promoción de publicación').length===1){button('Cerrar cuadro de diálogo de promoción de publicación').click();return {waiting:true};}
-      const causalPhrase=/Tu publicación (se publicó|se creó|está en revisión)/i;
-      for(const notice of Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible)){
-        const key=noticeKey(notice); if(baseline.includes(key))continue;
-        if(!causalPhrase.test(text(notice)))continue;
-        const links=[...new Set(Array.from(notice.querySelectorAll('a[href]')).map(link=>marketplaceItemUrl(link.href)).filter(Boolean))];
-        if(links.length===1&&!baseline.includes(links[0])){
-          const status=/está en revisión/i.test(text(notice))?'pending_approval':'submitted';
-          return {status,url:links[0],message:'Facebook mostró un aviso nuevo con el enlace de este envío.'};
-        }
-      }
-      return {waiting:true,diag:{page:'marketplace',post:/^\/marketplace\/item\/\d+/.test(location.pathname),composer:false,notices:Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible).filter(node=>!baseline.includes(noticeKey(node))).length,receipt:!!clickReceipt}};
-    }
-    const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
-    if(!group)return {waiting:true};
-    // Dismiss "Publicación realizada" cross-post suggestions dialog: it blocks the feed
-    // during polling and prevents URL capture from notices or the feed.
-    const crossPostHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/publicación realizada/i.test(text(h)));
-    if(crossPostHeading){const dialog=crossPostHeading.closest('[role="dialog"]');const closeBtns=dialog?[...dialog.querySelectorAll('button,[role="button"]')].filter(b=>accessibleName(b).trim()==='Cerrar'):[];if(closeBtns.length===1)closeBtns[0].click();return {waiting:true};}
-    const currentPost=groupPostUrl(location.href);
-    // Only the approved group and the page Facebook redirected it to are trusted
-    // aliases; any other group is never evidence, and accepted URLs are rewritten
-    // to the approved segment that the server validates.
-    const aliasSegs=new Set(baseline.filter(v=>v.startsWith('groupseg:')).map(v=>v.slice(9)));
-    if(!aliasSegs.size)aliasSegs.add(group.split('/')[2]); // journals created before 0.5.7
-    const targetSeg=(baseline.find(v=>v.startsWith('target:'))?.slice(7)??group).split('/')[2];
-    const segOf=href=>new URL(href).pathname.split('/')[2];
-    const sameGroup=href=>aliasSegs.has(segOf(href));
-    const toTargetGroup=href=>{const u=new URL(href);const p=u.pathname.split('/');p[2]=targetSeg;return u.origin+p.join('/');};
-    const onAliasPage=/^\/groups\/[A-Za-z0-9._-]+(\/(posts|permalink)\/\d+)?\/?$/.test(location.pathname)&&aliasSegs.has(location.pathname.split('/')[2]);
-    if(!onAliasPage)return {error:'Cambió la página del grupo. Resultado desconocido.'};
-    let receipt=null;
-    try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));if(value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000)receipt=value;}catch{}
-    const postIdOf=href=>href.match(/\/(?:posts|permalink)\/(\d+)\/?$/)?.[1];
-    // Detect "en revisión": only a post opened after this recorded click, and absent before it, counts.
-    if(currentPost&&receipt&&sameGroup(currentPost)&&!baseline.includes(currentPost)&&!baseline.some(value=>postIdOf(value)===postIdOf(currentPost))){
-      const reviewHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/esta publicación está en revisión/i.test(text(h)));
-      if(reviewHeading)return {status:'pending_approval',url:toTargetGroup(currentPost),message:'Facebook indicó que esta publicación está en revisión. Se publicará cuando un administrador la apruebe.'};
-    }
-    const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
-    const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
-    for(const saved of receipt?.notices??[]){
-      const node=document.createElement('div');node.textContent=saved.message;
-      for(const href of saved.urls){const link=document.createElement('a');link.href=href;node.append(link);}
-      if(!baseline.includes(noticeKey(node)))newNotices.push(node);
-    }
-    const composerOpen=()=>!!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
-    const pendingNotice=newNotices.find(node=>/^Tu publicación (está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/.test(text(node)));
-    if(pendingNotice&&!document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]'))return {status:'pending_approval',url:null,message:'Facebook indicó explícitamente que este envío espera aprobación de los administradores.'};
-    // A sale composer never stores an authorId; do not fabricate success.
-    if(baseline.includes('sale:approved'))return {waiting:true};
-    const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
-    const expectedPhotos=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
-    // A same-tab post navigation is accepted only for this recorded final click.
-    if(currentPost&&receipt&&!composerOpen()){
-      const node=document.createElement('div');node.textContent='Tu publicación se publicó';
-      const link=document.createElement('a');link.href=currentPost;node.append(link);newNotices.push(node);
-    }
-    for(const notice of newNotices){
-      const links=[...new Set(Array.from(notice.querySelectorAll('a[href]')).map(link=>groupPostUrl(link.href)).filter(Boolean))];
-      if(links.length!==1||!/^Tu publicación (se publicó|se creó)/i.test(text(notice)))continue;
-      const url=links[0];
-      if(baseline.includes(url)||!sameGroup(url))continue;
-      const postMatch=url.match(/\/(posts|permalink)\/(\d+)\/?$/); if(!postMatch)continue;
-      const postId=postMatch[2];
-      if(baseline.includes(postId)||baseline.some(value=>value.match(/\/(?:posts|permalink)\/(\d+)\/?$/)?.[1]===postId))continue;
-      const photoLinks=Array.from(document.querySelectorAll('a[href]')).filter(visible).filter(element=>{try{const set=new URL(element.href).searchParams.get('set');return set?.endsWith('.'+postId);}catch{return false;}});
-      if(!photoLinks.length)continue;
-      let postScope=photoLinks[0].parentElement;
-      // Observed Facebook posts use ordinary divs, not article/section elements.
-      while(postScope&&postScope!==document.body){
-        if(buttons('Acciones en esta publicación de ',postScope,true).length>1){postScope=null;break;}
-        if(Array.from(postScope.querySelectorAll('a[href]')).some(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}})&&normalize(postScope.innerText).includes(normalize(content.groupText)))break;
-        postScope=postScope.parentElement;
-      }
-      if(postScope===document.body)continue;
-      if(!postScope||!visible(postScope))continue;
-      const authorLink=Array.from(postScope.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
-      if(!authorId||!authorLink)continue;
-      if(buttons('Ver más',postScope).length===1){button('Ver más',postScope).click();continue;}
-      if(!normalize(postScope.innerText).includes(normalize(content.groupText)))continue;
-      if(expectedPhotos!==undefined){
-        const postPhotos=new Set(Array.from(postScope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{try{const url=new URL(link.href);return url.searchParams.get('set')?.endsWith('.'+postId)?[url.searchParams.get('fbid')??url.origin+url.pathname]:[];}catch{return [];}})).size;
-        if(postPhotos!==Number(expectedPhotos))continue;
-      }
-      const normalizedUrl=toTargetGroup(url);
-      return {status:currentPost?'submitted':'published',url:normalizedUrl,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
-    }
-    // Explicit new acknowledgement establishes receipt, even without a permalink.
-    if(!composerOpen()&&newNotices.some(node=>/^Tu publicación (se publicó|se creó)([.!\s]|$)/i.test(text(node))&&!node.querySelector('a[href]')))return {status:'submitted',url:null,message:'Facebook confirmó la recepción del envío. Visibilidad pública sin verificar.'};
-    // Only booleans and counts: never page text, names or URLs.
-    return {waiting:true,diag:{page:onAliasPage?'alias':'other',post:!!currentPost,composer:composerOpen(),notices:newNotices.length,receipt:!!receipt}};
-  }
-  if(action==='result_search'){
-    const gPostUrl=href=>{try{const u=new URL(href);return u.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(u.pathname)?u.origin+u.pathname:null;}catch{return null;}};
-    const authorId=baseline.find(v=>v.startsWith('author:'))?.slice(7);
-    const group=baseline.find(v=>v.startsWith('group:'))?.slice(6);
-    const currentGroupPath=location.pathname.replace(/\/$/,'');
-    const aliasSegs=new Set(baseline.filter(v=>v.startsWith('groupseg:')).map(v=>v.slice(9)));
-    if(group&&!aliasSegs.size)aliasSegs.add(group.split('/')[2]); // journals created before 0.5.7
-    if(!authorId||!group||!/^\/groups\/[A-Za-z0-9._-]+$/.test(currentGroupPath)||!aliasSegs.has(currentGroupPath.split('/')[2]))return {notFound:true};
-    const targetSeg=(baseline.find(v=>v.startsWith('target:'))?.slice(7)??group).split('/')[2];
-    const segOf=href=>new URL(href).pathname.split('/')[2];
-    const firstLine=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
-    const candidates=new Set();
-    for(const section of Array.from(document.querySelectorAll('article,section,[role="article"]')).filter(visible)){
-      const authorLink=Array.from(section.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
-      if(!authorLink)continue;
-      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>u&&!baseline.includes(u)&&aliasSegs.has(segOf(u))))];
-      if(sectionUrls.length!==1)continue;
-      if(firstLine&&!text(section).includes(firstLine))continue;
-      candidates.add(sectionUrls[0]);
-    }
-    if(candidates.size===1){
-      const url=[...candidates][0];
-      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=targetSeg;
-      return {candidateUrl:u.origin+segs.join('/')};
-    }
-    return {notFound:true};
   }
   throw new Error('Acción no autorizada.');
   } catch(error) { return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }

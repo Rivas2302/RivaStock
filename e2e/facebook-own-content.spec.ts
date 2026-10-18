@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {facebookFormAction} from '../extensions/facebook/form-actions.js';
+import {ownedGroupResult} from '../extensions/facebook/adapter.js';
 
 const content={
   title:'Artículo de prueba aprobado',
@@ -78,4 +79,44 @@ test('leaves group-sale content unknown when the observed own-content card struc
   const result=await snapshot(page,[]);
 
   expect(result).toMatchObject({complete:true,items:[]});
+});
+
+test('accepts exactly one new pending ID with the account author and approved title',()=>{
+  const job={destination:{url:'https://www.facebook.com/groups/123'}};
+  const baseline=['own-baseline:group','own:300000000000000'];
+  const result=ownedGroupResult(job,baseline,[
+    {complete:true,items:[{id:'300000000000004',state:'pending_approval',authorMatches:true,titleMatches:true}]},
+    {complete:true,items:[]},
+  ]);
+
+  expect(result).toMatchObject({status:'pending_approval',url:null,pendingPostId:'300000000000004'});
+});
+
+test('does not use a pre-existing ID, an unverified author, or multiple new IDs as evidence',()=>{
+  const job={destination:{url:'https://www.facebook.com/groups/123'}};
+  const baseline=['own-baseline:group','own:300000000000005'];
+  expect(ownedGroupResult(job,baseline,[
+    {complete:true,items:[{id:'300000000000005',state:'published',authorMatches:true,titleMatches:true}]},
+    {complete:true,items:[]},
+  ])).toBeNull();
+  expect(ownedGroupResult(job,baseline,[
+    {complete:true,items:[{id:'300000000000006',state:'published',authorMatches:false,titleMatches:true}]},
+    {complete:true,items:[]},
+  ])).toBeNull();
+  expect(ownedGroupResult(job,baseline,[
+    {complete:true,items:[
+      {id:'300000000000007',state:'published',authorMatches:true,titleMatches:true},
+      {id:'300000000000008',state:'published',authorMatches:true,titleMatches:true},
+    ]},
+    {complete:true,items:[]},
+  ])).toBeNull();
+});
+
+test('builds a group permalink only from the one new verified published item',()=>{
+  const result=ownedGroupResult({destination:{url:'https://www.facebook.com/groups/123'}},['own-baseline:group'],[
+    {complete:true,items:[{id:'300000000000009',state:'published',authorMatches:true,titleMatches:true}]},
+    {complete:true,items:[]},
+  ]);
+
+  expect(result).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/posts/300000000000009'});
 });

@@ -28,6 +28,54 @@ export async function fetchPublicationPhotos(content, projectUrl) {
   }
   return photos;
 }
+const groupOwnContentPaths=['my_pending_content','my_posted_content'];
+async function waitForFacebookTab(tabId,expectedPath) {
+  for(let attempt=0;attempt<60;attempt++) {
+    const tab=await chrome.tabs.get(tabId);
+    if(tab.status==='complete'&&new URL(tab.url).pathname.replace(/\/$/,'')===expectedPath)return;
+    if(tab.status==='complete'&&/\/(login|checkpoint|recover)\b/.test(new URL(tab.url).pathname))throw new Error('La sesión de Facebook venció o requiere una verificación.');
+    await new Promise(resolve=>setTimeout(resolve,250));
+  }
+  throw new Error('La lista de contenido propio no terminó de cargar. No se autorizó el envío.');
+}
+async function readGroupOwnContent(job,baseline,states) {
+  const group=new URL(job.destination.url);
+  const groupPath=group.pathname.replace(/\/$/,'');
+  const firstUrl=`https://www.facebook.com${groupPath}/${states[0]}`;
+  const tab=await chrome.tabs.create({url:firstUrl,active:false});
+  try {
+    const snapshots=[];
+    for(const state of states) {
+      const path=`${groupPath}/${state}`;
+      const url=`https://www.facebook.com${path}`;
+      if(state!==states[0])await chrome.tabs.update(tab.id,{url});
+      await waitForFacebookTab(tab.id,path);
+      snapshots.push(await facebookAdapter.action(tab.id,'own_content_snapshot',{
+        ...job.content,targetGroupUrl:job.destination.url,
+      },[],baseline));
+    }
+    return snapshots;
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(()=>{});
+  }
+}
+export function ownedGroupResult(job,baseline,snapshots) {
+  if(!baseline.includes('own-baseline:group')||snapshots.length!==2||snapshots.some(snapshot=>snapshot.complete!==true))return null;
+  const seen=new Set(baseline.filter(value=>value.startsWith('own:')).map(value=>value.slice(4)));
+  const candidates=snapshots.flatMap(snapshot=>snapshot.items??[])
+    .filter(item=>/^\d+$/.test(item.id)&&!seen.has(item.id)&&item.authorMatches===true&&item.titleMatches===true);
+  const ids=[...new Set(candidates.map(item=>item.id))];
+  if(ids.length!==1)return null;
+  const matches=candidates.filter(item=>item.id===ids[0]);
+  if(matches.length!==1)return null;
+  const item=matches[0];
+  if(item.state==='pending_approval')return {status:'pending_approval',url:null,pendingPostId:item.id,message:'Facebook mostró el nuevo envío en la lista de publicaciones pendientes.'};
+  if(item.state==='published') {
+    const segment=new URL(job.destination.url).pathname.split('/')[2];
+    return {status:'published',url:`https://www.facebook.com/groups/${segment}/posts/${item.id}`,message:'El ID nuevo coincide con el autor y el título aprobados en la lista de publicaciones del grupo.'};
+  }
+  return null;
+}
 export const facebookAdapter = {
   ready: true,
   async action(tabId, action, content, photos = [], baseline = []) {
@@ -65,33 +113,26 @@ export const facebookAdapter = {
     config.onTiming?.('navigation_ms',performance.now()-started);
     const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url,targetGroupName:marketplace?null:job.destination.name??null}, photos);
     if (!result.ready) throw new Error('El formulario no está listo.');
-    return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline: result.baseline };
+    let baseline=result.baseline;
+    if(!marketplace) {
+      const snapshots=await readGroupOwnContent(job,baseline,groupOwnContentPaths);
+      if(snapshots.some(snapshot=>snapshot.complete!==true))throw new Error('No se pudo capturar una lista completa de contenido propio antes del envío. No se autorizó el clic.');
+      baseline=[...baseline,'own-baseline:group',...new Set(snapshots.flatMap(snapshot=>snapshot.items??[]).map(item=>item.id).filter(id=>/^\d+$/.test(id)).map(id=>'own:'+id))];
+    }
+    return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline };
   },
   async reconcile(active) {
-    const isGroup=active.job.destination.mechanism==='group_direct';
-    let receipt=null,lastError=null,lastDiag=null;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      // Polling only reads the page, so a transient script or navigation error is retried.
-      let result;
-      try{result=await this.action(active.tabId, 'result', active.job.content, [], active.baseline);}
-      catch(error){lastError=error;await new Promise(resolve => setTimeout(resolve, 750));continue;}
-      if(result.diag)lastDiag=result.diag;
-      if(result.status&&result.url)return result;
-      if(result.status&&!isGroup)return result;
-      if(result.status)receipt=receipt??result;
-      await new Promise(resolve => setTimeout(resolve, 750));
+    if(active.job.destination.mechanism!=='group_direct')throw new Error('Resultado desconocido. Marketplace todavía no expone un ID causal verificable; no se repetirá el envío.');
+    let lastError=null;
+    for(let attempt=0;attempt<4;attempt++) {
+      try {
+        const snapshots=await readGroupOwnContent(active.job,active.baseline,groupOwnContentPaths);
+        const result=ownedGroupResult(active.job,active.baseline,snapshots);
+        if(result)return result;
+      } catch(error) {lastError=error;}
+      if(attempt<3)await new Promise(resolve=>setTimeout(resolve,1000));
     }
-    const base='Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.';
-    const diag=lastDiag?` [diag page=${lastDiag.page} post=${+lastDiag.post} composer=${+lastDiag.composer} notices=${Number(lastDiag.notices)||0} receipt=${+lastDiag.receipt}]`:'';
-    const message=(lastError?`${base} Último error: ${String(lastError.message).slice(0,200)}`:base)+diag;
-    if(isGroup){
-      // A feed match is only a candidate for human confirmation, never a result.
-      const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);
-      const error=new Error(message);
-      if(typeof found?.candidateUrl==='string')error.candidateUrl=found.candidateUrl;
-      if(receipt){if(!error.candidateUrl)return receipt;error.receipt=receipt;}
-      throw error;
-    }
-    throw new Error(message);
+    const suffix=lastError?` Último error: ${String(lastError.message).slice(0,160)}`:'';
+    throw new Error(`Resultado desconocido. No hubo exactamente un ID nuevo identificable en las listas de contenido propio; no se repetirá el envío.${suffix}`);
   },
 };
