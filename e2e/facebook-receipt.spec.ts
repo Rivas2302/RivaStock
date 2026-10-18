@@ -42,3 +42,36 @@ test('a previously present success notice does not establish receipt',async({pag
   const result=await page.evaluate(source=>new Function('return ('+source+')')()('result',{groupText:'Monopoly'},[],['group:/groups/123','notice:Tu publicación se publicó.']),facebookFormAction.toString());
   expect(result).toEqual({waiting:true});
 });
+
+const reviewPage=(withReceipt:boolean)=>`<div role="dialog"><h2>Esta publicación está en revisión</h2></div>
+  <script>${withReceipt?"document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:'fixture',started:Date.now(),notices:[]}));":''}</script>`;
+const runResult=(page:any,baseline:string[])=>page.evaluate(({source,baseline}:any)=>new Function('return ('+source+')')()('result',{groupText:'Monopoly'},[],baseline),{source:facebookFormAction.toString(),baseline});
+const reviewBaseline=['flow:fixture','group:/groups/123','target:/groups/123','groupseg:123','author:111','photos:1'];
+
+test('review dialog on an old permalink is not evidence',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:reviewPage(true)}));
+  await page.goto('https://www.facebook.com/groups/123/posts/50');
+  const result=await runResult(page,[...reviewBaseline,'https://www.facebook.com/groups/123/posts/50']);
+  expect(result.status).toBeUndefined();
+});
+
+test('review dialog without a click receipt is not evidence',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:reviewPage(false)}));
+  await page.goto('https://www.facebook.com/groups/123/posts/50');
+  const result=await runResult(page,reviewBaseline);
+  expect(result.status).toBeUndefined();
+});
+
+test('review dialog on a new post after the click is pending approval',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:reviewPage(true)}));
+  await page.goto('https://www.facebook.com/groups/123/posts/50');
+  expect(await runResult(page,reviewBaseline)).toMatchObject({status:'pending_approval',url:'https://www.facebook.com/groups/123/posts/50'});
+});
+
+test('cross-post dialog: only an exact Cerrar button is clicked',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div role="dialog"><h2>Publicación realizada</h2>
+    <button aria-label="Cerrar y compartir" onclick="window.clicks=(window.clicks||0)+1">Compartir</button></div>`}));
+  await page.goto('https://www.facebook.com/groups/123');
+  expect(await runResult(page,reviewBaseline)).toMatchObject({waiting:true});
+  expect(await page.evaluate(()=>(window as any).clicks??0)).toBe(0);
+});

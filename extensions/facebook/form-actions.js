@@ -492,7 +492,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     // Dismiss "Publicación realizada" cross-post suggestions dialog: it blocks the feed
     // during polling and prevents URL capture from notices or the feed.
     const crossPostHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/publicación realizada/i.test(text(h)));
-    if(crossPostHeading){const dialog=crossPostHeading.closest('[role="dialog"]');const closeBtn=dialog&&[...dialog.querySelectorAll('button,[role="button"]')].find(b=>/cerrar/i.test(accessibleName(b)));if(closeBtn)closeBtn.click();return {waiting:true};}
+    if(crossPostHeading){const dialog=crossPostHeading.closest('[role="dialog"]');const closeBtns=dialog?[...dialog.querySelectorAll('button,[role="button"]')].filter(b=>accessibleName(b).trim()==='Cerrar'):[];if(closeBtns.length===1)closeBtns[0].click();return {waiting:true};}
     const currentPost=groupPostUrl(location.href);
     // Only the approved group and the page Facebook redirected it to are trusted
     // aliases; any other group is never evidence, and accepted URLs are rewritten
@@ -505,15 +505,16 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const toTargetGroup=href=>{const u=new URL(href);const p=u.pathname.split('/');p[2]=targetSeg;return u.origin+p.join('/');};
     const onAliasPage=/^\/groups\/[A-Za-z0-9._-]+(\/(posts|permalink)\/\d+)?\/?$/.test(location.pathname)&&aliasSegs.has(location.pathname.split('/')[2]);
     if(!onAliasPage)return {error:'Cambió la página del grupo. Resultado desconocido.'};
-    // Detect "en revisión": Facebook navigated to the post permalink and shows a review dialog.
-    if(currentPost){
+    let receipt=null;
+    try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));if(value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000)receipt=value;}catch{}
+    const postIdOf=href=>href.match(/\/(?:posts|permalink)\/(\d+)\/?$/)?.[1];
+    // Detect "en revisión": only a post opened after this recorded click, and absent before it, counts.
+    if(currentPost&&receipt&&sameGroup(currentPost)&&!baseline.includes(currentPost)&&!baseline.some(value=>postIdOf(value)===postIdOf(currentPost))){
       const reviewHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/esta publicación está en revisión/i.test(text(h)));
-      if(reviewHeading)return {status:'pending_approval',url:currentPost,message:'Facebook indicó que esta publicación está en revisión. Se publicará cuando un administrador la apruebe.'};
+      if(reviewHeading)return {status:'pending_approval',url:toTargetGroup(currentPost),message:'Facebook indicó que esta publicación está en revisión. Se publicará cuando un administrador la apruebe.'};
     }
     const allNotices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible);
     const newNotices=allNotices.filter(node=>!baseline.includes(noticeKey(node)));
-    let receipt=null;
-    try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));if(value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000)receipt=value;}catch{}
     for(const saved of receipt?.notices??[]){
       const node=document.createElement('div');node.textContent=saved.message;
       for(const href of saved.urls){const link=document.createElement('a');link.href=href;node.append(link);}
