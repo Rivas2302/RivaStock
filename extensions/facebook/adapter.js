@@ -59,6 +59,15 @@ async function readGroupOwnContent(job,baseline,states) {
     await chrome.tabs.remove(tab.id).catch(()=>{});
   }
 }
+async function readMarketplaceOwnContent(job,baseline) {
+  const tab=await chrome.tabs.create({url:'https://www.facebook.com/marketplace/you/selling',active:false});
+  try {
+    await waitForFacebookTab(tab.id,'/marketplace/you/selling');
+    return await facebookAdapter.action(tab.id,'own_content_snapshot',job.content,[],baseline);
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(()=>{});
+  }
+}
 export function ownedGroupResult(job,baseline,snapshots) {
   if(!baseline.includes('own-baseline:group')||snapshots.length!==2||snapshots.some(snapshot=>snapshot.complete!==true))return null;
   const seen=new Set(baseline.filter(value=>value.startsWith('own:')).map(value=>value.slice(4)));
@@ -118,11 +127,21 @@ export const facebookAdapter = {
       const snapshots=await readGroupOwnContent(job,baseline,groupOwnContentPaths);
       if(snapshots.some(snapshot=>snapshot.complete!==true))throw new Error('No se pudo capturar una lista completa de contenido propio antes del envío. No se autorizó el clic.');
       baseline=[...baseline,'own-baseline:group',...new Set(snapshots.flatMap(snapshot=>snapshot.items??[]).map(item=>item.id).filter(id=>/^\d+$/.test(id)).map(id=>'own:'+id))];
+    } else {
+      const snapshot=await readMarketplaceOwnContent(job,baseline);
+      if(snapshot.complete!==true)throw new Error('«Tus publicaciones» no expone una lista completa con IDs de anuncio verificables. No se autorizó el clic.');
+      baseline=[...baseline,'own-baseline:marketplace',...new Set((snapshot.items??[]).map(item=>item.id).filter(id=>/^\d+$/.test(id)).map(id=>'own:'+id))];
     }
     return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline };
   },
   async reconcile(active) {
-    if(active.job.destination.mechanism!=='group_direct')throw new Error('Resultado desconocido. Marketplace todavía no expone un ID causal verificable; no se repetirá el envío.');
+    if(active.job.destination.mechanism==='marketplace') {
+      if(!active.baseline.includes('own-baseline:marketplace'))throw new Error('Resultado desconocido. No había un baseline causal de Marketplace para este intento; no se repetirá el envío.');
+      const snapshot=await readMarketplaceOwnContent(active.job,active.baseline);
+      if(snapshot.complete!==true)throw new Error('Resultado desconocido. «Tus publicaciones» no expone una lista completa con IDs de anuncio verificables; no se repetirá el envío.');
+      throw new Error('Resultado desconocido. No apareció exactamente un ID nuevo de anuncio verificable; no se repetirá el envío.');
+    }
+    if(active.job.destination.mechanism!=='group_direct')throw new Error('Resultado desconocido. El destino no tiene un lector de contenido propio verificado; no se repetirá el envío.');
     let lastError=null;
     for(let attempt=0;attempt<4;attempt++) {
       try {

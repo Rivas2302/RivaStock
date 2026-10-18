@@ -14,13 +14,12 @@ test('reports sold and exhausted homonyms without opening or choosing any previo
     <script>document.addEventListener('click',()=>window.clicked=true)</script>`}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
   const result=await run(page,'check_existing');
-  expect(result.issue.kind).toBe('marketplace_conflict');expect(result.issue.candidates).toHaveLength(2);
-  expect(result.issue.candidates[0]).toMatchObject({status:'Vendido',url:'https://www.facebook.com/marketplace/item/901/'});
-  expect(result.issue.candidates[1]).toMatchObject({status:'Agotado',url:null});
+  expect(result.issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
+  expect(await page.getByPlaceholder('Buscar en tus publicaciones').inputValue()).toBe('');
   expect(await page.evaluate(()=>window.clicked)).toBeUndefined();
-  // Even a unique title match must require a decision.
+  // A title match blocks a repeat but never supplies an announcement ID.
   await page.locator('button').evaluate(node=>node.remove());
-  expect((await run(page,'check_existing')).issue.candidates).toHaveLength(1);
+  expect((await run(page,'check_existing')).issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
 });
 
 test('does not confuse old title cards with the result of an explicitly approved new listing',async({page})=>{
@@ -52,15 +51,16 @@ test('Marketplace notices and item navigation do not resolve an owned-content re
   expect(await run(page,'result',{...approved,selection:{marketplace:true}},baseline)).toEqual({waiting:true});
 });
 
-test('reads links from each row detail without reactivating sold or exhausted listings',async({page})=>{
+test('does not open Marketplace cards to read links or reactivate listings',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones">
     <section><button aria-label="Reloj smartwatch 7 mayas" data-id="901"><img alt="Foto"></button><button aria-label="Reloj smartwatch 7 mayas">Reloj smartwatch 7 mayas $27.000 Vendido</button><button id="reactivate">Marcar como disponible</button></section>
     <section><button aria-label="Reloj smartwatch 7 mayas" data-id="902"><img alt="Foto"></button><button aria-label="Reloj smartwatch 7 mayas">Reloj smartwatch 7 mayas $26.000 Agotado</button></section>
     <script>document.querySelector('#reactivate').onclick=()=>window.reactivated=true;document.querySelectorAll('[data-id]').forEach(button=>button.onclick=()=>{window.reads=(window.reads||0)+1;const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<h2>Tu publicación</h2><a href="/marketplace/item/'+button.dataset.id+'/">Ver publicación</a><button aria-label="Cerrar">Cerrar</button>';dialog.querySelector('button').onclick=()=>dialog.remove();document.body.append(dialog)});</script>`}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
   const result=await run(page,'check_existing');
-  expect(result.issue.candidates.map((candidate:any)=>candidate.url)).toEqual(['https://www.facebook.com/marketplace/item/901/','https://www.facebook.com/marketplace/item/902/']);
-  expect(await page.evaluate(()=>window.reads)).toBe(2);expect(await page.evaluate(()=>window.reactivated)).toBeUndefined();expect(await page.getByRole('dialog').count()).toBe(0);
+  expect(result.issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
+  expect(await page.evaluate(()=>({reads:(window as any).reads??0,reactivated:(window as any).reactivated??false}))).toEqual({reads:0,reactivated:false});
+  expect(await page.locator('input[placeholder="Buscar en tus publicaciones"]').inputValue()).toBe('');
 });
 
 for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs, accents, emoji and photos (${corrupt?'reject mismatch':'accept'})`,async({page})=>{

@@ -62,13 +62,16 @@ test('does not treat Marketplace controls or unrelated links as listing IDs',asy
     <img alt="Producto"><span>${index%2?'Vendido':'Activo'}</span>
     <button>${index%2?'Marcar como agotado':'Marcar como vendido'}</button>
   </div>`).join('');
-  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<main>${rows}<a href="/marketplace/item/399999999999999/">Enlace fuera de la lista</a><span>Cargando…</span></main>`}));
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones" value="filtro original"><main>${rows}<a href="/marketplace/item/399999999999999/">Enlace fuera de la lista</a><span>Cargando…</span></main>`}));
   await page.goto('https://www.facebook.com/marketplace/you/selling');
   await page.evaluate(()=>{(window as any).controlClicks=0;document.addEventListener('click',()=>{(window as any).controlClicks++;});});
 
   const result=await snapshot(page,[]);
 
   expect(result).toMatchObject({complete:false,items:[]});
+  const checkExisting=await page.evaluate(({source,content}:any)=>new Function('return ('+source+')')()('check_existing',content,[],[]),{source:facebookFormAction.toString(),content});
+  expect(checkExisting.error).toContain('lista completa');
+  expect(await page.getByPlaceholder('Buscar en tus publicaciones').inputValue()).toBe('filtro original');
   expect(await page.evaluate(()=>((window as any).controlClicks))).toBe(0);
 });
 

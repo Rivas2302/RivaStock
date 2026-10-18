@@ -145,7 +145,20 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
       return {complete:stable>=2&&!loading&&(headings.length>0||empty),items};
     }
-    if(path==='/marketplace/you/selling')return {complete:false,items:[]};
+    if(path==='/marketplace/you/selling') {
+      const root=document.querySelector('main,[role="main"]')??document.body;
+      const signature=()=>normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('a[href]')).map(link=>link.getAttribute('href')).join('|');
+      let last='',stable=0;
+      for(let attempt=0;attempt<12;attempt++) {
+        const current=signature();stable=current===last?stable+1:0;last=current;
+        if(stable>=2)break;
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      const loading=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)||/\bCargando(?:…|\.{3})?/i.test(root.innerText);
+      // The observed seller cards have no item ID link, and the collection was
+      // still loading. It cannot provide a causal baseline yet.
+      return {complete:false,items:[],loading:loading||stable<2};
+    }
     throw new Error('No se abrió una lista de contenido propio compatible.');
   }
   // Result pages and feed notices are not causal evidence. Only the adapter's
@@ -165,63 +178,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   const combo = label => one(Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).filter(element => accessibleName(element) === label));
   if (action === 'check_existing') {
     if (location.pathname.replace(/\/$/,'') !== '/marketplace/you/selling') throw new Error('No se abrió la lista de publicaciones de Marketplace.');
-    // The navigation item and list heading can both say "Tus publicaciones".
-    // Wait for the actual list search control, independent of navigation role.
-    const searches=()=>Array.from(document.querySelectorAll('input')).filter(visible).filter(element => element.getAttribute('placeholder')==='Buscar en tus publicaciones' || element.getAttribute('aria-label')==='Buscar en tus publicaciones');
-    await wait(() => searches().length>0);
-    const search=one(searches());
-    setValue(search,content.title);
-    // Observe a stable filtered UI, including any loading indicators, before
-    // deciding that no matching listing is visible. Existing titles require
-    // human review instead of publishing another possibly duplicated listing.
-    let last=''; let stable=0;
-    for(let attempt=0;attempt<40;attempt++) {
-      const current=normalize(document.body.innerText);
-      stable=current===last?stable+1:0; last=current;
-      if(stable>=4&&!Array.from(document.querySelectorAll('[role="progressbar"]')).some(visible))break;
-      await new Promise(resolve=>setTimeout(resolve,250));
-    }
-    if(stable<4)throw new Error('No se pudo verificar la lista de anuncios existentes. No se envió.');
+    const root=document.querySelector('main,[role="main"]')??document.body;
     const titleKey=normalize(content.title).toLocaleLowerCase('es');
-    const cards=Array.from(document.querySelectorAll('button,[role="button"],a[href]')).filter(visible)
-      .filter(element=>accessibleName(element).toLocaleLowerCase('es').includes(titleKey)&&/\$\s*[\d.,]+/.test(text(element)));
-    const candidates=cards.slice(0,20).map(element=>{
-      const links=[element,...element.querySelectorAll('a[href]')].flatMap(link=>{try{const url=new URL(link.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-      const raw=element.innerText||text(element);
-      return {title:accessibleName(element),summary:raw.slice(0,600),status:raw.slice(raw.search(/\$\s*[\d.,]+/)).replace(/^\$\s*[\d.,]+\s*/,'').match(/^(Vendido|Agotado|Disponible|Activo|En revisión)\b/i)?.[0]??null,url:[...new Set(links)].length===1?links[0]:null};
-    });
-    // Read each identifiable row's detail, never a title-selected winner.
-    // Only its empty thumbnail is safe to open; action buttons are excluded.
-    for(const [index,candidate] of candidates.entries()) {
-      if(candidate.url)continue;
-      if(Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))break;
-      let card=cards[index];
-      if(!card?.isConnected){const matches=buttons(candidate.title).filter(node=>(node.innerText||text(node)).startsWith(candidate.summary));if(matches.length!==1)continue;card=matches[0];}
-      let scope=card.parentElement;let thumbnail=null;
-      while(scope&&scope!==document.body) {
-        const same=buttons(candidate.title,scope);
-        const previews=same.filter(node=>!text(node)&&node.querySelector('img'));
-        if(previews.length===1&&same.filter(node=>/\$\s*[\d.,]+/.test(text(node))).length===1){thumbnail=previews[0];break;}
-        if(previews.length>1)break;scope=scope.parentElement;
-      }
-      if(!thumbnail)continue;
-      activate(thumbnail);
-      let detail=null;
-      for(let attempt=0;attempt<12;attempt++) {
-        const dialogs=Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
-        if(dialogs.length===1&&text(dialogs[0]).startsWith('Tu publicación')){detail=dialogs[0];break;}
-        await new Promise(resolve=>setTimeout(resolve,250));
-      }
-      if(!detail)break;
-      const urls=[...new Set(Array.from(detail.querySelectorAll('a[href]')).flatMap(link=>{const url=new URL(link.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}))];
-      if(urls.length===1)candidate.url=urls[0];
-      const close=buttons('Cerrar',detail);if(close.length!==1)break;
-      activate(close[0]);
-      for(let attempt=0;attempt<12&&detail.isConnected&&visible(detail);attempt++)await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    if(candidates.length)issue('marketplace_conflict','Hay anuncios anteriores que podrían corresponder a este producto. Elegí vincular uno o aprobá explícitamente una publicación nueva.',{candidates});
-    if(Array.from(document.querySelectorAll('button,[role="button"],a,span,h2,h3')).some(element=>visible(element)&&accessibleName(element).toLocaleLowerCase('es')===titleKey))issue('marketplace_conflict','Hay coincidencias de título sin información suficiente para identificar el anuncio.',{candidates:[]});
-    return {clear:true};
+    if(titleKey&&normalize(root.innerText).toLocaleLowerCase('es').includes(titleKey))issue('marketplace_conflict','Ya existe un anuncio con el título aprobado. Revisá su identidad antes de volver a publicar.',{candidates:[]});
+    throw new Error('No se pudo verificar una lista completa de anuncios con IDs utilizables. No se envió.');
   }
   if (action === 'marketplace_prepare') {
     if (location.pathname !== '/marketplace/create/item' || location.search) throw new Error('No se abrió un formulario nuevo de Marketplace.');
