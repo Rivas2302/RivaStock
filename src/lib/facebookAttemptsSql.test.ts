@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -273,4 +273,18 @@ it('records exists-without-link for a legacy authorized delivery without attempt
  await inspect("UPDATE facebook_deliveries SET status='attention',submitted_at=now() WHERE id=$1",[id]);
  await actor();await db.query("SELECT review_facebook_delivery($1,'exists_without_link')",[id]);
  expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[id])).rows[0].status).toBe('pending_approval');
+});
+it('cancels an unauthorized failed preparation, including a sale-audience issue',async()=>{
+ const g=await group();await approve([g],false);const a=await claim();
+ await worker('issue',a.attemptId,{issue:{kind:'group_sale_audience',message:'No se pudo verificar el destino de la venta.'}});
+ expect((await inspect('SELECT status,submitted_at FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0]).toMatchObject({status:'attention',submitted_at:null});
+ await actor();await db.query('SELECT cancel_facebook_delivery($1)',[a.id]);
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].status).toBe('cancelled');
+ expect((await inspect('SELECT finished_at FROM facebook_delivery_attempts WHERE id=$1',[a.attemptId])).rows[0].finished_at).not.toBeNull();
+});
+it('never cancels an authorized or contradicted delivery',async()=>{
+ await approve();const a=await claim();await worker('checkpoint',a.attemptId);await worker('attention',a.attemptId,{message:'Unknown'});
+ await actor();await expect(db.query('SELECT cancel_facebook_delivery($1)',[a.id])).rejects.toThrow();
+ await inspect("UPDATE facebook_deliveries SET submitted_at=NULL,recovery_required=true WHERE id=$1",[a.id]);
+ await actor();await expect(db.query('SELECT cancel_facebook_delivery($1)',[a.id])).rejects.toThrow();
 });

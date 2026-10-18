@@ -73,6 +73,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
       {!evidence&&<a className={btn} href={fallbackUrl} target="_blank" rel="noopener noreferrer">Revisar en Facebook</a>}
       {canWrite&&state==='pending'&&<button disabled={busy} className={btn} aria-label="Cancelar envío pendiente" onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar</button>}
       {canWrite&&state==='failed'&&!delivery.evidence_url&&!decision&&<button disabled={busy} className={btn} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
+      {canWrite&&state==='failed'&&!delivery.submitted_at&&!delivery.recovery_required&&<button disabled={busy} className={btn} onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar este destino</button>}
       {canWrite&&state==='unknown'&&<button disabled={busy} className={btn} onClick={()=>setReview(!review)}>Registrar revisión</button>}
     </div>
 

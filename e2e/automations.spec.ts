@@ -358,3 +358,12 @@ test('an unknown result can be closed as existing without a link',async({page})=
   await exists.click();
   await expect.poll(()=>calls.filter(c=>c.name==='review_facebook_delivery').map(c=>c.args)).toEqual([{p_delivery:'delivery-1',p_decision:'exists_without_link',p_url:null}]);
 });
+
+test('a failed preparation with an unsupported issue shows its cause and can be cancelled',async({page})=>{
+  const {rows,calls}=await fixture(page);const delivery=rows[2].facebook_deliveries[0];
+  Object.assign(delivery,{destination:{name:'Grupo de venta',mechanism:'group_direct',url:'https://www.facebook.com/groups/630127860416020'},issue:{kind:'group_sale_audience',message:'No se pudo verificar el destino de la venta.'}});
+  await page.goto('/automatizaciones');const card=await openPublication(page,'Preparación con error');
+  await expect(card.getByText('No se pudo verificar el destino de la venta.',{exact:true})).toBeVisible();
+  await card.getByRole('button',{name:'Cancelar este destino'}).click();
+  await expect.poll(()=>calls).toContainEqual({name:'cancel_facebook_delivery',args:{p_delivery:'delivery-2'}});
+});
