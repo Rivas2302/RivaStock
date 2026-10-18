@@ -1,7 +1,7 @@
 import PublicationDecision from './PublicationDecision';
 import {useState,useEffect} from 'react';
 import {Link} from 'react-router-dom';
-import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft} from 'lucide-react';
+import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft,ArrowLeft} from 'lucide-react';
 import {usePermission} from '../../hooks/usePermission';
 import {deliveryLabel,deliveryState,deliveryCandidate,deliveryReceipt,deliveryRejectedEvidence,facebookRpc,publicationStatus,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
@@ -139,7 +139,81 @@ function buildActivity(pub:FacebookPublication):{at:string;title:string;desc:str
   return events.sort((a,b)=>a.at.localeCompare(b.at));
 }
 
-export default function PublicationHistory({publications,onRefresh,showProductLink=false,layout='full',expandedDetails=false}:{publications:FacebookPublication[];onRefresh:()=>Promise<void>;showProductLink?:boolean;layout?:'full'|'embedded';expandedDetails?:boolean}) {
+function summaryBadgeClass(pub:FacebookPublication) {
+  const variant=summaryVariant(pub);
+  return variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+}
+
+function PublicationDetailView({publication,onBack,onRefresh,showProductLink,expandedDetails=false}:{publication:FacebookPublication;onBack:()=>void;onRefresh:()=>Promise<void>;showProductLink:boolean;expandedDetails?:boolean}) {
+  const [activePhoto,setActivePhoto]=useState(0);
+  useEffect(()=>setActivePhoto(0),[publication.id]);
+  const photos=publication.content.photos;
+  const activePhotoUrl=photos[activePhoto]??photos[0];
+  const activity=buildActivity(publication);
+
+  return <div className="space-y-4">
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">
+        <ArrowLeft size={16}/>Volver al historial
+      </button>
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${summaryBadgeClass(publication)}`}>
+        {summaryVariant(publication)==='warning'?<AlertTriangle size={13}/>:summaryVariant(publication)==='success'?<CheckCircle2 size={13}/>:<Clock3 size={13}/>}
+        {summaryLabel(publication)}
+      </span>
+    </header>
+
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex aspect-[4/3] items-center justify-center bg-slate-50 p-3 dark:bg-slate-950/40 sm:p-5">
+          {activePhotoUrl?<img src={activePhotoUrl} alt={publication.content.title} className="h-full w-full object-contain"/>:<div className="text-sm text-slate-500">Sin foto disponible</div>}
+        </div>
+        {photos.length>1&&<div className="flex gap-2 overflow-x-auto border-t border-slate-200 p-3 dark:border-slate-700">
+          {photos.map((photo,index)=><button type="button" key={`${photo}-${index}`} aria-label={`Ver foto ${index+1} de ${photos.length}`} aria-pressed={activePhoto===index} onClick={()=>setActivePhoto(index)} className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-slate-50 p-1 dark:bg-slate-950/40 ${activePhoto===index?'border-indigo-500 ring-2 ring-indigo-500/20':'border-slate-200 dark:border-slate-700'}`}>
+            <img src={photo} alt="" aria-hidden className="h-full w-full object-contain"/>
+          </button>)}
+        </div>}
+        <div className="space-y-4 border-t border-slate-200 p-4 sm:p-5 dark:border-slate-700">
+          <div>
+            <h2 className="break-words text-xl font-bold">{publication.content.title}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Aprobado · {new Date(publication.approved_at).toLocaleString('es-AR')}</p>
+            {publication.repeat_of&&<p className="mt-1 text-xs text-indigo-600 dark:text-indigo-300">Nueva publicación aprobada explícitamente</p>}
+          </div>
+          <dl className="grid gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/60 sm:grid-cols-3">
+            <div><dt className="text-xs text-slate-500">Precio</dt><dd className="mt-0.5 font-semibold">{formatCurrency(publication.content.price)}</dd></div>
+            <div><dt className="text-xs text-slate-500">Ubicación</dt><dd className="mt-0.5 font-semibold">{publication.content.location||'Sin ubicación'}</dd></div>
+            <div><dt className="text-xs text-slate-500">Categoría</dt><dd className="mt-0.5 font-semibold">{publication.content.category||'Sin categoría'}</dd></div>
+          </dl>
+          <div>
+            <h3 className="text-sm font-bold">Texto de la publicación</h3>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600 dark:text-slate-300">{publication.content.description}</p>
+          </div>
+        </div>
+      </section>
+
+      <div className="space-y-4">
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-base font-bold">Destinos ({publication.facebook_deliveries.length})</h3>
+            {showProductLink&&publication.product_id&&<Link className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50" to={`/automatizaciones?product=${encodeURIComponent(publication.product_id)}`}>Gestionar producto</Link>}
+          </div>
+          {publication.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} onRefresh={onRefresh}/>)}
+        </section>
+
+        {activity.length>0&&<details open={expandedDetails} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+          <summary className="cursor-pointer text-sm font-bold">Actividad</summary>
+          <ol className="mt-3 space-y-3">
+            {activity.map((event,index)=><li key={`${event.at}-${index}`} className="flex gap-3 text-sm">
+              <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-indigo-500"/>
+              <div className="min-w-0"><p className="font-medium">{event.title}</p><p className="text-xs text-slate-500">{event.desc}</p><p className="mt-0.5 text-xs text-slate-400">{new Date(event.at).toLocaleString('es-AR')}</p></div>
+            </li>)}
+          </ol>
+        </details>}
+      </div>
+    </div>
+  </div>;
+}
+
+export default function PublicationHistory({publications,onRefresh,showProductLink=false,layout='full',expandedDetails=false}:{publications:FacebookPublication[];onRefresh:()=>Promise<void>;showProductLink?:boolean;layout?:'full'|'embedded'|'cards';expandedDetails?:boolean}) {
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [mobileDetail,setMobileDetail]=useState(false);
 
@@ -196,6 +270,45 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
     </div>
     <p className="text-xs text-slate-500">El detalle completo y la actividad están disponibles en el historial. Un resultado desconocido requiere revisión antes de autorizar otro envío.</p>
   </div>;
+
+  if(layout==='cards') {
+    const selected=publications.find(publication=>publication.id===selectedId)??null;
+    return <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+        {[
+          {value:needsReview,label:'Requieren revisión',color:'text-amber-600 dark:text-amber-400',icon:<AlertTriangle size={16} className="text-amber-500"/>},
+          {value:inProgress,label:'En ejecución',color:'',icon:<Clock3 size={16} className="text-slate-400"/>},
+          {value:published,label:'Publicadas',color:'text-emerald-600 dark:text-emerald-400',icon:<CheckCircle2 size={16} className="text-emerald-500"/>},
+        ].map(({value,label,color,icon})=><div key={label} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <span className="shrink-0">{icon}</span><div className="min-w-0"><p className={`text-2xl font-bold leading-none ${color}`}>{value}</p><p className="mt-1 truncate text-xs text-slate-500">{label}</p></div>
+        </div>)}
+      </div>
+
+      {selected&&mobileDetail?<PublicationDetailView publication={selected} onBack={()=>setMobileDetail(false)} onRefresh={onRefresh} showProductLink={showProductLink} expandedDetails={expandedDetails}/>:<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {publications.map(publication=>{
+          const photo=publication.content.photos[0];
+          const variant=summaryVariant(publication);
+          return <button type="button" key={publication.id} onClick={()=>{setSelectedId(publication.id);setMobileDetail(true);}} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:shadow-black/20">
+            <div className="relative flex aspect-[4/3] items-center justify-center bg-slate-50 p-3 dark:bg-slate-950/40 sm:p-4">
+              {photo?<img src={photo} alt="" aria-hidden className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"/>:<div className="text-sm text-slate-500">Sin foto disponible</div>}
+              <span className={`absolute right-3 top-3 inline-flex max-w-[85%] items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${summaryBadgeClass(publication)}`}>
+                {variant==='warning'?<AlertTriangle size={12}/>:variant==='success'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
+                <span className="truncate">{summaryLabel(publication)}</span>
+              </span>
+              {publication.content.photos.length>1&&<span className="absolute bottom-3 left-3 rounded-lg bg-slate-950/75 px-2 py-1 text-xs font-semibold text-white">+{publication.content.photos.length-1} fotos</span>}
+            </div>
+            <div className="space-y-2 border-t border-slate-200 p-4 dark:border-slate-700">
+              <h3 className="line-clamp-2 min-h-10 font-bold leading-5">{publication.content.title}</h3>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>{new Date(publication.approved_at).toLocaleString('es-AR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                <span>{publication.facebook_deliveries.length} {publication.facebook_deliveries.length===1?'destino':'destinos'}</span>
+              </div>
+            </div>
+          </button>;
+        })}
+      </div>}
+    </div>;
+  }
 
   return <div className="space-y-4">
     {/* Stats */}
