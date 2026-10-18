@@ -396,3 +396,14 @@ test('repeating a publication keeps only photos the product still has',async({pa
   await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication').length).toBe(1);
   expect(calls.find(c=>c.name==='approve_facebook_publication')!.args.p_content.photos).toEqual([photo]);
 });
+
+test('the unknown-result counter covers every page and the cause is visible',async({page})=>{
+  const {rows}=await fixture(page);
+  await page.route('**/rest/v1/facebook_deliveries*',route=>route.fulfill({status:200,headers:{'content-range':'0-0/3','access-control-expose-headers':'content-range'},json:[]}));
+  rows[1].facebook_deliveries[0].message='Resultado desconocido. Último error: Cambió la página del grupo.';
+  await page.goto('/automatizaciones?view=queue');
+  await expect(page.getByText('3 entregas con resultado desconocido requieren revisión.',{exact:false})).toBeVisible();
+  await page.goto('/automatizaciones');
+  const unknown=await openPublication(page,'Resultado por revisar');
+  await expect(unknown.getByText('Resultado desconocido. Último error: Cambió la página del grupo.',{exact:true}).first()).toBeVisible();
+});

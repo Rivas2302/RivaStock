@@ -41,6 +41,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
 
     {/* Short status line */}
     {shortStatus&&<p className="text-xs text-slate-500 dark:text-slate-400">{shortStatus}</p>}
+    {stateIsWarning&&delivery.message&&delivery.message!==shortStatus&&<p className="break-words text-xs text-slate-600 dark:text-slate-300">{delivery.message.length>160?`${delivery.message.slice(0,160)}…`:delivery.message}</p>}
     {delivery.recovery_required&&<p className="text-xs text-rose-600 dark:text-rose-400" role="alert">Llegó evidencia después de una revisión. Otro envío queda bloqueado hasta revisar.</p>}
 
     {/* Candidate found */}
