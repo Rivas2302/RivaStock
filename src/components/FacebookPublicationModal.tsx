@@ -86,8 +86,8 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
     const payload = { p_product: product.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
     const serialized = JSON.stringify(payload);
     const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
-    // With no publication at all, the earlier intent never reached the server: a new key is safe.
-    if (previous && previous.payload !== serialized && !repeatOf && publications.length) throw new Error('Hay una confirmación anterior. Revisá su resultado antes de preparar otro contenido.');
+    // A changed payload gets a new key. If an earlier attempt did reach the server, a
+    // second first approval is rejected there: history requires p_repeat_of (0052).
     const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
     try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
     const requestStarted=performance.now();

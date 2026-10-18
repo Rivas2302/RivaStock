@@ -31,11 +31,11 @@ export default function Automations() {
     let query=supabase.from('facebook_publications').select(`id,product_id,repeat_of,content,approved_at,facebook_deliveries${view==='queue'?'!inner':''}(${facebookDeliveryFields})`).order('approved_at',{ascending:false}).order('id',{ascending:false}).range(page*50,page*50+50);
     if(view==='queue')query=query.in('facebook_deliveries.status',['pending','running']);
     // Counted across every page and view: a filtered page must never hide pending reviews.
-    const unknownQuery=supabase.from('facebook_deliveries').select('id',{count:'exact',head:true}).eq('status','attention').not('submitted_at','is',null);
+    const unknownQuery=supabase.from('facebook_deliveries').select('id',{count:'exact',head:true}).or('and(status.eq.attention,submitted_at.not.is.null),recovery_required.eq.true');
     const [history,pcs,unknown]=await Promise.all([view==='configuration'?Promise.resolve({data:[],error:null}):query,supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,queue_command_at,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at',null),unknownQuery]);
     if(currentQuery.current!==`${ownerUid}:${page}:${view}`)return;
-    if(history.error||pcs.error)throw new Error('No se pudo actualizar Automatizaciones. Verificá la conexión y la migración 0052. Los estados visibles pueden estar desactualizados.');
-    const rows=history.data as unknown as FacebookPublication[];setMore(rows.length>50);setPublications(rows.slice(0,50));setDevices(pcs.data as FacebookDevice[]);setUnknownTotal(unknown.error?0:unknown.count??0);setError('');
+    if(history.error||pcs.error||unknown.error)throw new Error('No se pudo actualizar Automatizaciones. Verificá la conexión y la migración 0052. Los estados visibles pueden estar desactualizados.');
+    const rows=history.data as unknown as FacebookPublication[];setMore(rows.length>50);setPublications(rows.slice(0,50));setDevices(pcs.data as FacebookDevice[]);setUnknownTotal(unknown.count??0);setError('');
   },[ownerUid,page,view]);
   async function manualRefresh(){
     if(manualPending.current)return;manualPending.current=true;setRefreshing(true);setNotice('');setError('');
