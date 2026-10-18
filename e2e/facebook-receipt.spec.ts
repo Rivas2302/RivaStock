@@ -1,11 +1,13 @@
 import {test,expect} from '@playwright/test';
 import {facebookFormAction} from '../extensions/facebook/form-actions.js';
 
+const photoSrc='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
 for(const scenario of ['toast','permalink','wrong-author','wrong-text','missing-photo','old-post','wrong-group','silent-close']) {
   test(`group notices and redirects do not resolve a result without an owned ID: ${scenario}`,async({page})=>{
     await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`
       <div role="dialog"><div role="textbox" contenteditable="true" aria-label="Escribe algo...">Monopoly</div>
-      <img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+      <img alt="rivastock-1.png" src="${photoSrc}">
       <button>Eliminar archivo adjunto de la publicación</button><button id="publish">Publicar</button></div>
       <script>
       document.documentElement.setAttribute('data-rivastock-flow','fixture');
@@ -24,7 +26,7 @@ for(const scenario of ['toast','permalink','wrong-author','wrong-text','missing-
       };
       </script>`}));
     await page.goto('https://www.facebook.com/groups/123');
-    const baseline=['flow:fixture','group:/groups/123','author:111','photos:1',...(scenario==='old-post'?['https://www.facebook.com/groups/123/posts/987']:[])];
+    const baseline=['flow:fixture','group:/groups/123','author:111','photos:1','prepared-photos:'+JSON.stringify([photoSrc]),...(scenario==='old-post'?['https://www.facebook.com/groups/123/posts/987']:[])];
     const content={groupText:'Monopoly',selection:{marketplace:false}};
     const run=(action:string)=>page.evaluate(({source,content,baseline,action})=>new Function('return ('+source+')')()(action,content,[],baseline),{source:facebookFormAction.toString(),content,baseline,action});
     expect(await run('submit')).toEqual({clicked:true});

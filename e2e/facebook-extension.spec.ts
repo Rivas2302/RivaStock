@@ -18,15 +18,16 @@ document.querySelector('[aria-label="Ubicación"]').oninput=e=>{e.target.setAttr
 document.querySelector('input[type=file]').onchange=e=>{window.uploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size,type:f.type}));for(const file of e.target.files){const img=document.createElement('img');img.alt='Foto del artículo';img.src='data:image/png;base64,AA==';document.body.append(img);}const counter=document.createElement('p');counter.textContent='Fotos · '+e.target.files.length+'/10 - Puedes agregar un máximo de 10 fotos.';document.body.append(counter);const panel=document.createElement('img');panel.alt='Vista previa';panel.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';document.body.append(panel);document.querySelector('#next').disabled=false};
 document.querySelector('#next').onclick=()=>{history.pushState({},'','?step=audience');const h=document.createElement('h1');h.textContent='Publicar en más lugares';document.body.append(h);const b=document.createElement('button');b.textContent='Publicar';b.onclick=()=>{sessionStorage.setItem('remote-success','yes');sessionStorage.setItem('submitted','yes');location.href='/marketplace/you/selling'};document.body.append(b)};
 </script></body></html>`;
-const seller = `<!doctype html><html><body><a href="/marketplace/you/selling">Tus publicaciones</a><h1>Tus publicaciones</h1><input placeholder="Buscar en tus publicaciones"><div id="list"></div><script>
-if(sessionStorage.getItem('submitted')){if(sessionStorage.getItem('remote-success')){const notice=document.createElement('div');notice.role='status';notice.innerHTML='Tu publicación se creó <a href="/marketplace/item/888888888/">Ver publicación</a>';document.body.append(notice);}const card=document.createElement('button');card.setAttribute('aria-label','Perfume de prueba');card.textContent='Perfume de prueba $43.000 En revisión';card.onclick=()=>{window.wrongCardClicks=(window.wrongCardClicks||0)+1};const thumbnail=document.createElement('button');thumbnail.setAttribute('aria-label','Perfume de prueba');thumbnail.onclick=()=>{if(document.querySelector('[role=dialog]'))return;const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<h2>Esta publicación está en revisión</h2><a href="/marketplace/item/987654321/">Perfume de prueba $43.000 General Pico</a><a href="/marketplace/item/987654321/">Marketplace</a>';document.body.append(dialog)};document.querySelector('#list').append(thumbnail,card)};
+const seller = `<!doctype html><html><body><main role="main" aria-label="Colección de tus artículos de Marketplace"><a href="/marketplace/you/selling">Tus publicaciones</a><h1>Tus publicaciones</h1><input aria-label="Buscar en tus publicaciones"><div id="list"></div></main><script>
+document.querySelector('input').value=new URLSearchParams(location.search).get('title_search')||'';
+if(sessionStorage.getItem('submitted')){if(sessionStorage.getItem('remote-success')){const notice=document.createElement('div');notice.role='status';notice.innerHTML='Tu publicación se creó <a href="/marketplace/item/888888888/">Ver publicación</a>';document.body.append(notice);}const card=document.createElement('section');const thumbnail=document.createElement('div');thumbnail.role='button';thumbnail.setAttribute('aria-label','Perfume de prueba');const listing=document.createElement('div');listing.role='button';listing.setAttribute('aria-label','Perfume de prueba');listing.textContent='Perfume de prueba $43.000 En revisión · Publicado en Marketplace';listing.onclick=()=>{window.wrongCardClicks=(window.wrongCardClicks||0)+1};const options=document.createElement('div');options.role='button';options.setAttribute('aria-label','Más opciones para Perfume de prueba');card.append(thumbnail,listing,options);document.querySelector('#list').append(card)};
 </script></body></html>`;
 const groupOwnContent=`<!doctype html><html><body><main><p>No hay publicaciones para mostrar</p></main><script>
 const parts=location.pathname.split('/');const segment=parts[2];const state=parts[3];const id=localStorage.getItem('group-post-'+segment);if(state==='my_posted_content'&&id){document.querySelector('main').innerHTML='<div><h3><a href="/groups/'+segment+'/user/42/">Test</a> publicó en <a href="/groups/'+segment+'">Grupo de prueba</a></h3><section><a href="/photo/?fbid=1&set=gm.'+id+'">Foto 1</a><p>Perfume de prueba Precio: ARS 43000.00 Disponible en General Pico.</p></section></div>'}else document.querySelector('main').innerHTML='<p>No hay publicaciones para mostrar</p>';
 </script></body></html>`;
 const groupForm = `<!doctype html><html><body><header><h1>Grupo de prueba</h1><span>49,5 mil miembros</span></header><div><a href="/groups/12345/user/42/">Perfil de Test</a><button id="open">Escribe algo...</button></div><script>
 document.querySelector('#open').onclick=()=>{const d=document.createElement('div');d.role='dialog';d.innerHTML='<h2>Crear publicación</h2><div role="textbox" contenteditable="true" aria-label="Crea una publicación pública..."></div><div><button aria-label="Foto/video">Foto/video</button><input type="file" multiple accept="image/*,video/*"></div><input type="file" multiple accept="image/*,video/*"><button id="publish" disabled>Publicar</button>';
-document.body.append(d);d.querySelector('input').onchange=e=>{window.groupUploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size}));for(const file of e.target.files){const img=document.createElement('img');img.alt='Foto de la publicación';img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';d.append(img);const remove=document.createElement('button');remove.textContent='Eliminar archivo adjunto de la publicación';d.append(remove);}d.querySelector('#publish').disabled=false};
+document.body.append(d);d.querySelector('input').onchange=e=>{window.groupUploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size}));for(const file of e.target.files){const img=document.createElement('img');img.alt=file.name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';d.append(img);const remove=document.createElement('button');remove.textContent='Eliminar archivo adjunto de la publicación';d.append(remove);}d.querySelector('#publish').disabled=false};
 d.querySelector('#publish').onclick=()=>{window.groupSubmits=(window.groupSubmits||0)+1;const value=d.querySelector('[contenteditable]').innerText;const uploads=window.groupUploads||[];const segment=location.pathname.split('/')[2];const id=segment==='45678'?'987654322':'987654321';localStorage.setItem('group-post-'+segment,id);d.remove();const notice=document.createElement('div');notice.setAttribute('role','status');notice.innerHTML='Tu publicación se publicó <a href="/groups/'+segment+'/posts/'+id+'">Ver publicación</a>';document.body.append(notice);const p=document.createElement('section');p.innerHTML='<button aria-label="Acciones en esta publicación de Test">...</button><a href="/groups/'+segment+'/user/42/">Test</a><p></p>'+uploads.map((_,i)=>'<a href="/photo/?fbid='+(i+1)+'&set=gm.'+id+'">Foto '+(i+1)+'</a>').join('');p.querySelector('p').textContent=value;document.body.append(p)};
 };</script></body></html>`;
 
@@ -144,8 +145,8 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
     const results=await worker.evaluate(() => (globalThis as any).fixtureState.results);
     expect(results.some((result:any)=>result.p_delivery==='market')).toBe(false);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.operations.some((operation:any)=>operation.p_operation==='attention'&&operation.p_delivery==='market'))).toBe(true);
-    expect(results[0]).toMatchObject({p_delivery:'group',p_status:'published',p_url:'https://www.facebook.com/groups/12345/posts/987654321'});
-    expect(results[1]).toMatchObject({p_delivery:'remote',p_status:'published',p_url:'https://www.facebook.com/groups/45678/posts/987654322'});
+    expect(results[0]).toMatchObject({p_delivery:'group',p_status:'published',p_url:'https://www.facebook.com/groups/12345/permalink/987654321/'});
+    expect(results[1]).toMatchObject({p_delivery:'remote',p_status:'published',p_url:'https://www.facebook.com/groups/45678/permalink/987654322/'});
     const captured=await worker.evaluate(()=>(globalThis as any).fixtureState.closedGroup);
     expect(captured.submits).toBe(1);expect(captured.uploads).toMatchObject([{size:68},{size:68}]);
     expect(await worker.evaluate(async () => (await (globalThis as any).chrome.storage.local.get('activeJob')).activeJob)).toBeUndefined();
@@ -197,21 +198,29 @@ test('website links the installed extension without copying credentials and acti
 });
 
 test('reports an existing Marketplace candidate without associating it or clicking Publish',async({},testInfo)=>{
-  test.setTimeout(60000);
   const temporary=mkdtempSync(join(tmpdir(),'rivastock-existing-test-'));const extension=join(temporary,'extension');cpSync(resolve('extensions/facebook'),extension,{recursive:true});
   const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
   const context=await chromium.launchPersistentContext(join(temporary,'profile'),{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND']});
   try {
     let createForms=0;
-    await context.addInitScript(()=>sessionStorage.setItem('submitted','yes'));
-    await context.route('https://www.facebook.com/**',async route=>{if(new URL(route.request().url()).pathname.includes('/create/item'))createForms++;await route.fulfill({contentType:'text/html',body:seller});});
+    await context.route('https://www.facebook.com/**',async route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(path.includes('/create/item'))createForms++;
+      await route.fulfill({contentType:'text/html; charset=utf-8',body:seller.replace("if(sessionStorage.getItem('submitted'))","if(true)")});
+    });
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(async()=>{
-      const runtime=(globalThis as any).chrome;const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
-      runtime.tabs.create=async(options:any)=>{const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));return update(tab.id,{url:options.url});};
+      const runtime=(globalThis as any).chrome;
+      const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
+      runtime.tabs.create=async(options:any)=>{
+        const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));await update(tab.id,{url:options.url});
+        for(let attempt=0;attempt<100;attempt++){const current=await runtime.tabs.get(tab.id);if(current.status==='complete'&&current.url===options.url)return current;await new Promise(resolve=>setTimeout(resolve,50));}
+        throw new Error('Fixture navigation did not complete.');
+      };
       const operations:any[]=[];(globalThis as any).operations=operations;let claimed=false;
       globalThis.fetch=async(_url:any,options:any)=>{if(String(_url).endsWith('/facebook_group_discovery'))return Response.json(null);const args=JSON.parse(options.body);operations.push(args);return Response.json(args.p_operation==='claim'?!claimed?(claimed=true,{id:'existing',content:{title:'Perfume de prueba',price:43000,photos:[],selection:{marketplace:true}},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}}):null:{saved:true});};
-      await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture',deviceId:'fixture-device'},paused:false});
+      const automationWindow=await runtime.windows.getCurrent();
+      await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture',deviceId:'fixture-device'},paused:false,automationWindowId:automationWindow.id,automationTabIds:[]});
     });
     const control=await context.newPage();await control.goto(`chrome-extension://${new URL(worker.url()).hostname}/connect.html`);
     await worker.evaluate(async()=>{await (globalThis as any).chrome.storage.local.set({groupDiscoveryIssue:'Error de lectura visible en el panel'});});
@@ -220,8 +229,7 @@ test('reports an existing Marketplace candidate without associating it or clicki
     expect(await control.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await control.screenshot({path:testInfo.outputPath('extension-panel.png')});
     await control.evaluate(async()=>{await (globalThis as any).chrome.runtime.sendMessage({type:'poll'});});
-    const debug=await worker.evaluate(async()=>({storage:await (globalThis as any).chrome.storage.local.get(null),operations:(globalThis as any).operations}));
-    await expect.poll(async()=>worker.evaluate(()=>(globalThis as any).operations.some((op:any)=>op.p_operation==='issue')),{timeout:20000,message:JSON.stringify(debug)}).toBe(true);
+    await expect.poll(async()=>worker.evaluate(()=>(globalThis as any).operations.some((op:any)=>op.p_operation==='issue')),{timeout:20000}).toBe(true);
     const operations=await worker.evaluate(()=>(globalThis as any).operations);
     expect(operations).toContainEqual(expect.objectContaining({p_operation:'issue',p_delivery:'existing',p_message:expect.stringContaining('marketplace_conflict')}));
     expect(operations.some((op:any)=>['checkpoint','result'].includes(op.p_operation))).toBe(false);expect(createForms).toBe(0);

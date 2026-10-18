@@ -7,18 +7,25 @@ async function run(page:any,action:string,content:any=approved,baseline:string[]
   return page.evaluate(({source,action,content,baseline,images}:any)=>new Function('return ('+source+')')()(action,content,images,baseline),{source:facebookFormAction.toString(),action,content,baseline,images});
 }
 
+function marketplaceCard(title:string,detail:string) {
+  return `<section><div role="button" aria-label="${title}"></div><div role="button" aria-label="${title}">${title} ${detail}</div><div role="button" aria-label="Más opciones para ${title}"></div></section>`;
+}
+
+function marketplaceCollection(title:string,cards:string) {
+  return `<main role="main" aria-label="Colección de tus artículos de Marketplace"><h1>Tus publicaciones</h1><input aria-label="Buscar en tus publicaciones" value="${title}">${cards}</main>`;
+}
+
 test('reports sold and exhausted homonyms without opening or choosing any previous listing',async({page})=>{
-  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones">
-    <a aria-label="Reloj smartwatch 7 mayas" href="/marketplace/item/901/">Reloj smartwatch 7 mayas $27.000 Vendido</a>
-    <button aria-label="Reloj Smartwatch 7 Mayas">Reloj Smartwatch 7 Mayas $26.000 Agotado</button>
-    <script>document.addEventListener('click',()=>window.clicked=true)</script>`}));
-  await page.goto('https://www.facebook.com/marketplace/you/selling');
+  const title=approved.title;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:marketplaceCollection(title,
+    marketplaceCard(title,'$27.000 Vendido · Publicado en Marketplace')+marketplaceCard(title,'$26.000 Agotado · Publicado en Marketplace')+
+    '<script>document.addEventListener("click",()=>window.clicked=true)</script>')}));
+  await page.goto('https://www.facebook.com/marketplace/you/selling?title_search='+encodeURIComponent(title));
   const result=await run(page,'check_existing');
   expect(result.issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
-  expect(await page.getByPlaceholder('Buscar en tus publicaciones').inputValue()).toBe('');
+  expect(await page.locator('[aria-label="Buscar en tus publicaciones"]').inputValue()).toBe(title);
   expect(await page.evaluate(()=>window.clicked)).toBeUndefined();
-  // A title match blocks a repeat but never supplies an announcement ID.
-  await page.locator('button').evaluate(node=>node.remove());
+  await page.locator('section').first().evaluate(node=>node.remove());
   expect((await run(page,'check_existing')).issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
 });
 
@@ -52,15 +59,16 @@ test('Marketplace notices and item navigation do not resolve an owned-content re
 });
 
 test('does not open Marketplace cards to read links or reactivate listings',async({page})=>{
-  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones">
-    <section><button aria-label="Reloj smartwatch 7 mayas" data-id="901"><img alt="Foto"></button><button aria-label="Reloj smartwatch 7 mayas">Reloj smartwatch 7 mayas $27.000 Vendido</button><button id="reactivate">Marcar como disponible</button></section>
-    <section><button aria-label="Reloj smartwatch 7 mayas" data-id="902"><img alt="Foto"></button><button aria-label="Reloj smartwatch 7 mayas">Reloj smartwatch 7 mayas $26.000 Agotado</button></section>
-    <script>document.querySelector('#reactivate').onclick=()=>window.reactivated=true;document.querySelectorAll('[data-id]').forEach(button=>button.onclick=()=>{window.reads=(window.reads||0)+1;const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<h2>Tu publicación</h2><a href="/marketplace/item/'+button.dataset.id+'/">Ver publicación</a><button aria-label="Cerrar">Cerrar</button>';dialog.querySelector('button').onclick=()=>dialog.remove();document.body.append(dialog)});</script>`}));
-  await page.goto('https://www.facebook.com/marketplace/you/selling');
+  const title=approved.title;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:marketplaceCollection(title,
+    marketplaceCard(title,'$27.000 Vendido · Publicado en Marketplace').replace('</section>','<div id="reactivate" role="button" aria-label="Marcar como disponible">Marcar como disponible</div></section>')+
+    marketplaceCard(title,'$26.000 Agotado · Publicado en Marketplace')+
+    '<script>document.querySelector("#reactivate").onclick=()=>window.reactivated=true;document.addEventListener("click",()=>window.reads=(window.reads||0)+1)</script>')}));
+  await page.goto('https://www.facebook.com/marketplace/you/selling?title_search='+encodeURIComponent(title));
   const result=await run(page,'check_existing');
   expect(result.issue).toMatchObject({kind:'marketplace_conflict',candidates:[]});
   expect(await page.evaluate(()=>({reads:(window as any).reads??0,reactivated:(window as any).reactivated??false}))).toEqual({reads:0,reactivated:false});
-  expect(await page.locator('input[placeholder="Buscar en tus publicaciones"]').inputValue()).toBe('');
+  expect(await page.locator('input[aria-label="Buscar en tus publicaciones"]').inputValue()).toBe(title);
 });
 
 for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs, accents, emoji and photos (${corrupt?'reject mismatch':'accept'})`,async({page})=>{
@@ -68,7 +76,7 @@ for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs
     <script>document.execCommand=()=>{window.legacyWrite=true;return true};
     document.querySelector('#open').onclick=()=>{const dialog=document.createElement('div');dialog.role='dialog';dialog.innerHTML='<div role="textbox" aria-label="Crea una publicación pública..." contenteditable="true" data-lexical-editor="true" style="white-space:pre-wrap"></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button id="publish" disabled>Publicar</button>';
     dialog.addEventListener('paste',event=>{event.preventDefault();const value=event.clipboardData.getData('text/plain');const editor=dialog.querySelector('[contenteditable]');editor.textContent=${corrupt?'value.replace(/\\n/g,\'\')':'value'};});
-    dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};dialog.querySelector('#publish').onclick=()=>window.sent=true;document.body.append(dialog)};</script>`}));
+    dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){const img=document.createElement('img');img.alt=event.target.files[i].name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);}dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');dialog.querySelector('#publish').disabled=false};dialog.querySelector('#publish').onclick=()=>window.sent=true;document.body.append(dialog)};</script>`}));
   await page.goto('https://www.facebook.com/groups/1025526211387819');
   const result=await run(page,'group_prepare',approved,[],photos);
   expect(await page.evaluate(()=>window.legacyWrite)).toBeUndefined();
@@ -77,8 +85,13 @@ for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs
   else {
     expect(result).toMatchObject({ready:true});expect(await page.locator('[contenteditable]').innerText()).toBe(approved.groupText);
     expect(await page.evaluate(()=>window.uploadCount)).toBe(2);
+    await page.locator('[role="dialog"] img[alt="rivastock-2.png"]').evaluate(node=>node.remove());
+    const changedPhotos=await run(page,'submit',approved,result.baseline);
+    expect(changedPhotos.error).toContain('Cambió el orden o la carga de las fotos');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
+    await page.locator('[role="dialog"]').evaluate(dialog=>{const img=document.createElement('img');img.alt='rivastock-2.png';img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);});
     await page.getByRole('button',{name:'Eliminar archivo adjunto de la publicación'}).first().evaluate(node=>node.remove());
-    expect((await run(page,'submit',approved,result.baseline)).error).toContain('fotos cambiaron');
+    expect(await run(page,'submit',approved,result.baseline)).toEqual({clicked:true});
+    expect(await page.evaluate(()=>window.sent)).toBe(true);
   }
 });
 

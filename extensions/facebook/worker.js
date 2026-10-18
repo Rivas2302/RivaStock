@@ -9,7 +9,7 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.12';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.13';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.

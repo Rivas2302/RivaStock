@@ -68,7 +68,7 @@ test('preserves paragraphs and photos when an editor flattens multiline insertTe
       const dialog=document.createElement('div');dialog.role='dialog';
       dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Crea una publicación pública..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
       dialog.addEventListener('input',event=>{if(event.target.isContentEditable){const clone=event.target.cloneNode(true);event.target.replaceWith(clone)}});
-      dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){const img=document.createElement('img');img.alt=event.target.files[i].name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
       dialog.querySelector('#publish').onclick=()=>{window.sent=true};document.body.append(dialog);
     };
     </script>`}));
@@ -106,7 +106,7 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
         });
         dialog.querySelector('input').onchange=()=>{
           window.uploadCount=(window.uploadCount||0)+1;
-          dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><button>Eliminar archivo adjunto de la publicación</button>');
+          dialog.insertAdjacentHTML('beforeend','<img alt="rivastock-1.png" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="><button>Eliminar archivo adjunto de la publicación</button>');
           dialog.querySelector('#publish').disabled=false;
         };
         dialog.querySelector('#publish').onclick=()=>{window.sent=(window.sent||0)+1};
@@ -229,7 +229,7 @@ test('group_prepare succeeds when the dialog editor uses aria-label "Escribe alg
     document.querySelector('#open').onclick=()=>{
       const dialog=document.createElement('div');dialog.role='dialog';
       dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
-      dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      dialog.querySelector('input').onchange=event=>{window.uploadCount=event.target.files.length;for(let i=0;i<event.target.files.length;i++){const img=document.createElement('img');img.alt=event.target.files[i].name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
       dialog.querySelector('#publish').onclick=()=>{window.sent=true};document.body.append(dialog);
     };
     </script>`}));
@@ -281,7 +281,7 @@ test('group_prepare records the approved and the landing group segments',async({
     document.querySelector('#open').onclick=()=>{
       const dialog=document.createElement('div');dialog.role='dialog';
       dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
-      dialog.querySelector('input').onchange=event=>{for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      dialog.querySelector('input').onchange=event=>{for(let i=0;i<event.target.files.length;i++){const img=document.createElement('img');img.alt=event.target.files[i].name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
       document.body.append(dialog);
     };
     </script>`}));
@@ -298,7 +298,7 @@ test('group_prepare learns the numeric group id from the composer author link',a
     document.querySelector('#open').onclick=()=>{
       const dialog=document.createElement('div');dialog.role='dialog';
       dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
-      dialog.querySelector('input').onchange=event=>{for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      dialog.querySelector('input').onchange=event=>{for(let i=0;i<event.target.files.length;i++){const img=document.createElement('img');img.alt=event.target.files[i].name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
       document.body.append(dialog);
     };
     </script>`}));

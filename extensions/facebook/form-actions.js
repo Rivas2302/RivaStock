@@ -97,9 +97,16 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const scopes=new Set();
       for(const trigger of root.querySelectorAll('[role="button"][aria-label]')){
         if(normalize(trigger.getAttribute('aria-label')).toLocaleLowerCase('es')!==title)continue;
-        let scope=trigger;
-        while(scope&&scope!==root&&!scope.querySelector(`[aria-label^="Más opciones para "]`))scope=scope.parentElement;
-        if(scope&&scope!==root&&/Publicado en Marketplace(?:\b| y)/i.test(scope.innerText))scopes.add(scope);
+        if(!normalize(trigger.innerText).toLocaleLowerCase('es').includes(title))continue;
+        let scope=trigger.parentElement;
+        while(scope&&scope!==root){
+          const titleTriggers=Array.from(scope.querySelectorAll('[role="button"][aria-label]'))
+            .filter(node=>normalize(node.getAttribute('aria-label')).toLocaleLowerCase('es')===title&&
+              normalize(node.innerText).toLocaleLowerCase('es').includes(title));
+          const menuButtons=scope.querySelectorAll('[aria-label^="Más opciones para "]');
+          if(titleTriggers.length===1&&menuButtons.length===1){scopes.add(scope);break;}
+          scope=scope.parentElement;
+        }
       }
       return [...scopes];
     };
@@ -240,10 +247,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   };
   const combo = label => one(Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).filter(element => accessibleName(element) === label));
   if (action === 'check_existing') {
-    const snapshot=await marketplaceSnapshot(true);
+    const snapshot=await marketplaceSnapshot(false);
     if(!snapshot.complete)throw new Error('No se pudo verificar la búsqueda de anuncios propios. No se envió.');
-    if(snapshot.items.length)issue('marketplace_conflict','Ya existe un anuncio de Marketplace con el título aprobado. Revisá su identidad antes de volver a publicar.',{
-      candidates:snapshot.items.map(item=>({title:content.title,status:item.state,url:`https://www.facebook.com/marketplace/item/${item.id}/`}))});
+    if(snapshot.items.length)issue('marketplace_conflict','Ya existe un anuncio de Marketplace con el título aprobado. Revisá su identidad antes de volver a publicar.',{candidates:[]});
     return {ready:true};
   }
   if (action === 'marketplace_prepare') {
