@@ -494,7 +494,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
           return {status,url:links[0],message:'Facebook mostró un aviso nuevo con el enlace de este envío.'};
         }
       }
-      return {waiting:true};
+      return {waiting:true,diag:{page:'marketplace',post:/^\/marketplace\/item\/\d+/.test(location.pathname),composer:false,notices:Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible).filter(node=>!baseline.includes(noticeKey(node))).length,receipt:!!clickReceipt}};
     }
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
     if(!group)return {waiting:true};
@@ -573,7 +573,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     // Explicit new acknowledgement establishes receipt, even without a permalink.
     if(!composerOpen()&&newNotices.some(node=>/^Tu publicación (se publicó|se creó)([.!\s]|$)/i.test(text(node))&&!node.querySelector('a[href]')))return {status:'submitted',url:null,message:'Facebook confirmó la recepción del envío. Visibilidad pública sin verificar.'};
-    return {waiting:true};
+    // Only booleans and counts: never page text, names or URLs.
+    return {waiting:true,diag:{page:onAliasPage?'alias':'other',post:!!currentPost,composer:composerOpen(),notices:newNotices.length,receipt:!!receipt}};
   }
   if(action==='result_search'){
     const gPostUrl=href=>{try{const u=new URL(href);return u.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(u.pathname)?u.origin+u.pathname:null;}catch{return null;}};

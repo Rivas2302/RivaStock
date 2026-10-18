@@ -40,7 +40,7 @@ test('a previously present success notice does not establish receipt',async({pag
   await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<div role="status">Tu publicación se publicó.</div>'}));
   await page.goto('https://www.facebook.com/groups/123');
   const result=await page.evaluate(source=>new Function('return ('+source+')')()('result',{groupText:'Monopoly'},[],['group:/groups/123','notice:Tu publicación se publicó.']),facebookFormAction.toString());
-  expect(result).toEqual({waiting:true});
+  expect(result).toEqual({waiting:true,diag:expect.any(Object)});
 });
 
 const reviewPage=(withReceipt:boolean)=>`<div role="dialog"><h2>Esta publicación está en revisión</h2></div>
@@ -86,4 +86,10 @@ test('submit refuses a second click in the same tab',async({page})=>{
   expect(await run()).toEqual({clicked:true});
   expect(await run()).toMatchObject({error:expect.stringContaining('ya se realizó')});
   expect(await page.evaluate(()=>(window as any).submits)).toBe(1);
+});
+
+test('an inconclusive group result reports only sanitized diagnostics',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<div role="status">Aviso viejo</div><p>Texto personal</p>'}));
+  await page.goto('https://www.facebook.com/groups/123');
+  expect(await runResult(page,reviewBaseline)).toEqual({waiting:true,diag:{page:'alias',post:false,composer:false,notices:1,receipt:false}});
 });

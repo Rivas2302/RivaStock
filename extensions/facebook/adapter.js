@@ -65,19 +65,21 @@ export const facebookAdapter = {
   },
   async reconcile(active) {
     const isGroup=active.job.destination.mechanism==='group_direct';
-    let receipt=null,lastError=null;
+    let receipt=null,lastError=null,lastDiag=null;
     for (let attempt = 0; attempt < 20; attempt++) {
       // Polling only reads the page, so a transient script or navigation error is retried.
       let result;
       try{result=await this.action(active.tabId, 'result', active.job.content, [], active.baseline);}
       catch(error){lastError=error;await new Promise(resolve => setTimeout(resolve, 750));continue;}
+      if(result.diag)lastDiag=result.diag;
       if(result.status&&result.url)return result;
       if(result.status&&!isGroup)return result;
       if(result.status)receipt=receipt??result;
       await new Promise(resolve => setTimeout(resolve, 750));
     }
     const base='Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.';
-    const message=lastError?`${base} Último error: ${String(lastError.message).slice(0,200)}`:base;
+    const diag=lastDiag?` [diag page=${lastDiag.page} post=${+lastDiag.post} composer=${+lastDiag.composer} notices=${Number(lastDiag.notices)||0} receipt=${+lastDiag.receipt}]`:'';
+    const message=(lastError?`${base} Último error: ${String(lastError.message).slice(0,200)}`:base)+diag;
     if(isGroup){
       // A feed match is only a candidate for human confirmation, never a result.
       const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);

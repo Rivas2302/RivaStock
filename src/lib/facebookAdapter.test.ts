@@ -92,3 +92,8 @@ it('unknown message carries the last poll error',async()=>{
   expect(outcome.error.message).toContain('Último error:');
   expect(outcome.calls.result).toBe(20);
 });
+
+it('unknown message carries the last sanitized diagnostics',async()=>{
+  const outcome:any=await reconcileWith({result:()=>({waiting:true,diag:{page:'alias',post:false,composer:false,notices:0,receipt:true}}),result_search:()=>({notFound:true})});
+  expect(outcome.error.message).toContain('[diag page=alias post=0 composer=0 notices=0 receipt=1]');
+});
