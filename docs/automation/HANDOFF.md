@@ -18,7 +18,8 @@ git status --short --branch
 git log --oneline -8
 ```
 
-- Si hay commits posteriores a `150a8c1` que tocan `extensions/facebook/`, `supabase/migrations/006*`, `src/lib/facebook*` o `src/components/automations/`, leé su diff y comprobá que los símbolos de tu tarea siguen existiendo y con el comportamiento descrito.
+- Si hay commits posteriores a `9cf6a1e` que tocan `extensions/facebook/`, `supabase/migrations/00[67]*`, `src/lib/facebook*` o `src/components/automations/`, leé su diff y comprobá que los símbolos de tu tarea siguen existiendo y con el comportamiento descrito.
+- Todo cambio en `extensions/facebook/` sube la versión del manifest en el mismo lote. Una versión nunca identifica dos códigos distintos (H16 de `AUDIT-2026-10-18.md`).
 - Si existe `supabase/migrations/0064_*` creado por otra persona, **no** lo sobrescribas: renumerá A04 a la siguiente libre y actualizá todas las referencias en `TASKS.md` y `PLAN.md`.
 - Conservá cambios ajenos sin commitear (por ejemplo `.atl/*`). No los incluyas en tus commits.
 

@@ -7,19 +7,19 @@ Continuar la automatización de publicaciones de Facebook de RivaStock con foco 
 ## Antes de trabajar
 
 1. Revisá `git status --short --branch` y las instrucciones `AGENTS.md` aplicables. Conservá cualquier cambio existente.
-2. Leé `docs/facebook-extension-release.md` §0.5.1 y el HANDOFF vigente en `docs/automation/HANDOFF.md`.
+2. Leé `docs/facebook-extension-release.md` §0.5.7, `docs/automation/AUDIT-2026-10-18.md`, `docs/automation/FIX-PLAN-2026-10-18.md` y el HANDOFF vigente en `docs/automation/HANDOFF.md`.
 3. Confirmá el código y las migraciones actuales antes de asumir que un comportamiento descrito en documentos históricos sigue vigente.
 
 ## Estado conocido al preparar este contexto
 
-- Actualizado 15/10/2026, `main` en `10bd4c3`. El plan vigente es `docs/automation/` (reemplaza T15/T16 del plan de endurecimiento).
-- A02–A09 locales completados en esta sesión; sin push (A11 requiere [AUT]).
-- La web productiva distribuye extensión 0.5.0 (built desde `acb1372`); 0.5.1 local aún no desplegada. Migraciones 0060–0063 probablemente aplicadas en producción (A01 pendiente de confirmar).
-- La verificación local no certifica Facebook real. El circuito integral sigue sin certificar.
+- Actualizado 18/10/2026. Producción (verificado por SQL de solo lectura): migraciones 0049–0067 aplicadas; sin `pg_cron`. La web distribuye la extensión 0.5.6 (contiene la autoconfirmación por feed, H01/H02). La PC usa 0.5.5.
+- Local, sin push: extensión 0.5.7 y migraciones 0068–0071, que corrigen F01–F23 del plan del 18/10. Desplegar requiere [AUT] por acción, en el orden de la guía 0.5.7.
+- Hay 17 entregas con clic autorizado y resultado desconocido, más 3 preparaciones fallidas, esperando una revisión humana.
+- La verificación local no certifica Facebook real. El circuito integral sigue sin certificar (A14–A18).
 
 ## Próximo trabajo
 
-Seguí `docs/automation/HANDOFF.md` y la primera tarea desbloqueada de `docs/automation/TASKS.md`. El siguiente paso de salida es A10 (aplicar 0064 en producción) que requiere [AUT] explícita. No apliques migraciones, hagas push a `main` (despliega la web), actives la cola ni publiques en Facebook sin autorización explícita para esa acción. Si se autoriza un caso real, debe ser un producto nuevo con contenido, cuenta/perfil y destinos concretos confirmados por la persona usuaria.
+Seguí la guía de salida 0.5.7 de `docs/facebook-extension-release.md`. Cada paso que toca producción requiere [AUT] explícita. No apliques migraciones, hagas push a `main` (despliega la web), actives la cola ni publiques en Facebook sin autorización explícita para esa acción. Si se autoriza un caso real, debe ser un producto nuevo con contenido, cuenta/perfil y destinos concretos confirmados por la persona usuaria.
 
 ## Límites que no se deben relajar
 

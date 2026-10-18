@@ -1,3 +1,48 @@
+# Facebook 0.5.7: evidencia solo causal y salidas para cada estado
+
+Corrige los hallazgos de `docs/automation/AUDIT-2026-10-18.md`:
+- La 0.5.6 publicada marcaba `published` cuando encontraba en el feed un post parecido (viola D-A1). Ahora eso es solo una candidata que confirma una persona.
+- La 0.5.6 reescribía el enlace de un post de **otro** grupo con el grupo configurado. Ahora solo se aceptan los alias aprendidos de la página aprobada: el nombre, el ID al que redirige Facebook y el ID del enlace del autor junto al compositor.
+- Marketplace solo acepta la navegación al anuncio si hubo un clic registrado y la página muestra el título aprobado.
+- Un segundo `submit` en la misma pestaña nunca vuelve a hacer clic.
+- El paso final cuenta solo las fotos subidas. Antes contaba también la imagen «Vista previa», lo que bloqueaba Marketplace.
+- La cola ya no se traba si el servidor rechaza para siempre un resultado o una atención, ni si el dispositivo fue revocado con evidencia pendiente.
+
+## Orden de salida obligatorio
+
+1. **Pausar la cola** desde RivaStock.
+2. **Aplicar las migraciones en producción, en orden y una por vez:**
+   - 0068 `facebook_causal_gate`
+   - 0069 `facebook_review_without_link`
+   - 0070 `facebook_cancel_unauthorized`
+   - 0071 `facebook_cron_watchdog`
+   
+   Desde 0068, una PC con 0.5.5 o 0.5.6 recibe `PROTOCOL_UNSUPPORTED` al tomar trabajos nuevos. Es lo esperado: esas versiones no deben publicar.
+3. **Habilitar `pg_cron`** (Supabase → Database → Extensions) y ejecutar una vez:
+   ```sql
+   SELECT cron.schedule('facebook-watchdog','*/2 * * * *','SELECT public.facebook_cron_watchdog()');
+   ```
+   Si `pg_cron` ya estaba habilitado al aplicar 0071, la tarea quedó programada sola. Para comprobarlo: `select jobname,schedule from cron.job where jobname='facebook-watchdog';`.
+4. **Desplegar la web** (`git push origin main`) y comparar el `sha256` de `rivastock-facebook-version.json` con el ZIP reproducible del commit (`docs/automation/HANDOFF.md` §5).
+5. **Actualizar la extensión** de la PC con el ZIP 0.5.7 y recargarla. En `chrome://extensions` tiene que verse **0.5.7**.
+6. **Revisar las entregas abiertas** en RivaStock (Historial). Cada una se cierra con una de estas opciones:
+   - «Encontré la publicación» (con enlace)
+   - «Existe, pero no tengo el enlace»
+   - «No la encontré»
+   - «Cancelar este destino», para preparaciones sin envío autorizado
+7. **Reanudar la cola.**
+
+## Regla de versión
+
+Todo cambio en `extensions/facebook/` sube la versión del manifest en el mismo lote. Una misma versión nunca identifica dos códigos distintos.
+
+## Límites
+
+- La verificación local no certifica Facebook real.
+- El criterio de título en la página del anuncio de Marketplace no está verificado contra el DOM real. Si no coincide, el resultado queda desconocido, que es la falla segura, y se revisa a mano en A15.
+
+---
+
 # Facebook 0.5.3: conservar espacios al pegar en Lexical
 
 La versión 0.5.2 estaba instalada y seguía fallando: el título aprobado de Monopoly terminaba con un espacio, mientras el importador HTML de Facebook lo eliminaba. Ahora los espacios iniciales, finales y repetidos se codifican como espacios no separables al pegar; la comparación existente los interpreta como espacios normales. Los espacios simples entre palabras se conservan normales para permitir el ajuste de línea. No se relaja la comparación del contenido aprobado.
