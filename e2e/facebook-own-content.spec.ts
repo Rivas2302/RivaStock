@@ -43,7 +43,34 @@ test('reads a direct-published group item from its observed gm media set',async(
   expect(result).toMatchObject({complete:true,items:[{id:'300000000000002',state:'published',authorMatches:true,titleMatches:true}]});
 });
 
-test('does not identify a group item without a stable post ID',async({page})=>{
+test('reads a group item exposed as an ARIA heading',async({page})=>{
+  const body=`<main><div class="observed-own-content-item">
+    <div role="heading" aria-level="3"><a href="/groups/123/user/${authorId}/">Cuenta de prueba</a> publicó en <a href="/groups/123">Grupo de prueba</a></div>
+    <div><a href="/photo/?fbid=200000000000004&set=gm.300000000000004"><img alt="Foto"></a></div>
+    <div>${content.title}<br>Descripción aprobada</div>
+  </div></main>`;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body}));
+  await page.goto('https://www.facebook.com/groups/123/my_posted_content');
+
+  const result=await snapshot(page,[`author:${authorId}`]);
+
+  expect(result).toMatchObject({complete:true,items:[{id:'300000000000004',state:'published',authorMatches:true,titleMatches:true}]});
+});
+
+test('waits for the group list instead of treating its initial shell as complete',async({page})=>{
+  const item=groupItem('300000000000005','gm');
+  const body=`<main><div role="progressbar">Cargando...</div></main><script>
+    setTimeout(()=>{document.querySelector('main').innerHTML=${JSON.stringify(item)}},1200);
+  </script>`;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body}));
+  await page.goto('https://www.facebook.com/groups/123/my_posted_content');
+
+  const result=await snapshot(page,[`author:${authorId}`]);
+
+  expect(result).toMatchObject({complete:true,items:[{id:'300000000000005',state:'published',authorMatches:true,titleMatches:true}]});
+});
+
+test('does not use a pending permalink without an observed media ID',async({page})=>{
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<main><div class="observed-own-content-item">
     <h3><a href="/groups/123/user/${authorId}/">Cuenta de prueba</a> publicó en <a href="/groups/123">Grupo de prueba</a></h3>
     <a href="/groups/123/?multi_permalinks=300000000000003">Ver en el grupo</a>
@@ -62,16 +89,17 @@ test('does not treat Marketplace controls or unrelated links as listing IDs',asy
     <img alt="Producto"><span>${index%2?'Vendido':'Activo'}</span>
     <button>${index%2?'Marcar como agotado':'Marcar como vendido'}</button>
   </div>`).join('');
-  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<input placeholder="Buscar en tus publicaciones" value="filtro original"><main>${rows}<a href="/marketplace/item/399999999999999/">Enlace fuera de la lista</a><span>Cargando…</span></main>`}));
-  await page.goto('https://www.facebook.com/marketplace/you/selling');
+  const title=content.title;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div role="main" aria-label="Colección de tus artículos de Marketplace"><h1>Tus publicaciones</h1><input aria-label="Buscar en tus publicaciones" placeholder="Buscar en tus publicaciones" value="${title}"><div>${rows}<a href="/marketplace/item/399999999999999/">Enlace fuera de la lista</a><span role="progressbar">Cargando…</span></div></div>`}));
+  await page.goto(`https://www.facebook.com/marketplace/you/selling?title_search=${encodeURIComponent(title)}`);
   await page.evaluate(()=>{(window as any).controlClicks=0;document.addEventListener('click',()=>{(window as any).controlClicks++;});});
 
   const result=await snapshot(page,[]);
 
   expect(result).toMatchObject({complete:false,items:[]});
   const checkExisting=await page.evaluate(({source,content}:any)=>new Function('return ('+source+')')()('check_existing',content,[],[]),{source:facebookFormAction.toString(),content});
-  expect(checkExisting.error).toContain('lista completa');
-  expect(await page.getByPlaceholder('Buscar en tus publicaciones').inputValue()).toBe('filtro original');
+  expect(checkExisting.error).toContain('No se envió.');
+  expect(await page.getByPlaceholder('Buscar en tus publicaciones').inputValue()).toBe(content.title);
   expect(await page.evaluate(()=>((window as any).controlClicks))).toBe(0);
 });
 
@@ -121,7 +149,7 @@ test('builds a group permalink only from the one new verified published item',()
     {complete:true,items:[]},
   ]);
 
-  expect(result).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/posts/300000000000009'});
+  expect(result).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/permalink/300000000000009/'});
 });
 
 test('tracks the same pending ID through published and not-approved group lists',()=>{
@@ -133,7 +161,7 @@ test('tracks the same pending ID through published and not-approved group lists'
     {complete:true,items:[]},
   ];
   expect(ownedGroupTrackingResult(job,'300000000000010',snapshots)).toMatchObject({
-    status:'published',url:'https://www.facebook.com/groups/123/posts/300000000000010',pendingPostId:'300000000000010',
+    status:'published',url:'https://www.facebook.com/groups/123/permalink/300000000000010/',pendingPostId:'300000000000010',
   });
   const rejected=[
     {complete:true,items:[]},{complete:true,items:[]},

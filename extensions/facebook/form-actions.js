@@ -166,13 +166,16 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const root=document.querySelector('main,[role="main"]')??document.body;
       const signature=()=>normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('a[href]')).map(link=>link.getAttribute('href')).join('|');
       let last='',stable=0;
-      for(let attempt=0;attempt<12;attempt++) {
+      for(let attempt=0;attempt<60;attempt++) {
         const current=signature();stable=current===last?stable+1:0;last=current;
-        if(stable>=2)break;
+        const headings=Array.from(root.querySelectorAll('h3,[role="heading"]')).filter(visible).filter(heading=>/publicó en/i.test(text(heading)));
+        const empty=/No hay publicaciones para mostrar/i.test(root.innerText);
+        const loading=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)||/\bCargando(?:…|\.{3})?/i.test(root.innerText);
+        if(stable>=2&&(headings.length>0||(empty&&!loading)))break;
         await new Promise(resolve=>setTimeout(resolve,250));
       }
       const loading=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)||/\bCargando(?:…|\.{3})?/i.test(root.innerText);
-      const headings=Array.from(root.querySelectorAll('h3')).filter(visible).filter(heading=>/publicó en/i.test(text(heading)));
+      const headings=Array.from(root.querySelectorAll('h3,[role="heading"]')).filter(visible).filter(heading=>/publicó en/i.test(text(heading)));
       const empty=/No hay publicaciones para mostrar/i.test(root.innerText);
       const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
       const approvedTitle=normalize(content.title??'').toLocaleLowerCase('es');
@@ -181,7 +184,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
           const url=new URL(link.href);if(url.origin!==location.origin)return [];
           const set=url.searchParams.get('set')?.match(/^(?:gm|pcb)\.(\d+)$/)?.[1];
           const path=url.pathname.match(new RegExp(`^/groups/${groupSegment}/(?:posts|permalink)/(\\d+)/?$`))?.[1];
-          const permalink=url.searchParams.get('multi_permalinks')?.match(/^\d+$/)?.[0];
+          const permalink=state==='published'?url.searchParams.get('multi_permalinks')?.match(/^\d+$/)?.[0]:null;
           return [set,path,permalink].filter(Boolean);
         } catch {return [];}
       }))];
@@ -192,7 +195,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
         if(!groupLink)continue;
         let scope=heading.parentElement;
         while(scope&&scope!==root) {
-          const nested=Array.from(scope.querySelectorAll('h3')).filter(visible).filter(node=>/publicó en/i.test(text(node)));
+          const nested=Array.from(scope.querySelectorAll('h3,[role="heading"]')).filter(visible).filter(node=>/publicó en/i.test(text(node)));
           if(nested.length===1) {
             const ids=itemIds(scope);
             if(ids.length===1) {

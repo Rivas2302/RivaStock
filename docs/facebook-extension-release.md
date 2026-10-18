@@ -1,3 +1,9 @@
+# Facebook 0.5.11: esperar listas de grupo listas
+
+0.5.11 no toma una lista estable pero todavía vacía durante la carga de Facebook como una lista completa. Espera hasta ver publicaciones o el mensaje explícito de lista vacía, hasta 15 segundos, y conserva el bloqueo si ninguna señal aparece. También reconoce encabezados ARIA y no usa un enlace de permalink como ID de una publicación pendiente sin fotos.
+
+No requiere migración. Regenerar y desplegar el ZIP desde el commit final, reemplazar los archivos de la extensión instalada y recargarla en Chrome. Verificar la versión 0.5.11 antes de reanudar la cola.
+
 # Facebook 0.5.9: seguimiento de contenido propio
 
 0.5.9 suma la capacidad `own-content-tracking`. La extensión reconoce un ID nuevo solo cuando aparece en las listas de contenido propio del grupo, con autor y título aprobados, y conserva ese ID para seguir una publicación pendiente. El seguimiento periódico puede actualizar el mismo intento a publicado o «No aprobada»; no dispara otro clic.
