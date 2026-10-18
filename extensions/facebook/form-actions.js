@@ -338,11 +338,13 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       return buttons('Escribe algo...').length===1;
     },'cargar el editor del grupo; no se pudo determinar su disponibilidad');
     if(normalize(document.body.innerText).includes(normalize(content.groupText)))throw new Error('El grupo ya muestra el contenido aprobado. Verificá el post antes de publicar otro.');
-    let authorId=null;
+    let authorId=null,authorGroupSeg=null;
     let authorScope=button('Escribe algo...');
     while(authorScope&&authorScope!==document.body) {
-      const authors=Array.from(authorScope.querySelectorAll('a[href]')).map(element => new URL(element.href).pathname.match(/^\/groups\/[^/]+\/user\/([0-9]+)\/?$/)?.[1]).filter(Boolean);
-      if(authors.length===1){authorId=authors[0];break;}
+      const authorLinks=Array.from(authorScope.querySelectorAll('a[href]')).map(element => new URL(element.href).pathname.match(/^\/groups\/([^/]+)\/user\/([0-9]+)\/?$/)).filter(Boolean);
+      const authors=authorLinks.map(match=>match[2]);
+      // The composer's own author link names this group by the id Facebook uses in post URLs.
+      if(authors.length===1){authorId=authors[0];authorGroupSeg=authorLinks[0][1];break;}
       if(authors.length>1)break;
       authorScope=authorScope.parentElement;
     }
@@ -399,7 +401,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([target,actual].map(path=>'groupseg:'+path.split('/')[2]))] };
+    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([target.split('/')[2],actual.split('/')[2],authorGroupSeg].filter(Boolean).map(seg=>'groupseg:'+seg))] };
   }
   if (action === 'submit') {
     // One final click per tab and flow: a repeated submit never clicks again.
@@ -424,7 +426,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
       const places=Array.from(document.querySelectorAll('input[aria-label="Ubicación"]'));if(places.some(node=>normalize(node.value).toLowerCase()!==normalize(content.location).toLowerCase()))throw new Error('Cambió la ubicación. No se envió.');
       for(const label of ['Promocionar tras publicar','Ocultar a amigos']){const control=document.querySelector('input[aria-label="'+label+'"]');if(control?.checked||control?.getAttribute('aria-checked')==='true')throw new Error('Cambió una preferencia de publicación. No se envió.');}
-      const previews=Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/foto|vista previa|photo/i.test(img.alt));
+      // Same rule as preparation: the "Vista previa" panel image is not an uploaded photo.
+      const previews=Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
       if(previews.length&& (previews.length!==Number(baseline.find(value=>value.startsWith('photos:'))?.slice(7))||previews.some(img=>!img.complete||!img.naturalWidth)))throw new Error('Cambió la carga de fotos. No se envió.');
 
       if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');

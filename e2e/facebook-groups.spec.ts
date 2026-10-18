@@ -291,3 +291,19 @@ test('group_prepare records the approved and the landing group segments',async({
   expect(result).toMatchObject({ready:true});
   expect(result.baseline).toEqual(expect.arrayContaining(['group:/groups/123','target:/groups/ventaspico','groupseg:ventaspico','groupseg:123']));
 });
+
+test('group_prepare learns the numeric group id from the composer author link',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div><a href="/groups/999/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
+    <script>
+    document.querySelector('#open').onclick=()=>{
+      const dialog=document.createElement('div');dialog.role='dialog';
+      dialog.innerHTML='<div contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
+      dialog.querySelector('input').onchange=event=>{for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<img alt="Foto" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">');}for(let i=0;i<event.target.files.length;i++){dialog.insertAdjacentHTML('beforeend','<button>Eliminar archivo adjunto de la publicación</button>');}dialog.querySelector('#publish').disabled=false};
+      document.body.append(dialog);
+    };
+    </script>`}));
+  await page.goto('https://www.facebook.com/groups/ventaspico');
+  const content={title:'Auricular',groupText:'Auricular\n\nPrecio: ARS 14000.00',selection:{marketplace:false},targetGroupUrl:'https://www.facebook.com/groups/ventaspico'};
+  const result=await runAction(page,'group_prepare',content,[],[{name:'uno.png',type:'image/png',data:'AQ==',extension:'png'}]);
+  expect(result.baseline).toEqual(expect.arrayContaining(['target:/groups/ventaspico','groupseg:ventaspico','groupseg:999']));
+});
