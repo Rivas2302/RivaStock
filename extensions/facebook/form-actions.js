@@ -232,7 +232,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     attach(input);
     await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente');
     const previews=()=>Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
-    if(previews().length!==photos.length||previews().some(img=>!img.complete||img.naturalWidth===0))throw new Error(`Se esperaban ${photos.length} fotos cargadas; se observaron ${previews().length}. No se envió.`);
+    // Facebook's own "Fotos · N/10" counter is authoritative; a background tab may
+    // not have decoded the thumbnails yet, so either signal may confirm the count.
+    const photoCounter=()=>Number(normalize(document.body.innerText).match(/Fotos\s*·\s*(\d+)\s*\/\s*10\b/)?.[1]??NaN);
+    const photosConfirmed=()=>photoCounter()===photos.length||(previews().length===photos.length&&previews().every(img=>img.complete&&img.naturalWidth>0));
+    try{await wait(photosConfirmed,'verificar las fotos cargadas');}
+    catch{throw new Error(`Se esperaban ${photos.length} fotos cargadas; Facebook indica ${Number.isNaN(photoCounter())?'sin contador':photoCounter()} y se observaron ${previews().length} vistas previas${previews().some(img=>!img.complete||img.naturalWidth===0)?' (alguna sin terminar de cargar)':''}. No se envió.`);}
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
     progress('Verificando destinos antes de publicar');
     button('Siguiente').click();
@@ -436,7 +441,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       for(const label of ['Promocionar tras publicar','Ocultar a amigos']){const control=document.querySelector('input[aria-label="'+label+'"]');if(control?.checked||control?.getAttribute('aria-checked')==='true')throw new Error('Cambió una preferencia de publicación. No se envió.');}
       // Same rule as preparation: the "Vista previa" panel image is not an uploaded photo.
       const previews=Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
-      if(previews.length&& (previews.length!==Number(baseline.find(value=>value.startsWith('photos:'))?.slice(7))||previews.some(img=>!img.complete||!img.naturalWidth)))throw new Error('Cambió la carga de fotos. No se envió.');
+      const approvedPhotos=Number(baseline.find(value=>value.startsWith('photos:'))?.slice(7));
+      const counted=Number(normalize(document.body.innerText).match(/Fotos\s*·\s*(\d+)\s*\/\s*10\b/)?.[1]??NaN);
+      // The same rule as preparation: Facebook's counter, or loaded thumbnails, must match.
+      if(!Number.isNaN(counted)?counted!==approvedPhotos:previews.length&&(previews.length!==approvedPhotos||previews.some(img=>!img.complete||!img.naturalWidth)))throw new Error('Cambió la carga de fotos. No se envió.');
 
       if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
 

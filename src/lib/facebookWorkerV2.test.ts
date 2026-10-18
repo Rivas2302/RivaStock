@@ -7,7 +7,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  vi.stubGlobal('chrome',{
   storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
-  runtime:{id:'own',getManifest:()=>({version:'0.5.7'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
+  runtime:{id:'own',getManifest:()=>({version:'0.5.8'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });
  vi.stubGlobal('fetch',async(_url:any,options:any)=>{
   const args=JSON.parse(options.body);operations.push(args);
