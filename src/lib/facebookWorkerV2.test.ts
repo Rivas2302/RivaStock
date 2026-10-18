@@ -52,7 +52,9 @@ it('requires an explicit archive for unresolved journals and never archives capt
  const f=await fixture(()=>{throw new Error('Offline');});f.memory.activeJob={job:f.job,deviceId:'pc',projectUrl:f.memory.connection.url,attemptId:'attempt',stage:'submitting'};
  await expect(f.worker.disconnectLocal(false)).rejects.toThrow('sin resolver');await f.worker.disconnectLocal(true);expect(f.memory.connection).toBeUndefined();expect(f.memory.activeJob).toBeUndefined();expect(f.memory.recoveryArchive.deliveryId).toBe('delivery');expect(JSON.stringify(f.memory.recoveryArchive)).not.toContain('fixture-secret');
  f.memory.connection={url:'https://test.supabase.co',token:'fixture-secret',deviceId:'pc'};f.memory.activeJob={job:f.job,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:{status:'submitted'}};
- await expect(f.worker.disconnectLocal(true)).rejects.toThrow('evidencia');expect(f.memory.activeJob).toBeTruthy();
+ await expect(f.worker.disconnectLocal(false)).rejects.toThrow('evidencia');expect(f.memory.activeJob).toBeTruthy();
+ // An explicit archive keeps the captured result inside the archive instead of discarding it.
+ await f.worker.disconnectLocal(true);expect(f.memory.activeJob).toBeUndefined();expect(f.memory.recoveryArchive).toMatchObject({stage:'result',result:{status:'submitted'}});
 });
 it('heartbeat V2 sends result-candidates in capabilities',async()=>{
  let job:any;const f=await fixture(a=>{
@@ -194,4 +196,33 @@ it('skips the watchdog while a local journal exists and runs it otherwise',async
  expect(watchdogCalls()).toBe(0);expect(f.operations.some((a:any)=>a.p_operation==='recover')).toBe(true);
  await f.worker.poll();
  expect(watchdogCalls()).toBe(1);
+});
+it('parks a result locally when attention is also rejected permanently',async()=>{
+ const f=await fixture(a=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates','evidence-receipts']};
+  if(a.p_operation==='attention'||a.p_operation==='result')throw Object.assign(new Error('ATTEMPT_STALE'),{code:'P0001'});
+  if(a.p_operation==='claim')return null;
+  return {saved:true};
+ });
+ f.memory.activeJob={job:f.job,attemptId:'attempt',protocol:2,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:{status:'submitted',url:null,message:'Recibo'}};
+ await f.worker.poll();
+ expect(f.memory.activeJob).toBeUndefined();
+ expect(f.memory.parkedResults).toEqual([expect.objectContaining({deliveryId:'delivery',attemptId:'attempt',code:'ATTEMPT_STALE'})]);
+ const attentions=f.operations.filter((a:any)=>a.p_operation==='attention').length;
+ await f.worker.poll();
+ expect(f.operations.filter((a:any)=>a.p_operation==='attention').length).toBe(attentions);
+});
+it('a revoked device parks captured evidence locally and can disconnect',async()=>{
+ const f=await fixture(()=>{throw Object.assign(new Error('DEVICE_REVOKED'),{code:'P0001'});});
+ const result={status:'submitted',url:'https://www.facebook.com/marketplace/item/1/'};
+ f.memory.activeJob={job:f.job,deviceId:'pc',projectUrl:f.memory.connection.url,attemptId:'attempt',stage:'result',result};
+ await f.worker.disconnectLocal(true);
+ expect(f.memory.activeJob).toBeUndefined();
+ expect(f.memory.parkedResults).toEqual([expect.objectContaining({deliveryId:'delivery',code:'DEVICE_REVOKED',result})]);
+});
+it('treats serialization conflicts as temporary',async()=>{
+ const f=await fixture(()=>({connected:true}));
+ const {errorCode}=f.worker as any;
+ expect(errorCode({status:409,code:'40P01',message:'deadlock detected'})).toBe('NETWORK_TEMPORARY');
+ expect(errorCode({status:409,code:'40001',message:'could not serialize access'})).toBe('NETWORK_TEMPORARY');
 });

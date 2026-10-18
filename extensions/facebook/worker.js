@@ -27,6 +27,7 @@ export function errorCode(error){
   if(/PROTOCOL_|PGRST202/.test(value))return 'PROTOCOL_UNSUPPORTED';
   // Chrome destroys the target frame when its tab navigates or closes mid-script.
   if(/Frame with ID|No frame with id|No tab with id|tab was closed|Cannot access contents|Could not establish connection/i.test(value))return 'TAB_LOST';
+  if(['40001','40P01'].includes(error.code))return 'NETWORK_TEMPORARY';
   if([408,429].includes(error.status)||error.status>=500)return 'NETWORK_TEMPORARY';
   if(error.status>=400)return 'CONTRACT_REJECTED';
   return 'NETWORK_TEMPORARY';
@@ -234,9 +235,23 @@ async function markAttention(connection,active,message,options={}){
 // are retried with the same payload; a contract rejection or an exhausted budget
 // parks the capture for human review and releases the queue.
 const RESULT_RETRY_LIMIT=20;
+// When even the attention is rejected for good, keep the reference on this PC
+// and release the queue instead of resending the same payload forever.
+async function parkLocally(active,code){
+  const {parkedResults=[]}=await chrome.storage.local.get('parkedResults');
+  await chrome.storage.local.set({
+    parkedResults:[...parkedResults.slice(-9),{deliveryId:active.job.id,attemptId:active.attemptId??null,result:active.result??null,code,at:new Date().toISOString()}],
+    status:`No se pudo registrar el resultado (${code}). Revisá la entrega en RivaStock; la referencia quedó guardada en esta PC.`,
+    lastErrorCode:code});
+  await chrome.storage.local.remove('activeJob');
+}
+async function parkAttention(connection,active,message,options){
+  try{await markAttention(connection,active,message,options);}
+  catch(error){if(!errorIsPermanent(error))throw error;await parkLocally(active,errorCode(error));}
+}
 async function persistResult(connection,active,serverFeatures){
   if(evidenceContract(active.result)==='receipt'){
-    await markAttention(connection,active,'Facebook confirmó la recepción sin publicar un enlace. Confirmá el resultado en RivaStock.',
+    await parkAttention(connection,active,'Facebook confirmó la recepción sin publicar un enlace. Confirmá el resultado en RivaStock.',
       {code:'RESULT_RECEIPT_ONLY',receipt:{status:active.result.status,message:active.result.message},serverFeatures});
     await closeCompletedTab(active);
     return;
@@ -246,7 +261,7 @@ async function persistResult(connection,active,serverFeatures){
     const code=errorCode(error);const attempts=(active.resultAttempts??0)+1;
     await chrome.storage.local.set({activeJob:{...active,resultAttempts:attempts},lastErrorCode:code});
     if(!errorIsPermanent(error)&&attempts<RESULT_RETRY_LIMIT)throw error;
-    await markAttention(connection,active,`Se capturó un resultado que el servidor no aceptó (${code}). Revisalo en RivaStock antes de otro envío.`,
+    await parkAttention(connection,active,`Se capturó un resultado que el servidor no aceptó (${code}). Revisalo en RivaStock antes de otro envío.`,
       {code,receipt:{status:active.result?.status,message:active.result?.message},rejectedEvidence:active.result?.url??null,serverFeatures});
     await closeCompletedTab(active);
   }
@@ -309,10 +324,11 @@ export async function disconnectLocal(archiveUnresolved=false){
   }
   if(active){
    // Never discard captured evidence just to permit pairing with another account.
-   if(active.stage==='result')throw new Error('Hay evidencia de un resultado sin guardar. Recuperá la conexión para conservarla antes de desconectar.');
+   // An explicit archive keeps the captured result inside the archive itself.
+   if(active.stage==='result'&&!archiveUnresolved)throw new Error('Hay evidencia de un resultado sin guardar. Recuperá la conexión para conservarla antes de desconectar.');
    if(!archiveUnresolved)throw new Error('Hay un intento sin resolver. Revisalo en RivaStock o confirmá el archivo de su referencia antes de desconectar.');
    if(state.recoveryArchive&&state.recoveryArchive.deliveryId!==active.job.id)throw new Error('Primero resolvé la recuperación archivada anterior en RivaStock.');
-   await chrome.storage.local.set({recoveryArchive:{projectUrl:active.projectUrl,deviceId:active.deviceId,deliveryId:active.job.id,attemptId:active.attemptId??null,stage:active.stage,archivedAt:new Date().toISOString()}});
+   await chrome.storage.local.set({recoveryArchive:{projectUrl:active.projectUrl,deviceId:active.deviceId,deliveryId:active.job.id,attemptId:active.attemptId??null,stage:active.stage,result:active.result??null,archivedAt:new Date().toISOString()}});
    await chrome.storage.local.remove('activeJob');
   }
  }
