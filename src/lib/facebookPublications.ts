@@ -1,5 +1,5 @@
 import type { Product } from '../types';
-import { supabase } from './supabase';
+import { supabase, supabaseProjectUrl } from './supabase';
 import { formatCurrency } from './utils';
 import { marketplaceConditions } from '../../extensions/facebook/marketplace-contract.js';
 
@@ -101,8 +101,24 @@ export function safeFacebookPostUrl(url:string|null|undefined) {
 export function safeFacebookEvidence(delivery:FacebookDelivery) {
   return safeFacebookPostUrl(delivery.evidence_url);
 }
+function publicationPhotoUrl(url:string):string {
+  // Older products can still contain public Storage URLs saved before the app
+  // required HTTPS. Upgrade only this project's public assets when the app is
+  // itself served securely; the worker can then fetch the same stored object.
+  if(typeof window==='undefined'||window.location.protocol!=='https:')return url;
+  try {
+    const photo=new URL(url),project=new URL(supabaseProjectUrl);
+    const projectPath=project.pathname.replace(/\/+$/,'');
+    const assetsPath=`${projectPath}/storage/v1/object/public/assets/`;
+    if(photo.protocol!=='http:'||photo.hostname!==project.hostname||photo.port!==project.port
+      ||!photo.pathname.startsWith(assetsPath)||photo.username||photo.password||photo.search||photo.hash)return url;
+    return url.replace(/^http:/i,'https:');
+  } catch { return url; }
+}
 export function productPhotos(product: Product): string[] {
-  return [...new Set([...(product.images ?? []), product.imageUrl].filter((url): url is string => Boolean(url)))];
+  return [...new Set([...(product.images ?? []), product.imageUrl]
+    .filter((url): url is string => Boolean(url))
+    .map(publicationPhotoUrl))];
 }
 export function initialPublication(product: Product): PublicationContent {
   return { title: product.name, description: product.description ?? '', price: product.salePrice,
@@ -115,7 +131,8 @@ export function validatePublication(content: PublicationContent, marketplace: bo
   if (!content.location.trim() || !content.category.trim()) return 'Completá ubicación y categoría de Facebook.';
   if (!['new','like_new','good','fair'].includes(content.condition)) return 'Elegí una condición válida.';
   if (!content.photos.length || content.photos.length > 10 || new Set(content.photos).size !== content.photos.length) return 'Seleccioná entre 1 y 10 fotos distintas.';
-  if (content.photos.some(url => !url.startsWith('https://'))) return 'Las fotos deben tener una dirección HTTPS.';
+  const insecurePhoto=content.photos.findIndex(url=>!url.startsWith('https://'));
+  if (insecurePhoto!==-1) return `La foto ${insecurePhoto+1} no tiene una dirección HTTPS compatible. Volvé a cargarla desde el editor del producto.`;
   if (!marketplace && !groups.length) return 'Elegí Marketplace o al menos un grupo.';
   return null;
 }

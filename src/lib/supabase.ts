@@ -9,10 +9,10 @@ function normalizeSupabaseUrl(value: string | undefined): string {
   return `https://${trimmedValue}`;
 }
 
-const supabaseUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL as string | undefined);
+export const supabaseProjectUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL as string | undefined);
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseProjectUrl || !supabaseAnonKey) {
   console.warn('[Supabase] Credentials missing or invalid; set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
 }
 
@@ -24,7 +24,7 @@ declare global {
 
 export const supabase: SupabaseClient =
   globalThis.__rivastock_supabase__ ??
-  createClient(supabaseUrl, supabaseAnonKey, {
+  createClient(supabaseProjectUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
