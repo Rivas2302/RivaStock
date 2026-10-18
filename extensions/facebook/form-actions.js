@@ -399,7 +399,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`] };
+    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([target,actual].map(path=>'groupseg:'+path.split('/')[2]))] };
   }
   if (action === 'submit') {
     const previousPhotos=baseline.find(value=>value.startsWith('prepared-photos:'));
@@ -494,13 +494,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const crossPostHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/publicación realizada/i.test(text(h)));
     if(crossPostHeading){const dialog=crossPostHeading.closest('[role="dialog"]');const closeBtn=dialog&&[...dialog.querySelectorAll('button,[role="button"]')].find(b=>/cerrar/i.test(accessibleName(b)));if(closeBtn)closeBtn.click();return {waiting:true};}
     const currentPost=groupPostUrl(location.href);
-    const configSeg=group.split('/')[2];
-    const onConfiguredPage=location.pathname.replace(/\/$/,'')===group;
-    const sameGroup=url=>onConfiguredPage||new URL(url).pathname.split('/')[2]===location.pathname.split('/')[2];
-    // Accept any /groups/ URL: Facebook may redirect name-form → numeric-form after posting,
-    // or navigate directly to the post permalink (e.g. when the post goes into review).
-    const onAnyGroupPage=/^\/groups\/[A-Za-z0-9._-]+(\/(posts|permalink)\/\d+)?\/?$/.test(location.pathname);
-    if(!onConfiguredPage&&!onAnyGroupPage&&!(currentPost&&sameGroup(currentPost)))return {error:'Cambió la página del grupo. Resultado desconocido.'};
+    // Only the approved group and the page Facebook redirected it to are trusted
+    // aliases; any other group is never evidence, and accepted URLs are rewritten
+    // to the approved segment that the server validates.
+    const aliasSegs=new Set(baseline.filter(v=>v.startsWith('groupseg:')).map(v=>v.slice(9)));
+    if(!aliasSegs.size)aliasSegs.add(group.split('/')[2]); // journals created before 0.5.7
+    const targetSeg=(baseline.find(v=>v.startsWith('target:'))?.slice(7)??group).split('/')[2];
+    const segOf=href=>new URL(href).pathname.split('/')[2];
+    const sameGroup=href=>aliasSegs.has(segOf(href));
+    const toTargetGroup=href=>{const u=new URL(href);const p=u.pathname.split('/');p[2]=targetSeg;return u.origin+p.join('/');};
+    const onAliasPage=/^\/groups\/[A-Za-z0-9._-]+(\/(posts|permalink)\/\d+)?\/?$/.test(location.pathname)&&aliasSegs.has(location.pathname.split('/')[2]);
+    if(!onAliasPage)return {error:'Cambió la página del grupo. Resultado desconocido.'};
     // Detect "en revisión": Facebook navigated to the post permalink and shows a review dialog.
     if(currentPost){
       const reviewHeading=Array.from(document.querySelectorAll('[role="dialog"] h2,[role="dialog"] [role="heading"]')).find(h=>visible(h)&&/esta publicación está en revisión/i.test(text(h)));
@@ -554,7 +558,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
         const postPhotos=new Set(Array.from(postScope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{try{const url=new URL(link.href);return url.searchParams.get('set')?.endsWith('.'+postId)?[url.searchParams.get('fbid')??url.origin+url.pathname]:[];}catch{return [];}})).size;
         if(postPhotos!==Number(expectedPhotos))continue;
       }
-      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;const normalizedUrl=u.origin+segs.join('/');
+      const normalizedUrl=toTargetGroup(url);
       return {status:currentPost?'submitted':'published',url:normalizedUrl,message:'Publicación visible en el grupo con autor, texto y fotos verificados.'};
     }
     // Explicit new acknowledgement establishes receipt, even without a permalink.
@@ -566,22 +570,24 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const authorId=baseline.find(v=>v.startsWith('author:'))?.slice(7);
     const group=baseline.find(v=>v.startsWith('group:'))?.slice(6);
     const currentGroupPath=location.pathname.replace(/\/$/,'');
-    if(!authorId||!group||!/^\/groups\/[A-Za-z0-9._-]+$/.test(currentGroupPath))return {notFound:true};
-    const configSeg=group.split('/')[2];
-    const onConfiguredPage=currentGroupPath===group;
+    const aliasSegs=new Set(baseline.filter(v=>v.startsWith('groupseg:')).map(v=>v.slice(9)));
+    if(group&&!aliasSegs.size)aliasSegs.add(group.split('/')[2]); // journals created before 0.5.7
+    if(!authorId||!group||!/^\/groups\/[A-Za-z0-9._-]+$/.test(currentGroupPath)||!aliasSegs.has(currentGroupPath.split('/')[2]))return {notFound:true};
+    const targetSeg=(baseline.find(v=>v.startsWith('target:'))?.slice(7)??group).split('/')[2];
+    const segOf=href=>new URL(href).pathname.split('/')[2];
     const firstLine=normalize((content.groupText||'').split('\n').filter(l=>l.trim())[0]||'');
     const candidates=new Set();
     for(const section of Array.from(document.querySelectorAll('article,section,[role="article"]')).filter(visible)){
       const authorLink=Array.from(section.querySelectorAll('a[href]')).find(link=>{try{return new URL(link.href).pathname.endsWith(`/user/${authorId}/`);}catch{return false;}});
       if(!authorLink)continue;
-      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>{if(!u||baseline.includes(u))return false;return onConfiguredPage||new URL(u).pathname.split('/')[2]===currentGroupPath.split('/')[2];}))];
+      const sectionUrls=[...new Set(Array.from(section.querySelectorAll('a[href]')).map(link=>gPostUrl(link.href)).filter(u=>u&&!baseline.includes(u)&&aliasSegs.has(segOf(u))))];
       if(sectionUrls.length!==1)continue;
       if(firstLine&&!text(section).includes(firstLine))continue;
       candidates.add(sectionUrls[0]);
     }
     if(candidates.size===1){
       const url=[...candidates][0];
-      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;
+      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=targetSeg;
       return {candidateUrl:u.origin+segs.join('/')};
     }
     return {notFound:true};
