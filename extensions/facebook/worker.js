@@ -1,6 +1,7 @@
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
 import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
+import { closeAutomationTab } from './automation-tabs.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
 
 let polling = false;
@@ -8,7 +9,7 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.9';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.10';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -174,7 +175,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       try{
         if(activeJob.attemptId){
           const recovery=await workerRpc(connection,'recover',{protocol:2,delivery:activeJob.job.id,attempt:activeJob.attemptId});
-          if(recovery?.action==='retire'){await chrome.storage.local.remove('activeJob');await chrome.storage.local.set({status:'Intento anterior registrado para revisión; la cola puede continuar.'});drain=true;return;}
+          if(recovery?.action==='retire'){await closeAutomationTab(activeJob.tabId);await chrome.storage.local.remove('activeJob');await chrome.storage.local.set({status:'Intento anterior registrado para revisión; la cola puede continuar.'});drain=true;return;}
           if(recovery?.action!=='reconcile_only')throw new Error('ATTEMPT_STALE');
         }else if(activeJob.stage!=='submitting'&&activeJob.stage!=='authorizing'){
           await markAttention(connection,activeJob,'Preparación interrumpida. No se repitió el envío.',{serverFeatures});drain=true;return;
@@ -253,6 +254,7 @@ async function markAttention(connection,active,message,options={}){
   await workerRpc(connection,issue?'issue':'attention',{protocol,delivery:active.job.id,attempt:active.attemptId,message:issue&&protocol<2?JSON.stringify(issue):message,data:attentionData});
   const displayMsg=useCandidate?'Resultado desconocido: posible publicación encontrada. Confirmala en RivaStock.':message;
   await chrome.storage.local.set({status:displayMsg,lastIssue:displayMsg,lastErrorCode:code??(authorized?'RESULT_UNKNOWN':'PREPARATION_INTERRUPTED')});
+  await closeAutomationTab(active.tabId);
   await chrome.storage.local.remove('activeJob');
 }
 // A journal must never outlive its ability to be persisted. Transport failures
@@ -311,11 +313,7 @@ export function diagnosticSummary(state){
   attempt:active?{deliveryId:active.job?.id??null,attemptId:active.attemptId??null,stage:active.stage}:null};
 }
 async function closeCompletedTab(active){
- if(!chrome.tabs?.get||!active.tabId)return;
- try{const tab=await chrome.tabs.get(active.tabId);if(tab.active)return;const url=new URL(tab.url);if(url.origin!=='https://www.facebook.com')return;
- const expected=active.job.destination;const scope=expected.mechanism==='marketplace'?url.pathname.startsWith('/marketplace/'):url.pathname.replace(/\/$/,'')===new URL(expected.url).pathname.replace(/\/$/,'');
- if(scope)await chrome.tabs.remove(active.tabId);
- }catch{/* A closed or repurposed tab does not invalidate persisted evidence. */}
+ await closeAutomationTab(active.tabId);
 }
 async function saveResult(connection, active) {
   const data = { status: active.result.status, url: active.result.url, message: active.result.message };

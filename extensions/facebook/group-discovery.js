@@ -1,3 +1,5 @@
+import { openAutomationTab, closeAutomationTab } from './automation-tabs.js';
+
 // Executed in Facebook: public DOM only, no cookies, internal APIs or React state.
 export async function readJoinedGroups() {
   if(location.origin!=='https://www.facebook.com'||location.pathname!=='/groups/joins/')throw new Error('Abrí Tus grupos con la sesión iniciada.');
@@ -52,7 +54,7 @@ export async function discoverGroupMembers(urls) {
     if(!/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+$/.test(url))continue;
     let tab;
     try{
-      tab=await chrome.tabs.create({url,active:false});
+      tab=await openAutomationTab(url);
       for(let attempt=0;attempt<20;attempt++){
         if((await chrome.tabs.get(tab.id)).status==='complete')break;
         await new Promise(resolve=>setTimeout(resolve,250));
@@ -60,13 +62,13 @@ export async function discoverGroupMembers(urls) {
       const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readGroupMembers,args:[url]});
       counts.push({url,memberCount:results[0]?.result??null});
     }catch{counts.push({url,memberCount:null});/* Keep the batch moving past unreadable groups. */}
-    finally{if(tab)await chrome.tabs.remove(tab.id).catch(()=>{});}
+    finally{if(tab)await closeAutomationTab(tab.id);}
   }
   return counts;
 }
 
 export async function discoverJoinedGroups(){
-  const tab=await chrome.tabs.create({url:'https://www.facebook.com/groups/joins/',active:false});
+  const tab=await openAutomationTab('https://www.facebook.com/groups/joins/');
   try{
     for(let attempt=0;attempt<60;attempt++){
       if((await chrome.tabs.get(tab.id)).status==='complete')break;
@@ -75,5 +77,5 @@ export async function discoverJoinedGroups(){
     const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readJoinedGroups});
     if(results.length!==1||!Array.isArray(results[0].result?.groups))throw new Error('No se pudo leer Tus grupos.');
     return results[0].result;
-  }finally{await chrome.tabs.remove(tab.id).catch(()=>{});}
+  }finally{await closeAutomationTab(tab.id);}
 }

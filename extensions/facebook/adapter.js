@@ -1,4 +1,5 @@
 import { facebookFormAction } from './form-actions.js';
+import { openAutomationTab, closeAutomationTab } from './automation-tabs.js';
 export function validateFacebookDestination(destination) {
   if (destination.mechanism === 'marketplace' && destination.url === 'https://www.facebook.com/marketplace/create/item') return;
   if (destination.mechanism === 'group_direct' && /^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(destination.url)) return;
@@ -30,6 +31,7 @@ export async function fetchPublicationPhotos(content, projectUrl) {
 }
 const groupOwnContentPaths=['my_pending_content','my_posted_content'];
 const groupTrackingPaths=['my_pending_content','my_posted_content','my_declined_content','my_removed_content'];
+const marketplaceSearchUrl=title=>`https://www.facebook.com/marketplace/you/selling?title_search=${encodeURIComponent(title)}`;
 async function waitForFacebookTab(tabId,expectedPath) {
   for(let attempt=0;attempt<60;attempt++) {
     const tab=await chrome.tabs.get(tabId);
@@ -43,7 +45,7 @@ async function readGroupOwnContent(job,baseline,states) {
   const group=new URL(job.destination.url);
   const groupPath=group.pathname.replace(/\/$/,'');
   const firstUrl=`https://www.facebook.com${groupPath}/${states[0]}`;
-  const tab=await chrome.tabs.create({url:firstUrl,active:false});
+  const tab=await openAutomationTab(firstUrl);
   try {
     const snapshots=[];
     for(const state of states) {
@@ -57,16 +59,16 @@ async function readGroupOwnContent(job,baseline,states) {
     }
     return snapshots;
   } finally {
-    await chrome.tabs.remove(tab.id).catch(()=>{});
+    await closeAutomationTab(tab.id);
   }
 }
 async function readMarketplaceOwnContent(job,baseline) {
-  const tab=await chrome.tabs.create({url:'https://www.facebook.com/marketplace/you/selling',active:false});
+  const tab=await openAutomationTab(marketplaceSearchUrl(job.content.title));
   try {
     await waitForFacebookTab(tab.id,'/marketplace/you/selling');
     return await facebookAdapter.action(tab.id,'own_content_snapshot',job.content,[],baseline);
   } finally {
-    await chrome.tabs.remove(tab.id).catch(()=>{});
+    await closeAutomationTab(tab.id);
   }
 }
 export function ownedGroupResult(job,baseline,snapshots) {
@@ -77,12 +79,12 @@ export function ownedGroupResult(job,baseline,snapshots) {
   const ids=[...new Set(candidates.map(item=>item.id))];
   if(ids.length!==1)return null;
   const matches=candidates.filter(item=>item.id===ids[0]);
-  if(matches.length!==1)return null;
+  if(!matches.length||matches.some(item=>item.state!==matches[0].state))return null;
   const item=matches[0];
   if(item.state==='pending_approval')return {status:'pending_approval',url:null,pendingPostId:item.id,message:'Facebook mostró el nuevo envío en la lista de publicaciones pendientes.'};
   if(item.state==='published') {
     const segment=new URL(job.destination.url).pathname.split('/')[2];
-    return {status:'published',url:`https://www.facebook.com/groups/${segment}/posts/${item.id}`,message:'El ID nuevo coincide con el autor y el título aprobados en la lista de publicaciones del grupo.'};
+    return {status:'published',url:`https://www.facebook.com/groups/${segment}/permalink/${item.id}/`,message:'El ID nuevo coincide con el autor y el título aprobados en la lista de publicaciones del grupo.'};
   }
   return null;
 }
@@ -90,12 +92,12 @@ export function ownedGroupTrackingResult(job,pendingPostId,snapshots) {
   if(!/^\d+$/.test(pendingPostId)||snapshots.length!==4||snapshots.some(snapshot=>snapshot.complete!==true))return null;
   const matches=snapshots.flatMap(snapshot=>snapshot.items??[])
     .filter(item=>item.id===pendingPostId&&item.authorMatches===true&&item.titleMatches===true);
-  if(matches.length!==1)return null;
+  if(!matches.length||matches.some(item=>item.state!==matches[0].state))return null;
   const item=matches[0];
   if(item.state==='pending_approval')return {status:'pending_approval',url:null,pendingPostId,message:'La publicación todavía figura como pendiente de aprobación.'};
   if(item.state==='published') {
     const segment=new URL(job.destination.url).pathname.split('/')[2];
-    return {status:'published',url:`https://www.facebook.com/groups/${segment}/posts/${pendingPostId}`,pendingPostId,message:'La publicación pendiente apareció en las publicaciones del grupo.'};
+    return {status:'published',url:`https://www.facebook.com/groups/${segment}/permalink/${pendingPostId}/`,pendingPostId,message:'La publicación pendiente apareció en las publicaciones del grupo.'};
   }
   if(item.state==='not_approved')return {status:'not_approved',url:null,pendingPostId,message:'Facebook movió la publicación a rechazadas o eliminadas.'};
   return null;
@@ -117,7 +119,7 @@ export const facebookAdapter = {
     const photos = await fetchPublicationPhotos(job.content, config.url);
     config.onTiming?.('photos_ms',performance.now()-started);
     const marketplace=job.destination.mechanism==='marketplace';
-    const tab = await chrome.tabs.create({ url: marketplace?'https://www.facebook.com/marketplace/you/selling':job.destination.url, active: false });
+    const tab = await openAutomationTab(marketplace?marketplaceSearchUrl(job.content.title):job.destination.url);
     await chrome.storage.local.set({ activeJob: { ...config.journalIdentity, job, deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'preparing', baseline: [] } });
     for (let attempt = 0; attempt < 60; attempt++) {
       if ((await chrome.tabs.get(tab.id)).status === 'complete') break;
@@ -152,9 +154,21 @@ export const facebookAdapter = {
   async reconcile(active) {
     if(active.job.destination.mechanism==='marketplace') {
       if(!active.baseline.includes('own-baseline:marketplace'))throw new Error('Resultado desconocido. No había un baseline causal de Marketplace para este intento; no se repetirá el envío.');
-      const snapshot=await readMarketplaceOwnContent(active.job,active.baseline);
-      if(snapshot.complete!==true)throw new Error('Resultado desconocido. «Tus publicaciones» no expone una lista completa con IDs de anuncio verificables; no se repetirá el envío.');
-      throw new Error('Resultado desconocido. No apareció exactamente un ID nuevo de anuncio verificable; no se repetirá el envío.');
+      for(let attempt=0;attempt<4;attempt++){
+        const snapshot=await readMarketplaceOwnContent(active.job,active.baseline);
+        if(snapshot.complete===true){
+          const seen=new Set(active.baseline.filter(value=>value.startsWith('own:')).map(value=>value.slice(4)));
+          const fresh=(snapshot.items??[]).filter(item=>/^\d+$/.test(item.id)&&!seen.has(item.id)&&item.authorMatches&&item.titleMatches);
+          if(fresh.length===1){
+            const item=fresh[0];const url=`https://www.facebook.com/marketplace/item/${item.id}/`;
+            const status=item.state==='pending_approval'?'pending_approval':item.state==='not_approved'?'not_approved':'submitted';
+            return {status,url,pendingPostId:item.id,
+              message:status==='pending_approval'?'Facebook recibió el anuncio y lo está revisando.':status==='not_approved'?'Facebook rechazó el anuncio.':'El anuncio nuevo apareció en tus publicaciones de Marketplace.'};
+          }
+        }
+        if(attempt<3)await new Promise(resolve=>setTimeout(resolve,1000));
+      }
+      throw new Error('Resultado desconocido. No apareció exactamente un anuncio nuevo con ID verificable; no se repetirá el envío.');
     }
     if(active.job.destination.mechanism!=='group_direct')throw new Error('Resultado desconocido. El destino no tiene un lector de contenido propio verificado; no se repetirá el envío.');
     let lastError=null;

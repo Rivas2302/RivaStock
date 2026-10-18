@@ -26,7 +26,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const amount=Number(raw.replaceAll('.','').replace(',','.'));
     return Number.isFinite(amount)&&Math.abs(amount-approved)<0.000001;
   };
-  const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo/i.test(img.alt)).map(img=>img.currentSrc||img.src));
+  const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo|^rivastock-\d+\./i.test(img.alt)).map(img=>img.currentSrc||img.src));
   const rememberFlow=variant=>{const id=crypto.randomUUID();document.documentElement.setAttribute('data-rivastock-flow',id);return ['variant:'+variant,'flow:'+id];};
   const checkFlow=()=>{const id=baseline.find(value=>value.startsWith('flow:'))?.slice(5);if(!id||document.documentElement.getAttribute('data-rivastock-flow')!==id)throw new Error('Cambió el formulario después de prepararlo. No se envió.');};
   const issue = (kind,message,details={}) => {const error=new Error(message);error.issue={kind,message,...details};throw error;};
@@ -81,6 +81,67 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (/restring|bloque|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
   };
   safety();
+  const marketplaceSnapshot=async includeIds=>{
+    if(location.pathname.replace(/\/$/,'')!=='/marketplace/you/selling'||
+      new URLSearchParams(location.search).get('title_search')!==content.title)
+      throw new Error('No se abrió la búsqueda exacta en tus publicaciones de Marketplace.');
+    const root=document.querySelector('[role="main"][aria-label="Colección de tus artículos de Marketplace"]');
+    if(!root)throw new Error('No se encontró la lista de publicaciones propias de Marketplace.');
+    const search=()=>root.querySelector('input[aria-label="Buscar en tus publicaciones"]');
+    const title=normalize(content.title).toLocaleLowerCase('es');
+    const cardScopes=()=>{
+      const scopes=new Set();
+      for(const trigger of root.querySelectorAll('[role="button"][aria-label]')){
+        if(normalize(trigger.getAttribute('aria-label')).toLocaleLowerCase('es')!==title)continue;
+        let scope=trigger;
+        while(scope&&scope!==root&&!scope.querySelector(`[aria-label^="Más opciones para "]`))scope=scope.parentElement;
+        if(scope&&scope!==root&&/Publicado en Marketplace(?:\b| y)/i.test(scope.innerText))scopes.add(scope);
+      }
+      return [...scopes];
+    };
+    let last='',stable=0;
+    for(let attempt=0;attempt<40;attempt++){
+      const current=normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('[role="button"][aria-label]')).map(node=>node.getAttribute('aria-label')).join('|');
+      stable=current===last?stable+1:0;last=current;
+      const empty=Array.from(root.querySelectorAll('h2')).some(node=>text(node)==='No encontramos resultados');
+      const loaded=search()?.value===content.title&&Array.from(root.querySelectorAll('h1')).some(node=>text(node)==='Tus publicaciones');
+      const busy=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible);
+      if(loaded&&!busy&&stable>=2&&(empty||root.querySelector('[role="button"][aria-label]')))break;
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    const empty=Array.from(root.querySelectorAll('h2')).some(node=>text(node)==='No encontramos resultados');
+    const complete=search()?.value===content.title&&stable>=2&&
+      !Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)&&
+      (empty||Boolean(root.querySelector('[role="button"][aria-label]')));
+    if(!complete)return {complete:false,items:[]};
+    const cards=cardScopes();
+    if(!includeIds)return {complete:true,items:cards.map(()=>({title:content.title}))};
+    const items=[];
+    for(const card of cards){
+      const trigger=Array.from(card.querySelectorAll('[role="button"][aria-label]'))
+        .find(node=>normalize(node.getAttribute('aria-label')).toLocaleLowerCase('es')===title);
+      if(!trigger)return {complete:false,items:[]};
+      activate(trigger);
+      try{
+        const detail=await wait(()=>Array.from(document.querySelectorAll('[role="dialog"]'))
+          .find(dialog=>Array.from(dialog.querySelectorAll('h2')).some(node=>text(node)==='Tu publicación')),'abrir el anuncio propio');
+        const link=await wait(()=>Array.from(detail.querySelectorAll('a[href]')).find(node=>{
+          try{const url=new URL(node.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname);}catch{return false;}
+        }),'leer el ID del anuncio propio');
+        const id=new URL(link.href).pathname.match(/^\/marketplace\/item\/(\d+)/)?.[1];
+        if(!id)return {complete:false,items:[]};
+        const state=/Esta publicaci[oó]n est[aá] en revisi[oó]n/i.test(detail.innerText)?'pending_approval':
+          /(?:no se aprob[oó]|rechazad[ao])/i.test(detail.innerText)?'not_approved':'submitted';
+        items.push({id,state,authorMatches:true,titleMatches:true});
+      }finally{
+        const detail=Array.from(document.querySelectorAll('[role="dialog"]'))
+          .find(dialog=>Array.from(dialog.querySelectorAll('h2')).some(node=>text(node)==='Tu publicación'));
+        detail?.querySelector('[aria-label="Cerrar"]')?.click();
+        await wait(()=>!detail||!visible(detail),'cerrar el detalle del anuncio');
+      }
+    }
+    return {complete:true,items};
+  };
   if(action==='diagnose') {
     return {
       path:location.pathname,
@@ -118,7 +179,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const itemIds=scope=>[...new Set(Array.from(scope.querySelectorAll('a[href]')).filter(visible).flatMap(link=>{
         try {
           const url=new URL(link.href);if(url.origin!==location.origin)return [];
-          const set=url.searchParams.get('set')?.match(/^(?:gm|pcb)\.(\d+)$/)?.[1];return set?[set]:[];
+          const set=url.searchParams.get('set')?.match(/^(?:gm|pcb)\.(\d+)$/)?.[1];
+          const path=url.pathname.match(new RegExp(`^/groups/${groupSegment}/(?:posts|permalink)/(\\d+)/?$`))?.[1];
+          const permalink=url.searchParams.get('multi_permalinks')?.match(/^\d+$/)?.[0];
+          return [set,path,permalink].filter(Boolean);
         } catch {return [];}
       }))];
       const items=[];
@@ -136,28 +200,20 @@ export async function facebookFormAction(action, content, photos = [], baseline 
                 try{return new URL(link.href).origin===location.origin&&new URL(link.href).pathname.replace(/\/$/,'')===`/groups/${groupSegment}/user/${authorId}`;}catch{return false;}
               }));
               const titleMatches=Boolean(approvedTitle&&normalize(scope.innerText).toLocaleLowerCase('es').includes(approvedTitle));
-              items.push({id:ids[0],state,authorMatches,titleMatches});
+              const itemState=state==='published'&&/Esta publicaci[oó]n est[aá] en revisi[oó]n/i.test(scope.innerText)?'pending_approval':state;
+              items.push({id:ids[0],state:itemState,authorMatches,titleMatches});
               break;
             }
           }
           scope=scope.parentElement;
         }
       }
-      return {complete:stable>=2&&!loading&&(headings.length>0||empty),items};
+      // Facebook keeps a loader below older posts. A stable visible first page
+      // is enough to compare the newest IDs before and after one submission.
+      return {complete:stable>=2&&(headings.length>0||empty)&&(!loading||headings.length>0),items};
     }
     if(path==='/marketplace/you/selling') {
-      const root=document.querySelector('main,[role="main"]')??document.body;
-      const signature=()=>normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('a[href]')).map(link=>link.getAttribute('href')).join('|');
-      let last='',stable=0;
-      for(let attempt=0;attempt<12;attempt++) {
-        const current=signature();stable=current===last?stable+1:0;last=current;
-        if(stable>=2)break;
-        await new Promise(resolve=>setTimeout(resolve,250));
-      }
-      const loading=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible)||/\bCargando(?:…|\.{3})?/i.test(root.innerText);
-      // The observed seller cards have no item ID link, and the collection was
-      // still loading. It cannot provide a causal baseline yet.
-      return {complete:false,items:[],loading:loading||stable<2};
+      return await marketplaceSnapshot(true);
     }
     throw new Error('No se abrió una lista de contenido propio compatible.');
   }
@@ -177,11 +233,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   };
   const combo = label => one(Array.from(document.querySelectorAll('label[role="combobox"]')).filter(visible).filter(element => accessibleName(element) === label));
   if (action === 'check_existing') {
-    if (location.pathname.replace(/\/$/,'') !== '/marketplace/you/selling') throw new Error('No se abrió la lista de publicaciones de Marketplace.');
-    const root=document.querySelector('main,[role="main"]')??document.body;
-    const titleKey=normalize(content.title).toLocaleLowerCase('es');
-    if(titleKey&&normalize(root.innerText).toLocaleLowerCase('es').includes(titleKey))issue('marketplace_conflict','Ya existe un anuncio con el título aprobado. Revisá su identidad antes de volver a publicar.',{candidates:[]});
-    throw new Error('No se pudo verificar una lista completa de anuncios con IDs utilizables. No se envió.');
+    const snapshot=await marketplaceSnapshot(true);
+    if(!snapshot.complete)throw new Error('No se pudo verificar la búsqueda de anuncios propios. No se envió.');
+    if(snapshot.items.length)issue('marketplace_conflict','Ya existe un anuncio de Marketplace con el título aprobado. Revisá su identidad antes de volver a publicar.',{
+      candidates:snapshot.items.map(item=>({title:content.title,status:item.state,url:`https://www.facebook.com/marketplace/item/${item.id}/`}))});
+    return {ready:true};
   }
   if (action === 'marketplace_prepare') {
     if (location.pathname !== '/marketplace/create/item' || location.search) throw new Error('No se abrió un formulario nuevo de Marketplace.');
@@ -425,9 +481,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const associated = inputs.filter(input => scope.contains(input));
     attach(one(associated));
     await wait(() => {
-      const removeButtons = buttons('Eliminar archivo adjunto de la publicación', dialog);
-      const images = Array.from(dialog.querySelectorAll('img')).filter(img => visible(img)&&img.complete&&img.naturalWidth>0);
-      return enabled(button('Publicar', dialog)) && removeButtons.length === photos.length && images.length >= photos.length;
+      const previews=Array.from(dialog.querySelectorAll('img')).filter(img=>/^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(img.alt));
+      return enabled(button('Publicar', dialog))&&previews.length===photos.length&&
+        previews.every((img,index)=>img.alt===`rivastock-${index+1}.${photos[index].extension}`&&visible(img)&&img.complete&&img.naturalWidth>0);
     },'carga y verificación de todas las fotos del grupo');
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
