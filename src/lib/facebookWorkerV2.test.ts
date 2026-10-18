@@ -7,7 +7,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  vi.stubGlobal('chrome',{
   storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
-  runtime:{id:'own',getManifest:()=>({version:'0.5.6'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
+  runtime:{id:'own',getManifest:()=>({version:'0.5.7'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });
  vi.stubGlobal('fetch',async(_url:any,options:any)=>{
   const args=JSON.parse(options.body);operations.push(args);
@@ -225,4 +225,9 @@ it('treats serialization conflicts as temporary',async()=>{
  const {errorCode}=f.worker as any;
  expect(errorCode({status:409,code:'40P01',message:'deadlock detected'})).toBe('NETWORK_TEMPORARY');
  expect(errorCode({status:409,code:'40001',message:'could not serialize access'})).toBe('NETWORK_TEMPORARY');
+});
+it('heartbeat V2 announces causal-results-v2',async()=>{
+ const f=await fixture(a=>a.p_operation==='heartbeat'?{worker_protocol:2,features:[]}:a.p_operation==='claim'?null:{saved:true});
+ await f.worker.poll();
+ expect(f.operations.find((a:any)=>a.p_operation==='heartbeat'&&a.p_data?.capabilities)?.p_data?.capabilities).toContain('causal-results-v2');
 });
