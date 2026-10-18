@@ -338,6 +338,14 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       return buttons('Escribe algo...').length===1;
     },'cargar el editor del grupo; no se pudo determinar su disponibilidad');
     if(normalize(document.body.innerText).includes(normalize(content.groupText)))throw new Error('El grupo ya muestra el contenido aprobado. Verificá el post antes de publicar otro.');
+    // A landing segment other than the approved one is a trusted alias only when
+    // the page shows the approved group's name; otherwise it may be another group.
+    const targetSeg=target.split('/')[2],actualSeg=actual.split('/')[2];
+    if(actualSeg!==targetSeg){
+      const approvedName=normalize(content.targetGroupName||'').toLowerCase();
+      const showsApprovedName=Boolean(approvedName)&&[document.title,...Array.from(document.querySelectorAll('h1')).filter(visible).map(text)].some(value=>normalize(value).toLowerCase().includes(approvedName));
+      if(!showsApprovedName)throw new Error('El grupo abierto no corresponde a la URL aprobada. No se envió.');
+    }
     let authorId=null,authorGroupSeg=null;
     let authorScope=button('Escribe algo...');
     while(authorScope&&authorScope!==document.body) {
@@ -401,7 +409,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([target.split('/')[2],actual.split('/')[2],authorGroupSeg].filter(Boolean).map(seg=>'groupseg:'+seg))] };
+    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))] };
   }
   if (action === 'submit') {
     // One final click per tab and flow: a repeated submit never clicks again.

@@ -276,7 +276,7 @@ test('result refuses a page of a group outside the learned aliases',async({page}
 });
 
 test('group_prepare records the approved and the landing group segments',async({page})=>{
-  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<h1>Ventas Pico</h1><div><a href="/groups/123/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>
     <script>
     document.querySelector('#open').onclick=()=>{
       const dialog=document.createElement('div');dialog.role='dialog';
@@ -286,7 +286,7 @@ test('group_prepare records the approved and the landing group segments',async({
     };
     </script>`}));
   await page.goto('https://www.facebook.com/groups/123');
-  const content={title:'Auricular',groupText:'Auricular\n\nPrecio: ARS 14000.00',selection:{marketplace:false},targetGroupUrl:'https://www.facebook.com/groups/ventaspico'};
+  const content={title:'Auricular',groupText:'Auricular\n\nPrecio: ARS 14000.00',selection:{marketplace:false},targetGroupUrl:'https://www.facebook.com/groups/ventaspico',targetGroupName:'Ventas Pico'};
   const result=await runAction(page,'group_prepare',content,[],[{name:'uno.png',type:'image/png',data:'AQ==',extension:'png'}]);
   expect(result).toMatchObject({ready:true});
   expect(result.baseline).toEqual(expect.arrayContaining(['group:/groups/123','target:/groups/ventaspico','groupseg:ventaspico','groupseg:123']));
@@ -306,4 +306,12 @@ test('group_prepare learns the numeric group id from the composer author link',a
   const content={title:'Auricular',groupText:'Auricular\n\nPrecio: ARS 14000.00',selection:{marketplace:false},targetGroupUrl:'https://www.facebook.com/groups/ventaspico'};
   const result=await runAction(page,'group_prepare',content,[],[{name:'uno.png',type:'image/png',data:'AQ==',extension:'png'}]);
   expect(result.baseline).toEqual(expect.arrayContaining(['target:/groups/ventaspico','groupseg:ventaspico','groupseg:999']));
+});
+
+test('group_prepare refuses a landing group that does not show the approved group name',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<title>Otro grupo | Facebook</title><h1>Otro grupo</h1><div><a href="/groups/456/user/111/">Perfil</a><button id="open">Escribe algo...</button></div>`}));
+  await page.goto('https://www.facebook.com/groups/456');
+  const content={title:'Auricular',groupText:'Auricular',selection:{marketplace:false},targetGroupUrl:'https://www.facebook.com/groups/ventaspico',targetGroupName:'Ventas Pico'};
+  const result=await runAction(page,'group_prepare',content,[],[{name:'uno.png',type:'image/png',data:'AQ==',extension:'png'}]);
+  expect(result.error).toContain('no corresponde a la URL aprobada');
 });

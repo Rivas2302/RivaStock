@@ -63,7 +63,7 @@ export const facebookAdapter = {
       }
     }
     config.onTiming?.('navigation_ms',performance.now()-started);
-    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url}, photos);
+    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url,targetGroupName:marketplace?null:job.destination.name??null}, photos);
     if (!result.ready) throw new Error('El formulario no está listo.');
     return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline: result.baseline };
   },
