@@ -22,12 +22,18 @@ async function uploadEmbeddedPhoto(dataUrl: string, ownerUid: string, productId:
     throw new Error(`La foto ${index + 1} supera 10 MB. Volvé a cargar una imagen más chica.`);
   }
 
-  const response = await fetch(dataUrl);
-  if (!response.ok) throw new Error(`No se pudo leer la foto ${index + 1}.`);
-  const blob = await response.blob();
-  if (blob.size === 0 || blob.size > MAX_PHOTO_BYTES || blob.type.toLowerCase() !== mimeType) {
-    throw new Error(`La foto ${index + 1} está vacía, supera 10 MB o tiene un formato inválido.`);
+  let decoded: string;
+  try {
+    decoded = atob(payload);
+  } catch {
+    throw new Error(`La foto ${index + 1} contiene datos inválidos. Volvé a cargarla desde el editor del producto.`);
   }
+  if (decoded.length === 0 || decoded.length > MAX_PHOTO_BYTES) {
+    throw new Error(`La foto ${index + 1} está vacía o supera 10 MB.`);
+  }
+  const bytes = new Uint8Array(decoded.length);
+  for (let position = 0; position < decoded.length; position++) bytes[position] = decoded.charCodeAt(position);
+  const blob = new Blob([bytes], { type: mimeType });
 
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
   const fingerprint = Array.from(digest.slice(0, 12), byte => byte.toString(16).padStart(2, '0')).join('');
