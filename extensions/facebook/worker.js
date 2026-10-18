@@ -195,7 +195,9 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       const checkpoint=await workerRpc(connection,'checkpoint',{protocol,delivery:job.id,attempt:job.attemptId});
       if(checkpoint?.authorized!==true||(protocol>=2&&checkpoint.phase!=='authorized_now'))throw new Error('RESULT_UNKNOWN: no se concedió una nueva autorización de envío.');
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'},status:'Enviando a Facebook; resultado todavía sin confirmar…'});
-      await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);
+      // A click that navigates destroys the frame before replying; reconcile instead of failing.
+      try{await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);}
+      catch(error){if(errorCode(error)!=='TAB_LOST')throw error;}
       const result=await facebookAdapter.reconcile(active);
       const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
     }catch(error){

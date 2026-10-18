@@ -179,3 +179,10 @@ it('retries a transport failure with the same payload and parks it once the budg
  expect(f.memory.activeJob).toBeUndefined();
  expect(f.operations.some((a:any)=>a.p_operation==='attention')).toBe(true);
 });
+it('reconciles once when the submit script loses its frame',async()=>{
+ let job:any;const f=await fixture(a=>a.p_operation==='claim'?job:a.p_operation==='checkpoint'?{authorized:true,phase:'authorized_now'}:{saved:true});job=f.job;
+ f.submit.mockRejectedValueOnce(new Error('Frame with ID 0 was removed.'));
+ await f.worker.poll();
+ expect(f.submit).toHaveBeenCalledTimes(1);expect(f.reconcile).toHaveBeenCalledTimes(1);
+ expect(f.operations.some((a:any)=>a.p_operation==='result')).toBe(true);
+});

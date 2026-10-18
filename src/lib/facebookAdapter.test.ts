@@ -81,3 +81,14 @@ it('reconcile attaches receipt and candidate together',async()=>{
   expect(outcome.value).toBeUndefined();
   expect(outcome.error).toMatchObject({candidateUrl:'https://www.facebook.com/groups/123/posts/9',receipt:{status:'submitted',url:null}});
 });
+
+it('reconcile survives a transient frame error',async()=>{
+  const outcome:any=await reconcileWith({result:(call)=>{if(call===1)throw new Error('Frame with ID 0 was removed');return call>=3?{status:'submitted',url:'https://www.facebook.com/groups/123/posts/9'}:{waiting:true};}});
+  expect(outcome.value).toMatchObject({status:'submitted',url:'https://www.facebook.com/groups/123/posts/9'});
+});
+
+it('unknown message carries the last poll error',async()=>{
+  const outcome:any=await reconcileWith({result:()=>{throw new Error('Comprobación del resultado: Cambió la página del grupo. Resultado desconocido.');},result_search:()=>({notFound:true})});
+  expect(outcome.error.message).toContain('Último error:');
+  expect(outcome.calls.result).toBe(20);
+});
