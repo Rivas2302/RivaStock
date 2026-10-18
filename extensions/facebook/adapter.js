@@ -29,6 +29,7 @@ export async function fetchPublicationPhotos(content, projectUrl) {
   return photos;
 }
 const groupOwnContentPaths=['my_pending_content','my_posted_content'];
+const groupTrackingPaths=['my_pending_content','my_posted_content','my_declined_content','my_removed_content'];
 async function waitForFacebookTab(tabId,expectedPath) {
   for(let attempt=0;attempt<60;attempt++) {
     const tab=await chrome.tabs.get(tabId);
@@ -83,6 +84,20 @@ export function ownedGroupResult(job,baseline,snapshots) {
     const segment=new URL(job.destination.url).pathname.split('/')[2];
     return {status:'published',url:`https://www.facebook.com/groups/${segment}/posts/${item.id}`,message:'El ID nuevo coincide con el autor y el título aprobados en la lista de publicaciones del grupo.'};
   }
+  return null;
+}
+export function ownedGroupTrackingResult(job,pendingPostId,snapshots) {
+  if(!/^\d+$/.test(pendingPostId)||snapshots.length!==4||snapshots.some(snapshot=>snapshot.complete!==true))return null;
+  const matches=snapshots.flatMap(snapshot=>snapshot.items??[])
+    .filter(item=>item.id===pendingPostId&&item.authorMatches===true&&item.titleMatches===true);
+  if(matches.length!==1)return null;
+  const item=matches[0];
+  if(item.state==='pending_approval')return {status:'pending_approval',url:null,pendingPostId,message:'La publicación todavía figura como pendiente de aprobación.'};
+  if(item.state==='published') {
+    const segment=new URL(job.destination.url).pathname.split('/')[2];
+    return {status:'published',url:`https://www.facebook.com/groups/${segment}/posts/${pendingPostId}`,pendingPostId,message:'La publicación pendiente apareció en las publicaciones del grupo.'};
+  }
+  if(item.state==='not_approved')return {status:'not_approved',url:null,pendingPostId,message:'Facebook movió la publicación a rechazadas o eliminadas.'};
   return null;
 }
 export const facebookAdapter = {
@@ -153,5 +168,25 @@ export const facebookAdapter = {
     }
     const suffix=lastError?` Último error: ${String(lastError.message).slice(0,160)}`:'';
     throw new Error(`Resultado desconocido. No hubo exactamente un ID nuevo identificable en las listas de contenido propio; no se repetirá el envío.${suffix}`);
+  },
+  async track(job,tracker,pendingPostId) {
+    if(job.destination.mechanism==='group_direct') {
+      if(!/^\d+$/.test(tracker?.authorId??''))return null;
+      const baseline=[`author:${tracker.authorId}`];
+      const snapshots=await readGroupOwnContent(job,baseline,groupTrackingPaths);
+      return ownedGroupTrackingResult(job,pendingPostId,snapshots);
+    }
+    if(job.destination.mechanism==='marketplace') {
+      const snapshot=await readMarketplaceOwnContent(job,[]);
+      if(snapshot.complete!==true)return null;
+      const matches=(snapshot.items??[]).filter(item=>item.id===pendingPostId&&item.authorMatches===true&&item.titleMatches===true);
+      if(matches.length!==1)return null;
+      const status=matches[0].state;
+      const url=`https://www.facebook.com/marketplace/item/${pendingPostId}/`;
+      if(status==='pending_approval')return {status:'pending_approval',url,pendingPostId,message:'El anuncio continúa en revisión.'};
+      if(status==='submitted')return {status:'submitted',url,pendingPostId,message:'El anuncio pasó a activo en Marketplace.'};
+      if(status==='not_approved')return {status:'not_approved',url,pendingPostId,message:'Facebook rechazó el anuncio de Marketplace.'};
+    }
+    return null;
   },
 };

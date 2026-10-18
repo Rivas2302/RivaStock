@@ -7,8 +7,8 @@ let polling = false;
 let pendingSignal=null;
 let readingGroups = false;
 
-const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.8';}}
+const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.9';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -114,6 +114,26 @@ export async function workerRpc(connection,operation,params={}){
     ...(params.delivery?{p_delivery:params.delivery}:{}),...(operation==='heartbeat'||params.message!==undefined?{p_message:params.message??null}:{}),
     ...((params.status??params.data?.status)?{p_status:params.status??params.data.status}:{}),...(params.url?{p_url:params.url}:{})});
 }
+async function trackPending(connection) {
+  const response=await workerRpc(connection,'track',{protocol:2});
+  const jobs=Array.isArray(response?.items)?response.items:[];
+  if(!jobs.length)return;
+  const saved=await chrome.storage.local.get('ownContentTrackers');
+  const trackers={...(saved.ownContentTrackers??{})};
+  for(const job of jobs) {
+    const tracker=trackers[job.attemptId];
+    if(!tracker)continue;
+    const result=await facebookAdapter.track({destination:job.destination,content:{title:job.title}},tracker,job.pendingPostId);
+    if(!result)continue;
+    const updated=await workerRpc(connection,'track',{protocol:2,delivery:job.deliveryId,attempt:job.attemptId,data:{
+      status:result.status,url:result.url,message:result.message,pendingPostId:job.pendingPostId,
+    }});
+    if(updated?.saved===true) {
+      if(result.status!=='pending_approval')delete trackers[job.attemptId];
+      await chrome.storage.local.set({ownContentTrackers:trackers,status:'Seguimiento automático actualizado en RivaStock.'});
+    }
+  }
+}
 export async function poll(signal={source:'alarm',received:performance.now(),receivedAt:new Date().toISOString()},chain=false){
   if(polling){pendingSignal=signal;return;}
   polling=true;const lifetime=globalThis.chrome;let heartbeatTimer;let drain=false;
@@ -166,6 +186,10 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         await markAttention(connection,activeJob,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,receipt:error.receipt,serverFeatures});drain=true;
       }
       return;
+    }
+    if(protocol>=2&&serverFeatures.includes('own-content-tracking')) {
+      try{await trackPending(connection);await chrome.storage.local.remove('lastTrackingErrorCode');}
+      catch(error){await chrome.storage.local.set({lastTrackingErrorCode:errorCode(error)});}
     }
     const current=await chrome.storage.local.get(['paused','connection']);
     if(current.connection?.token!==connection.token)return;
@@ -296,6 +320,16 @@ async function closeCompletedTab(active){
 async function saveResult(connection, active) {
   const data = { status: active.result.status, url: active.result.url, message: active.result.message };
   if (active.protocol >= 2 && active.attemptId) {
+    if(active.result.status==='pending_approval'&&/^\d+$/.test(active.result.pendingPostId??'')) {
+      const authorId=active.baseline.find(value=>value.startsWith('author:'))?.slice(7)??null;
+      if(active.job.destination.mechanism==='marketplace'||/^\d+$/.test(authorId??'')) {
+        const stored=await chrome.storage.local.get('ownContentTrackers');
+        const trackers={...(stored.ownContentTrackers??{})};
+        trackers[active.attemptId]={authorId,createdAt:Date.now(),destination:active.job.destination.url,mechanism:active.job.destination.mechanism,pendingPostId:active.result.pendingPostId};
+        await chrome.storage.local.set({ownContentTrackers:trackers});
+      }
+      data.pendingPostId=active.result.pendingPostId;
+    }
     const saved = await workerRpc(connection, 'result', { protocol:2, delivery: active.job.id, attempt: active.attemptId, data });
     if(saved?.saved!==true)throw new Error('RESULT_SAVE_UNCONFIRMED');
     await chrome.storage.local.set({status:saved?.reviewed?'Este intento ya fue resuelto por una revisión registrada en RivaStock.':`Resultado guardado: ${active.result.message}`});

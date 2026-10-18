@@ -19,8 +19,9 @@ async function fixture(handler:(args:any,memory:any)=>any){
  const prepare=vi.spyOn(facebookAdapter,'prepare').mockImplementation(async(j:any,c:any)=>({job:j,deviceId:'pc',projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[],...c.journalIdentity}));
  const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});
  const reconcile=vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/1/',message:'Result'});
+ const track=vi.spyOn(facebookAdapter,'track').mockResolvedValue(null);
  const worker=await import('../../extensions/facebook/worker.js');
- return {memory,job,operations,prepare,submit,reconcile,worker};
+ return {memory,job,operations,prepare,submit,reconcile,track,worker};
 }
 it('persists a claim key before sending and the authorizing journal before checkpoint',async()=>{
  let job:any;const f=await fixture((a,m)=>{
@@ -56,7 +57,7 @@ it('requires an explicit archive for unresolved journals and never archives capt
  // An explicit archive keeps the captured result inside the archive instead of discarding it.
  await f.worker.disconnectLocal(true);expect(f.memory.activeJob).toBeUndefined();expect(f.memory.recoveryArchive).toMatchObject({stage:'result',result:{status:'submitted'}});
 });
-it('heartbeat V2 sends result-candidates in capabilities',async()=>{
+it('heartbeat V2 sends own-content-tracking in capabilities',async()=>{
  let job:any;const f=await fixture(a=>{
   if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['result-candidates']};
   if(a.p_operation==='claim')return null;
@@ -64,6 +65,37 @@ it('heartbeat V2 sends result-candidates in capabilities',async()=>{
  });job=f.job;await f.worker.poll();
  const hb=f.operations.find((a:any)=>a.p_operation==='heartbeat'&&a.p_data?.capabilities);
  expect(hb?.p_data?.capabilities).toContain('result-candidates');
+ expect(hb?.p_data?.capabilities).toContain('own-content-tracking');
+});
+it('saves the pending post ID and a content-free local tracker with a pending result',async()=>{
+ let job:any;const f=await fixture(a=>{
+  if(a.p_operation==='claim')return job;
+  if(a.p_operation==='checkpoint')return {authorized:true,phase:'authorized_now'};
+  return {saved:true};
+ });job=f.job;job.destination={mechanism:'group_direct',url:'https://www.facebook.com/groups/123'};
+ f.prepare.mockImplementation(async(j:any,c:any)=>({job:j,deviceId:'pc',projectUrl:f.memory.connection.url,tabId:1,stage:'prepared',baseline:['author:42'],...c.journalIdentity}));
+ f.reconcile.mockResolvedValueOnce({status:'pending_approval',url:null,pendingPostId:'987',message:'En revisión'} as any);
+ await f.worker.poll();
+ const result=f.operations.find((a:any)=>a.p_operation==='result');
+ expect(result?.p_data).toMatchObject({status:'pending_approval',url:null,pendingPostId:'987'});
+ expect(f.memory.ownContentTrackers.attempt).toMatchObject({authorId:'42',pendingPostId:'987',mechanism:'group_direct'});
+ expect(f.memory.ownContentTrackers.attempt).not.toHaveProperty('title');
+});
+it('tracks pending own-content while paused and sends only the tracking result fields',async()=>{
+ const f=await fixture((a,m)=>{
+  if(a.p_operation==='heartbeat')return {worker_protocol:2,features:['own-content-tracking']};
+  if(a.p_operation==='track'&&a.p_delivery==null)return {items:[{deliveryId:'delivery',attemptId:'attempt',pendingPostId:'987',destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/123'},title:'Approved'}]};
+  return {saved:true};
+ });f.memory.paused=true;
+ const tracker={authorId:'42',pendingPostId:'987',mechanism:'group_direct',destination:'https://www.facebook.com/groups/123'};
+ f.memory.ownContentTrackers={attempt:tracker};
+ f.track.mockResolvedValueOnce({status:'published',url:'https://www.facebook.com/groups/123/posts/987',message:'Publicado'} as any);
+ await f.worker.poll();
+ expect(f.track).toHaveBeenCalledWith(expect.objectContaining({content:{title:'Approved'}}),tracker,'987');
+ const update=f.operations.find((a:any)=>a.p_operation==='track'&&a.p_delivery==='delivery');
+ expect(update?.p_data).toEqual({status:'published',url:'https://www.facebook.com/groups/123/posts/987',message:'Publicado',pendingPostId:'987'});
+ expect(f.operations.some((a:any)=>a.p_operation==='claim')).toBe(false);
+ expect(f.memory.ownContentTrackers).toEqual({});
 });
 it('sends candidateUrl in attention when server announces result-candidates feature',async()=>{
  let job:any;const f=await fixture(a=>{

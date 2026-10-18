@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {facebookFormAction} from '../extensions/facebook/form-actions.js';
-import {ownedGroupResult} from '../extensions/facebook/adapter.js';
+import {ownedGroupResult,ownedGroupTrackingResult} from '../extensions/facebook/adapter.js';
 
 const content={
   title:'Artículo de prueba aprobado',
@@ -122,4 +122,24 @@ test('builds a group permalink only from the one new verified published item',()
   ]);
 
   expect(result).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/posts/300000000000009'});
+});
+
+test('tracks the same pending ID through published and not-approved group lists',()=>{
+  const job={destination:{url:'https://www.facebook.com/groups/123'}};
+  const snapshots=[
+    {complete:true,items:[]},
+    {complete:true,items:[{id:'300000000000010',state:'published',authorMatches:true,titleMatches:true}]},
+    {complete:true,items:[]},
+    {complete:true,items:[]},
+  ];
+  expect(ownedGroupTrackingResult(job,'300000000000010',snapshots)).toMatchObject({
+    status:'published',url:'https://www.facebook.com/groups/123/posts/300000000000010',pendingPostId:'300000000000010',
+  });
+  const rejected=[
+    {complete:true,items:[]},{complete:true,items:[]},
+    {complete:true,items:[{id:'300000000000010',state:'not_approved',authorMatches:true,titleMatches:true}]},
+    {complete:true,items:[]},
+  ];
+  expect(ownedGroupTrackingResult(job,'300000000000010',rejected)).toMatchObject({status:'not_approved',pendingPostId:'300000000000010'});
+  expect(ownedGroupTrackingResult(job,'300000000000010',snapshots.map(snapshot=>({...snapshot,complete:false})))).toBeNull();
 });
