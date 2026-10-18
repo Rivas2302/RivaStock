@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -287,4 +287,32 @@ it('never cancels an authorized or contradicted delivery',async()=>{
  await actor();await expect(db.query('SELECT cancel_facebook_delivery($1)',[a.id])).rejects.toThrow();
  await inspect("UPDATE facebook_deliveries SET submitted_at=NULL,recovery_required=true WHERE id=$1",[a.id]);
  await actor();await expect(db.query('SELECT cancel_facebook_delivery($1)',[a.id])).rejects.toThrow();
+});
+async function watchdog(){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_watchdog($1) AS data',[token])).rows[0].data;}
+it('the watchdog records why it expired an authorized attempt',async()=>{
+ await approve();const a=await claim();await worker('checkpoint',a.attemptId);
+ await inspect("UPDATE facebook_delivery_attempts SET authorized_at=now()-interval '3 minutes' WHERE id=$1",[a.attemptId]);
+ await watchdog();
+ expect((await inspect('SELECT last_error_code FROM facebook_delivery_attempts WHERE id=$1',[a.attemptId])).rows[0].last_error_code).toBe('RESULT_UNKNOWN');
+ const events=await inspect("SELECT data FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='attention'",[a.attemptId]);
+ expect(events.rows).toHaveLength(1);expect(events.rows[0].data.source).toBe('watchdog');
+});
+it('the watchdog marks an expired unauthorized preparation as interrupted, once',async()=>{
+ await approve();const a=await claim();
+ await inspect("UPDATE facebook_delivery_attempts SET lease_expires_at=now()-interval '1 minute' WHERE id=$1",[a.attemptId]);
+ await watchdog();await watchdog();
+ expect((await inspect('SELECT last_error_code FROM facebook_delivery_attempts WHERE id=$1',[a.attemptId])).rows[0].last_error_code).toBe('PREPARATION_INTERRUPTED');
+ expect((await inspect("SELECT 1 FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='attention'",[a.attemptId])).rows).toHaveLength(1);
+});
+it('the scheduled watchdog expires stale work of every owner without a device or session',async()=>{
+ await approve();const a=await claim();
+ await inspect("UPDATE facebook_delivery_attempts SET lease_expires_at=now()-interval '1 minute' WHERE id=$1",[a.attemptId]);
+ const otherProduct='20000000-0000-4000-8000-000000000009';
+ await inspect("INSERT INTO products VALUES($1,$2,'https://images.test/x.jpg',ARRAY['https://images.test/x.jpg'])",[otherProduct,other]);
+ const pub=(await inspect("INSERT INTO facebook_publications(user_id,product_id,approved_by,intent_key,content) VALUES($1,$2,$1,gen_random_uuid(),'{}'::jsonb) RETURNING id",[other,otherProduct])).rows[0].id;
+ const legacy=(await inspect("INSERT INTO facebook_deliveries(publication_id,destination,destination_key,status,claimed_at) VALUES($1,'{\"mechanism\":\"marketplace\"}'::jsonb,'marketplace','running',now()-interval '10 minutes') RETURNING id",[pub])).rows[0].id;
+ for(const role of ['anon','authenticated']){await db.exec('RESET ROLE;SET ROLE '+role);await expect(db.query('SELECT facebook_cron_watchdog()')).rejects.toThrow('permission denied');}
+ await inspect('SELECT facebook_cron_watchdog()');
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].status).toBe('attention');
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[legacy])).rows[0].status).toBe('attention');
 });
