@@ -284,25 +284,26 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
         </div>)}
       </div>
 
-      {selected&&mobileDetail?<PublicationDetailView publication={selected} onBack={()=>setMobileDetail(false)} onRefresh={onRefresh} showProductLink={showProductLink} expandedDetails={expandedDetails}/>:<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {selected&&mobileDetail?<PublicationDetailView publication={selected} onBack={()=>setMobileDetail(false)} onRefresh={onRefresh} showProductLink={showProductLink} expandedDetails={expandedDetails}/>:<div className="grid justify-items-center gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {publications.map(publication=>{
           const photo=publication.content.photos[0];
           const variant=summaryVariant(publication);
-          return <button type="button" key={publication.id} onClick={()=>{setSelectedId(publication.id);setMobileDetail(true);}} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:shadow-black/20">
-            <div className="relative flex aspect-[16/10] items-center justify-center bg-slate-50 p-2.5 dark:bg-slate-950/40 sm:p-3">
-              {photo?<img src={photo} alt="" aria-hidden className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"/>:<div className="text-sm text-slate-500">Sin foto disponible</div>}
-              <span className={`absolute right-3 top-3 inline-flex max-w-[85%] items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${summaryBadgeClass(publication)}`}>
-                {variant==='warning'?<AlertTriangle size={12}/>:variant==='success'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
-                <span className="truncate">{summaryLabel(publication)}</span>
-              </span>
-              {publication.content.photos.length>1&&<span className="absolute bottom-3 left-3 rounded-lg bg-slate-950/75 px-2 py-1 text-xs font-semibold text-white">+{publication.content.photos.length-1} fotos</span>}
+          return <button type="button" key={publication.id} aria-label={`Ver publicación: ${publication.content.title}`} onClick={()=>{setSelectedId(publication.id);setMobileDetail(true);}} className="group flex w-full max-w-[21.25rem] min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg hover:shadow-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-indigo-500 dark:hover:shadow-black/20">
+            <div className="relative flex aspect-[4/5] w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 sm:w-32">
+              {photo?<img src={photo} alt="" aria-hidden className="h-full w-full object-contain p-1 transition-transform duration-200 group-hover:scale-[1.03]"/>:<div className="px-2 text-center text-xs text-slate-500">Sin foto disponible</div>}
+              {publication.content.photos.length>1&&<span className="absolute bottom-1.5 left-1.5 rounded-md bg-slate-950/75 px-1.5 py-0.5 text-[11px] font-semibold text-white">+{publication.content.photos.length-1} fotos</span>}
             </div>
-            <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-700 sm:p-3.5">
-              <h3 className="line-clamp-2 min-h-10 font-bold leading-5">{publication.content.title}</h3>
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                <span>{new Date(publication.approved_at).toLocaleString('es-AR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-                <span>{publication.facebook_deliveries.length} {publication.facebook_deliveries.length===1?'destino':'destinos'}</span>
+            <div className="flex min-w-0 flex-1 flex-col justify-center py-1">
+              <span className={`inline-flex max-w-full self-start items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${summaryBadgeClass(publication)}`}>
+                {variant==='warning'?<AlertTriangle size={12}/>:variant==='success'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
+                <span className="min-w-0 truncate">{summaryLabel(publication)}</span>
+              </span>
+              <h3 className="mt-2 line-clamp-2 font-bold leading-5">{publication.content.title}</h3>
+              <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <p>{new Date(publication.approved_at).toLocaleString('es-AR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                <p>{publication.facebook_deliveries.length} {publication.facebook_deliveries.length===1?'destino':'destinos'}</p>
               </div>
+              <span className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300">Ver detalle</span>
             </div>
           </button>;
         })}
