@@ -97,3 +97,11 @@ it('unknown message carries the last sanitized diagnostics',async()=>{
   const outcome:any=await reconcileWith({result:()=>({waiting:true,diag:{page:'alias',post:false,composer:false,notices:0,receipt:true}}),result_search:()=>({notFound:true})});
   expect(outcome.error.message).toContain('[diag page=alias post=0 composer=0 notices=0 receipt=1]');
 });
+
+it('rejects photos above 60 MB in total',async()=>{
+  vi.resetModules();
+  vi.stubGlobal('fetch',async()=>({ok:true,headers:new Headers({'content-type':'image/jpeg'}),arrayBuffer:async()=>new Uint8Array(9000000).fill(1).buffer}));
+  const {fetchPublicationPhotos}=await import('../../extensions/facebook/adapter.js');
+  const photos=Array.from({length:7},(_,i)=>`https://test.supabase.co/storage/v1/object/public/photos/${i}.jpg`);
+  await expect(fetchPublicationPhotos({photos},'https://test.supabase.co')).rejects.toThrow('60 MB');
+});

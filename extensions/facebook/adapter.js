@@ -7,6 +7,7 @@ export function validateFacebookDestination(destination) {
 export async function fetchPublicationPhotos(content, projectUrl) {
   const origin = new URL(projectUrl).origin;
   const photos = [];
+  let total = 0;
   for (const photoUrl of content.photos) {
     const url = new URL(photoUrl);
     if (url.origin !== origin || !url.pathname.startsWith('/storage/v1/object/public/')) throw new Error('La foto debe estar en el almacenamiento de esta cuenta de RivaStock.');
@@ -18,6 +19,9 @@ export async function fetchPublicationPhotos(content, projectUrl) {
     if (Number(response.headers.get('content-length') || 0) > 10000000) throw new Error('La foto supera 10 MB.');
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (!bytes.length || bytes.length > 10000000) throw new Error('Foto vacía o demasiado grande.');
+    // The base64 copies live in the service worker and the page at once.
+    total += bytes.length;
+    if (total > 60000000) throw new Error('Las fotos superan 60 MB en total. No se envió.');
     let binary = '';
     for (let start = 0; start < bytes.length; start += 8192) binary += String.fromCharCode(...bytes.subarray(start, start + 8192));
     photos.push({ data: btoa(binary), type, extension });
