@@ -231,3 +231,9 @@ it('heartbeat V2 announces causal-results-v2',async()=>{
  await f.worker.poll();
  expect(f.operations.find((a:any)=>a.p_operation==='heartbeat'&&a.p_data?.capabilities)?.p_data?.capabilities).toContain('causal-results-v2');
 });
+it('reconciles once when the submit script returns no reply after navigating',async()=>{
+ let job:any;const f=await fixture(a=>a.p_operation==='claim'?job:a.p_operation==='checkpoint'?{authorized:true,phase:'authorized_now'}:{saved:true});job=f.job;
+ f.submit.mockRejectedValueOnce(new Error('No se pudo verificar el formulario de Facebook.'));
+ await f.worker.poll();
+ expect(f.submit).toHaveBeenCalledTimes(1);expect(f.reconcile).toHaveBeenCalledTimes(1);
+});
