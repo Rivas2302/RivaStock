@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -26,7 +26,7 @@ beforeAll(async()=>{
 afterAll(async()=>{await db?.close();});
 const actor=(id=owner)=>db.exec("RESET ROLE;SET ROLE authenticated;SET test.uid='"+id+"'");
 let token:string,device:string;
-const CURRENT_CAPABILITIES=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2'];
+const CURRENT_CAPABILITIES=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
 beforeEach(async()=>{
  await db.exec('RESET ROLE;TRUNCATE facebook_publications,facebook_devices,facebook_groups,facebook_worker_policy CASCADE');
  await actor();
@@ -127,7 +127,40 @@ it('does not authorize a listing decision based on words in an error message',as
 
 it('heartbeat returns features array with result-candidates',async()=>{
  const hb=await worker('heartbeat',null,{version:'0.5.1',capabilities:CURRENT_CAPABILITIES});
- expect(hb.features).toEqual(['result-candidates','evidence-receipts','causal-results-v2']);
+ expect(hb.features).toEqual(['result-candidates','evidence-receipts','causal-results-v2','own-content-tracking']);
+});
+
+it('tracks only this device’s pending post and accepts its matching publication ID',async()=>{
+ const g=await group();await approve([g],false);const a=await claim();const delivery=a.id;
+ await worker('checkpoint',a.attemptId);
+ await worker('result',a.attemptId,{status:'pending_approval',url:null,pendingPostId:'987',message:'Pending'},delivery);
+ expect((await inspect('SELECT pending_post_id FROM facebook_delivery_attempts WHERE id=$1',[a.attemptId])).rows[0].pending_post_id).toBe('987');
+ const batch=await worker('track');expect(batch.items).toHaveLength(1);expect(batch.items[0]).toMatchObject({deliveryId:delivery,attemptId:a.attemptId,pendingPostId:'987',title:content.title});
+ const originalToken=token;await actor();const pair=(await db.query<{data:any}>("SELECT pair_facebook_device('Second PC') AS data")).rows[0].data;
+ await db.exec('SET ROLE anon');token=(await db.query<{data:any}>('SELECT redeem_facebook_device($1) AS data',[pair.code])).rows[0].data.token;
+ await worker('heartbeat',null,{version:'0.5.9',capabilities:CURRENT_CAPABILITIES});expect((await worker('track')).items).toHaveLength(0);token=originalToken;
+ await expect(worker('track',a.attemptId,{status:'published',url:'https://www.facebook.com/groups/123/posts/988',pendingPostId:'987',message:'Wrong ID'},delivery)).rejects.toThrow();
+ const published={status:'published',url:'https://www.facebook.com/groups/123/posts/987',pendingPostId:'987',message:'Published'};
+ expect((await worker('track',a.attemptId,published,delivery)).saved).toBe(true);
+ expect((await worker('track',a.attemptId,published,delivery)).saved).toBe(true);
+ expect((await inspect('SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1',[delivery])).rows[0]).toMatchObject({status:'published',evidence_url:'https://www.facebook.com/groups/123/posts/987'});
+ expect((await inspect("SELECT type FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='tracking'",[a.attemptId])).rows).toHaveLength(1);
+});
+
+it('stores Marketplace tracking as submitted and never as published',async()=>{
+ await approve([],true);const a=await claim();const delivery=a.id;await worker('checkpoint',a.attemptId);
+ await worker('result',a.attemptId,{status:'pending_approval',url:null,pendingPostId:'456',message:'Review'},delivery);
+ await expect(worker('track',a.attemptId,{status:'published',url:'https://www.facebook.com/marketplace/item/456/',pendingPostId:'456',message:'Wrong status'},delivery)).rejects.toThrow('RESULT_EVIDENCE_INVALID');
+ await worker('track',a.attemptId,{status:'submitted',url:'https://www.facebook.com/marketplace/item/456/',pendingPostId:'456',message:'Active'},delivery);
+ expect((await inspect('SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1',[delivery])).rows[0]).toMatchObject({status:'submitted',evidence_url:'https://www.facebook.com/marketplace/item/456/'});
+});
+
+it('records a rejected pending post as a not-approved event for review',async()=>{
+ const g=await group();await approve([g],false);const a=await claim();const delivery=a.id;await worker('checkpoint',a.attemptId);
+ await worker('result',a.attemptId,{status:'pending_approval',url:null,pendingPostId:'789',message:'Pending'},delivery);
+ await worker('track',a.attemptId,{status:'not_approved',url:null,pendingPostId:'789',message:'Facebook movió la publicación a rechazadas.'},delivery);
+ expect((await inspect('SELECT status,issue FROM facebook_deliveries WHERE id=$1',[delivery])).rows[0]).toMatchObject({status:'attention',issue:{kind:'facebook_not_approved'}});
+ expect((await inspect('SELECT outcome FROM facebook_delivery_attempts WHERE id=$1',[a.attemptId])).rows[0].outcome).toBe('not_approved');
 });
 
 it('claim with 0.5.0 capabilities raises PROTOCOL_UNSUPPORTED',async()=>{

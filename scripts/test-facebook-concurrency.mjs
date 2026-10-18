@@ -32,7 +32,7 @@ try{
  // Verify the legacy capability gate, then exercise concurrency with current clients.
  await assert.rejects(call(a,pc1,'claim',null,{claimKey:crypto.randomUUID()}),/PROTOCOL_UNSUPPORTED/);
  const {version}=JSON.parse(await readFile('extensions/facebook/manifest.json','utf8'));
- for(const [client,pc] of [[a,pc1],[b,pc2]])await call(client,pc,'heartbeat',null,{version,capabilities:['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2']});
+ for(const [client,pc] of [[a,pc1],[b,pc2]])await call(client,pc,'heartbeat',null,{version,capabilities:['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking']});
  async function cleanup(){await admin.query("TRUNCATE facebook_publications CASCADE");}
  for(let n=0;n<20;n++){
   await cleanup();const p=await product();await actor(a);await actor(b);const key=crypto.randomUUID();const same=await Promise.all([approve(a,p,key),approve(b,p,key)]);assert.equal(same[0].rows[0].id,same[1].rows[0].id);
