@@ -10,7 +10,7 @@ export default function PublicationDecision({delivery,onRefresh}:{delivery:Faceb
   const button='rounded-lg border border-slate-400 px-3 py-3 text-sm font-semibold disabled:opacity-50';
   const input='mt-1 w-full min-w-0 rounded-lg border border-slate-400 bg-white p-3 dark:bg-slate-900';
   async function resolve(decision:string){
-    if(busy||(decision!=='new'&&!checked))return;setBusy(true);setError('');
+    if(busy||!checked)return;setBusy(true);setError('');
     try{await facebookRpc('resolve_facebook_delivery',{p_delivery:delivery.id,p_decision:decision,p_url:decision==='existing'?url.trim():null,p_fields:fields});await onRefresh();}
     catch(error){setError((error as Error).message);}finally{setBusy(false);}
   }
@@ -24,7 +24,7 @@ export default function PublicationDecision({delivery,onRefresh}:{delivery:Faceb
       {issue?.fields?.map(field=><label key={field.label} className="block break-words">{field.label}{field.supported===false?<p>Este control requiere un formato que la integración todavía no admite. No se enviará automáticamente.</p>:field.options?<select className={input} value={fields[field.label]||''} onChange={event=>setFields({...fields,[field.label]:event.target.value})}><option value="">Elegí una opción</option>{field.options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>:<input className={input} value={fields[field.label]||''} maxLength={1000} onChange={event=>setFields({...fields,[field.label]:event.target.value})}/>}</label>)}
     </>}
     {(marketplace||sale)&&<><label className="flex items-start gap-3"><input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/>Revisé el contenido aprobado, el destino y los anuncios anteriores. Confirmo explícitamente mi decisión para este destino.</label><div className="flex flex-wrap gap-2">
-      {marketplace?<><button className={button} disabled={busy||!checked||!/^https:\/\/www\.facebook\.com\/marketplace\/item\/\d+\/?$/.test(url.trim())} onClick={()=>void resolve('existing')}>Vincular anuncio existente</button><button className={button} disabled={busy||Boolean(url.trim())} onClick={()=>void resolve('new')}>Aprobar una publicación nueva</button></>:<button className={button} disabled={busy||!checked||issue?.fields?.some(field=>field.supported===false||!fields[field.label])} onClick={()=>void resolve('group_sale')}>Aprobar artículo en venta y continuar</button>}
+      {marketplace?<><button className={button} disabled={busy||!checked||!/^https:\/\/www\.facebook\.com\/marketplace\/item\/\d+\/?$/.test(url.trim())} onClick={()=>void resolve('existing')}>Vincular anuncio existente</button><button className={button} disabled={busy||!checked||Boolean(url.trim())} onClick={()=>void resolve('new')}>Aprobar una publicación nueva</button></>:<button className={button} disabled={busy||!checked||issue?.fields?.some(field=>field.supported===false||!fields[field.label])} onClick={()=>void resolve('group_sale')}>Aprobar artículo en venta y continuar</button>}
     </div><p className="text-xs">Se registrará esta decisión y solo se recuperará este destino. Los resultados exitosos y desconocidos no se repiten.</p></>}
     {busy&&<p role="status">Guardando decisión…</p>}{error&&<p role="alert" className="text-rose-600">{error}</p>}
   </section>;
