@@ -186,3 +186,12 @@ it('reconciles once when the submit script loses its frame',async()=>{
  expect(f.submit).toHaveBeenCalledTimes(1);expect(f.reconcile).toHaveBeenCalledTimes(1);
  expect(f.operations.some((a:any)=>a.p_operation==='result')).toBe(true);
 });
+it('skips the watchdog while a local journal exists and runs it otherwise',async()=>{
+ const f=await fixture(a=>a.p_operation==='heartbeat'?{worker_protocol:2,features:[]}:a.p_operation==='recover'?{action:'reconcile_only'}:a.p_operation==='claim'?null:{saved:true});
+ f.memory.activeJob={job:f.job,attemptId:'attempt',protocol:2,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'submitting',tabId:1};
+ await f.worker.poll();
+ const watchdogCalls=()=>f.operations.filter((a:any)=>a.p_token&&a.p_operation===undefined).length;
+ expect(watchdogCalls()).toBe(0);expect(f.operations.some((a:any)=>a.p_operation==='recover')).toBe(true);
+ await f.worker.poll();
+ expect(watchdogCalls()).toBe(1);
+});

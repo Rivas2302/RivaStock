@@ -134,7 +134,8 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       paused=!heartbeat.queue_enabled;await chrome.storage.local.set({paused,queueCommandAt:heartbeat.queue_command_at,status:paused?'Cola pausada desde RivaStock.':'Cola activa desde RivaStock.'});
       await workerRpc(connection,'heartbeat',{protocol,status:paused?'paused':'active'});
     }
-    if(protocol>=2)try{await rpc(connection,'facebook_watchdog',{p_token:connection.token});}catch{}
+    // Expiring our own in-flight attempt first would retire it without reconciling.
+    if(protocol>=2&&!activeJob)try{await rpc(connection,'facebook_watchdog',{p_token:connection.token});}catch{}
     heartbeatTimer=setInterval(()=>{
       void (async()=>{
         const current=await chrome.storage.local.get(['activeJob','connection']);
