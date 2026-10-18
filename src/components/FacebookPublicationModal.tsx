@@ -48,7 +48,9 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
           setGroups(data.groups); setDevices(data.devices); setPublications(data.publications); setReady(true);
           if(!hydrated.current) {
             if(data.publications.length) {
-              const latest=data.publications[0];setContent(latest.content);
+              // A photo removed from the product since then cannot be approved again.
+              const latest=data.publications[0];const current=productPhotos(product);const photos=latest.content.photos.filter(url=>current.includes(url));
+              setContent({...latest.content,photos:photos.length?photos:initialPublication(product).photos});
               if(!savedSelection.current){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
             }
             if(!viewTouched.current)setView(data.publications.length?'manage':'compose');

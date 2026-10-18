@@ -384,3 +384,15 @@ test('a failed first approval does not lock the product',async({page})=>{
   await expect.poll(()=>intents.length).toBe(2);
   expect(intents[1]).not.toBe(intents[0]);
 });
+
+test('repeating a publication keeps only photos the product still has',async({page})=>{
+  const {rows,calls,productIds}=await fixture(page);
+  rows[0].content.photos=['https://rivastock-test.invalid/storage/v1/object/public/test/removed.png',photo];
+  await page.goto(`/automatizaciones?product=${productIds[0]}`);
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
+  await modal.getByRole('button',{name:'Preparar otra publicación'}).click();
+  await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
+  await modal.getByRole('button',{name:'Confirmar nueva publicación'}).click();
+  await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication').length).toBe(1);
+  expect(calls.find(c=>c.name==='approve_facebook_publication')!.args.p_content.photos).toEqual([photo]);
+});
