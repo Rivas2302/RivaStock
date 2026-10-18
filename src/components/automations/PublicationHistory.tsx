@@ -6,7 +6,7 @@ import {usePermission} from '../../hooks/usePermission';
 import {deliveryLabel,deliveryState,deliveryCandidate,deliveryReceipt,deliveryRejectedEvidence,facebookRpc,publicationStatus,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
 
-function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:()=>Promise<void>}) {
+function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDelivery;onRefresh:()=>Promise<void>;compact?:boolean}) {
   const canWrite=usePermission('stock','write');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const [review,setReview]=useState(false);const [checked,setChecked]=useState(false);const [url,setUrl]=useState('');
@@ -29,7 +29,7 @@ function DeliveryCard({delivery,onRefresh}:{delivery:FacebookDelivery;onRefresh:
   // One-liner summary for each state
   const shortStatus=state==='unknown'?'No se pudo verificar el resultado. No se repetirá el envío.':state==='failed'&&!decision?'Preparación fallida antes de autorizar el envío.':state==='submitted'&&delivery.resolution?.action==='existing'?`Anuncio vinculado. Estado observado: ${delivery.resolution.observedStatus||'no disponible'}.`:state==='submitted'?'Facebook recibió el envío. Aprobación pública sin verificar.':state==='pending_approval'?'Facebook está revisando esta publicación.':null;
 
-  return <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+  return <div className={`space-y-2 rounded-xl bg-slate-50 text-sm dark:bg-slate-800/60 ${compact?'p-2.5':'p-3'}`}>
     {/* Header: name + badge */}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="font-semibold">{delivery.destination.name}</h4>
@@ -139,7 +139,7 @@ function buildActivity(pub:FacebookPublication):{at:string;title:string;desc:str
   return events.sort((a,b)=>a.at.localeCompare(b.at));
 }
 
-export default function PublicationHistory({publications,onRefresh,showProductLink=false}:{publications:FacebookPublication[];onRefresh:()=>Promise<void>;showProductLink?:boolean}) {
+export default function PublicationHistory({publications,onRefresh,showProductLink=false,layout='full',expandedDetails=false}:{publications:FacebookPublication[];onRefresh:()=>Promise<void>;showProductLink?:boolean;layout?:'full'|'embedded';expandedDetails?:boolean}) {
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [mobileDetail,setMobileDetail]=useState(false);
 
@@ -147,7 +147,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
     if(selectedId&&!publications.find(p=>p.id===selectedId)){setSelectedId(null);setMobileDetail(false);}
   },[publications,selectedId]);
 
-  const effectiveId=selectedId??publications[0]?.id??null;
+  const effectiveId=selectedId??(layout==='full'?publications[0]?.id:null);
   const selected=publications.find(p=>p.id===effectiveId)??null;
 
   const needsReview=publications.filter(p=>p.facebook_deliveries.some(d=>['failed','unknown'].includes(deliveryState(d)))).length;
@@ -155,6 +155,47 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
   const published=publications.filter(p=>p.facebook_deliveries.length>0&&p.facebook_deliveries.every(d=>deliveryState(d)==='published')).length;
 
   if(!publications.length)return <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No hay publicaciones registradas en esta vista. Los anuncios creados fuera de la integración no se importan automáticamente.</p>;
+
+  if(layout==='embedded')return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{publications.length} {publications.length===1?'publicación':'publicaciones'}</span>
+      {needsReview>0&&<span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">{needsReview} requieren revisión</span>}
+      {inProgress>0&&<span className="rounded-full bg-indigo-100 px-2.5 py-1 font-semibold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">{inProgress} en curso</span>}
+      {published>0&&<span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">{published} publicadas</span>}
+    </div>
+    <div className="space-y-2">
+      {publications.map(pub=>{
+        const variant=summaryVariant(pub);const label=summaryLabel(pub);const isActive=pub.id===selectedId;
+        const badgeClass=variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+        return <div key={pub.id} className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+          <button type="button" aria-expanded={isActive} onClick={()=>setSelectedId(isActive?null:pub.id)} className={`flex w-full items-center gap-3 p-3 text-left transition-colors ${isActive?'bg-indigo-50 dark:bg-indigo-950/40':'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60'}`}>
+            {pub.content.photos[0]?<img src={pub.content.photos[0]} alt="" aria-hidden className="h-11 w-11 shrink-0 rounded-lg object-cover"/>:<div className="h-11 w-11 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800"/>}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{pub.content.title}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">{new Date(pub.approved_at).toLocaleString('es-AR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} · {pub.facebook_deliveries.length} {pub.facebook_deliveries.length===1?'destino':'destinos'}</span>
+            </span>
+            <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${badgeClass}`}>{label}</span>
+          </button>
+          {isActive&&<div className="space-y-3 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+            {pub.repeat_of&&<p className="text-xs text-indigo-600 dark:text-indigo-300">Nueva publicación aprobada explícitamente.</p>}
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold">Contenido aprobado</summary>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-slate-500">{formatCurrency(pub.content.price)} · {pub.content.location} · {pub.content.category}</p>
+                <p className="whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">{pub.content.description}</p>
+                {pub.content.photos.length>0&&<div className="flex gap-2 overflow-x-auto pb-1">{pub.content.photos.map((photo,i)=><img key={photo} src={photo} alt={`Foto aprobada ${i+1}`} className="h-12 w-12 shrink-0 rounded-lg object-cover"/>)}</div>}
+              </div>
+            </details>
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">Destinos ({pub.facebook_deliveries.length})</h4>
+              {pub.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} onRefresh={onRefresh} compact/>)}
+            </div>
+          </div>}
+        </div>;
+      })}
+    </div>
+    <p className="text-xs text-slate-500">El detalle completo y la actividad están disponibles en el historial. Un resultado desconocido requiere revisión antes de autorizar otro envío.</p>
+  </div>;
 
   return <div className="space-y-4">
     {/* Stats */}
@@ -175,7 +216,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
     </div>
 
     {/* Master-detail */}
-    <div className="grid items-start gap-3 lg:grid-cols-[5fr_7fr]">
+    <div className="grid items-start gap-3 lg:grid-cols-[minmax(360px,1.05fr)_minmax(420px,0.95fr)]">
       {/* List */}
       <div className={`space-y-1 ${mobileDetail?'hidden lg:block':''}`}>
         {publications.map(pub=>{
@@ -203,9 +244,9 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
       </div>
 
       {/* Detail */}
-      <div className={`${mobileDetail?'':'hidden lg:block'} lg:sticky lg:top-4`}>
+      <div className={`${mobileDetail?'':'hidden lg:block'} min-w-0`}>
         {selected?(
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
             {/* Mobile back */}
             <div className="flex items-center border-b border-slate-200 px-4 py-3 dark:border-slate-700 lg:hidden">
               <button onClick={()=>setMobileDetail(false)} className="flex items-center gap-1 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
@@ -213,15 +254,21 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="space-y-4 p-4">
               {/* Header */}
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold break-words">{selected.content.title}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">Aprobado · {new Date(selected.approved_at).toLocaleString('es-AR')}</p>
-                  {selected.repeat_of&&<p className="mt-0.5 text-xs text-indigo-600 dark:text-indigo-300">Nueva publicación aprobada explícitamente</p>}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  {selected.content.photos[0]?<img src={selected.content.photos[0]} alt="" aria-hidden className="h-14 w-14 shrink-0 rounded-xl object-cover"/>:<div className="h-14 w-14 shrink-0 rounded-xl bg-slate-100 dark:bg-slate-800"/>}
+                  <div className="min-w-0">
+                    <h3 className="break-words font-bold">{selected.content.title}</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Aprobado · {new Date(selected.approved_at).toLocaleString('es-AR')}</p>
+                    {selected.repeat_of&&<p className="mt-0.5 text-xs text-indigo-600 dark:text-indigo-300">Nueva publicación aprobada explícitamente</p>}
+                  </div>
                 </div>
-                {showProductLink&&selected.product_id&&<Link className="shrink-0 text-xs font-semibold text-indigo-600 dark:text-indigo-400" to={`/automatizaciones?product=${encodeURIComponent(selected.product_id)}`}>Gestionar producto</Link>}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${summaryVariant(selected)==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':summaryVariant(selected)==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':summaryVariant(selected)==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{summaryLabel(selected)}</span>
+                  {showProductLink&&selected.product_id&&<Link className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50" to={`/automatizaciones?product=${encodeURIComponent(selected.product_id)}`}>Gestionar producto</Link>}
+                </div>
               </div>
 
               {/* Destinations (first — most actionable) */}
@@ -231,7 +278,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
               </div>
 
               {/* Approved content (collapsed by default) */}
-              <details>
+              <details open={expandedDetails}>
                 <summary className="cursor-pointer text-sm font-semibold">Contenido aprobado</summary>
                 <div className="mt-2 space-y-2">
                   <p className="text-xs text-slate-500">{formatCurrency(selected.content.price)} · {selected.content.location} · {selected.content.category}</p>
@@ -241,7 +288,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
               </details>
 
               {/* Activity (last — secondary info) */}
-              {(()=>{const activity=buildActivity(selected);return activity.length>0&&<details>
+              {(()=>{const activity=buildActivity(selected);return activity.length>0&&<details open={expandedDetails}>
                 <summary className="cursor-pointer text-sm font-semibold">Actividad</summary>
                 <ol className="mt-2 space-y-2.5">
                   {activity.map((event,i)=><li key={i} className="flex gap-3 text-sm">
