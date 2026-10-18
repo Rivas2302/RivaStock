@@ -49,17 +49,32 @@ REVOKE ALL ON FUNCTION facebook_expire_stale_deliveries(uuid) FROM PUBLIC,anon,a
 
 CREATE OR REPLACE FUNCTION facebook_watchdog(p_token text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_device facebook_devices;
+DECLARE v_device facebook_devices; v_owner uuid;
 BEGIN
   SELECT d.* INTO v_device
   FROM facebook_devices d JOIN facebook_device_secrets s ON s.device_id=d.id
   WHERE s.token_hash=encode(sha256(convert_to(p_token,'UTF8')),'hex')
     AND d.revoked_at IS NULL AND s.token_expires_at>clock_timestamp();
   IF NOT FOUND THEN RAISE EXCEPTION 'TOKEN_EXPIRED'; END IF;
-  RETURN jsonb_build_object('expired_attempts', facebook_expire_stale_deliveries(get_owner_uid(v_device.user_id)));
+  v_owner:=get_owner_uid(v_device.user_id);
+  -- NULL means every owner; a device token must never reach that scope.
+  IF v_owner IS NULL THEN RAISE EXCEPTION 'TOKEN_EXPIRED'; END IF;
+  RETURN jsonb_build_object('expired_attempts', facebook_expire_stale_deliveries(v_owner));
 END; $$;
 REVOKE ALL ON FUNCTION facebook_watchdog(text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION facebook_watchdog(text) TO anon;
+
+-- The web refresh uses the same routine, so every expiry leaves the same audit trail.
+CREATE OR REPLACE FUNCTION refresh_facebook_delivery_states() RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v_owner uuid;
+BEGIN
+ IF auth.uid() IS NULL OR NOT has_permission(auth.uid(),'stock','read') THEN RAISE EXCEPTION 'Sin permiso'; END IF;
+ v_owner:=get_owner_uid(auth.uid());
+ IF v_owner IS NULL THEN RAISE EXCEPTION 'Sin permiso'; END IF;
+ RETURN jsonb_build_object('expired_attempts', facebook_expire_stale_deliveries(v_owner));
+END; $$;
+REVOKE ALL ON FUNCTION refresh_facebook_delivery_states() FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION refresh_facebook_delivery_states() TO authenticated;
 
 -- Scheduled entry point: no client may call it.
 CREATE FUNCTION facebook_cron_watchdog() RETURNS jsonb

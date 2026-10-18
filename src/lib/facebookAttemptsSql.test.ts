@@ -316,3 +316,22 @@ it('the scheduled watchdog expires stale work of every owner without a device or
  expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].status).toBe('attention');
  expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[legacy])).rows[0].status).toBe('attention');
 });
+it('rejects a second first approval for a product that already has history',async()=>{
+ await approve();await expect(approve([],true,null)).rejects.toThrow();
+});
+it('a human review accepts only the destination name or a numeric group id, never another named group',async()=>{
+ const g=await group('https://www.facebook.com/groups/ventaspico');await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);await worker('attention',a.attemptId,{message:'Unknown'});
+ await actor();await expect(db.query("SELECT review_facebook_attempt($1,'found','https://www.facebook.com/groups/otrogrupo/posts/9')",[a.attemptId])).rejects.toThrow('Decisión inválida');
+});
+it('a human review cannot reuse the evidence of another delivery',async()=>{
+ const g=await group();const first=await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);
+ await worker('result',a.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/123/posts/9'},a.id);
+ await approve([g],false,first);const b=await claim();await worker('checkpoint',b.attemptId);await worker('attention',b.attemptId,{message:'Unknown'});
+ await actor();await expect(db.query("SELECT review_facebook_attempt($1,'found','https://www.facebook.com/groups/123/permalink/9/')",[b.attemptId])).rejects.toThrow('Decisión inválida');
+});
+it('the web refresh records expiries like the watchdog',async()=>{
+ await approve();const a=await claim();await worker('checkpoint',a.attemptId);
+ await inspect("UPDATE facebook_delivery_attempts SET authorized_at=now()-interval '3 minutes' WHERE id=$1",[a.attemptId]);
+ await actor();await db.query('SELECT refresh_facebook_delivery_states()');
+ expect((await inspect("SELECT 1 FROM facebook_delivery_attempt_events WHERE attempt_id=$1 AND type='attention'",[a.attemptId])).rows).toHaveLength(1);
+});

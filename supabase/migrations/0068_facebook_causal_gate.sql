@@ -1,5 +1,17 @@
 BEGIN;
 
+-- One post or listing identifies a single delivery per owner, in any URL form
+-- (/posts/ID and /permalink/ID name the same post).
+CREATE FUNCTION facebook_evidence_in_use(p_owner uuid,p_delivery uuid,p_url text) RETURNS boolean
+LANGUAGE sql STABLE SET search_path=public,pg_temp AS $$
+ SELECT coalesce((regexp_match(coalesce(p_url,''),'/(posts|permalink|item)/([0-9]+)/?$'))[2] IS NOT NULL AND EXISTS(
+  SELECT 1 FROM facebook_deliveries d JOIN facebook_publications p ON p.id=d.publication_id
+  WHERE p.user_id=p_owner AND d.id<>p_delivery AND d.evidence_url IS NOT NULL
+  AND (regexp_match(d.evidence_url,'/(posts|permalink|item)/([0-9]+)/?$'))[2]=(regexp_match(p_url,'/(posts|permalink|item)/([0-9]+)/?$'))[2]
+  AND (d.evidence_url LIKE '%/marketplace/%')=(p_url LIKE '%/marketplace/%')),false);
+$$;
+REVOKE ALL ON FUNCTION facebook_evidence_in_use(uuid,uuid,text) FROM PUBLIC,anon,authenticated;
+
 -- Replace the public wrapper to add, on top of 0065:
 -- * claim requires causal-results-v2, so extension builds that promoted feed
 --   matches or rewrote other groups' URLs (0.5.5/0.5.6) stop taking new work;
@@ -20,7 +32,6 @@ DECLARE
   v_outcome text;
   v_evidence jsonb;
   v_owner uuid;
-  v_evidence_id text;
 BEGIN
  IF jsonb_typeof(p_data) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'DIAGNOSTIC_INVALID'; END IF;
  allowed:=CASE p_operation
@@ -67,12 +78,7 @@ BEGIN
    IF v_outcome IS NOT NULL AND v_outcome=p_data->>'status' AND v_evidence->>'url' IS NOT DISTINCT FROM p_data->>'url' THEN
     RETURN jsonb_build_object('saved',true,'retired',true);
    END IF;
-   v_evidence_id:=(regexp_match(coalesce(p_data->>'url',''),'/(posts|permalink|item)/([0-9]+)/?$'))[2];
-   IF v_evidence_id IS NOT NULL AND EXISTS(
-     SELECT 1 FROM facebook_deliveries d2 JOIN facebook_publications p2 ON p2.id=d2.publication_id
-     WHERE p2.user_id=v_owner AND d2.id<>p_delivery AND d2.evidence_url IS NOT NULL
-     AND (regexp_match(d2.evidence_url,'/(posts|permalink|item)/([0-9]+)/?$'))[2]=v_evidence_id
-     AND (d2.evidence_url LIKE '%/marketplace/%')=(p_data->>'url' LIKE '%/marketplace/%')) THEN
+   IF facebook_evidence_in_use(v_owner,p_delivery,p_data->>'url') THEN
     RAISE EXCEPTION 'RESULT_EVIDENCE_INVALID';
    END IF;
   END IF;

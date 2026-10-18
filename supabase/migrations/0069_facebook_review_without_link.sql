@@ -4,8 +4,10 @@ BEGIN;
 -- * exists_without_link: the post exists but there is no verifiable permalink
 --   (for example, it waits for the group admins). It never cancels the delivery,
 --   so it cannot unlock another submission to the destination.
--- * found accepts a well-formed group post URL under either alias of the group
---   (vanity name or numeric id). Automatic results keep the strict validator.
+-- * found accepts the destination's own segment or a numeric group id (the other
+--   alias Facebook uses in post URLs), never another named group, and never a
+--   post that is already the evidence of another delivery. Automatic results
+--   keep the strict validator.
 DO $$
 DECLARE cname text;
 BEGIN
@@ -25,7 +27,7 @@ CREATE FUNCTION facebook_valid_review_url(p_url text,p_destination jsonb) RETURN
 LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
  SELECT facebook_valid_evidence_url(p_url,p_destination)
   OR coalesce(p_destination->>'mechanism'='group_direct'
-   AND p_url ~ '^https://www\.facebook\.com/groups/[A-Za-z0-9._-]+/(posts|permalink)/[0-9]+/?$',false);
+   AND p_url ~ '^https://www\.facebook\.com/groups/[0-9]+/(posts|permalink)/[0-9]+/?$',false);
 $$;
 REVOKE ALL ON FUNCTION facebook_valid_review_url(text,jsonb) FROM PUBLIC,anon,authenticated;
 
@@ -38,7 +40,7 @@ BEGIN
  SELECT d.* INTO v_job FROM facebook_deliveries d JOIN facebook_delivery_attempts a ON a.delivery_id=d.id WHERE a.id=p_attempt FOR UPDATE OF d;
  IF NOT v_job.recovery_required AND (v_job.status<>'attention' OR v_job.submitted_at IS NULL) THEN RAISE EXCEPTION 'El resultado no requiere revisión'; END IF;
  IF p_decision IS NULL OR p_decision NOT IN ('found','not_found','exists_without_link')
-  OR (p_decision='found' AND NOT facebook_valid_review_url(p_url,v_job.destination))
+  OR (p_decision='found' AND (NOT facebook_valid_review_url(p_url,v_job.destination) OR facebook_evidence_in_use(v_pub.user_id,v_job.id,p_url)))
   OR (p_decision IN ('not_found','exists_without_link') AND p_url IS NOT NULL) THEN RAISE EXCEPTION 'Decisión inválida'; END IF;
  INSERT INTO facebook_delivery_reviews(delivery_id,reviewed_by,decision,evidence_url) VALUES(v_job.id,auth.uid(),p_decision,p_url);
  PERFORM facebook_attempt_event(p_attempt,'review',jsonb_build_object('decision',p_decision,'url',p_url,'actor',auth.uid()),'review-'||gen_random_uuid()::text);
