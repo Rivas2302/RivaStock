@@ -74,11 +74,11 @@ export const facebookAdapter = {
       await new Promise(resolve => setTimeout(resolve, 750));
     }
     if(isGroup){
+      // A feed match is only a candidate for human confirmation, never a result.
       const found=await this.action(active.tabId,'result_search',active.job.content,[],active.baseline).catch(()=>null);
-      if(found?.status)return found;
-      if(receipt)return receipt;
       const error=new Error('Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.');
       if(typeof found?.candidateUrl==='string')error.candidateUrl=found.candidateUrl;
+      if(receipt){if(!error.candidateUrl)return receipt;error.receipt=receipt;}
       throw error;
     }
     throw new Error('Resultado desconocido. Revisá la pestaña de Facebook; no se repetirá el envío.');

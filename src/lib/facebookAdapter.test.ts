@@ -53,3 +53,31 @@ it('reconcile never resolves with status',async()=>{
   const result=await promise;
   expect(result).toBeNull();
 });
+
+async function reconcileWith(results:Record<string,(call:number)=>any>,baseline:string[]=[]){
+  vi.resetModules();
+  vi.useFakeTimers();
+  vi.stubGlobal('chrome',{scripting:{executeScript:async()=>[{result:{waiting:true}}]}});
+  const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
+  const calls:Record<string,number>={};
+  vi.spyOn(facebookAdapter,'action').mockImplementation(async(_t:any,action:string)=>{
+    calls[action]=(calls[action]??0)+1;
+    return results[action]?.(calls[action])??{};
+  });
+  const active:any={tabId:1,job:{content:{title:'T',groupText:'T'},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/123'}},baseline};
+  const promise=facebookAdapter.reconcile(active).then(value=>({value}),error=>({error}));
+  await vi.runAllTimersAsync();
+  return {...await promise,calls};
+}
+
+it('reconcile never resolves with a status coming from result_search',async()=>{
+  const outcome:any=await reconcileWith({result:()=>({waiting:true}),result_search:()=>({status:'published',url:'https://www.facebook.com/groups/123/posts/9'})});
+  expect(outcome.value).toBeUndefined();
+  expect(outcome.error.message).toContain('Resultado desconocido');
+});
+
+it('reconcile attaches receipt and candidate together',async()=>{
+  const outcome:any=await reconcileWith({result:()=>({status:'submitted',url:null}),result_search:()=>({candidateUrl:'https://www.facebook.com/groups/123/posts/9'})});
+  expect(outcome.value).toBeUndefined();
+  expect(outcome.error).toMatchObject({candidateUrl:'https://www.facebook.com/groups/123/posts/9',receipt:{status:'submitted',url:null}});
+});

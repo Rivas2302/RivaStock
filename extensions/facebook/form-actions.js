@@ -581,8 +581,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     if(candidates.size===1){
       const url=[...candidates][0];
-      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;const normalizedUrl=u.origin+segs.join('/');
-      return {status:'published',url:normalizedUrl,message:'Publicación encontrada en el feed del grupo con autor y texto verificados.'};
+      const u=new URL(url);const segs=u.pathname.split('/');segs[2]=configSeg;
+      return {candidateUrl:u.origin+segs.join('/')};
     }
     return {notFound:true};
   }

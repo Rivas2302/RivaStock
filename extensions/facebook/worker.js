@@ -161,7 +161,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
       }catch(error){
         if((await chrome.storage.local.get('activeJob')).activeJob?.stage==='result')throw error;
-        await markAttention(connection,activeJob,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,serverFeatures});drain=true;
+        await markAttention(connection,activeJob,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,receipt:error.receipt,serverFeatures});drain=true;
       }
       return;
     }
@@ -201,7 +201,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     }catch(error){
       const journal=(await chrome.storage.local.get('activeJob')).activeJob;
       if(journal?.stage==='result')throw error;
-      await markAttention(connection,journal??active,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,serverFeatures});drain=true;
+      await markAttention(connection,journal??active,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,receipt:error.receipt,serverFeatures});drain=true;
     }
   }catch(error){
     const code=errorCode(error);await chrome.storage.local.set({lastErrorCode:code,status:code==='NETWORK_TEMPORARY'?'Sin conexión momentánea. Se reintentará automáticamente.':code==='DEVICE_REVOKED'||code==='TOKEN_EXPIRED'?'La vinculación venció o fue revocada. Revisá la conexión antes de continuar.':'La ejecución requiere revisión: '+code});
