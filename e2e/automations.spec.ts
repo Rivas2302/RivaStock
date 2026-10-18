@@ -346,3 +346,15 @@ test('requires approval of sale format and extra fields from RivaStock',async({p
   await expect.poll(()=>decision).toMatchObject({p_delivery:'delivery-2',p_decision:'group_sale',p_fields:{Marca:'Riva'}});
   await expect(card.getByRole('region',{name:'Resolver destino'})).toHaveCount(0);
 });
+
+test('an unknown result can be closed as existing without a link',async({page})=>{
+  const {calls}=await fixture(page);await page.goto('/automatizaciones');
+  const unknown=await openPublication(page,'Resultado por revisar');
+  await unknown.getByRole('button',{name:'Registrar revisión'}).click();
+  await expect(unknown.getByText('Destino:',{exact:false})).toBeVisible();
+  const exists=unknown.getByRole('button',{name:'Existe, pero no tengo el enlace'});
+  await expect(exists).toBeDisabled();
+  await unknown.getByRole('checkbox',{name:'Ya revisé el destino'}).check();
+  await exists.click();
+  await expect.poll(()=>calls.filter(c=>c.name==='review_facebook_delivery').map(c=>c.args)).toEqual([{p_delivery:'delivery-1',p_decision:'exists_without_link',p_url:null}]);
+});

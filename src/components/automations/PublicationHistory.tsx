@@ -80,11 +80,14 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     {review&&<div className="space-y-2.5 rounded-lg border border-amber-300 p-3 text-xs">
       <p className="font-semibold text-sm">Revisá tus publicaciones y pendientes de aprobación en Facebook antes de continuar.</p>
       <label className="flex gap-2"><input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)}/>Ya revisé el destino y sus publicaciones pendientes.</label>
+      <p className="text-slate-500">Destino: {delivery.destination.name}</p>
       <label className="block">Enlace si encontraste la publicación<input type="url" className="mt-1 w-full rounded-lg border bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white" value={url} onChange={e=>setUrl(e.target.value)}/></label>
       <div className="flex flex-wrap gap-2">
         <button className={btn} disabled={busy||!checked||!url.trim()} onClick={()=>{const trimmed=url.trim();if(/facebook\.com\/share\//.test(trimmed)){setError('Los enlaces de compartir no identifican la publicación directamente. Usá el enlace de la barra de direcciones (facebook.com/groups/.../posts/...).');return;}void action(delivery.recovery_required?'review_facebook_attempt':'review_facebook_delivery',{p_decision:'found',p_url:trimmed});}}>Encontré la publicación</button>
+        <button className={btn} disabled={busy||!checked||Boolean(url.trim())} onClick={()=>void action(delivery.recovery_required?'review_facebook_attempt':'review_facebook_delivery',{p_decision:'exists_without_link',p_url:null})}>Existe, pero no tengo el enlace</button>
         <button className={btn} disabled={busy||!checked||Boolean(url.trim())} onClick={()=>void action(delivery.recovery_required?'review_facebook_attempt':'review_facebook_delivery',{p_decision:'not_found',p_url:null})}>No la encontré; cerrar este intento</button>
       </div>
+      <p className="text-slate-500">Usá «Existe, pero no tengo el enlace» si la ves pendiente de aprobación o sin un enlace que se pueda copiar. No habilita otro envío.</p>
       <p className="text-slate-500">Tu decisión quedará registrada. Cerrar el intento no crea otra publicación. Repetir requiere otra aprobación explícita.</p>
     </div>}
 
