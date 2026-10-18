@@ -1,3 +1,28 @@
+# Facebook 0.5.9: seguimiento de contenido propio
+
+0.5.9 suma la capacidad `own-content-tracking`. La extensión reconoce un ID nuevo solo cuando aparece en las listas de contenido propio del grupo, con autor y título aprobados, y conserva ese ID para seguir una publicación pendiente. El seguimiento periódico puede actualizar el mismo intento a publicado o «No aprobada»; no dispara otro clic.
+
+La operación `track` valida el ID contra el guardado en el intento y contra el token del dispositivo que lo capturó. El servidor no lee Facebook ni guarda autor o título como datos nuevos. Las entregas rechazadas quedan en revisión con su causa y requieren una decisión humana antes de otro intento.
+
+## Orden de salida (requiere autorización para cada acción productiva)
+
+1. Pausar la cola desde RivaStock.
+2. Confirmar en el inventario de solo lectura que 0049–0071 están aplicadas. Aplicar `0072_facebook_own_content_tracking.sql` una sola vez, después de `0071`. No editar migraciones anteriores.
+3. Desplegar la web con el commit autorizado. El despliegue entrega el ZIP 0.5.9.
+4. Actualizar la extensión instalada y confirmar que reporta 0.5.9 y la capacidad `own-content-tracking`.
+5. Revisar las entregas abiertas. Reanudar la cola solo cuando la persona usuaria lo autorice.
+6. Certificar A14–A18, un caso por vez y con un producto nuevo aprobado.
+
+0072 hace que los clientes sin `own-content-tracking`, incluida 0.5.8, no puedan reclamar trabajos nuevos. La migración agrega ID/fecha de seguimiento y reemplaza el wrapper del worker. Si falla el despliegue o la migración, mantener pausada la cola y corregir hacia adelante; no borrar esos campos ni bajar la capacidad del protocolo, porque pueden contener IDs pendientes legítimos.
+
+## Límite verificado de Marketplace y variantes de grupo
+
+La inspección de solo lectura del 18/10 no encontró IDs estables dentro de las tarjetas de «Tus publicaciones» y la lista mostraba carga en curso. Por eso Marketplace sigue sin autorizar el clic cuando no puede construir un baseline completo con IDs; su resultado queda sin verificar. Tampoco se verificó el DOM de `group_sale` ni los anuncios sin foto. Esas variantes requieren una inspección de solo lectura y una prueba que confirme la misma estructura antes de habilitar su lectura. El mapeo del ID observado en `set=gm`/`set=pcb` a `/groups/<id>/posts/<id>` también requiere certificación real.
+
+**Ninguna migración se aplicó, no hubo push, no se actualizó la extensión instalada ni se reanudó la cola durante esta implementación.**
+
+---
+
 # Facebook 0.5.7: evidencia solo causal y salidas para cada estado
 
 Corrige los hallazgos de `docs/automation/AUDIT-2026-10-18.md`:
