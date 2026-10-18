@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -254,4 +254,23 @@ it('a result resent with another message is idempotent, not a contradiction',asy
  await worker('result',a.attemptId,{status:'submitted',url:'https://www.facebook.com/marketplace/item/5/',message:'Primero'},a.id);
  expect((await worker('result',a.attemptId,{status:'submitted',url:'https://www.facebook.com/marketplace/item/5/',message:'Reintento'},a.id)).saved).toBe(true);
  expect((await inspect('SELECT recovery_required FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0].recovery_required).toBe(false);
+});
+it('records a post that exists without a link and keeps the destination closed',async()=>{
+ const g=await group();await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);await worker('attention',a.attemptId,{message:'Unknown'});
+ await actor();await expect(db.query("SELECT review_facebook_attempt($1,'exists_without_link','https://www.facebook.com/groups/123/posts/1')",[a.attemptId])).rejects.toThrow('Decisión inválida');
+ await db.query("SELECT review_facebook_attempt($1,'exists_without_link')",[a.attemptId]);
+ expect((await inspect('SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0]).toMatchObject({status:'pending_approval',evidence_url:null});
+ expect((await inspect("SELECT decision FROM facebook_delivery_reviews WHERE delivery_id=$1",[a.id])).rows[0].decision).toBe('exists_without_link');
+});
+it('accepts the other alias of a group in a human review, but never a foreign site',async()=>{
+ const g=await group('https://www.facebook.com/groups/ventaspico');await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);await worker('attention',a.attemptId,{message:'Unknown'});
+ await actor();await expect(db.query("SELECT review_facebook_attempt($1,'found','https://evil.example/groups/1/posts/2')",[a.attemptId])).rejects.toThrow('Decisión inválida');
+ await db.query("SELECT review_facebook_attempt($1,'found','https://www.facebook.com/groups/123/posts/9')",[a.attemptId]);
+ expect((await inspect('SELECT status,evidence_url FROM facebook_deliveries WHERE id=$1',[a.id])).rows[0]).toMatchObject({status:'submitted',evidence_url:'https://www.facebook.com/groups/123/posts/9'});
+});
+it('records exists-without-link for a legacy authorized delivery without attempts',async()=>{
+ await approve();const id=(await inspect('SELECT id FROM facebook_deliveries LIMIT 1')).rows[0].id;
+ await inspect("UPDATE facebook_deliveries SET status='attention',submitted_at=now() WHERE id=$1",[id]);
+ await actor();await db.query("SELECT review_facebook_delivery($1,'exists_without_link')",[id]);
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[id])).rows[0].status).toBe('pending_approval');
 });
