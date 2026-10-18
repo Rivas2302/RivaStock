@@ -4,9 +4,13 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();vi.useRealTimers();});
 async function reconcileWith(results:Record<string,(call:number,url:string)=>any>,baseline:string[]=['own-baseline:group']){
   vi.resetModules();
   vi.useFakeTimers();
-  const tabs=new Map<number,{id:number,url:string,status:'complete'}>();let nextTab=1;
-  vi.stubGlobal('chrome',{tabs:{
-    create:async({url}:{url:string})=>{const id=nextTab++;tabs.set(id,{id,url,status:'complete'});return {id};},
+  const tabs=new Map<number,{id:number,url:string,status:'complete';windowId:number}>();let nextTab=1;
+  const storage:Record<string,unknown>={};
+  vi.stubGlobal('chrome',{runtime:{getURL:(path:string)=>`chrome-extension://test/${path}`},storage:{local:{
+    get:async(keys:string[])=>Object.fromEntries(keys.filter(key=>key in storage).map(key=>[key,storage[key]])),
+    set:async(values:Record<string,unknown>)=>Object.assign(storage,values),
+  }},windows:{create:async()=>({id:99}),get:async(id:number)=>({id})},tabs:{
+    create:async({url,windowId}:{url:string;windowId:number})=>{const id=nextTab++;const tab={id,url,status:'complete' as const,windowId};tabs.set(id,tab);return tab;},
     get:async(id:number)=>tabs.get(id),
     update:async(id:number,{url}:{url:string})=>{const tab=tabs.get(id)!;tab.url=url;return tab;},
     remove:async(id:number)=>{tabs.delete(id);},
@@ -29,7 +33,7 @@ it('ignores feed and notice results and accepts one new matching owned-content I
   expect(outcome.error.message).toContain('Resultado desconocido');
   expect(outcome.calls.result).toBeUndefined();expect(outcome.calls.result_search).toBeUndefined();
   const published:any=await reconcileWith({own_content_snapshot:(_call,url)=>url.includes('my_posted_content')?{complete:true,items:[{id:'987',state:'published',authorMatches:true,titleMatches:true}]}:undefined});
-  expect(published.value).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/posts/987'});
+  expect(published.value).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/permalink/987/'});
 });
 
 it('does not attach a legacy receipt or candidate to the causal result',async()=>{
@@ -40,7 +44,8 @@ it('does not attach a legacy receipt or candidate to the causal result',async()=
 
 it('retries a transient owned-content read and accepts the matching ID',async()=>{
   const outcome:any=await reconcileWith({own_content_snapshot:(call,url)=>{if(call===1)throw new Error('Frame with ID 0 was removed');return url.includes('my_posted_content')?{complete:true,items:[{id:'987',state:'published',authorMatches:true,titleMatches:true}]}:undefined;}});
-  expect(outcome.value).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/posts/987'});
+  expect(outcome.value).toMatchObject({status:'published',url:'https://www.facebook.com/groups/123/permalink/987/'});
+  expect(outcome.calls.own_content_snapshot).toBe(3);
 });
 
 it('unknown message carries the last owned-content read error',async()=>{

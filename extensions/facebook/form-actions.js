@@ -27,6 +27,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return Number.isFinite(amount)&&Math.abs(amount-approved)<0.000001;
   };
   const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo|^rivastock-\d+\./i.test(img.alt)).map(img=>img.currentSrc||img.src));
+  const photoSnapshotEntries=value=>{
+    if(!value?.startsWith('prepared-photos:'))return null;
+    try{const entries=JSON.parse(value.slice('prepared-photos:'.length));return Array.isArray(entries)?entries:null;}catch{return null;}
+  };
   const rememberFlow=variant=>{const id=crypto.randomUUID();document.documentElement.setAttribute('data-rivastock-flow',id);return ['variant:'+variant,'flow:'+id];};
   const checkFlow=()=>{const id=baseline.find(value=>value.startsWith('flow:'))?.slice(5);if(!id||document.documentElement.getAttribute('data-rivastock-flow')!==id)throw new Error('Cambió el formulario después de prepararlo. No se envió.');};
   const issue = (kind,message,details={}) => {const error=new Error(message);error.issue={kind,message,...details};throw error;};
@@ -500,7 +504,14 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(submitFlow&&priorSubmit?.flow===submitFlow&&Date.now()-priorSubmit.started<120000)throw new Error('El envío ya se realizó en esta pestaña. No se repitió.');
     const previousPhotos=baseline.find(value=>value.startsWith('prepared-photos:'));
     const currentPhotos=photoSnapshot(document.querySelector('[role="dialog"]')??document);
-    if(previousPhotos&&currentPhotos!=='prepared-photos:[]'&&previousPhotos!==currentPhotos)throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
+    const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
+    if(photoCount!==undefined){
+      const expected=Number(photoCount);
+      const prepared=photoSnapshotEntries(previousPhotos);
+      const current=photoSnapshotEntries(currentPhotos);
+      if(!Number.isSafeInteger(expected)||expected<0||!prepared||!current||prepared.length!==expected||current.length!==expected||JSON.stringify(prepared)!==JSON.stringify(current))
+        throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
+    }else if(previousPhotos&&previousPhotos!==currentPhotos)throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
     // The worker must obtain an atomic database checkpoint before calling this
     // action. This function never retries the final click.
     const marketplace=baseline.includes('variant:marketplace');
@@ -541,9 +552,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(sale&&!verifySaleAudience(root,group,baseline.find(value=>value.startsWith('sale:origin:'))?.slice(12)))throw new Error('Cambió el destino de la venta.');
     if(editor&&root.querySelector('[role="switch"][aria-label="Publicar de forma anónima"][aria-checked="true"]'))throw new Error('Cambió el perfil de publicación. No se envió.');
     if (editor && !matchesEditor(editor,content.groupText)) throw new Error('El contenido cambió después de aprobarlo.');
-    const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
     if(editor&&photoCount!==undefined&&Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&! /perfil|profile|avatar/i.test(img.alt)&&img.complete&&img.naturalWidth>0).length<Number(photoCount))throw new Error('No están cargadas todas las fotos aprobadas. No se envió.');
-    if(photoCount!==undefined&&buttons('Eliminar archivo adjunto de la publicación',root).length!==Number(photoCount))throw new Error('Las fotos cambiaron después de preparar la publicación. No se envió.');
+    // Facebook can expose a single remove control for a multi-photo attachment set.
+    // The prepared preview snapshot above verifies the exact approved photo set.
     const publish = button('Publicar', root);
     if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
     const flow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
