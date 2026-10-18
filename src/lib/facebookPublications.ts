@@ -124,15 +124,17 @@ export function initialPublication(product: Product): PublicationContent {
   return { title: product.name, description: product.description ?? '', price: product.salePrice,
     photos: productPhotos(product).slice(0, 10), location: '', category: '', condition: 'new' };
 }
-export function validatePublication(content: PublicationContent, marketplace: boolean, groups: string[]): string | null {
+export function validatePublication(content: PublicationContent, marketplace: boolean, groups: string[], requireHttps = true): string | null {
   if (!content.title.trim() || content.title.length > 100) return 'Ingresá un título de hasta 100 caracteres.';
   if (!content.description.trim() || content.description.length > 5000) return 'Ingresá una descripción de hasta 5000 caracteres.';
   if (!Number.isFinite(content.price) || content.price <= 0 || content.price > 999999999) return 'Ingresá un precio mayor a cero.';
   if (!content.location.trim() || !content.category.trim()) return 'Completá ubicación y categoría de Facebook.';
   if (!['new','like_new','good','fair'].includes(content.condition)) return 'Elegí una condición válida.';
   if (!content.photos.length || content.photos.length > 10 || new Set(content.photos).size !== content.photos.length) return 'Seleccioná entre 1 y 10 fotos distintas.';
-  const insecurePhoto=content.photos.findIndex(url=>!url.startsWith('https://'));
-  if (insecurePhoto!==-1) return `La foto ${insecurePhoto+1} no tiene una dirección HTTPS compatible. Volvé a cargarla desde el editor del producto.`;
+  if (requireHttps) {
+    const insecurePhoto=content.photos.findIndex(url=>!url.startsWith('https://'));
+    if (insecurePhoto!==-1) return `La foto ${insecurePhoto+1} no tiene una dirección HTTPS compatible. Volvé a cargarla desde el editor del producto.`;
+  }
   if (!marketplace && !groups.length) return 'Elegí Marketplace o al menos un grupo.';
   return null;
 }

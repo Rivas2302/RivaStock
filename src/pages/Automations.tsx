@@ -75,6 +75,6 @@ export default function Automations() {
       </>}
     </>}
     {picking&&<PublicationProductPicker onClose={()=>setPicking(false)} onSelect={item=>{setPicking(false);setProduct(item);navigate({product:item.id});}}/>}
-    {product&&<Suspense fallback={<p role="status">Cargando producto…</p>}><FacebookPublicationModal key={product.id} product={product} onApproved={()=>{setSearch('');setFilter('all');navigate({view:'history',page:'',product:''});setNotice('Publicación aprobada. Consultá su estado por destino en el historial.');void refresh().catch(error=>setError(error.message));}} onClose={()=>navigate({product:''})}/></Suspense>}
+    {product&&<Suspense fallback={<p role="status">Cargando producto…</p>}><FacebookPublicationModal key={product.id} product={product} onProductUpdated={setProduct} onApproved={()=>{setSearch('');setFilter('all');navigate({view:'history',page:'',product:''});setNotice('Publicación aprobada. Consultá su estado por destino en el historial.');void refresh().catch(error=>setError(error.message));}} onClose={()=>navigate({product:''})}/></Suspense>}
   </div>;
 }

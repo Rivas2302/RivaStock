@@ -1313,7 +1313,7 @@ export default function Stock() {
       </div>
 
       {/* Add/Edit Modal */}
-      {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onClose={() => setFacebookProduct(null)} /></Suspense>}
+      {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onProductUpdated={updated => { setFacebookProduct(updated); setProducts(previous => previous.map(item => item.id === updated.id ? updated : item)); }} onClose={() => setFacebookProduct(null)} /></Suspense>}
       <Modal
         isOpen={isModalOpen} 
         onClose={closeProductEditor}

@@ -13,10 +13,12 @@ import { groupPublicationText } from '../lib/facebookPublications';
 import PublicationHistory from './automations/PublicationHistory';
 import {publicationBlock,validateGroupSelection} from '../lib/facebookPublications';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
+import { preparePublicationPhotos } from '../lib/facebookPublicationPhotos';
 
-export default function FacebookPublicationModal({ product, onClose, onApproved }: { product: Product; onClose: () => void; onApproved?: () => void }) {
+export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void }) {
   const { ownerUid } = useAuth();
   const canWrite = usePermission('stock', 'write');
+  const [publicationProduct, setPublicationProduct] = useState(product);
   const [content, setContent] = useState(() => initialPublication(product));
   const selectionKey=`facebook-selection:${ownerUid}:${product.id}`;
   const savedSelection=useRef<{marketplace:boolean;groups:string[]}|null>((()=>{try{const value=JSON.parse(localStorage.getItem(selectionKey)??'null');return value&&typeof value.marketplace==='boolean'&&Array.isArray(value.groups)&&value.groups.every((id:unknown)=>typeof id==='string')?value:null;}catch{return null;}})());
@@ -80,10 +82,19 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
     if(block)throw new Error(block);
     if(publications.length&&!repeatOf)throw new Error('Elegí Preparar otra publicación para aprobar un nuevo envío.');
     const groupProblem=validateGroupSelection(groups,selectedGroups);if(groupProblem)throw new Error(groupProblem);
-    const problem = validatePublication(content, marketplace, selectedGroups);
+    const contentProblem = validatePublication(content, marketplace, selectedGroups, false);
+    if (contentProblem) throw new Error(contentProblem);
+    const prepared = await preparePublicationPhotos(publicationProduct, ownerUid ?? '');
+    const preparedContent = { ...content, photos: content.photos.map(photo => prepared.replacements.get(photo) ?? photo) };
+    if (prepared.replacements.size) {
+      setPublicationProduct(prepared.product);
+      setContent(preparedContent);
+      onProductUpdated?.(prepared.product);
+    }
+    const problem = validatePublication(preparedContent, marketplace, selectedGroups);
     if (problem) throw new Error(problem);
-    const approvedContent = selectedGroups.length ? { ...content, groupText: groupPublicationText(content) } : content;
-    const payload = { p_product: product.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
+    const approvedContent = selectedGroups.length ? { ...preparedContent, groupText: groupPublicationText(preparedContent) } : preparedContent;
+    const payload = { p_product: publicationProduct.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
     const serialized = JSON.stringify(payload);
     const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
     // A changed payload gets a new key. If an earlier attempt did reach the server, a
@@ -101,7 +112,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
   });
   const update = (patch: Partial<typeof content>) => { setContent(value => ({ ...value, ...patch })); setApproved(false); };
   const blockReason=publicationBlock(publications,marketplace,selectedGroups,groups);
-  const productImage=productPhotos(product)[0];
+  const productImage=productPhotos(publicationProduct)[0];
   const connected=devices.some(device=>deviceConnected(device));
   const prepareAnother=()=>{
     if(blockReason||!canWrite||!publications.length)return;
@@ -173,7 +184,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved 
               </div>
               <fieldset>
                 <legend className="mb-2 text-sm font-bold">Fotos y orden (hasta 10)</legend>
-                <div className="grid gap-2 sm:grid-cols-2">{productPhotos(product).map((url,index)=><label key={url} className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                <div className="grid gap-2 sm:grid-cols-2">{productPhotos(publicationProduct).map((url,index)=><label key={url} className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
                   <input type="checkbox" aria-label={`Incluir foto ${index+1}`} checked={content.photos.includes(url)} onChange={event=>update({photos:event.target.checked?[...content.photos,url]:content.photos.filter(photo=>photo!==url)})}/>
                   <img src={url} alt={`Foto ${index+1} de ${product.name}`} className="h-12 w-12 shrink-0 rounded-lg object-cover"/>
                   <span className="min-w-0 flex-1 text-xs">{content.photos.includes(url)?`Orden ${content.photos.indexOf(url)+1}`:'Sin incluir'}</span>
