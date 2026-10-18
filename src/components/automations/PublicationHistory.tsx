@@ -27,7 +27,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
   const fallbackUrl=delivery.destination.mechanism==='marketplace'?'https://www.facebook.com/marketplace/you/selling':/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(delivery.destination.url)?delivery.destination.url:'https://www.facebook.com/marketplace/';
 
   // One-liner summary for each state
-  const shortStatus=state==='unknown'?'No se pudo verificar el resultado. No se repetirá el envío.':state==='failed'&&!decision?'Preparación fallida antes de autorizar el envío.':state==='submitted'&&delivery.resolution?.action==='existing'?`Anuncio vinculado. Estado observado: ${delivery.resolution.observedStatus||'no disponible'}.`:state==='submitted'?'Facebook recibió el envío. Aprobación pública sin verificar.':state==='pending_approval'?'Facebook está revisando esta publicación.':null;
+  const shortStatus=delivery.issue?.kind==='facebook_not_approved'?'Facebook no aprobó esta publicación.':state==='unknown'?'No se pudo verificar el resultado. No se repetirá el envío.':state==='failed'&&!decision?'Preparación fallida antes de autorizar el envío.':state==='submitted'&&delivery.resolution?.action==='existing'?`Anuncio vinculado. Estado observado: ${delivery.resolution.observedStatus||'no disponible'}.`:state==='submitted'?'Facebook recibió el envío. Aprobación pública sin verificar.':state==='pending_approval'?'Facebook está revisando esta publicación.':null;
 
   return <article aria-label={`${delivery.destination.name}: ${deliveryLabel(delivery)}`} className={`space-y-2 rounded-xl bg-slate-50 text-sm dark:bg-slate-800/60 ${compact?'p-2.5':'p-3'}`}>
     {/* Header: name + badge */}
@@ -122,8 +122,9 @@ function summaryVariant(pub:FacebookPublication):'warning'|'running'|'success'|'
 
 function summaryLabel(pub:FacebookPublication):string {
   const states=pub.facebook_deliveries.map(deliveryState);
-  if(states.some(s=>s==='unknown'))return 'Resultado desconocido';
+  if(pub.facebook_deliveries.some(delivery=>deliveryState(delivery)==='unknown'&&delivery.issue?.kind!=='facebook_not_approved'))return 'Resultado desconocido';
   if(states.some(s=>s==='failed'))return 'Preparación fallida';
+  if(pub.facebook_deliveries.some(delivery=>delivery.issue?.kind==='facebook_not_approved'))return 'Con destinos no aprobados';
   if(states.some(s=>s==='running'))return 'En ejecución';
   if(states.some(s=>s==='pending'))return 'En cola';
   if(states.length>0&&states.every(s=>s==='published'))return 'Publicada';

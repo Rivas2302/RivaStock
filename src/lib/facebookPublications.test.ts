@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
 vi.mock('./supabase', () => ({supabase:{}}));
-import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection,deliveryCandidate,type FacebookDelivery } from './facebookPublications';
+import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection,deliveryCandidate,deliveryLabel,type FacebookDelivery } from './facebookPublications';
 import type { Product } from '../types';
 import { facebookAdapter,validateFacebookDestination,fetchPublicationPhotos } from '../../extensions/facebook/adapter.js';
 import { readFileSync } from 'node:fs';
@@ -49,6 +49,14 @@ it('deliveryCandidate returns null for foreign origin URL',()=>{
 it('deliveryCandidate returns null when recovery_required',()=>{
  const d={...base,recovery_required:true,facebook_delivery_attempts:[attempt([candidateEvent('https://www.facebook.com/groups/123/posts/987')])]};
  expect(deliveryCandidate(d)).toBeNull();
+});
+it('labels pending results with captured IDs for automatic tracking',()=>{
+ const d={...base,status:'pending_approval',facebook_delivery_attempts:[{...attempt([]),pending_post_id:'987'}]};
+ expect(deliveryLabel(d)).toContain('seguimiento automático');
+});
+it('labels tracked rejections as not approved',()=>{
+ const d={...base,status:'attention',issue:{kind:'facebook_not_approved',message:'No aprobada'}};
+ expect(deliveryLabel(d)).toBe('No aprobada');
 });
 it('rejects duplicate group identities, missing destinations and excessive selections',()=>{
  const groups=[{id:'a',name:'Same',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group_direct' as const},{id:'b',name:'Different label',url:'https://www.facebook.com/groups/710102875717376',mechanism:'group_direct' as const},{id:'c',name:'Same',url:'https://www.facebook.com/groups/123',mechanism:'group_direct' as const}];
