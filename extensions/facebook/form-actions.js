@@ -402,6 +402,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([target,actual].map(path=>'groupseg:'+path.split('/')[2]))] };
   }
   if (action === 'submit') {
+    // One final click per tab and flow: a repeated submit never clicks again.
+    const submitFlow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
+    const priorSubmit=(()=>{try{return JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));}catch{return null;}})();
+    if(submitFlow&&priorSubmit?.flow===submitFlow&&Date.now()-priorSubmit.started<120000)throw new Error('El envío ya se realizó en esta pestaña. No se repitió.');
     const previousPhotos=baseline.find(value=>value.startsWith('prepared-photos:'));
     const currentPhotos=photoSnapshot(document.querySelector('[role="dialog"]')??document);
     if(previousPhotos&&currentPhotos!=='prepared-photos:[]'&&previousPhotos!==currentPhotos)throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
@@ -427,6 +431,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
 
       const publish = button('Publicar');
       if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
+      if(submitFlow)document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:submitFlow,started:Date.now(),notices:[]}));
       publish.click(); return { clicked: true };
     }
     const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
@@ -473,7 +478,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (content.selection?.marketplace && location.pathname.startsWith('/marketplace')) {
       if(location.hostname!=='www.facebook.com')return {waiting:true};
       const currentItemUrl=location.origin+location.pathname;
-      if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname)&&!baseline.includes(currentItemUrl))return {status:'submitted',url:currentItemUrl,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
+      // A navigation counts only after this recorded click and onto the approved listing.
+      const clickReceipt=(()=>{try{const value=JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));return value&&baseline.includes('flow:'+value.flow)&&Date.now()-value.started<120000;}catch{return false;}})();
+      const approvedTitle=normalize(content.title).toLowerCase();
+      const showsApprovedTitle=normalize(document.title).toLowerCase().includes(approvedTitle)||Array.from(document.querySelectorAll('h1')).filter(visible).some(heading=>normalize(text(heading)).toLowerCase().includes(approvedTitle));
+      if(/^\/marketplace\/item\/\d+\/?$/.test(location.pathname)&&!baseline.includes(currentItemUrl)&&clickReceipt&&approvedTitle&&showsApprovedTitle)return {status:'submitted',url:currentItemUrl,message:'Facebook abrió el anuncio después del envío. Aprobación pública sin verificar.'};
       if(buttons('Cerrar cuadro de diálogo de promoción de publicación').length===1){button('Cerrar cuadro de diálogo de promoción de publicación').click();return {waiting:true};}
       const causalPhrase=/Tu publicación (se publicó|se creó|está en revisión)/i;
       for(const notice of Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible)){

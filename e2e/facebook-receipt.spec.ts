@@ -75,3 +75,15 @@ test('cross-post dialog: only an exact Cerrar button is clicked',async({page})=>
   expect(await runResult(page,reviewBaseline)).toMatchObject({waiting:true});
   expect(await page.evaluate(()=>(window as any).clicks??0)).toBe(0);
 });
+
+test('submit refuses a second click in the same tab',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`
+    <div role="dialog"><div role="textbox" contenteditable="true" aria-label="Escribe algo...">Monopoly</div>
+    <button id="publish" onclick="window.submits=(window.submits||0)+1">Publicar</button></div>
+    <script>document.documentElement.setAttribute('data-rivastock-flow','fixture');</script>`}));
+  await page.goto('https://www.facebook.com/groups/123');
+  const run=()=>page.evaluate(({source}:any)=>new Function('return ('+source+')')()('submit',{groupText:'Monopoly'},[],['flow:fixture','group:/groups/123']),{source:facebookFormAction.toString()});
+  expect(await run()).toEqual({clicked:true});
+  expect(await run()).toMatchObject({error:expect.stringContaining('ya se realizó')});
+  expect(await page.evaluate(()=>(window as any).submits)).toBe(1);
+});

@@ -156,3 +156,24 @@ test('blocks final Marketplace submission when price or audience changed after p
  await page.evaluate(()=>{const node=document.createElement('input');node.type='checkbox';node.checked=true;document.body.append(node);});
  expect((await run(page,'submit',content,baseline)).error).toContain('destinos adicionales');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
+
+const itemPage=(heading:string,receipt:boolean)=>`<title>Marketplace - ${heading} | Facebook</title><h1>${heading}</h1>
+  <script>${receipt?"document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:'x',started:Date.now(),notices:[]}));":''}</script>`;
+
+test('marketplace item navigation without a click receipt is not evidence',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:itemPage(approved.title,false)}));
+  await page.goto('https://www.facebook.com/marketplace/item/777/');
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['variant:marketplace','flow:x'])).toMatchObject({waiting:true});
+});
+
+test('marketplace item navigation to another listing is not evidence',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:itemPage('Bicicleta rodado 29',true)}));
+  await page.goto('https://www.facebook.com/marketplace/item/777/');
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['variant:marketplace','flow:x'])).toMatchObject({waiting:true});
+});
+
+test('marketplace item navigation after the click with the approved title is submitted',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:itemPage(approved.title,true)}));
+  await page.goto('https://www.facebook.com/marketplace/item/777/');
+  expect(await run(page,'result',{...approved,selection:{marketplace:true}},['variant:marketplace','flow:x'])).toMatchObject({status:'submitted',url:'https://www.facebook.com/marketplace/item/777/'});
+});
