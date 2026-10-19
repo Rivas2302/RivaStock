@@ -9,6 +9,8 @@ import {
   getRecentAIJobs,
   type AIBridgeState,
   type AIJob,
+  type CodexModelId,
+  type CodexReasoningEffort,
   type AIProviderId,
 } from '../lib/aiBridge';
 
@@ -18,8 +20,22 @@ const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
   { id: 'mock', label: 'Mock — prueba de conexión' },
 ];
 
+const CODEX_MODELS: Array<{ id: CodexModelId; label: string }> = [
+  { id: 'gpt-6-luna', label: 'GPT-6 Luna — más eficiente' },
+  { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol — tareas complejas' },
+  { id: 'gpt-6-astra', label: 'GPT-6 Astra — máxima capacidad' },
+];
+
 function providerLabel(provider: AIProviderId): string {
   return PROVIDERS.find((item) => item.id === provider)?.label ?? provider;
+}
+
+function modelLabel(modelId: string | null | undefined): string {
+  return CODEX_MODELS.find((item) => item.id === modelId)?.label ?? modelId ?? 'Predeterminado';
+}
+
+function reasoningLabel(effort: CodexReasoningEffort | null | undefined): string {
+  return ({ low: 'Bajo', medium: 'Medio', high: 'Alto' })[effort ?? 'low'];
 }
 
 function statusLabel(status: AIJob['status']): string {
@@ -39,6 +55,8 @@ function ConnectionBadge({ state }: { state: AIBridgeState | null }) {
 export default function AIHub() {
   const { isOwner } = useAuth();
   const [provider, setProvider] = useState<AIProviderId>('codex');
+  const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
+  const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
   const [input, setInput] = useState('');
   const [includeBusinessContext, setIncludeBusinessContext] = useState(false);
   const [includeProjectContext, setIncludeProjectContext] = useState(false);
@@ -50,7 +68,7 @@ export default function AIHub() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [view, setView] = useState<'console' | 'workspace'>('console');
-  const submissionRef = useRef<{ input: string; provider: AIProviderId; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
+  const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
     const jobs = await getRecentAIJobs();
@@ -108,13 +126,16 @@ export default function AIHub() {
       const requestText = input;
       const intent = submissionRef.current;
       const idempotencyKey = intent?.input === requestText && intent.provider === provider
+        && intent.modelId === modelId && intent.reasoningEffort === reasoningEffort
         && intent.includeBusinessContext === includeBusinessContext
         && intent.includeProjectContext === includeProjectContext
         ? intent.key : crypto.randomUUID();
-      submissionRef.current = { input: requestText, provider, includeBusinessContext, includeProjectContext, key: idempotencyKey };
+      submissionRef.current = { input: requestText, provider, modelId, reasoningEffort, includeBusinessContext, includeProjectContext, key: idempotencyKey };
       const job = await createAIJob(requestText, provider, idempotencyKey, {
         includeBusinessContext: provider !== 'mock' && includeBusinessContext,
         includeProjectContext: provider !== 'mock' && includeProjectContext,
+        modelId,
+        reasoningEffort,
       });
       submissionRef.current = null;
       setActiveJob(job);
@@ -167,6 +188,23 @@ export default function AIHub() {
             {PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
+        {provider === 'codex' && <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-2">
+            <span className="text-sm font-bold">Modelo de Codex</span>
+            <select value={modelId} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-950">
+              {CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-bold">Nivel de razonamiento</span>
+            <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-950">
+              <option value="low">Bajo — menor uso</option>
+              <option value="medium">Medio — equilibrado</option>
+              <option value="high">Alto — más análisis</option>
+            </select>
+          </label>
+          <p className="text-xs text-slate-500 sm:col-span-2">Luna con razonamiento bajo prioriza el menor uso. La disponibilidad depende de tu cuenta; el consumo también cambia según la instrucción y el contexto.</p>
+        </div>}
         <label className="block space-y-2">
           <span className="text-sm font-bold">Instrucción</span>
           <textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={8000} required rows={6} placeholder="Generá una descripción comercial para una cámara WiFi con visión nocturna, detección de movimiento y audio bidireccional." className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 dark:border-slate-600 dark:bg-slate-950"/>
@@ -202,6 +240,7 @@ export default function AIHub() {
             <dl className="grid gap-3 sm:grid-cols-2">
               <div><dt className="text-xs text-slate-500">Identificador</dt><dd className="mt-1 break-all font-mono text-xs">{activeJob.id}</dd></div>
               <div><dt className="text-xs text-slate-500">Agente</dt><dd className="mt-1 font-semibold">{providerLabel(activeJob.provider)}</dd></div>
+              {activeJob.provider === 'codex' && <div><dt className="text-xs text-slate-500">Modelo y razonamiento</dt><dd className="mt-1 font-semibold">{modelLabel(activeJob.model_id)} · {reasoningLabel(activeJob.reasoning_effort)}</dd></div>}
               <div><dt className="text-xs text-slate-500">Creada</dt><dd className="mt-1">{formatDate(activeJob.created_at)}</dd></div>
               <div><dt className="text-xs text-slate-500">Intentos</dt><dd className="mt-1">{activeJob.attempt_count}</dd></div>
               <div><dt className="text-xs text-slate-500">Contexto incluido</dt><dd className="mt-1">{[

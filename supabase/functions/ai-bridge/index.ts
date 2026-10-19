@@ -8,6 +8,8 @@ const AI_BRIDGE_TOKEN = Deno.env.get('AI_BRIDGE_TOKEN') ?? '';
 const AI_BRIDGE_OWNER_UID = Deno.env.get('AI_BRIDGE_OWNER_UID') ?? '';
 const MAX_BODY_BYTES = 16_384;
 const ALLOWED_PROVIDERS = new Set(['mock', 'codex', 'claude']);
+const ALLOWED_CODEX_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra']);
+const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 const DEFAULT_ORIGINS = ['https://rivastock.vercel.app', 'http://localhost:5173'];
 
 function configuredOrigins(): Set<string> {
@@ -94,7 +96,8 @@ function safeDbError(error: { message?: string } | null, status = 400): Response
   const message = error?.message ?? '';
   if (message.includes('Solo el propietario')) return jsonResponse({ error: 'Solo el administrador propietario puede usar IA.' }, 403);
   if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409);
-  if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')) {
+  if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
+    || message.includes('Modelo') || message.includes('razonamiento')) {
     return jsonResponse({ error: message }, status);
   }
   console.error('[ai-bridge] Database operation failed.');
@@ -134,7 +137,7 @@ serve(async (req) => {
     if (action === 'worker_context') {
       if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
       const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
-        .select('include_business_context, include_project_context')
+        .select('include_business_context, include_project_context, model_id, reasoning_effort')
         .eq('id', body.job_id).eq('user_id', AI_BRIDGE_OWNER_UID)
         .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
       if (jobError) return safeDbError(jobError);
@@ -156,6 +159,8 @@ serve(async (req) => {
       return jsonResponse({
         include_business_context: job.include_business_context,
         include_project_context: job.include_project_context,
+        model_id: job.model_id ?? 'gpt-6-luna',
+        reasoning_effort: job.reasoning_effort ?? 'low',
         products,
         total_products: totalProducts,
       }, 200, origin);
@@ -221,15 +226,21 @@ serve(async (req) => {
       || !ALLOWED_PROVIDERS.has(body.provider) || typeof body.input !== 'string'
       || body.input.trim().length === 0 || body.input.length > 8000
       || (body.include_business_context !== undefined && typeof body.include_business_context !== 'boolean')
-      || (body.include_project_context !== undefined && typeof body.include_project_context !== 'boolean')) {
+      || (body.include_project_context !== undefined && typeof body.include_project_context !== 'boolean')
+      || (body.model_id !== undefined && body.model_id !== null
+        && (typeof body.model_id !== 'string' || !ALLOWED_CODEX_MODELS.has(body.model_id)))
+      || (body.reasoning_effort !== undefined && body.reasoning_effort !== null
+        && (typeof body.reasoning_effort !== 'string' || !ALLOWED_REASONING_EFFORTS.has(body.reasoning_effort)))) {
       return jsonResponse({ error: 'Elegí un proveedor e ingresá una instrucción de hasta 8000 caracteres.' }, 400, origin);
     }
-    const { data, error } = await userClient.rpc('ai_create_job_with_context', {
+    const { data, error } = await userClient.rpc('ai_create_job_with_model', {
       p_idempotency_key: body.idempotency_key,
       p_provider: body.provider,
       p_input: body.input,
       p_include_business_context: body.include_business_context === true,
       p_include_project_context: body.include_project_context === true,
+      p_model_id: typeof body.model_id === 'string' ? body.model_id : null,
+      p_reasoning_effort: typeof body.reasoning_effort === 'string' ? body.reasoning_effort : null,
     });
     if (error) return safeDbError(error);
     return jsonResponse({ job: data }, 201, origin);
@@ -238,7 +249,7 @@ serve(async (req) => {
   if (action === 'get') {
     if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
     const { data, error } = await userClient.from('ai_jobs')
-      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context')
+      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
       .eq('id', body.job_id).maybeSingle();
     if (error) return safeDbError(error);
     if (!data) return jsonResponse({ error: 'No se encontró la tarea.' }, 404, origin);
@@ -247,7 +258,7 @@ serve(async (req) => {
 
   if (action === 'recent') {
     const { data, error } = await userClient.from('ai_jobs')
-      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context')
+      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error);
     return jsonResponse({ jobs: data ?? [] }, 200, origin);

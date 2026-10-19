@@ -47,7 +47,10 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     const businessFiles = createBusinessContext(jobContext);
     const provider = providerFor(job.provider, config);
     const result = await provider.execute(job.input, controller.signal,
-      createCombinedContext(workspaceFiles, projectFiles, businessFiles));
+      createCombinedContext(workspaceFiles, projectFiles, businessFiles), {
+        model_id: jobContext.model_id ?? 'gpt-6-luna',
+        reasoning_effort: jobContext.reasoning_effort ?? 'low',
+      });
     if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
     if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
       throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');

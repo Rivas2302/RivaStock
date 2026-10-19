@@ -2,6 +2,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
+export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
+export type CodexReasoningEffort = 'low' | 'medium' | 'high';
+
+export interface AIProviderOptions {
+  model_id?: CodexModelId;
+  reasoning_effort?: CodexReasoningEffort;
+}
 
 export interface AIWorkspaceFile {
   path: string;
@@ -18,6 +25,8 @@ export interface AIProjectContext {
 export interface AIJobContext {
   include_business_context: boolean;
   include_project_context: boolean;
+  model_id: CodexModelId | null;
+  reasoning_effort: CodexReasoningEffort | null;
   products: Array<{
     name: string;
     category: string;
@@ -35,12 +44,14 @@ export interface AIJob {
   provider: AIProviderId;
   task_type: 'text_generation';
   input: string;
+  model_id?: CodexModelId | null;
+  reasoning_effort?: CodexReasoningEffort | null;
   attempt_count: number;
   created_at: string;
 }
 
 export interface AIProvider {
-  execute(input: string, signal: AbortSignal, workspaceContext?: string): Promise<{ output: string }>;
+  execute(input: string, signal: AbortSignal, workspaceContext?: string, options?: AIProviderOptions): Promise<{ output: string }>;
 }
 
 export interface BridgeConfig {

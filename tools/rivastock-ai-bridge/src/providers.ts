@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { BridgeConfig, AIProvider, AIProviderId } from './types.ts';
+import type { BridgeConfig, AIProvider, AIProviderId, AIProviderOptions } from './types.ts';
 
 const MAX_PROVIDER_OUTPUT = 20_000;
 const PROVIDER_TIMEOUT_MS = 120_000;
@@ -23,7 +23,7 @@ export class MockProvider implements AIProvider {
 export class CodexLocalProvider implements AIProvider {
   constructor(private readonly executable: string, private readonly codexHome: string) {}
 
-  async execute(input: string, signal: AbortSignal, workspaceContext = ''): Promise<{ output: string }> {
+  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{ output: string }> {
     const scratchDirectory = await mkdtemp(join(tmpdir(), 'rivastock-ai-'));
     try {
       const { Codex } = await import('@openai/codex-sdk');
@@ -33,6 +33,8 @@ export class CodexLocalProvider implements AIProvider {
         config: { features: { shell_tool: false, view_image: false, sleep_tool: false } },
       });
       const thread = codex.startThread({
+        model: options.model_id ?? 'gpt-6-luna',
+        modelReasoningEffort: options.reasoning_effort ?? 'low',
         workingDirectory: scratchDirectory,
         skipGitRepoCheck: true,
         sandboxMode: 'read-only',

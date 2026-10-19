@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
+export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
+export type CodexReasoningEffort = 'low' | 'medium' | 'high';
 export type AIJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AIBridgeState = 'offline' | 'idle' | 'busy';
 
@@ -14,6 +16,8 @@ export interface AIJob {
   error: string | null;
   include_business_context: boolean;
   include_project_context: boolean;
+  model_id?: CodexModelId | null;
+  reasoning_effort?: CodexReasoningEffort | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -44,7 +48,12 @@ export async function createAIJob(
   input: string,
   provider: AIProviderId,
   idempotencyKey: string,
-  context: { includeBusinessContext: boolean; includeProjectContext: boolean },
+  context: {
+    includeBusinessContext: boolean;
+    includeProjectContext: boolean;
+    modelId: CodexModelId;
+    reasoningEffort: CodexReasoningEffort;
+  },
 ): Promise<AIJob> {
   const result = await invoke<{ job: AIJob }>({
     action: 'create',
@@ -53,6 +62,8 @@ export async function createAIJob(
     input,
     include_business_context: context.includeBusinessContext,
     include_project_context: context.includeProjectContext,
+    model_id: provider === 'codex' ? context.modelId : null,
+    reasoning_effort: provider === 'codex' ? context.reasoningEffort : null,
   });
   return result.job;
 }
