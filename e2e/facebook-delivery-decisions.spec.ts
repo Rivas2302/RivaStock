@@ -16,8 +16,8 @@ const place=document.querySelector('[aria-label="Ubicación"]');place.oninput=()
 document.querySelector('input[type=file]').onchange=event=>{const image=document.createElement('img');image.alt='Foto de la publicación';image.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';document.body.append(image);document.body.insertAdjacentHTML('beforeend','<p>Fotos · '+event.target.files.length+'/10</p>');document.querySelector('#next').disabled=false};
 document.querySelector('#next').onclick=()=>{document.body.insertAdjacentHTML('beforeend','<h1>Publicar en más lugares</h1><button id="publish">Publicar</button>')};
 </script>`;
-async function run(page:any,action:string,content:any=approved,baseline:string[]=[],images:any[]=[]) {
-  return page.evaluate(({source,action,content,baseline,images}:any)=>new Function('return ('+source+')')()(action,content,images,baseline),{source:facebookFormAction.toString(),action,content,baseline,images});
+async function run(page:any,action:string,content:any=approved,baseline:string[]=[],images:any[]=[],source=facebookFormAction.toString()) {
+  return page.evaluate(({source,action,content,baseline,images}:any)=>new Function('return ('+source+')')()(action,content,images,baseline),{source,action,content,baseline,images});
 }
 
 test('matches the approved Marketplace city when Facebook suggests the city without its province',async({page})=>{
@@ -185,7 +185,9 @@ for(const failure of ['missing photo','unloaded image'])test(`blocks sale prepar
   await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:fixture}));
   await page.goto('https://www.facebook.com/groups/630127860416020');
   const content={...approved,targetGroupUrl:'https://www.facebook.com/groups/630127860416020',deliveryResolution:{action:'group_sale'}};
-  const result=await run(page,'group_sale_prepare',content,[],photos);
+  const fastPhotoTimeout=facebookFormAction.toString().replace('const PHOTO_UPLOAD_TIMEOUT_MS = 60_000;','const PHOTO_UPLOAD_TIMEOUT_MS = 100;');
+  expect(fastPhotoTimeout).not.toBe(facebookFormAction.toString());
+  const result=await run(page,'group_sale_prepare',content,[],photos,fastPhotoTimeout);
   expect(result.error).toContain('verificar fotos');expect(await page.evaluate(()=>window.prepared)).toBeUndefined();expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
