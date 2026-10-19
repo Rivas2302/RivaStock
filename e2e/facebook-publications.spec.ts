@@ -3,6 +3,7 @@ import {test,expect} from '@playwright/test';
 const FACEBOOK_MODAL=/^(Preparar publicación|Gestionar producto|Cargando publicación)$/;
 import { inspectMarketplaceForm } from '../extensions/facebook/marketplace-contract.js';
 import { inspectGroupComposer } from '../extensions/facebook/group-contract.js';
+import { facebookFormAction } from '../extensions/facebook/form-actions.js';
 const owner='10000000-0000-4000-8000-000000000001';
 const product='20000000-0000-4000-8000-000000000001';
 const photo='https://rivastock-test.invalid/storage/v1/object/public/product-images/silla.png';
@@ -74,7 +75,6 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   await testInfo.attach(`facebook-${mobile?'mobile':'desktop'}`,{body:await page.screenshot(),contentType:'image/png'});
   expect(errors).toEqual([]);
 });
-
 test('recognizes the inspected Marketplace step and rejects changed or ambiguous controls',async ({page}) => {
   await page.setContent(`<label><span>Título</span><input type="text"></label><label><span>Precio</span><input type="text"></label><label role="combobox" aria-labelledby="category"><span id="category">Categoría</span></label><label role="combobox" aria-labelledby="condition"><span id="condition">Estado</span></label><input type="file" accept="image/*,image/heif,image/heic" multiple><div role="button">Más detalles Incluye otros detalles para captar más interés.</div><div role="button" aria-disabled="true">Siguiente</div>`);
   expect(await page.evaluate(inspectMarketplaceForm)).toMatchObject({compatibleStepOne:true,detailsExpanded:false,nextEnabled:false,finalSubmissionVerified:false});
@@ -89,4 +89,34 @@ test('scopes the group composer away from chats and preserves ambiguous-upload e
   expect(await page.evaluate(inspectGroupComposer)).toMatchObject({compatibleTextComposer:true,editorCount:1,publishCount:1,publishEnabled:false,photoInputCount:2,uploadVerified:false,approvalVerified:false});
   await page.locator('[aria-label="Crea una publicación pública..."]').evaluate(element => element.setAttribute('aria-label','Formulario cambiado'));
   expect(await page.evaluate(inspectGroupComposer)).toMatchObject({compatibleTextComposer:false,editorCount:0,publishCount:0});
+});
+
+test('waits for all group photos when Facebook finishes a slow multi-photo upload',async({page}) => {
+  await page.route('https://www.facebook.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><html><body>
+    <div><a href="/groups/12345/user/42/">Perfil de prueba</a><button id="open">Escribe algo...</button></div>
+    <script>
+      document.querySelector('#open').onclick=()=>{
+        const dialog=document.createElement('div');dialog.setAttribute('role','dialog');
+        dialog.innerHTML='<h2>Crear publicación</h2><div role="textbox" contenteditable="true" aria-label="Crea una publicación pública..."></div><div><button aria-label="Foto/video">Foto/video</button><input type="file" multiple accept="image/*,video/*"></div><button id="publish" disabled>Publicar</button>';
+        document.body.append(dialog);
+        dialog.querySelector('input').onchange=event=>setTimeout(()=>{
+          for(const file of event.target.files){const image=document.createElement('img');image.alt=file.name;image.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(image);}
+          dialog.querySelector('#publish').disabled=false;
+        },20000);
+      };
+    </script>
+  </body></html>`}));
+  await page.goto('https://www.facebook.com/groups/12345');
+  const action=page.evaluate(async({source})=>{
+    const run=new Function(`return (${source})`)();
+    return run('group_prepare',{
+      title:'Silla de prueba',description:'Descripción aprobada',groupText:'Silla de prueba\n\nPrecio: ARS 1500.00\nDisponible en General Pico.',
+      price:1500,condition:'new',category:'Muebles',location:'General Pico',targetGroupUrl:'https://www.facebook.com/groups/12345',
+    },[
+      {data:'aW1hZ2Ux',type:'image/png',extension:'png'},
+      {data:'aW1hZ2Uy',type:'image/png',extension:'png'},
+    ]);
+  },{source:facebookFormAction.toString()});
+  await page.waitForTimeout(20000);
+  await expect(action).resolves.toMatchObject({ready:true});
 });

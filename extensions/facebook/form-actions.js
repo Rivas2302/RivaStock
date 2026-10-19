@@ -43,8 +43,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (elements.length !== 1) throw new Error('El formulario cambió o hay controles ambiguos. No se repitió el envío.');
     return elements[0];
   };
-  const wait = async (find, stage = 'respuesta del formulario') => {
-    for (let attempt = 0; attempt < 60; attempt++) {
+  const PHOTO_UPLOAD_TIMEOUT_MS = 60_000;
+  const wait = async (find, stage = 'respuesta del formulario', timeoutMs = 15_000) => {
+    const deadline=Date.now()+timeoutMs;
+    while(Date.now()<deadline) {
       const result = find(); if (result) return result;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
@@ -317,13 +319,13 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const input = one(Array.from(document.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*')));
     progress('Cargando fotos');
     attach(input);
-    await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente');
+    await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente',PHOTO_UPLOAD_TIMEOUT_MS);
     const previews=()=>Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
     // Facebook's own "Fotos · N/10" counter is authoritative; a background tab may
     // not have decoded the thumbnails yet, so either signal may confirm the count.
     const photoCounter=()=>Number(normalize(document.body.innerText).match(/Fotos\s*·\s*(\d+)\s*\/\s*10\b/)?.[1]??NaN);
     const photosConfirmed=()=>photoCounter()===photos.length||(previews().length===photos.length&&previews().every(img=>img.complete&&img.naturalWidth>0));
-    try{await wait(photosConfirmed,'verificar las fotos cargadas');}
+    try{await wait(photosConfirmed,'verificar las fotos cargadas',PHOTO_UPLOAD_TIMEOUT_MS);}
     catch{throw new Error(`Se esperaban ${photos.length} fotos cargadas; Facebook indica ${Number.isNaN(photoCounter())?'sin contador':photoCounter()} y se observaron ${previews().length} vistas previas${previews().some(img=>!img.complete||img.naturalWidth===0)?' (alguna sin terminar de cargar)':''}. No se envió.`);}
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
     progress('Verificando destinos antes de publicar');
@@ -407,7 +409,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const images=Array.from(dialog.querySelectorAll('img[alt="Foto de la publicación"]')).filter(visible);
       const counter=text(dialog).match(/Fotos\s*[·:]?\s*(\d+)\s*\/\s*(\d+)/);
       return controls.length===photos.length&&indexes.size===photos.length&&controls.every(match=>Number(match[2])===photos.length&&Number(match[1])>=1&&Number(match[1])<=photos.length)&&images.length===photos.length&&images.every(image=>image.complete&&image.naturalWidth>0)&&counter&&Number(counter[1])===photos.length&&enabled(button('Siguiente',dialog));
-    },'verificar fotos del formulario de venta');
+    },'verificar fotos del formulario de venta',PHOTO_UPLOAD_TIMEOUT_MS);
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase())throw new Error('Los datos de venta no coinciden con los aprobados.');
     const notices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>'notice:'+text(node));
     activate(button('Siguiente',dialog));
@@ -497,7 +499,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const previews=Array.from(dialog.querySelectorAll('img')).filter(img=>/^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(img.alt));
       return enabled(button('Publicar', dialog))&&previews.length===photos.length&&
         previews.every((img,index)=>img.alt===`rivastock-${index+1}.${photos[index].extension}`&&visible(img)&&img.complete&&img.naturalWidth>0);
-    },'carga y verificación de todas las fotos del grupo');
+    },'carga y verificación de todas las fotos del grupo',PHOTO_UPLOAD_TIMEOUT_MS);
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
