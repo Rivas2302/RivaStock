@@ -78,18 +78,19 @@ Fecha: 18 de octubre de 2026. Se utilizó la publicación aprobada en RivaStock 
 
 | Destino | Resultado de RivaStock | Verificación externa |
 |---|---|---|
-| Vende de todo - Gral. Pico | Resultado desconocido; `Cambió el orden o la carga de las fotos después de preparar. No se envió.` | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; la pestaña Pendientes estaba vacía. |
-| ➡️COMPRA Y VENTA-GRAL.PICO📢 | Resultado desconocido; mismo rechazo de la foto; no se repitió. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; la pestaña Pendientes estaba vacía. |
-| compra y venta general pico | Resultado desconocido; mismo rechazo de la foto; no se repitió. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; Facebook mostraba 3 pendientes y el más reciente visible era otro producto. |
-| Compra y venta en gral pico | Resultado desconocido; mismo rechazo de la foto; no se repitió. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; Facebook mostraba 24 pendientes y los elementos más recientes visibles eran otros productos. |
-| Clasificados General Pico (La Pampa) | Preparación fallida antes de autorizar: Facebook no respondió mientras cargaba el editor. | Búsqueda del grupo por “Bici Rodado 12” no mostró el producto; Facebook mostraba 14 pendientes y los más recientes visibles eran publicaciones anteriores. |
-| Marketplace | Preparación fallida antes de autorizar: no encontró la ciudad. | Marketplace mostró como sugerencia `General Pico · Ciudad` al ingresar la ubicación aprobada `General Pico, La Pampa`; el anuncio no apareció en las publicaciones recientes. |
+| Vende de todo - Gral. Pico | Resultado desconocido; luego se registró la revisión como Cancelado. Error original: `Cambió el orden o la carga de las fotos después de preparar. No se envió.` | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; la pestaña Pendientes estaba vacía. |
+| ➡️COMPRA Y VENTA-GRAL.PICO📢 | Resultado desconocido; luego se registró la revisión como Cancelado. Mismo rechazo de la foto. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; la pestaña Pendientes estaba vacía. |
+| compra y venta general pico | Resultado desconocido; luego se registró la revisión como Cancelado. Mismo rechazo de la foto. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; Facebook mostraba 3 pendientes y el más reciente visible era otro producto. |
+| Compra y venta en gral pico | Resultado desconocido; luego se registró la revisión como Cancelado. Mismo rechazo de la foto. | Búsqueda del grupo por “Bici Rodado 12”: no apareció el producto; Facebook mostraba 24 pendientes y los elementos más recientes visibles eran otros productos. |
+| Clasificados General Pico (La Pampa) | Preparación fallida antes de autorizar; el reintento volvió a fallar al cargar el editor del grupo. | Búsqueda del grupo por “Bici Rodado 12” no mostró el producto; Facebook mostraba 14 pendientes y los más recientes visibles eran publicaciones anteriores. |
+| Marketplace | Preparación fallida antes de autorizar; el reintento volvió a fallar al buscar la ciudad. | El anuncio no apareció en las publicaciones recientes. El formulario manual previo mostraba `General Pico · Ciudad`, pero estaba vacío y no era el intento automatizado. |
 
 ### Bugs corregidos después de la prueba
 
 1. **Vista previa de fotos de grupos.** La comparación usaba `currentSrc/src`, que puede cambiar aunque la foto adjunta siga siendo la misma. Una E2E reprodujo el mismo error exacto cambiando solo la URL de vista previa; ahora compara nombre y orden de los archivos `rivastock-N.ext` y conserva las validaciones de cantidad, eliminación y reordenamiento. Commit: `e538b43 fix(automation): keep group photo snapshot stable`.
 2. **Ubicación de Marketplace.** Facebook sugiere la ciudad sin provincia (`General Pico`), aunque el dato aprobado incluya `General Pico, La Pampa`. La prueba real reprodujo el timeout `buscar la ciudad`; la validación ahora acepta el mismo nombre de ciudad si una de las dos partes no incluye provincia, y rechaza provincias distintas cuando ambas están presentes. Commit: `474f770 fix(automation): match Marketplace city suggestions`.
 3. **Timeout de dos E2E de fotos.** Las pruebas negativas esperaban el límite de 60 segundos con un timeout de test de 30 segundos. Se acortó únicamente el límite dentro del fixture controlado; el límite de producción permanece en 60 segundos. Commit: `31e2902 test(automation): keep photo timeout checks bounded`.
+4. **Carga lenta del editor de grupo.** El reintento real reprodujo `Facebook no respondió a tiempo durante: cargar el editor del grupo; no se pudo determinar su disponibilidad.` El paso todavía usaba el timeout general de 15 segundos. El límite específico del editor ahora es 60 segundos y una E2E comprueba que el editor aparezca después de 16 segundos sin autorizar el envío. Commit: `67ad1fc fix(automation): wait for slow group editors`.
 
 ### Verificación después de los fixes
 
@@ -97,10 +98,13 @@ Fecha: 18 de octubre de 2026. Se utilizó la publicación aprobada en RivaStock 
 - Repetición con fotos: pasa; se rechaza una foto ausente y una reordenada, pero se acepta que cambie la URL de vista previa con el mismo nombre de archivo.
 - Reproducción previa a corregir ciudad: falló con `Facebook no respondió a tiempo durante: buscar la ciudad.`
 - Repetición de Marketplace: pasa con sugerencia `General Pico Ciudad`; llega al paso final, sin pulsar Publicar.
-- `npx.cmd playwright test e2e/facebook-delivery-decisions.spec.ts e2e/facebook-groups.spec.ts`: **47 pasaron**.
+- Reintento real de Clasificados: pasó a En ejecución y volvió a fallar antes de autorizar con `Facebook no respondió a tiempo durante: cargar el editor del grupo; no se pudo determinar su disponibilidad.` Código registrado por RivaStock: `PREPARATION_INTERRUPTED`.
+- Reintento real de Marketplace: pasó a En ejecución y volvió a fallar antes de autorizar con `Facebook no respondió a tiempo durante: buscar la ciudad.` Código registrado por RivaStock: `PREPARATION_INTERRUPTED`.
+- La vista de actividad/detalles de RivaStock no expuso stack trace ni estado de red/request para esos intentos.
+- `npx.cmd playwright test e2e/facebook-delivery-decisions.spec.ts e2e/facebook-groups.spec.ts`: **48 pasaron**, incluida la nueva regresión del editor tardío.
 - `npx.cmd playwright test e2e/facebook-extension.spec.ts`: **3 pasaron**, incluidos worker MV3 y ciclo de alarma.
 - `npm.cmd test`: **71 archivos y 456 pruebas pasaron**.
 
 ### Estado y siguiente paso
 
-Ninguno de los seis destinos quedó confirmado como publicado. El 19 de octubre se revisaron las búsquedas de los grupos y sus pestañas Pendientes; no apareció Bici Rodado 12. En los tres grupos con elementos pendientes, los más recientes visibles eran publicaciones anteriores y no coincidían con la bicicleta. Los otros dos trabajos fallaron antes de autorizar un envío. RivaStock muestra la extensión conectada y la cola activa. Para repetir contra Facebook, la extensión instalada debe cargar estos commits; después se registrará la revisión de los cuatro resultados desconocidos y se aprobará un nuevo envío para los seis destinos. No se debe volver a publicar antes de cerrar los intentos anteriores y cargar la extensión corregida.
+Ninguno de los seis destinos quedó confirmado como publicado. El 19 de octubre se registraron como Cancelado los cuatro intentos desconocidos después de revisar sus grupos y pendientes. Clasificados y Marketplace siguen en Preparación fallida tras un reintento; ninguno autorizó ni envió una publicación. RivaStock muestra la extensión conectada y la cola activa, pero no muestra su versión cargada. El cambio del editor de 60 segundos y el arreglo de ciudad deben estar cargados en la extensión antes de repetir. Los cuatro intentos cancelados requieren una nueva aprobación explícita para volver a enviarse. La vista del grupo con 14 pendientes y las demás listas estaban ordenadas por más recientes; los elementos visibles no coincidían con la bicicleta.
