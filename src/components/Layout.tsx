@@ -20,6 +20,7 @@ import {
   History,
   ScanLine,
   Zap,
+  Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
@@ -33,6 +34,7 @@ interface NavItem {
   path: string;
   icon: typeof LayoutDashboard;
   module: ModuleKey | null;
+  ownerOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -52,6 +54,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Trazabilidad', path: '/trazabilidad', icon: History, module: 'config' },
   { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
   { name: 'Automatizaciones', path: '/automatizaciones', icon: Zap, module: 'stock' },
+  { name: 'IA', path: '/ia', icon: Sparkles, module: null, ownerOnly: true },
 ];
 
 export default function Layout() {
@@ -63,13 +66,13 @@ export default function Layout() {
   const lastRefetchAtRef = useRef(0);
 
   const navItems = NAV_ITEMS.filter(it =>
-    it.module === null || permissions[it.module]?.read === true
+    (!it.ownerOnly || isOwner) && (it.module === null || permissions[it.module]?.read === true)
   );
   const navGroups = [
     { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
     { label: 'Relaciones', paths: ['/clientes', '/proveedores', '/compras'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
-    { label: 'Sistema', paths: ['/automatizaciones', '/trazabilidad', '/config'] },
+    { label: 'Sistema', paths: ['/automatizaciones', '/ia', '/trazabilidad', '/config'] },
   ].map((group) => ({
     ...group,
     items: navItems.filter((item) => group.paths.includes(item.path)),
