@@ -9,7 +9,7 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.13';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.14';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -218,6 +218,9 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       if(active.existing){const completed={...active,stage:'result'};await chrome.storage.local.set({activeJob:completed});await saveResult(connection,completed);drain=true;return;}
       const before=await chrome.storage.local.get(['paused','connection']);
       if(before.paused!==false||before.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
+      await facebookAdapter.action(active.tabId,'validate_submit',job.content,[],active.baseline);
+      const afterValidation=await chrome.storage.local.get(['paused','connection']);
+      if(afterValidation.paused!==false||afterValidation.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
       await chrome.storage.local.set({activeJob:{...active,stage:'authorizing'}});
       const checkpoint=await workerRpc(connection,'checkpoint',{protocol,delivery:job.id,attempt:job.attemptId});
       if(checkpoint?.authorized!==true||(protocol>=2&&checkpoint.phase!=='authorized_now'))throw new Error('RESULT_UNKNOWN: no se concedió una nueva autorización de envío.');

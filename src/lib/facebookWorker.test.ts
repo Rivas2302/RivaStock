@@ -12,6 +12,13 @@ function persistentWorker(memory:any,request:any) {
   return {alarms,startup:()=>startup(),poll:()=>new Promise(resolve=>listener({type:'poll'},{id:'own'},resolve))};
 }
 
+function mockSubmit(adapter:any) {
+  const submit=vi.fn().mockResolvedValue({clicked:true});
+  vi.spyOn(adapter,'action').mockImplementation(async(tabId:number,action:string,content:any,photos:any[],baseline:any[])=>
+    action==='submit'?submit(tabId,action,content,photos,baseline):{ready:true});
+  return submit;
+}
+
 it('recreates a missing alarm and resumes on Chrome startup while preserving an explicit pause',async()=>{
   vi.resetModules();
   const memory:any={connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'},paused:false};
@@ -35,7 +42,7 @@ it('keeps the queue active after a failed product and continues with the next ap
   const worker=persistentWorker(memory,async(_url:any,options:any)=>{const args=JSON.parse(options.body);reports.push(args);return {ok:true,json:async()=>args.p_operation==='claim'?jobs.shift()??null:{saved:true,authorized:true}}});
   const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
   vi.spyOn(facebookAdapter,'prepare').mockRejectedValueOnce(new Error('Category unavailable')).mockImplementationOnce(async(job,connection)=>({job,deviceId:connection.deviceId,projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[]}));
-  const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});
+  const submit=mockSubmit(facebookAdapter);
   vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/1/',message:'Saved'});
   try {
     await import('../../extensions/facebook/worker.js');
@@ -121,7 +128,7 @@ it('recovers a lost result acknowledgement without submitting to Facebook twice'
   const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
   const prepared={job,deviceId:'pc',projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[]};
   const prepare=vi.spyOn(facebookAdapter,'prepare').mockResolvedValue(prepared);
-  const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});
+  const submit=mockSubmit(facebookAdapter);
   const reconcile=vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'pending_approval',url:'https://www.facebook.com/marketplace/item/1/',message:'Review'});
   try {
     await import('../../extensions/facebook/worker.js');
@@ -197,6 +204,6 @@ it('records a structured conflict without checkpointing and keeps other destinat
   const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
   const issue={kind:'marketplace_conflict',message:'Decisión requerida',candidates:[{title:'Reloj',status:'Vendido',url:null}]};
   vi.spyOn(facebookAdapter,'prepare').mockRejectedValueOnce(Object.assign(new Error(issue.message),{issue})).mockImplementationOnce(async(job,connection)=>({job,deviceId:connection.deviceId,projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[]}));
-  const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/55/',message:'Saved'});
+  const submit=mockSubmit(facebookAdapter);vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/55/',message:'Saved'});
   try{await import('../../extensions/facebook/worker.js');await worker.poll();expect(reports).toContainEqual(expect.objectContaining({p_operation:'issue',p_delivery:'conflict',p_message:JSON.stringify(issue)}));expect(submit).not.toHaveBeenCalled();await worker.poll();expect(submit).toHaveBeenCalledTimes(1);expect(reports).toContainEqual(expect.objectContaining({p_operation:'result',p_delivery:'safe'}));expect(memory.paused).toBe(false);}finally{vi.restoreAllMocks();vi.unstubAllGlobals();}
 });

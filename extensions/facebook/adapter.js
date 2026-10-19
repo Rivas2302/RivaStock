@@ -108,7 +108,7 @@ export const facebookAdapter = {
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: facebookFormAction, args: [action, content, photos, baseline] });
     if (results.length !== 1 || !results[0].result) throw new Error('No se pudo verificar el formulario de Facebook.');
     if(results[0].result.error) {
-      const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
+      const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',validate_submit:'Verificación final antes de autorizar el envío',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
       const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;error.code=results[0].result.code??'FORM_VARIANT_UNSUPPORTED';throw error;
     }
     return results[0].result;

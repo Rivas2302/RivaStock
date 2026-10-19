@@ -522,7 +522,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
     return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog,photos.length),photoFileSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))] };
   }
-  if (action === 'submit') {
+  if (action === 'submit' || action === 'validate_submit') {
     // One final click per tab and flow: a repeated submit never clicks again.
     const submitFlow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
     const priorSubmit=(()=>{try{return JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));}catch{return null;}})();
@@ -547,8 +547,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if(!Number.isSafeInteger(expected)||expected<0||!prepared||previews.length!==expected||!(markedOrderMatches||previewsReplaced||legacySnapshotMatches))
         throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
     }else if(previousPhotos&&previousPhotos!==currentPhotos)throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
-    // The worker must obtain an atomic database checkpoint before calling this
-    // action. This function never retries the final click.
+    // validate_submit is a dry run. The worker repeats these guards after its
+    // atomic checkpoint and calls the final click only through submit.
     const marketplace=baseline.includes('variant:marketplace');
     if (marketplace) {
       checkFlow();
@@ -573,6 +573,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
 
       const publish = button('Publicar');
       if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
+      if(action==='validate_submit')return {ready:true};
       if(submitFlow)document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:submitFlow,started:Date.now(),notices:[]}));
       publish.click(); return { clicked: true };
     }
@@ -592,6 +593,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     // The prepared preview snapshot above verifies the exact approved photo set.
     const publish = button('Publicar', root);
     if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
+    if(action==='validate_submit')return {ready:true};
     const flow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
     if(group&&flow){
       checkFlow();

@@ -17,21 +17,23 @@ async function fixture(handler:(args:any,memory:any)=>any){
  const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
  const job={id:'delivery',attemptId:'attempt',content:{title:'Approved'},destination:{mechanism:'marketplace'}};
  const prepare=vi.spyOn(facebookAdapter,'prepare').mockImplementation(async(j:any,c:any)=>({job:j,deviceId:'pc',projectUrl:connection.url,tabId:1,stage:'prepared',baseline:[],...c.journalIdentity}));
- const submit=vi.spyOn(facebookAdapter,'action').mockResolvedValue({clicked:true});
+  const submit=vi.fn().mockResolvedValue({clicked:true});
+  const action=vi.spyOn(facebookAdapter,'action').mockImplementation(async(tabId:number,action:string,content:any,photos:any[],baseline:any[])=>
+   action==='submit'?submit(tabId,action,content,photos,baseline):{ready:true});
  const reconcile=vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/1/',message:'Result'});
  const track=vi.spyOn(facebookAdapter,'track').mockResolvedValue(null);
  const worker=await import('../../extensions/facebook/worker.js');
- return {memory,job,operations,prepare,submit,reconcile,track,worker};
+  return {memory,job,operations,prepare,action,submit,reconcile,track,worker};
 }
 it('persists a claim key before sending and the authorizing journal before checkpoint',async()=>{
  let job:any;const f=await fixture((a,m)=>{
   if(a.p_operation==='claim'){expect(m.pendingClaim.claimKey).toBe(a.p_data.claimKey);return job;}
   if(a.p_operation==='checkpoint'){expect(m.activeJob.stage).toBe('authorizing');expect(m.activeJob.attemptId).toBe('attempt');return {authorized:true,phase:'authorized_now'};}
   return {connected:true,saved:true};
- });job=f.job;await f.worker.poll();expect(f.submit).toHaveBeenCalledTimes(1);expect(f.memory.activeJob).toBeUndefined();
+ });job=f.job;await f.worker.poll();expect(f.action.mock.calls.map(call=>call[1])).toEqual(['validate_submit','submit']);expect(f.submit).toHaveBeenCalledTimes(1);expect(f.memory.activeJob).toBeUndefined();
 });
 it('never clicks when checkpoint reports an earlier authorization',async()=>{
- let job:any;const f=await fixture(a=>a.p_operation==='claim'?job:a.p_operation==='checkpoint'?{authorized:false,phase:'authorized_before'}:{saved:true});job=f.job;await f.worker.poll();expect(f.submit).not.toHaveBeenCalled();expect(f.operations.some(a=>a.p_operation==='attention')).toBe(true);
+ let job:any;const f=await fixture(a=>a.p_operation==='claim'?job:a.p_operation==='checkpoint'?{authorized:false,phase:'authorized_before'}:{saved:true});job=f.job;await f.worker.poll();expect(f.action.mock.calls.map(call=>call[1])).toEqual(['validate_submit']);expect(f.submit).not.toHaveBeenCalled();expect(f.operations.some(a=>a.p_operation==='attention')).toBe(true);
 });
 it('retains the same claim key after a lost claim response',async()=>{
  let fail=true;const f=await fixture(a=>{if(a.p_operation==='claim'){if(fail)throw new Error('Offline');return null;}return {connected:true};});
