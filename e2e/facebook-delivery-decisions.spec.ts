@@ -109,18 +109,24 @@ for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs
   else {
     expect(result).toMatchObject({ready:true});expect(await page.locator('[contenteditable]').innerText()).toBe(approved.groupText);
     expect(await page.evaluate(()=>window.uploadCount)).toBe(2);
-    await page.locator('[role="dialog"] img[alt="rivastock-2.png"]').evaluate(node=>node.remove());
+    await page.locator('[role="dialog"] img[alt="rivastock-2.png"]').evaluate(node=>{(window as any).removedPhoto=node;node.remove()});
     const changedPhotos=await run(page,'submit',approved,result.baseline);
     expect(changedPhotos.error).toContain('Cambió el orden o la carga de las fotos');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
-    await page.locator('[role="dialog"]').evaluate(dialog=>{const img=document.createElement('img');img.alt='rivastock-2.png';img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);});
+    await page.locator('[role="dialog"]').evaluate(dialog=>dialog.append((window as any).removedPhoto));
     await page.locator('[role="dialog"]').evaluate(dialog=>dialog.querySelector('img[alt="rivastock-1.png"]').before(dialog.querySelector('img[alt="rivastock-2.png"]')));
     const reorderedPhotos=await run(page,'submit',approved,result.baseline);
     expect(reorderedPhotos.error).toContain('Cambió el orden o la carga de las fotos');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
     await page.locator('[role="dialog"]').evaluate(dialog=>dialog.append(dialog.querySelector('img[alt="rivastock-2.png"]')));
     await page.getByRole('button',{name:'Eliminar archivo adjunto de la publicación'}).first().evaluate(node=>node.remove());
-    await page.locator('[role="dialog"] img[alt="rivastock-1.png"]').evaluate(async node=>{node.src+='#facebook-preview-refresh';await node.decode();});
-    expect(await run(page,'submit',approved,result.baseline)).toEqual({clicked:true});
+    await page.locator('[role="dialog"] img').evaluateAll(async nodes=>{for(const [index,node] of nodes.entries()){node.alt='Foto de la publicación';node.src=`data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==#facebook-preview-refresh-${index}`;await node.decode();}});
+    const refreshedPhotos=await run(page,'submit',approved,result.baseline);
+    expect(refreshedPhotos).toEqual({clicked:true});
     expect(await page.evaluate(()=>window.sent)).toBe(true);
+    await page.reload();
+    const replacedPhotoForm=await run(page,'group_prepare',approved,[],photos);
+    expect(replacedPhotoForm).toMatchObject({ready:true});
+    await page.locator('[role="dialog"] img').evaluateAll(async nodes=>{for(const [index,node] of nodes.entries()){const replacement=document.createElement('img');replacement.alt='Foto de la publicación';replacement.src=`data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==#facebook-preview-replaced-${index}`;node.replaceWith(replacement);await replacement.decode();}});
+    expect(await run(page,'submit',approved,replacedPhotoForm.baseline)).toEqual({clicked:true});
   }
 });
 

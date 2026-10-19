@@ -31,10 +31,18 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const amount=Number(raw.replaceAll('.','').replace(',','.'));
     return Number.isFinite(amount)&&Math.abs(amount-approved)<0.000001;
   };
-  const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo|^rivastock-\d+\./i.test(img.alt)).map(img=>{
-    // Facebook may replace a local preview URL after upload; the attached file names preserve the approved order.
-    return /^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(img.alt)?`file:${img.alt.toLowerCase()}`:img.currentSrc||img.src;
-  }));
+  const photoPreviews=root=>Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/^(?:foto|photo)\b|^rivastock-\d+\./i.test(img.alt));
+  const photoSnapshot=(root,expectedCount)=>{
+    const images=photoPreviews(root);
+    if(Number.isSafeInteger(expectedCount)&&images.length===expectedCount)images.forEach((image,index)=>image.dataset.rivastockPhotoOrder=String(index+1));
+    return 'prepared-photos:'+JSON.stringify(images.map(image=>image.dataset.rivastockPhotoOrder?`order:${image.dataset.rivastockPhotoOrder}`:/^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(image.alt)?`file:${image.alt.toLowerCase()}`:image.currentSrc||image.src));
+  };
+  const photoFileSnapshot=root=>{
+    const inputs=Array.from(root.querySelectorAll('input[type="file"][multiple]')).filter(input=>input.files?.length);
+    if(!inputs.length)return null;
+    if(inputs.length!==1)return 'photo-files:invalid';
+    return 'photo-files:'+JSON.stringify(Array.from(inputs[0].files).map(file=>({name:file.name,size:file.size,type:file.type})));
+  };
   const photoSnapshotEntries=value=>{
     if(!value?.startsWith('prepared-photos:'))return null;
     try{const entries=JSON.parse(value.slice('prepared-photos:'.length));return Array.isArray(entries)?entries:null;}catch{return null;}
@@ -343,7 +351,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
     const baselineMarketplaceUrls=()=>Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/marketplace\/item\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
     const baselineMarketplaceNotices=()=>Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible).map(node=>'notice:'+text(node));
-    const baseline=[...rememberFlow('marketplace'),photoSnapshot(document),'photos:'+photos.length,...(content.allowRepublish===true?['marketplace:new-explicit']:[]),...new Set(baselineMarketplaceUrls()),...baselineMarketplaceNotices()];
+    const baseline=[...rememberFlow('marketplace'),photoSnapshot(document,photos.length),photoFileSnapshot(document),'photos:'+photos.length,...(content.allowRepublish===true?['marketplace:new-explicit']:[]),...new Set(baselineMarketplaceUrls()),...baselineMarketplaceNotices()];
     return { ready: true, baseline };
   }
   const saleOriginName=target=>{
@@ -512,7 +520,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
-    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))] };
+    return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog,photos.length),photoFileSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))] };
   }
   if (action === 'submit') {
     // One final click per tab and flow: a repeated submit never clicks again.
@@ -520,13 +528,23 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const priorSubmit=(()=>{try{return JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));}catch{return null;}})();
     if(submitFlow&&priorSubmit?.flow===submitFlow&&Date.now()-priorSubmit.started<120000)throw new Error('El envío ya se realizó en esta pestaña. No se repitió.');
     const previousPhotos=baseline.find(value=>value.startsWith('prepared-photos:'));
-    const currentPhotos=photoSnapshot(document.querySelector('[role="dialog"]')??document);
+    const photoRoot=document.querySelector('[role="dialog"]')??document;
+    const currentPhotos=photoSnapshot(photoRoot);
     const photoCount=baseline.find(value=>value.startsWith('photos:'))?.slice(7);
     if(photoCount!==undefined){
       const expected=Number(photoCount);
       const prepared=photoSnapshotEntries(previousPhotos);
       const current=photoSnapshotEntries(currentPhotos);
-      if(!Number.isSafeInteger(expected)||expected<0||!prepared||!current||prepared.length!==expected||current.length!==expected||JSON.stringify(prepared)!==JSON.stringify(current))
+      const previews=photoPreviews(photoRoot);
+      const preparedFiles=baseline.find(value=>value.startsWith('photo-files:'));
+      const currentFiles=photoFileSnapshot(photoRoot);
+      const markers=previews.map(image=>image.dataset.rivastockPhotoOrder??null);
+      const hasPreparedOrder=prepared?.length===expected&&prepared.every((entry,index)=>entry===`order:${index+1}`);
+      const markedOrderMatches=markers.length===expected&&markers.every((marker,index)=>marker===String(index+1))&&hasPreparedOrder;
+      const filesMatch=Boolean(preparedFiles&&currentFiles&&preparedFiles!=='photo-files:invalid'&&preparedFiles===currentFiles);
+      const previewsReplaced=markers.length===expected&&markers.every(marker=>marker===null)&&filesMatch;
+      const legacySnapshotMatches=!preparedFiles&&prepared?.length===expected&&current?.length===expected&&JSON.stringify(prepared)===JSON.stringify(current);
+      if(!Number.isSafeInteger(expected)||expected<0||!prepared||previews.length!==expected||!(markedOrderMatches||previewsReplaced||legacySnapshotMatches))
         throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
     }else if(previousPhotos&&previousPhotos!==currentPhotos)throw new Error('Cambió el orden o la carga de las fotos después de preparar. No se envió.');
     // The worker must obtain an atomic database checkpoint before calling this
