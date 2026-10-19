@@ -147,4 +147,19 @@ En Facebook se revisó el contenido publicado y pendiente de Vende de todo - Gra
 | Estados visibles y actualización | **La UI existente** muestra estados por destino, errores legibles y consulta cada 10 s. La nueva validación previa al checkpoint evita que un rechazo pre-clic aparezca como resultado desconocido. |
 | Envío real a cinco grupos y Marketplace | **Pendiente de repetir**: en la corrida del 19/10 no se confirmó ningún envío. |
 
-El paquete 0.5.14 ya está publicado: `https://rivastock.vercel.app/downloads/rivastock-facebook-version.json` devuelve esa versión. La sesión de Chrome sigue conectada con 0.5.13, como muestra la captura de configuración. Hay que actualizar la extensión de Chrome, comprobar que RivaStock informa 0.5.14 conectada y volver a aprobar Bici Rodado 12 para esos mismos seis destinos. Los registros desconocidos de la corrida anterior no se deben reenviar sin resolverlos en el historial; los cinco incluyen el mensaje explícito `No se envió.` y el sexto falló antes de autorizar.
+El paquete 0.5.14 ya está publicado: `https://rivastock.vercel.app/downloads/rivastock-facebook-version.json` devuelve esa versión. Al cerrar la corrida anterior, Chrome seguía conectado con 0.5.13. El siguiente paso era actualizar la extensión y volver a aprobar Bici Rodado 12 para esos mismos seis destinos. Los registros desconocidos no se deben reenviar sin resolverlos en el historial; cinco muestran `No se envió.` y el sexto falló antes de autorizar.
+
+## Actualización: extensión 0.5.14 y revisión antes de repetir
+
+Fecha: 19 de octubre de 2026. La pantalla de configuración de RivaStock confirma extensión local **0.5.14**, conexión activa y cola habilitada. El intento aprobado de Bici Rodado 12 ($120.000, stock 3, una foto) permanece en el historial con los seis destinos anteriores; todavía no se inició un nuevo envío.
+
+| Destino | Resultado del intento existente | Revisión en Facebook |
+|---|---|---|
+| Vende de todo - Gral. Pico | Resultado desconocido; el detalle dice `No se envió.` | La revisión anterior no encontró esta bicicleta entre publicaciones ni pendientes. |
+| ➡️COMPRA Y VENTA-GRAL.PICO📢 | Resultado desconocido; el detalle dice `No se envió.` | La búsqueda del título mostró otras bicicletas, no el producto exacto. |
+| compra y venta general pico | Resultado desconocido; el detalle dice `No se envió.` | La búsqueda del título mostró otras bicicletas, no el producto exacto. |
+| Compra y venta en gral pico | Resultado desconocido; el detalle dice `No se envió.` | La búsqueda del título mostró otras bicicletas, no el producto exacto. |
+| Marketplace | Resultado desconocido; el detalle dice `No se envió.` | Hay un anuncio activo llamado `Bici rodado 12 disponible`, publicado hace 9 semanas, con seis fotos, precio `$209` y 18 lugares. El título y la bicicleta podrían corresponder al producto de RivaStock, pero el precio no coincide con `$120.000`; no se pudo confirmar si es la misma unidad o un anuncio anterior del mismo artículo. |
+| Clasificados General Pico (La Pampa) | Preparación fallida antes de autorizar; la carga del editor excedió el tiempo. | La búsqueda del título no mostró el producto exacto. |
+
+No se envió ninguna publicación nueva durante esta revisión. El anuncio activo de Marketplace crea una duda de duplicación y de precio; queda pendiente confirmar si se debe actualizar ese anuncio existente o crear uno nuevo. No repetir la publicación de los seis destinos hasta resolver esa duda y cerrar la revisión correspondiente en el historial.
