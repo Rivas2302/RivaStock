@@ -1,4 +1,4 @@
-import type { AIJob, AIProviderId } from './types.ts';
+import type { AIJob, AIJobContext, AIProviderId, AIWorkspaceFile } from './types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -20,6 +20,16 @@ export class BridgeClient {
 
   async fail(workerId: string, jobId: string, error: string): Promise<void> {
     await this.post('worker_fail', { worker_id: workerId, job_id: jobId, error });
+  }
+
+  async workspaceFiles(workerId: string): Promise<AIWorkspaceFile[]> {
+    const response = await this.post<{ files: AIWorkspaceFile[] }>('worker_workspace', { worker_id: workerId });
+    if (!Array.isArray(response.files)) throw new Error('El backend devolvió una biblioteca inválida.');
+    return response.files;
+  }
+
+  async jobContext(workerId: string, jobId: string): Promise<AIJobContext> {
+    return this.post('worker_context', { worker_id: workerId, job_id: jobId });
   }
 
   private async post<T = unknown>(action: string, fields: Record<string, unknown>): Promise<T> {

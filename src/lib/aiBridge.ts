@@ -12,6 +12,8 @@ export interface AIJob {
   output: string | null;
   status: AIJobStatus;
   error: string | null;
+  include_business_context: boolean;
+  include_project_context: boolean;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -38,12 +40,19 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-export async function createAIJob(input: string, provider: AIProviderId, idempotencyKey: string): Promise<AIJob> {
+export async function createAIJob(
+  input: string,
+  provider: AIProviderId,
+  idempotencyKey: string,
+  context: { includeBusinessContext: boolean; includeProjectContext: boolean },
+): Promise<AIJob> {
   const result = await invoke<{ job: AIJob }>({
     action: 'create',
     idempotency_key: idempotencyKey,
     provider,
     input,
+    include_business_context: context.includeBusinessContext,
+    include_project_context: context.includeProjectContext,
   });
   return result.job;
 }

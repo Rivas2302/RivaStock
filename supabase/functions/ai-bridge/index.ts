@@ -112,12 +112,54 @@ serve(async (req) => {
   const action = body.action;
 
   if (action === 'worker_heartbeat' || action === 'worker_claim'
-    || action === 'worker_complete' || action === 'worker_fail') {
+    || action === 'worker_complete' || action === 'worker_fail'
+    || action === 'worker_workspace' || action === 'worker_context') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
     const authorization = req.headers.get('authorization') ?? '';
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!constantTimeEqual(suppliedToken, AI_BRIDGE_TOKEN)) return jsonResponse({ error: 'Credencial del AI Bridge inválida.' }, 401, origin);
     if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400, origin);
+
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    if (action === 'worker_workspace') {
+      const { data, error } = await serviceClient.from('ai_workspace_files')
+        .select('path, content, updated_at')
+        .eq('user_id', AI_BRIDGE_OWNER_UID)
+        .order('path', { ascending: true });
+      if (error) return safeDbError(error);
+      return jsonResponse({ files: data ?? [] }, 200, origin);
+    }
+    if (action === 'worker_context') {
+      if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
+      const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
+        .select('include_business_context, include_project_context')
+        .eq('id', body.job_id).eq('user_id', AI_BRIDGE_OWNER_UID)
+        .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
+      if (jobError) return safeDbError(jobError);
+      if (!job) return jsonResponse({ error: 'La tarea no está reservada por este worker.' }, 409, origin);
+
+      let products: Array<Record<string, unknown>> = [];
+      let totalProducts = 0;
+      if (job.include_business_context) {
+        const { data, count, error } = await serviceClient.from('products')
+          .select('name, category, description, purchase_price, sale_price, stock, min_stock', { count: 'exact' })
+          .eq('user_id', AI_BRIDGE_OWNER_UID)
+          .order('name', { ascending: true })
+          .limit(100);
+        if (error) return safeDbError(error);
+        products = data ?? [];
+        totalProducts = count ?? products.length;
+      }
+
+      return jsonResponse({
+        include_business_context: job.include_business_context,
+        include_project_context: job.include_project_context,
+        products,
+        total_products: totalProducts,
+      }, 200, origin);
+    }
 
     let rpcAction: string;
     let jobId: string | null = null;
@@ -150,9 +192,6 @@ serve(async (req) => {
         payload = { error: body.error };
     }
 
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
     const { data, error } = await serviceClient.rpc('ai_bridge_worker', {
       p_action: rpcAction,
       p_owner_uid: AI_BRIDGE_OWNER_UID,
@@ -180,13 +219,17 @@ serve(async (req) => {
   if (action === 'create') {
     if (!isUuid(body.idempotency_key) || typeof body.provider !== 'string'
       || !ALLOWED_PROVIDERS.has(body.provider) || typeof body.input !== 'string'
-      || body.input.trim().length === 0 || body.input.length > 8000) {
+      || body.input.trim().length === 0 || body.input.length > 8000
+      || (body.include_business_context !== undefined && typeof body.include_business_context !== 'boolean')
+      || (body.include_project_context !== undefined && typeof body.include_project_context !== 'boolean')) {
       return jsonResponse({ error: 'Elegí un proveedor e ingresá una instrucción de hasta 8000 caracteres.' }, 400, origin);
     }
-    const { data, error } = await userClient.rpc('ai_create_job', {
+    const { data, error } = await userClient.rpc('ai_create_job_with_context', {
       p_idempotency_key: body.idempotency_key,
       p_provider: body.provider,
       p_input: body.input,
+      p_include_business_context: body.include_business_context === true,
+      p_include_project_context: body.include_project_context === true,
     });
     if (error) return safeDbError(error);
     return jsonResponse({ job: data }, 201, origin);
@@ -195,7 +238,7 @@ serve(async (req) => {
   if (action === 'get') {
     if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
     const { data, error } = await userClient.from('ai_jobs')
-      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count')
+      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context')
       .eq('id', body.job_id).maybeSingle();
     if (error) return safeDbError(error);
     if (!data) return jsonResponse({ error: 'No se encontró la tarea.' }, 404, origin);
@@ -204,7 +247,7 @@ serve(async (req) => {
 
   if (action === 'recent') {
     const { data, error } = await userClient.from('ai_jobs')
-      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count')
+      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context')
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error);
     return jsonResponse({ jobs: data ?? [] }, 200, origin);

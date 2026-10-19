@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Bot, Check, Clock3, Copy, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import AIWorkspace from '../components/AIWorkspace';
 import {
   createAIJob,
   getAIBridgeState,
@@ -39,6 +40,8 @@ export default function AIHub() {
   const { isOwner } = useAuth();
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [input, setInput] = useState('');
+  const [includeBusinessContext, setIncludeBusinessContext] = useState(false);
+  const [includeProjectContext, setIncludeProjectContext] = useState(false);
   const [activeJob, setActiveJob] = useState<AIJob | null>(null);
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
@@ -46,7 +49,8 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const submissionRef = useRef<{ input: string; provider: AIProviderId; key: string } | null>(null);
+  const [view, setView] = useState<'console' | 'workspace'>('console');
+  const submissionRef = useRef<{ input: string; provider: AIProviderId; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
     const jobs = await getRecentAIJobs();
@@ -104,9 +108,14 @@ export default function AIHub() {
       const requestText = input;
       const intent = submissionRef.current;
       const idempotencyKey = intent?.input === requestText && intent.provider === provider
+        && intent.includeBusinessContext === includeBusinessContext
+        && intent.includeProjectContext === includeProjectContext
         ? intent.key : crypto.randomUUID();
-      submissionRef.current = { input: requestText, provider, key: idempotencyKey };
-      const job = await createAIJob(requestText, provider, idempotencyKey);
+      submissionRef.current = { input: requestText, provider, includeBusinessContext, includeProjectContext, key: idempotencyKey };
+      const job = await createAIJob(requestText, provider, idempotencyKey, {
+        includeBusinessContext: provider !== 'mock' && includeBusinessContext,
+        includeProjectContext: provider !== 'mock' && includeProjectContext,
+      });
       submissionRef.current = null;
       setActiveJob(job);
       setRecentJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 10));
@@ -144,6 +153,13 @@ export default function AIHub() {
 
       {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
+      <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700" aria-label="Secciones de IA">
+        <button type="button" onClick={() => setView('console')} aria-current={view === 'console' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'console' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Consola</button>
+        <button type="button" onClick={() => setView('workspace')} aria-current={view === 'workspace' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'workspace' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Skills y conocimiento</button>
+      </nav>
+
+      {view === 'workspace' ? <AIWorkspace/> : <>
+
       <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
         <label className="block space-y-2">
           <span className="text-sm font-bold">Agente</span>
@@ -156,6 +172,18 @@ export default function AIHub() {
           <textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={8000} required rows={6} placeholder="Generá una descripción comercial para una cámara WiFi con visión nocturna, detección de movimiento y audio bidireccional." className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 dark:border-slate-600 dark:bg-slate-950"/>
           <span className="block text-right text-xs text-slate-500">{input.length}/8000</span>
         </label>
+        <fieldset className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <legend className="px-1 text-xs font-bold text-slate-600 dark:text-slate-300">Contexto opcional</legend>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
+            <span><strong>Proyecto RivaStock</strong><span className="block text-slate-500">Incluye documentación y archivos fuente seleccionados. No lee archivos .env, credenciales ni el resto del disco.</span></span>
+          </label>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
+            <span><strong>Catálogo e inventario</strong><span className="block text-slate-500">Incluye hasta 100 productos con descripción, precios y stock de esta cuenta. Los datos se envían al proveedor seleccionado.</span></span>
+          </label>
+          <p className="pl-6 text-[11px] text-slate-500">Las Skills y los documentos guardados en “Skills y conocimiento” se incluyen automáticamente. El Mock no usa contexto.</p>
+        </fieldset>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-500">Solo generación de texto. La tarea queda pendiente si tu PC está desconectada.</p>
           <button type="submit" disabled={!input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
@@ -176,6 +204,11 @@ export default function AIHub() {
               <div><dt className="text-xs text-slate-500">Agente</dt><dd className="mt-1 font-semibold">{providerLabel(activeJob.provider)}</dd></div>
               <div><dt className="text-xs text-slate-500">Creada</dt><dd className="mt-1">{formatDate(activeJob.created_at)}</dd></div>
               <div><dt className="text-xs text-slate-500">Intentos</dt><dd className="mt-1">{activeJob.attempt_count}</dd></div>
+              <div><dt className="text-xs text-slate-500">Contexto incluido</dt><dd className="mt-1">{[
+                activeJob.provider === 'mock' ? 'Sin contexto (Mock)' : 'Biblioteca de Skills y conocimiento',
+                ...(activeJob.include_project_context ? ['Proyecto RivaStock'] : []),
+                ...(activeJob.include_business_context ? ['Catálogo e inventario'] : []),
+              ].join(' · ')}</dd></div>
             </dl>
             {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
             {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-indigo-50 p-4 text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
@@ -190,6 +223,7 @@ export default function AIHub() {
           <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
       </section>
+      </>}
     </div>
   );
 }

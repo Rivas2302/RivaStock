@@ -10,6 +10,8 @@ Guía para preparar la demo local de texto. El flujo usa la SPA de RivaStock, un
 - La reserva se hace con una RPC transaccional, `FOR UPDATE SKIP LOCKED` y un lease de 90 segundos. El worker renueva el lease cada 20 segundos y recupera hasta tres intentos interrumpidos.
 - Cada cuenta admite hasta diez tareas pendientes o en ejecución; las solicitudes se deduplican con una clave idempotente.
 - La tabla no expone escrituras directas a usuarios. El navegador usa su sesión Supabase; el worker se autentica con un token propio. La clave `service_role` solo se usa dentro de Supabase.
+- La biblioteca `ai_workspace_files` solo permite que el propietario administre archivos de texto. El worker sincroniza Skills y documentos a `.rivastock-ai/workspace`; el agente los recibe como referencia de texto y nunca ejecuta sus scripts.
+- Cada tarea puede incluir, con dos casillas apagadas por defecto, una selección fija de archivos fuente del proyecto y hasta 100 productos del comercio. La consulta de negocio solo lee campos autorizados de `products` filtrados por el UID del propietario; no permite SQL ni escrituras libres.
 - Vercel sirve la SPA; este repositorio no tiene funciones `/api` de Vercel. El cliente invoca Supabase directamente, que ya figura en la CSP actual.
 - Mock funciona sin Codex ni Claude. Los dos proveedores reales vienen desactivados y requieren habilitación explícita.
 
@@ -26,11 +28,13 @@ En la revisión local del 19 de octubre de 2026 se detectó Node.js 24.15.0, Cod
 
 ## 2. Base de datos
 
-La migración versionada es `supabase/migrations/0076_ai_bridge.sql`. Conserva las tablas previas y crea `ai_jobs`, `ai_bridge_workers`, sus políticas RLS y las RPC de creación y reserva.
+La migración `supabase/migrations/0076_ai_bridge.sql` creó `ai_jobs` y `ai_bridge_workers`. La migración `supabase/migrations/20261019222648_ai_agent_workspace.sql` agrega la biblioteca privada, los dos consentimientos por tarea y sus límites.
+
+La segunda migración se aplicó al proyecto vinculado el 19 de octubre de 2026 y se comprobó que `ai_workspace_files` tiene RLS y cuatro políticas de propietario. También se verificaron las nuevas columnas de contexto y el permiso de la RPC.
 
 La migración 0076 ya se aplicó al proyecto actualmente vinculado, `RivaStock_Oficial`. Se verificaron las dos tablas, RLS, permisos de lectura y permisos de las RPC.
 
-Ese proyecto no tiene `supabase_migrations.schema_migrations`. Por eso `supabase db push --dry-run` propone las 76 migraciones locales, desde `0001` hasta `0076`. La 0076 se aplicó como archivo individual con `supabase db query --linked --file supabase/migrations/0076_ai_bridge.sql`; este método no registra la versión en una tabla de historial. **No ejecutes `supabase db push` contra ese proyecto** hasta reconciliar el historial completo.
+Ese proyecto no tiene `supabase_migrations.schema_migrations`. Por eso `supabase db push --dry-run` propone las migraciones locales completas, incluso las ya aplicadas. La 0076 se aplicó como archivo individual con `supabase db query --linked --file supabase/migrations/0076_ai_bridge.sql`; este método no registra la versión en una tabla de historial. La biblioteca se instala con el mismo método, ejecutando únicamente el archivo nuevo. **No ejecutes `supabase db push` contra ese proyecto** hasta reconciliar el historial completo.
 
 Para un entorno nuevo, primero prepará un esquema base e historial de migraciones coherentes; luego aplicá 0076 una sola vez y verificá que termine sin errores.
 
@@ -38,7 +42,7 @@ Para un entorno nuevo, primero prepará un esquema base e historial de migracion
 
 La función es `supabase/functions/ai-bridge/index.ts`. La plataforma normalmente valida JWT antes de invocar una Edge Function; el comando usa `--no-verify-jwt` porque el worker se autentica con un token dedicado. **La función valida por sí misma la sesión Supabase del navegador y el token del worker.**
 
-La función está desplegada con `verify_jwt=false`. `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID` ya están configurados en el proyecto vinculado. El propietario seleccionado es el perfil `admin` de `leokevinr@gmail.com`.
+La función está desplegada con `verify_jwt=false`. `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID` ya están configurados en el proyecto vinculado. El propietario seleccionado es el perfil `admin` de `leokevinr@gmail.com`. Después de cambios a la función, desplegala individualmente con el comando indicado abajo.
 
 Desde PowerShell, dentro de la raíz del repositorio, publicá cambios futuros con:
 
@@ -111,7 +115,11 @@ Con la PC apagada, la tarea queda pendiente. Al volver a iniciar el worker, debe
 
 ## 7. Codex real
 
-El puente usa el SDK oficial de TypeScript (`@openai/codex-sdk`) y Codex CLI 0.163.0, fijado localmente. Cada solicitud corre desde una carpeta temporal vacía, en sandbox `read-only`, sin red para las herramientas del agente, sin directorios adicionales y con un perfil `CODEX_HOME` aislado. La configuración también desactiva explícitamente las herramientas `shell`, `view_image` y `sleep`. No usa la carpeta del repositorio RivaStock.
+El puente usa el SDK oficial de TypeScript (`@openai/codex-sdk`) y Codex CLI 0.163.0, fijado localmente. Cada solicitud corre desde una carpeta temporal vacía, en sandbox `read-only`, sin red para las herramientas del agente, sin directorios adicionales y con un perfil `CODEX_HOME` aislado. La configuración también desactiva explícitamente las herramientas `shell`, `view_image` y `sleep`.
+
+Si marcás **Proyecto RivaStock**, el worker lee una lista fija de documentación, interfaces y esquemas SQL del repositorio y los agrega al pedido como texto. No entrega acceso al disco al modelo ni lee `.env`, credenciales, historial Git o archivos fuera de esa lista. Las Skills sincronizadas se copian bajo `.rivastock-ai/workspace`.
+
+Si marcás **Catálogo e inventario**, la Edge Function consulta hasta 100 productos de `products`, siempre filtrados por el UID propietario. Incluye nombre, categoría, descripción, precio de compra/venta y existencias. Es una consulta de lectura acotada, no una conexión SQL abierta.
 
 En esta PC, Codex CLI 0.163.0 ya quedó autenticado con **Sign in with ChatGPT**, habilitado en el worker y verificado con una tarea real breve. Para configurar otra PC, autenticá el perfil aislado del puente desde PowerShell:
 

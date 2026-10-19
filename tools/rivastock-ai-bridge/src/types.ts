@@ -1,4 +1,34 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 export type AIProviderId = 'mock' | 'codex' | 'claude';
+
+export interface AIWorkspaceFile {
+  path: string;
+  content: string;
+  updated_at: string;
+}
+
+export interface AIProjectContext {
+  path: string;
+  content: string;
+  updated_at: string;
+}
+
+export interface AIJobContext {
+  include_business_context: boolean;
+  include_project_context: boolean;
+  products: Array<{
+    name: string;
+    category: string;
+    description: string | null;
+    purchase_price: number | string;
+    sale_price: number | string;
+    stock: number;
+    min_stock: number;
+  }>;
+  total_products: number;
+}
 
 export interface AIJob {
   id: string;
@@ -10,7 +40,7 @@ export interface AIJob {
 }
 
 export interface AIProvider {
-  execute(input: string, signal: AbortSignal): Promise<{ output: string }>;
+  execute(input: string, signal: AbortSignal, workspaceContext?: string): Promise<{ output: string }>;
 }
 
 export interface BridgeConfig {
@@ -22,6 +52,8 @@ export interface BridgeConfig {
   codexHome: string;
   claudeExecutable: string;
   claudeMaxBudgetUsd: string;
+  workspaceDirectory: string;
+  projectRootDirectory: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
@@ -38,6 +70,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     codexHome: env.AI_BRIDGE_CODEX_HOME?.trim() || `${env.USERPROFILE || env.HOME || '.'}/.rivastock-ai-bridge/codex`,
     claudeExecutable: env.CLAUDE_CLI_PATH?.trim() || 'claude',
     claudeMaxBudgetUsd: parseBudget(env.AI_BRIDGE_CLAUDE_MAX_BUDGET_USD ?? '1.00'),
+    workspaceDirectory: resolve(env.AI_BRIDGE_WORKSPACE_DIR?.trim()
+      || resolve(dirname(fileURLToPath(import.meta.url)), '../../../.rivastock-ai/workspace')),
+    projectRootDirectory: resolve(env.AI_BRIDGE_PROJECT_ROOT?.trim()
+      || resolve(dirname(fileURLToPath(import.meta.url)), '../../../')),
   };
 }
 
