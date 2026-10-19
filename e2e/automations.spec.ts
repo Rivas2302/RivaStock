@@ -117,6 +117,23 @@ test('shows execution measurements on demand without an extra notification',asyn
   await expect(page.getByText('Origen: aviso local',{exact:true})).toBeVisible();
 });
 
+test('shows technical failures and Facebook rejections with red status badges',async({page})=>{
+  const {rows}=await fixture(page);
+  rows.push({
+    id:'publication-rejected',product_id:'rejected-product',approved_at:'2026-10-14T12:04:00Z',
+    content:{...rows[0].content,title:'Producto no aprobado'},
+    facebook_deliveries:[{id:'delivery-rejected',status:'attention',submitted_at:'2026-10-14T12:04:00Z',issue:{kind:'facebook_not_approved',message:'Facebook rechazó el anuncio.'},destination:{name:'Marketplace',mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},evidence_url:null,message:'Facebook rechazó el anuncio.'}],
+  } as any);
+  await page.goto('/automatizaciones');
+  await expect(page.getByRole('button',{name:/Ver publicación: Preparación con error/}).locator('span.inline-flex').first()).toHaveClass(/bg-rose-100/);
+  await expect(page.getByRole('button',{name:/Ver publicación: Producto no aprobado/}).locator('span.inline-flex').first()).toHaveClass(/bg-rose-100/);
+  const failed=await openPublication(page,'Preparación con error');
+  await expect(failed.getByRole('article',{name:'Marketplace: Preparación fallida'}).getByText('Preparación fallida',{exact:true})).toHaveClass(/bg-rose-100/);
+  await backToHistory(page);
+  const rejected=await openPublication(page,'Producto no aprobado');
+  await expect(rejected.getByRole('article',{name:'Marketplace: No aprobada'}).getByText('No aprobada',{exact:true})).toHaveClass(/bg-rose-100/);
+});
+
 test('blocks direct access without Stock permission',async({page})=>{
   await fixture(page,'denied');await page.goto('/automatizaciones');await expect(page).not.toHaveURL(/\/automatizaciones/);
   await expect(page.getByRole('link',{name:'Automatizaciones',exact:true})).toHaveCount(0);

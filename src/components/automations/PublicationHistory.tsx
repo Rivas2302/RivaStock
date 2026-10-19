@@ -22,8 +22,9 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     catch(error){setError((error as Error).message);}finally{setBusy(false);}
   }
   const btn='rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50 dark:border-slate-600';
-  const stateIsWarning=['failed','unknown'].includes(state);
-  const badgeClass=stateIsWarning?'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-300':state==='published'?'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300':'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-300';
+  const stateIsError=state==='failed'||delivery.issue?.kind==='facebook_not_approved';
+  const stateIsWarning=state==='unknown'&&!stateIsError;
+  const badgeClass=stateIsError?'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-300':stateIsWarning?'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-300':state==='published'?'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300':'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-300';
   const fallbackUrl=delivery.destination.mechanism==='marketplace'?'https://www.facebook.com/marketplace/you/selling':/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(delivery.destination.url)?delivery.destination.url:'https://www.facebook.com/marketplace/';
 
   // One-liner summary for each state
@@ -34,14 +35,14 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="font-semibold">{delivery.destination.name}</h4>
       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${badgeClass}`}>
-        {stateIsWarning?<AlertTriangle size={12}/>:state==='published'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
+        {stateIsError||stateIsWarning?<AlertTriangle size={12}/>:state==='published'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
         {deliveryLabel(delivery)}
       </span>
     </div>
 
     {/* Short status line */}
     {shortStatus&&<p className="text-xs text-slate-500 dark:text-slate-400">{shortStatus}</p>}
-    {stateIsWarning&&delivery.message&&delivery.message!==shortStatus&&<p className="break-words text-xs text-slate-600 dark:text-slate-300">{delivery.message.length>160?`${delivery.message.slice(0,160)}…`:delivery.message}</p>}
+    {(stateIsError||stateIsWarning)&&delivery.message&&delivery.message!==shortStatus&&<p className="break-words text-xs text-slate-600 dark:text-slate-300">{delivery.message.length>160?`${delivery.message.slice(0,160)}…`:delivery.message}</p>}
     {delivery.recovery_required&&<p className="text-xs text-rose-600 dark:text-rose-400" role="alert">Llegó evidencia después de una revisión. Otro envío queda bloqueado hasta revisar.</p>}
 
     {/* Candidate found */}
@@ -112,9 +113,10 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
   </article>;
 }
 
-function summaryVariant(pub:FacebookPublication):'warning'|'running'|'success'|'neutral' {
+function summaryVariant(pub:FacebookPublication):'error'|'warning'|'running'|'success'|'neutral' {
   const states=pub.facebook_deliveries.map(deliveryState);
-  if(states.some(s=>s==='unknown'||s==='failed'))return 'warning';
+  if(pub.facebook_deliveries.some(delivery=>deliveryState(delivery)==='failed'||delivery.issue?.kind==='facebook_not_approved'))return 'error';
+  if(states.some(s=>s==='unknown'))return 'warning';
   if(states.some(s=>s==='running'||s==='pending'))return 'running';
   if(states.length>0&&states.every(s=>s==='published'))return 'success';
   return 'neutral';
@@ -147,7 +149,7 @@ function buildActivity(pub:FacebookPublication):{at:string;title:string;desc:str
 
 function summaryBadgeClass(pub:FacebookPublication) {
   const variant=summaryVariant(pub);
-  return variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+  return variant==='error'?'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300':variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
 }
 
 function PublicationDetailView({publication,onBack,onRefresh,showProductLink,expandedDetails=false}:{publication:FacebookPublication;onBack:()=>void;onRefresh:()=>Promise<void>;showProductLink:boolean;expandedDetails?:boolean}) {
@@ -163,7 +165,7 @@ function PublicationDetailView({publication,onBack,onRefresh,showProductLink,exp
         <ArrowLeft size={16}/>Volver al historial
       </button>
       <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${summaryBadgeClass(publication)}`}>
-        {summaryVariant(publication)==='warning'?<AlertTriangle size={13}/>:summaryVariant(publication)==='success'?<CheckCircle2 size={13}/>:<Clock3 size={13}/>}
+        {summaryVariant(publication)==='warning'||summaryVariant(publication)==='error'?<AlertTriangle size={13}/>:summaryVariant(publication)==='success'?<CheckCircle2 size={13}/>:<Clock3 size={13}/>}
         {summaryLabel(publication)}
       </span>
     </header>
@@ -246,7 +248,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
     <div className="space-y-2">
       {publications.map(pub=>{
         const variant=summaryVariant(pub);const label=summaryLabel(pub);const isActive=pub.id===selectedId;
-        const badgeClass=variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+        const badgeClass=variant==='error'?'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300':variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
         return <div key={pub.id} className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
           <button type="button" aria-expanded={isActive} onClick={()=>setSelectedId(isActive?null:pub.id)} className={`flex w-full items-center gap-3 p-3 text-left transition-colors ${isActive?'bg-indigo-50 dark:bg-indigo-950/40':'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60'}`}>
             {pub.content.photos[0]?<img src={pub.content.photos[0]} alt="" aria-hidden className="h-11 w-11 shrink-0 rounded-lg object-cover"/>:<div className="h-11 w-11 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800"/>}
@@ -301,7 +303,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
             </div>
             <div className="flex min-w-0 flex-1 flex-col justify-center py-1">
               <span className={`inline-flex max-w-full self-start items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${summaryBadgeClass(publication)}`}>
-                {variant==='warning'?<AlertTriangle size={12}/>:variant==='success'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
+                {variant==='warning'||variant==='error'?<AlertTriangle size={12}/>:variant==='success'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
                 <span className="min-w-0 truncate">{summaryLabel(publication)}</span>
               </span>
               <h3 className="mt-2 line-clamp-2 font-bold leading-5">{publication.content.title}</h3>
@@ -344,7 +346,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
           const label=summaryLabel(pub);
           const thumb=pub.content.photos[0];
           const isActive=pub.id===effectiveId;
-          const badgeClass=variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+          const badgeClass=variant==='error'?'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300':variant==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':variant==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':variant==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
           return <button key={pub.id}
             onClick={()=>{setSelectedId(pub.id);setMobileDetail(true);}}
             className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${isActive?'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40':'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800/60'}`}>
@@ -356,7 +358,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
               <p className="mt-0.5 text-xs text-slate-500">{new Date(pub.approved_at).toLocaleString('es-AR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} · {pub.facebook_deliveries.length} destino{pub.facebook_deliveries.length!==1?'s':''}</p>
             </div>
             <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${badgeClass}`}>
-              {variant==='warning'?<AlertTriangle size={11}/>:variant==='success'?<CheckCircle2 size={11}/>:<Clock3 size={11}/>}
+              {variant==='warning'||variant==='error'?<AlertTriangle size={11}/>:variant==='success'?<CheckCircle2 size={11}/>:<Clock3 size={11}/>}
               <span className="hidden sm:inline">{label}</span>
             </span>
           </button>;
@@ -386,7 +388,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${summaryVariant(selected)==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':summaryVariant(selected)==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':summaryVariant(selected)==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{summaryLabel(selected)}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${summaryVariant(selected)==='error'?'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300':summaryVariant(selected)==='warning'?'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300':summaryVariant(selected)==='success'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300':summaryVariant(selected)==='running'?'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300':'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{summaryLabel(selected)}</span>
                   {showProductLink&&selected.product_id&&<Link className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50" to={`/automatizaciones?product=${encodeURIComponent(selected.product_id)}`}>Gestionar producto</Link>}
                 </div>
               </div>
