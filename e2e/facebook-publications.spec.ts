@@ -50,6 +50,12 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   await dialog.getByLabel('Ubicación',{exact:true}).fill('Buenos Aires');
   await dialog.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
   await dialog.getByLabel('Grupo de prueba',{exact:false}).check();
+  await dialog.getByLabel('Incluir foto 1',{exact:true}).uncheck();
+  await dialog.getByLabel('Revisé el contenido',{exact:false}).check();
+  await dialog.getByRole('button',{name:'Confirmar y publicar'}).click();
+  await expect(dialog.getByRole('alert')).toContainText('Seleccioná entre 1 y 10 fotos distintas.');
+  expect(approvals).toHaveLength(0);
+  await dialog.getByLabel('Incluir foto 1',{exact:true}).check();
   await dialog.getByLabel('Revisé el contenido',{exact:false}).check();
   await expect(dialog.getByRole('button',{name:'Confirmar y publicar'})).toBeEnabled();
   await expect(dialog).toHaveCSS('opacity','1');

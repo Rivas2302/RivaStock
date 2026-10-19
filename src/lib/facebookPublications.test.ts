@@ -12,6 +12,7 @@ describe('Facebook publication preparation',() => {
     expect(product.name).toBe('Silla'); expect(product.images[0]).toBe('https://test/a.jpg');
     expect(content.photos).toHaveLength(2);
     expect(validatePublication({...content,location:'BA',category:'Muebles'},true,[])).toBeNull();
+    expect(validatePublication({...content,photos:[],location:'BA',category:'Muebles'},true,[])).toContain('1 y 10 fotos');
     expect(validatePublication({...content,location:'BA',category:'Muebles'},false,[])).toMatch('grupo');
     expect(validatePublication({...content,price:NaN},true,[])).toMatch('precio');
   });

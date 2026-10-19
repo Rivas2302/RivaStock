@@ -18,6 +18,18 @@ describe('image upload optimization', () => {
     vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('decode')));
     expect(await optimizeUploadImage(file)).toBe(file);
   });
+  it('optimizes a JPEG larger than 2 MB when the browser can decode it', async () => {
+    const file = new File([new Uint8Array(3 * 1024 * 1024)], 'large-photo.jpg', { type: 'image/jpeg' });
+    const close = vi.fn();
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }), toBlob: (fn: (blob: Blob) => void) => fn(new Blob([new Uint8Array(1024)], { type: 'image/webp' })) };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4000, height: 2000, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+    const result = await optimizeUploadImage(file);
+    expect(file.size).toBeGreaterThan(2 * 1024 * 1024);
+    expect(result.type).toBe('image/webp');
+    expect(result.size).toBe(1024);
+    expect(close).toHaveBeenCalledOnce();
+  });
   it.each(['image/png', 'image/webp'])('accepts only smaller genuine WebP blobs (%s)', async type => {
     const file = new File(['original image bytes'], 'photo.jpg', { type: 'image/jpeg' });
     const close = vi.fn();
