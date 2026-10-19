@@ -158,7 +158,36 @@ test('distinguishes an explicit permission denial from an editor timeout',async(
   await page.goto('https://www.facebook.com/groups/630127860416020');
   expect((await run(page,'group_prepare')).error).toContain('no tiene permiso');
   denied=false;await page.reload();
-  const timeout=await run(page,'group_prepare');expect(timeout.error).toContain('no respondió a tiempo');expect(timeout.error).toContain('no se pudo determinar');expect(timeout.error).not.toContain('sin permiso');
+  const fastEditorTimeout=facebookFormAction.toString().replace('const GROUP_EDITOR_TIMEOUT_MS = 60_000;','const GROUP_EDITOR_TIMEOUT_MS = 100;');
+  expect(fastEditorTimeout).not.toBe(facebookFormAction.toString());
+  const timeout=await run(page,'group_prepare',approved,[],[],fastEditorTimeout);expect(timeout.error).toContain('no respondió a tiempo');expect(timeout.error).toContain('no se pudo determinar');expect(timeout.error).not.toContain('sin permiso');
+});
+
+test('waits for a group editor that appears after the previous 15-second limit',async({page})=>{
+  const delayedGroupComposer=`<div id="group"><a href="/groups/630127860416020/user/111/">Perfil</a></div><script>
+    setTimeout(()=>{
+      const trigger=document.createElement('button');trigger.textContent='Escribe algo...';
+      trigger.onclick=()=>{
+        const dialog=document.createElement('div');dialog.setAttribute('role','dialog');
+        dialog.innerHTML='<div contenteditable="true" data-lexical-editor="true" role="textbox" aria-label="Crea una publicación pública..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button id="publish" disabled>Publicar</button>';
+        const editor=dialog.querySelector('[contenteditable]');
+        dialog.addEventListener('paste',event=>{event.preventDefault();editor.innerHTML=event.clipboardData.getData('text/html')});
+        dialog.querySelector('input[type=file]').onchange=event=>{
+          for(const file of event.target.files){const image=document.createElement('img');image.alt=file.name;image.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(image)}
+          dialog.querySelector('#publish').disabled=false;
+        };
+        document.body.append(dialog);
+      };
+      document.querySelector('#group').append(trigger);
+    },16000);
+  </script>`;
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:delayedGroupComposer}));
+  await page.goto('https://www.facebook.com/groups/630127860416020');
+  const started=Date.now();
+  const result=await run(page,'group_prepare',approved,[],[photos[0]]);
+  expect(result).toMatchObject({ready:true});
+  expect(Date.now()-started).toBeGreaterThanOrEqual(15000);
+  expect(await page.evaluate(()=>window.sent)).toBeUndefined();
 });
 
 test('verifies observed sale photo controls and the source-group confirmation without destination URLs',async({page})=>{

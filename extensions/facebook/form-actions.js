@@ -51,6 +51,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (elements.length !== 1) throw new Error('El formulario cambió o hay controles ambiguos. No se repitió el envío.');
     return elements[0];
   };
+  const GROUP_EDITOR_TIMEOUT_MS = 60_000;
   const PHOTO_UPLOAD_TIMEOUT_MS = 60_000;
   const wait = async (find, stage = 'respuesta del formulario', timeoutMs = 15_000) => {
     const deadline=Date.now()+timeoutMs;
@@ -438,7 +439,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       const denial=Array.from(document.querySelectorAll('[role="alert"]')).filter(visible).some(node=>/no (puedes|tenés permiso para|tienes permiso para) publicar/i.test(text(node)));
       if(denial)throw new Error('Facebook indicó que esta cuenta no tiene permiso para publicar en el grupo.');
       return buttons('Escribe algo...').length===1;
-    },'cargar el editor del grupo; no se pudo determinar su disponibilidad');
+    },'cargar el editor del grupo; no se pudo determinar su disponibilidad',GROUP_EDITOR_TIMEOUT_MS);
     if(normalize(document.body.innerText).includes(normalize(content.groupText)))throw new Error('El grupo ya muestra el contenido aprobado. Verificá el post antes de publicar otro.');
     // A landing segment other than the approved one is a trusted alias only when
     // the page shows the approved group's name; otherwise it may be another group.
