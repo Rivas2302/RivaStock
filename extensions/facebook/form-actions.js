@@ -4,6 +4,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   try {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();
   const lines = value => (value ?? '').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ');
+  const locationParts=value=>normalize(value).replace(/\s*Ciudad$/i,'').split(',').map(part=>part.trim().toLocaleLowerCase('es'));
+  const sameMarketplaceLocation=(value,approved)=>{
+    const [city,...region]=locationParts(value),[approvedCity,...approvedRegion]=locationParts(approved);
+    return Boolean(city&&city===approvedCity&&(!region.length||!approvedRegion.length||region.join(',')===approvedRegion.join(',')));
+  };
   const editorText = editor => {
     // innerText inserts layout-dependent separators between Lexical paragraphs.
     // Read paragraph boundaries explicitly, preserving empty lines and inline breaks.
@@ -308,12 +313,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const description=field('Descripción', 'textarea');
     setValue(description, content.description);
     const place = one(Array.from(document.querySelectorAll('input[aria-label="Ubicación"][role="combobox"]')).filter(visible));
-    if (normalize(place.value) !== normalize(content.location)) {
+    if (!sameMarketplaceLocation(place.value,content.location)) {
       setValue(place,content.location);
-      const options=()=>Array.from(document.querySelectorAll('li[role="option"]')).filter(visible).filter(element=>normalize(text(element).replace(/Ciudad$/,'')).toLowerCase()===normalize(content.location).toLowerCase());
+      const options=()=>Array.from(document.querySelectorAll('li[role="option"]')).filter(visible).filter(element=>sameMarketplaceLocation(text(element),content.location));
       await wait(()=>options().length>0,'buscar la ciudad');
       one(options()).click();
-      await wait(()=>normalize(place.value).toLowerCase()===normalize(content.location).toLowerCase()&&place.getAttribute('aria-expanded')!=='true');
+      await wait(()=>sameMarketplaceLocation(place.value,content.location)&&place.getAttribute('aria-expanded')!=='true');
     }
     for (const label of ['Promocionar tras publicar', 'Ocultar a amigos']) {
       const control = document.querySelector(`input[aria-label="${label}"]`);
@@ -330,7 +335,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const photosConfirmed=()=>photoCounter()===photos.length||(previews().length===photos.length&&previews().every(img=>img.complete&&img.naturalWidth>0));
     try{await wait(photosConfirmed,'verificar las fotos cargadas',PHOTO_UPLOAD_TIMEOUT_MS);}
     catch{throw new Error(`Se esperaban ${photos.length} fotos cargadas; Facebook indica ${Number.isNaN(photoCounter())?'sin contador':photoCounter()} y se observaron ${previews().length} vistas previas${previews().some(img=>!img.complete||img.naturalWidth===0)?' (alguna sin terminar de cargar)':''}. No se envió.`);}
-    if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase()) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
+    if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||!sameMarketplaceLocation(place.value,content.location)) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
     progress('Verificando destinos antes de publicar');
     button('Siguiente').click();
     await wait(() => /Publicar en más lugares/.test(document.body.innerText) && buttons('Publicar').length === 1,'abrir el paso final de Marketplace');
@@ -536,7 +541,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
         const controls=Array.from(document.querySelectorAll('label[role="combobox"]')).filter(node=>accessibleName(node)===label);
         if(controls.length&&(controls.length!==1||!text(controls[0]).includes(expected)))throw new Error('Cambió una selección aprobada. No se envió.');
       }
-      const places=Array.from(document.querySelectorAll('input[aria-label="Ubicación"]'));if(places.some(node=>normalize(node.value).toLowerCase()!==normalize(content.location).toLowerCase()))throw new Error('Cambió la ubicación. No se envió.');
+      const places=Array.from(document.querySelectorAll('input[aria-label="Ubicación"]'));if(places.some(node=>!sameMarketplaceLocation(node.value,content.location)))throw new Error('Cambió la ubicación. No se envió.');
       for(const label of ['Promocionar tras publicar','Ocultar a amigos']){const control=document.querySelector('input[aria-label="'+label+'"]');if(control?.checked||control?.getAttribute('aria-checked')==='true')throw new Error('Cambió una preferencia de publicación. No se envió.');}
       // Same rule as preparation: the "Vista previa" panel image is not an uploaded photo.
       const previews=Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));

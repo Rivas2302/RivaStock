@@ -3,9 +3,33 @@ import {facebookFormAction} from '../extensions/facebook/form-actions.js';
 
 const approved={title:'Reloj smartwatch 7 mayas',description:'Tecnología al mejor precio 🎧\n\nEnvíos a todo el país',price:27000,condition:'new',location:'General Pico',groupText:'Reloj smartwatch 7 mayas\n\nTecnología al mejor precio 🎧\n\nPrecio: ARS 27000.00\nUbicación: General Pico',selection:{marketplace:false}};
 const photos=[{type:'image/png',extension:'png',data:'AQ=='},{type:'image/png',extension:'png',data:'Ag=='}];
+const marketplacePrepareForm=`<button>Guardar borrador</button>
+<label><span>Título</span><input type="text"></label><label><span>Precio</span><input type="text"></label>
+<label role="combobox" aria-label="Categoría"><span>Categoría</span></label><label role="combobox" aria-label="Estado"><span>Estado</span></label>
+<label><span>Descripción</span><textarea></textarea></label><input aria-label="Ubicación" role="combobox" value="General Pico">
+<input aria-label="Promocionar tras publicar" type="checkbox"><input aria-label="Ocultar a amigos" type="checkbox">
+<input type="file" multiple accept="image/*"><button id="next" disabled>Siguiente</button>
+<script>
+const category=document.querySelector('[aria-label="Categoría"]');category.onclick=()=>{category.setAttribute('aria-expanded','true');const option=document.createElement('button');option.setAttribute('aria-label','Bicicletas');option.textContent='Bicicletas';option.onclick=()=>{category.append(' Bicicletas');category.setAttribute('aria-expanded','false');option.remove()};document.body.append(option)};
+const condition=document.querySelector('[aria-label="Estado"]');condition.onclick=()=>{condition.setAttribute('aria-expanded','true');const option=document.createElement('div');option.setAttribute('role','option');option.textContent='Nuevo';option.onclick=()=>{condition.append(' Nuevo');condition.setAttribute('aria-expanded','false');option.remove()};document.body.append(option)};
+const place=document.querySelector('[aria-label="Ubicación"]');place.oninput=()=>{place.setAttribute('aria-expanded','true');const option=document.createElement('li');option.setAttribute('role','option');option.textContent='General PicoCiudad';option.onclick=()=>{place.value='General Pico';place.setAttribute('aria-expanded','false');option.remove()};document.body.append(option)};
+document.querySelector('input[type=file]').onchange=event=>{const image=document.createElement('img');image.alt='Foto de la publicación';image.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';document.body.append(image);document.body.insertAdjacentHTML('beforeend','<p>Fotos · '+event.target.files.length+'/10</p>');document.querySelector('#next').disabled=false};
+document.querySelector('#next').onclick=()=>{document.body.insertAdjacentHTML('beforeend','<h1>Publicar en más lugares</h1><button id="publish">Publicar</button>')};
+</script>`;
 async function run(page:any,action:string,content:any=approved,baseline:string[]=[],images:any[]=[]) {
   return page.evaluate(({source,action,content,baseline,images}:any)=>new Function('return ('+source+')')()(action,content,images,baseline),{source:facebookFormAction.toString(),action,content,baseline,images});
 }
+
+test('matches the approved Marketplace city when Facebook suggests the city without its province',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:marketplacePrepareForm}));
+  await page.goto('https://www.facebook.com/marketplace/create/item');
+  const content={...approved,title:'Bici Rodado 12',description:'Bici rodado 12. Precio: $120.000. Disponible: 3 unidades. Consultas por mensaje.',price:120000,category:'Bicicletas',location:'General Pico, La Pampa',selection:{marketplace:true}};
+  const result=await run(page,'marketplace_prepare',content,[],[{type:'image/png',extension:'png',data:'AQ=='}]);
+  expect(result).toMatchObject({ready:true});
+  expect(await page.locator('[aria-label="Ubicación"]').inputValue()).toBe('General Pico');
+  expect(await page.getByRole('button',{name:'Publicar',exact:true}).isEnabled()).toBe(true);
+  expect(await page.evaluate(()=>window.sent)).toBeUndefined();
+});
 
 function marketplaceCard(title:string,detail:string) {
   return `<section><div role="button" aria-label="${title}"></div><div role="button" aria-label="${title}">${title} ${detail}</div><div role="button" aria-label="Más opciones para ${title}"></div></section>`;
