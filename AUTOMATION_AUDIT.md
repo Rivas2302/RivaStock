@@ -87,7 +87,7 @@ Fecha: 18 de octubre de 2026. Se utilizó la publicación aprobada en RivaStock 
 
 ### Bugs corregidos después de la prueba
 
-1. **Vista previa de fotos de grupos.** La comparación usaba `currentSrc/src`, que puede cambiar aunque la foto adjunta siga siendo la misma. Una E2E reprodujo el mismo error exacto cambiando solo la URL de vista previa; ahora compara nombre y orden de los archivos `rivastock-N.ext` y conserva las validaciones de cantidad, eliminación y reordenamiento. Commit: `e538b43 fix(automation): keep group photo snapshot stable`.
+1. **Vista previa de fotos de grupos.** La comparación usaba `currentSrc/src`, que puede cambiar aunque la foto adjunta siga siendo la misma. Una E2E reprodujo el mismo error exacto cambiando solo la URL de vista previa; el primer arreglo comparaba nombres de archivo, pero no cubría que Facebook cambiara también el atributo `alt`. El arreglo definitivo de esta corrida usa orden estable y el `FileList` del formulario. El hash `e538b43` citado en la nota anterior no está en el historial Git disponible.
 2. **Ubicación de Marketplace.** Facebook sugiere la ciudad sin provincia (`General Pico`), aunque el dato aprobado incluya `General Pico, La Pampa`. La prueba real reprodujo el timeout `buscar la ciudad`; la validación ahora acepta el mismo nombre de ciudad si una de las dos partes no incluye provincia, y rechaza provincias distintas cuando ambas están presentes. Commit: `474f770 fix(automation): match Marketplace city suggestions`.
 3. **Timeout de dos E2E de fotos.** Las pruebas negativas esperaban el límite de 60 segundos con un timeout de test de 30 segundos. Se acortó únicamente el límite dentro del fixture controlado; el límite de producción permanece en 60 segundos. Commit: `31e2902 test(automation): keep photo timeout checks bounded`.
 4. **Carga lenta del editor de grupo.** El reintento real reprodujo `Facebook no respondió a tiempo durante: cargar el editor del grupo; no se pudo determinar su disponibilidad.` El paso todavía usaba el timeout general de 15 segundos. El límite específico del editor ahora es 60 segundos y una E2E comprueba que el editor aparezca después de 16 segundos sin autorizar el envío. Commit: `67ad1fc fix(automation): wait for slow group editors`.
@@ -108,3 +108,43 @@ Fecha: 18 de octubre de 2026. Se utilizó la publicación aprobada en RivaStock 
 ### Estado y siguiente paso
 
 Ninguno de los seis destinos quedó confirmado como publicado. El 19 de octubre se registraron como Cancelado los cuatro intentos desconocidos después de revisar sus grupos y pendientes. Clasificados y Marketplace siguen en Preparación fallida tras un reintento; ninguno autorizó ni envió una publicación. RivaStock muestra la extensión conectada y la cola activa, pero no muestra su versión cargada. El cambio del editor de 60 segundos y el arreglo de ciudad deben estar cargados en la extensión antes de repetir. Los cuatro intentos cancelados requieren una nueva aprobación explícita para volver a enviarse. La vista del grupo con 14 pendientes y las demás listas estaban ordenadas por más recientes; los elementos visibles no coincidían con la bicicleta.
+
+## Actualización: reintento real y corrección final
+
+Fecha: 19 de octubre de 2026. La extensión conectada era la versión **0.5.13** y la cola estaba activa. RivaStock mostró seis destinos para Bici Rodado 12 ($120.000, stock 3, una foto) con el texto aprobado registrado arriba.
+
+| Destino | Resultado real en RivaStock | Evidencia observada |
+|---|---|---|
+| Vende de todo - Gral. Pico | Resultado desconocido | `Cambió el orden o la carga de las fotos después de preparar. No se envió.` |
+| Clasificados General Pico (La Pampa) | Preparación fallida | `Facebook no respondió a tiempo durante: cargar el editor del grupo; no se pudo determinar su disponibilidad.` Falló antes de autorizar el envío. |
+| ➡️COMPRA Y VENTA-GRAL.PICO📢 | Resultado desconocido | Mismo error de comparación de fotos; no se envió. |
+| compra y venta general pico | Resultado desconocido | Mismo error de comparación de fotos; no se envió. |
+| Compra y venta en gral pico | Resultado desconocido | Mismo error de comparación de fotos; no se envió. |
+| Marketplace | Resultado desconocido | Mismo error de comparación de fotos; no se envió. |
+
+En Facebook se revisó el contenido publicado y pendiente de Vende de todo - Gral. Pico: no había publicaciones pendientes de esta bicicleta y los elementos recientes visibles eran de otros productos. La señal de RivaStock indicó que ninguno de los seis formularios llegó a enviar el anuncio. No quedó una publicación confirmada.
+
+### Bugs reproducidos y corregidos
+
+1. **La comprobación de fotos confundía un refresco de miniatura con un cambio de archivo.** Se reprodujo localmente con dos imágenes: se conservaron las fotos adjuntas, pero se cambiaron sus atributos `alt` y sus URLs como hace el refresco de vista previa; el guard devolvía el mismo error visto en producción. Ahora identifica las miniaturas por orden durante la preparación, compara el `FileList` estable si Facebook reemplaza los nodos, y sigue bloqueando la eliminación y el reordenamiento. Commit: `cfa506f fix(automation): keep photo order checks stable`.
+2. **Un error anterior al clic quedaba registrado como resultado desconocido.** El worker obtenía el checkpoint de autorización antes de volver a validar el formulario. Ahora hace una validación final sin clic antes del checkpoint y repite las validaciones inmediatamente antes del clic. El test del worker altera el precio después de preparar y comprueba que no se solicita el checkpoint. Commit: `0eab44a fix(automation): validate before authorizing posts`.
+
+### Verificación final
+
+- `npx.cmd playwright test e2e/facebook-delivery-decisions.spec.ts e2e/facebook-extension.spec.ts --reporter=line`: **22 pasaron**. Incluye refresco y reemplazo de miniaturas, ausencia/reordenamiento de fotos y validación antes del checkpoint.
+- `npm.cmd test`: **71 archivos y 456 pruebas pasaron**. Los mocks del worker se actualizaron para distinguir la prevalidación del clic de publicación.
+- `npm.cmd run lint`: pasó (`tsc --noEmit`).
+- `npm.cmd run build`: pasó y empaquetó la extensión **0.5.14**.
+
+### Estado actual y siguiente paso
+
+| Flujo | Estado |
+|---|---|
+| Adjuntar varias fotos y validar orden | **Pasa en E2E controlada**; el error real se reprodujo y corrigió. |
+| Publicación con una foto | **Pasa la preparación controlada**; falta repetir el envío real después de cargar la extensión corregida. |
+| Publicación sin fotos | **Bloqueada correctamente** antes de autorizar. |
+| Foto mayor de 2 MiB | **Pasa la prueba de optimización sintética** documentada arriba; no se hizo una carga real de producto en esta corrida. |
+| Estados visibles y actualización | **La UI existente** muestra estados por destino, errores legibles y consulta cada 10 s. La nueva validación previa al checkpoint evita que un rechazo pre-clic aparezca como resultado desconocido. |
+| Envío real a cinco grupos y Marketplace | **Pendiente de repetir**: en la corrida del 19/10 no se confirmó ningún envío. |
+
+La versión fuente es 0.5.14, pero la sesión conectada durante la prueba era 0.5.13. Después de que el despliegue ponga disponible el paquete nuevo, hay que actualizar la extensión de Chrome, comprobar que RivaStock informa 0.5.14 conectada y volver a aprobar Bici Rodado 12 para esos mismos seis destinos. Los registros desconocidos de la corrida anterior no se deben reenviar sin resolverlos en el historial; los cinco incluyen el mensaje explícito `No se envió.` y el sexto falló antes de autorizar.
