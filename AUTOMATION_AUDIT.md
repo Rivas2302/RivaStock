@@ -199,6 +199,8 @@ La causa reproducida fue que la captura opcional de `input[type=file]` devuelve 
 |---|---|
 | Preparación de los cinco grupos | **Falló en cuatro destinos** por el baseline con `null`; el restante agotó el tiempo cargando el editor. No se envió ningún post. |
 | Preparación de Marketplace | **Falló antes del envío** por el mismo baseline con `null`. |
-| Corrección | **Pasa E2E controlada**; está en el árbol local con extensión 0.5.15. |
-| Reintento real de Pop It | **Pendiente** de desplegar el paquete 0.5.15, cargarlo en Chrome y reintentar los destinos fallidos desde el historial. La aprobación existente está registrada; los reintentos de preparación no deben crear duplicados porque ningún destino llegó a publicar. |
+| Corrección | **Pasa E2E controlada**; commit `ede2b27` desplegado con extensión 0.5.15. |
+| Reintento real de Pop It | **Pendiente** de cargar la carpeta 0.5.15 en Chrome y reintentar los destinos fallidos desde el historial. La aprobación existente está registrada; ningún destino llegó a publicar. La cola quedó pausada mientras se actualiza la extensión. |
 | Estado visual | RivaStock ya muestra por destino «Preparación fallida» y el error técnico; el historial actualiza cada 10 segundos. |
+
+El push a `main` terminó y `rivastock-facebook-version.json` confirmó la versión 0.5.15 con SHA-256 `a278b54e25e1fa86512f63ba47df872f70a03831af45b389f9486e525897d3cb`. La extensión activa en Chrome sigue necesitando actualizarse desde el ZIP publicado antes del reintento real.
