@@ -163,3 +163,9 @@ Fecha: 19 de octubre de 2026. La pantalla de configuración de RivaStock confirm
 | Clasificados General Pico (La Pampa) | Preparación fallida antes de autorizar; la carga del editor excedió el tiempo. | La búsqueda del título no mostró el producto exacto. |
 
 No se envió ninguna publicación nueva durante esta revisión. El anuncio activo de Marketplace crea una duda de duplicación y de precio; queda pendiente confirmar si se debe actualizar ese anuncio existente o crear uno nuevo. No repetir la publicación de los seis destinos hasta resolver esa duda y cerrar la revisión correspondiente en el historial.
+
+## Actualización: borrador de Pop It preparado
+
+Fecha: 19 de octubre de 2026. Se preparó en RivaStock un borrador con una foto, precio `$4.600`, stock 2, condición Nuevo, ubicación General Pico, La Pampa, categoría Juguetes y juegos, los cinco grupos elegidos previamente y Marketplace. El texto del borrador usa el nombre `Pop It Con Forma De Paleta` y la descripción `Pop It con forma de paleta. Precio: $4.600. Disponible: 2 unidades. Consultas por mensaje.`
+
+La búsqueda exacta de `Pop It Con Forma De Paleta` en el selector del inventario devolvió 0 productos. La única ficha con la misma imagen, precio y stock aparece como `Pop It Con Forma De Pelota`. Para respetar el nombre visible en la imagen enviada, se usó `Paleta` solo en el borrador de Facebook; no se modificó el producto del inventario. El borrador quedó en la pantalla final de revisión y **no se confirmó ni se publicó**. Confirmar la identidad/nombre antes de continuar.
