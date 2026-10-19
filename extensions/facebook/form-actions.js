@@ -26,7 +26,10 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const amount=Number(raw.replaceAll('.','').replace(',','.'));
     return Number.isFinite(amount)&&Math.abs(amount-approved)<0.000001;
   };
-  const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo|^rivastock-\d+\./i.test(img.alt)).map(img=>img.currentSrc||img.src));
+  const photoSnapshot=root=>'prepared-photos:'+JSON.stringify(Array.from(root.querySelectorAll('img')).filter(img=>visible(img)&&img.complete&&img.naturalWidth>0&&/foto|vista previa|photo|^rivastock-\d+\./i.test(img.alt)).map(img=>{
+    // Facebook may replace a local preview URL after upload; the attached file names preserve the approved order.
+    return /^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(img.alt)?`file:${img.alt.toLowerCase()}`:img.currentSrc||img.src;
+  }));
   const photoSnapshotEntries=value=>{
     if(!value?.startsWith('prepared-photos:'))return null;
     try{const entries=JSON.parse(value.slice('prepared-photos:'.length));return Array.isArray(entries)?entries:null;}catch{return null;}

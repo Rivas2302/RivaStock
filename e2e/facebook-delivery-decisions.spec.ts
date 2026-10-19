@@ -89,7 +89,12 @@ for(const corrupt of [false,true])test(`Lexical paste preserves exact paragraphs
     const changedPhotos=await run(page,'submit',approved,result.baseline);
     expect(changedPhotos.error).toContain('Cambió el orden o la carga de las fotos');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
     await page.locator('[role="dialog"]').evaluate(dialog=>{const img=document.createElement('img');img.alt='rivastock-2.png';img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';dialog.append(img);});
+    await page.locator('[role="dialog"]').evaluate(dialog=>dialog.querySelector('img[alt="rivastock-1.png"]').before(dialog.querySelector('img[alt="rivastock-2.png"]')));
+    const reorderedPhotos=await run(page,'submit',approved,result.baseline);
+    expect(reorderedPhotos.error).toContain('Cambió el orden o la carga de las fotos');expect(await page.evaluate(()=>window.sent)).toBeUndefined();
+    await page.locator('[role="dialog"]').evaluate(dialog=>dialog.append(dialog.querySelector('img[alt="rivastock-2.png"]')));
     await page.getByRole('button',{name:'Eliminar archivo adjunto de la publicación'}).first().evaluate(node=>node.remove());
+    await page.locator('[role="dialog"] img[alt="rivastock-1.png"]').evaluate(async node=>{node.src+='#facebook-preview-refresh';await node.decode();});
     expect(await run(page,'submit',approved,result.baseline)).toEqual({clicked:true});
     expect(await page.evaluate(()=>window.sent)).toBe(true);
   }
