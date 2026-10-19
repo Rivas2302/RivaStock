@@ -112,6 +112,15 @@ test('leaves group-sale content unknown when the observed own-content card struc
   expect(result).toMatchObject({complete:true,items:[]});
 });
 
+test('ignores null optional markers in a persisted baseline',async({page})=>{
+  await page.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<main><p>No hay publicaciones para mostrar.</p></main>'}));
+  await page.goto('https://www.facebook.com/groups/549198298521944/my_posted_content');
+
+  const result=await snapshot(page,[`author:${authorId}`,null] as any);
+
+  expect(result).toMatchObject({complete:true,items:[]});
+});
+
 test('accepts exactly one new pending ID with the account author and approved title',()=>{
   const job={destination:{url:'https://www.facebook.com/groups/123'}};
   const baseline=['own-baseline:group','own:300000000000000'];

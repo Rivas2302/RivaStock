@@ -169,3 +169,36 @@ No se envió ninguna publicación nueva durante esta revisión. El anuncio activ
 Fecha: 19 de octubre de 2026. Se preparó en RivaStock un borrador con una foto, precio `$4.600`, stock 2, condición Nuevo, ubicación General Pico, La Pampa, categoría Juguetes y juegos, los cinco grupos elegidos previamente y Marketplace. El texto del borrador usa el nombre `Pop It Con Forma De Paleta` y la descripción `Pop It con forma de paleta. Precio: $4.600. Disponible: 2 unidades. Consultas por mensaje.`
 
 La búsqueda exacta de `Pop It Con Forma De Paleta` en el selector del inventario devolvió 0 productos. La única ficha con la misma imagen, precio y stock aparece como `Pop It Con Forma De Pelota`. Para respetar el nombre visible en la imagen enviada, se usó `Paleta` solo en el borrador de Facebook; no se modificó el producto del inventario. El borrador quedó en la pantalla final de revisión y **no se confirmó ni se publicó**. Confirmar la identidad/nombre antes de continuar.
+
+## Actualización: primer envío real de Pop It
+
+Fecha: 19 de octubre de 2026. El usuario autorizó `Pop It Con Forma De Paleta` ($4.600, una foto, stock 2) para los mismos cinco grupos y Marketplace. La extensión conectada era **0.5.14**. RivaStock registró el trabajo aprobado, pero no publicó en ningún destino: los seis se detuvieron antes del envío.
+
+| Destino | Resultado observado | Mensaje técnico |
+|---|---|---|
+| Vende de todo - Gral. Pico | Preparación fallida | `own_content_snapshot: Cannot read properties of null (reading 'startsWith')` |
+| Clasificados General Pico (La Pampa) | Preparación fallida | Facebook no respondió a tiempo al cargar el editor del grupo; no se pudo determinar su disponibilidad. |
+| ➡️COMPRA Y VENTA-GRAL.PICO📢 | Preparación fallida | `own_content_snapshot: Cannot read properties of null (reading 'startsWith')` |
+| compra y venta general pico | Preparación fallida | `own_content_snapshot: Cannot read properties of null (reading 'startsWith')` |
+| Compra y venta en gral pico | Preparación fallida | `own_content_snapshot: Cannot read properties of null (reading 'startsWith')` |
+| Marketplace | Preparación fallida | `Verificación final antes de autorizar el envío: Cannot read properties of null (reading 'startsWith')` |
+
+La causa reproducida fue que la captura opcional de `input[type=file]` devuelve `null` si Facebook elimina ese control en el paso final. Ese `null` se guardaba dentro de `baseline`; después, los lectores de marcadores llamaban `startsWith` sobre cada elemento. La prueba E2E nueva reprodujo el error exacto antes del cambio y pasó después. La corrección local elimina marcadores que no sean texto al crear el baseline y al leer intentos existentes. Se incrementó el paquete de la extensión a **0.5.15**.
+
+### Verificación de la corrección
+
+- `npx.cmd playwright test e2e/facebook-own-content.spec.ts e2e/facebook-extension.spec.ts --reporter=line`: **15 pasaron**.
+- `npm.cmd test`: **71 archivos y 456 pruebas pasaron**.
+- `npm.cmd run lint`: pasó (`tsc --noEmit`).
+- `npm.cmd run build`: pasó; generó la web y el paquete de extensión 0.5.15.
+- La primera corrida unitaria falló solo porque `src/lib/facebookPackage.test.ts` esperaba 0.5.14; se actualizó a 0.5.15 y la repetición pasó.
+
+### Estado y siguiente paso
+
+| Flujo | Estado |
+|---|---|
+| Preparación de los cinco grupos | **Falló en cuatro destinos** por el baseline con `null`; el restante agotó el tiempo cargando el editor. No se envió ningún post. |
+| Preparación de Marketplace | **Falló antes del envío** por el mismo baseline con `null`. |
+| Corrección | **Pasa E2E controlada**; está en el árbol local con extensión 0.5.15. |
+| Reintento real de Pop It | **Pendiente** de desplegar el paquete 0.5.15, cargarlo en Chrome y reintentar los destinos fallidos desde el historial. La aprobación existente está registrada; los reintentos de preparación no deben crear duplicados porque ningún destino llegó a publicar. |
+| Estado visual | RivaStock ya muestra por destino «Preparación fallida» y el error técnico; el historial actualiza cada 10 segundos. |
