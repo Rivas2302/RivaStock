@@ -204,3 +204,13 @@ La causa reproducida fue que la captura opcional de `input[type=file]` devuelve 
 | Estado visual | RivaStock ya muestra por destino «Preparación fallida» y el error técnico; el historial actualiza cada 10 segundos. |
 
 El push a `main` terminó y `rivastock-facebook-version.json` confirmó la versión 0.5.15 con SHA-256 `a278b54e25e1fa86512f63ba47df872f70a03831af45b389f9486e525897d3cb`. La extensión activa en Chrome sigue necesitando actualizarse desde el ZIP publicado antes del reintento real.
+
+## Actualización: reintento real tras actualizar la extensión
+
+Fecha: 19 de octubre de 2026. RivaStock confirmó «Versión local: 0.5.15» y una conexión de extensión 0.5.15 con cola activa; también seguía listando un dispositivo antiguo 0.5.14 pausado. Se reintentó únicamente `Vende de todo - Gral. Pico` del trabajo aprobado de Pop It.
+
+El destino pasó a «En ejecución» y luego volvió a «Preparación fallida». El detalle exacto fue `Verificación final antes de autorizar el envío: Cambió el orden o la carga de las fotos después de preparar. No se envió.` RivaStock registra `PREPARATION_INTERRUPTED`; el contador regresó a 0 en ejecución y 0 publicadas. Por tanto, **no se pulsó Publicar y no se envió este anuncio**. Tras el intento, la conexión 0.5.15 apareció sin conexión y la cola quedó pausada. Los otros cinco destinos conservan sus fallos originales y no se reintentaron.
+
+### Duda bloqueante antes de repetir
+
+La verificación de la foto volvió a rechazar una publicación de una sola imagen aunque la versión 0.5.15 ya incluye la corrección anterior de orden estable. El mensaje no permite saber si Facebook realmente quitó/cambió la foto, si reemplazó las miniaturas y el control de archivos durante la preparación, o si cambió otra parte del formulario. **No relajar esta guarda todavía**: hacerlo sin distinguir esas posibilidades podría autorizar un envío con foto ausente o distinta. Antes de nuevos reintentos hay que capturar, en un formulario real y sin pulsar «Publicar», el conteo/orden de miniaturas y el estado del `FileList` al preparar y durante la verificación final; también hay que restablecer la conexión de la extensión 0.5.15.
