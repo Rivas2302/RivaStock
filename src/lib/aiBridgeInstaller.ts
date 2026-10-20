@@ -72,6 +72,10 @@ if not exist "node_modules\.bin\tsx.cmd" (
 )
 
 set "CODEX_HOME=%USERPROFILE%\.rivastock-ai-bridge\codex"
+if not exist "%CODEX_HOME%" (
+  mkdir "%CODEX_HOME%" >nul 2>nul
+  if errorlevel 1 goto codex_home_failed
+)
 call node_modules\.bin\codex.cmd login status >nul 2>&1
 if errorlevel 1 (
   echo Se va a abrir el navegador para iniciar sesion en Codex.
@@ -108,6 +112,12 @@ exit /b 1
 :package_failed
 popd
 echo La instalacion no se completo. Revisa la conexion a Internet y vuelve a ejecutar este archivo.
+pause
+exit /b 1
+
+:codex_home_failed
+popd
+echo No se pudo crear la carpeta de datos de Codex: "%CODEX_HOME%".
 pause
 exit /b 1`;
 
