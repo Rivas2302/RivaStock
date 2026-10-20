@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { BridgeConfig, AIProvider, AIProviderId, AIProviderOptions } from './types.ts';
 
 const MAX_PROVIDER_OUTPUT = 20_000;
 const PROVIDER_TIMEOUT_MS = 120_000;
 const CLAUDE_RESTRICTED_MIN_VERSION = [2, 1, 248] as const;
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/;
+const CHAT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OUTPUT_SCHEMA = {
   type: 'object',
   properties: { text: { type: 'string' } },
@@ -21,27 +23,34 @@ export class MockProvider implements AIProvider {
 }
 
 export class CodexLocalProvider implements AIProvider {
-  constructor(private readonly executable: string, private readonly codexHome: string) {}
+  constructor(private readonly executable: string, private readonly codexHome: string, private readonly sessionDirectory: string) {}
 
-  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{ output: string }> {
-    const scratchDirectory = await mkdtemp(join(tmpdir(), 'rivastock-ai-'));
+  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{ output: string; session_id?: string }> {
+    let scratchDirectory: string | null = null;
     try {
       const { Codex } = await import('@openai/codex-sdk');
+      const workingDirectory = options.chat_id
+        ? await chatWorkingDirectory(this.sessionDirectory, 'codex', options.chat_id)
+        : (scratchDirectory = await mkdtemp(join(tmpdir(), 'rivastock-ai-')));
       const codex = new Codex({
         ...(this.executable ? { codexPathOverride: this.executable } : {}),
         env: restrictedCodexEnvironment(this.codexHome),
         config: { features: { shell_tool: false, view_image: false, sleep_tool: false } },
       });
-      const thread = codex.startThread({
+      const threadOptions = {
         model: options.model_id ?? 'gpt-6-luna',
         modelReasoningEffort: options.reasoning_effort ?? 'low',
-        workingDirectory: scratchDirectory,
+        workingDirectory,
         skipGitRepoCheck: true,
         sandboxMode: 'read-only',
         approvalPolicy: 'never',
         networkAccessEnabled: false,
         webSearchMode: 'disabled',
-      });
+      } as const;
+      const savedSessionId = options.session_id ? validSessionId(options.session_id) : null;
+      const thread = savedSessionId
+        ? codex.resumeThread(savedSessionId, threadOptions)
+        : codex.startThread(threadOptions);
       const executionSignal = AbortSignal.any([signal, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
       const turn = await thread.run(
         buildProviderPrompt(input, workspaceContext),
@@ -49,7 +58,11 @@ export class CodexLocalProvider implements AIProvider {
       );
       const parsed = JSON.parse(turn.finalResponse) as { text?: unknown };
       if (typeof parsed.text !== 'string' || parsed.text.trim().length === 0) throw new Error('Codex devolvió una respuesta vacía.');
-      return { output: boundOutput(parsed.text) };
+      const sessionId = thread.id;
+      if (options.chat_id && (!sessionId || !SESSION_ID_PATTERN.test(sessionId))) {
+        throw new Error('Codex no devolvió un identificador de chat válido.');
+      }
+      return { output: boundOutput(parsed.text), ...(options.chat_id && sessionId ? { session_id: sessionId } : {}) };
     } catch (error) {
       if (signal.aborted) throw new Error('La ejecución de Codex fue interrumpida.');
       if (error instanceof Error && /timed out|timeout|abort/i.test(error.message)) throw new Error('Codex excedió el límite de 120 segundos.');
@@ -57,33 +70,49 @@ export class CodexLocalProvider implements AIProvider {
       if (/auth|login|sign.?in|credential/i.test(message)) throw new Error('Codex no está autenticado. Abrí Codex en esta PC, iniciá sesión y reiniciá el AI Bridge.');
       throw new Error('Codex no pudo generar texto. Revisá la versión, autenticación y conectividad local.');
     } finally {
-      await rm(scratchDirectory, { recursive: true, force: true });
+      if (scratchDirectory) await rm(scratchDirectory, { recursive: true, force: true });
     }
   }
 }
 
 export class ClaudeLocalProvider implements AIProvider {
-  constructor(private readonly executable: string, private readonly maxBudgetUsd: string) {}
+  constructor(private readonly executable: string, private readonly maxBudgetUsd: string, private readonly sessionDirectory: string) {}
 
-  async execute(input: string, signal: AbortSignal, workspaceContext = ''): Promise<{ output: string }> {
-    const scratchDirectory = await mkdtemp(join(tmpdir(), 'rivastock-ai-'));
+  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{ output: string; session_id?: string }> {
+    let scratchDirectory: string | null = null;
     try {
-      const versionText = await runProcess(this.executable, ['--version'], '', scratchDirectory, 10_000, signal);
+      const workingDirectory = options.chat_id
+        ? await chatWorkingDirectory(this.sessionDirectory, 'claude', options.chat_id)
+        : (scratchDirectory = await mkdtemp(join(tmpdir(), 'rivastock-ai-')));
+      const savedSessionId = options.session_id ? validSessionId(options.session_id) : null;
+      const versionText = await runProcess(this.executable, ['--version'], '', workingDirectory, 10_000, signal);
       const version = parseVersion(versionText.stdout);
       if (!version || compareVersion(version, CLAUDE_RESTRICTED_MIN_VERSION) < 0) {
         throw new Error('Claude Code requiere la versión 2.1.248 o posterior para usar el modo restringido.');
       }
-      const result = await runProcess(this.executable, [
+      const args = [
         '--restricted', '--safe-mode', '--print', '--output-format', 'json',
-        '--input-format', 'text', '--no-session-persistence', '--max-turns', '1',
+        '--input-format', 'text', '--max-turns', '1',
         '--max-budget-usd', this.maxBudgetUsd, '--disallowedTools', '*',
-      ], buildProviderPrompt(input, workspaceContext), scratchDirectory, PROVIDER_TIMEOUT_MS, signal);
+      ];
+      if (!options.chat_id) args.push('--no-session-persistence');
+      if (savedSessionId) args.push('--resume', savedSessionId);
+      const result = await runProcess(this.executable, args,
+        buildProviderPrompt(input, workspaceContext), workingDirectory, PROVIDER_TIMEOUT_MS, signal);
       let payload: unknown;
       try { payload = JSON.parse(result.stdout); } catch { throw new Error('Claude Code devolvió una respuesta inválida.'); }
       const output = payload && typeof payload === 'object' && 'result' in payload
         ? (payload as { result?: unknown }).result : null;
       if (typeof output !== 'string' || output.trim().length === 0) throw new Error('Claude Code devolvió una respuesta vacía.');
-      return { output: boundOutput(output) };
+      const sessionId = payload && typeof payload === 'object' && 'session_id' in payload
+        ? (payload as { session_id?: unknown }).session_id : null;
+      if (options.chat_id && (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId))) {
+        throw new Error('Claude Code no devolvió el identificador del chat.');
+      }
+      return {
+        output: boundOutput(output),
+        ...(options.chat_id && typeof sessionId === 'string' ? { session_id: sessionId } : {}),
+      };
     } catch (error) {
       if (signal.aborted) throw new Error('La ejecución de Claude Code fue interrumpida.');
       if (error instanceof Error && error.message.startsWith('Claude Code requiere')) throw error;
@@ -92,9 +121,23 @@ export class ClaudeLocalProvider implements AIProvider {
       }
       throw new Error('Claude Code no pudo generar texto. Revisá la autenticación, versión y conexión local.');
     } finally {
-      await rm(scratchDirectory, { recursive: true, force: true });
+      if (scratchDirectory) await rm(scratchDirectory, { recursive: true, force: true });
     }
   }
+}
+
+async function chatWorkingDirectory(sessionDirectory: string | undefined, provider: 'codex' | 'claude', chatId: string): Promise<string> {
+  if (!sessionDirectory || !CHAT_ID_PATTERN.test(chatId)) throw new Error('Identificador de chat inválido.');
+  const root = resolve(sessionDirectory);
+  const directory = resolve(root, provider, chatId);
+  if (!directory.startsWith(`${root}${sep}`)) throw new Error('La ruta del chat no es válida.');
+  await mkdir(directory, { recursive: true });
+  return directory;
+}
+
+function validSessionId(value: string): string {
+  if (!SESSION_ID_PATTERN.test(value)) throw new Error('Identificador de sesión inválido.');
+  return value;
 }
 
 function buildProviderPrompt(input: string, workspaceContext: string): string {
@@ -109,10 +152,10 @@ export function providerFor(providerId: AIProviderId, config: BridgeConfig): AIP
   if (providerId === 'mock') return new MockProvider();
   if (providerId === 'codex') {
     if (!config.codexEnabled) throw new Error('Codex está deshabilitado. Configurá AI_BRIDGE_ENABLE_CODEX=true después de revisar la autenticación y las condiciones de uso.');
-    return new CodexLocalProvider(config.codexExecutable, config.codexHome);
+    return new CodexLocalProvider(config.codexExecutable, config.codexHome, config.sessionDirectory);
   }
   if (!config.claudeEnabled) throw new Error('Claude Code está deshabilitado. Configurá AI_BRIDGE_ENABLE_CLAUDE=true después de revisar la autenticación, facturación y condiciones de uso.');
-  return new ClaudeLocalProvider(config.claudeExecutable, config.claudeMaxBudgetUsd);
+  return new ClaudeLocalProvider(config.claudeExecutable, config.claudeMaxBudgetUsd, config.sessionDirectory);
 }
 
 function restrictedCodexEnvironment(codexHome: string): Record<string, string> {

@@ -50,12 +50,14 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
       createCombinedContext(workspaceFiles, projectFiles, businessFiles), {
         model_id: jobContext.model_id ?? 'gpt-6-luna',
         reasoning_effort: jobContext.reasoning_effort ?? 'low',
+        chat_id: jobContext.chat_id,
+        session_id: jobContext.provider_session_id,
       });
     if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
     if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
       throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');
     }
-    await client.complete(workerId, job.id, result.output.trim());
+    await client.complete(workerId, job.id, result.output.trim(), result.session_id);
     process.stdout.write(`[AI Bridge] Tarea ${job.id} completada con ${job.provider}.\n`);
   } catch (error) {
     const safeMessage = reportError(error instanceof Error ? error.message : 'Error local del proveedor.');

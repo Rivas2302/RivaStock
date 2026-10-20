@@ -119,7 +119,9 @@ Con la PC apagada, la tarea queda pendiente. Al volver a iniciar el worker, debe
 
 ## 7. Codex real
 
-El puente usa el SDK oficial de TypeScript (`@openai/codex-sdk`) y Codex CLI 0.163.0, fijado localmente. Cada solicitud corre desde una carpeta temporal vacía, en sandbox `read-only`, sin red para las herramientas del agente, sin directorios adicionales y con un perfil `CODEX_HOME` aislado. La configuración también desactiva explícitamente las herramientas `shell`, `view_image` y `sleep`.
+El puente usa el SDK oficial de TypeScript (`@openai/codex-sdk`) y Codex CLI 0.163.0, fijado localmente. Las tareas puntuales corren desde una carpeta temporal vacía; los chats persistentes reanudan su hilo de Codex por identificador y usan una carpeta de trabajo estable por chat. Ambos modos mantienen sandbox `read-only`, sin red para las herramientas del agente, sin directorios adicionales y con un perfil `CODEX_HOME` aislado. La configuración también desactiva explícitamente las herramientas `shell`, `view_image` y `sleep`.
+
+El historial visible de cada chat y el identificador opaco del hilo se guardan en Supabase bajo el UID propietario. Los archivos de sesión que administra Codex quedan en el `CODEX_HOME` aislado del Bridge. Las carpetas de trabajo persistentes se guardan por defecto en `%USERPROFILE%\.rivastock-ai-bridge\sessions`; podés cambiar esa ruta con `AI_BRIDGE_SESSION_DIR`.
 
 Si marcás **Proyecto RivaStock** y configurás `AI_BRIDGE_PROJECT_ROOT` a una copia local del repositorio, el worker lee una lista fija de documentación, interfaces y esquemas SQL y los agrega al pedido como texto. El paquete independiente no incluye el repositorio. No entrega acceso al disco al modelo ni lee `.env`, credenciales, historial Git o archivos fuera de esa lista. Las Skills sincronizadas se copian bajo `.rivastock-ai/workspace`.
 
@@ -143,7 +145,7 @@ Reiniciá el worker. La prueba real puede consumir el uso habilitado en esa cuen
 
 ## 8. Claude Code
 
-El adaptador usa `claude -p` con `--restricted`, `--safe-mode`, sin herramientas, sin historial de sesión, un turno y límite de presupuesto de cliente de USD 1.00 por tarea. La documentación vigente de Anthropic exige Claude Code 2.1.248 o posterior para `--restricted`; en esta PC se detectó 2.1.204, así que el adaptador debe rechazarlo hasta que se actualice.
+El adaptador usa `claude -p` con `--restricted`, `--safe-mode`, sin herramientas, un turno y límite de presupuesto de cliente de USD 1.00 por tarea. Las tareas puntuales desactivan la persistencia local; los chats guardan el `session_id` de Claude Code y pasan `--resume` en los turnos siguientes. Claude administra sus transcripciones locales en el perfil de Claude Code de esa PC. La carpeta de trabajo estable por chat queda bajo `%USERPROFILE%\.rivastock-ai-bridge\sessions`, salvo que configures `AI_BRIDGE_SESSION_DIR`. La documentación vigente de Anthropic exige Claude Code 2.1.248 o posterior para `--restricted`; en esta PC se detectó 2.1.204, así que el adaptador debe rechazarlo hasta que se actualice.
 
 Antes de habilitarlo:
 
@@ -189,5 +191,6 @@ Estas verificaciones locales no aplican la migración, publican la Edge Function
 - [Codex SDK de TypeScript](https://github.com/openai/codex/blob/main/sdk/typescript/README.md)
 - [Codex CLI: autenticación, cuenta de API y revocación](https://help.openai.com/en/articles/11381614-api-codex-cli-and-sign-in-with-chatgpt)
 - [Uso no interactivo y modo restringido de Claude Code](https://code.claude.com/docs/en/cli-usage)
+- [Salida JSON y reanudación de sesiones de Claude Code](https://code.claude.com/docs/en/headless)
 - [Claude Code con planes Pro o Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)
 - [Condiciones de uso de la API de Anthropic para personas individuales](https://support.anthropic.com/en/articles/8987200-can-i-use-the-anthropic-api-for-individual-use)

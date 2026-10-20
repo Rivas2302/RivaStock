@@ -14,8 +14,13 @@ export class BridgeClient {
     return response.data;
   }
 
-  async complete(workerId: string, jobId: string, output: string): Promise<void> {
-    await this.post('worker_complete', { worker_id: workerId, job_id: jobId, output });
+  async complete(workerId: string, jobId: string, output: string, sessionId?: string): Promise<void> {
+    await this.post('worker_complete', {
+      worker_id: workerId,
+      job_id: jobId,
+      output,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    });
   }
 
   async fail(workerId: string, jobId: string, error: string): Promise<void> {

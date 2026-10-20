@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Bot, Check, Clock3, Copy, Download, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
+import AIChats from '../components/AIChats';
 import { createAIBridgeWindowsInstaller } from '../lib/aiBridgeInstaller';
 import {
   createAIJob,
@@ -79,7 +80,7 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<'console' | 'workspace'>('console');
+  const [view, setView] = useState<'console' | 'chats' | 'workspace'>('console');
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
@@ -268,7 +269,7 @@ export default function AIHub() {
         <div>
           <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-300"><Sparkles size={16}/>RivaStock AI Bridge</p>
           <h2 className="text-2xl font-bold md:text-3xl">IA</h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Enviá una instrucción de texto al agente conectado en tu PC y seguí su estado desde acá.</p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Usá tareas puntuales o mantené una conversación persistente con el agente conectado en tu PC.</p>
         </div>
       </header>
 
@@ -319,10 +320,11 @@ export default function AIHub() {
 
       <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700" aria-label="Secciones de IA">
         <button type="button" onClick={() => setView('console')} aria-current={view === 'console' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'console' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Consola</button>
+        <button type="button" onClick={() => setView('chats')} aria-current={view === 'chats' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'chats' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Chats</button>
         <button type="button" onClick={() => setView('workspace')} aria-current={view === 'workspace' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'workspace' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Skills y conocimiento</button>
       </nav>
 
-      {view === 'workspace' ? <AIWorkspace/> : <>
+      {view === 'workspace' ? <AIWorkspace/> : view === 'chats' ? <AIChats/> : <>
 
       <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
         <label className="block space-y-2">

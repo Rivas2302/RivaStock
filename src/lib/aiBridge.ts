@@ -42,6 +42,38 @@ export interface AIJob {
   attempt_count: number;
 }
 
+export interface AIChat {
+  id: string;
+  provider: AIProviderId;
+  title: string;
+  model_id: CodexModelId | null;
+  reasoning_effort: CodexReasoningEffort | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+}
+
+export interface AIChatMessage {
+  id: string;
+  job_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface AIChatJob {
+  id: string;
+  status: AIJobStatus;
+  error: string | null;
+  created_at: string;
+}
+
+export interface AIChatDetail {
+  chat: AIChat;
+  messages: AIChatMessage[];
+  jobs: AIChatJob[];
+}
+
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai-bridge', { body });
   if (error) {
@@ -94,6 +126,40 @@ export async function getAIJob(jobId: string): Promise<AIJob> {
 export async function getRecentAIJobs(): Promise<AIJob[]> {
   const result = await invoke<{ jobs: AIJob[] }>({ action: 'recent' });
   return result.jobs;
+}
+
+export async function getAIChats(): Promise<AIChat[]> {
+  const result = await invoke<{ chats: AIChat[] }>({ action: 'chat_list' });
+  return result.chats;
+}
+
+export async function getAIChat(chatId: string): Promise<AIChatDetail> {
+  return invoke({ action: 'chat_get', chat_id: chatId });
+}
+
+export async function sendAIChatMessage(
+  chatId: string | null,
+  input: string,
+  provider: AIProviderId,
+  idempotencyKey: string,
+  context: {
+    includeBusinessContext: boolean;
+    includeProjectContext: boolean;
+    modelId: CodexModelId;
+    reasoningEffort: CodexReasoningEffort;
+  },
+): Promise<{ chat_id: string; job: AIJob }> {
+  return invoke({
+    action: 'chat_send',
+    chat_id: chatId,
+    input,
+    provider,
+    idempotency_key: idempotencyKey,
+    include_business_context: context.includeBusinessContext,
+    include_project_context: context.includeProjectContext,
+    model_id: provider === 'codex' ? context.modelId : null,
+    reasoning_effort: provider === 'codex' ? context.reasoningEffort : null,
+  });
 }
 
 export async function getAIBridgeState(): Promise<AIBridgeStatus> {

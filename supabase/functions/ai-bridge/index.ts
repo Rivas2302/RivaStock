@@ -95,8 +95,14 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   const message = error?.message ?? '';
   if (message.includes('Solo el propietario')) return jsonResponse({ error: 'Solo el administrador propietario puede usar IA.' }, 403, origin);
   if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409, origin);
+  if (message.includes('Actualizá el AI Bridge')) return jsonResponse({ error: message }, 409, origin);
+  if (message.includes('No se encontró el chat')) return jsonResponse({ error: message }, 404, origin);
+  if (message.includes('Esperá a que termine') || message.includes('Ya hay diez tareas')
+    || message.includes('no se puede cambiar')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
-    || message.includes('Modelo') || message.includes('razonamiento') || message.includes('Nombre de computadora')) {
+    || message.includes('mensaje debe') || message.includes('Opciones de contexto')
+    || message.includes('Modelo') || message.includes('razonamiento') || message.includes('configuración enviada')
+    || message.includes('Nombre de computadora')) {
     return jsonResponse({ error: message }, status, origin);
   }
   console.error('[ai-bridge] Database operation failed.');
@@ -154,11 +160,20 @@ serve(async (req) => {
     if (action === 'worker_context') {
       if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
       const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
-        .select('include_business_context, include_project_context, model_id, reasoning_effort')
+        .select('include_business_context, include_project_context, model_id, reasoning_effort, chat_id')
         .eq('id', body.job_id).eq('user_id', ownerUid)
         .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
       if (jobError) return safeDbError(jobError, 400, origin);
       if (!job) return jsonResponse({ error: 'La tarea no está reservada por este worker.' }, 409, origin);
+
+      let providerSessionId: string | null = null;
+      if (job.chat_id) {
+        const { data: chat, error: chatError } = await serviceClient.from('ai_chats')
+          .select('provider_session_id')
+          .eq('id', job.chat_id).eq('user_id', ownerUid).maybeSingle();
+        if (chatError) return safeDbError(chatError, 400, origin);
+        providerSessionId = chat?.provider_session_id ?? null;
+      }
 
       let products: Array<Record<string, unknown>> = [];
       let totalProducts = 0;
@@ -178,6 +193,8 @@ serve(async (req) => {
         include_project_context: job.include_project_context,
         model_id: job.model_id ?? 'gpt-6-luna',
         reasoning_effort: job.reasoning_effort ?? 'low',
+        chat_id: job.chat_id,
+        provider_session_id: providerSessionId,
         products,
         total_products: totalProducts,
       }, 200, origin);
@@ -201,9 +218,16 @@ serve(async (req) => {
         if (!isUuid(body.job_id) || typeof body.output !== 'string' || body.output.trim().length === 0 || body.output.length > 20_000) {
           return jsonResponse({ error: 'Resultado inválido.' }, 400, origin);
         }
+        if (body.session_id !== undefined && (typeof body.session_id !== 'string'
+          || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(body.session_id))) {
+          return jsonResponse({ error: 'Identificador de sesión inválido.' }, 400, origin);
+        }
         rpcAction = 'complete';
         jobId = body.job_id;
-        payload = { output: body.output };
+        payload = {
+          output: body.output,
+          ...(typeof body.session_id === 'string' ? { session_id: body.session_id } : {}),
+        };
         break;
       default:
         if (!isUuid(body.job_id) || typeof body.error !== 'string' || body.error.trim().length === 0 || body.error.length > 1000) {
@@ -275,6 +299,67 @@ serve(async (req) => {
     return jsonResponse({ job: data }, 201, origin);
   }
 
+  if (action === 'chat_list') {
+    const { data, error } = await userClient.from('ai_chats')
+      .select('id, provider, title, model_id, reasoning_effort, created_at, updated_at, last_message_at')
+      .order('last_message_at', { ascending: false }).limit(50);
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ chats: data ?? [] }, 200, origin);
+  }
+
+  if (action === 'chat_get') {
+    if (!isUuid(body.chat_id)) return jsonResponse({ error: 'Identificador de chat inválido.' }, 400, origin);
+    const { data: chat, error: chatError } = await userClient.from('ai_chats')
+      .select('id, provider, title, model_id, reasoning_effort, created_at, updated_at, last_message_at')
+      .eq('id', body.chat_id).maybeSingle();
+    if (chatError) return safeDbError(chatError, 400, origin);
+    if (!chat) return jsonResponse({ error: 'No se encontró el chat.' }, 404, origin);
+
+    const [{ data: descendingMessages, error: messagesError }, { data: jobs, error: jobsError }] = await Promise.all([
+      userClient.from('ai_chat_messages')
+        .select('id, job_id, role, content, created_at')
+        .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
+      userClient.from('ai_jobs')
+        .select('id, status, error, created_at')
+        .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).limit(100),
+    ]);
+    if (messagesError) return safeDbError(messagesError, 400, origin);
+    if (jobsError) return safeDbError(jobsError, 400, origin);
+    return jsonResponse({
+      chat,
+      messages: (descendingMessages ?? []).reverse(),
+      jobs: (jobs ?? []).reverse(),
+    }, 200, origin);
+  }
+
+  if (action === 'chat_send') {
+    const chatId = body.chat_id === undefined || body.chat_id === null
+      ? null : typeof body.chat_id === 'string' ? body.chat_id : undefined;
+    if (chatId === undefined || (chatId !== null && !isUuid(chatId)) || !isUuid(body.idempotency_key)
+      || typeof body.provider !== 'string' || !ALLOWED_PROVIDERS.has(body.provider)
+      || typeof body.input !== 'string' || body.input.trim().length === 0 || body.input.length > 8000
+      || (body.include_business_context !== undefined && typeof body.include_business_context !== 'boolean')
+      || (body.include_project_context !== undefined && typeof body.include_project_context !== 'boolean')
+      || (body.model_id !== undefined && body.model_id !== null
+        && (typeof body.model_id !== 'string' || !ALLOWED_CODEX_MODELS.has(body.model_id)))
+      || (body.reasoning_effort !== undefined && body.reasoning_effort !== null
+        && (typeof body.reasoning_effort !== 'string' || !ALLOWED_REASONING_EFFORTS.has(body.reasoning_effort)))) {
+      return jsonResponse({ error: 'Elegí un proveedor e ingresá un mensaje de hasta 8000 caracteres.' }, 400, origin);
+    }
+    const { data, error } = await userClient.rpc('ai_send_chat_message', {
+      p_idempotency_key: body.idempotency_key,
+      p_provider: body.provider,
+      p_input: body.input,
+      p_include_business_context: body.include_business_context === true,
+      p_include_project_context: body.include_project_context === true,
+      p_model_id: typeof body.model_id === 'string' ? body.model_id : null,
+      p_reasoning_effort: typeof body.reasoning_effort === 'string' ? body.reasoning_effort : null,
+      p_chat_id: chatId,
+    });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ chat_id: data.chat_id, job: data.job }, 201, origin);
+  }
+
   if (action === 'get') {
     if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
     const { data, error } = await userClient.from('ai_jobs')
@@ -288,6 +373,7 @@ serve(async (req) => {
   if (action === 'recent') {
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
+      .is('chat_id', null)
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error, 400, origin);
     return jsonResponse({ jobs: data ?? [] }, 200, origin);
