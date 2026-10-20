@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, open } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import * as lockfile from 'proper-lockfile';
 import { BridgeClient } from './client.ts';
 import { providerFor } from './providers.ts';
 import { collectProjectContext, createBusinessContext, createCombinedContext, syncWorkspaceFiles } from './workspace.ts';
@@ -94,7 +97,37 @@ async function run(): Promise<void> {
   process.stdout.write('[AI Bridge] Detenido.\n');
 }
 
-run().catch((error) => {
+async function runWithInstanceLock(): Promise<void> {
+  const userDirectory = process.env.USERPROFILE || process.env.HOME || '.';
+  const lockTarget = join(userDirectory, '.rivastock-ai-bridge', 'worker');
+  await mkdir(dirname(lockTarget), { recursive: true });
+  const targetFile = await open(lockTarget, 'a');
+  await targetFile.close();
+
+  const releaseLock = await lockfile.lock(lockTarget, {
+    stale: 30_000,
+    update: 10_000,
+    retries: 0,
+    onCompromised: (error) => {
+      stopping = true;
+      activeController?.abort();
+      process.stderr.write(`[AI Bridge] Se perdió el bloqueo de instancia: ${reportError(error.message)}\n`);
+    },
+  }).catch((error: unknown) => {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ELOCKED') {
+      throw new Error('Ya hay otro RivaStock AI Bridge abierto para este usuario de Windows. Cerrá la otra ventana antes de iniciar este Bridge.');
+    }
+    throw error;
+  });
+
+  try {
+    await run();
+  } finally {
+    await releaseLock();
+  }
+}
+
+runWithInstanceLock().catch((error) => {
   process.stderr.write(`[AI Bridge] Inicio fallido: ${reportError(error instanceof Error ? error.message : 'Error de configuración.')}\n`);
   process.exitCode = 1;
 });
