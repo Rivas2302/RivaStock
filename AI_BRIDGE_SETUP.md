@@ -76,6 +76,10 @@ Desde **RivaStock > IA > Vincular esta PC**, descargá el instalador personaliza
 
 Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js no está instalado, el instalador abre su página oficial para instalarlo; después, volvé a ejecutar el archivo `.bat`. El código inicial vence a los 30 minutos y se activa al empezar el instalador, antes de descargar dependencias. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP luego de extraerlo.
 
+### Actualizar una instalación existente en Windows
+
+Desde **RivaStock > IA**, elegí **Actualizar AI Bridge** y descargá el ZIP. Cerrá la ventana donde corre el Bridge, extraé el ZIP y abrí `Actualizar RivaStock AI Bridge.bat`. En el selector, elegí la carpeta existente que contiene `.env` y `package`. El actualizador descarga la versión vigente, conserva el vínculo y los datos locales, instala las dependencias y vuelve a iniciar el worker. No crea otro vínculo ni reemplaza la PC.
+
 ### Otros sistemas o instalación manual
 
 Descargá el paquete `.tgz` desde **RivaStock > IA > Vincular esta PC** y corré:

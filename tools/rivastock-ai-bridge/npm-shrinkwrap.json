@@ -1,12 +1,12 @@
 {
   "name": "rivastock-ai-bridge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "rivastock-ai-bridge",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@openai/codex": "0.163.0",
         "@openai/codex-sdk": "0.163.0"

@@ -3,7 +3,7 @@ import { Bot, Check, Clock3, Copy, Download, Loader2, Sparkles, Wifi, WifiOff, Z
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
-import { createAIBridgeWindowsInstaller } from '../lib/aiBridgeInstaller';
+import { createAIBridgeWindowsInstaller, createAIBridgeWindowsUpdater } from '../lib/aiBridgeInstaller';
 import {
   createAIJob,
   getAIBridgeState,
@@ -73,6 +73,7 @@ export default function AIHub() {
   const [pairing, setPairing] = useState<AIBridgePairing | null>(null);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [installerBusy, setInstallerBusy] = useState(false);
+  const [updaterBusy, setUpdaterBusy] = useState(false);
   const [connectionNotice, setConnectionNotice] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [pairingCopied, setPairingCopied] = useState(false);
@@ -261,6 +262,27 @@ export default function AIHub() {
     }
   };
 
+  const downloadBridgeUpdater = () => {
+    if (updaterBusy) return;
+    setUpdaterBusy(true);
+    setConnectionError('');
+    try {
+      const packageUrl = new URL('/downloads/rivastock-ai-bridge-latest.tgz', window.location.origin).toString();
+      const updater = createAIBridgeWindowsUpdater(packageUrl);
+      const archive = updater.buffer.slice(updater.byteOffset, updater.byteOffset + updater.byteLength) as ArrayBuffer;
+      const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'RivaStock-AI-Bridge-Update.zip';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err) {
+      setConnectionError(err instanceof Error ? err.message : 'No se pudo preparar el actualizador.');
+    } finally {
+      setUpdaterBusy(false);
+    }
+  };
+
   if (!isOwner) return null;
 
   return (
@@ -291,8 +313,10 @@ export default function AIHub() {
 
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Vincular o reemplazar PC' : 'Vincular esta PC'}</button>
+          {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-200">{updaterBusy ? 'Preparando actualizador…' : 'Actualizar AI Bridge'}</button>}
           {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Desvincular</button>}
         </div>
+        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá el actualizador, cerrá la ventana del Bridge y ejecutalo. Conserva el vínculo y las sesiones de esta PC.</p>}
 
         {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
           <div className="flex flex-wrap items-center justify-between gap-2">
