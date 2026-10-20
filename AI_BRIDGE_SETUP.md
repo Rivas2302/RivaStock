@@ -68,16 +68,17 @@ No agregues el token del worker ni la clave `service_role` a Vercel. El puente n
 
 ## 5. Instalar y arrancar el worker
 
-Para configurar una PC de cualquier cuenta, instalá el worker en esa computadora y seguí estos pasos:
+Para configurar una PC de cualquier cuenta:
 
 ```powershell
-Set-Location .\tools\rivastock-ai-bridge
+tar -xzf .\rivastock-ai-bridge-latest.tgz
+Set-Location .\package
 npm install
 Copy-Item .env.example .env
 notepad .env
 ```
 
-En **RivaStock > IA**, presioná **Vincular esta PC** y copiá los datos de conexión al archivo `.env`. El código vence a los cinco minutos y se activa cuando el worker se conecta por primera vez. No lo compartas con otra cuenta.
+El archivo se descarga desde **RivaStock > IA > Vincular esta PC**. Copiá los datos que muestra la aplicación al `.env`. El código vence a los cinco minutos y se activa cuando el worker se conecta por primera vez. No lo compartas con otra cuenta.
 
 ```text
 AI_BRIDGE_ENDPOINT=https://<PROJECT_REF>.supabase.co/functions/v1/ai-bridge
@@ -110,14 +111,14 @@ Con la PC apagada, la tarea queda pendiente. Al volver a iniciar el worker, debe
 
 El puente usa el SDK oficial de TypeScript (`@openai/codex-sdk`) y Codex CLI 0.163.0, fijado localmente. Cada solicitud corre desde una carpeta temporal vacía, en sandbox `read-only`, sin red para las herramientas del agente, sin directorios adicionales y con un perfil `CODEX_HOME` aislado. La configuración también desactiva explícitamente las herramientas `shell`, `view_image` y `sleep`.
 
-Si marcás **Proyecto RivaStock**, el worker lee una lista fija de documentación, interfaces y esquemas SQL del repositorio y los agrega al pedido como texto. No entrega acceso al disco al modelo ni lee `.env`, credenciales, historial Git o archivos fuera de esa lista. Las Skills sincronizadas se copian bajo `.rivastock-ai/workspace`.
+Si marcás **Proyecto RivaStock** y configurás `AI_BRIDGE_PROJECT_ROOT` a una copia local del repositorio, el worker lee una lista fija de documentación, interfaces y esquemas SQL y los agrega al pedido como texto. El paquete independiente no incluye el repositorio. No entrega acceso al disco al modelo ni lee `.env`, credenciales, historial Git o archivos fuera de esa lista. Las Skills sincronizadas se copian bajo `.rivastock-ai/workspace`.
 
 Si marcás **Catálogo e inventario**, la Edge Function consulta hasta 100 productos de `products`, siempre filtrados por el UID propietario. Incluye nombre, categoría, descripción, precio de compra/venta y existencias. Es una consulta de lectura acotada, no una conexión SQL abierta.
 
 En esta PC, Codex CLI 0.163.0 ya quedó autenticado con **Sign in with ChatGPT**, habilitado en el worker y verificado con una tarea real breve. Para configurar otra PC, autenticá el perfil aislado del puente desde PowerShell:
 
 ```powershell
-Set-Location .\tools\rivastock-ai-bridge
+Set-Location .\package
 $env:CODEX_HOME = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\codex'
 & .\node_modules\.bin\codex.cmd login
 ```

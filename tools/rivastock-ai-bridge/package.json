@@ -1,8 +1,15 @@
 {
   "name": "rivastock-ai-bridge",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
+  "files": [
+    ".env.example",
+    "README.md",
+    "src/**",
+    "tsconfig.json",
+    "npm-shrinkwrap.json"
+  ],
   "engines": {
     "node": ">=20.6"
   },

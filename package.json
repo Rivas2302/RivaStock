@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/package-facebook-extension.mjs",
-    "prebuild": "node scripts/package-facebook-extension.mjs",
+    "predev": "node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
+    "prebuild": "node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
+    "package:ai-bridge": "node scripts/package-ai-bridge.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

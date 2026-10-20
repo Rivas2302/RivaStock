@@ -17,5 +17,6 @@ supabase/.temp/*
 /.rivastock-ai/
 public/downloads/rivastock-facebook.zip
 public/downloads/rivastock-facebook/
+public/downloads/rivastock-ai-bridge-*.tgz
 
 public/downloads/rivastock-facebook-version.json

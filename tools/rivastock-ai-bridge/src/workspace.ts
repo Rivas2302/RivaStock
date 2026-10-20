@@ -74,6 +74,13 @@ export async function collectProjectContext(rootDirectory: string): Promise<AIPr
   const root = resolve(rootDirectory);
   const rootInfo = await lstat(root).catch(() => null);
   if (!rootInfo || !rootInfo.isDirectory() || rootInfo.isSymbolicLink()) return [];
+  const packageManifest = await readProjectFile(root, 'package.json');
+  if (!packageManifest) return [];
+  try {
+    if ((JSON.parse(packageManifest) as { name?: unknown }).name !== 'rivastock') return [];
+  } catch {
+    return [];
+  }
 
   const files: AIProjectContext[] = [];
   let remaining = 30_000;

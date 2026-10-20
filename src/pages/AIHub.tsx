@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Bot, Check, Clock3, Copy, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
+import { Bot, Check, Clock3, Copy, Download, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import {
@@ -270,10 +270,18 @@ export default function AIHub() {
         {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><p className="text-sm font-bold">Configuración para el AI Bridge</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">El código vence {formatDate(pairing.pairing.pairing_expires_at)} y queda vinculado a esta PC después del primer inicio.</p></div>
-            <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Copiada' : 'Copiar configuración'}</button>
           </div>
           <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre>
-          <p className="text-xs text-slate-600 dark:text-slate-300">En esa PC, pegá estos valores en <code>.env</code>, iniciá sesión en Codex con la cuenta de su dueño y ejecutá <code>npm start</code> dentro de la carpeta del Bridge. Guardá el token como una contraseña; podés revocarlo desde acá.</p>
+          <div className="flex flex-wrap gap-2">
+            <a href="/downloads/rivastock-ai-bridge-latest.tgz" download className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white"><Download size={14}/>Descargar AI Bridge</a>
+            <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button>
+          </div>
+          <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+            <li>Descargá y extraé el paquete en la PC vinculada; necesita Node.js 20.6 o posterior y Codex CLI instalado.</li>
+            <li>En la carpeta extraída, ejecutá <code>npm install</code>, copiá <code>.env.example</code> como <code>.env</code> y pegá ahí la configuración copiada.</li>
+            <li>Iniciá sesión en Codex con la cuenta propia de ese negocio y ejecutá <code>npm start</code>. Dejá el proceso funcionando mientras usás la IA.</li>
+          </ol>
+          <p className="text-xs text-slate-600 dark:text-slate-300">El token funciona como una contraseña para esa PC. Si la desvinculás o vinculás un reemplazo, deja de autorizar el worker anterior.</p>
         </div>}
       </section>
 
