@@ -92,7 +92,16 @@ export default function AIChats() {
     }
 
     let mounted = true;
-    const load = async () => {
+    let requestInFlight = false;
+    let refreshRequested = false;
+    let timer: number | null = null;
+    const load = async (): Promise<void> => {
+      if (!mounted) return;
+      if (requestInFlight) {
+        refreshRequested = true;
+        return;
+      }
+      requestInFlight = true;
       try {
         const detail = await getAIChat(selectedChatId);
         if (!mounted) return;
@@ -103,15 +112,38 @@ export default function AIChats() {
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo cargar este chat.');
       } finally {
+        requestInFlight = false;
         if (mounted) setLoadingMessages(false);
+        if (mounted && refreshRequested) {
+          refreshRequested = false;
+          await load();
+        }
       }
     };
+    const schedulePoll = () => {
+      if (!hasPendingJob || !mounted || document.visibilityState !== 'visible' || timer !== null) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        void load().then(schedulePoll);
+      }, 2000);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      void load().then(schedulePoll);
+    };
     setLoadingMessages(true);
-    void load();
-    const timer = hasPendingJob ? window.setInterval(() => void load(), 2000) : null;
+    void load().then(schedulePoll);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       mounted = false;
-      if (timer !== null) window.clearInterval(timer);
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [selectedChatId, hasPendingJob]);
 
