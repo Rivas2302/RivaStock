@@ -46,6 +46,7 @@ export default function AIChats() {
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [jobs, setJobs] = useState<AIChatJob[]>([]);
+  const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
   const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
@@ -145,7 +146,7 @@ export default function AIChats() {
       window.removeEventListener('focus', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [selectedChatId, hasPendingJob]);
+  }, [selectedChatId, hasPendingJob, chatRefreshKey]);
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -192,6 +193,7 @@ export default function AIChats() {
       submissionRef.current = null;
       setDraft('');
       setSelectedChatId(result.chat_id);
+      setChatRefreshKey((current) => current + 1);
       await refreshChats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
