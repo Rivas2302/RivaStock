@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Bot, Check, Clock3, Copy, Download, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
+import { createAIBridgeWindowsInstaller } from '../lib/aiBridgeInstaller';
 import {
   createAIJob,
   getAIBridgeState,
@@ -70,6 +71,7 @@ export default function AIHub() {
   const [bridgeStatus, setBridgeStatus] = useState<AIBridgeStatus | null>(null);
   const [pairing, setPairing] = useState<AIBridgePairing | null>(null);
   const [connectionBusy, setConnectionBusy] = useState(false);
+  const [installerBusy, setInstallerBusy] = useState(false);
   const [connectionNotice, setConnectionNotice] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [pairingCopied, setPairingCopied] = useState(false);
@@ -190,7 +192,7 @@ export default function AIHub() {
       const status = await getAIBridgeState();
       setBridgeStatus(status);
       setBridgeState(status.state);
-      setConnectionNotice('Vínculo creado. Copiá estos datos en el archivo .env del AI Bridge de esa PC.');
+      setConnectionNotice('Vínculo listo. Descargá el instalador y ejecutalo antes del vencimiento.');
     } catch (err) {
       setConnectionError(err instanceof Error ? err.message : 'No se pudo vincular la computadora.');
     } finally {
@@ -234,6 +236,30 @@ export default function AIHub() {
     }
   };
 
+  const downloadBridgeInstaller = async () => {
+    if (!pairing || installerBusy) return;
+    setInstallerBusy(true);
+    setConnectionError('');
+    try {
+      const installer = await createAIBridgeWindowsInstaller({
+        endpoint: pairing.endpoint,
+        pairingCode: pairing.pairing.pairing_code,
+        deviceId: pairing.pairing.device_id,
+      });
+      const archive = installer.buffer.slice(installer.byteOffset, installer.byteOffset + installer.byteLength) as ArrayBuffer;
+      const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'RivaStock-AI-Bridge-Setup.zip';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err) {
+      setConnectionError(err instanceof Error ? err.message : 'No se pudo crear el instalador.');
+    } finally {
+      setInstallerBusy(false);
+    }
+  };
+
   if (!isOwner) return null;
 
   return (
@@ -269,21 +295,25 @@ export default function AIHub() {
 
         {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><p className="text-sm font-bold">Configuración para el AI Bridge</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">El código vence {formatDate(pairing.pairing.pairing_expires_at)} y queda vinculado a esta PC después del primer inicio.</p></div>
+            <div><p className="text-sm font-bold">Instalador para tu PC</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Descargalo y ejecutalo antes del {formatDate(pairing.pairing.pairing_expires_at)}.</p></div>
           </div>
-          <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre>
           <div className="flex flex-wrap gap-2">
-            <a href="/downloads/rivastock-ai-bridge-latest.tgz" download className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white"><Download size={14}/>Descargar AI Bridge</a>
-            <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button>
+            <button type="button" onClick={() => void downloadBridgeInstaller()} disabled={installerBusy} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Download size={14}/>{installerBusy ? 'Preparando instalador…' : 'Descargar instalador para Windows'}</button>
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
-            <li>Descargá y extraé el paquete en la PC vinculada. Necesita Node.js 20.6 o posterior; el paquete instala Codex CLI.</li>
-            <li>En la carpeta extraída, ejecutá <code>npm install</code>, copiá <code>.env.example</code> como <code>.env</code> y pegá ahí la configuración copiada.</li>
-            <li>En PowerShell, desde esa carpeta, iniciá sesión en Codex con la cuenta propia de ese negocio:</li>
+            <li>Extraé el ZIP descargado.</li>
+            <li>Hacé doble clic en <code>Iniciar RivaStock AI Bridge.bat</code>.</li>
+            <li>La primera vez se abre el navegador para que inicies sesión en Codex. Después, dejá la ventana abierta.</li>
           </ol>
-          <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`$env:CODEX_HOME = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\\codex'\n& .\\node_modules\\.bin\\codex.cmd login\nnpm start`}</pre>
-          <p className="text-xs text-slate-600 dark:text-slate-300">Completá el inicio de sesión en el navegador. Después, dejá <code>npm start</code> funcionando en esa terminal para que RivaStock pueda enviarle tareas a esta PC.</p>
-          <p className="text-xs text-slate-600 dark:text-slate-300">El token funciona como una contraseña para esa PC. Si la desvinculás o vinculás un reemplazo, deja de autorizar el worker anterior.</p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">Necesita Windows, Internet y Node.js 20.6 o posterior. Si falta Node.js, el instalador abre su página oficial. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP después de extraerlo.</p>
+          <details className="rounded-lg border border-indigo-200 p-3 text-xs dark:border-indigo-800">
+            <summary className="cursor-pointer font-semibold">Configuración manual u otro sistema operativo</summary>
+            <div className="mt-3 space-y-3">
+              <a href="/downloads/rivastock-ai-bridge-latest.tgz" download className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-bold dark:border-slate-600 dark:bg-slate-900"><Download size={14}/>Descargar AI Bridge (.tgz)</a>
+              <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre>
+              <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button>
+            </div>
+          </details>
         </div>}
       </section>
 

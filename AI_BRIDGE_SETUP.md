@@ -47,6 +47,8 @@ La función es `supabase/functions/ai-bridge/index.ts`. La plataforma normalment
 
 La función está desplegada con `verify_jwt=false`. Para vincular cuentas nuevas ya no se comparten `AI_BRIDGE_TOKEN` ni `AI_BRIDGE_OWNER_UID`: cada dueño genera una credencial propia desde **RivaStock > IA > Vincular esta PC**. Los secretos `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID` existentes se conservan solo como compatibilidad temporal de la instalación anterior; al primer vínculo de esa cuenta, la credencial compartida queda deshabilitada.
 
+La migración `supabase/migrations/20261020010021_ai_bridge_pairing_window.sql` amplía a 30 minutos la vigencia del código inicial para permitir descargar y abrir el instalador.
+
 Desde PowerShell, dentro de la raíz del repositorio, publicá cambios futuros con:
 
 ```powershell
@@ -68,7 +70,15 @@ No agregues el token del worker ni la clave `service_role` a Vercel. El puente n
 
 ## 5. Instalar y arrancar el worker
 
-Para configurar una PC de cualquier cuenta:
+### Windows (instalador recomendado)
+
+Desde **RivaStock > IA > Vincular esta PC**, descargá el instalador personalizado y extraelo. Hacé doble clic en `Iniciar RivaStock AI Bridge.bat`. El instalador valida el vínculo, instala las dependencias y abre el inicio de sesión de Codex si hace falta. Después deja el worker funcionando en esa ventana.
+
+Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js no está instalado, el instalador abre su página oficial para instalarlo; después, volvé a ejecutar el archivo `.bat`. El código inicial vence a los 30 minutos y se activa al empezar el instalador, antes de descargar dependencias. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP luego de extraerlo.
+
+### Otros sistemas o instalación manual
+
+Descargá el paquete `.tgz` desde **RivaStock > IA > Vincular esta PC** y corré:
 
 ```powershell
 tar -xzf .\rivastock-ai-bridge-latest.tgz
@@ -78,7 +88,7 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-El archivo se descarga desde **RivaStock > IA > Vincular esta PC**. Copiá los datos que muestra la aplicación al `.env`. El código vence a los cinco minutos y se activa cuando el worker se conecta por primera vez. No lo compartas con otra cuenta.
+Copiá los datos de la pantalla al `.env`. No compartas el token con otra cuenta.
 
 ```text
 AI_BRIDGE_ENDPOINT=https://<PROJECT_REF>.supabase.co/functions/v1/ai-bridge
