@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
 export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
-export type CodexReasoningEffort = 'low' | 'medium' | 'high';
+export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface AIProviderOptions {
   model_id?: CodexModelId;

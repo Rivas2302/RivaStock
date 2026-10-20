@@ -9,7 +9,7 @@ const AI_BRIDGE_OWNER_UID = Deno.env.get('AI_BRIDGE_OWNER_UID') ?? '';
 const MAX_BODY_BYTES = 16_384;
 const ALLOWED_PROVIDERS = new Set(['mock', 'codex', 'claude']);
 const ALLOWED_CODEX_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra']);
-const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
+const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 const DEFAULT_ORIGINS = ['https://rivastock.vercel.app', 'http://localhost:5173'];
 
 function configuredOrigins(): Set<string> {

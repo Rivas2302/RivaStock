@@ -40,7 +40,7 @@ function modelLabel(modelId: string | null | undefined): string {
 }
 
 function reasoningLabel(effort: CodexReasoningEffort | null | undefined): string {
-  return ({ low: 'Bajo', medium: 'Medio', high: 'Alto' })[effort ?? 'low'];
+  return ({ low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto' })[effort ?? 'low'];
 }
 
 function statusLabel(status: AIJob['status']): string {
@@ -344,9 +344,10 @@ export default function AIHub() {
               <option value="low">Bajo — menor uso</option>
               <option value="medium">Medio — equilibrado</option>
               <option value="high">Alto — más análisis</option>
+              <option value="xhigh">Muy alto — tareas exigentes</option>
             </select>
           </label>
-          <p className="text-xs text-slate-500 sm:col-span-2">Luna con razonamiento bajo prioriza el menor uso. La disponibilidad depende de tu cuenta; el consumo también cambia según la instrucción y el contexto.</p>
+          <p className="text-xs text-slate-500 sm:col-span-2">Luna con razonamiento bajo prioriza el menor uso. Muy alto puede aumentar el consumo; reservalo para tareas exigentes.</p>
         </div>}
         <label className="block space-y-2">
           <span className="text-sm font-bold">Instrucción</span>

@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
 export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
-export type CodexReasoningEffort = 'low' | 'medium' | 'high';
+export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 export type AIJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AIBridgeState = 'offline' | 'idle' | 'busy';
 
