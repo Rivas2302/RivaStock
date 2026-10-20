@@ -277,10 +277,12 @@ export default function AIHub() {
             <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button>
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
-            <li>Descargá y extraé el paquete en la PC vinculada; necesita Node.js 20.6 o posterior y Codex CLI instalado.</li>
+            <li>Descargá y extraé el paquete en la PC vinculada. Necesita Node.js 20.6 o posterior; el paquete instala Codex CLI.</li>
             <li>En la carpeta extraída, ejecutá <code>npm install</code>, copiá <code>.env.example</code> como <code>.env</code> y pegá ahí la configuración copiada.</li>
-            <li>Iniciá sesión en Codex con la cuenta propia de ese negocio y ejecutá <code>npm start</code>. Dejá el proceso funcionando mientras usás la IA.</li>
+            <li>En PowerShell, desde esa carpeta, iniciá sesión en Codex con la cuenta propia de ese negocio:</li>
           </ol>
+          <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`$env:CODEX_HOME = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\\codex'\n& .\\node_modules\\.bin\\codex.cmd login\nnpm start`}</pre>
+          <p className="text-xs text-slate-600 dark:text-slate-300">Completá el inicio de sesión en el navegador. Después, dejá <code>npm start</code> funcionando en esa terminal para que RivaStock pueda enviarle tareas a esta PC.</p>
           <p className="text-xs text-slate-600 dark:text-slate-300">El token funciona como una contraseña para esa PC. Si la desvinculás o vinculás un reemplazo, deja de autorizar el worker anterior.</p>
         </div>}
       </section>
