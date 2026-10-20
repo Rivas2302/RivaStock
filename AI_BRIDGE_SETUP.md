@@ -1,11 +1,12 @@
 # RivaStock AI Bridge
 
-Guía para preparar la demo local de texto. El flujo usa la SPA de RivaStock, una Edge Function y RPC seguros en Supabase, y un worker de Node.js en la PC. El worker inicia conexiones HTTPS salientes; no abre puertos ni expone servicios locales.
+Guía para conectar una PC local con la IA de cada cuenta de RivaStock. El flujo usa la SPA, una Edge Function y RPC seguros en Supabase, y un worker de Node.js en la PC. El worker inicia conexiones HTTPS salientes; no abre puertos ni expone servicios locales.
 
 ## Arquitectura y límites
 
-- RivaStock solo muestra el módulo IA a la cuenta propietaria. La Edge Function y la base vuelven a validar esa autorización.
-- La instalación se ata a un único `AI_BRIDGE_OWNER_UID`; no comparte tareas entre comercios.
+- RivaStock muestra el módulo IA al propietario de cada cuenta. La Edge Function y la base vuelven a validar esa autorización.
+- Cada cuenta puede vincular una PC. El código de vinculación crea una credencial distinta por instalación; el propietario puede reemplazarla o revocarla desde **IA**.
+- Las tareas, los documentos/Skills y el catálogo se filtran por el UID de la cuenta. Una instalación no puede reclamar tareas ni sincronizar conocimiento de otra.
 - `ai_jobs` guarda instrucción, resultado, estado, fechas, intentos y lease. Las instrucciones admiten hasta 8.000 caracteres y los resultados hasta 20.000.
 - La reserva se hace con una RPC transaccional, `FOR UPDATE SKIP LOCKED` y un lease de 90 segundos. El worker renueva el lease cada 20 segundos y recupera hasta tres intentos interrumpidos.
 - Cada cuenta admite hasta diez tareas pendientes o en ejecución; las solicitudes se deduplican con una clave idempotente.
@@ -21,18 +22,20 @@ Las instrucciones y respuestas permanecen guardadas en Supabase como historial d
 
 - Windows 10/11, PowerShell y Node.js 20.6 o posterior.
 - Acceso al proyecto Supabase usado por la app.
-- Para la prueba de extremo a extremo: el proyecto Supabase vinculado, la app local y el worker en la PC. La migración y la función ya están instaladas allí.
+- Para probar esta versión multi-cuenta: la migración y la Edge Function están instaladas en el proyecto Supabase vinculado. La interfaz nueva se publica al desplegar el frontend.
 - Para proveedores reales: autenticación válida y revisión de facturación/condiciones de la cuenta que se vaya a usar.
 
 En la revisión local del 19 de octubre de 2026 se detectó Node.js 24.15.0, Codex CLI 0.130.0 y Claude Code 2.1.204. `claude auth status` informó `loggedIn: true` con `authMethod: api_key`; no se consultó ni se imprimió el valor de la clave. Codex está instalado, pero su consulta de sesión no pudo completarse en esta terminal sin TTY. No se hicieron llamadas de generación a ninguno de los dos proveedores.
 
 ## 2. Base de datos
 
-La migración `supabase/migrations/0076_ai_bridge.sql` creó `ai_jobs` y `ai_bridge_workers`. La migración `supabase/migrations/20261019222648_ai_agent_workspace.sql` agrega la biblioteca privada, los dos consentimientos por tarea y sus límites.
+La migración `supabase/migrations/0076_ai_bridge.sql` creó `ai_jobs` y `ai_bridge_workers`. La migración `supabase/migrations/20261019222648_ai_agent_workspace.sql` agrega la biblioteca privada, los dos consentimientos por tarea y sus límites. La migración `supabase/migrations/20261020002235_ai_bridge_business_pairing.sql` agrega vínculos por cuenta, tokens revocables y el estado por PC.
 
 La segunda migración se aplicó al proyecto vinculado el 19 de octubre de 2026 y se comprobó que `ai_workspace_files` tiene RLS y cuatro políticas de propietario. También se verificaron las nuevas columnas de contexto y el permiso de la RPC.
 
 La migración 0076 ya se aplicó al proyecto actualmente vinculado, `RivaStock_Oficial`. Se verificaron las dos tablas, RLS, permisos de lectura y permisos de las RPC.
+
+La migración de vinculación por cuenta se aplicó individualmente al proyecto vinculado con `supabase db query --linked --file`. Como el proyecto no tiene historial completo de migraciones, este método no registra la versión en una tabla de historial; no uses `supabase db push`.
 
 Ese proyecto no tiene `supabase_migrations.schema_migrations`. Por eso `supabase db push --dry-run` propone las migraciones locales completas, incluso las ya aplicadas. La 0076 se aplicó como archivo individual con `supabase db query --linked --file supabase/migrations/0076_ai_bridge.sql`; este método no registra la versión en una tabla de historial. La biblioteca se instala con el mismo método, ejecutando únicamente el archivo nuevo. **No ejecutes `supabase db push` contra ese proyecto** hasta reconciliar el historial completo.
 
@@ -42,7 +45,7 @@ Para un entorno nuevo, primero prepará un esquema base e historial de migracion
 
 La función es `supabase/functions/ai-bridge/index.ts`. La plataforma normalmente valida JWT antes de invocar una Edge Function; el comando usa `--no-verify-jwt` porque el worker se autentica con un token dedicado. **La función valida por sí misma la sesión Supabase del navegador y el token del worker.**
 
-La función está desplegada con `verify_jwt=false`. `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID` ya están configurados en el proyecto vinculado. El propietario seleccionado es el perfil `admin` de `leokevinr@gmail.com`. Después de cambios a la función, desplegala individualmente con el comando indicado abajo.
+La función está desplegada con `verify_jwt=false`. Para vincular cuentas nuevas ya no se comparten `AI_BRIDGE_TOKEN` ni `AI_BRIDGE_OWNER_UID`: cada dueño genera una credencial propia desde **RivaStock > IA > Vincular esta PC**. Los secretos `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID` existentes se conservan solo como compatibilidad temporal de la instalación anterior; al primer vínculo de esa cuenta, la credencial compartida queda deshabilitada.
 
 Desde PowerShell, dentro de la raíz del repositorio, publicá cambios futuros con:
 
@@ -52,20 +55,8 @@ supabase functions deploy ai-bridge --project-ref <PROJECT_REF> --no-verify-jwt
 
 Configurá como secretos de Edge Functions:
 
-- `AI_BRIDGE_TOKEN`: secreto aleatorio de al menos 32 caracteres, compartido solo con el archivo `.env` local.
-- `AI_BRIDGE_OWNER_UID`: UUID de la única cuenta propietaria que podrá usar esta instalación. Actualmente está vinculado al perfil `admin` de `leokevinr@gmail.com`.
+- `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID`: opcionales y solo para la transición de la instalación anterior. No copies estos secretos a clientes nuevos.
 - `AI_BRIDGE_ALLOWED_ORIGINS`: opcional. Por defecto permite `https://rivastock.vercel.app` y `http://localhost:5173`; agregá el origen exacto si usás otra URL de Preview.
-
-En PowerShell podés generar el token así; guardá el valor en el gestor de secretos y pegá el mismo en el `.env` del worker:
-
-```powershell
-$bytes = New-Object byte[] 48
-$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-$token = [Convert]::ToBase64String($bytes)
-$rng.Dispose()
-$token
-```
 
 Los secretos integrados `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` se leen en la Edge Function. No los copies a `tools/rivastock-ai-bridge/.env`; en particular, nunca pongas `service_role` en Vercel, el navegador ni la PC.
 
@@ -77,7 +68,7 @@ No agregues el token del worker ni la clave `service_role` a Vercel. El puente n
 
 ## 5. Instalar y arrancar el worker
 
-En esta PC, `tools/rivastock-ai-bridge/.env` ya está preparado y el worker está iniciado. Para configurar otra PC, usá estos pasos:
+Para configurar una PC de cualquier cuenta, instalá el worker en esa computadora y seguí estos pasos:
 
 ```powershell
 Set-Location .\tools\rivastock-ai-bridge
@@ -86,11 +77,13 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-En `.env`, completá `AI_BRIDGE_ENDPOINT` con la URL de la función, por ejemplo:
+En **RivaStock > IA**, presioná **Vincular esta PC** y copiá los datos de conexión al archivo `.env`. El código vence a los cinco minutos y se activa cuando el worker se conecta por primera vez. No lo compartas con otra cuenta.
 
 ```text
 AI_BRIDGE_ENDPOINT=https://<PROJECT_REF>.supabase.co/functions/v1/ai-bridge
-AI_BRIDGE_TOKEN=<EL MISMO TOKEN CONFIGURADO EN SUPABASE>
+AI_BRIDGE_TOKEN=<CÓDIGO DE VINCULACIÓN MOSTRADO EN RIVASTOCK>
+AI_BRIDGE_WORKER_ID=<ID DE PC MOSTRADO EN RIVASTOCK>
+AI_BRIDGE_ENABLE_CODEX=true
 ```
 
 Iniciá el proceso:
@@ -106,7 +99,7 @@ Mantené esta consola abierta durante la demo. El worker consultará la cola cad
 Con la app local y el worker iniciados:
 
 1. Abrí la URL de Preview o `npm run dev` en `http://localhost:5173`.
-2. Iniciá sesión con la cuenta cuyo UUID configuraste en `AI_BRIDGE_OWNER_UID`.
+2. Iniciá sesión con la cuenta propietaria del negocio que querés conectar.
 3. Entrá en **IA** y verificá que aparezca **Conectada**.
 4. Elegí **Mock — prueba de conexión**, escribí una instrucción y presioná **Ejecutar con IA**.
 5. Confirmá que pase por pendiente y en ejecución, y que aparezca la respuesta simulada.
@@ -172,9 +165,9 @@ Estas verificaciones locales no aplican la migración, publican la Edge Function
 
 ## 10. Errores frecuentes
 
-- **`Este AI Bridge no está habilitado para esta cuenta`**: el usuario de RivaStock no coincide con `AI_BRIDGE_OWNER_UID`.
+- **`Conexión del AI Bridge inválida, vencida o desvinculada`**: generá un nuevo vínculo desde **RivaStock > IA** y copiá el token y el ID de PC correspondientes.
 - **`Origen no permitido`**: agregá la URL exacta de Preview o localhost a `AI_BRIDGE_ALLOWED_ORIGINS` y actualizá el secreto.
-- **`Credencial del AI Bridge inválida`**: el token del `.env` local y el secreto de Supabase no coinciden.
+- **`Conexión del AI Bridge inválida, vencida o desvinculada`**: generá un vínculo nuevo y reemplazá juntos el token y el ID de PC del archivo `.env`.
 - **La conexión aparece desconectada**: confirmá que el proceso siga abierto, que la URL del endpoint sea correcta y que la red permita HTTPS hacia Supabase.
 - **`permission denied` al reservar**: el RPC `ai_bridge_worker` debe ejecutarse desde la Edge Function con su clave de servidor; nunca lo llames desde el navegador.
 - **Claude requiere una versión posterior**: actualizá el CLI a 2.1.248 o posterior antes de habilitarlo.

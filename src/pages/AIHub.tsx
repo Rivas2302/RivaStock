@@ -7,7 +7,11 @@ import {
   getAIBridgeState,
   getAIJob,
   getRecentAIJobs,
+  pairAIBridgeDevice,
+  revokeAIBridgeDevice,
   type AIBridgeState,
+  type AIBridgeStatus,
+  type AIBridgePairing,
   type AIJob,
   type CodexModelId,
   type CodexReasoningEffort,
@@ -63,6 +67,12 @@ export default function AIHub() {
   const [activeJob, setActiveJob] = useState<AIJob | null>(null);
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<AIBridgeStatus | null>(null);
+  const [pairing, setPairing] = useState<AIBridgePairing | null>(null);
+  const [connectionBusy, setConnectionBusy] = useState(false);
+  const [connectionNotice, setConnectionNotice] = useState('');
+  const [connectionError, setConnectionError] = useState('');
+  const [pairingCopied, setPairingCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +94,7 @@ export default function AIHub() {
         const [bridge, jobs] = await Promise.all([getAIBridgeState(), getRecentAIJobs()]);
         if (!mounted) return;
         setBridgeState(bridge.state);
+        setBridgeStatus(bridge);
         setRecentJobs(jobs);
         setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? current : jobs[0] ?? null);
         setError('');
@@ -95,8 +106,15 @@ export default function AIHub() {
     };
     void refresh();
     const timer = window.setInterval(() => {
-      void getAIBridgeState().then((status) => mounted && setBridgeState(status.state)).catch(() => {
-        if (mounted) setBridgeState('offline');
+      void getAIBridgeState().then((status) => {
+        if (!mounted) return;
+        setBridgeStatus(status);
+        setBridgeState(status.state);
+      }).catch(() => {
+        if (mounted) {
+          setBridgeStatus(null);
+          setBridgeState('offline');
+        }
       });
     }, 10_000);
     return () => { mounted = false; window.clearInterval(timer); };
@@ -159,6 +177,63 @@ export default function AIHub() {
     }
   };
 
+  const pairDevice = async () => {
+    const replacing = Boolean(bridgeStatus?.paired || bridgeStatus?.legacy);
+    if (replacing && !window.confirm('La conexión anterior dejará de funcionar. ¿Querés vincular esta PC y reemplazarla?')) return;
+    setConnectionBusy(true);
+    setConnectionError('');
+    setConnectionNotice('');
+    setPairing(null);
+    try {
+      const nextPairing = await pairAIBridgeDevice('Mi PC');
+      setPairing(nextPairing);
+      const status = await getAIBridgeState();
+      setBridgeStatus(status);
+      setBridgeState(status.state);
+      setConnectionNotice('Vínculo creado. Copiá estos datos en el archivo .env del AI Bridge de esa PC.');
+    } catch (err) {
+      setConnectionError(err instanceof Error ? err.message : 'No se pudo vincular la computadora.');
+    } finally {
+      setConnectionBusy(false);
+    }
+  };
+
+  const revokeDevice = async () => {
+    if (!bridgeStatus?.device || !window.confirm('Esta PC dejará de recibir tareas. ¿Querés desvincularla?')) return;
+    setConnectionBusy(true);
+    setConnectionError('');
+    setConnectionNotice('');
+    try {
+      await revokeAIBridgeDevice(bridgeStatus.device.id);
+      setPairing(null);
+      const status = await getAIBridgeState();
+      setBridgeStatus(status);
+      setBridgeState(status.state);
+      setConnectionNotice('Computadora desvinculada.');
+    } catch (err) {
+      setConnectionError(err instanceof Error ? err.message : 'No se pudo desvincular la computadora.');
+    } finally {
+      setConnectionBusy(false);
+    }
+  };
+
+  const copyPairingConfiguration = async () => {
+    if (!pairing) return;
+    const configuration = [
+      `AI_BRIDGE_ENDPOINT=${pairing.endpoint}`,
+      `AI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}`,
+      `AI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}`,
+      'AI_BRIDGE_ENABLE_CODEX=true',
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(configuration);
+      setPairingCopied(true);
+      window.setTimeout(() => setPairingCopied(false), 1600);
+    } catch {
+      setConnectionError('El navegador no permitió copiar la configuración.');
+    }
+  };
+
   if (!isOwner) return null;
 
   return (
@@ -169,10 +244,38 @@ export default function AIHub() {
           <h2 className="text-2xl font-bold md:text-3xl">IA</h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Enviá una instrucción de texto al agente conectado en tu PC y seguí su estado desde acá.</p>
         </div>
-        <ConnectionBadge state={bridgeState}/>
       </header>
 
       {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold">Conexión de tu PC</h3>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Vinculá una computadora de este negocio. El agente usa la sesión local de Codex iniciada en esa PC y la biblioteca de conocimiento de esta cuenta.</p>
+          </div>
+          <ConnectionBadge state={bridgeState}/>
+        </div>
+
+        {bridgeStatus?.device && <p className="text-sm text-slate-600 dark:text-slate-300">Computadora vinculada: <strong>{bridgeStatus.device.name}</strong>{bridgeStatus.last_seen_at ? ` · Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : ' · Esperando el primer inicio del Bridge'}.</p>}
+        {bridgeStatus?.legacy && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Esta cuenta todavía usa la conexión anterior. Al vincular una PC, la credencial anterior se deshabilita.</p>}
+        {connectionError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{connectionError}</p>}
+        {connectionNotice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{connectionNotice}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Vincular o reemplazar PC' : 'Vincular esta PC'}</button>
+          {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Desvincular</button>}
+        </div>
+
+        {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><p className="text-sm font-bold">Configuración para el AI Bridge</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">El código vence {formatDate(pairing.pairing.pairing_expires_at)} y queda vinculado a esta PC después del primer inicio.</p></div>
+            <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Copiada' : 'Copiar configuración'}</button>
+          </div>
+          <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre>
+          <p className="text-xs text-slate-600 dark:text-slate-300">En esa PC, pegá estos valores en <code>.env</code>, iniciá sesión en Codex con la cuenta de su dueño y ejecutá <code>npm start</code> dentro de la carpeta del Bridge. Guardá el token como una contraseña; podés revocarlo desde acá.</p>
+        </div>}
+      </section>
 
       <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700" aria-label="Secciones de IA">
         <button type="button" onClick={() => setView('console')} aria-current={view === 'console' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'console' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Consola</button>

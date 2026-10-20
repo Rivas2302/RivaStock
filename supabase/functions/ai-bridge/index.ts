@@ -88,20 +88,19 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 
 function validateWorkerConfiguration(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    && AI_BRIDGE_TOKEN.length >= 32 && isUuid(AI_BRIDGE_OWNER_UID));
+  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }
 
-function safeDbError(error: { message?: string } | null, status = 400): Response {
+function safeDbError(error: { message?: string } | null, status = 400, origin?: string | null): Response {
   const message = error?.message ?? '';
-  if (message.includes('Solo el propietario')) return jsonResponse({ error: 'Solo el administrador propietario puede usar IA.' }, 403);
-  if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409);
+  if (message.includes('Solo el propietario')) return jsonResponse({ error: 'Solo el administrador propietario puede usar IA.' }, 403, origin);
+  if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
-    || message.includes('Modelo') || message.includes('razonamiento')) {
-    return jsonResponse({ error: message }, status);
+    || message.includes('Modelo') || message.includes('razonamiento') || message.includes('Nombre de computadora')) {
+    return jsonResponse({ error: message }, status, origin);
   }
   console.error('[ai-bridge] Database operation failed.');
-  return jsonResponse({ error: 'No se pudo completar la operación de IA.' }, 500);
+  return jsonResponse({ error: 'No se pudo completar la operación de IA.' }, 500, origin);
 }
 
 serve(async (req) => {
@@ -120,27 +119,45 @@ serve(async (req) => {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
     const authorization = req.headers.get('authorization') ?? '';
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-    if (!constantTimeEqual(suppliedToken, AI_BRIDGE_TOKEN)) return jsonResponse({ error: 'Credencial del AI Bridge inválida.' }, 401, origin);
     if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400, origin);
 
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    let ownerUid: string | null = null;
+    if (suppliedToken.length >= 32 && suppliedToken.length <= 256) {
+      const { data: authorizedUid, error: authorizationError } = await serviceClient.rpc('ai_bridge_authorize_device', {
+        p_device_id: body.worker_id,
+        p_token: suppliedToken,
+      });
+      if (!authorizationError && isUuid(authorizedUid)) ownerUid = authorizedUid;
+    }
+
+    // Keep the already-configured installation working until its owner pairs
+    // a device. A new pairing disables this legacy shared credential.
+    if (!ownerUid && AI_BRIDGE_TOKEN.length >= 32 && isUuid(AI_BRIDGE_OWNER_UID)
+      && constantTimeEqual(suppliedToken, AI_BRIDGE_TOKEN)) {
+      const { data: deviceHistory, error: deviceError } = await serviceClient.from('ai_bridge_devices')
+        .select('id').eq('user_id', AI_BRIDGE_OWNER_UID).limit(1).maybeSingle();
+      if (!deviceError && !deviceHistory) ownerUid = AI_BRIDGE_OWNER_UID;
+    }
+    if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
+
     if (action === 'worker_workspace') {
       const { data, error } = await serviceClient.from('ai_workspace_files')
         .select('path, content, updated_at')
-        .eq('user_id', AI_BRIDGE_OWNER_UID)
+        .eq('user_id', ownerUid)
         .order('path', { ascending: true });
-      if (error) return safeDbError(error);
+      if (error) return safeDbError(error, 400, origin);
       return jsonResponse({ files: data ?? [] }, 200, origin);
     }
     if (action === 'worker_context') {
       if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
       const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
         .select('include_business_context, include_project_context, model_id, reasoning_effort')
-        .eq('id', body.job_id).eq('user_id', AI_BRIDGE_OWNER_UID)
+        .eq('id', body.job_id).eq('user_id', ownerUid)
         .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
-      if (jobError) return safeDbError(jobError);
+      if (jobError) return safeDbError(jobError, 400, origin);
       if (!job) return jsonResponse({ error: 'La tarea no está reservada por este worker.' }, 409, origin);
 
       let products: Array<Record<string, unknown>> = [];
@@ -148,10 +165,10 @@ serve(async (req) => {
       if (job.include_business_context) {
         const { data, count, error } = await serviceClient.from('products')
           .select('name, category, description, purchase_price, sale_price, stock, min_stock', { count: 'exact' })
-          .eq('user_id', AI_BRIDGE_OWNER_UID)
+          .eq('user_id', ownerUid)
           .order('name', { ascending: true })
           .limit(100);
-        if (error) return safeDbError(error);
+        if (error) return safeDbError(error, 400, origin);
         products = data ?? [];
         totalProducts = count ?? products.length;
       }
@@ -199,12 +216,12 @@ serve(async (req) => {
 
     const { data, error } = await serviceClient.rpc('ai_bridge_worker', {
       p_action: rpcAction,
-      p_owner_uid: AI_BRIDGE_OWNER_UID,
+      p_owner_uid: ownerUid,
       p_worker_id: body.worker_id,
       p_job_id: jobId,
       p_result: payload,
     });
-    if (error) return safeDbError(error);
+    if (error) return safeDbError(error, 400, origin);
     return jsonResponse({ data }, 200, origin);
   }
 
@@ -217,8 +234,20 @@ serve(async (req) => {
   });
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return jsonResponse({ error: 'La sesión no es válida.' }, 401, origin);
-  if (!isUuid(AI_BRIDGE_OWNER_UID) || user.id !== AI_BRIDGE_OWNER_UID) {
-    return jsonResponse({ error: 'Este AI Bridge no está habilitado para esta cuenta.' }, 403, origin);
+
+  if (action === 'pair_device') {
+    const name = typeof body.name === 'string' ? body.name : 'Mi PC';
+    if (name.trim().length < 1 || name.length > 80) return jsonResponse({ error: 'El nombre de la PC debe tener entre 1 y 80 caracteres.' }, 400, origin);
+    const { data, error } = await userClient.rpc('pair_ai_bridge_device', { p_name: name });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ pairing: data, endpoint: `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/ai-bridge` }, 200, origin);
+  }
+
+  if (action === 'revoke_device') {
+    if (!isUuid(body.device_id)) return jsonResponse({ error: 'Identificador de computadora inválido.' }, 400, origin);
+    const { error } = await userClient.rpc('revoke_ai_bridge_device', { p_device_id: body.device_id });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ revoked: true }, 200, origin);
   }
 
   if (action === 'create') {
@@ -242,7 +271,7 @@ serve(async (req) => {
       p_model_id: typeof body.model_id === 'string' ? body.model_id : null,
       p_reasoning_effort: typeof body.reasoning_effort === 'string' ? body.reasoning_effort : null,
     });
-    if (error) return safeDbError(error);
+    if (error) return safeDbError(error, 400, origin);
     return jsonResponse({ job: data }, 201, origin);
   }
 
@@ -251,7 +280,7 @@ serve(async (req) => {
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
       .eq('id', body.job_id).maybeSingle();
-    if (error) return safeDbError(error);
+    if (error) return safeDbError(error, 400, origin);
     if (!data) return jsonResponse({ error: 'No se encontró la tarea.' }, 404, origin);
     return jsonResponse({ job: data }, 200, origin);
   }
@@ -260,17 +289,47 @@ serve(async (req) => {
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
       .order('created_at', { ascending: false }).limit(10);
-    if (error) return safeDbError(error);
+    if (error) return safeDbError(error, 400, origin);
     return jsonResponse({ jobs: data ?? [] }, 200, origin);
   }
 
   if (action === 'status') {
-    const { data, error } = await userClient.from('ai_bridge_workers')
-      .select('state, last_seen_at').maybeSingle();
-    if (error) return safeDbError(error);
-    const lastSeenAt = data?.last_seen_at ?? null;
-    const online = Boolean(lastSeenAt && Date.now() - Date.parse(lastSeenAt) < 60_000);
-    return jsonResponse({ state: online ? (data?.state ?? 'idle') : 'offline', last_seen_at: lastSeenAt }, 200, origin);
+    const { data: device, error: deviceError } = await userClient.from('ai_bridge_devices')
+      .select('id, name, state, last_seen_at, created_at')
+      .is('revoked_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (deviceError) return safeDbError(deviceError, 400, origin);
+    if (device) {
+      const lastSeenAt = device.last_seen_at ?? null;
+      const online = Boolean(lastSeenAt && Date.now() - Date.parse(lastSeenAt) < 60_000);
+      return jsonResponse({
+        state: online ? device.state : 'offline',
+        last_seen_at: lastSeenAt,
+        device: { id: device.id, name: device.name },
+        paired: true,
+        legacy: false,
+      }, 200, origin);
+    }
+
+    const { data: deviceHistory, error: historyError } = await userClient.from('ai_bridge_devices')
+      .select('id').limit(1).maybeSingle();
+    if (historyError) return safeDbError(historyError, 400, origin);
+
+    if (!deviceHistory && user.id === AI_BRIDGE_OWNER_UID && AI_BRIDGE_TOKEN.length >= 32) {
+      const { data: legacyWorker, error: legacyError } = await userClient.from('ai_bridge_workers')
+        .select('state, last_seen_at').maybeSingle();
+      if (legacyError) return safeDbError(legacyError, 400, origin);
+      const lastSeenAt = legacyWorker?.last_seen_at ?? null;
+      const online = Boolean(lastSeenAt && Date.now() - Date.parse(lastSeenAt) < 60_000);
+      return jsonResponse({
+        state: online ? (legacyWorker?.state ?? 'idle') : 'offline',
+        last_seen_at: lastSeenAt,
+        device: null,
+        paired: false,
+        legacy: true,
+      }, 200, origin);
+    }
+
+    return jsonResponse({ state: 'offline', last_seen_at: null, device: null, paired: false, legacy: false }, 200, origin);
   }
 
   return jsonResponse({ error: 'Operación no permitida.' }, 400, origin);

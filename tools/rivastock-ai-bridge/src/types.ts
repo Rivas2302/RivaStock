@@ -61,6 +61,7 @@ export interface BridgeConfig {
   claudeEnabled: boolean;
   codexExecutable: string;
   codexHome: string;
+  workerId: string | null;
   claudeExecutable: string;
   claudeMaxBudgetUsd: string;
   workspaceDirectory: string;
@@ -70,8 +71,12 @@ export interface BridgeConfig {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
   const endpoint = env.AI_BRIDGE_ENDPOINT?.trim() ?? '';
   const token = env.AI_BRIDGE_TOKEN?.trim() ?? '';
+  const workerId = env.AI_BRIDGE_WORKER_ID?.trim() || null;
   if (!/^https:\/\//i.test(endpoint)) throw new Error('AI_BRIDGE_ENDPOINT debe ser una URL HTTPS de Supabase.');
   if (token.length < 32) throw new Error('AI_BRIDGE_TOKEN debe tener al menos 32 caracteres.');
+  if (workerId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workerId)) {
+    throw new Error('AI_BRIDGE_WORKER_ID debe ser el identificador UUID que muestra RivaStock.');
+  }
   return {
     endpoint: endpoint.replace(/\/$/, ''),
     token,
@@ -79,6 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     claudeEnabled: env.AI_BRIDGE_ENABLE_CLAUDE === 'true',
     codexExecutable: env.CODEX_CLI_PATH?.trim() || '',
     codexHome: env.AI_BRIDGE_CODEX_HOME?.trim() || `${env.USERPROFILE || env.HOME || '.'}/.rivastock-ai-bridge/codex`,
+    workerId,
     claudeExecutable: env.CLAUDE_CLI_PATH?.trim() || 'claude',
     claudeMaxBudgetUsd: parseBudget(env.AI_BRIDGE_CLAUDE_MAX_BUDGET_USD ?? '1.00'),
     workspaceDirectory: resolve(env.AI_BRIDGE_WORKSPACE_DIR?.trim()

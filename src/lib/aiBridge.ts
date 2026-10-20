@@ -6,6 +6,24 @@ export type CodexReasoningEffort = 'low' | 'medium' | 'high';
 export type AIJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AIBridgeState = 'offline' | 'idle' | 'busy';
 
+export interface AIBridgeStatus {
+  state: AIBridgeState;
+  last_seen_at: string | null;
+  paired: boolean;
+  legacy: boolean;
+  device: { id: string; name: string } | null;
+}
+
+export interface AIBridgePairing {
+  endpoint: string;
+  pairing: {
+    device_id: string;
+    name: string;
+    pairing_code: string;
+    pairing_expires_at: string;
+  };
+}
+
 export interface AIJob {
   id: string;
   provider: AIProviderId;
@@ -78,6 +96,14 @@ export async function getRecentAIJobs(): Promise<AIJob[]> {
   return result.jobs;
 }
 
-export async function getAIBridgeState(): Promise<{ state: AIBridgeState; last_seen_at: string | null }> {
+export async function getAIBridgeState(): Promise<AIBridgeStatus> {
   return invoke({ action: 'status' });
+}
+
+export async function pairAIBridgeDevice(name = 'Mi PC'): Promise<AIBridgePairing> {
+  return invoke({ action: 'pair_device', name });
+}
+
+export async function revokeAIBridgeDevice(deviceId: string): Promise<void> {
+  await invoke({ action: 'revoke_device', device_id: deviceId });
 }
