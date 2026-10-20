@@ -132,6 +132,10 @@ El instalador verifica el vinculo, instala el Bridge y Codex CLI, y lo inicia.
 Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js falta, abre
 su pagina oficial para instalarlo; despues, vuelve a abrir el instalador.
 
+Codex puede buscar en la web, ejecutar comandos y leer o modificar archivos
+accesibles para el usuario de Windows, sin aprobacion por accion. Usa el Bridge
+solo en una PC de confianza.
+
 Este ZIP incluye una credencial privada de este negocio. No lo compartas.
 Despues de extraerlo, elimina el ZIP y conserva la carpeta extraida. Puedes
 revocar la conexion desde RivaStock > IA cuando quieras.

@@ -302,6 +302,7 @@ export default function AIHub() {
           <div>
             <h3 className="font-bold">Conexión de tu PC</h3>
             <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Vinculá una computadora de este negocio. El agente usa la sesión local de Codex iniciada en esa PC y la biblioteca de conocimiento de esta cuenta.</p>
+            <p className="mt-2 max-w-2xl rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Con Codex, las tareas y los chats pueden buscar en la web, ejecutar comandos y leer o modificar archivos accesibles para el usuario de Windows que ejecuta el Bridge, sin pedir aprobación por acción. Usá una PC de confianza.</p>
           </div>
           <ConnectionBadge state={bridgeState}/>
         </div>
@@ -384,7 +385,7 @@ export default function AIHub() {
           <legend className="px-1 text-xs font-bold text-slate-600 dark:text-slate-300">Contexto opcional</legend>
           <label className="flex items-start gap-2 text-xs">
             <input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
-            <span><strong>Proyecto RivaStock</strong><span className="block text-slate-500">Incluye documentación y archivos fuente seleccionados. No lee archivos .env, credenciales ni el resto del disco.</span></span>
+            <span><strong>Proyecto RivaStock</strong><span className="block text-slate-500">Incluye documentación y archivos fuente seleccionados como contexto inicial. Codex también puede acceder a los archivos disponibles para el usuario de Windows en la PC vinculada.</span></span>
           </label>
           <label className="flex items-start gap-2 text-xs">
             <input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
@@ -393,7 +394,7 @@ export default function AIHub() {
           <p className="pl-6 text-[11px] text-slate-500">Las Skills y los documentos guardados en “Skills y conocimiento” se incluyen automáticamente. El Mock no usa contexto.</p>
         </fieldset>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">Solo generación de texto. La tarea queda pendiente si tu PC está desconectada.</p>
+          <p className="text-xs text-slate-500">Codex puede usar la web, el terminal y los archivos de la PC vinculada. La tarea queda pendiente si tu PC está desconectada.</p>
           <button type="submit" disabled={!input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
             {submitting ? <Loader2 size={17} className="animate-spin"/> : <Zap size={17}/>} Ejecutar con IA
           </button>
