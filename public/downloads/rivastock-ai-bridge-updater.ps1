@@ -12,10 +12,65 @@ function Show-Message([string]$Message, [string]$Title, $Buttons, $Icon) {
   [System.Windows.Forms.MessageBox]::Show($Message, $Title, $Buttons, $Icon) | Out-Null
 }
 
-function Read-WorkerId([string]$ConfigPath) {
-  $match = [regex]::Match((Get-Content -LiteralPath $ConfigPath -Raw), '(?m)^\s*AI_BRIDGE_WORKER_ID\s*=\s*([^\r\n#]+)')
+function Read-ConfigValue([string]$ConfigPath, [string]$Name) {
+  $match = [regex]::Match((Get-Content -LiteralPath $ConfigPath -Raw), '(?m)^\s*' + [regex]::Escape($Name) + '\s*=\s*([^\r\n#]+)')
   if (!$match.Success) { return '' }
   return $match.Groups[1].Value.Trim()
+}
+
+function Invoke-BridgeAction([string]$Endpoint, [string]$Token, [string]$Action, [string]$WorkerId) {
+  $body = @{ action = $Action; worker_id = $WorkerId } | ConvertTo-Json -Compress
+  return Invoke-RestMethod -Uri $Endpoint -Method Post -Headers @{ Authorization = "Bearer $Token" } `
+    -ContentType 'application/json' -Body $body -TimeoutSec 20
+}
+
+function Stop-BridgeConsole {
+  $workers = @(Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -ieq 'node.exe' -and $_.CommandLine -match '(?i)(^|\s)--env-file=\.env(\s|$)' `
+      -and $_.CommandLine -match '(?i)(^|\s)--import\s+tsx(\s|$)' `
+      -and $_.CommandLine -match '(?i)(^|\s)src/index\.ts(\s|$)'
+  })
+  if ($workers.Count -ne 1) { throw 'No pude identificar de forma segura la ventana del AI Bridge.' }
+
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class RivaStockBridgeConsole {
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool FreeConsole();
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool AttachConsole(uint processId);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool GenerateConsoleCtrlEvent(uint eventType, uint processGroupId);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr GetConsoleWindow();
+  [DllImport("user32.dll", SetLastError = true)] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern uint GetConsoleTitle(StringBuilder title, uint size);
+  public static string ReadTitle() {
+    var title = new StringBuilder(512);
+    GetConsoleTitle(title, (uint)title.Capacity);
+    return title.ToString();
+  }
+}
+'@
+
+  $processId = [uint32]$workers[0].ProcessId
+  [RivaStockBridgeConsole]::FreeConsole() | Out-Null
+  if (![RivaStockBridgeConsole]::AttachConsole($processId)) { throw 'No pude conectar con la ventana del AI Bridge.' }
+  $consoleWindow = [RivaStockBridgeConsole]::GetConsoleWindow()
+  try {
+    [RivaStockBridgeConsole]::SetConsoleCtrlHandler([IntPtr]::Zero, $true) | Out-Null
+    $title = [RivaStockBridgeConsole]::ReadTitle()
+    if (!$title.StartsWith('RivaStock AI Bridge', [StringComparison]::OrdinalIgnoreCase)) {
+      throw 'La ventana encontrada no corresponde al AI Bridge.'
+    }
+    if (![RivaStockBridgeConsole]::GenerateConsoleCtrlEvent(0, 0)) {
+      throw 'Windows no pudo cerrar el AI Bridge de forma segura.'
+    }
+  } finally {
+    [RivaStockBridgeConsole]::SetConsoleCtrlHandler([IntPtr]::Zero, $false) | Out-Null
+    [RivaStockBridgeConsole]::FreeConsole() | Out-Null
+  }
+  return $consoleWindow
 }
 
 function Get-InstallCandidates([string]$ExpectedDeviceId) {
@@ -100,18 +155,20 @@ try {
   if (!$installDirectory) { exit 0 }
   $configPath = Join-Path $installDirectory '.env'
   $packageDirectory = Join-Path $installDirectory 'package'
-
-  $lockDirectory = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\worker.lock'
-  while (Test-Path -LiteralPath $lockDirectory -PathType Container) {
-    $choice = [System.Windows.Forms.MessageBox]::Show(
-      'AI Bridge sigue abierto. Cerrá su ventana y elegí Reintentar para continuar con la actualización.',
-      'Cerrá AI Bridge',
-      [System.Windows.Forms.MessageBoxButtons]::RetryCancel,
-      [System.Windows.Forms.MessageBoxIcon]::Information
-    )
-    if ($choice -ne [System.Windows.Forms.DialogResult]::Retry) { exit 1 }
-    Start-Sleep -Milliseconds 750
+  $workerId = Read-ConfigValue $configPath 'AI_BRIDGE_WORKER_ID'
+  $workerEndpoint = Read-ConfigValue $configPath 'AI_BRIDGE_ENDPOINT'
+  $workerToken = Read-ConfigValue $configPath 'AI_BRIDGE_TOKEN'
+  if ($DeviceId -and $workerId -ne $DeviceId) { throw 'La instalación seleccionada no coincide con la PC vinculada.' }
+  if ($workerId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or $workerToken.Length -lt 32) {
+    throw 'La instalación no tiene una configuración de vínculo válida para actualizarse de forma segura.'
   }
+  $endpointUri = [uri]$workerEndpoint
+  if ($endpointUri.Scheme -ne 'https' -or $endpointUri.AbsolutePath -notmatch '/functions/v1/ai-bridge/?$') {
+    throw 'La dirección del AI Bridge configurada no es válida.'
+  }
+  $workerApi = @{ Endpoint = $workerEndpoint; Token = $workerToken; WorkerId = $workerId }
+  $updatePrepared = $false
+  $lockDirectory = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\worker.lock'
 
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
   $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
@@ -150,6 +207,38 @@ try {
     $newVersion = [version]$newManifest.version
     if ($newVersion -lt $oldVersion) { throw 'El servidor ofreció una versión anterior a la que ya está instalada.' }
 
+    if (Test-Path -LiteralPath $lockDirectory -PathType Container) {
+      Write-Host 'Preparando el AI Bridge para actualizarse sin interrumpir tareas...'
+      while (Test-Path -LiteralPath $lockDirectory -PathType Container) {
+        $prepare = Invoke-BridgeAction $workerApi.Endpoint $workerApi.Token 'worker_update_prepare' $workerApi.WorkerId
+        if ($prepare.data.ready -eq $true) {
+          $updatePrepared = $true
+          break
+        }
+        Write-Host 'Hay una tarea en curso. Espero a que termine para continuar...'
+        Start-Sleep -Seconds 2
+      }
+
+      if ($updatePrepared) {
+        for ($attempt = 0; $attempt -lt 12 -and (Test-Path -LiteralPath $lockDirectory -PathType Container); $attempt++) {
+          Start-Sleep -Seconds 1
+        }
+        if (Test-Path -LiteralPath $lockDirectory -PathType Container) {
+          Write-Host 'Cerrando el AI Bridge en forma segura...'
+          $bridgeWindow = Stop-BridgeConsole
+          for ($attempt = 0; $attempt -lt 40 -and (Test-Path -LiteralPath $lockDirectory -PathType Container); $attempt++) {
+            Start-Sleep -Milliseconds 500
+          }
+          if (!(Test-Path -LiteralPath $lockDirectory -PathType Container) -and $bridgeWindow -ne [IntPtr]::Zero) {
+            [RivaStockBridgeConsole]::PostMessage($bridgeWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+          }
+        }
+        if (Test-Path -LiteralPath $lockDirectory -PathType Container) {
+          throw 'El AI Bridge recibió la solicitud de cierre, pero no liberó su bloqueo. Volvé a intentar la actualización.'
+        }
+      }
+    }
+
     if ($newVersion -gt $oldVersion) {
       Get-ChildItem -LiteralPath $packageDirectory -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notin @('node_modules', '.env') } |
@@ -182,6 +271,10 @@ try {
     Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
   }
 } catch {
+  if ($updatePrepared -and $workerApi) {
+    try { Invoke-BridgeAction $workerApi.Endpoint $workerApi.Token 'worker_start' $workerApi.WorkerId | Out-Null }
+    catch { }
+  }
   Show-Message $_.Exception.Message 'No se pudo actualizar RivaStock AI Bridge' ([System.Windows.Forms.MessageBoxButtons]::OK) ([System.Windows.Forms.MessageBoxIcon]::Error)
   exit 1
 }

@@ -9,9 +9,16 @@ export class BridgeClient {
     await this.post('worker_heartbeat', { worker_id: workerId, state, job_id: jobId });
   }
 
-  async claim(workerId: string): Promise<AIJob | null> {
-    const response = await this.post<{ data: AIJob | null }>('worker_claim', { worker_id: workerId });
-    return response.data;
+  async claim(workerId: string): Promise<{ job: AIJob | null; shouldStop: boolean }> {
+    const response = await this.post<{ data: AIJob | null; should_stop?: boolean }>('worker_claim', {
+      worker_id: workerId,
+      supports_update_signal: true,
+    });
+    return { job: response.data, shouldStop: response.should_stop === true };
+  }
+
+  async start(workerId: string): Promise<void> {
+    await this.post('worker_start', { worker_id: workerId });
   }
 
   async complete(workerId: string, jobId: string, output: string, sessionId?: string): Promise<void> {

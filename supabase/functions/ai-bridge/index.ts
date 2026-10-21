@@ -98,7 +98,7 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   if (message.includes('Actualizá el AI Bridge')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('No se encontró el chat')) return jsonResponse({ error: message }, 404, origin);
   if (message.includes('Esperá a que termine') || message.includes('Ya hay diez tareas')
-    || message.includes('no se puede cambiar')) return jsonResponse({ error: message }, 409, origin);
+    || message.includes('no se puede cambiar') || message.includes('actualización segura')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
     || message.includes('mensaje debe') || message.includes('Opciones de contexto')
     || message.includes('Modelo') || message.includes('razonamiento') || message.includes('configuración enviada')
@@ -121,7 +121,8 @@ serve(async (req) => {
 
   if (action === 'worker_heartbeat' || action === 'worker_claim'
     || action === 'worker_complete' || action === 'worker_fail'
-    || action === 'worker_workspace' || action === 'worker_context') {
+    || action === 'worker_workspace' || action === 'worker_context'
+    || action === 'worker_update_prepare' || action === 'worker_start') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
     const authorization = req.headers.get('authorization') ?? '';
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
@@ -214,6 +215,12 @@ serve(async (req) => {
       case 'worker_claim':
         rpcAction = 'claim';
         break;
+      case 'worker_update_prepare':
+        rpcAction = 'prepare_update';
+        break;
+      case 'worker_start':
+        rpcAction = 'start';
+        break;
       case 'worker_complete':
         if (!isUuid(body.job_id) || typeof body.output !== 'string' || body.output.trim().length === 0 || body.output.length > 20_000) {
           return jsonResponse({ error: 'Resultado inválido.' }, 400, origin);
@@ -246,6 +253,12 @@ serve(async (req) => {
       p_result: payload,
     });
     if (error) return safeDbError(error, 400, origin);
+    if (action === 'worker_claim' && data && typeof data === 'object'
+      && '__update_requested' in data && data.__update_requested === true) {
+      return jsonResponse(body.supports_update_signal === true
+        ? { data: null, should_stop: true }
+        : { data: null }, 200, origin);
+    }
     return jsonResponse({ data }, 200, origin);
   }
 

@@ -85,8 +85,12 @@ async function run(): Promise<void> {
         await syncWorkspaceFiles(config.workspaceDirectory, files);
         lastWorkspaceSyncAt = Date.now();
       }
-      const job = await client.claim(workerId);
-      if (job) await executeJob(job);
+      const claim = await client.claim(workerId);
+      if (claim.shouldStop) {
+        stopping = true;
+        continue;
+      }
+      if (claim.job) await executeJob(claim.job);
       else await delay(POLL_INTERVAL_MS);
     } catch (error) {
       const safeMessage = reportError(error instanceof Error ? error.message : 'Error de conexión.');
@@ -121,6 +125,7 @@ async function runWithInstanceLock(): Promise<void> {
   });
 
   try {
+    await client.start(workerId);
     await run();
   } finally {
     await releaseLock();
