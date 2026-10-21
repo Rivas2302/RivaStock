@@ -144,109 +144,11 @@ revocar la conexion desde RivaStock > IA cuando quieras.
 const WINDOWS_UPDATER_LAUNCHER = String.raw`@echo off
 setlocal
 title Actualizador de RivaStock AI Bridge
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0Actualizar RivaStock AI Bridge.ps1" -PackageUrl "__PACKAGE_URL__"
+set "RIVASTOCK_PACKAGE_URL=__PACKAGE_URL__"
+set "RIVASTOCK_UPDATER_URL=__UPDATER_URL__"
+set "RIVASTOCK_DEVICE_ID=__DEVICE_ID__"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -Command "$ErrorActionPreference='Stop'; $script=Join-Path $env:TEMP ('rivastock-ai-bridge-update-' + [guid]::NewGuid().ToString('N') + '.ps1'); try { $response=Invoke-WebRequest -Uri $env:RIVASTOCK_UPDATER_URL -UseBasicParsing; [IO.File]::WriteAllText($script,$response.Content,[Text.Encoding]::UTF8); & $script -PackageUrl $env:RIVASTOCK_PACKAGE_URL -DeviceId $env:RIVASTOCK_DEVICE_ID } finally { Remove-Item -LiteralPath $script -Force -ErrorAction SilentlyContinue }"
 if errorlevel 1 pause
-`;
-
-const WINDOWS_UPDATER_SCRIPT = String.raw`param(
-  [Parameter(Mandatory = $true)]
-  [string]$PackageUrl
-)
-
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-Add-Type -AssemblyName System.Windows.Forms
-
-function Show-Message([string]$Message, [string]$Title, $Buttons, $Icon) {
-  [System.Windows.Forms.MessageBox]::Show($Message, $Title, $Buttons, $Icon) | Out-Null
-}
-
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = 'Elegí la carpeta donde está instalado RivaStock AI Bridge (debe contener .env y package).'
-$dialog.ShowNewFolderButton = $false
-if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }
-
-$installDirectory = $dialog.SelectedPath
-$configPath = Join-Path $installDirectory '.env'
-$packageDirectory = Join-Path $installDirectory 'package'
-$packageManifestPath = Join-Path $packageDirectory 'package.json'
-if (!(Test-Path -LiteralPath $configPath -PathType Leaf) -or !(Test-Path -LiteralPath $packageManifestPath -PathType Leaf)) {
-  Show-Message 'La carpeta elegida no parece ser una instalación de RivaStock AI Bridge. Elegí la carpeta que contiene .env y package.' 'No se encontró la instalación' ([System.Windows.Forms.MessageBoxButtons]::OK) ([System.Windows.Forms.MessageBoxIcon]::Error)
-  exit 1
-}
-
-$confirmation = [System.Windows.Forms.MessageBox]::Show(
-  'Antes de continuar, cerrá la ventana donde está corriendo AI Bridge. La actualización conserva el vínculo, el inicio de sesión y las sesiones locales. ¿La ventana está cerrada?',
-  'Actualizar RivaStock AI Bridge',
-  [System.Windows.Forms.MessageBoxButtons]::YesNo,
-  [System.Windows.Forms.MessageBoxIcon]::Information
-)
-if ($confirmation -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
-
-$uri = [uri]$PackageUrl
-if (($uri.Scheme -ne 'https' -and !($uri.Scheme -eq 'http' -and $uri.IsLoopback)) -or $uri.AbsolutePath -ne '/downloads/rivastock-ai-bridge-latest.tgz') {
-  throw 'La dirección del paquete de actualización no es válida.'
-}
-
-$node = Get-Command node.exe -ErrorAction SilentlyContinue
-$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-$tar = Get-Command tar.exe -ErrorAction SilentlyContinue
-if (!$node -or !$npm -or !$tar) { throw 'No encontré Node.js, npm o tar. Verificá que Node.js 20.6 o posterior esté instalado.' }
-$nodeVersionText = (& $node.Source --version).Trim() -replace '^v', '' -replace '-.*$', ''
-if ($LASTEXITCODE -ne 0 -or [version]$nodeVersionText -lt [version]'20.6') { throw 'AI Bridge requiere Node.js 20.6 o posterior.' }
-
-$tempDirectory = Join-Path $env:TEMP ('rivastock-ai-bridge-update-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $tempDirectory | Out-Null
-try {
-  $archivePath = Join-Path $tempDirectory 'rivastock-ai-bridge-latest.tgz'
-  $extractDirectory = Join-Path $tempDirectory 'extracted'
-  New-Item -ItemType Directory -Path $extractDirectory | Out-Null
-  Write-Host 'Descargando la versión actual del Bridge...'
-  Invoke-WebRequest -Uri $PackageUrl -OutFile $archivePath -UseBasicParsing
-
-  $entries = & $tar.Source -tzf $archivePath
-  $invalidEntry = $entries | Where-Object { $_ -notmatch '^package(?:/|$)' -or $_ -match '(^|/)\.\.(?:/|$)' } | Select-Object -First 1
-  if ($LASTEXITCODE -ne 0 -or !$entries -or $invalidEntry) {
-    throw 'El paquete descargado no tiene un formato válido.'
-  }
-  & $tar.Source -xzf $archivePath -C $extractDirectory
-  if ($LASTEXITCODE -ne 0) { throw 'No se pudo extraer la actualización.' }
-
-  $newPackageDirectory = Join-Path $extractDirectory 'package'
-  $newManifestPath = Join-Path $newPackageDirectory 'package.json'
-  if (!(Test-Path -LiteralPath $newManifestPath -PathType Leaf)) { throw 'El paquete descargado está incompleto.' }
-  $manifest = Get-Content -LiteralPath $newManifestPath -Raw | ConvertFrom-Json
-  if ($manifest.name -ne 'rivastock-ai-bridge') { throw 'El paquete descargado no corresponde a RivaStock AI Bridge.' }
-
-  Get-ChildItem -LiteralPath $newPackageDirectory -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $packageDirectory -Recurse -Force
-  }
-  Copy-Item -LiteralPath $configPath -Destination (Join-Path $packageDirectory '.env') -Force
-
-  Push-Location $packageDirectory
-  try {
-    Write-Host ('Instalando AI Bridge ' + $manifest.version + '...')
-    & $npm.Source install --no-audit --no-fund
-    if ($LASTEXITCODE -ne 0) { throw 'No se pudieron instalar las dependencias.' }
-    Write-Host 'Actualización lista. AI Bridge queda iniciado en esta ventana.'
-    & $npm.Source start
-  } finally {
-    Pop-Location
-  }
-} finally {
-  Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
-}
-`;
-
-const UPDATER_README = `ACTUALIZADOR DE RIVASTOCK AI BRIDGE (WINDOWS)
-
-1. Cierra la ventana donde está corriendo AI Bridge.
-2. Abre "Actualizar RivaStock AI Bridge.bat".
-3. Selecciona la carpeta de la instalación existente; debe contener .env y package.
-4. Deja abierta la ventana del actualizador: instalará la versión nueva y arrancará el Bridge.
-
-Este proceso conserva el vínculo, la sesión de Codex y las sesiones locales. No genera un código nuevo ni cambia la PC vinculada.
-Requiere Windows, Internet y Node.js 20.6 o posterior.
 `;
 
 export async function createAIBridgeWindowsInstaller(pairing: InstallerPairing): Promise<Uint8Array> {
@@ -273,16 +175,20 @@ export async function createAIBridgeWindowsInstaller(pairing: InstallerPairing):
   }, { level: 6 });
 }
 
-export function createAIBridgeWindowsUpdater(packageUrl: string): Uint8Array {
+export function createAIBridgeWindowsUpdater(packageUrl: string, deviceId: string | null): Uint8Array {
   const url = new URL(packageUrl);
   const isLocalHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
   if (url.protocol !== 'https:' && !isLocalHttp) throw new Error('La URL de actualización no es segura.');
   if (url.pathname !== '/downloads/rivastock-ai-bridge-latest.tgz') throw new Error('La URL del paquete de actualización no es válida.');
 
-  const launcher = WINDOWS_UPDATER_LAUNCHER.replace('__PACKAGE_URL__', url.toString());
-  return zipSync({
-    'Actualizar RivaStock AI Bridge.bat': strToU8(launcher),
-    'Actualizar RivaStock AI Bridge.ps1': strToU8(WINDOWS_UPDATER_SCRIPT),
-    'LEEME.txt': strToU8(UPDATER_README),
-  }, { level: 6 });
+  const updaterUrl = new URL('/downloads/rivastock-ai-bridge-updater.ps1', url.origin);
+  if (deviceId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deviceId)) {
+    throw new Error('El identificador de la PC vinculada no es válido.');
+  }
+
+  const launcher = WINDOWS_UPDATER_LAUNCHER
+    .replace('__PACKAGE_URL__', url.toString())
+    .replace('__UPDATER_URL__', updaterUrl.toString())
+    .replace('__DEVICE_ID__', deviceId ?? '');
+  return strToU8(launcher);
 }

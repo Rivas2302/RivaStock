@@ -78,7 +78,7 @@ Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js no está insta
 
 ### Actualizar una instalación existente en Windows
 
-Desde **RivaStock > IA**, elegí **Actualizar AI Bridge** y descargá el ZIP. Cerrá la ventana donde corre el Bridge, extraé el ZIP y abrí `Actualizar RivaStock AI Bridge.bat`. En el selector, elegí la carpeta existente que contiene `.env` y `package`. El actualizador descarga la versión vigente, conserva el vínculo y los datos locales, instala las dependencias y vuelve a iniciar el worker. No crea otro vínculo ni reemplaza la PC.
+Desde **RivaStock > IA**, elegí **Actualizar AI Bridge** y ejecutá el único archivo descargado. El actualizador busca la instalación de esa PC, conserva el vínculo y las sesiones, instala la versión vigente y vuelve a iniciar el worker. Si no encuentra la carpeta, te permite seleccionarla. Si el Bridge sigue abierto, cerrá su ventana y reintentá. No crea otro vínculo ni reemplaza la PC.
 
 ### Otros sistemas o instalación manual
 

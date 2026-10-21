@@ -268,12 +268,12 @@ export default function AIHub() {
     setConnectionError('');
     try {
       const packageUrl = new URL('/downloads/rivastock-ai-bridge-latest.tgz', window.location.origin).toString();
-      const updater = createAIBridgeWindowsUpdater(packageUrl);
+      const updater = createAIBridgeWindowsUpdater(packageUrl, bridgeStatus?.device?.id ?? null);
       const archive = updater.buffer.slice(updater.byteOffset, updater.byteOffset + updater.byteLength) as ArrayBuffer;
-      const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }));
+      const url = URL.createObjectURL(new Blob([archive], { type: 'application/octet-stream' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'RivaStock-AI-Bridge-Update.zip';
+      link.download = 'Actualizar-RivaStock-AI-Bridge.bat';
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (err) {
@@ -317,7 +317,7 @@ export default function AIHub() {
           {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-200">{updaterBusy ? 'Preparando actualizador…' : 'Actualizar AI Bridge'}</button>}
           {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Desvincular</button>}
         </div>
-        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá el actualizador, cerrá la ventana del Bridge y ejecutalo. Conserva el vínculo y las sesiones de esta PC.</p>}
+        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá y ejecutá el archivo. Busca la instalación vinculada, conserva el vínculo y las sesiones, y vuelve a iniciar el Bridge. Si está abierto, te pide cerrarlo primero.</p>}
 
         {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
           <div className="flex flex-wrap items-center justify-between gap-2">

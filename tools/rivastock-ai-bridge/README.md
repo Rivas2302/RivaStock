@@ -4,6 +4,8 @@ The local worker makes outbound HTTPS requests to the Supabase Edge Function. It
 
 On Windows, download the personalized installer from **RivaStock > IA > Vincular esta PC**, extract it, and double-click `Iniciar RivaStock AI Bridge.bat`. It activates the pairing, installs the worker dependencies, opens Codex sign-in when needed, and starts the worker. Keep the terminal open while using RivaStock. The ZIP contains a private account credential; delete the ZIP after extraction and keep the extracted `.env` private.
 
+To update, download and run the single file from **RivaStock > IA > Actualizar AI Bridge**. It finds the installation for the linked device, updates it in place, preserves the pairing and local sessions, then starts the worker. If the worker is open, close its window and retry.
+
 For a manual installation on another operating system, download the standalone `.tgz` from the same screen, run `npm install`, copy `.env.example` to `.env`, and add the account-specific endpoint, pairing token, and worker ID. Then sign in to Codex using the same isolated `CODEX_HOME` configured for the worker and run `npm start`.
 
 Mock runs without a model provider. Codex and Claude Code require explicit opt-in using their `AI_BRIDGE_ENABLE_*` flags. The standalone package does not include the RivaStock source repository. Project source context stays off unless `AI_BRIDGE_PROJECT_ROOT` points to a RivaStock checkout; business knowledge and catalog context remain available per account.
