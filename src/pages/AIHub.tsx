@@ -317,7 +317,7 @@ export default function AIHub() {
           {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-200">{updaterBusy ? 'Preparando actualizador…' : 'Actualizar AI Bridge'}</button>}
           {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Desvincular</button>}
         </div>
-        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá y ejecutá el archivo. Busca la instalación vinculada, conserva el vínculo y las sesiones, y vuelve a iniciar el Bridge. Si está abierto, te pide cerrarlo primero.</p>}
+        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá y ejecutá el archivo. Busca la instalación vinculada, conserva el vínculo y las sesiones, espera que terminen las tareas activas y vuelve a iniciar el Bridge en segundo plano; podés cerrar esa ventana y seguirá conectado.</p>}
 
         {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -329,7 +329,7 @@ export default function AIHub() {
           <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
             <li>Extraé el ZIP descargado.</li>
             <li>Hacé doble clic en <code>Iniciar RivaStock AI Bridge.bat</code>.</li>
-            <li>La primera vez se abre el navegador para que inicies sesión en Codex. Después, dejá la ventana abierta.</li>
+            <li>La primera vez se abre el navegador para que inicies sesión en Codex. Después, el Bridge queda en segundo plano y se inicia automáticamente cuando vuelvas a iniciar sesión en Windows.</li>
           </ol>
           <p className="text-xs text-slate-600 dark:text-slate-300">Necesita Windows, Internet y Node.js 20.6 o posterior. Si falta Node.js, el instalador abre su página oficial. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP después de extraerlo.</p>
           <details className="rounded-lg border border-indigo-200 p-3 text-xs dark:border-indigo-800">

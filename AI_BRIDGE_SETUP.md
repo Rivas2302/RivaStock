@@ -72,13 +72,13 @@ No agregues el token del worker ni la clave `service_role` a Vercel. El puente n
 
 ### Windows (instalador recomendado)
 
-Desde **RivaStock > IA > Vincular esta PC**, descargá el instalador personalizado y extraelo. Hacé doble clic en `Iniciar RivaStock AI Bridge.bat`. El instalador valida el vínculo, instala las dependencias y abre el inicio de sesión de Codex si hace falta. Después deja el worker funcionando en esa ventana.
+Desde **RivaStock > IA > Vincular esta PC**, descargá el instalador personalizado y extraelo. Hacé doble clic en `Iniciar RivaStock AI Bridge.bat`. El instalador valida el vínculo, instala las dependencias y abre el inicio de sesión de Codex si hace falta. Después deja el worker funcionando en segundo plano y configura su inicio automático cuando vuelvas a iniciar sesión. Podés cerrar la ventana.
 
 Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js no está instalado, el instalador abre su página oficial para instalarlo; después, volvé a ejecutar el archivo `.bat`. El código inicial vence a los 30 minutos y se activa al empezar el instalador, antes de descargar dependencias. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP luego de extraerlo.
 
 ### Actualizar una instalación existente en Windows
 
-Desde **RivaStock > IA**, elegí **Actualizar AI Bridge** y ejecutá el único archivo descargado. El actualizador busca la instalación de esa PC, conserva el vínculo y las sesiones, instala la versión vigente y vuelve a iniciar el worker. Si no encuentra la carpeta, te permite seleccionarla. Si el Bridge sigue abierto, cerrá su ventana y reintentá. No crea otro vínculo ni reemplaza la PC.
+Desde **RivaStock > IA**, elegí **Actualizar AI Bridge** y ejecutá el único archivo descargado. El actualizador busca la instalación de esa PC, conserva el vínculo y las sesiones, espera que terminen las tareas activas, instala la versión vigente y vuelve a iniciar el worker en segundo plano. Si no encuentra la carpeta, te permite seleccionarla. No crea otro vínculo ni reemplaza la PC.
 
 ### Otros sistemas o instalación manual
 

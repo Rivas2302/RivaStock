@@ -84,12 +84,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo AI Bridge conectado. Deja esta ventana abierta mientras uses RivaStock.
-echo Para desconectarlo, cerra esta ventana.
+echo Iniciando AI Bridge en segundo plano...
 echo.
-call npm start
+call powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "windows\start-background.ps1" -InstallStartup
+if errorlevel 1 goto background_failed
+echo AI Bridge conectado en segundo plano. Se iniciara automaticamente cuando vuelvas a iniciar sesion.
+echo Ya puedes cerrar esta ventana.
 popd
-pause
 exit /b 0
 
 :node_missing
@@ -119,6 +120,12 @@ exit /b 1
 popd
 echo No se pudo crear la carpeta de datos de Codex: "%CODEX_HOME%".
 pause
+exit /b 1
+
+:background_failed
+popd
+echo No se pudo iniciar el AI Bridge en segundo plano.
+pause
 exit /b 1`;
 
 const INSTALLER_README = `INSTALADOR DE RIVASTOCK AI BRIDGE (WINDOWS)
@@ -126,7 +133,7 @@ const INSTALLER_README = `INSTALADOR DE RIVASTOCK AI BRIDGE (WINDOWS)
 1. Extrae esta carpeta.
 2. Abre "Iniciar RivaStock AI Bridge.bat".
 3. Si Codex lo solicita, inicia sesion con la cuenta de este negocio en el navegador.
-4. Deja la ventana abierta mientras uses la IA en RivaStock.
+4. El instalador inicia el Bridge en segundo plano y configura el inicio automatico al iniciar sesion. Puedes cerrar la ventana.
 
 El instalador verifica el vinculo, instala el Bridge y Codex CLI, y lo inicia.
 Requiere Windows, Internet y Node.js 20.6 o posterior. Si Node.js falta, abre

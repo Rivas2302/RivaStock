@@ -248,10 +248,20 @@ try {
         & $npm.Source install --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { throw 'No se pudieron instalar las dependencias.' }
       }
-      $env:CODEX_HOME = Join-Path $env:USERPROFILE '.rivastock-ai-bridge\codex'
-      Write-Host 'AI Bridge queda iniciado en esta ventana.'
-      & $npm.Source start
-      if ($LASTEXITCODE -ne 0) { throw 'AI Bridge se detuvo con un error.' }
+      $backgroundScript = Join-Path $packageDirectory 'windows\start-background.ps1'
+      if (!(Test-Path -LiteralPath $backgroundScript -PathType Leaf)) { throw 'El paquete no incluye el iniciador en segundo plano.' }
+      $powershellPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+      Write-Host 'Configurando el inicio automatico y levantando el Bridge en segundo plano...'
+      & $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File $backgroundScript -InstallStartup
+      if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar el Bridge en segundo plano.' }
+
+      $workers = @(Get-BridgeWorkerProcesses)
+      for ($attempt = 0; $attempt -lt 20 -and $workers.Count -eq 0; $attempt++) {
+        Start-Sleep -Milliseconds 500
+        $workers = @(Get-BridgeWorkerProcesses)
+      }
+      if ($workers.Count -ne 1) { throw 'El Bridge no quedó iniciado como un único proceso en segundo plano.' }
+      Write-Host 'AI Bridge conectado en segundo plano. Ya puedes cerrar esta ventana.'
     } finally {
       Pop-Location
     }
@@ -259,10 +269,24 @@ try {
     Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
   }
 } catch {
+  $updateError = $_.Exception.Message
+  $recoveryError = ''
   if ($updatePrepared -and $workerApi) {
     try { Invoke-BridgeAction $workerApi.Endpoint $workerApi.Token 'worker_start' $workerApi.WorkerId | Out-Null }
     catch { }
+    if ($packageDirectory -and (Test-Path -LiteralPath (Join-Path $packageDirectory 'windows\start-background.ps1') -PathType Leaf)) {
+      try {
+        $backgroundScript = Join-Path $packageDirectory 'windows\start-background.ps1'
+        $powershellPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        & $powershellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File $backgroundScript -InstallStartup
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar el Bridge en segundo plano.' }
+      } catch {
+        $recoveryError = $_.Exception.Message
+      }
+    }
   }
-  Show-Message $_.Exception.Message 'No se pudo actualizar RivaStock AI Bridge' ([System.Windows.Forms.MessageBoxButtons]::OK) ([System.Windows.Forms.MessageBoxIcon]::Error)
+  $message = $updateError
+  if ($recoveryError) { $message += "`r`n`r`nTampoco pude reiniciar el Bridge: $recoveryError" }
+  Show-Message $message 'No se pudo actualizar RivaStock AI Bridge' ([System.Windows.Forms.MessageBoxButtons]::OK) ([System.Windows.Forms.MessageBoxIcon]::Error)
   exit 1
 }
