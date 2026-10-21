@@ -60,7 +60,7 @@ public static class RivaStockBridgeConsole {
   try {
     [RivaStockBridgeConsole]::SetConsoleCtrlHandler([IntPtr]::Zero, $true) | Out-Null
     $title = [RivaStockBridgeConsole]::ReadTitle()
-    if (!$title.StartsWith('RivaStock AI Bridge', [StringComparison]::OrdinalIgnoreCase)) {
+    if (!$title.StartsWith('RivaStock AI Bridge', [StringComparison]::OrdinalIgnoreCase) -and $title -ne 'npm start') {
       throw 'La ventana encontrada no corresponde al AI Bridge.'
     }
     if (![RivaStockBridgeConsole]::GenerateConsoleCtrlEvent(0, 0)) {
