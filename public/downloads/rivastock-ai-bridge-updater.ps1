@@ -18,6 +18,10 @@ function Read-ConfigValue([string]$ConfigPath, [string]$Name) {
   return $match.Groups[1].Value.Trim()
 }
 
+function Read-WorkerId([string]$ConfigPath) {
+  return Read-ConfigValue $ConfigPath 'AI_BRIDGE_WORKER_ID'
+}
+
 function Invoke-BridgeAction([string]$Endpoint, [string]$Token, [string]$Action, [string]$WorkerId) {
   $body = @{ action = $Action; worker_id = $WorkerId } | ConvertTo-Json -Compress
   return Invoke-RestMethod -Uri $Endpoint -Method Post -Headers @{ Authorization = "Bearer $Token" } `
