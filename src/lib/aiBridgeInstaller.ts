@@ -147,7 +147,7 @@ title Actualizador de RivaStock AI Bridge
 set "RIVASTOCK_PACKAGE_URL=__PACKAGE_URL__"
 set "RIVASTOCK_UPDATER_URL=__UPDATER_URL__"
 set "RIVASTOCK_DEVICE_ID=__DEVICE_ID__"
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -Command "$ErrorActionPreference='Stop'; $script=Join-Path $env:TEMP ('rivastock-ai-bridge-update-' + [guid]::NewGuid().ToString('N') + '.ps1'); try { $response=Invoke-WebRequest -Uri $env:RIVASTOCK_UPDATER_URL -UseBasicParsing; [IO.File]::WriteAllText($script,$response.Content,[Text.Encoding]::UTF8); & $script -PackageUrl $env:RIVASTOCK_PACKAGE_URL -DeviceId $env:RIVASTOCK_DEVICE_ID } finally { Remove-Item -LiteralPath $script -Force -ErrorAction SilentlyContinue }"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -Command "$ErrorActionPreference='Stop'; $download=Join-Path $env:TEMP ('rivastock-ai-bridge-update-' + [guid]::NewGuid().ToString('N') + '.download'); $launcherScript=Join-Path $env:TEMP ('rivastock-ai-bridge-update-' + [guid]::NewGuid().ToString('N') + '.ps1'); try { Invoke-WebRequest -Uri $env:RIVASTOCK_UPDATER_URL -OutFile $download -UseBasicParsing; $source=[IO.File]::ReadAllText($download,[Text.Encoding]::UTF8); [IO.File]::WriteAllText($launcherScript,$source,[Text.Encoding]::Unicode); & $launcherScript -PackageUrl $env:RIVASTOCK_PACKAGE_URL -DeviceId $env:RIVASTOCK_DEVICE_ID } finally { Remove-Item -LiteralPath $download,$launcherScript -Force -ErrorAction SilentlyContinue }"
 if errorlevel 1 pause
 `;
 
