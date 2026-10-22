@@ -12,16 +12,18 @@ if ($InstallStartup) {
   if (!$startupDirectory) { throw 'No pude encontrar la carpeta de inicio de Windows.' }
   New-Item -ItemType Directory -Path $startupDirectory -Force | Out-Null
 
-  $powershellPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-  if (!(Test-Path -LiteralPath $powershellPath -PathType Leaf)) { throw 'No encontré Windows PowerShell para configurar el inicio automático.' }
+  $wscriptPath = Join-Path $env:WINDIR 'System32\wscript.exe'
+  $silentLauncherPath = Join-Path $PSScriptRoot 'start-background.vbs'
+  if (!(Test-Path -LiteralPath $wscriptPath -PathType Leaf)) { throw 'No encontré Windows Script Host para configurar el inicio automático.' }
+  if (!(Test-Path -LiteralPath $silentLauncherPath -PathType Leaf)) { throw 'Falta el iniciador silencioso del AI Bridge.' }
   $shortcutPath = Join-Path $startupDirectory 'RivaStock AI Bridge.lnk'
-  $shortcutArguments = '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+  $shortcutArguments = '//B //NoLogo "' + $silentLauncherPath + '" "' + $node.Source + '"'
   $shell = $null
   $shortcut = $null
   try {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $powershellPath
+    $shortcut.TargetPath = $wscriptPath
     $shortcut.Arguments = $shortcutArguments
     $shortcut.WorkingDirectory = $packageDirectory.Path
     $shortcut.WindowStyle = 7
