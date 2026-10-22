@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Loader2, MessageSquare, Plus, Send, Sparkles } from 'lucide-react';
+import { BookOpen, Database, Loader2, MessageSquare, Plus, Send, Sparkles } from 'lucide-react';
 import {
   getAIChat,
   getAIChats,
@@ -205,101 +205,57 @@ export default function AIChats() {
   const currentChat = chats.find((chat) => chat.id === selectedChatId) ?? selectedChat;
 
   return (
-    <section className="space-y-4">
-      {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
+    <section className="space-y-3">
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <button type="button" onClick={startNewChat} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700">
-            <Plus size={16}/>Nuevo chat
-          </button>
-          <h3 className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-slate-500">Tus chats</h3>
-          {loadingChats ? <p className="flex items-center gap-2 py-3 text-sm text-slate-500"><Loader2 size={15} className="animate-spin"/>Cargando chats…</p>
-            : chats.length ? <ul className="max-h-[38rem] space-y-2 overflow-y-auto">
-              {chats.map((chat) => <li key={chat.id}>
-                <button type="button" onClick={() => setSelectedChatId(chat.id)} aria-current={selectedChatId === chat.id ? 'page' : undefined}
-                  className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedChatId === chat.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'}`}>
-                  <span className="block truncate text-sm font-semibold">{chat.title}</span>
-                  <span className="mt-1 block truncate text-[11px] text-slate-500">{providerLabel(chat.provider)}</span>
-                  <span className="mt-2 block text-[11px] text-slate-500">{formatDate(chat.last_message_at)}</span>
-                </button>
-              </li>)}
-            </ul> : <p className="py-3 text-sm text-slate-500">Todavía no hay chats. Empezá uno para guardar el historial.</p>}
+      <div className="grid min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
+        <aside className="flex min-h-72 flex-col border-b border-[var(--line)] p-3 lg:min-h-0 lg:border-b-0 lg:border-r">
+          <button type="button" onClick={startNewChat} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-3 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)]"><Plus size={16}/>Nuevo chat</button>
+          <div className="mb-2 mt-5 flex items-center justify-between gap-2 px-1"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Tus chats</h3>{loadingChats && <Loader2 size={14} className="animate-spin text-[var(--ink-muted)]"/>}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {loadingChats ? <p className="flex items-center gap-2 py-3 text-sm text-[var(--ink-muted)]"><Loader2 size={15} className="animate-spin"/>Cargando chats…</p>
+              : chats.length ? <ul className="space-y-1.5">{chats.map((chat) => <li key={chat.id}><button type="button" onClick={() => setSelectedChatId(chat.id)} aria-current={selectedChatId === chat.id ? 'page' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedChatId === chat.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-transparent hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-sm font-semibold">{chat.title}</span><span className="mt-1 block truncate text-[11px] text-[var(--ink-muted)]">{providerLabel(chat.provider)}</span><span className="mt-1.5 block text-[11px] text-[var(--ink-muted)]">{formatDate(chat.last_message_at)}</span></button></li>)}</ul>
+              : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--ink-muted)]">Todavía no hay chats. Empezá uno para guardar el historial.</p>}
+          </div>
         </aside>
 
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <header className="border-b border-slate-200 p-4 dark:border-slate-700 md:p-5">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl bg-indigo-100 p-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"><MessageSquare size={18}/></span>
-              <div className="min-w-0">
-                <h3 className="truncate font-bold">{currentChat?.title ?? 'Nuevo chat'}</h3>
-                <p className="mt-1 text-xs text-slate-500">{currentChat ? `${providerLabel(currentChat.provider)} · Historial en este negocio; sesión en tu PC` : 'Mensajes guardados en este negocio; sesión del proveedor en tu PC.'}</p>
-              </div>
-            </div>
+        <div className="flex min-h-[34rem] min-w-0 flex-col lg:min-h-0">
+          <header className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-3 md:px-5">
+            <span className="rounded-xl bg-[var(--brand-soft)] p-2 text-[var(--brand)]"><MessageSquare size={18}/></span>
+            <div className="min-w-0"><h3 className="truncate font-bold">{currentChat?.title ?? 'Nuevo chat'}</h3><p className="mt-0.5 text-xs text-[var(--ink-muted)]">{currentChat ? `${providerLabel(currentChat.provider)} · Historial en este negocio; sesión en tu PC` : 'Mensajes guardados en este negocio; sesión del proveedor en tu PC.'}</p></div>
           </header>
 
-          <div className="max-h-[34rem] min-h-[20rem] space-y-4 overflow-y-auto p-4 md:p-5" aria-live="polite">
-            {loadingMessages && !messages.length && <p className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>Cargando historial…</p>}
-            {!messages.length && !loadingMessages && <div className="py-12 text-center">
-              <Sparkles size={26} className="mx-auto text-indigo-500"/>
-              <p className="mt-3 text-sm text-slate-500">Escribí para iniciar una conversación persistente.</p>
-            </div>}
+          <div className="min-h-80 flex-1 space-y-4 overflow-y-auto p-4 md:p-5" aria-live="polite">
+            {loadingMessages && !messages.length && <p className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando historial…</p>}
+            {!messages.length && !loadingMessages && <div className="flex min-h-64 flex-col items-center justify-center text-center"><Sparkles size={27} className="text-[var(--brand)]"/><p className="mt-3 text-sm font-semibold">Empezá una conversación</p><p className="mt-1 max-w-sm text-xs text-[var(--ink-muted)]">El historial queda guardado en este negocio y el agente conserva su sesión en tu PC.</p></div>}
             {messages.map((message) => {
               const job = jobs.find((item) => item.id === message.job_id);
               const status = message.role === 'user' ? jobStatusText(job) : null;
-              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-indigo-600 text-white' : 'mr-auto bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100'}`}>
-                <p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p>
-                <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                {status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>
-                  {job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}
-                </p>}
-              </article>;
+              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}</article>;
             })}
           </div>
 
-          <form onSubmit={(event) => void send(event)} className="space-y-4 border-t border-slate-200 p-4 dark:border-slate-700 md:p-5">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1">
-                <span className="text-xs font-bold">Agente</span>
-                <select value={provider} disabled={Boolean(selectedChat)} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950">
-                  {PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                </select>
-              </label>
-              {provider === 'codex' && <label className="block space-y-1">
-                <span className="text-xs font-bold">Modelo de Codex</span>
-                <select value={modelId} disabled={Boolean(selectedChat)} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950">
-                  {CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                </select>
-              </label>}
-            </div>
-            {provider === 'codex' && <label className="block space-y-1">
-              <span className="text-xs font-bold">Nivel de razonamiento</span>
-              <select value={reasoningEffort} disabled={Boolean(selectedChat)} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950">
-                <option value="low">Bajo — menor uso</option>
-                <option value="medium">Medio — equilibrado</option>
-                <option value="high">Alto — más análisis</option>
-                <option value="xhigh">Muy alto — tareas exigentes</option>
-              </select>
-            </label>}
-            <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
-              <legend className="mb-2 font-bold text-slate-600 dark:text-slate-300">Contexto que se agrega a este mensaje</legend>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="accent-indigo-600 disabled:opacity-50"/>Proyecto RivaStock</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="accent-indigo-600 disabled:opacity-50"/>Catálogo e inventario</label>
-              <p className="basis-full text-[11px] text-slate-500">La sesión conserva los turnos anteriores, incluido el contexto que agregaste.</p>
-            </fieldset>
-            <label className="block space-y-2">
-              <span className="sr-only">Mensaje</span>
-              <textarea value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={8000} rows={3} placeholder="Escribí tu mensaje…" className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 dark:border-slate-600 dark:bg-slate-950"/>
-              <span className="block text-right text-[11px] text-slate-500">{draft.length}/8000</span>
-            </label>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">Un chat procesa un mensaje por vez. El agente conserva el hilo de esta conversación en tu PC.</p>
-              <button type="submit" disabled={!draft.trim() || sending || hasPendingJob} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {sending || hasPendingJob ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}Enviar
-              </button>
-            </div>
+          <form onSubmit={(event) => void send(event)} className="space-y-3 border-t border-[var(--line)] p-3 md:p-4">
+            <label className="block"><span className="sr-only">Mensaje</span><textarea value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={8000} rows={3} placeholder="Escribí tu mensaje…" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)]"/><span className="mt-1 block text-right text-[11px] text-[var(--ink-muted)]">{draft.length}/8000</span></label>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Un chat procesa un mensaje por vez.</p><button type="submit" disabled={!draft.trim() || sending || hasPendingJob} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{sending || hasPendingJob ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}Enviar</button></div>
           </form>
         </div>
+
+        <aside className="space-y-5 border-t border-[var(--line)] p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
+          <section className="space-y-3"><div><h3 className="text-sm font-bold">Sesión</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">La configuración queda fija al crear el chat.</p></div>
+            <label className="block space-y-1.5"><span className="text-xs font-semibold">Agente</span><select value={provider} disabled={Boolean(selectedChat)} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-70">{PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            {provider === 'codex' && <>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold">Modelo</span><select value={modelId} disabled={Boolean(selectedChat)} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-70">{CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold">Razonamiento</span><select value={reasoningEffort} disabled={Boolean(selectedChat)} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-70"><option value="low">Bajo — menor uso</option><option value="medium">Medio — equilibrado</option><option value="high">Alto — más análisis</option><option value="xhigh">Muy alto — tareas exigentes</option></select></label>
+            </>}
+          </section>
+
+          <fieldset className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-1 flex items-center gap-2 text-sm font-bold"><Database size={15}/>Contexto</legend><p className="text-xs leading-5 text-[var(--ink-muted)]">Se agrega al próximo mensaje.</p>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Proyecto RivaStock</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Documentación y archivos seleccionados.</span></span></label>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Catálogo e inventario</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Hasta 100 productos de esta cuenta.</span></span></label>
+            <div className="flex items-start gap-2 rounded-lg bg-[var(--brand-soft)] p-3 text-xs text-[var(--ink-subtle)]"><BookOpen size={15} className="mt-0.5 shrink-0 text-[var(--brand)]"/><span>La biblioteca se incluye automáticamente en cada tarea y chat.</span></div>
+          </fieldset>
+        </aside>
       </div>
     </section>
   );

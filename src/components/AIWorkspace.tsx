@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, FilePlus2, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { BookOpen, FilePlus2, FileText, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import {
   deleteAIWorkspaceFile,
@@ -39,8 +39,16 @@ export default function AIWorkspace() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const pathError = useMemo(() => draft ? workspaceFilePathError(draft.path) : null, [draft?.path]);
+  const skillFiles = useMemo(() => files.filter((file) => file.path.startsWith('skills/')), [files]);
+  const knowledgeFiles = useMemo(() => files.filter((file) => file.path.startsWith('knowledge/')), [files]);
   const isDirty = Boolean(draft && files.some((file) => file.id === draft.id)
     && files.find((file) => file.id === draft?.id)?.content !== draft?.content);
+
+  const fileLabel = (path: string): string => {
+    const parts = path.split('/').filter(Boolean);
+    const name = path.startsWith('skills/') ? parts.at(-2) ?? parts.at(-1) : parts.at(-1);
+    return (name ?? path).replace(/\.md$/i, '').replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toLocaleUpperCase());
+  };
 
   const createSkill = () => {
     setDraft({ id: null, path: 'skills/nueva-skill/SKILL.md', content: SKILL_TEMPLATE });
@@ -90,56 +98,52 @@ export default function AIWorkspace() {
     }
   };
 
+  const renderFileList = (items: AIWorkspaceFile[], icon: typeof BookOpen) => {
+    const Icon = icon;
+    if (!items.length) return <p className="px-2 py-2 text-xs text-[var(--ink-muted)]">Todavía no hay archivos.</p>;
+    return <ul className="space-y-1">{items.map((file) => <li key={file.id}><button key={file.id} type="button" onClick={() => { setDraft({ id: file.id, path: file.path, content: file.content }); setError(''); setNotice(''); }} aria-current={draft?.id === file.id ? 'true' : undefined} className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${draft?.id === file.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-transparent hover:bg-[var(--surface-muted)]'}`}><Icon size={15} className="mt-0.5 shrink-0 text-[var(--brand)]"/><span className="min-w-0"><span className="block truncate text-xs font-semibold">{fileLabel(file.path)}</span><span className="mt-0.5 block truncate text-[10px] text-[var(--ink-muted)]">{file.path}</span></span></button></li>)}</ul>;
+  };
+
   return (
-    <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex gap-3">
-          <span className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"><BookOpen size={21}/></span>
-          <div>
-            <h3 className="text-lg font-bold">Biblioteca del agente</h3>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Creá Skills y documentos de conocimiento. Se sincronizan con la carpeta local del AI Bridge y se envían como contexto en las tareas de texto.</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={createSkill} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold dark:border-slate-600"><Plus size={15}/>Nueva Skill</button>
-          <button type="button" onClick={createDocument} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold dark:border-slate-600"><FilePlus2 size={15}/>Nuevo documento</button>
-        </div>
+    <section className="space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div><h3 className="text-xl font-bold">Biblioteca</h3><p className="mt-1 text-sm text-[var(--ink-muted)]">Instrucciones y conocimiento para tu agente.</p></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={createSkill} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3.5 py-2.5 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)]"><Plus size={15}/>Nueva Skill</button><button type="button" onClick={createDocument} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold hover:bg-[var(--surface-muted)]"><FilePlus2 size={15}/>Nuevo documento</button></div>
       </header>
 
-      {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
-      {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{notice}</p>}
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
+      {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{notice}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">Archivos ({files.length})</h4>
-            <button type="button" onClick={() => void refresh()} title="Actualizar" className="text-xs font-semibold text-indigo-600 dark:text-indigo-300">Actualizar</button>
-          </div>
-          {loading ? <div className="flex justify-center p-6"><Loader2 className="animate-spin text-indigo-500" size={20}/></div>
-            : files.length ? files.map((file) => <button key={file.id} type="button" onClick={() => { setDraft({ id: file.id, path: file.path, content: file.content }); setError(''); setNotice(''); }} aria-current={draft?.id === file.id ? 'true' : undefined} className={`w-full rounded-lg border p-3 text-left text-xs transition-colors ${draft?.id === file.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40' : 'border-slate-200 dark:border-slate-700'}`}><span className="block truncate font-semibold">{file.path}</span><span className="mt-1 block text-slate-500">{new Date(file.updated_at).toLocaleDateString('es-AR')}</span></button>)
-              : <p className="rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500 dark:border-slate-700">Todavía no hay archivos.</p>}
+      <div className="grid gap-3 xl:grid-cols-[17rem_minmax(0,1fr)_15rem]">
+        <aside className="flex min-h-72 flex-col rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-sm xl:max-h-[calc(100dvh-16rem)] xl:overflow-y-auto">
+          <div className="flex items-center justify-between gap-2 px-2 py-1"><h4 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Archivos</h4><button type="button" onClick={() => void refresh()} title="Actualizar" className="text-xs font-semibold text-[var(--brand)]">{loading ? <Loader2 size={14} className="animate-spin"/> : 'Actualizar'}</button></div>
+          <section className="mt-3"><h5 className="mb-1 flex items-center gap-2 px-2 text-xs font-bold"><BookOpen size={14} className="text-[var(--brand)]"/>Skills <span className="font-normal text-[var(--ink-muted)]">{skillFiles.length}</span></h5>{renderFileList(skillFiles, BookOpen)}</section>
+          <section className="mt-4 border-t border-[var(--line)] pt-3"><h5 className="mb-1 flex items-center gap-2 px-2 text-xs font-bold"><FileText size={14} className="text-[var(--brand)]"/>Conocimiento <span className="font-normal text-[var(--ink-muted)]">{knowledgeFiles.length}</span></h5>{renderFileList(knowledgeFiles, FileText)}</section>
+          {!loading && files.length === 0 && <p className="mt-4 rounded-lg border border-dashed border-[var(--line-strong)] p-3 text-xs text-[var(--ink-muted)]">Creá una Skill o un documento para armar tu biblioteca.</p>}
+          <div className="mt-auto border-t border-[var(--line)] px-2 pt-3"><p className="text-xs font-semibold">{files.length} de 100 archivos</p><p className="mt-1 text-[11px] text-[var(--ink-muted)]">Hasta 1 MiB por biblioteca.</p></div>
         </aside>
 
-        <div className="min-w-0 space-y-3">
+        <section className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm md:p-5">
           {draft ? <>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Ruta</span>
-              <input value={draft.path} onChange={(event) => setDraft({ ...draft, path: event.target.value })} maxLength={240} spellCheck={false} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-600 dark:bg-slate-950" placeholder="skills/nombre/SKILL.md"/>
-            </label>
-            {pathError && <p className="text-xs text-rose-600 dark:text-rose-300">{pathError}</p>}
-            <label className="block space-y-1.5">
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Contenido</span>
-              <textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} maxLength={65_536} rows={18} spellCheck className="w-full resize-y rounded-lg border border-slate-300 bg-white p-3 font-mono text-sm leading-6 dark:border-slate-600 dark:bg-slate-950" placeholder="Escribí el contenido del archivo..."/>
-              <span className="block text-right text-xs text-slate-500">{draft.content.length}/65.536</span>
-            </label>
-            <div className="flex flex-wrap justify-between gap-2">
-              <div>{draft.id && <button type="button" onClick={() => void remove()} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={14}/>Eliminar</button>}</div>
-              <button type="button" onClick={() => void save()} disabled={saving || Boolean(pathError) || draft.content.length > 65_536} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>} {draft.id ? (isDirty || draft.path !== files.find((file) => file.id === draft.id)?.path ? 'Guardar cambios' : 'Guardar') : 'Crear archivo'}</button>
-            </div>
-          </> : <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><BookOpen size={28} className="text-indigo-500"/><p className="mt-3 text-sm font-semibold">Elegí un archivo o creá el primero.</p><p className="mt-1 text-xs text-slate-500">Las Skills son instrucciones en Markdown. Los documentos aportan conocimiento del negocio.</p></div>}
-        </div>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2 text-xs text-[var(--ink-muted)]">{draft.path.startsWith('skills/') ? <BookOpen size={14}/> : <FileText size={14}/>}<span>{draft.path.startsWith('skills/') ? 'Skill' : 'Documento de conocimiento'}</span></div><h4 className="mt-1 truncate text-lg font-bold">{fileLabel(draft.path)}</h4></div><div className="flex flex-wrap gap-2">{draft.id && <button type="button" onClick={() => void remove()} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={14}/>Eliminar</button>}<button type="button" onClick={() => void save()} disabled={saving || Boolean(pathError) || draft.content.length > 65_536} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3.5 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>} {draft.id ? (isDirty || draft.path !== files.find((file) => file.id === draft.id)?.path ? 'Guardar cambios' : 'Guardar') : 'Crear archivo'}</button></div></div>
+            <label className="mb-3 block space-y-1.5"><span className="text-xs font-semibold text-[var(--ink-subtle)]">Ruta</span><input value={draft.path} onChange={(event) => setDraft({ ...draft, path: event.target.value })} maxLength={240} spellCheck={false} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-3 py-2 font-mono text-xs text-[var(--ink)]" placeholder="skills/nombre/SKILL.md"/></label>
+            {pathError && <p className="mb-3 text-xs text-rose-600 dark:text-rose-300">{pathError}</p>}
+            <div className="mb-2 flex items-center gap-1 border-b border-[var(--line)]"><span className="border-b-2 border-[var(--brand)] px-3 py-2 text-xs font-semibold text-[var(--brand)]">Editar</span></div>
+            <label className="block space-y-1.5"><span className="sr-only">Contenido</span><textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} maxLength={65_536} rows={20} spellCheck className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 font-mono text-sm leading-6 text-[var(--ink)]" placeholder="Escribí el contenido del archivo..."/><span className="block text-right text-xs text-[var(--ink-muted)]">{draft.content.length.toLocaleString('es-AR')}/65.536</span></label>
+          </> : <div className="flex min-h-[28rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--line-strong)] p-8 text-center"><BookOpen size={30} className="text-[var(--brand)]"/><p className="mt-3 text-sm font-semibold">Elegí un archivo o creá el primero.</p><p className="mt-1 max-w-sm text-xs leading-5 text-[var(--ink-muted)]">Las Skills contienen instrucciones reutilizables. Los documentos aportan conocimiento del negocio.</p></div>}
+        </section>
+
+        <aside className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">
+          <h4 className="font-bold">Información</h4>
+          {draft ? <>
+            <div className="border-b border-[var(--line)] pb-3"><p className="text-xs text-[var(--ink-muted)]">Tipo</p><p className="mt-2 flex items-center gap-2 text-sm font-semibold">{draft.path.startsWith('skills/') ? <BookOpen size={16} className="text-[var(--brand)]"/> : <FileText size={16} className="text-[var(--brand)]"/>}{draft.path.startsWith('skills/') ? 'Skill' : 'Conocimiento'}</p></div>
+            <div className="border-b border-[var(--line)] pb-3"><p className="text-xs text-[var(--ink-muted)]">Última actualización</p><p className="mt-2 text-sm">{files.find((file) => file.id === draft.id)?.updated_at ? new Date(files.find((file) => file.id === draft.id)!.updated_at).toLocaleDateString('es-AR', { dateStyle: 'medium' }) : 'Archivo nuevo'}</p></div>
+            <div><p className="text-xs text-[var(--ink-muted)]">Uso</p><p className="mt-2 text-xs leading-5">Se agrega automáticamente como contexto en tareas y chats.</p></div>
+          </> : <p className="text-xs leading-5 text-[var(--ink-muted)]">Seleccioná un archivo para ver sus detalles.</p>}
+          <div className="rounded-lg bg-[var(--brand-soft)] p-3 text-xs leading-5 text-[var(--ink-subtle)]">Los archivos se sincronizan con la carpeta local del AI Bridge y se incluyen como texto de contexto.</div>
+        </aside>
       </div>
-      <p className="text-xs text-slate-500">Solo se admiten archivos de texto en skills/ y knowledge/. Se guardan hasta 100 archivos y 1 MiB por biblioteca; no se ejecutan scripts.</p>
+      <p className="text-xs text-[var(--ink-muted)]">Solo se admiten archivos de texto en skills/ y knowledge/. No se ejecutan scripts.</p>
     </section>
   );
 }

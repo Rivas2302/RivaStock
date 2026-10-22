@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Bot, Check, Clock3, Copy, Download, Loader2, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
+import { BookOpen, Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
@@ -53,6 +53,7 @@ function formatDate(value: string): string {
 }
 
 function ConnectionBadge({ state }: { state: AIBridgeState | null }) {
+  if (state === null) return <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"><Loader2 size={14} className="animate-spin"/>Consultando</span>;
   if (state === 'busy') return <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200"><Loader2 size={14} className="animate-spin"/>Ocupada</span>;
   if (state === 'idle') return <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><Wifi size={14}/>Conectada</span>;
   return <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"><WifiOff size={14}/>Desconectada</span>;
@@ -81,7 +82,7 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<'console' | 'chats' | 'workspace'>('console');
+  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection'>('chats');
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
@@ -286,154 +287,125 @@ export default function AIHub() {
   if (!isOwner) return null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 text-slate-900 dark:text-white">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-300"><Sparkles size={16}/>RivaStock AI Bridge</p>
-          <h2 className="text-2xl font-bold md:text-3xl">IA</h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Usá tareas puntuales o mantené una conversación persistente con el agente conectado en tu PC.</p>
+          <p className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand)]"><Sparkles size={15}/>RivaStock AI</p>
+          <h2 className="page-heading text-2xl font-bold md:text-3xl">IA</h2>
+          <p className="mt-1 text-sm text-[var(--ink-muted)]">Chats, tareas y conocimiento de tu negocio en un solo lugar.</p>
         </div>
+        <button type="button" onClick={() => setView('connection')} className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold shadow-sm transition hover:border-[var(--line-strong)]" aria-label={`Estado de la PC: ${bridgeState === null ? 'consultando' : bridgeState === 'idle' ? 'conectada' : bridgeState === 'busy' ? 'ocupada' : 'desconectada'}. Abrir conexión`}>
+          <ConnectionBadge state={bridgeState}/>
+          <ChevronRight size={15} className="text-[var(--ink-muted)]"/>
+        </button>
       </header>
 
-      {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="font-bold">Conexión de tu PC</h3>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Vinculá una computadora de este negocio. El agente usa la sesión local de Codex iniciada en esa PC y la biblioteca de conocimiento de esta cuenta.</p>
-            <p className="mt-2 max-w-2xl rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Con Codex, las tareas y los chats pueden buscar en la web, ejecutar comandos y leer o modificar archivos accesibles para el usuario de Windows que ejecuta el Bridge, sin pedir aprobación por acción. Usá una PC de confianza.</p>
-          </div>
-          <ConnectionBadge state={bridgeState}/>
-        </div>
-
-        {bridgeStatus?.device && <p className="text-sm text-slate-600 dark:text-slate-300">Computadora vinculada: <strong>{bridgeStatus.device.name}</strong>{bridgeStatus.last_seen_at ? ` · Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : ' · Esperando el primer inicio del Bridge'}.</p>}
-        {bridgeStatus?.legacy && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Esta cuenta todavía usa la conexión anterior. Al vincular una PC, la credencial anterior se deshabilita.</p>}
-        {connectionError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{connectionError}</p>}
-        {connectionNotice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{connectionNotice}</p>}
-
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Vincular o reemplazar PC' : 'Vincular esta PC'}</button>
-          {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-200">{updaterBusy ? 'Preparando actualizador…' : 'Actualizar AI Bridge'}</button>}
-          {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Desvincular</button>}
-        </div>
-        {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs text-slate-500 dark:text-slate-400">Descargá y ejecutá el archivo. Busca la instalación vinculada, conserva el vínculo y las sesiones, espera que terminen las tareas activas y vuelve a iniciar el Bridge en segundo plano; podés cerrar esa ventana y seguirá conectado.</p>}
-
-        {pairing && <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><p className="text-sm font-bold">Instalador para tu PC</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Descargalo y ejecutalo antes del {formatDate(pairing.pairing.pairing_expires_at)}.</p></div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void downloadBridgeInstaller()} disabled={installerBusy} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Download size={14}/>{installerBusy ? 'Preparando instalador…' : 'Descargar instalador para Windows'}</button>
-          </div>
-          <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
-            <li>Extraé el ZIP descargado.</li>
-            <li>Hacé doble clic en <code>Iniciar RivaStock AI Bridge.bat</code>.</li>
-            <li>La primera vez se abre el navegador para que inicies sesión en Codex. Después, el Bridge queda en segundo plano y se inicia automáticamente cuando vuelvas a iniciar sesión en Windows.</li>
-          </ol>
-          <p className="text-xs text-slate-600 dark:text-slate-300">Necesita Windows, Internet y Node.js 20.6 o posterior. Si falta Node.js, el instalador abre su página oficial. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP después de extraerlo.</p>
-          <details className="rounded-lg border border-indigo-200 p-3 text-xs dark:border-indigo-800">
-            <summary className="cursor-pointer font-semibold">Configuración manual u otro sistema operativo</summary>
-            <div className="mt-3 space-y-3">
-              <a href="/downloads/rivastock-ai-bridge-latest.tgz" download className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-bold dark:border-slate-600 dark:bg-slate-900"><Download size={14}/>Descargar AI Bridge (.tgz)</a>
-              <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre>
-              <button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-bold dark:border-slate-600 dark:bg-slate-900"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button>
-            </div>
-          </details>
-        </div>}
-      </section>
-
-      <nav className="flex gap-2 border-b border-slate-200 dark:border-slate-700" aria-label="Secciones de IA">
-        <button type="button" onClick={() => setView('console')} aria-current={view === 'console' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'console' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Consola</button>
-        <button type="button" onClick={() => setView('chats')} aria-current={view === 'chats' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'chats' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Chats</button>
-        <button type="button" onClick={() => setView('workspace')} aria-current={view === 'workspace' ? 'page' : undefined} className={`border-b-2 px-3 py-2 text-sm font-semibold ${view === 'workspace' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-500'}`}>Skills y conocimiento</button>
+      <nav className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="Secciones de IA">
+        {([
+          { id: 'chats', label: 'Chats', icon: MessageSquare },
+          { id: 'tasks', label: 'Tareas', icon: ListChecks },
+          { id: 'library', label: 'Biblioteca', icon: BookOpen },
+          { id: 'connection', label: 'Conexión', icon: Cable },
+        ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
       </nav>
 
-      {view === 'workspace' ? <AIWorkspace/> : view === 'chats' ? <AIChats/> : <>
+      {view === 'chats' && <AIChats/>}
 
-      <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-        <label className="block space-y-2">
-          <span className="text-sm font-bold">Agente</span>
-          <select value={provider} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-950">
-            {PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        {provider === 'codex' && <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block space-y-2">
-            <span className="text-sm font-bold">Modelo de Codex</span>
-            <select value={modelId} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-950">
-              {CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-bold">Nivel de razonamiento</span>
-            <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-950">
-              <option value="low">Bajo — menor uso</option>
-              <option value="medium">Medio — equilibrado</option>
-              <option value="high">Alto — más análisis</option>
-              <option value="xhigh">Muy alto — tareas exigentes</option>
-            </select>
-          </label>
-          <p className="text-xs text-slate-500 sm:col-span-2">Luna con razonamiento bajo prioriza el menor uso. Muy alto puede aumentar el consumo; reservalo para tareas exigentes.</p>
-        </div>}
-        <label className="block space-y-2">
-          <span className="text-sm font-bold">Instrucción</span>
-          <textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={8000} required rows={6} placeholder="Generá una descripción comercial para una cámara WiFi con visión nocturna, detección de movimiento y audio bidireccional." className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 dark:border-slate-600 dark:bg-slate-950"/>
-          <span className="block text-right text-xs text-slate-500">{input.length}/8000</span>
-        </label>
-        <fieldset className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-          <legend className="px-1 text-xs font-bold text-slate-600 dark:text-slate-300">Contexto opcional</legend>
-          <label className="flex items-start gap-2 text-xs">
-            <input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
-            <span><strong>Proyecto RivaStock</strong><span className="block text-slate-500">Incluye documentación y archivos fuente seleccionados como contexto inicial. Codex también puede acceder a los archivos disponibles para el usuario de Windows en la PC vinculada.</span></span>
-          </label>
-          <label className="flex items-start gap-2 text-xs">
-            <input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-indigo-600 disabled:opacity-50"/>
-            <span><strong>Catálogo e inventario</strong><span className="block text-slate-500">Incluye hasta 100 productos con descripción, precios y stock de esta cuenta. Los datos se envían al proveedor seleccionado.</span></span>
-          </label>
-          <p className="pl-6 text-[11px] text-slate-500">Las Skills y los documentos guardados en “Skills y conocimiento” se incluyen automáticamente. El Mock no usa contexto.</p>
-        </fieldset>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">Codex puede usar la web, el terminal y los archivos de la PC vinculada. La tarea queda pendiente si tu PC está desconectada.</p>
-          <button type="submit" disabled={!input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
-            {submitting ? <Loader2 size={17} className="animate-spin"/> : <Zap size={17}/>} Ejecutar con IA
-          </button>
-        </div>
-      </form>
+      {view === 'library' && <AIWorkspace/>}
 
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Resultado</p><h3 className="mt-1 text-lg font-bold">{activeJob ? statusLabel(activeJob.status) : 'Todavía no hay una tarea'}</h3></div>
-            {activeJob?.output && <button type="button" onClick={() => void copyOutput()} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold dark:border-slate-600">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiada' : 'Copiar respuesta'}</button>}
-          </div>
-          {activeJob ? <div className="space-y-4 text-sm">
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div><dt className="text-xs text-slate-500">Identificador</dt><dd className="mt-1 break-all font-mono text-xs">{activeJob.id}</dd></div>
-              <div><dt className="text-xs text-slate-500">Agente</dt><dd className="mt-1 font-semibold">{providerLabel(activeJob.provider)}</dd></div>
-              {activeJob.provider === 'codex' && <div><dt className="text-xs text-slate-500">Modelo y razonamiento</dt><dd className="mt-1 font-semibold">{modelLabel(activeJob.model_id)} · {reasoningLabel(activeJob.reasoning_effort)}</dd></div>}
-              <div><dt className="text-xs text-slate-500">Creada</dt><dd className="mt-1">{formatDate(activeJob.created_at)}</dd></div>
-              <div><dt className="text-xs text-slate-500">Intentos</dt><dd className="mt-1">{activeJob.attempt_count}</dd></div>
-              <div><dt className="text-xs text-slate-500">Contexto incluido</dt><dd className="mt-1">{[
-                activeJob.provider === 'mock' ? 'Sin contexto (Mock)' : 'Biblioteca de Skills y conocimiento',
-                ...(activeJob.include_project_context ? ['Proyecto RivaStock'] : []),
-                ...(activeJob.include_business_context ? ['Catálogo e inventario'] : []),
-              ].join(' · ')}</dd></div>
-            </dl>
-            {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
-            {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-indigo-50 p-4 text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
-            {activeJob.output && <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 leading-6 dark:bg-slate-950">{activeJob.output}</div>}
-            {activeJob.error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-900 dark:bg-rose-950 dark:text-rose-200">{activeJob.error}</p>}
-          </div> : <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><Bot size={28} className="mx-auto text-indigo-500"/><p className="mt-3 text-sm text-slate-500">Escribí una instrucción para ver acá su progreso y respuesta.</p></div>}
-        </article>
-
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-3 flex items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3>{loading && <Loader2 size={15} className="animate-spin text-slate-400"/>}</div>
-          {recentJobs.length ? <ul className="space-y-2">{recentJobs.map((job) => <li key={job.id}><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40' : 'border-slate-200 dark:border-slate-700'}`}><span className="block text-xs font-bold">{providerLabel(job.provider)}</span><span className="mt-1 block truncate text-xs text-slate-500">{job.input}</span><span className="mt-2 block text-[11px] text-slate-500">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button></li>)}</ul> : <p className="text-sm text-slate-500">Las tareas que envíes van a aparecer acá.</p>}
-          <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300"><Clock3 size={14}/>Actualizar historial</button>
+      {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
+        <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
+          <div className="mb-4 flex items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3>{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div>
+          {recentJobs.length ? <ul className="space-y-2">{recentJobs.map((job) => <li key={job.id}><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button></li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
+          <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand)]"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
-      </section>
-      </>}
+
+        <div className="min-w-0 space-y-4">
+          <article className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-6">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-muted)]">Resultado</p><h3 className="mt-1 text-lg font-bold">{activeJob ? statusLabel(activeJob.status) : 'Todavía no hay una tarea'}</h3></div>
+              {activeJob?.output && <button type="button" onClick={() => void copyOutput()} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold hover:bg-[var(--surface-muted)]">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiada' : 'Copiar respuesta'}</button>}
+            </div>
+            {activeJob ? <div className="space-y-4 text-sm">
+              <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">{activeJob.input}</p>
+              {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
+              {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
+              {activeJob.output && <div className="whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 leading-6">{activeJob.output}</div>}
+              {activeJob.error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-900 dark:bg-rose-950 dark:text-rose-200">{activeJob.error}</p>}
+              <details className="rounded-xl border border-[var(--line)] px-4 py-3 text-xs">
+                <summary className="cursor-pointer font-semibold">Detalles de la tarea</summary>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div><dt className="text-[var(--ink-muted)]">Identificador</dt><dd className="mt-1 break-all font-mono">{activeJob.id}</dd></div>
+                  <div><dt className="text-[var(--ink-muted)]">Agente</dt><dd className="mt-1 font-semibold">{providerLabel(activeJob.provider)}</dd></div>
+                  {activeJob.provider === 'codex' && <div><dt className="text-[var(--ink-muted)]">Modelo y razonamiento</dt><dd className="mt-1 font-semibold">{modelLabel(activeJob.model_id)} · {reasoningLabel(activeJob.reasoning_effort)}</dd></div>}
+                  <div><dt className="text-[var(--ink-muted)]">Creada</dt><dd className="mt-1">{formatDate(activeJob.created_at)}</dd></div>
+                  <div><dt className="text-[var(--ink-muted)]">Intentos</dt><dd className="mt-1">{activeJob.attempt_count}</dd></div>
+                  <div><dt className="text-[var(--ink-muted)]">Contexto incluido</dt><dd className="mt-1">{[activeJob.provider === 'mock' ? 'Sin contexto (Mock)' : 'Biblioteca de Skills y conocimiento', ...(activeJob.include_project_context ? ['Proyecto RivaStock'] : []), ...(activeJob.include_business_context ? ['Catálogo e inventario'] : [])].join(' · ')}</dd></div>
+                </dl>
+              </details>
+            </div> : <div className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--line-strong)] p-8 text-center"><Bot size={28} className="text-[var(--brand)]"/><p className="mt-3 text-sm text-[var(--ink-muted)]">Escribí una instrucción para ver acá su progreso y respuesta.</p></div>}
+          </article>
+
+          <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm md:p-5">
+            <label className="block space-y-2"><span className="text-sm font-bold">Nueva tarea</span><textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={8000} required rows={4} placeholder="¿Qué necesitás resolver?" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)]"/><span className="block text-right text-xs text-[var(--ink-muted)]">{input.length}/8000</span></label>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Si la PC está desconectada, la tarea queda pendiente.</p><button type="submit" disabled={!input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] transition hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin"/> : <Zap size={16}/>}Ejecutar tarea</button></div>
+          </section>
+        </div>
+
+        <aside className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">
+          <div><h3 className="font-bold">Configuración de la tarea</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">Se guarda junto con esta ejecución.</p></div>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold">Agente</span><select value={provider} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]">{PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          {provider === 'codex' && <>
+            <label className="block space-y-1.5"><span className="text-xs font-semibold">Modelo</span><select value={modelId} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]">{CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label className="block space-y-1.5"><span className="text-xs font-semibold">Razonamiento</span><select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option><option value="xhigh">Muy alto</option></select></label>
+            <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Muy alto puede aumentar el consumo; reservalo para tareas exigentes.</p>
+          </>}
+          <fieldset className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-2 text-xs font-bold">Contexto opcional</legend>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Proyecto RivaStock</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Documentación y archivos seleccionados.</span></span></label>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Catálogo e inventario</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Hasta 100 productos de esta cuenta.</span></span></label>
+            <p className="text-[11px] leading-5 text-[var(--ink-muted)]">La biblioteca se incluye automáticamente. El Mock no usa contexto.</p>
+          </fieldset>
+        </aside>
+      </form>}
+
+      {view === 'connection' && <section className="space-y-5">
+        <header><h3 className="text-xl font-bold">Conexión de tu PC</h3><p className="mt-1 text-sm text-[var(--ink-muted)]">El agente trabaja desde la computadora vinculada a este negocio.</p></header>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+          <section className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4"><span className="rounded-2xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Monitor size={28}/></span><div><h4 className="text-lg font-bold">{bridgeStatus?.device?.name ?? 'No hay una PC vinculada'}</h4><div className="mt-2"><ConnectionBadge state={bridgeState}/></div><p className="mt-2 text-xs text-[var(--ink-muted)]">{bridgeStatus?.last_seen_at ? `Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : bridgeStatus?.device ? 'Esperando el primer inicio del Bridge.' : 'Vinculá una computadora para empezar a usar el agente.'}</p></div></div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Reemplazar PC' : 'Vincular esta PC'}</button>
+                {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{updaterBusy ? 'Preparando…' : 'Actualizar Bridge'}</button>}
+                {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Desvincular</button>}
+              </div>
+            </div>
+            {bridgeStatus?.legacy && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Esta cuenta todavía usa la conexión anterior. Al vincular una PC, la credencial anterior se deshabilita.</p>}
+            {(bridgeStatus?.paired || bridgeStatus?.legacy) && <p className="text-xs leading-5 text-[var(--ink-muted)]">El actualizador conserva el vínculo y las sesiones, espera que terminen las tareas activas y reinicia el Bridge en segundo plano.</p>}
+            {connectionError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">{connectionError}</p>}
+            {connectionNotice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{connectionNotice}</p>}
+
+            {pairing && <div className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--brand-soft)] p-4">
+              <div><p className="text-sm font-bold">Instalador para tu PC</p><p className="mt-1 text-xs text-[var(--ink-muted)]">Descargalo y ejecutalo antes del {formatDate(pairing.pairing.pairing_expires_at)}.</p></div>
+              <button type="button" onClick={() => void downloadBridgeInstaller()} disabled={installerBusy} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Download size={14}/>{installerBusy ? 'Preparando instalador…' : 'Descargar instalador para Windows'}</button>
+              <ol className="list-decimal space-y-1 pl-5 text-xs leading-5 text-[var(--ink-subtle)]"><li>Extraé el ZIP descargado.</li><li>Hacé doble clic en <code>Iniciar RivaStock AI Bridge.bat</code>.</li><li>La primera vez se abre el navegador para iniciar sesión en Codex. Después, el Bridge queda en segundo plano.</li></ol>
+              <p className="text-xs leading-5 text-[var(--ink-subtle)]">Necesita Windows, Internet y Node.js 20.6 o posterior. El ZIP contiene una credencial privada: no lo compartas y borrá el ZIP después de extraerlo.</p>
+              <details className="rounded-lg border border-[var(--line)] p-3 text-xs"><summary className="cursor-pointer font-semibold">Configuración manual u otro sistema operativo</summary><div className="mt-3 space-y-3"><a href="/downloads/rivastock-ai-bridge-latest.tgz" download className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 font-bold"><Download size={14}/>Descargar AI Bridge (.tgz)</a><pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-slate-100">{`AI_BRIDGE_ENDPOINT=${pairing.endpoint}\nAI_BRIDGE_TOKEN=${pairing.pairing.pairing_code}\nAI_BRIDGE_WORKER_ID=${pairing.pairing.device_id}\nAI_BRIDGE_ENABLE_CODEX=true`}</pre><button type="button" onClick={() => void copyPairingConfiguration()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 font-bold"><Copy size={14}/>{pairingCopied ? 'Configuración copiada' : 'Copiar configuración'}</button></div></details>
+            </div>}
+          </section>
+
+          <aside className="space-y-4">
+            <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
+              <h4 className="font-bold">Cómo funciona</h4>
+              <ol className="mt-4 space-y-4 text-sm"><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">1</span><span><strong>Vinculá tu PC</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">Descargá el instalador y ejecutalo en la computadora.</span></span></li><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">2</span><span><strong>Iniciá sesión en el proveedor</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">Usá la sesión local de Codex o Claude Code.</span></span></li><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">3</span><span><strong>Empezá a usar IA</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">La PC recibe tareas y chats de este negocio.</span></span></li></ol>
+            </section>
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40"><div className="flex gap-3"><ShieldAlert size={19} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300"/><div><h4 className="font-bold text-amber-950 dark:text-amber-100">Permisos del agente</h4><p className="mt-2 text-xs leading-5 text-amber-900 dark:text-amber-200">Con Codex, las tareas y los chats pueden buscar en la web, ejecutar comandos y leer o modificar archivos accesibles para el usuario de Windows que ejecuta el Bridge, sin pedir aprobación por acción. Usá una PC de confianza.</p></div></div></section>
+          </aside>
+        </div>
+      </section>}
     </div>
   );
 }
