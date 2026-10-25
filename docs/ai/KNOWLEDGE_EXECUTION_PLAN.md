@@ -1344,11 +1344,17 @@ COMMIT;
 
 **Resultado de la fase:** crear y editar documentos con títulos, listas, tablas, imágenes entre pasos (pegar, arrastrar o subir), advertencias/recomendaciones, autoguardado, versiones consultables y restaurables, publicación y exportación PDF profesional.
 
-### [ ] T2.1 Dependencias del editor
+### [x] T2.1 Dependencias del editor
 - Instalar con versión exacta (última 3.x estable al momento): `@tiptap/react @tiptap/pm @tiptap/starter-kit @tiptap/extension-image @tiptap/extension-table @tiptap/extensions`.
 - Verificar en `node_modules/@tiptap/extension-table/package.json` que exporte `TableKit` y en `@tiptap/extensions` que exporte `Placeholder`. Si la versión instalada usa otra API (por ejemplo extensiones `TableRow/TableCell/TableHeader` separadas), adaptar los imports y anotarlo en `docs/ai/knowledge-progress.md`.
-- Confirmar que `npm run build` sigue pasando y que el editor queda en un chunk separado (se importa solo desde rutas lazy). Ejecutar `npm run perf:check`; si falla por presupuesto de bundle, ⛔ PARADA y reportar tamaños.
-- **Commit:** `build(knowledge): add tiptap editor dependencies`
+- Confirmar que `npm run build` sigue pasando y que el editor queda en un chunk separado (se importa solo desde rutas lazy).
+- **Corrección de presupuesto (detectada el 25/10, ya venía de la Fase 1):** `perf:check` falla en `src/pages/Knowledge.tsx` (≈258 KB gzip > 235 KB) **aunque TipTap todavía no se use**. Causa: `Knowledge.tsx` importa de forma estática todas las subpáginas y `KnowledgeDocumentDetail.tsx` importa `marked` y `dompurify` en el nivel superior. `scripts/performance-report.mjs` mide solo el cierre estático (excluye `import()` dinámicos). Arreglo obligatorio, sin cambiar el presupuesto ni el script:
+  1. En `src/pages/Knowledge.tsx`, cargar con `lazy()` + `<Suspense>` `KnowledgeLibrary`, `KnowledgeDocumentDetail`, `KnowledgeAdmin` y `UploadDialog` (este último solo se monta cuando `uploadOpen` es `true`). El fallback reutiliza el mismo spinner que `PageLoader` en `App.tsx` (`Loader2`). `KnowledgePanel` puede quedar estático.
+  2. Sacar `marked` y `dompurify` del nivel superior: crear `src/lib/knowledge/markdown.ts` con `export async function renderMarkdownSafe(md: string): Promise<string>` que haga `const [{ marked }, { default: DOMPurify }] = await Promise.all([import('marked'), import('dompurify')]);` y devuelva `DOMPurify.sanitize(await marked.parse(md))`. En el detalle, renderizar con estado (`useEffect` → `setHtml`) y mostrar “Cargando vista previa…” mientras tanto. Agregar un test unitario de `renderMarkdownSafe` (elimina `<script>` y `onerror`).
+  3. Lo mismo regirá para el editor (T2.3/T2.4): `KnowledgeEditorPage` y todo lo de TipTap se cargan solo con `lazy()`; nunca importar TipTap desde `Knowledge.tsx`, el panel, la biblioteca ni el detalle. El visor de solo lectura de versiones (T2.5) y la exportación PDF (T2.6) también se cargan con `import()` dinámico.
+  4. Volver a correr `npm run build && npm run perf:check`. Debe pasar. Si con estos cambios sigue fallando, revisar `.vite/manifest.json` qué módulo estático pesa más en la ruta y moverlo a `import()`; solo si es imposible, ⛔ PARADA y reportar tamaños por archivo.
+- Incluir estos cambios en el mismo commit de T2.1 y anotar en `docs/ai/knowledge-progress.md` el tamaño antes/después.
+- **Commit:** `build(knowledge): add tiptap editor dependencies and split knowledge routes`
 
 ### [ ] T2.2 Extensiones y utilidades de contenido
 **Archivos:**

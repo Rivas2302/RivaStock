@@ -122,3 +122,10 @@ Actualizado: 2026-10-25
 
 - Actualizados `AGENTS.md` y este registro con el estado, límites de despliegue y trabajo de Fase 2.
 - Verificación de cierre: `npm run lint`, `npm test` (76 archivos, 482 pruebas) y `npm run build` pasaron. No se hizo revisión manual contra Supabase porque el único proyecto conectado es producción y no hay staging; las migraciones siguen locales. La checklist F1 de §12.3 queda para ejecución en un entorno no productivo.
+
+### T2.1 — Dependencias del editor y presupuesto de bundle
+
+- Fijadas las seis dependencias TipTap en `3.32.0`; `TableKit` y `Placeholder` están disponibles desde los exports previstos. Agregado `jsdom@26.1.0` como dependencia de desarrollo para probar el saneado real en Vitest, compatible con el Node 20 mínimo del proyecto.
+- `Knowledge.tsx` carga Biblioteca, Detalle, Administración y `UploadDialog` con `lazy()` + `Suspense`; el diálogo solo se importa al abrirse. `marked` y `dompurify` ahora se cargan dinámicamente mediante `renderMarkdownSafe`; el detalle muestra estado de carga y error de vista previa. TipTap queda reservado para imports de rutas lazy en T2.3/T2.4.
+- Presupuesto gzip de la ruta Conocimientos antes: JS 258.009 bytes, CSS 21.888 bytes. Después: JS 214.227 bytes, CSS 21.897 bytes. El JS bajó 43.782 bytes y `npm run perf:check` pasó.
+- Verificación: `npm run lint`, `npm test` (77 archivos, 483 pruebas), `npm run build` y `npm run perf:check` pasaron. Sin cambios en Supabase remoto.

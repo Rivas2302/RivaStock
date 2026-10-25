@@ -1,12 +1,17 @@
-import { Sparkles, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { Loader2, Sparkles, Upload } from 'lucide-react';
+import { Suspense, lazy, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
 import '../styles/knowledge.css';
-import KnowledgeDocumentDetail from '../components/knowledge/KnowledgeDocumentDetail';
-import KnowledgeAdmin from '../components/knowledge/KnowledgeAdmin';
-import KnowledgeLibrary from '../components/knowledge/KnowledgeLibrary';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
-import UploadDialog from '../components/knowledge/UploadDialog';
+
+const KnowledgeDocumentDetail = lazy(() => import('../components/knowledge/KnowledgeDocumentDetail'));
+const KnowledgeAdmin = lazy(() => import('../components/knowledge/KnowledgeAdmin'));
+const KnowledgeLibrary = lazy(() => import('../components/knowledge/KnowledgeLibrary'));
+const UploadDialog = lazy(() => import('../components/knowledge/UploadDialog'));
+
+function KnowledgeLoader() {
+  return <div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={36}/></div>;
+}
 
 export default function Knowledge() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -51,12 +56,12 @@ export default function Knowledge() {
 
       <Routes>
         <Route index element={<KnowledgePanel refreshKey={refreshKey}/>}/>
-        <Route path="biblioteca" element={<KnowledgeLibrary refreshKey={refreshKey}/>}/>
-        <Route path="doc/:documentId" element={<KnowledgeDocumentDetail/>}/>
-        <Route path="admin" element={<KnowledgeAdmin/>}/>
+        <Route path="biblioteca" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeLibrary refreshKey={refreshKey}/></Suspense>}/>
+        <Route path="doc/:documentId" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeDocumentDetail/></Suspense>}/>
+        <Route path="admin" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeAdmin/></Suspense>}/>
         <Route path="*" element={<Navigate to="/ia/conocimientos" replace/>}/>
       </Routes>
-      <UploadDialog isOpen={uploadOpen} onClose={closeUpload} initialFolderId={searchParams.get('folder')} onUploaded={() => setRefreshKey((value) => value + 1)}/>
+      {uploadOpen && <Suspense fallback={<KnowledgeLoader/>}><UploadDialog isOpen onClose={closeUpload} initialFolderId={searchParams.get('folder')} onUploaded={() => setRefreshKey((value) => value + 1)}/></Suspense>}
     </div>
   );
 }

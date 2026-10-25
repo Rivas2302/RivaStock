@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AlertCircle, Archive, ArrowLeft, Check, Download, Eye, FileClock, FileText, History, Loader2, RotateCcw, Save, Send, Upload, WandSparkles } from 'lucide-react';
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import {
@@ -31,6 +29,7 @@ import {
   KNOWLEDGE_STATUS_LABELS,
 } from '../../lib/knowledge/format';
 import { signedUrl } from '../../lib/knowledge/storage';
+import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -455,6 +454,28 @@ function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
   signedError: string;
   onOpenPdf: () => void;
 }) {
+  const markdown = version?.content_markdown ?? version?.extracted_text ?? '';
+  const supportsMarkdown = document.format === 'md' || document.format === 'editor';
+  const markdownCanRender = Boolean(version && supportsMarkdown
+    && version.extraction_status !== 'pending'
+    && version.extraction_status !== 'error'
+    && version.extraction_status !== 'not_supported');
+  const [renderedMarkdown, setRenderedMarkdown] = useState<{ source: string; html: string } | null>(null);
+  const [markdownFailure, setMarkdownFailure] = useState<{ source: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!markdownCanRender) return;
+    let cancelled = false;
+    setRenderedMarkdown(null);
+    setMarkdownFailure(null);
+    void renderMarkdownSafe(markdown).then((html) => {
+      if (!cancelled) setRenderedMarkdown({ source: markdown, html });
+    }).catch(() => {
+      if (!cancelled) setMarkdownFailure({ source: markdown, message: 'No se pudo procesar la vista previa Markdown.' });
+    });
+    return () => { cancelled = true; };
+  }, [markdown, markdownCanRender]);
+
   if (!version) return <section className="rounded-2xl border border-dashed border-[var(--line-strong)] p-10 text-center"><FileText className="mx-auto text-[var(--ink-muted)]" size={28}/><h2 className="mt-3 font-bold">No hay una versión para mostrar</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Guardá una versión del documento para ver su contenido.</p></section>;
   if (document.format === 'pdf') return <section className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm">
     <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] p-4"><h2 className="font-bold">PDF · v{version.version_number}</h2>{signedUrl && <button type="button" onClick={onOpenPdf} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold md:hidden">Abrir PDF</button>}</div>
@@ -473,10 +494,10 @@ function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
   if (version.extraction_status === 'pending') return <PreviewMessage title="Extracción pendiente" message={extractionMessage('pending')}/>;
 
   if (version.extraction_status === 'error' || version.extraction_status === 'not_supported') return <PreviewMessage title="No se pudo mostrar el contenido" message={extractionMessage(version.extraction_status)}/>;
-  const markdown = version.content_markdown ?? version.extracted_text ?? '';
-  if (document.format === 'md' || document.format === 'editor') {
-    const safeHtml = DOMPurify.sanitize(marked.parse(markdown) as string);
-    return <article className="kb-prose rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-8" dangerouslySetInnerHTML={{ __html: safeHtml }}/>;
+  if (supportsMarkdown) {
+    if (markdownFailure?.source === markdown) return <PreviewMessage title="No se pudo mostrar el contenido" message={markdownFailure.message}/>;
+    if (renderedMarkdown?.source !== markdown) return <div role="status" className="flex min-h-40 items-center justify-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-sm text-[var(--ink-muted)]"><Loader2 className="animate-spin text-[var(--brand)]" size={18}/>Cargando vista previa…</div>;
+    return <article className="kb-prose rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-8" dangerouslySetInnerHTML={{ __html: renderedMarkdown.html }}/>;
   }
   return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm"><pre className="whitespace-pre-wrap break-words text-sm leading-6">{version.extracted_text ?? 'No hay texto extraído para esta versión.'}</pre></section>;
 }
