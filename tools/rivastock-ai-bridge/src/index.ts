@@ -7,6 +7,7 @@ import { BridgeClient } from './client.ts';
 import { configureModelCache } from './knowledge/embed.ts';
 import { KnowledgeClient } from './knowledge/client.ts';
 import { runKnowledgeLoop } from './knowledge/loop.ts';
+import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { providerFor } from './providers.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, createBusinessContext, createCombinedContext, syncWorkspaceFiles } from './workspace.ts';
@@ -27,7 +28,6 @@ process.on('SIGINT', () => { stopping = true; activeController?.abort(); });
 process.on('SIGTERM', () => { stopping = true; activeController?.abort(); });
 
 async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string }): Promise<void> {
-  if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');
   const controller = new AbortController();
   activeController = controller;
   const timeout = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
@@ -37,6 +37,25 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     });
   }, HEARTBEAT_INTERVAL_MS);
   try {
+    if (job.task_type === 'knowledge_organize') {
+      const jobContext = await client.jobContext(workerId, job.id);
+      const provider = providerFor(job.provider, config);
+      const rawOutput = job.provider === 'mock'
+        ? mockOrganize(job.input)
+        : (await provider.execute(buildOrganizePrompt(job.input), controller.signal, '', {
+          ...(jobContext.model_id ? { model_id: jobContext.model_id } : {}),
+          ...(jobContext.reasoning_effort ? { reasoning_effort: jobContext.reasoning_effort } : {}),
+          chat_id: null,
+          session_id: null,
+        })).output;
+      const output = parseOrganizeOutput(rawOutput);
+      if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+      await client.complete(workerId, job.id, output);
+      process.stdout.write(`[AI Bridge] Propuesta de Conocimientos ${job.id} completada con ${job.provider}.\n`);
+      return;
+    }
+    if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');
+
     const workspaceFiles = await client.workspaceFiles(workerId);
     await syncWorkspaceFiles(config.workspaceDirectory, workspaceFiles);
     lastWorkspaceSyncAt = Date.now();
