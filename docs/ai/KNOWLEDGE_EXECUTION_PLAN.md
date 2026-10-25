@@ -1232,7 +1232,7 @@ COMMIT;
   12. `authenticated` no puede `INSERT` directo en `knowledge_documents` ni `knowledge_events`, ni ejecutar `knowledge_log`.
 - **Commit:** `test(knowledge): cover core migration with PGlite`
 
-### [ ] T1.5 Capa de datos del frontend
+### [x] T1.5 Capa de datos del frontend
 **Archivos nuevos:**
 - `src/lib/knowledge/types.ts` — tipos: `KnowledgeFormat`, `KnowledgeStatus`, `KnowledgeIndexStatus`, `KnowledgeDocument` (fila de tabla), `KnowledgeListItem` (ítem de búsqueda), `KnowledgeVersion`, `KnowledgeFolder`, `KnowledgeCategory`, `KnowledgeTag`, `KnowledgeEvent`, `KnowledgeStats`, `KnowledgeSearchFilters`.
 - `src/lib/knowledge/format.ts` — etiquetas en español y clases de color (tokens) para estados y formatos; `formatBytes`; `formatDate` (es-AR).

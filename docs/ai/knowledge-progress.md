@@ -61,3 +61,11 @@ Actualizado: 2026-10-25
 - La suite carga las migraciones reales de AI Bridge y Conocimientos en PGlite y cubre aislamiento/RLS, permisos de colaboradores, archivos y versiones, cuota de almacenamiento, publicación, conflictos de editor, restauración, búsqueda/filtros, carpetas, eliminación/auditoría e importación heredada. La migración de Storage se valida estáticamente porque PGlite no incluye el esquema `storage`.
 - Verificación: `npx vitest run src/lib/knowledge.migration.test.ts` (15 pruebas), `npm run lint` y `npm test` (73 archivos, 475 pruebas) pasaron.
 - No se aplicaron migraciones a producción; el respaldo previo sigue bloqueado por la falta de Docker y `pg_dump` local.
+
+### T1.5 — Capa de datos del frontend
+
+- Agregados tipos y formatos para documentos, estados, versiones, organización, eventos, estadísticas y filtros; también etiquetas/clases en español, formato de bytes y fecha `es-AR`.
+- Agregados helpers para detectar formatos, limitar archivos y nombres de Storage, leer TXT/Markdown chicos y calcular SHA-256.
+- Agregada la API tipada para RPC y lecturas protegidas por RLS, CRUD de carpetas/categorías/etiquetas, carga serial de hasta 20 archivos con hash y limpieza compensatoria, assets, URLs firmadas y eliminación por lotes con estado reintentable.
+- Pruebas unitarias de formatos, etiquetas, nombres seguros, lectura de texto y vectores conocidos de SHA-256.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se modificó ni aplicó nada en Supabase remoto.
