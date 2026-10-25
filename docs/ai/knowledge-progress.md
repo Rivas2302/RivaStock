@@ -136,3 +136,11 @@ Actualizado: 2026-10-25
 - Implementadas funciones puras para copiar y sanear imágenes, aplicar URLs firmadas al mostrar, recolectar rutas únicas, convertir documentos a texto y Markdown, y calcular SHA-256 con serialización estable de claves.
 - Agregados snapshots de serialización para los nodos y marcas contemplados, más pruebas de rutas de assets, URLs firmadas, escapes Markdown, saltos de línea, documento vacío y hash estable.
 - Verificación: `npm run lint` y `npm test` pasaron (78 archivos, 491 pruebas). Sin cambios en Supabase remoto.
+
+### T2.3 — Componente editor
+
+- Agregado `KnowledgeEditor` con StarterKit limitado a títulos 1–3, imágenes privadas, tablas, avisos y placeholder; hidrata las rutas de assets con URLs firmadas de una hora y muestra un skeleton mientras carga.
+- Agregada barra de formato accesible y adaptable, con controles de texto, listas, citas, avisos, tablas, enlaces y líneas divisorias. Los enlaces solo aceptan HTTP/HTTPS.
+- Paste, drop y selector de archivos suben imágenes PNG/JPEG/WebP de hasta 10 MB mediante la optimización existente a WebP, registran el asset y lo insertan con su ruta privada; el estado de carga y los errores se informan en la UI.
+- Incorporados estilos de contenido, tablas, avisos por variante compatibles con el tema oscuro y skeleton de carga. El editor queda aislado en su módulo; no se importa desde las rutas de Conocimientos.
+- Verificación: `npm run lint` y `npm test` pasaron (78 archivos, 491 pruebas). Sin cambios en Supabase remoto.

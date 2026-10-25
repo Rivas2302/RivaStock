@@ -1424,7 +1424,7 @@ COMMIT;
 - **Tests** `src/lib/knowledge/editorContent.test.ts`: documento de ejemplo con todos los nodos → snapshots de `toMarkdown` y `toPlainText`; `stripImageSources` elimina `src`; `contentHash` igual para el mismo contenido con distinto orden de claves.
 - **Commit:** `feat(knowledge): add editor extensions and content serializers`
 
-### [ ] T2.3 Componente editor
+### [x] T2.3 Componente editor
 `src/components/knowledge/editor/KnowledgeEditor.tsx`
 - Props: `{ initialContent: JSONContent; documentId: string; ownerUid: string; editable?: boolean; onChange(doc: JSONContent): void }`.
 - Extensiones: `StarterKit.configure({ heading: { levels: [1, 2, 3] } })`, `KbImage`, `TableKit.configure({ table: { resizable: false } })`, `Callout`, `Placeholder.configure({ placeholder: 'Escribí el título o pegá tus notas…' })`.
