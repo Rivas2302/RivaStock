@@ -264,3 +264,79 @@ Actualizado: 2026-10-25
 - La migración `20261025224258_knowledge_organize` todavía no está aplicada en `RivaStock_Oficial`; la lista remota contiene las cinco migraciones de F1–F3 y ninguna de F4. El frontend F4 no se fusionó y el Bridge 1.6.0 no se instaló.
 - El respaldo disponible está en `%USERPROFILE%\\rivastock-backups\\20261025-163535` y fue creado antes del despliegue F1–F3; no sirve como punto de recuperación para la base actual. El proyecto está en el plan Free y el panel no ofrece descarga de backups. Esta PC no tiene Docker ni `SUPABASE_DB_PASSWORD`; se descargó temporalmente `pg_dump` 17.11 desde EDB y se verificó su SHA-256, pero las conexiones TCP a la base directa (5432) y al pooler (5432/6543) no respondieron. No se pudo producir un backup fresco desde esta red; por la condición del dueño, se detiene aquí toda mutación de la base.
 - Próximo paso de producción: crear y verificar un backup actual de schema y datos fuera del repo desde una red con acceso a Postgres. Luego aplicar solo la migración de F4, desplegar el frontend y Bridge 1.6.0, y correr la checklist F4 de §12.3. El fallback offline F3 y la limpieza `[QA]` quedan pendientes.
+
+### Backup lógico HTTPS verificado antes de Fase 4 — 2026-10-25
+
+- Destino externo al repositorio: %USERPROFILE%\rivastock-backups\20261025-202735\.
+- Docker Desktop y el CLI de Docker no están instalados; supabase db dump --linked tampoco pudo ejecutarse porque este checkout no tiene un project ref vinculado. Se usó el fallback autorizado por HTTPS.
+- La clave service_role se obtuvo con supabase projects api-keys, se mantuvo solo en memoria y se retiró del entorno al terminar. El exportador Node quedó fuera del repositorio y no escribe credenciales.
+- Se exportaron las 63 tablas del esquema public como JSON paginado de hasta 1000 filas por solicitud. Para cada tabla, el conteo exacto SQL previo coincide con el Content-Range exacto HTTPS previo, las filas exportadas y el conteo exacto HTTPS posterior. Los 63 archivos JSON son válidos y no vacíos (los arreglos vacíos se representan como []).
+- Total exportado: 12.918 filas. Se copiaron 90 archivos de supabase/migrations/ al backup como cobertura del esquema. Esta copia incluye 20261025224258_knowledge_organize.sql, que en el momento del backup aún no estaba aplicada.
+- manifest.json lista 365 objetos de assets y 16 de knowledge, con nombre y tamaño de cada objeto. Todos los objetos tienen tamaño registrado. El backup ocupa 40833381 bytes en 156 archivos. No contiene dumps schema.sql/data.sql; los datos y la carpeta de migraciones quedaron verificados.
+- Resultado: **63/63 tablas verificadas**; se habilita continuar con la migración de Fase 4 según §12.
+
+| Tabla | Conteo SQL exacto | HTTPS antes | Filas JSON | HTTPS después | Resultado |
+|---|---:|---:|---:|---:|---|
+| profiles | 5 | 5 | 5 | 5 | OK |
+| categories | 14 | 14 | 14 | 14 | OK |
+| price_ranges | 6 | 6 | 6 | 6 | OK |
+| products | 429 | 429 | 429 | 429 | OK |
+| sales | 771 | 771 | 771 | 771 | OK |
+| cash_flow | 1113 | 1113 | 1113 | 1113 | OK |
+| stock_intakes | 160 | 160 | 160 | 160 | OK |
+| customers | 9 | 9 | 9 | 9 | OK |
+| customer_transactions | 28 | 28 | 28 | 28 | OK |
+| quotes | 1 | 1 | 1 | 1 | OK |
+| orders | 2 | 2 | 2 | 2 | OK |
+| catalog_config | 4 | 4 | 4 | 4 | OK |
+| suppliers | 12 | 12 | 12 | 12 | OK |
+| invitations | 5 | 5 | 5 | 5 | OK |
+| collaborators | 1 | 1 | 1 | 1 | OK |
+| cash_closings | 0 | 0 | 0 | 0 | OK |
+| audit_events | 4622 | 4622 | 4622 | 4622 | OK |
+| inventory_owners | 6 | 6 | 6 | 6 | OK |
+| inventory_holdings | 697 | 697 | 697 | 697 | OK |
+| inventory_owner_memberships | 8 | 8 | 8 | 8 | OK |
+| inventory_operation_settings | 5 | 5 | 5 | 5 | OK |
+| inventory_stock_commands | 300 | 300 | 300 | 300 | OK |
+| inventory_product_commands | 558 | 558 | 558 | 558 | OK |
+| sale_items | 786 | 786 | 786 | 786 | OK |
+| sale_item_allocations | 787 | 787 | 787 | 787 | OK |
+| stock_movements | 448 | 448 | 448 | 448 | OK |
+| cash_flow_allocations | 772 | 772 | 772 | 772 | OK |
+| attributed_sale_commands | 448 | 448 | 448 | 448 | OK |
+| price_lists | 1 | 1 | 1 | 1 | OK |
+| price_list_items | 194 | 194 | 194 | 194 | OK |
+| reseller_supplier_lists | 0 | 0 | 0 | 0 | OK |
+| reseller_supplier_list_items | 0 | 0 | 0 | 0 | OK |
+| customer_financial_commands | 0 | 0 | 0 | 0 | OK |
+| supplier_orders | 1 | 1 | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | 69 | 69 | OK |
+| facebook_devices | 38 | 38 | 38 | 38 | OK |
+| facebook_device_secrets | 38 | 38 | 38 | 38 | OK |
+| facebook_publications | 19 | 19 | 19 | 19 | OK |
+| facebook_deliveries | 97 | 97 | 97 | 97 | OK |
+| facebook_delivery_reviews | 13 | 13 | 13 | 13 | OK |
+| facebook_group_sync | 1 | 1 | 1 | 1 | OK |
+| facebook_delivery_decisions | 17 | 17 | 17 | 17 | OK |
+| facebook_worker_policy | 1 | 1 | 1 | 1 | OK |
+| facebook_delivery_attempts | 101 | 101 | 101 | 101 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | 149 | 149 | OK |
+| ai_jobs | 44 | 44 | 44 | 44 | OK |
+| ai_bridge_workers | 2 | 2 | 2 | 2 | OK |
+| ai_workspace_files | 0 | 0 | 0 | 0 | OK |
+| ai_bridge_devices | 5 | 5 | 5 | 5 | OK |
+| ai_bridge_device_secrets | 5 | 5 | 5 | 5 | OK |
+| ai_chats | 5 | 5 | 5 | 5 | OK |
+| ai_chat_messages | 43 | 43 | 43 | 43 | OK |
+| knowledge_folders | 2 | 2 | 2 | 2 | OK |
+| knowledge_categories | 1 | 1 | 1 | 1 | OK |
+| knowledge_tags | 1 | 1 | 1 | 1 | OK |
+| knowledge_documents | 7 | 7 | 7 | 7 | OK |
+| knowledge_document_versions | 10 | 10 | 10 | 10 | OK |
+| knowledge_assets | 9 | 9 | 9 | 9 | OK |
+| knowledge_document_tags | 6 | 6 | 6 | 6 | OK |
+| knowledge_events | 34 | 34 | 34 | 34 | OK |
+| knowledge_index_jobs | 4 | 4 | 4 | 4 | OK |
+| knowledge_chunks | 0 | 0 | 0 | 0 | OK |
+| knowledge_search_requests | 4 | 4 | 4 | 4 | OK |
