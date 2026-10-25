@@ -111,6 +111,8 @@ Mantené esta consola abierta durante la demo. El worker consultará la cola cad
 
 ### Conocimientos
 
+La indexación y búsqueda semántica requieren AI Bridge 1.5.0 o posterior, las migraciones de Conocimientos y la Edge Function `knowledge` desplegadas en Supabase. La Biblioteca muestra resultados por significado y cambia a búsqueda por palabras clave cuando la PC vinculada no está disponible.
+
 El worker consulta también la cola de indexación y de búsqueda semántica cuando `AI_BRIDGE_WORKER_ID` contiene el ID de la PC vinculada. `AI_BRIDGE_ENABLE_KNOWLEDGE` queda activado por defecto; podés desactivarlo con `false`. La URL de `AI_BRIDGE_ENDPOINT` debe terminar en `/functions/v1/ai-bridge`, para que el worker derive `/functions/v1/knowledge`.
 
 La primera indexación descarga aproximadamente 120 MB del modelo multilingüe y los guarda en `%USERPROFILE%\.rivastock-ai-bridge\models`. Podés cambiar la ubicación con `AI_BRIDGE_MODELS_DIR`. PDF, DOCX, Markdown y TXT se procesan en la PC. El OCR de imágenes queda desactivado por defecto y se configura con `AI_BRIDGE_ENABLE_OCR=true` cuando haya una versión del worker con OCR.

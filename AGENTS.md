@@ -47,17 +47,18 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Estado actual de Conocimientos
 
-- Las Fases 1 y 2 están implementadas en `feat/conocimientos`. La Fase 2 agrega el editor TipTap con imágenes privadas, autoguardado, borradores, publicación, visor/diff/restauración de versiones y exportación PDF. Las rutas del editor y el visor cargan TipTap de forma lazy; el runtime de PDF también se carga bajo demanda.
+- Las Fases 1, 2 y la implementación local de Fase 3 están en `feat/conocimientos`. Fase 3 agrega indexación RAG con embeddings locales, extracción y fragmentación, búsqueda híbrida/semántica con fallback por palabras clave, estados y reintentos, y administración de indexación. El editor TipTap y el runtime PDF cargan bajo demanda.
 - Las Skills permanecen en `ai_workspace_files`; los documentos heredados `knowledge/*` se pueden migrar individualmente a Conocimientos como documentos publicados. Los que no se migren siguen editables y se adjuntan al contexto del Bridge.
-- Las migraciones locales `20261025152219_knowledge_extensions`, `20261025152408_knowledge_core` y `20261025152515_knowledge_storage` se validaron en PGlite. No se aplicaron en Supabase: solo está conectado `RivaStock_Oficial` (producción), no hay staging y T0.2 sigue pendiente porque no hay backup verificable y tres versiones del historial no coinciden.
+- Las migraciones locales de Fases 1 y 3 (`20261025152219_knowledge_extensions`, `20261025152408_knowledge_core`, `20261025152515_knowledge_storage`, `20261025184236_knowledge_vector_extension` y `20261025184450_knowledge_rag`) se validaron en PGlite. No se aplicaron en Supabase; la Edge Function `knowledge` tampoco se desplegó. Solo está conectado `RivaStock_Oficial` (producción), no hay staging y T0.2 sigue pendiente de respaldo verificable y reconciliación del historial.
 - Al cierre de Fase 2: `npm run lint`, 497 pruebas en 80 archivos, `npm run build` y `npm run perf:check` pasaron. El presupuesto gzip de la ruta inicial quedó en 207.691 bytes JS y 21.449 bytes CSS; jsPDF y autotable se descargan al exportar.
-- La checklist manual F2 de §12.3 queda lista para el dueño. No se hizo la prueba de punta a punta ni la revisión visual en 375 px: el único Supabase conectado es producción y no hay staging. La barra permite desplazamiento horizontal y las tablas editoriales tienen contenedor con scroll horizontal; falta confirmar el resultado visual en dispositivo/navegador.
-- Próximo trabajo: Fase 3, Motor RAG, después de preparar un entorno no productivo y resolver T0.2 (reconciliar el historial y obtener un backup verificable). No aplicar migraciones del módulo a producción antes de eso.
+- Cierre local de Fase 3: `npm run lint`, `npm test` (519 pruebas en 83 archivos), `npm run build`, `npm run perf:check`, typecheck y 23 pruebas del worker pasaron. Se generó localmente el paquete AI Bridge 1.5.0; no se publicó ni instaló en la PC vinculada. T3.7 (OCR opcional) no está implementada.
+- La prueba de punta a punta de Fase 3 queda pendiente: requiere aplicar las migraciones, desplegar `knowledge` e instalar Bridge 1.5.0. La checklist manual F1/F2 de §12.3 y la revisión visual en 375 px también siguen pendientes; no se hizo ninguna mutación remota.
+- Próximo paso: preparar un entorno no productivo y resolver T0.2; recién entonces validar Fase 3 de punta a punta y continuar con Fase 4. No aplicar migraciones del módulo ni desplegar funciones en producción como parte de esta rama.
 
 ## Próximas brechas confirmadas
 
 1. El paquete 1.4.4, el acceso de Inicio oculto y la continuidad del worker tras cerrar el lanzador se verificaron localmente; todavía falta probar un inicio de sesión de Windows posterior a la actualización. Una tarea real con Codex se completó desde RivaStock; quedan una prueba con Claude, el clic del botón de actualización desde la UI y el aislamiento entre cuentas. Solo se dispone del Supabase de producción y no hay staging conectado. Luego definir retención, borrado y compactación/límites de contexto; hoy el historial no tiene borrado desde la UI.
-2. La biblioteca no implementa RAG todavía; el conocimiento se adjunta como texto sujeto a límites de tamaño.
+2. Fase 3 de Conocimientos está implementada en la rama, pero requiere migraciones, Edge Function `knowledge` y Bridge 1.5.0 en un entorno no productivo para completar la validación real. OCR sigue pendiente y desactivado.
 3. La selección de Skills desde una respuesta del chat no está implementada.
 4. El contexto de RivaStock no equivale a acceso total al repositorio ni a la base: el código fuente es una allowlist y los datos comerciales se agregan de forma limitada y opcional.
 
@@ -68,6 +69,10 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 - Editor de Skills y conocimiento: src/components/AIWorkspace.tsx
 - Cliente de tareas: src/lib/aiBridge.ts
 - Persistencia de archivos de conocimiento: src/lib/aiWorkspace.ts
+- Búsqueda semántica y fallback: src/lib/knowledge/search.ts
+- Administración RAG: src/components/knowledge/KnowledgeAdmin.tsx
+- Edge Function worker-only: supabase/functions/knowledge/index.ts
+- Migraciones de RAG: supabase/migrations/20261025184236_knowledge_vector_extension.sql y supabase/migrations/20261025184450_knowledge_rag.sql
 - Worker local: tools/rivastock-ai-bridge/src/index.ts
 - Proveedores y política de ejecución: tools/rivastock-ai-bridge/src/providers.ts
 - Sincronización y composición del contexto: tools/rivastock-ai-bridge/src/workspace.ts

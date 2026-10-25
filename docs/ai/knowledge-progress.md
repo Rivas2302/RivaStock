@@ -224,3 +224,10 @@ Actualizado: 2026-10-25
 - La tabla filtra documentos disponibles, errores, excluidos y pendientes; permite cambiar “Usar en la IA”, reindexar uno, errores o todos (con confirmación para todos). La vista de jobs muestra los últimos 50 y se actualiza cada 5 s si hay trabajos abiertos; se conserva el reintento de eliminaciones en Storage.
 - “Probar búsqueda” usa el mismo servicio semántico/fallback, permite filtrar por carpeta, categoría y etiqueta, y muestra fuentes [K1]…, similitud y score. Organización reutiliza `TaxonomyManager`.
 - Verificación: `npm run lint`, `npm test` (83 archivos, 519 pruebas) y `npm run build` pasaron. El paquete local AI Bridge 1.5.0 se generó en `prebuild`; no se publicó ni se aplicaron cambios remotos.
+
+### T3.10 — Cierre local de Fase 3
+
+- Verificación final: `npm run lint`, `npm test` (83 archivos, 519 pruebas), `npm run build` y `npm run perf:check` pasaron. El worker pasó `npm run typecheck` y `npm test` (23 pruebas).
+- `npm run package:ai-bridge` generó `public/downloads/rivastock-ai-bridge-1.5.0.tgz` (40,4 kB comprimido; 154 kB desempaquetado). El archivo está ignorado por Git; el paquete no se publicó ni instaló.
+- La implementación local de Fase 3 queda cerrada. La validación real sigue pendiente: las migraciones `20261025184236_knowledge_vector_extension` y `20261025184450_knowledge_rag` no se aplicaron, la Edge Function `knowledge` no se desplegó y el Bridge 1.5.0 no está instalado en la PC. El único Supabase conectado es producción; T0.2 sigue pendiente, así que no se modificó el estado remoto.
+- T3.7 (OCR opcional) no se implementó. La indexación de imágenes se apoya en título y descripción cuando no hay OCR.

@@ -2271,7 +2271,7 @@ COMMIT;
 - **Organización:** `TaxonomyManager` (T1.11).
 - **Commit:** `feat(knowledge): add RAG administration panel`
 
-### [ ] T3.10 Cierre de Fase 3 — ⛔ PARADA para validación real
+### [x] T3.10 Cierre local de Fase 3 — ⛔ PARADA para validación real
 - `npm run lint && npm test && npm run build`; worker: `npm run typecheck && npm test`; `npm run package:ai-bridge` genera `public/downloads/rivastock-ai-bridge-1.5.0.tgz` (no commitear binarios si el repo no lo hace hoy: revisar `.gitignore` y seguir la convención existente).
 - La validación de punta a punta requiere migraciones aplicadas, la función `knowledge` desplegada y el Bridge 1.5.0 instalado en la PC. Todo eso es producción → seguir §12 con autorización.
 - Actualizar `AGENTS.md`, `AI_BRIDGE_SETUP.md` y `docs/ai/knowledge-progress.md`.
