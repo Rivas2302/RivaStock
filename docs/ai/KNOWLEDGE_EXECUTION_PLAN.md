@@ -2283,7 +2283,7 @@ COMMIT;
 
 **Resultado de la fase:** desde el editor, el usuario pega notas desordenadas y capturas (o usa el borrador actual), elige proveedor/modelo y recibe una **propuesta editable** con títulos, pasos numerados, advertencias y tablas, con cada imagen junto a su paso. La IA no inventa datos: lo que falte aparece listado como “Información faltante”. Nada se guarda ni publica sin que el usuario lo aplique.
 
-### [ ] T4.1 Migración: tipo de tarea `knowledge_organize` y propuestas
+### [x] T4.1 Migración: tipo de tarea `knowledge_organize` y propuestas
 **Archivo:** `supabase/migrations/<ts>_knowledge_organize.sql`. Es la **única** modificación sobre `ai_jobs`: amplía el CHECK de `task_type` de forma aditiva.
 ```sql
 BEGIN;
@@ -2409,7 +2409,7 @@ COMMIT;
 - Test PGlite `src/lib/knowledgeOrganize.migration.test.ts`: cargar `0076_ai_bridge.sql`, `20261019222648…`, `20261019224839…`, `20261020012915…`, `20261020014931…` (para que `ai_jobs` tenga todas sus columnas y la UNIQUE `(user_id, id)`), luego core y organize. Casos: crea job `knowledge_organize` + propuesta; colaborador rechazado; documento de otro dueño rechazado; idempotencia; límite de 10; `text_generation` sigue funcionando con `ai_create_job_with_model`; `knowledge_resolve_proposal` solo una vez.
 - **Commit:** `feat(knowledge): add knowledge_organize jobs and AI proposals`
 
-### [ ] T4.2 Worker: ejecutar `knowledge_organize`
+### [x] T4.2 Worker: ejecutar `knowledge_organize`
 **Archivos:** `tools/rivastock-ai-bridge/src/knowledge/organize.ts`, cambios en `src/index.ts` y `src/types.ts` (`AIJob.task_type: 'text_generation' | 'knowledge_organize'`).
 - `buildOrganizePrompt(notes)` — texto exacto:
   ```
@@ -2437,7 +2437,7 @@ COMMIT;
 - Tests `test/knowledge-organize.test.ts`: JSON válido pasa; con fences pasa; `image_ids` inválido falla; texto fuera de JSON falla; `mockOrganize` conserva `[[IMG2]]`.
 - **Commit:** `feat(ai-bridge): execute knowledge_organize jobs`
 
-### [ ] T4.3 Frontend: “Organizar con IA”
+### [x] T4.3 Frontend: “Organizar con IA”
 **Archivos:** `src/lib/aiOptions.ts` (mover `PROVIDERS`, `CODEX_MODELS`, `reasoningLabel` desde `AIHub.tsx` sin cambiar comportamiento; actualizar imports de `AIHub.tsx`), `src/lib/knowledge/organize.ts`, `src/components/knowledge/editor/OrganizeWithAIDialog.tsx`.
 - `src/lib/knowledge/organize.ts`:
   - `buildNotesFromDraft(doc)`: `toMarkdown` reemplazando cada imagen por `[[IMGn]]` y devolviendo `imageMap: { IMGn: { assetPath, alt } }`.
