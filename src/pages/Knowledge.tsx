@@ -1,6 +1,8 @@
 import { Library, Sparkles, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
+import '../styles/knowledge.css';
+import KnowledgeDocumentDetail from '../components/knowledge/KnowledgeDocumentDetail';
 import KnowledgeLibrary from '../components/knowledge/KnowledgeLibrary';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
 import UploadDialog from '../components/knowledge/UploadDialog';
@@ -13,10 +15,6 @@ function KnowledgeSectionPlaceholder({ title }: { title: string }) {
       <p className="mt-1 text-sm text-[var(--ink-muted)]">Esta sección se habilitará al completar la configuración de Conocimientos.</p>
     </section>
   );
-}
-
-function KnowledgeDocumentDetail() {
-  return <KnowledgeSectionPlaceholder title="Documento de Conocimientos"/>;
 }
 
 function KnowledgeAdmin() {

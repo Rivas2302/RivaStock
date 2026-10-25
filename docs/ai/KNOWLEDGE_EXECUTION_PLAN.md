@@ -1304,7 +1304,7 @@ COMMIT;
 - Abrible desde Panel, Biblioteca (respeta carpeta actual) y encabezado.
 - **Commit:** `feat(knowledge): add multi-file upload dialog`
 
-### [ ] T1.10 Detalle del documento
+### [x] T1.10 Detalle del documento
 `src/components/knowledge/KnowledgeDocumentDetail.tsx` con pestañas **Vista previa · Información · Versiones · Historial**:
 - **Encabezado:** título, badges de estado e índice, “Hay una versión nueva sin publicar” cuando corresponde, acciones según estado: Enviar a revisión, Publicar (o “Publicar versión N”), Volver a borrador, Archivar, Restaurar, Eliminar (confirmación escribiendo el título si está publicado), Descargar, Subir nueva versión (solo `file`), Editar (solo `editor`, desde F2), Exportar PDF (desde F2).
 - **Vista previa** (versión actual):

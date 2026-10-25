@@ -1,0 +1,58 @@
+.kb-prose {
+  color: var(--ink);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.kb-prose > :first-child { margin-top: 0; }
+.kb-prose > :last-child { margin-bottom: 0; }
+.kb-prose h1,
+.kb-prose h2,
+.kb-prose h3,
+.kb-prose h4 {
+  margin: 1.5em 0 0.55em;
+  font-weight: 750;
+  line-height: 1.25;
+}
+.kb-prose h1 { font-size: 1.75rem; }
+.kb-prose h2 { font-size: 1.4rem; }
+.kb-prose h3 { font-size: 1.15rem; }
+.kb-prose h4 { font-size: 1rem; }
+.kb-prose p,
+.kb-prose ul,
+.kb-prose ol,
+.kb-prose blockquote,
+.kb-prose pre,
+.kb-prose table { margin: 1em 0; }
+.kb-prose ul,
+.kb-prose ol { padding-left: 1.6rem; }
+.kb-prose ul { list-style: disc; }
+.kb-prose ol { list-style: decimal; }
+.kb-prose li + li { margin-top: 0.25rem; }
+.kb-prose blockquote {
+  border-left: 3px solid var(--brand);
+  padding-left: 1rem;
+  color: var(--ink-muted);
+}
+.kb-prose a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+.kb-prose code {
+  border-radius: 0.25rem;
+  background: var(--surface-muted);
+  padding: 0.1rem 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.kb-prose pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: #0f172a;
+  padding: 1rem;
+  color: #f8fafc;
+}
+.kb-prose pre code { background: transparent; padding: 0; color: inherit; }
+.kb-prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }
+.kb-prose th,
+.kb-prose td { border: 1px solid var(--line); padding: 0.5rem 0.75rem; text-align: left; }
+.kb-prose th { background: var(--surface-muted); font-weight: 700; }
+.kb-prose hr { margin: 1.5rem 0; border: 0; border-top: 1px solid var(--line); }
+.kb-prose img { max-width: 100%; height: auto; border-radius: 0.5rem; }

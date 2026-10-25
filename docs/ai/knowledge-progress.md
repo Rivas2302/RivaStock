@@ -96,3 +96,11 @@ Actualizado: 2026-10-25
 - El diálogo se abre desde el encabezado, Panel y Biblioteca; conserva la carpeta seleccionada por URL, muestra el estado final y permanece abierto si hubo fallas.
 - Se agregó el aviso sobre extracción local en la PC vinculada y el límite actual para PDF/DOCX e imágenes.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se conectó a producción ni se aplicaron migraciones.
+
+### T1.10 — Detalle del documento
+
+- Agregadas pestañas de vista previa, información, versiones e historial; el detalle muestra badges, cambios sin publicar, acciones por estado, descarga, nueva versión y eliminación con confirmación reforzada para publicados.
+- Implementados previsualizadores para PDF, imágenes, TXT, Markdown y DOCX; Markdown se procesa con `marked@18.1.1` y se sanitiza con `dompurify@3.4.17`. Las URLs firmadas se renuevan al volver a la pestaña después de cuatro minutos.
+- Agregada edición de metadatos, creación inline de etiquetas, control de uso en IA con relectura del documento, restauración versionada y eventos legibles.
+- Dependencias verificadas en sus páginas oficiales de npm: [marked](https://www.npmjs.com/package/marked) y [dompurify](https://www.npmjs.com/package/dompurify).
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se modificó Supabase remoto.

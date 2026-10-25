@@ -100,6 +100,12 @@ export async function listTags(): Promise<KnowledgeTag[]> {
   return (data ?? []) as unknown as KnowledgeTag[];
 }
 
+export async function listDocumentTagIds(documentId: string): Promise<string[]> {
+  const { data, error } = await supabase.from('knowledge_document_tags').select('tag_id').eq('document_id', documentId);
+  throwQueryError(error);
+  return (data ?? []).map((row) => (row as unknown as { tag_id: string }).tag_id);
+}
+
 export async function createFolder(name: string, parentId: string | null = null): Promise<KnowledgeFolder> {
   const { data, error } = await supabase.from('knowledge_folders')
     .insert({ user_id: await ownerUid(), name: name.trim(), parent_id: parentId })
@@ -199,6 +205,29 @@ export async function addFileVersion(
     p_extracted_text: extractedText,
     p_change_note: changeNote,
   });
+}
+
+export async function uploadNewFileVersion(documentId: string, file: File, changeNote = ''): Promise<KnowledgeVersion> {
+  const document = await getDocument(documentId);
+  if (document.kind !== 'file') throw new Error('Este documento se edita con el editor.');
+  if (document.status === 'archived' || document.status === 'deleting') throw new Error('Restaurá el documento antes de agregar versiones.');
+  if (detectFormat(file) !== document.format) throw new Error('El archivo debe mantener el mismo formato que el documento.');
+  if (file.size < 1 || file.size > MAX_FILE_BYTES) throw new Error('El archivo debe pesar entre 1 byte y 50 MB.');
+
+  const versions = await listVersions(documentId);
+  const nextNumber = Math.max(0, ...versions.map((version) => version.version_number)) + 1;
+  const storagePath = await uploadVersionFile(await ownerUid(), documentId, nextNumber, file);
+  try {
+    const [contentHash, extractedText] = await Promise.all([sha256Hex(await file.arrayBuffer()), readTextIfPlain(file)]);
+    return await addFileVersion(documentId, storagePath, file.name, knowledgeContentTypeFor(file), file.size, contentHash, extractedText, changeNote);
+  } catch (error) {
+    try {
+      await removePaths([storagePath]);
+    } catch (cleanupError) {
+      throw new Error(`${errorMessage(error)} No se pudo borrar el archivo temporal: ${errorMessage(cleanupError)}`);
+    }
+    throw error;
+  }
 }
 
 export async function saveDraft(documentId: string, content: Record<string, unknown>, expectedRevision: number): Promise<{ draft_revision: number; draft_updated_at: string }> {
