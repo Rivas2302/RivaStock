@@ -2191,7 +2191,7 @@ COMMIT;
   - `extractPdf` con un PDF de fixture de 2 páginas (`test/fixtures/sample.pdf`, generado con `jspdf` en un script aparte y commiteado).
 - **Commit:** `feat(ai-bridge): add knowledge text extraction and chunking`
 
-### [ ] T3.6 Worker: embeddings, cliente y loop de conocimiento
+### [x] T3.6 Worker: embeddings, cliente y loop de conocimiento
 **Archivos:**
 - `src/knowledge/embed.ts`:
   ```ts

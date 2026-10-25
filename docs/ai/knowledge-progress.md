@@ -203,3 +203,10 @@ Actualizado: 2026-10-25
 - Agregada fragmentación determinística con prefijo de pasaje, SHA-256, solapamiento de 180 caracteres, límite de 1.400 caracteres y máximo de 2.000 fragmentos.
 - DOCX de prueba se genera en memoria con `fflate@0.8.3`; el fixture PDF de dos páginas se generó con jsPDF 4.2.1 y su origen quedó documentado en `test/fixtures/README.md`. El OCR queda para T3.7.
 - Verificación: `npm run typecheck` y `npm test` pasaron (18 pruebas del worker). Sin cambios en Supabase remoto.
+
+### T3.6 — Embeddings, cliente y loop de Conocimientos
+
+- Agregado el embedding local con `Xenova/multilingual-e5-small` (384 dimensiones, prefijos E5, cuantización q8 y cache configurable), un cliente HTTP con timeout de 60 s y el loop de indexación/búsqueda.
+- El worker obtiene archivos con URL firmada y límite de descarga de 50 MiB, extrae texto según formato, guarda la extracción, fragmenta y envía embeddings en lotes de 32; heartbeat cada 60 s y detención segura entre lotes. Las imágenes usan título y descripción si OCR no produce texto.
+- Configuración y documentación: `AI_BRIDGE_ENABLE_KNOWLEDGE`, `AI_BRIDGE_MODELS_DIR` y `AI_BRIDGE_ENABLE_OCR`; versión del paquete actualizada a 1.5.0. Los errores compartidos redactan credenciales, URLs firmadas y rutas locales.
+- Verificación: worker `npm run typecheck` y `npm test` (23 pruebas) pasaron; raíz `npm run lint` y `npm test` (82 archivos, 514 pruebas) pasaron. No se ejecutó una indexación real ni se aplicaron cambios remotos.
