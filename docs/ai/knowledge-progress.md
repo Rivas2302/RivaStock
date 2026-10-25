@@ -217,3 +217,10 @@ Actualizado: 2026-10-25
 - La Biblioteca ahora ofrece un panel “Buscar en el contenido”, resultados agrupados por documento con sección, página, extracto expandible, relevancia relativa y modo usado. El filtro admite carpeta, categoría y etiquetas.
 - En el detalle, los estados `queued` y `processing` muestran avance y refrescan cada 5 s mientras la pestaña está visible; los errores muestran el mensaje y permiten reintentar documentos publicados habilitados para IA. Los badges de lista y detalle ya existían.
 - Verificación: `npm run lint`, `npm test` (83 archivos, 519 pruebas) y `npm run build` pasaron. El build generó el paquete local 1.5.0 como parte de `prebuild`; no se publicó ni se aplicaron cambios remotos.
+
+### T3.9 — Administración del RAG
+
+- Administración organizada en Resumen, Documentos, Indexación, Probar búsqueda y Organización. El resumen muestra estadísticas, última indexación, modelo del último job completado, almacenamiento y estado de la PC; `ConnectionBadge` ahora es compartido con AIHub.
+- La tabla filtra documentos disponibles, errores, excluidos y pendientes; permite cambiar “Usar en la IA”, reindexar uno, errores o todos (con confirmación para todos). La vista de jobs muestra los últimos 50 y se actualiza cada 5 s si hay trabajos abiertos; se conserva el reintento de eliminaciones en Storage.
+- “Probar búsqueda” usa el mismo servicio semántico/fallback, permite filtrar por carpeta, categoría y etiqueta, y muestra fuentes [K1]…, similitud y score. Organización reutiliza `TaxonomyManager`.
+- Verificación: `npm run lint`, `npm test` (83 archivos, 519 pruebas) y `npm run build` pasaron. El paquete local AI Bridge 1.5.0 se generó en `prebuild`; no se publicó ni se aplicaron cambios remotos.

@@ -4,9 +4,11 @@ import { sha256Hex } from './hash';
 import { knowledgeContentTypeFor, removePaths, uploadVersionFile } from './storage';
 import type {
   KnowledgeCategory,
+  KnowledgeAdminDocument,
   KnowledgeDocument,
   KnowledgeEvent,
   KnowledgeFolder,
+  KnowledgeIndexJob,
   KnowledgeFormat,
   KnowledgeSearchFilters,
   KnowledgeSearchResult,
@@ -71,6 +73,48 @@ export async function listDeletingDocuments(): Promise<KnowledgeDocument[]> {
     .eq('status', 'deleting').order('updated_at', { ascending: false });
   throwQueryError(error);
   return (data ?? []) as unknown as KnowledgeDocument[];
+}
+
+export async function listKnowledgeAdminDocuments(
+  filter: 'available' | 'errors' | 'excluded' | 'pending',
+  limit = 20,
+  offset = 0,
+): Promise<{ items: KnowledgeAdminDocument[]; total: number }> {
+  let query = supabase.from('knowledge_documents')
+    .select('id, title, format, status, rag_enabled, index_status, index_error, chunk_count, last_indexed_at, updated_at', { count: 'exact' })
+    .neq('status', 'deleting');
+  if (filter === 'available') query = query.eq('status', 'published').eq('rag_enabled', true).eq('index_status', 'ready');
+  if (filter === 'errors') query = query.eq('index_status', 'error');
+  if (filter === 'excluded') query = query.eq('index_status', 'excluded');
+  if (filter === 'pending') query = query.eq('status', 'published').eq('rag_enabled', true)
+    .in('index_status', ['not_indexed', 'queued', 'processing']);
+  const { data, count, error } = await query.order('updated_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+  throwQueryError(error);
+  return { items: (data ?? []) as unknown as KnowledgeAdminDocument[], total: count ?? 0 };
+}
+
+export async function listKnowledgeIndexJobs(limit = 50): Promise<KnowledgeIndexJob[]> {
+  const { data, error } = await supabase.from('knowledge_index_jobs')
+    .select('id, document_id, reason, status, attempt_count, started_at, completed_at, error, stats, created_at')
+    .order('created_at', { ascending: false }).limit(limit);
+  throwQueryError(error);
+  const jobs = (data ?? []) as unknown as Omit<KnowledgeIndexJob, 'document_title'>[];
+  const documentIds = [...new Set(jobs.map((job) => job.document_id))];
+  if (documentIds.length === 0) return [];
+  const { data: documents, error: documentError } = await supabase.from('knowledge_documents')
+    .select('id, title').in('id', documentIds);
+  throwQueryError(documentError);
+  const titles = new Map((documents ?? []).map((document) => [document.id, document.title]));
+  return jobs.map((job) => ({ ...job, document_title: titles.get(job.document_id) ?? null }));
+}
+
+export async function getLatestKnowledgeEmbeddingModel(): Promise<string | null> {
+  const { data, error } = await supabase.from('knowledge_index_jobs').select('stats')
+    .eq('status', 'completed').order('completed_at', { ascending: false }).limit(1).maybeSingle();
+  throwQueryError(error);
+  const stats = (data as unknown as { stats?: Record<string, unknown> } | null)?.stats;
+  return typeof stats?.model === 'string' ? stats.model : null;
 }
 
 export async function getCategoryDocumentCount(categoryId: string): Promise<number> {
@@ -301,6 +345,10 @@ export async function setRagEnabled(documentId: string, enabled: boolean): Promi
 
 export async function reindexDocument(documentId: string): Promise<void> {
   await rpc<null>('knowledge_reindex_document', { p_document_id: documentId });
+}
+
+export async function reindexAll(onlyErrors: boolean): Promise<number> {
+  return rpc<number>('knowledge_reindex_all', { p_only_errors: onlyErrors });
 }
 
 export async function restoreVersion(documentId: string, versionId: string): Promise<KnowledgeVersion> {

@@ -2262,7 +2262,7 @@ COMMIT;
 - Badges de `index_status` en lista y detalle; en el detalle, si `error`: mensaje + botón “Reintentar indexación” (`knowledge_reindex_document`). Si `processing`/`queued`: “La PC vinculada está procesando este documento” y sondeo cada 5 s mientras la pestaña esté visible.
 - **Commit:** `feat(knowledge): add semantic search and indexing status in the UI`
 
-### [ ] T3.9 Administración del RAG
+### [x] T3.9 Administración del RAG
 `src/components/knowledge/KnowledgeAdmin.tsx` con pestañas **Resumen · Documentos · Indexación · Probar búsqueda · Organización**:
 - **Resumen:** estadísticas (`knowledge_stats`), estado de la PC (reutilizar `ConnectionBadge` extrayéndolo de `AIHub.tsx` a `src/components/ai/ConnectionBadge.tsx`), modelo de embeddings en uso (de `stats.model` del último job completado), fragmentos totales, última indexación, almacenamiento.
 - **Documentos:** tabla de **qué está disponible para la IA**: título, estado, “Usar en la IA” (interruptor), estado de índice, fragmentos, última indexación, error; filtros rápidos “Disponibles”, “Con errores”, “Excluidos”, “Pendientes”. Acciones: Reindexar, Reindexar errores (`knowledge_reindex_all(true)`), Reindexar todo (confirmación; `knowledge_reindex_all(false)`).

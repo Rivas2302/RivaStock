@@ -120,6 +120,36 @@ export interface KnowledgeStats {
   storage_limit_bytes: number;
 }
 
+export interface KnowledgeAdminDocument {
+  id: string;
+  title: string;
+  format: KnowledgeFormat;
+  status: KnowledgeStatus;
+  rag_enabled: boolean;
+  index_status: KnowledgeIndexStatus;
+  index_error: string | null;
+  chunk_count: number;
+  last_indexed_at: string | null;
+  updated_at: string;
+}
+
+export type KnowledgeIndexJobStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type KnowledgeIndexJobReason = 'publish' | 'rag_enabled' | 'reindex' | 'backfill';
+
+export interface KnowledgeIndexJob {
+  id: string;
+  document_id: string;
+  document_title: string | null;
+  reason: KnowledgeIndexJobReason;
+  status: KnowledgeIndexJobStatus;
+  attempt_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error: string | null;
+  stats: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface KnowledgeSearchFilters {
   query?: string;
   folderId?: string | null;
