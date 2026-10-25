@@ -32,7 +32,8 @@ type SearchRequestState = {
 
 type RpcError = { message: string };
 type Rpc = (name: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: RpcError | null }>;
-const dynamicRpc = supabase.rpc as unknown as Rpc;
+const dynamicRpc: Rpc = (name, args) =>
+  supabase.rpc(name, args as never) as unknown as Promise<{ data: unknown; error: RpcError | null }>;
 
 export interface KnowledgeSearchDependencies {
   getBridgeState: () => Promise<{ state: AIBridgeState }>;

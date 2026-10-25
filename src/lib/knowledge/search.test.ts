@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../aiBridge', () => ({ getAIBridgeState: vi.fn() }));
 vi.mock('../supabase', () => ({ supabase: { rpc: vi.fn(), from: vi.fn() } }));
 
-import { createKnowledgeSearch, type KnowledgeSearchDependencies } from './search';
+import { createKnowledgeSearch, keywordChunkSearch, type KnowledgeSearchDependencies } from './search';
+import { supabase } from '../supabase';
 
 function result(content: string) {
   return {
@@ -26,6 +27,18 @@ function dependencies(overrides: Partial<KnowledgeSearchDependencies> = {}): Kno
 }
 
 describe('knowledge chunk search', () => {
+  it('preserves the Supabase client context when invoking the keyword RPC', async () => {
+    const rpc = vi.mocked(supabase.rpc).mockImplementation(function (this: unknown) {
+      expect(this).toBe(supabase);
+      return Promise.resolve({ data: [result('keyword result')], error: null }) as never;
+    } as never);
+
+    await expect(keywordChunkSearch('configurar DVR')).resolves.toEqual([result('keyword result')]);
+    expect(rpc).toHaveBeenCalledWith('knowledge_search_chunks_text', {
+      p_query: 'configurar DVR', p_filters: {}, p_top_k: 10,
+    });
+  });
+
   it('falls back to keyword chunks when the Bridge is offline', async () => {
     const searchText = vi.fn(async () => [result('keyword result')]);
     const search = createKnowledgeSearch(dependencies({ getBridgeState: async () => ({ state: 'offline' }), searchText }));
