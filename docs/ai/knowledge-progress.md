@@ -69,3 +69,10 @@ Actualizado: 2026-10-25
 - Agregada la API tipada para RPC y lecturas protegidas por RLS, CRUD de carpetas/categorías/etiquetas, carga serial de hasta 20 archivos con hash y limpieza compensatoria, assets, URLs firmadas y eliminación por lotes con estado reintentable.
 - Pruebas unitarias de formatos, etiquetas, nombres seguros, lectura de texto y vectores conocidos de SHA-256.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se modificó ni aplicó nada en Supabase remoto.
+
+### T1.6 — Rutas y navegación
+
+- Registrada la ruta lazy `/ia/conocimientos/*`, protegida con `OwnerRoute`, y creada la página con navegación Panel/Biblioteca/Administración, enlace de regreso a IA y rutas para detalle.
+- Agregado el enlace “Conocimientos” en la navegación de AIHub; la entrada “IA” queda activa en sus rutas descendientes tanto en sidebar como en menús móviles.
+- Las vistas internas quedan como estados iniciales, sin botones de alta/carga hasta que T1.9 y T2.4 implementen sus acciones.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se aplicó ninguna migración.

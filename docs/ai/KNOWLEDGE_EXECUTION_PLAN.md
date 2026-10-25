@@ -1253,7 +1253,7 @@ COMMIT;
 - Tests unitarios: `src/lib/knowledge/files.test.ts`, `format.test.ts`, `hash.test.ts` (vectores conocidos de SHA-256).
 - **Commit:** `feat(knowledge): add typed client API, storage and file helpers`
 
-### [ ] T1.6 Rutas y navegación
+### [x] T1.6 Rutas y navegación
 - `src/App.tsx`: `const Knowledge = lazy(() => import('./pages/Knowledge'));` y dentro del layout protegido:
   `<Route path="ia/conocimientos/*" element={withSuspense(<OwnerRoute><Knowledge /></OwnerRoute>)} />` (antes de `ia`).
 - `src/components/Layout.tsx`: el ítem activo hoy usa `location.pathname === item.path`. Cambiar en **sidebar y menú móvil** a:
