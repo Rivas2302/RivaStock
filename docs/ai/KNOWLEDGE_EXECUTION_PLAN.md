@@ -1319,7 +1319,7 @@ COMMIT;
 - **Historial:** `knowledge_events` del documento con texto legible por acción (`created` “Creó el documento”, `version_added`, `status_changed` “Cambió el estado de X a Y”, `metadata_updated`, `rag_enabled/disabled`, `version_restored`, `imported`, `indexed`, `index_failed`, …).
 - **Commit:** `feat(knowledge): add document detail with preview, versions and history`
 
-### [ ] T1.11 Gestión de categorías y etiquetas
+### [x] T1.11 Gestión de categorías y etiquetas
 `src/components/knowledge/TaxonomyManager.tsx` (se usa en Administración, pestaña “Organización”, y desde la Biblioteca con “Gestionar”): crear, renombrar, cambiar color (categorías), borrar con aviso de cuántos documentos quedan sin categoría/etiqueta. Mensajes de duplicado claros (el índice único devuelve error de Postgres `23505` → “Ya existe una categoría con ese nombre”).
 - **Commit:** `feat(knowledge): add category and tag management`
 

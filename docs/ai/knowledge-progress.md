@@ -104,3 +104,10 @@ Actualizado: 2026-10-25
 - Agregada edición de metadatos, creación inline de etiquetas, control de uso en IA con relectura del documento, restauración versionada y eventos legibles.
 - Dependencias verificadas en sus páginas oficiales de npm: [marked](https://www.npmjs.com/package/marked) y [dompurify](https://www.npmjs.com/package/dompurify).
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se modificó Supabase remoto.
+
+### T1.11 — Gestión de categorías y etiquetas
+
+- Agregado `TaxonomyManager` en Administración con alta, renombre, color de categorías, renombre y eliminación de etiquetas; los errores de unicidad se convierten en mensajes claros.
+- Antes de borrar, se consulta cuántos documentos perderán categoría o etiqueta y se pide confirmación. La Biblioteca enlaza a “Gestionar”.
+- Administración lista documentos en `deleting` y permite reintentar `prepare → Storage → finalize`.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). Sin mutaciones remotas.

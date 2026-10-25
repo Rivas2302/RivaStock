@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Tag, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import Modal from '../../Modal';
 import { createFolder, deleteFolder, updateFolder } from '../../../lib/knowledge/api';
 import type { KnowledgeCategory, KnowledgeFolder, KnowledgeTag } from '../../../lib/knowledge/types';
@@ -168,7 +169,7 @@ export default function FolderTree(props: FolderTreeProps) {
     </section>
 
     <section aria-label="Categorías" className="mt-6">
-      <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Categorías</h3>
+      <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Categorías</h3><Link to="/ia/conocimientos/admin" className="text-[11px] font-bold text-[var(--brand)] hover:underline">Gestionar</Link></div>
       <button type="button" onClick={() => props.onSelectCategory(null)} aria-current={props.selectedCategoryId === null ? 'page' : undefined} className={`mb-1 flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${props.selectedCategoryId === null ? 'bg-[var(--brand-soft)] font-semibold text-[var(--brand)]' : 'hover:bg-[var(--surface-muted)]'}`}>Todas</button>
       {props.categories.map((category) => <button key={category.id} type="button" onClick={() => props.onSelectCategory(props.selectedCategoryId === category.id ? null : category.id)} aria-pressed={props.selectedCategoryId === category.id} className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${props.selectedCategoryId === category.id ? 'bg-[var(--brand-soft)] font-semibold text-[var(--brand)]' : 'hover:bg-[var(--surface-muted)]'}`}><span className={`size-2 rounded-full ${CATEGORY_DOT_CLASSES[category.color]}`}/><span className="truncate">{category.name}</span></button>)}
       {props.categories.length === 0 && <p className="px-3 py-2 text-xs text-[var(--ink-muted)]">Todavía no hay categorías.</p>}

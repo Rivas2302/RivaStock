@@ -1,25 +1,12 @@
-import { Library, Sparkles, Upload } from 'lucide-react';
+import { Sparkles, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
 import '../styles/knowledge.css';
 import KnowledgeDocumentDetail from '../components/knowledge/KnowledgeDocumentDetail';
+import KnowledgeAdmin from '../components/knowledge/KnowledgeAdmin';
 import KnowledgeLibrary from '../components/knowledge/KnowledgeLibrary';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
 import UploadDialog from '../components/knowledge/UploadDialog';
-
-function KnowledgeSectionPlaceholder({ title }: { title: string }) {
-  return (
-    <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center shadow-sm">
-      <Library className="mx-auto text-[var(--brand)]" size={28}/>
-      <h3 className="mt-3 font-bold">{title}</h3>
-      <p className="mt-1 text-sm text-[var(--ink-muted)]">Esta sección se habilitará al completar la configuración de Conocimientos.</p>
-    </section>
-  );
-}
-
-function KnowledgeAdmin() {
-  return <KnowledgeSectionPlaceholder title="Administración de Conocimientos"/>;
-}
 
 export default function Knowledge() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,10 +29,10 @@ export default function Knowledge() {
     <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-        <p className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand)]"><Sparkles size={15}/>RivaStock AI</p>
-        <h2 className="page-heading text-2xl font-bold md:text-3xl">Conocimientos</h2>
-        <p className="mt-1 text-sm text-[var(--ink-muted)]">La base de conocimiento de tu negocio para la IA.</p>
-        <Link to="/ia" className="mt-3 inline-flex text-sm font-semibold text-[var(--brand)] hover:underline">← IA</Link>
+          <p className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand)]"><Sparkles size={15}/>RivaStock AI</p>
+          <h2 className="page-heading text-2xl font-bold md:text-3xl">Conocimientos</h2>
+          <p className="mt-1 text-sm text-[var(--ink-muted)]">La base de conocimiento de tu negocio para la IA.</p>
+          <Link to="/ia" className="mt-3 inline-flex text-sm font-semibold text-[var(--brand)] hover:underline">← IA</Link>
         </div>
         <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold shadow-sm"><Upload size={16}/>Subir archivos</button>
       </header>

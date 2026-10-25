@@ -66,6 +66,27 @@ export async function getDocument(documentId: string): Promise<KnowledgeDocument
   return data as unknown as KnowledgeDocument;
 }
 
+export async function listDeletingDocuments(): Promise<KnowledgeDocument[]> {
+  const { data, error } = await supabase.from('knowledge_documents').select('*')
+    .eq('status', 'deleting').order('updated_at', { ascending: false });
+  throwQueryError(error);
+  return (data ?? []) as unknown as KnowledgeDocument[];
+}
+
+export async function getCategoryDocumentCount(categoryId: string): Promise<number> {
+  const { count, error } = await supabase.from('knowledge_documents').select('id', { count: 'exact', head: true })
+    .eq('category_id', categoryId).neq('status', 'deleting');
+  throwQueryError(error);
+  return count ?? 0;
+}
+
+export async function getTagDocumentCount(tagId: string): Promise<number> {
+  const { count, error } = await supabase.from('knowledge_document_tags').select('document_id', { count: 'exact', head: true })
+    .eq('tag_id', tagId);
+  throwQueryError(error);
+  return count ?? 0;
+}
+
 export async function listVersions(documentId: string): Promise<KnowledgeVersion[]> {
   const { data, error } = await supabase.from('knowledge_document_versions')
     .select('*').eq('document_id', documentId).order('version_number', { ascending: false });
