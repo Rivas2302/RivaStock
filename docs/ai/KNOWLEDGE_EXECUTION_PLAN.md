@@ -190,7 +190,7 @@ No ejecutar. Preparar y mostrar al dueño este texto para que autorice:
 
 Si el dueño no autoriza, **continuar con las fases de código**; las migraciones nuevas quedan sin aplicar hasta §12.
 
-### [ ] T0.3 Prueba de concepto del modelo de embeddings (riesgo principal)
+### [x] T0.3 Prueba de concepto del modelo de embeddings (riesgo principal)
 Objetivo: confirmar en la PC (Windows, Node ≥ 20.6) que el modelo carga, devuelve 384 dimensiones y es razonablemente rápido.
 - En `tools/rivastock-ai-bridge`: `npm install @huggingface/transformers@^3 unpdf mammoth node-html-parser` y fijar en `package.json` las **versiones exactas** que queden instaladas (sin `^`, como el resto del paquete). Regenerar `npm-shrinkwrap.json` con `npm install`.
 - Crear `tools/rivastock-ai-bridge/scripts/embedding-spike.ts`:

@@ -15,7 +15,17 @@ Actualizado: 2026-10-25
 - Verificación read-only en producción: existe `ai_jobs_task_type_check` y limita `task_type` a `text_generation`, como espera T4.1.
 - Línea base frontend: `npm run lint` pasó; `npm test` pasó (72 archivos, 460 pruebas); `npm run build` pasó; `npm run perf:check` pasó.
 - Línea base del worker 1.4.4: `npm run typecheck` pasó; `npm test` pasó (5 pruebas).
-- El conector de GitHub informa la cuenta `Rivas2302`. `gh auth status` local indicó que no hay sesión CLI; se configuró `credential.https://github.com.username=Rivas2302` y se verificará el transporte de push antes de publicar.
+- El conector de GitHub informa la cuenta `Rivas2302`. `gh auth status` local indicó que no hay sesión CLI; se configuró `credential.https://github.com.username=Rivas2302` y el push de `4b39d25` a `origin/feat/conocimientos` tuvo éxito.
+- `supabase db dump --linked --schema public` no pudo crear el respaldo porque Docker no está instalado/iniciado; `pg_dump` tampoco está disponible. No se ejecutó `migration repair` ni ningún cambio de producción. Respaldo previsto: `C:\Users\USER\rivastock-backups\20261025-121752` (directorio creado fuera del repositorio, sin dump). T0.2 sigue pendiente y bloquea cambios de base en producción.
+
+### T0.3 — Prueba del modelo de embeddings
+
+- Agregadas dependencias exactas al worker: `@huggingface/transformers@3.8.1`, `unpdf@1.9.1`, `mammoth@1.13.0`, `node-html-parser@9.0.5`; `npm-shrinkwrap.json` regenerado.
+- Agregado `tools/rivastock-ai-bridge/scripts/embedding-spike.ts`, fuera del paquete publicado.
+- Ejecución con `Xenova/multilingual-e5-small`: carga 8.143 ms, inferencia 21 ms, dimensión 384, similitud relevante 0,914 y control 0,803. Criterio del plan satisfecho.
+- `npm pack --dry-run` confirmó que `scripts/embedding-spike.ts` queda fuera del paquete.
+- Verificaciones de cierre de Fase 0: frontend lint, 460 pruebas, build y perf pasaron; worker typecheck y 5 pruebas pasaron.
+- `npm audit` del worker reportó 2 vulnerabilidades altas en el árbol nuevo: `@huggingface/transformers` directo y su dependencia `sharp` (avisos sobre libvips/libheif/librsvg). La corrección sugerida por npm requiere `@huggingface/transformers@4.3.1`, cambio mayor respecto del v3 indicado por el plan; se documenta para revisión al evaluar el paquete, sin actualizar fuera del alcance definido.
 
 ### Observaciones para las siguientes tareas
 
