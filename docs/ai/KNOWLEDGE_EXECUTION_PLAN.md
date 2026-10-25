@@ -1179,7 +1179,7 @@ COMMIT;
 ```
 - **Commit:** `feat(knowledge): add core schema, RLS and document RPCs`
 
-### [ ] T1.3 Migración de Storage
+### [x] T1.3 Migración de Storage
 **Archivo:** `supabase/migrations/<ts>_knowledge_storage.sql`
 ```sql
 BEGIN;

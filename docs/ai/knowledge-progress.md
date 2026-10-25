@@ -48,3 +48,9 @@ Actualizado: 2026-10-25
 - Incluye el esquema de carpetas, categorías, etiquetas, documentos, versiones, assets, eventos, RLS y los RPC de gestión definidos en el plan.
 - La importación heredada está restringida a `knowledge/*` del propietario; las Skills no se modifican. La migración no se aplicó a producción.
 - Validación de comportamiento queda agrupada en T1.4, que carga las migraciones reales y cubre permisos, aislamiento, cuotas, publicación, búsqueda, versiones, importación y eliminación.
+
+### T1.3 — Migración de Storage
+
+- Creada por Supabase CLI: `supabase/migrations/20261025152515_knowledge_storage.sql`.
+- Define el bucket privado `knowledge`, límites/MIME permitidos y políticas de lectura, alta y borrado por UID dueño; no hay política de actualización.
+- Se agregó una prueba estática de contrato en `src/lib/knowledge.migration.test.ts`. La migración no se aplicó en producción.
