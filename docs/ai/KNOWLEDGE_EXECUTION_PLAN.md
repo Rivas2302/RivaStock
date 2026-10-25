@@ -224,7 +224,7 @@ Objetivo: confirmar en la PC (Windows, Node ≥ 20.6) que el modelo carga, devue
 
 **Resultado de la fase:** IA → Conocimientos funciona de punta a punta sin IA: carpetas, categorías, etiquetas, carga múltiple, vista previa, metadatos, estados editoriales, versiones, historial, búsqueda por palabras clave, papelera/eliminación segura y migración de la biblioteca anterior.
 
-### [ ] T1.1 Migración de extensiones de texto
+### [x] T1.1 Migración de extensiones de texto
 **Archivo:** `supabase/migrations/<ts>_knowledge_extensions.sql`
 ```sql
 -- Text search helpers for Knowledge. Kept separate so tests can stub it.

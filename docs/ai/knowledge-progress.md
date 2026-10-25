@@ -32,3 +32,12 @@ Actualizado: 2026-10-25
 - `AI_BRIDGE_SETUP.md` todavía afirma que el proyecto remoto no tiene `supabase_migrations.schema_migrations` y prohíbe `db push`. La inspección actual encontró 84 filas; actualizar esa guía al cerrar la fase pertinente.
 - El worker está en 1.4.4. La primera dependencia planificada que requiere verificación es `@electric-sql/pglite-pgvector`; el árbol actual tiene PGlite 0.5.9, no 0.5.11.
 - Las pruebas anteriores a cambios no mostraron fallos.
+
+## Fase 1 — Biblioteca y gestión
+
+### T1.1 — Migración de extensiones de texto
+
+- Creada por Supabase CLI: `supabase/migrations/20261025152219_knowledge_extensions.sql`.
+- Agrega `unaccent` en `extensions` y `public.kb_unaccent(text)` con permisos explícitos.
+- `financialSql.test.ts` recorre migraciones globalmente, pero su fixture no carga extensiones de Conocimientos. Se acotó a su dominio; las migraciones Knowledge tendrán su fixture PGlite dedicado en T1.4.
+- No se aplicó en producción. La migración local se incluirá en la validación PGlite de T1.4.
