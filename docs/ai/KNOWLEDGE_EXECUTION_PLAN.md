@@ -1466,7 +1466,7 @@ COMMIT;
 - **Test** `src/lib/knowledge/pdfExport.test.ts` (entorno node de vitest): documento con todos los nodos y `loadImage` que devuelve `null` → genera un Blob > 1 KB, con ≥ 1 página; documento largo (200 párrafos) → más de 1 página. Test unitario de `layoutRuns` con un `measure` inyectado (desacoplar la medición para poder testear sin jsPDF).
 - **Commit:** `feat(knowledge): add professional PDF export for documents`
 
-### [ ] T2.7 Cierre de Fase 2
+### [x] T2.7 Cierre de Fase 2
 - `npm run lint && npm test && npm run build && npm run perf:check`.
 - Prueba manual en `npm run dev` contra un entorno no productivo autorizado (si no hay, dejar la checklist de §12.3 F2 lista para el dueño).
 - Revisar en ancho 375 px: barra del editor usable, tablas con scroll horizontal, sin desbordes.

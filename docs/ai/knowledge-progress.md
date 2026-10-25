@@ -167,3 +167,10 @@ Actualizado: 2026-10-25
 - El detalle exporta la versión mostrada; el editor exporta el borrador actual e informa que incluye cambios no publicados. Las imágenes privadas se obtienen con URL firmada, se convierten a JPEG en canvas y se cargan en jsPDF.
 - El exportador usa `loadPdfRuntime()` y se carga al pedir el PDF. El bundle inicial quedó en 207.704 bytes gzip JS y 21.449 bytes gzip CSS; el código de jsPDF/autotable permanece en chunks dinámicos.
 - Pruebas: todos los nodos del editor, fallback de imagen, `layoutRuns` con medición inyectada y paginación de 200 párrafos. Verificación: `npm run lint`, `npm test` (80 archivos, 497 pruebas), `npm run build` y `npm run perf:check` pasaron.
+
+### T2.7 — Cierre de Fase 2
+
+- Verificación final: `npm run lint`, `npm test` (80 archivos, 497 pruebas), `npm run build` y `npm run perf:check` pasaron. El bundle inicial quedó en 207.691 bytes gzip JS y 21.449 bytes gzip CSS.
+- Para móvil, la barra del editor ya tiene scroll horizontal; se agregó scroll horizontal al wrapper de las tablas TipTap. La comprobación visual en 375 px queda pendiente.
+- La checklist manual F2 de §12.3 queda lista para el dueño. No se ejecutó el flujo con Supabase: solo está conectado el proyecto de producción, no hay staging y T0.2 continúa pendiente. No se aplicaron cambios remotos.
+- Actualizado `AGENTS.md`; la siguiente fase del plan es Motor RAG, condicionada a un entorno no productivo y a resolver T0.2.

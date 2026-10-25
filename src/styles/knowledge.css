@@ -114,6 +114,7 @@
   padding: clamp(1rem, 3vw, 2rem);
 }
 .kb-editor-content .tiptap { min-height: 20rem; outline: none; }
+.kb-editor-content .tiptap .tableWrapper { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .kb-editor-content .tiptap p.is-editor-empty:first-child::before {
   float: left;
   height: 0;

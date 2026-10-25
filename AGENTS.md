@@ -47,11 +47,12 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Estado actual de Conocimientos
 
-- La Fase 1 está implementada en `feat/conocimientos`: rutas protegidas, panel, biblioteca con carpetas, filtros y búsqueda por palabras, carga múltiple, detalle con vista previa/versiones/historial, organización por categorías y etiquetas, y administración de eliminaciones pendientes.
+- Las Fases 1 y 2 están implementadas en `feat/conocimientos`. La Fase 2 agrega el editor TipTap con imágenes privadas, autoguardado, borradores, publicación, visor/diff/restauración de versiones y exportación PDF. Las rutas del editor y el visor cargan TipTap de forma lazy; el runtime de PDF también se carga bajo demanda.
 - Las Skills permanecen en `ai_workspace_files`; los documentos heredados `knowledge/*` se pueden migrar individualmente a Conocimientos como documentos publicados. Los que no se migren siguen editables y se adjuntan al contexto del Bridge.
 - Las migraciones locales `20261025152219_knowledge_extensions`, `20261025152408_knowledge_core` y `20261025152515_knowledge_storage` se validaron en PGlite. No se aplicaron en Supabase: solo está conectado `RivaStock_Oficial` (producción), no hay staging y T0.2 sigue pendiente porque no hay backup verificable y tres versiones del historial no coinciden.
-- Lint, 482 pruebas y build pasaron al cierre de Fase 1. La revisión manual de punta a punta queda pendiente hasta contar con un entorno no productivo; no probar contra producción antes de reconciliar el historial y obtener un backup.
-- Próxima fase: editor TipTap, subida de imágenes dentro del documento, autoguardado, versionado y exportación PDF (Fase 2 del plan `docs/ai/KNOWLEDGE_EXECUTION_PLAN.md`).
+- Al cierre de Fase 2: `npm run lint`, 497 pruebas en 80 archivos, `npm run build` y `npm run perf:check` pasaron. El presupuesto gzip de la ruta inicial quedó en 207.691 bytes JS y 21.449 bytes CSS; jsPDF y autotable se descargan al exportar.
+- La checklist manual F2 de §12.3 queda lista para el dueño. No se hizo la prueba de punta a punta ni la revisión visual en 375 px: el único Supabase conectado es producción y no hay staging. La barra permite desplazamiento horizontal y las tablas editoriales tienen contenedor con scroll horizontal; falta confirmar el resultado visual en dispositivo/navegador.
+- Próximo trabajo: Fase 3, Motor RAG, después de preparar un entorno no productivo y resolver T0.2 (reconciliar el historial y obtener un backup verificable). No aplicar migraciones del módulo a producción antes de eso.
 
 ## Próximas brechas confirmadas
 
