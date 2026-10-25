@@ -247,7 +247,7 @@ GRANT EXECUTE ON FUNCTION public.kb_unaccent(text) TO authenticated, service_rol
 ```
 - **Commit:** `feat(knowledge): add unaccent helper migration`
 
-### [ ] T1.2 Migración del núcleo de Conocimientos
+### [x] T1.2 Migración del núcleo de Conocimientos
 **Archivo:** `supabase/migrations/<ts>_knowledge_core.sql` (timestamp mayor que T1.1). Copiar este SQL completo; solo ajustar si algo falla en los tests de T1.4 y documentar el cambio.
 
 ```sql

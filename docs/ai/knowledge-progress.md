@@ -41,3 +41,10 @@ Actualizado: 2026-10-25
 - Agrega `unaccent` en `extensions` y `public.kb_unaccent(text)` con permisos explícitos.
 - `financialSql.test.ts` recorre migraciones globalmente, pero su fixture no carga extensiones de Conocimientos. Se acotó a su dominio; las migraciones Knowledge tendrán su fixture PGlite dedicado en T1.4.
 - No se aplicó en producción. La migración local se incluirá en la validación PGlite de T1.4.
+
+### T1.2 — Migración del núcleo de Conocimientos
+
+- Creada por Supabase CLI: `supabase/migrations/20261025152408_knowledge_core.sql`.
+- Incluye el esquema de carpetas, categorías, etiquetas, documentos, versiones, assets, eventos, RLS y los RPC de gestión definidos en el plan.
+- La importación heredada está restringida a `knowledge/*` del propietario; las Skills no se modifican. La migración no se aplicó a producción.
+- Validación de comportamiento queda agrupada en T1.4, que carga las migraciones reales y cubre permisos, aislamiento, cuotas, publicación, búsqueda, versiones, importación y eliminación.
