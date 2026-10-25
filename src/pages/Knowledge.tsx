@@ -1,5 +1,6 @@
 import { Library, Sparkles } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import KnowledgeLibrary from '../components/knowledge/KnowledgeLibrary';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
 
 function KnowledgeSectionPlaceholder({ title }: { title: string }) {
@@ -10,10 +11,6 @@ function KnowledgeSectionPlaceholder({ title }: { title: string }) {
       <p className="mt-1 text-sm text-[var(--ink-muted)]">Esta sección se habilitará al completar la configuración de Conocimientos.</p>
     </section>
   );
-}
-
-function KnowledgeLibrary() {
-  return <KnowledgeSectionPlaceholder title="Biblioteca de Conocimientos"/>;
 }
 
 function KnowledgeDocumentDetail() {

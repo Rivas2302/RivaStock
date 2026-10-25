@@ -1282,7 +1282,7 @@ COMMIT;
 - Responsive: grilla `grid-cols-2 md:grid-cols-3 xl:grid-cols-6`.
 - **Commit:** `feat(knowledge): add knowledge dashboard panel`
 
-### [ ] T1.8 Biblioteca
+### [x] T1.8 Biblioteca
 `src/components/knowledge/KnowledgeLibrary.tsx` + subcomponentes en `src/components/knowledge/library/`:
 - **Barra lateral** (`FolderTree.tsx`): “Todos los documentos”, árbol de carpetas expandible (crear, renombrar, mover con selector de carpeta padre, borrar con confirmación), lista de categorías y etiquetas como filtros. En móvil, panel deslizable (`motion`) abierto con botón “Carpetas y filtros”.
 - **Buscador**: input con debounce 300 ms → `p_query`; selector de modo `Palabras clave` (F1) — el modo `Semántica` se agrega en T3.8.
