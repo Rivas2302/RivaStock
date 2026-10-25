@@ -179,3 +179,9 @@ Actualizado: 2026-10-25
 
 - Creada con `supabase migration new` la migración `20261025184236_knowledge_vector_extension.sql`; crea `extensions` si falta y habilita `vector` en ese esquema, sin fijar una versión.
 - No se aplicó a una base remota: solo está conectado el proyecto de producción, no hay staging y T0.2 sigue pendiente. La sintaxis coincide con la documentación vigente de Supabase.
+
+### T3.2 — Migración RAG
+
+- Creada `20261025184450_knowledge_rag.sql` con cola de indexación, fragmentos vectoriales y de texto, búsqueda híbrida, control de reindexación, RPC del worker y permisos con RLS.
+- Validación local: la migración completa se aplicó correctamente en PGlite 0.5.11 con `vector` y `unaccent`, junto con las migraciones previas del Bridge y Conocimientos. Las pruebas funcionales del worker y la búsqueda siguen en T3.3.
+- No se aplicó en Supabase remoto: solo está conectado producción, no hay staging y T0.2 sigue pendiente.

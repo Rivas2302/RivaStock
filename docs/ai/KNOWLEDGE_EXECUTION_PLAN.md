@@ -1487,7 +1487,7 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
 ```
 - **Commit:** `feat(knowledge): enable pgvector extension`
 
-### [ ] T3.2 Migración RAG
+### [x] T3.2 Migración RAG
 **Archivo:** `supabase/migrations/<ts>_knowledge_rag.sql`
 ```sql
 BEGIN;
