@@ -33,6 +33,7 @@ import { signedUrl } from '../../lib/knowledge/storage';
 import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
 import { diffLines, type LineDiffCell, type LineDiffRow } from '../../lib/knowledge/lineDiff';
 import { toPlainText } from '../../lib/knowledge/editorContent';
+import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge/pdfBrowser';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -108,7 +109,7 @@ function fileAccept(format: KnowledgeDocument['format']): string {
 export default function KnowledgeDocumentDetail() {
   const { documentId = '' } = useParams();
   const navigate = useNavigate();
-  const { authUser } = useAuth();
+  const { authUser, user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const signedAtRef = useRef(0);
   const [document, setDocument] = useState<KnowledgeDocument | null>(null);
@@ -122,6 +123,7 @@ export default function KnowledgeDocumentDetail() {
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>('preview');
   const [reviewVersionId, setReviewVersionId] = useState<string | null>(null);
@@ -191,6 +193,7 @@ export default function KnowledgeDocumentDetail() {
   const publishedEvent = events.find((event) => event.action === 'status_changed'
     && event.details.to === 'published'
     && (!document?.published_version_id || event.details.version_id === document.published_version_id));
+  const displayedEditorVersion = activeTab === 'versions' && reviewVersion ? reviewVersion : previewVersion;
 
   const refreshPreviewUrl = useCallback(async (path?: string) => {
     const targetPath = path ?? previewVersion?.storage_path ?? '';
@@ -239,6 +242,29 @@ export default function KnowledgeDocumentDetail() {
       anchor.click();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'No se pudo descargar el archivo.');
+    }
+  };
+
+  const exportPdf = async (version: KnowledgeVersion) => {
+    if (!document || pdfBusy || !version.content_json) return;
+    setPdfBusy(true);
+    setActionError('');
+    try {
+      const { createKnowledgePdf } = await import('../../lib/knowledge/pdfExport');
+      const pdf = await createKnowledgePdf({
+        doc: version.content_json as JSONContent,
+        title: document.title,
+        businessName: user?.businessName ?? '',
+        versionNumber: version.version_number,
+        publishedAt: version.id === document.published_version_id ? document.published_at : null,
+        updatedAt: version.created_at,
+        loadImage: loadKnowledgePdfImage,
+      });
+      downloadKnowledgePdf(pdf.blob, pdf.fileName);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'No se pudo generar el PDF.');
+    } finally {
+      setPdfBusy(false);
     }
   };
 
@@ -396,6 +422,7 @@ export default function KnowledgeDocumentDetail() {
           {['draft', 'in_review', 'published'].includes(document.status) && <button type="button" disabled={busy} onClick={() => void changeStatus('archived', 'Se archivó el documento.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Archive size={14}/>Archivar</button>}
           {document.status === 'archived' && <button type="button" disabled={busy} onClick={() => void changeStatus('draft', 'Se restauró el documento como borrador.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><RotateCcw size={14}/>Restaurar</button>}
           {currentVersion?.storage_path && <button type="button" onClick={() => void downloadVersion(currentVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold"><Download size={14}/>Descargar</button>}
+          {document.kind === 'editor' && displayedEditorVersion?.content_json && <button type="button" disabled={pdfBusy} onClick={() => void exportPdf(displayedEditorVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Download size={14}/>{pdfBusy ? 'Generando PDF…' : `Exportar PDF · v${displayedEditorVersion.version_number}`}</button>}
           {document.kind === 'file' && document.status !== 'archived' && document.status !== 'deleting' && <><input ref={fileInputRef} type="file" accept={fileAccept(document.format)} onChange={(event) => void handleVersionUpload(event)} className="sr-only"/><button type="button" disabled={uploadBusy || busy} onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{uploadBusy ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}Subir nueva versión</button></>}
           {document.status !== 'deleting' && <button type="button" disabled={busy} onClick={() => void removeCurrentDocument()} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Eliminar</button>}
         </div>

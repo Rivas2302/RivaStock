@@ -160,3 +160,10 @@ Actualizado: 2026-10-25
 - Agregado `lineDiff.ts` con LCS por líneas y prueba unitaria. Para comparaciones mayores a dos millones de celdas usa una alineación aproximada por prefijos/sufijos y lo indica en la UI.
 - Restaurar una versión editorial crea la versión de restauración mediante `knowledge_restore_version` y abre el documento en el editor. El componente read-only no admite cargas de imágenes por paste/drop.
 - Verificación: `npm run lint`, `npm test` (79 archivos, 494 pruebas), `npm run build` y `npm run perf:check` pasaron. Sin cambios en Supabase remoto.
+
+### T2.6 — Exportación PDF profesional
+
+- Agregada la exportación a PDF A4 con encabezado, pie numerado, jerarquía de títulos, formato en línea, enlaces, listas, tablas, avisos, citas, bloques de código e imágenes con epígrafe o recuadro de reemplazo.
+- El detalle exporta la versión mostrada; el editor exporta el borrador actual e informa que incluye cambios no publicados. Las imágenes privadas se obtienen con URL firmada, se convierten a JPEG en canvas y se cargan en jsPDF.
+- El exportador usa `loadPdfRuntime()` y se carga al pedir el PDF. El bundle inicial quedó en 207.704 bytes gzip JS y 21.449 bytes gzip CSS; el código de jsPDF/autotable permanece en chunks dinámicos.
+- Pruebas: todos los nodos del editor, fallback de imagen, `layoutRuns` con medición inyectada y paginación de 200 párrafos. Verificación: `npm run lint`, `npm test` (80 archivos, 497 pruebas), `npm run build` y `npm run perf:check` pasaron.

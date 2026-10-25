@@ -1453,7 +1453,7 @@ COMMIT;
 - “Restaurar”: `knowledge_restore_version` y abrir el editor.
 - **Commit:** `feat(knowledge): add version viewer, diff and restore for editor documents`
 
-### [ ] T2.6 Exportación PDF profesional
+### [x] T2.6 Exportación PDF profesional
 `src/lib/knowledge/pdfExport.ts` (usar `loadPdfRuntime()` de `src/lib/pdfRuntime.ts`; tomar como referencia de estilo `src/lib/priceListPdf.ts`).
 - Firma: `createKnowledgePdf({ doc: JSONContent, title, businessName, versionNumber, publishedAt | updatedAt, loadImage(assetPath) => Promise<{ dataUrl: string; width: number; height: number } | null> }) => Promise<{ blob: Blob; fileName: string }>`.
 - A4, márgenes 18 mm. Primera página: banda superior con el título (blanco, 18 pt) y debajo nombre del negocio + “Versión N · fecha”. Páginas siguientes: encabezado fino con el título. Pie en todas: “Título · vN” a la izquierda y “Página X de Y” a la derecha (segunda pasada con `doc.getNumberOfPages()`).

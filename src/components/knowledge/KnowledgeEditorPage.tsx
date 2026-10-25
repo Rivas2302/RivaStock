@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Check, ChevronDown, Loader2, Save, Send, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Loader2, Save, Send, Sparkles } from 'lucide-react';
 import type { JSONContent } from '@tiptap/core';
+import { useAuth } from '../../AuthContext';
 import Modal from '../Modal';
 import KnowledgeEditor from './editor/KnowledgeEditor';
 import {
@@ -16,6 +17,7 @@ import {
   setStatus,
 } from '../../lib/knowledge/api';
 import { EMPTY_DOC, contentHash, stripImageSources, toMarkdown, toPlainText } from '../../lib/knowledge/editorContent';
+import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge/pdfBrowser';
 import { showToast } from '../../lib/toast';
 import { KNOWLEDGE_STATUS_LABELS } from '../../lib/knowledge/format';
 import type { KnowledgeCategory, KnowledgeDocument, KnowledgeFolder, KnowledgeStatus, KnowledgeVersion } from '../../lib/knowledge/types';
@@ -199,6 +201,7 @@ function CreateEditorDocument({ onCreated }: { onCreated(document: KnowledgeDocu
 
 export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { documentId } = useParams<{ documentId: string }>();
   const [document, setDocument] = useState<KnowledgeDocument | null>(null);
   const [versions, setVersions] = useState<KnowledgeVersion[]>([]);
@@ -216,6 +219,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   const [versionNote, setVersionNote] = useState('');
   const [versionBusy, setVersionBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const documentRef = useRef<KnowledgeDocument | null>(null);
   const latestContentRef = useRef<JSONContent>(EMPTY_DOC);
@@ -536,6 +540,28 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
     }
   };
 
+  const exportPdf = async () => {
+    if (!document || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const { createKnowledgePdf } = await import('../../lib/knowledge/pdfExport');
+      const currentVersion = versions.find((version) => version.id === document.current_version_id);
+      const pdf = await createKnowledgePdf({
+        doc: content,
+        title: document.title,
+        businessName: user?.businessName ?? '',
+        versionNumber: currentVersion?.version_number ?? 1,
+        updatedAt: document.draft_updated_at ?? document.updated_at,
+        loadImage: loadKnowledgePdfImage,
+      });
+      downloadKnowledgePdf(pdf.blob, pdf.fileName);
+    } catch (cause) {
+      showToast(errorMessage(cause), 'error');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const createAndOpen = (created: KnowledgeDocument) => {
     navigate(`/ia/conocimientos/doc/${created.id}/editar`, { replace: true });
   };
@@ -584,8 +610,11 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
       </div>
 
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Editor de Conocimientos</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{document.title}</h1></div>
-        <button type="button" onClick={() => setSidePanelOpen((open) => !open)} aria-expanded={sidePanelOpen} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold lg:hidden">Estado y acciones<ChevronDown size={15} className={sidePanelOpen ? 'rotate-180' : ''}/></button>
+        <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Editor de Conocimientos</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{document.title}</h1><p className="mt-1 text-xs text-[var(--ink-muted)]">El PDF incluye el borrador actual y sus cambios no publicados.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={pdfBusy} onClick={() => void exportPdf()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-50"><Download size={15}/>{pdfBusy ? 'Generando PDF…' : 'Exportar PDF'}</button>
+          <button type="button" onClick={() => setSidePanelOpen((open) => !open)} aria-expanded={sidePanelOpen} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold lg:hidden">Estado y acciones<ChevronDown size={15} className={sidePanelOpen ? 'rotate-180' : ''}/></button>
+        </div>
       </header>
 
       {(isReadOnly || conflict) && <section role="alert" className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${conflict ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100' : 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}>
