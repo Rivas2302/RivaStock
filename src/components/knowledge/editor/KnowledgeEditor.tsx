@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import type { JSONContent } from '@tiptap/core';
+import type { Editor, JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TableKit } from '@tiptap/extension-table';
@@ -45,6 +45,7 @@ export interface KnowledgeEditorProps {
   ownerUid: string;
   editable?: boolean;
   onChange(doc: JSONContent): void;
+  onEditorReady?(editor: Editor | null): void;
 }
 
 interface ToolbarButtonProps {
@@ -116,15 +117,16 @@ export function KnowledgeEditor({
   ownerUid,
   editable = true,
   onChange,
+  onEditorReady,
 }: KnowledgeEditorProps) {
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const latestPropsRef = useRef({ initialContent, documentId, ownerUid, onChange, editable });
+  const latestPropsRef = useRef({ initialContent, documentId, ownerUid, onChange, editable, onEditorReady });
   const isHydratingRef = useRef(true);
   const [ready, setReady] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
 
-  latestPropsRef.current = { initialContent, documentId, ownerUid, onChange, editable };
+  latestPropsRef.current = { initialContent, documentId, ownerUid, onChange, editable, onEditorReady };
 
   const insertImages = useCallback(async (files: File[], dropPosition?: number) => {
     const currentEditor = editorRef.current;
@@ -187,8 +189,14 @@ export function KnowledgeEditor({
     ],
     content: { type: 'doc', content: [{ type: 'paragraph' }] },
     editable,
-    onCreate: ({ editor: createdEditor }) => { editorRef.current = createdEditor; },
-    onDestroy: () => { editorRef.current = null; },
+    onCreate: ({ editor: createdEditor }) => {
+      editorRef.current = createdEditor;
+      latestPropsRef.current.onEditorReady?.(createdEditor);
+    },
+    onDestroy: () => {
+      editorRef.current = null;
+      latestPropsRef.current.onEditorReady?.(null);
+    },
     onUpdate: ({ editor: updatedEditor }) => {
       if (!isHydratingRef.current) latestPropsRef.current.onChange(updatedEditor.getJSON());
     },

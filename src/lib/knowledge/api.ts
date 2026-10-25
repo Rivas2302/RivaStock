@@ -1,7 +1,9 @@
 import { supabase } from '../supabase';
+import type { AIProviderId, CodexModelId, CodexReasoningEffort } from '../aiBridge';
 import { detectFormat, MAX_FILE_BYTES, readTextIfPlain } from './files';
 import { sha256Hex } from './hash';
 import { knowledgeContentTypeFor, removePaths, uploadVersionFile } from './storage';
+import type { KnowledgeImageMap } from './organize';
 import type {
   KnowledgeCategory,
   KnowledgeAdminDocument,
@@ -38,6 +40,81 @@ async function ownerUid(action: 'read' | 'write' | 'delete' = 'write'): Promise<
 
 function throwQueryError(error: RpcError | null): void {
   if (error) throw new Error(error.message);
+}
+
+export interface KnowledgeOrganizeJob {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  output: string | null;
+  error: string | null;
+}
+
+export interface PendingKnowledgeProposal {
+  id: string;
+  jobId: string;
+  imageMap: KnowledgeImageMap;
+  output: string;
+  createdAt: string;
+}
+
+export async function requestKnowledgeOrganize(input: {
+  documentId: string;
+  idempotencyKey: string;
+  provider: AIProviderId;
+  notes: string;
+  modelId: CodexModelId;
+  reasoningEffort: CodexReasoningEffort;
+  imageMap: KnowledgeImageMap;
+}): Promise<{ jobId: string; proposalId: string }> {
+  const result = await rpc<{ job?: { id?: unknown }; proposal_id?: unknown }>('knowledge_request_organize', {
+    p_document_id: input.documentId,
+    p_idempotency_key: input.idempotencyKey,
+    p_provider: input.provider,
+    p_input: input.notes,
+    p_model_id: input.provider === 'codex' ? input.modelId : null,
+    p_reasoning_effort: input.provider === 'codex' ? input.reasoningEffort : null,
+    p_image_map: input.imageMap,
+  });
+  if (typeof result.job?.id !== 'string' || typeof result.proposal_id !== 'string') {
+    throw new Error('No se pudo iniciar la organización con IA.');
+  }
+  return { jobId: result.job.id, proposalId: result.proposal_id };
+}
+
+export async function getKnowledgeOrganizeJob(jobId: string): Promise<KnowledgeOrganizeJob> {
+  const { data, error } = await supabase.from('ai_jobs')
+    .select('id, status, output, error').eq('id', jobId).maybeSingle();
+  throwQueryError(error);
+  if (!data) throw new Error('No se encontró la tarea de organización.');
+  return data as KnowledgeOrganizeJob;
+}
+
+export async function listPendingKnowledgeProposals(documentId: string): Promise<PendingKnowledgeProposal[]> {
+  const { data, error } = await supabase.from('knowledge_ai_proposals')
+    .select('id, job_id, image_map, created_at').eq('document_id', documentId).eq('status', 'pending')
+    .order('created_at', { ascending: false }).limit(10);
+  throwQueryError(error);
+  const proposals = data ?? [];
+  if (!proposals.length) return [];
+  const { data: jobs, error: jobsError } = await supabase.from('ai_jobs')
+    .select('id, status, output').in('id', proposals.map((proposal) => proposal.job_id));
+  throwQueryError(jobsError);
+  const jobsById = new Map((jobs ?? []).map((job) => [job.id, job]));
+  return proposals.flatMap((proposal) => {
+    const job = jobsById.get(proposal.job_id);
+    if (!job || job.status !== 'completed' || typeof job.output !== 'string') return [];
+    return [{
+      id: proposal.id,
+      jobId: proposal.job_id,
+      imageMap: proposal.image_map as KnowledgeImageMap,
+      output: job.output,
+      createdAt: proposal.created_at,
+    }];
+  });
+}
+
+export async function resolveKnowledgeProposal(proposalId: string, status: 'applied' | 'discarded'): Promise<void> {
+  await rpc<void>('knowledge_resolve_proposal', { p_proposal_id: proposalId, p_status: status });
 }
 
 export async function searchDocuments(filters: KnowledgeSearchFilters = {}): Promise<KnowledgeSearchResult> {

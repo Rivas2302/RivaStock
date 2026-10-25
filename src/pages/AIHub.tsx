@@ -6,6 +6,7 @@ import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
 import { createAIBridgeWindowsInstaller, createAIBridgeWindowsUpdater } from '../lib/aiBridgeInstaller';
+import { CODEX_MODELS, PROVIDERS, modelLabel, providerLabel, reasoningLabel } from '../lib/aiOptions';
 import {
   createAIJob,
   getAIBridgeState,
@@ -21,30 +22,6 @@ import {
   type CodexReasoningEffort,
   type AIProviderId,
 } from '../lib/aiBridge';
-
-const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
-  { id: 'codex', label: 'Codex — Mi PC' },
-  { id: 'claude', label: 'Claude Code — Mi PC' },
-  { id: 'mock', label: 'Mock — prueba de conexión' },
-];
-
-const CODEX_MODELS: Array<{ id: CodexModelId; label: string }> = [
-  { id: 'gpt-6-luna', label: 'GPT-6 Luna — más eficiente' },
-  { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol — tareas complejas' },
-  { id: 'gpt-6-astra', label: 'GPT-6 Astra — máxima capacidad' },
-];
-
-function providerLabel(provider: AIProviderId): string {
-  return PROVIDERS.find((item) => item.id === provider)?.label ?? provider;
-}
-
-function modelLabel(modelId: string | null | undefined): string {
-  return CODEX_MODELS.find((item) => item.id === modelId)?.label ?? modelId ?? 'Predeterminado';
-}
-
-function reasoningLabel(effort: CodexReasoningEffort | null | undefined): string {
-  return ({ low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto' })[effort ?? 'low'];
-}
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -314,7 +291,7 @@ export default function AIHub() {
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
           <div className="mb-4 flex items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3>{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div>
-          {recentJobs.length ? <ul className="space-y-2">{recentJobs.map((job) => <li key={job.id}><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button></li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
+          {recentJobs.filter((job) => job.task_type === 'text_generation').length ? <ul className="space-y-2">{recentJobs.filter((job) => job.task_type === 'text_generation').map((job) => <li key={job.id}><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button></li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
           <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand)]"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
 

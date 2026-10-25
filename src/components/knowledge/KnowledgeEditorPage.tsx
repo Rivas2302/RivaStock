@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Loader2, Save, Send, Sparkles } from 'lucide-react';
-import type { JSONContent } from '@tiptap/core';
+import type { Editor, JSONContent } from '@tiptap/core';
 import { useAuth } from '../../AuthContext';
 import Modal from '../Modal';
-import KnowledgeEditor from './editor/KnowledgeEditor';
+import type { PendingKnowledgeProposal } from '../../lib/knowledge/api';
 import {
   createDocument,
   getDocument,
+  listPendingKnowledgeProposals,
   listCategories,
   listFolders,
   listVersions,
@@ -21,6 +22,9 @@ import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge
 import { showToast } from '../../lib/toast';
 import { KNOWLEDGE_STATUS_LABELS } from '../../lib/knowledge/format';
 import type { KnowledgeCategory, KnowledgeDocument, KnowledgeFolder, KnowledgeStatus, KnowledgeVersion } from '../../lib/knowledge/types';
+
+const KnowledgeEditor = lazy(() => import('./editor/KnowledgeEditor'));
+const OrganizeWithAIDialog = lazy(() => import('./editor/OrganizeWithAIDialog'));
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'offline' | 'error';
 
@@ -220,8 +224,11 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   const [versionBusy, setVersionBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
+  const [pendingProposals, setPendingProposals] = useState<PendingKnowledgeProposal[]>([]);
 
   const documentRef = useRef<KnowledgeDocument | null>(null);
+  const editorRef = useRef<Editor | null>(null);
   const latestContentRef = useRef<JSONContent>(EMPTY_DOC);
   const savedContentKeyRef = useRef(contentKey(EMPTY_DOC));
   const revisionRef = useRef(0);
@@ -270,6 +277,22 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   useEffect(() => {
     if (mode === 'edit' && documentId) void loadDocument(documentId);
   }, [documentId, loadDocument, mode]);
+
+  const refreshPendingProposals = useCallback(async () => {
+    if (!documentId || mode !== 'edit') return;
+    try {
+      setPendingProposals(await listPendingKnowledgeProposals(documentId));
+    } catch (cause) {
+      showToast(errorMessage(cause), 'error');
+    }
+  }, [documentId, mode]);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !documentId) return undefined;
+    void refreshPendingProposals();
+    const interval = window.setInterval(() => void refreshPendingProposals(), 10_000);
+    return () => window.clearInterval(interval);
+  }, [documentId, mode, refreshPendingProposals]);
 
   const isReadOnly = document?.status === 'archived' || document?.status === 'deleting';
 
@@ -452,6 +475,17 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
     return !dirtyRef.current && !conflictRef.current;
   };
 
+  const applyOrganizeProposal = async (applyMode: 'replace' | 'append', proposalContent: JSONContent) => {
+    const editor = editorRef.current;
+    if (!editor || isReadOnly || conflictRef.current) throw new Error('El editor no está disponible para aplicar la propuesta.');
+    if (applyMode === 'replace') {
+      editor.commands.setContent(proposalContent);
+    } else {
+      editor.commands.insertContentAt(editor.state.doc.content.size, proposalContent.content ?? []);
+    }
+    if (!(await flushDraft())) throw new Error('No se pudo guardar el borrador. Revisá el estado de guardado y probá de nuevo.');
+  };
+
   const saveVersion = async (note = ''): Promise<KnowledgeVersion | null> => {
     if (!document || isReadOnly || conflictRef.current) return null;
     const flushed = await flushDraft();
@@ -612,10 +646,16 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Editor de Conocimientos</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{document.title}</h1><p className="mt-1 text-xs text-[var(--ink-muted)]">El PDF incluye el borrador actual y sus cambios no publicados.</p></div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={isReadOnly || conflict || statusBusy} onClick={() => setOrganizeOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-50"><Sparkles size={15}/>Organizar con IA</button>
           <button type="button" disabled={pdfBusy} onClick={() => void exportPdf()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-50"><Download size={15}/>{pdfBusy ? 'Generando PDF…' : 'Exportar PDF'}</button>
           <button type="button" onClick={() => setSidePanelOpen((open) => !open)} aria-expanded={sidePanelOpen} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold lg:hidden">Estado y acciones<ChevronDown size={15} className={sidePanelOpen ? 'rotate-180' : ''}/></button>
         </div>
       </header>
+
+      {pendingProposals.length > 0 && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <p><strong>Tenés una propuesta de la IA lista para revisar.</strong> Todavía no se aplicó al documento.</p>
+        <button type="button" onClick={() => setOrganizeOpen(true)} className="rounded-lg border border-current px-3 py-2 text-xs font-bold">Revisar propuesta</button>
+      </section>}
 
       {(isReadOnly || conflict) && <section role="alert" className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${conflict ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100' : 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}>
         <AlertTriangle size={18} className="mt-0.5 shrink-0"/>
@@ -627,14 +667,17 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <main className="min-w-0"><div className="max-w-4xl">
-          <KnowledgeEditor
-            key={`${document.id}-${editorKey}`}
-            initialContent={content}
-            documentId={document.id}
-            ownerUid={document.user_id}
-            editable={!isReadOnly && !versionBusy && !statusBusy}
-            onChange={handleEditorChange}
-          />
+          <Suspense fallback={<div role="status" className="flex min-h-64 items-center justify-center text-sm text-[var(--ink-muted)]"><Loader2 size={20} className="mr-2 animate-spin"/>Cargando editor…</div>}>
+            <KnowledgeEditor
+              key={`${document.id}-${editorKey}`}
+              initialContent={content}
+              documentId={document.id}
+              ownerUid={document.user_id}
+              editable={!isReadOnly && !versionBusy && !statusBusy}
+              onChange={handleEditorChange}
+              onEditorReady={(editor) => { editorRef.current = editor; }}
+            />
+          </Suspense>
         </div></main>
         {sidePanelOpen && <aside className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm lg:sticky lg:top-4 lg:h-fit">
           <div><h2 className="font-bold">Estado y versiones</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">{statusLabel(document.status)}</p></div>
@@ -666,6 +709,19 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
           <div className="flex justify-end gap-2"><button type="button" disabled={versionBusy} onClick={() => setVersionModalOpen(false)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={versionBusy || isReadOnly || conflict} onClick={() => void saveVersionFromModal()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{versionBusy && <Loader2 size={15} className="animate-spin"/>}Guardar versión</button></div>
         </div>
       </Modal>
+
+      {organizeOpen && <Suspense fallback={<div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 text-sm text-white">Cargando Organizar con IA…</div>}>
+        <OrganizeWithAIDialog
+          isOpen={organizeOpen}
+          onClose={() => setOrganizeOpen(false)}
+          documentId={document.id}
+          ownerUid={document.user_id}
+          currentDraft={content}
+          initialProposal={pendingProposals[0] ?? null}
+          onApply={applyOrganizeProposal}
+          onResolved={() => void refreshPendingProposals()}
+        />
+      </Suspense>}
 
       <Modal isOpen={blocker.blocked} onClose={blocker.reset} title="Cambios sin guardar">
         <div className="space-y-4"><p className="text-sm">Hay cambios pendientes. Podés seguir editando o salir y descartarlos.</p><div className="flex justify-end gap-2"><button type="button" onClick={blocker.reset} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Seguir editando</button><button type="button" disabled={saveState === 'saving'} onClick={blocker.proceed} className="rounded-lg bg-[var(--danger-ink)] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Salir sin guardar</button></div></div>
