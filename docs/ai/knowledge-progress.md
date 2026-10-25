@@ -111,3 +111,9 @@ Actualizado: 2026-10-25
 - Antes de borrar, se consulta cuántos documentos perderán categoría o etiqueta y se pide confirmación. La Biblioteca enlaza a “Gestionar”.
 - Administración lista documentos en `deleting` y permite reintentar `prepare → Storage → finalize`.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). Sin mutaciones remotas.
+
+### T1.12 — Migración de la Biblioteca anterior y renombre a “Skills”
+
+- Renombrada la pestaña interna de Biblioteca a “Skills” con ícono `Wand2`, manteniendo el estado interno `library`; se quitó la creación de documentos heredados.
+- Agregado un aviso con enlace a Conocimientos y migración individual confirmada de archivos `knowledge/*`, con progreso, resumen y errores por archivo. Los documentos que fallan siguen disponibles para editar y reintentar; los migrados pasan a Conocimientos como publicados.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se conectó a producción ni se modificó Supabase remoto.

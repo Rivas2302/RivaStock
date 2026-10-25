@@ -1323,7 +1323,7 @@ COMMIT;
 `src/components/knowledge/TaxonomyManager.tsx` (se usa en Administración, pestaña “Organización”, y desde la Biblioteca con “Gestionar”): crear, renombrar, cambiar color (categorías), borrar con aviso de cuántos documentos quedan sin categoría/etiqueta. Mensajes de duplicado claros (el índice único devuelve error de Postgres `23505` → “Ya existe una categoría con ese nombre”).
 - **Commit:** `feat(knowledge): add category and tag management`
 
-### [ ] T1.12 Migración de la Biblioteca anterior y renombre a “Skills”
+### [x] T1.12 Migración de la Biblioteca anterior y renombre a “Skills”
 - En `src/components/AIWorkspace.tsx`:
   - Renombrar la pestaña “Biblioteca” de AIHub a **“Skills”** (texto e ícono `Wand2`); conservar el `id` interno `library`.
   - Quitar el botón de crear documento de conocimiento (`createDocument`) y mostrar un banner: “Los documentos de conocimiento ahora viven en **Conocimientos**.” con enlace.

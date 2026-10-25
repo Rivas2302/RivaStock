@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
+import { Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wand2, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
@@ -307,7 +307,7 @@ export default function AIHub() {
         {([
           { id: 'chats', label: 'Chats', icon: MessageSquare },
           { id: 'tasks', label: 'Tareas', icon: ListChecks },
-          { id: 'library', label: 'Biblioteca', icon: BookOpen },
+          { id: 'library', label: 'Skills', icon: Wand2 },
           { id: 'connection', label: 'Conexión', icon: Cable },
         ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
         <Link to="/ia/conocimientos" className="inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink)]"><Library size={17}/>Conocimientos</Link>
