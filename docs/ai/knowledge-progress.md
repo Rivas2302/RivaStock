@@ -129,3 +129,10 @@ Actualizado: 2026-10-25
 - `Knowledge.tsx` carga Biblioteca, Detalle, Administración y `UploadDialog` con `lazy()` + `Suspense`; el diálogo solo se importa al abrirse. `marked` y `dompurify` ahora se cargan dinámicamente mediante `renderMarkdownSafe`; el detalle muestra estado de carga y error de vista previa. TipTap queda reservado para imports de rutas lazy en T2.3/T2.4.
 - Presupuesto gzip de la ruta Conocimientos antes: JS 258.009 bytes, CSS 21.888 bytes. Después: JS 214.227 bytes, CSS 21.897 bytes. El JS bajó 43.782 bytes y `npm run perf:check` pasó.
 - Verificación: `npm run lint`, `npm test` (77 archivos, 483 pruebas), `npm run build` y `npm run perf:check` pasaron. Sin cambios en Supabase remoto.
+
+### T2.2 — Extensiones y utilidades de contenido
+
+- Agregadas las extensiones `Callout` (variantes y comandos de envolver/desenvolver) y `KbImage` con `assetPath` para referenciar imágenes privadas sin guardar URLs firmadas ni permitir base64.
+- Implementadas funciones puras para copiar y sanear imágenes, aplicar URLs firmadas al mostrar, recolectar rutas únicas, convertir documentos a texto y Markdown, y calcular SHA-256 con serialización estable de claves.
+- Agregados snapshots de serialización para los nodos y marcas contemplados, más pruebas de rutas de assets, URLs firmadas, escapes Markdown, saltos de línea, documento vacío y hash estable.
+- Verificación: `npm run lint` y `npm test` pasaron (78 archivos, 491 pruebas). Sin cambios en Supabase remoto.

@@ -1356,7 +1356,7 @@ COMMIT;
 - Incluir estos cambios en el mismo commit de T2.1 y anotar en `docs/ai/knowledge-progress.md` el tamaño antes/después.
 - **Commit:** `build(knowledge): add tiptap editor dependencies and split knowledge routes`
 
-### [ ] T2.2 Extensiones y utilidades de contenido
+### [x] T2.2 Extensiones y utilidades de contenido
 **Archivos:**
 - `src/components/knowledge/editor/extensions/Callout.ts`
   ```ts
