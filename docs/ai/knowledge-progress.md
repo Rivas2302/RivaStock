@@ -153,3 +153,10 @@ Actualizado: 2026-10-25
 - Implementado el guardado de versiones con nota, detección de contenido sin cambios, envío a revisión y publicación después de guardar la versión. La publicación confirma qué versión quedará disponible para IA.
 - Desvío: el proyecto usa `BrowserRouter`, donde `useBlocker` no está disponible. Migrar a `createBrowserRouter` hizo fallar `perf:check` en el bundle común y varias rutas; se conservó `BrowserRouter` y se implementó un guard de navegación dentro de la página, sin elevar el bundle base.
 - Verificación: `npm run lint`, `npm test` (78 archivos, 491 pruebas), `npm run build` y `npm run perf:check` pasaron. No se hizo prueba manual de persistencia: el único Supabase conectado es producción y no hay staging.
+
+### T2.5 — Versiones anteriores del editor
+
+- En la pestaña Versiones, “Ver” abre el contenido editorial como visor lazy de solo lectura; “Comparar con la actual” muestra ambos textos lado a lado, con líneas agregadas y eliminadas resaltadas.
+- Agregado `lineDiff.ts` con LCS por líneas y prueba unitaria. Para comparaciones mayores a dos millones de celdas usa una alineación aproximada por prefijos/sufijos y lo indica en la UI.
+- Restaurar una versión editorial crea la versión de restauración mediante `knowledge_restore_version` y abre el documento en el editor. El componente read-only no admite cargas de imágenes por paste/drop.
+- Verificación: `npm run lint`, `npm test` (79 archivos, 494 pruebas), `npm run build` y `npm run perf:check` pasaron. Sin cambios en Supabase remoto.

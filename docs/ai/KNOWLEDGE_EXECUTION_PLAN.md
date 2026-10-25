@@ -1447,7 +1447,7 @@ COMMIT;
 - Layout: editor a ancho de lectura (`max-w-4xl`) con panel lateral colapsable (estado, versión actual/publicada, acciones). En móvil, acciones en una barra inferior.
 - **Commit:** `feat(knowledge): add editor page with autosave, versions and publishing`
 
-### [ ] T2.5 Versiones anteriores del editor
+### [x] T2.5 Versiones anteriores del editor
 - En el detalle (pestaña Versiones) para documentos `editor`: “Ver” abre un visor de solo lectura (`KnowledgeEditor editable={false}` con el `content_json` de esa versión).
 - “Comparar con la actual”: mostrar lado a lado el texto plano (`toPlainText`) con resaltado de líneas agregadas/eliminadas usando un diff de líneas propio simple (LCS por líneas, archivo `src/lib/knowledge/lineDiff.ts` con test). Sin dependencias nuevas.
 - “Restaurar”: `knowledge_restore_version` y abrir el editor.

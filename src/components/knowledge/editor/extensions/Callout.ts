@@ -1,13 +1,8 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import type { CalloutVariant } from './calloutLabels';
 
-export type CalloutVariant = 'warning' | 'tip' | 'info' | 'danger';
-
-export const CALLOUT_LABELS: Record<CalloutVariant, string> = {
-  warning: 'Advertencia',
-  tip: 'Recomendación',
-  info: 'Importante',
-  danger: 'Peligro',
-};
+export { CALLOUT_LABELS } from './calloutLabels';
+export type { CalloutVariant } from './calloutLabels';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

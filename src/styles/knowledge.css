@@ -154,3 +154,11 @@
 .kb-editor-loading-line-wide { width: 95%; height: 1.25rem; }
 .kb-editor-loading-line-short { width: 48%; }
 @keyframes kb-editor-pulse { 50% { opacity: 0.5; } }
+.kb-diff-lines { max-height: 32rem; overflow: auto; padding: 0.5rem 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; }
+.kb-diff-line { display: grid; min-height: 1.5rem; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: start; gap: 0.5rem; padding: 0.15rem 0.5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.kb-diff-number { color: var(--ink-muted); text-align: right; user-select: none; }
+.kb-diff-line code { color: var(--ink); font: inherit; }
+.kb-diff-line.kb-diff-added { background: var(--success-surface); }
+.kb-diff-line.kb-diff-added code { color: var(--success-ink); }
+.kb-diff-line.kb-diff-removed { background: var(--danger-surface); }
+.kb-diff-line.kb-diff-removed code { color: var(--danger-ink); }

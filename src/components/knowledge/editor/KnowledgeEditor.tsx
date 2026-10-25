@@ -119,16 +119,16 @@ export function KnowledgeEditor({
 }: KnowledgeEditorProps) {
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const latestPropsRef = useRef({ initialContent, documentId, ownerUid, onChange });
+  const latestPropsRef = useRef({ initialContent, documentId, ownerUid, onChange, editable });
   const isHydratingRef = useRef(true);
   const [ready, setReady] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
 
-  latestPropsRef.current = { initialContent, documentId, ownerUid, onChange };
+  latestPropsRef.current = { initialContent, documentId, ownerUid, onChange, editable };
 
   const insertImages = useCallback(async (files: File[], dropPosition?: number) => {
     const currentEditor = editorRef.current;
-    if (!currentEditor || !files.length) return;
+    if (!currentEditor || !latestPropsRef.current.editable || !files.length) return;
 
     let insertAt = dropPosition;
     if (insertAt === undefined) {
@@ -198,6 +198,7 @@ export function KnowledgeEditor({
         'aria-label': 'Contenido del documento',
       },
       handlePaste: (_view, event) => {
+        if (!latestPropsRef.current.editable) return false;
         const files = imageFilesFrom(event.clipboardData?.files ?? []);
         if (!files.length) return false;
         event.preventDefault();
@@ -205,6 +206,7 @@ export function KnowledgeEditor({
         return true;
       },
       handleDrop: (view, event) => {
+        if (!latestPropsRef.current.editable) return false;
         const files = imageFilesFrom(event.dataTransfer?.files ?? []);
         if (!files.length) return false;
         event.preventDefault();

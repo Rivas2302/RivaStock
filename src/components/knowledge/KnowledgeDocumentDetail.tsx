@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AlertCircle, Archive, ArrowLeft, Check, Download, Eye, FileClock, FileText, History, Loader2, RotateCcw, Save, Send, Upload, WandSparkles } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import type { JSONContent } from '@tiptap/core';
 import { useAuth } from '../../AuthContext';
 import {
   createTag,
@@ -30,6 +31,8 @@ import {
 } from '../../lib/knowledge/format';
 import { signedUrl } from '../../lib/knowledge/storage';
 import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
+import { diffLines, type LineDiffCell, type LineDiffRow } from '../../lib/knowledge/lineDiff';
+import { toPlainText } from '../../lib/knowledge/editorContent';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -43,6 +46,8 @@ import type {
 } from '../../lib/knowledge/types';
 
 type DetailTab = 'preview' | 'info' | 'versions' | 'history';
+
+const KnowledgeEditor = lazy(() => import('./editor/KnowledgeEditor'));
 
 function folderLabel(folder: KnowledgeFolder, folders: KnowledgeFolder[]): string {
   const byId = new Map(folders.map((item) => [item.id, item]));
@@ -119,6 +124,8 @@ export default function KnowledgeDocumentDetail() {
   const [busy, setBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>('preview');
+  const [reviewVersionId, setReviewVersionId] = useState<string | null>(null);
+  const [compareVersionId, setCompareVersionId] = useState<string | null>(null);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewUrlPath, setPreviewUrlPath] = useState('');
@@ -147,6 +154,8 @@ export default function KnowledgeDocumentDetail() {
       ]);
       setDocument(nextDocument);
       setVersions(nextVersions);
+      setReviewVersionId(null);
+      setCompareVersionId(null);
       setEvents(nextEvents);
       setFolders(nextFolders);
       setCategories(nextCategories);
@@ -169,6 +178,10 @@ export default function KnowledgeDocumentDetail() {
   const currentVersion = useMemo(
     () => versions.find((version) => version.id === document?.current_version_id) ?? null,
     [versions, document?.current_version_id],
+  );
+  const reviewVersion = useMemo(
+    () => versions.find((version) => version.id === reviewVersionId) ?? null,
+    [versions, reviewVersionId],
   );
   const previewVersion = useMemo(
     () => versions.find((version) => version.id === previewVersionId) ?? currentVersion,
@@ -291,6 +304,10 @@ export default function KnowledgeDocumentDetail() {
     setNotice('');
     try {
       const restored = await restoreVersion(document.id, version.id);
+      if (document.kind === 'editor') {
+        navigate(`/ia/conocimientos/doc/${document.id}/editar`);
+        return;
+      }
       await load();
       setPreviewVersionId(restored.id);
       setActiveTab('preview');
@@ -433,9 +450,25 @@ export default function KnowledgeDocumentDetail() {
 
     {activeTab === 'versions' && <section className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm">
       <div className="border-b border-[var(--line)] p-5"><h2 className="text-lg font-bold">Versiones</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Cada restauración crea una versión nueva para conservar el historial.</p></div>
+      {document.kind === 'editor' && reviewVersion && <EditorVersionReview
+        key={reviewVersion.id}
+        document={document}
+        version={reviewVersion}
+        currentVersion={currentVersion}
+        comparing={compareVersionId === reviewVersion.id}
+        onClose={() => { setReviewVersionId(null); setCompareVersionId(null); }}
+        onToggleComparison={() => setCompareVersionId((id) => id === reviewVersion.id ? null : reviewVersion.id)}
+      />}
       {versions.length ? <ul className="divide-y divide-[var(--line)]">{versions.map((version) => <li key={version.id} className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
         <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">v{version.version_number}</h3>{document.current_version_id === version.id && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-1 text-[10px] font-bold text-[var(--brand)]">Actual</span>}{document.published_version_id === version.id && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Publicada</span>}</div><p className="mt-1 text-xs text-[var(--ink-muted)]">{formatDate(version.created_at)} · {sourceLabel(version.source)} · {version.file_size == null ? 'Contenido de texto' : formatBytes(version.file_size)}</p>{version.change_note && <p className="mt-1 text-xs">{version.change_note}</p>}</div>
-        <div className="flex flex-wrap gap-2">{version.storage_path && <button type="button" onClick={() => void downloadVersion(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Descargar</button>}<button type="button" onClick={() => { setPreviewVersionId(version.id); setActiveTab('preview'); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>{document.status !== 'archived' && document.status !== 'deleting' && document.current_version_id !== version.id && <button type="button" disabled={busy} onClick={() => void restore(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Restaurar como actual</button>}</div>
+        <div className="flex flex-wrap gap-2">
+          {version.storage_path && <button type="button" onClick={() => void downloadVersion(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Descargar</button>}
+          {document.kind === 'editor' ? <>
+            <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(null); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>
+            {version.id !== currentVersion?.id && version.content_json && currentVersion?.content_json && <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(version.id); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Comparar con la actual</button>}
+          </> : <button type="button" onClick={() => { setPreviewVersionId(version.id); setActiveTab('preview'); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>}
+          {document.status !== 'archived' && document.status !== 'deleting' && document.current_version_id !== version.id && <button type="button" disabled={busy} onClick={() => void restore(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Restaurar como actual</button>}
+        </div>
       </li>)}</ul> : <p className="p-5 text-sm text-[var(--ink-muted)]">Todavía no hay versiones guardadas.</p>}
     </section>}
 
@@ -445,6 +478,75 @@ export default function KnowledgeDocumentDetail() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><dt className="text-xs text-[var(--ink-muted)]">{label}</dt><dd className="mt-1 break-words text-xs font-semibold">{value}</dd></div>;
+}
+
+function EditorVersionReview({
+  document,
+  version,
+  currentVersion,
+  comparing,
+  onClose,
+  onToggleComparison,
+}: {
+  document: KnowledgeDocument;
+  version: KnowledgeVersion;
+  currentVersion: KnowledgeVersion | null;
+  comparing: boolean;
+  onClose(): void;
+  onToggleComparison(): void;
+}) {
+  const versionContent = version.content_json as JSONContent | null;
+  const currentContent = currentVersion?.content_json as JSONContent | null | undefined;
+  const beforeText = versionContent ? toPlainText(versionContent) : '';
+  const currentText = currentContent ? toPlainText(currentContent) : '';
+  const comparison = useMemo(
+    () => comparing && versionContent && currentContent ? diffLines(beforeText, currentText) : null,
+    [beforeText, comparing, currentText, currentContent, versionContent],
+  );
+
+  return (
+    <section className="space-y-4 border-b border-[var(--line)] bg-[var(--surface-muted)] p-4 sm:p-5" aria-label={`Revisión de la versión ${version.version_number}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h3 className="font-bold">Versión v{version.version_number}</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">Vista de solo lectura</p></div>
+        <div className="flex flex-wrap gap-2">
+          {currentContent && version.id !== currentVersion?.id && <button type="button" onClick={onToggleComparison} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold">{comparing ? 'Ocultar comparación' : 'Comparar con la actual'}</button>}
+          <button type="button" onClick={onClose} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold">Cerrar</button>
+        </div>
+      </div>
+      {versionContent ? <Suspense fallback={<div role="status" className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="mr-2 inline animate-spin"/>Cargando visor de versión…</div>}>
+        <KnowledgeEditor
+          key={`${document.id}-${version.id}`}
+          initialContent={versionContent}
+          documentId={document.id}
+          ownerUid={document.user_id}
+          editable={false}
+          onChange={() => undefined}
+        />
+      </Suspense> : <p role="status" className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm text-[var(--ink-muted)]">Esta versión no tiene contenido editorial para mostrar.</p>}
+
+      {comparing && comparison && <div className="space-y-3">
+        {comparison.approximate && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">El documento es extenso; se muestran los bloques cambiados con una alineación simplificada.</p>}
+        <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+          <DiffColumn title={`Versión v${version.version_number}`} rows={comparison.rows} side="before"/>
+          <DiffColumn title={`Actual v${currentVersion?.version_number ?? '—'}`} rows={comparison.rows} side="after"/>
+        </div>
+      </div>}
+    </section>
+  );
+}
+
+function DiffColumn({ title, rows, side }: { title: string; rows: LineDiffRow[]; side: 'before' | 'after' }) {
+  return <section className="min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
+    <h4 className="border-b border-[var(--line)] px-3 py-2 text-xs font-bold">{title}</h4>
+    <ol className="kb-diff-lines" aria-label={title}>{rows.map((row, index) => {
+      const cell = row[side] as LineDiffCell | null;
+      const changeClass = cell?.kind === 'added' ? 'kb-diff-added' : cell?.kind === 'removed' ? 'kb-diff-removed' : '';
+      return <li key={`${index}-${cell?.kind ?? 'empty'}`} className={`kb-diff-line ${changeClass}`}>
+        <span className="kb-diff-number" aria-hidden="true">{cell ? index + 1 : ''}</span>
+        <code>{cell?.text || ' '}</code>
+      </li>;
+    })}</ol>
+  </section>;
 }
 
 function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {

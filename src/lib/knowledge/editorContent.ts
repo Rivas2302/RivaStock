@@ -1,5 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
-import { CALLOUT_LABELS, type CalloutVariant } from '../../components/knowledge/editor/extensions/Callout';
+import { CALLOUT_LABELS, type CalloutVariant } from '../../components/knowledge/editor/extensions/calloutLabels';
 import { sha256Hex } from './hash';
 
 export const EMPTY_DOC: JSONContent = {
