@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, Check, ChevronDown, Filter, FolderTree as FolderTreeIcon, Loader2, RefreshCw, Search, Upload, X } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, FileText, Filter, FolderTree as FolderTreeIcon, Loader2, RefreshCw, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import FolderTree from './library/FolderTree';
 import Pagination from '../Pagination';
@@ -282,6 +282,7 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
         <span className="text-sm text-[var(--ink-muted)]">{results.total.toLocaleString('es-AR')} documentos</span>
       </div>
       <div className="flex items-center gap-2">
+        <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold"><FileText size={15}/>Nuevo documento</Link>
         <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)]"><Upload size={15}/>Subir archivos</button>
         <button type="button" onClick={() => setMobileFiltersOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold md:hidden"><FolderTreeIcon size={16}/>Carpetas y filtros</button>
       </div>

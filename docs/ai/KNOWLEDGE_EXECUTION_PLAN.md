@@ -1434,7 +1434,7 @@ COMMIT;
 - Estilos en `src/styles/knowledge.css`: `.kb-prose` (tipografía para títulos, listas, tablas con bordes `var(--line)`, imágenes `max-width:100%` con borde redondeado) y `.kb-callout[data-variant=…]` con fondo/borde: warning → ámbar, tip → `--success-*`, info → `--brand-soft`/`--brand`, danger → `--danger-*`. Agregar etiqueta visual con `::before { content: 'Advertencia' … }` por variante. Funcionar en tema oscuro (usar tokens).
 - **Commit:** `feat(knowledge): add rich text editor with images, tables and callouts`
 
-### [ ] T2.4 Página del editor: crear, autoguardar, versionar, publicar
+### [x] T2.4 Página del editor: crear, autoguardar, versionar, publicar
 `src/components/knowledge/KnowledgeEditorPage.tsx` y rutas `nuevo` y `doc/:documentId/editar` en `Knowledge.tsx`; botón “Nuevo documento” en encabezado/Panel/Biblioteca.
 - **Nuevo:** formulario mínimo (título obligatorio, carpeta, categoría) → `knowledge_create_document('editor','editor', …)` → `navigate('../doc/:id/editar', { replace: true })`.
 - **Cargar:** `getDocument(id)`; si `kind !== 'editor'` → redirigir al detalle; si `status` es `archived`/`deleting` → solo lectura con aviso “Restaurá el documento para editarlo”.

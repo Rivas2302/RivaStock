@@ -109,7 +109,10 @@ export default function KnowledgePanel({ refreshKey = 0 }: { refreshKey?: number
         <Library className="mx-auto text-[var(--brand)]" size={34}/>
         <h3 className="mt-3 text-lg font-bold">Todavía no hay documentos</h3>
         <p className="mx-auto mt-1 max-w-md text-sm text-[var(--ink-muted)]">Subí archivos o creá documentos para organizar el conocimiento de tu negocio.</p>
-        <Link to="/ia/conocimientos/biblioteca?upload=1" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)]"><Upload size={16}/>Subí tu primer documento</Link>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)]"><FileText size={16}/>Crear documento</Link>
+            <Link to="/ia/conocimientos/biblioteca?upload=1" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-bold"><Upload size={16}/>Subir archivos</Link>
+          </div>
       </section>
       <QuickLinks/>
     </div>
@@ -159,6 +162,7 @@ function QuickLinks() {
   return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
     <h3 className="font-bold">Accesos rápidos</h3>
     <div className="mt-3 flex flex-col gap-2">
+      <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)]"><FileText size={16}/>Nuevo documento</Link>
       <Link to="/ia/conocimientos/biblioteca?upload=1" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)]"><Upload size={16}/>Subir archivos</Link>
       <Link to="/ia/conocimientos/biblioteca" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2.5 text-sm font-semibold"><Library size={16}/>Ir a la Biblioteca</Link>
       <Link to="/ia/conocimientos/admin" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2.5 text-sm font-semibold"><FolderCog size={16}/>Administración</Link>

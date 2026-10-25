@@ -8,6 +8,7 @@ const KnowledgeDocumentDetail = lazy(() => import('../components/knowledge/Knowl
 const KnowledgeAdmin = lazy(() => import('../components/knowledge/KnowledgeAdmin'));
 const KnowledgeLibrary = lazy(() => import('../components/knowledge/KnowledgeLibrary'));
 const UploadDialog = lazy(() => import('../components/knowledge/UploadDialog'));
+const KnowledgeEditorPage = lazy(() => import('../components/knowledge/KnowledgeEditorPage'));
 
 function KnowledgeLoader() {
   return <div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={36}/></div>;
@@ -39,7 +40,10 @@ export default function Knowledge() {
           <p className="mt-1 text-sm text-[var(--ink-muted)]">La base de conocimiento de tu negocio para la IA.</p>
           <Link to="/ia" className="mt-3 inline-flex text-sm font-semibold text-[var(--brand)] hover:underline">← IA</Link>
         </div>
-        <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold shadow-sm"><Upload size={16}/>Subir archivos</button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3.5 py-2.5 text-sm font-bold text-[var(--action-ink)] shadow-sm"><Sparkles size={16}/>Nuevo documento</Link>
+          <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold shadow-sm"><Upload size={16}/>Subir archivos</button>
+        </div>
       </header>
 
       <nav className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="Secciones de Conocimientos">
@@ -57,6 +61,8 @@ export default function Knowledge() {
       <Routes>
         <Route index element={<KnowledgePanel refreshKey={refreshKey}/>}/>
         <Route path="biblioteca" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeLibrary refreshKey={refreshKey}/></Suspense>}/>
+        <Route path="nuevo" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeEditorPage mode="create"/></Suspense>}/>
+        <Route path="doc/:documentId/editar" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeEditorPage mode="edit"/></Suspense>}/>
         <Route path="doc/:documentId" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeDocumentDetail/></Suspense>}/>
         <Route path="admin" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeAdmin/></Suspense>}/>
         <Route path="*" element={<Navigate to="/ia/conocimientos" replace/>}/>

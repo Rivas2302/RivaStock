@@ -144,3 +144,12 @@ Actualizado: 2026-10-25
 - Paste, drop y selector de archivos suben imágenes PNG/JPEG/WebP de hasta 10 MB mediante la optimización existente a WebP, registran el asset y lo insertan con su ruta privada; el estado de carga y los errores se informan en la UI.
 - Incorporados estilos de contenido, tablas, avisos por variante compatibles con el tema oscuro y skeleton de carga. El editor queda aislado en su módulo; no se importa desde las rutas de Conocimientos.
 - Verificación: `npm run lint` y `npm test` pasaron (78 archivos, 491 pruebas). Sin cambios en Supabase remoto.
+
+### T2.4 — Página del editor, borradores y publicación
+
+- Agregada la creación de documentos editoriales con título, carpeta y categoría, y las rutas lazy `/nuevo` y `/doc/:id/editar`. Hay accesos desde el encabezado, el Panel y la Biblioteca.
+- Implementada la carga del borrador y su revisión, autoguardado con debounce de 1,5 s en una cola serial, recuperación al reconectar, guardado inmediato con Ctrl/Cmd+S y estados de guardado visibles.
+- Agregada la gestión de conflicto entre pestañas para recargar el borrador remoto o volver a guardar sobre su `draft_revision`; incluye guardas ante navegación interna, atrás/adelante y cierre de página.
+- Implementado el guardado de versiones con nota, detección de contenido sin cambios, envío a revisión y publicación después de guardar la versión. La publicación confirma qué versión quedará disponible para IA.
+- Desvío: el proyecto usa `BrowserRouter`, donde `useBlocker` no está disponible. Migrar a `createBrowserRouter` hizo fallar `perf:check` en el bundle común y varias rutas; se conservó `BrowserRouter` y se implementó un guard de navegación dentro de la página, sin elevar el bundle base.
+- Verificación: `npm run lint`, `npm test` (78 archivos, 491 pruebas), `npm run build` y `npm run perf:check` pasaron. No se hizo prueba manual de persistencia: el único Supabase conectado es producción y no hay staging.
