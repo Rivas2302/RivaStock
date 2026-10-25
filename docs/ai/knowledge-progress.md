@@ -54,3 +54,10 @@ Actualizado: 2026-10-25
 - Creada por Supabase CLI: `supabase/migrations/20261025152515_knowledge_storage.sql`.
 - Define el bucket privado `knowledge`, límites/MIME permitidos y políticas de lectura, alta y borrado por UID dueño; no hay política de actualización.
 - Se agregó una prueba estática de contrato en `src/lib/knowledge.migration.test.ts`. La migración no se aplicó en producción.
+
+### T1.4 — Tests de migración (PGlite)
+
+- Alineadas las dependencias de prueba a `@electric-sql/pglite@0.5.11` y `@electric-sql/pglite-pgvector@0.0.12`, como exige el peer dependency exacto de pgvector.
+- La suite carga las migraciones reales de AI Bridge y Conocimientos en PGlite y cubre aislamiento/RLS, permisos de colaboradores, archivos y versiones, cuota de almacenamiento, publicación, conflictos de editor, restauración, búsqueda/filtros, carpetas, eliminación/auditoría e importación heredada. La migración de Storage se valida estáticamente porque PGlite no incluye el esquema `storage`.
+- Verificación: `npx vitest run src/lib/knowledge.migration.test.ts` (15 pruebas), `npm run lint` y `npm test` (73 archivos, 475 pruebas) pasaron.
+- No se aplicaron migraciones a producción; el respaldo previo sigue bloqueado por la falta de Docker y `pg_dump` local.
