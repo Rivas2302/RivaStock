@@ -174,3 +174,8 @@ Actualizado: 2026-10-25
 - Para móvil, la barra del editor ya tiene scroll horizontal; se agregó scroll horizontal al wrapper de las tablas TipTap. La comprobación visual en 375 px queda pendiente.
 - La checklist manual F2 de §12.3 queda lista para el dueño. No se ejecutó el flujo con Supabase: solo está conectado el proyecto de producción, no hay staging y T0.2 continúa pendiente. No se aplicaron cambios remotos.
 - Actualizado `AGENTS.md`; la siguiente fase del plan es Motor RAG, condicionada a un entorno no productivo y a resolver T0.2.
+
+### T3.1 — Migración de la extensión vector
+
+- Creada con `supabase migration new` la migración `20261025184236_knowledge_vector_extension.sql`; crea `extensions` si falta y habilita `vector` en ese esquema, sin fijar una versión.
+- No se aplicó a una base remota: solo está conectado el proyecto de producción, no hay staging y T0.2 sigue pendiente. La sintaxis coincide con la documentación vigente de Supabase.

@@ -1479,7 +1479,7 @@ COMMIT;
 
 **Resultado de la fase:** al publicar (o reindexar) un documento habilitado, la PC vinculada extrae el texto, lo normaliza, lo fragmenta respetando secciones y páginas, genera embeddings y los guarda. El cambio de índice es atómico (sin “huecos”: los fragmentos nuevos solo se activan al completar). Archivar, despublicar, deshabilitar o eliminar invalida el índice al instante. Búsqueda semántica + palabras clave con fuentes. Panel de administración del RAG.
 
-### [ ] T3.1 Migración de la extensión vector
+### [x] T3.1 Migración de la extensión vector
 **Archivo:** `supabase/migrations/<ts>_knowledge_vector_extension.sql`
 ```sql
 CREATE SCHEMA IF NOT EXISTS extensions;
