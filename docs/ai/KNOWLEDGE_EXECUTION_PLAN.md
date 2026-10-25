@@ -1294,7 +1294,7 @@ COMMIT;
 - Clic en documento → `doc/:id`.
 - **Commit:** `feat(knowledge): add library with folders, filters and keyword search`
 
-### [ ] T1.9 Carga de archivos
+### [x] T1.9 Carga de archivos
 `src/components/knowledge/UploadDialog.tsx` (usar `src/components/Modal.tsx`):
 - Zona de arrastrar y soltar + botón “Elegir archivos” (`accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp"`, `multiple`).
 - Validación previa por archivo (extensión, tamaño ≤ 50 MB, máx. 20) con motivo visible.

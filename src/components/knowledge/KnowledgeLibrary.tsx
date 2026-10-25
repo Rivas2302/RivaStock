@@ -80,7 +80,7 @@ function StatusBadge({ label, className }: { label: string; className: string })
   return <span className={`inline-flex max-w-full items-center truncate rounded-full px-2 py-1 text-[10px] font-bold leading-4 ${className}`}>{label}</span>;
 }
 
-export default function KnowledgeLibrary() {
+export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: number }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const paramsKey = searchParams.toString();
   const searchQuery = searchParams.get('q') ?? '';
@@ -186,7 +186,7 @@ export default function KnowledgeLibrary() {
       }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [paramsKey, refreshCounter]);
+  }, [paramsKey, refreshCounter, refreshKey]);
 
   useEffect(() => { setSelected(new Map()); }, [paramsKey]);
 
@@ -269,13 +269,22 @@ export default function KnowledgeLibrary() {
     onRefresh={loadTaxonomy}
   />;
 
+  const openUpload = () => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set('upload', '1');
+    return next;
+  }, { replace: true });
+
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-soft)] px-3 py-1.5 text-xs font-bold text-[var(--brand)]"><Search size={13}/>Palabras clave</span>
         <span className="text-sm text-[var(--ink-muted)]">{results.total.toLocaleString('es-AR')} documentos</span>
       </div>
-      <button type="button" onClick={() => setMobileFiltersOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold md:hidden"><FolderTreeIcon size={16}/>Carpetas y filtros</button>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)]"><Upload size={15}/>Subir archivos</button>
+        <button type="button" onClick={() => setMobileFiltersOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold md:hidden"><FolderTreeIcon size={16}/>Carpetas y filtros</button>
+      </div>
     </div>
 
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">

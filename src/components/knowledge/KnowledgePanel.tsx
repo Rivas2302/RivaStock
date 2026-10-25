@@ -46,7 +46,7 @@ function DashboardSkeleton() {
   </div>;
 }
 
-export default function KnowledgePanel() {
+export default function KnowledgePanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
   const [recent, setRecent] = useState<KnowledgeListItem[]>([]);
   const [review, setReview] = useState<KnowledgeListItem[]>([]);
@@ -79,7 +79,7 @@ export default function KnowledgePanel() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
   if (loading) return <DashboardSkeleton/>;
   if (error) return (

@@ -89,3 +89,10 @@ Actualizado: 2026-10-25
 - Agregados búsqueda con debounce de 300 ms, filtros compartibles por URL, rangos de fecha, orden, tarjetas móviles, tabla de escritorio, selección múltiple y acciones seriales de mover/categorizar/archivar con reporte por documento.
 - La paginación es remota por lotes de 30 mediante el RPC; el hook local no encaja con resultados de servidor.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). La carga se conecta en T1.9 mediante el parámetro `upload=1`.
+
+### T1.9 — Carga de archivos
+
+- Agregado `UploadDialog` con arrastrar/soltar, selector múltiple, validación por extensión/tamaño y máximo de 20 archivos, carpeta/categoría/etiquetas, opción de publicar y progreso por archivo.
+- El diálogo se abre desde el encabezado, Panel y Biblioteca; conserva la carpeta seleccionada por URL, muestra el estado final y permanece abierto si hubo fallas.
+- Se agregó el aviso sobre extracción local en la PC vinculada y el límite actual para PDF/DOCX e imágenes.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se conectó a producción ni se aplicaron migraciones.
