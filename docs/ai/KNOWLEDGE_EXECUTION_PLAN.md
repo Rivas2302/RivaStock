@@ -2048,7 +2048,7 @@ COMMIT;
   13. Backfill: documentos publicados antes de cargar la migración RAG quedan con job `backfill`.
 - **Commit:** `test(knowledge): cover RAG lifecycle and retrieval with PGlite`
 
-### [ ] T3.4 Edge Function `knowledge`
+### [x] T3.4 Edge Function `knowledge`
 **Archivos:** `supabase/functions/_shared/workerAuth.ts`, `supabase/functions/knowledge/index.ts`. **No tocar `supabase/functions/ai-bridge/index.ts`.**
 - `_shared/workerAuth.ts`: exportar `jsonResponse(body, status)`, `readJsonLimited(req, maxBytes)`, `isUuid(value)`, y `authorizeWorker(req, body, serviceClient): Promise<string | null>` que replica la autorización por **token de dispositivo** de `ai-bridge` (`rpc('ai_bridge_authorize_device', { p_device_id: body.worker_id, p_token })`). **No** soportar el token compartido legado.
 - `knowledge/index.ts`:

@@ -190,3 +190,9 @@ Actualizado: 2026-10-25
 
 - Agregada `src/lib/knowledgeRag.migration.test.ts` con 13 pruebas PGlite: cola y backfill, aislamiento por cuenta y dispositivo, dimensiones de embeddings, publicación/reindexación atómica, reutilización por hash, invalidación, reintentos y leases, filtros híbridos, vencimiento de búsquedas, orden por score y permisos.
 - Verificación: npm run lint y npm test pasaron (81 archivos, 510 pruebas; incluye las 13 de RAG). Sin cambios remotos.
+
+### T3.4 — Edge Function worker-only para Conocimientos
+
+- Agregados `supabase/functions/_shared/workerAuth.ts` con respuesta `no-store`, lectura JSON acotada, validación UUID y autorización exclusiva mediante `ai_bridge_authorize_device`; no acepta el token compartido legado.
+- Agregada `supabase/functions/knowledge/index.ts`: rechaza cualquier `Origin`, acepta solo POST y hasta 1 MiB, valida acciones y payloads, llama a `knowledge_worker` y genera URLs firmadas de 120 segundos para archivos reservados.
+- Verificación: npm run lint y npm test pasaron (82 archivos, 514 pruebas; incluye los 4 chequeos estáticos del contrato). Sin cambios remotos.
