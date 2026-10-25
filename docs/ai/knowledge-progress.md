@@ -243,3 +243,11 @@ Actualizado: 2026-10-25
 - La checklist manual de §12.3 F1/F2/F3 sigue pendiente. No se crearon datos `[QA]` ni se hizo la prueba SQL de aislamiento.
 - El botón de actualización de AI Bridge generó el actualizador 1.5.0 en Descargas, pero el control de Chrome bloqueó la navegación a `chrome://downloads` y prohibió iniciar ese archivo por otra vía automatizada. El worker de esta PC todavía no quedó actualizado ni reiniciado; F3 queda detenida hasta que el dueño ejecute el actualizador.
 - No se revirtió el frontend ni se deshabilitó Conocimientos: el error de carga se corrigió en el primer intento y el panel ya carga. No se modificaron ni borraron datos de usuarios.
+
+### Reanudación de la checklist — 2026-10-25
+
+- El dueño confirmó que actualizó el AI Bridge manualmente. Verificación local: paquete instalado `1.5.0`, un proceso worker iniciado a las 19:07 y heartbeat de la PC visible como conectado en producción.
+- El panel de Conocimientos carga y muestra cero documentos. El formulario admite PDF, DOCX, TXT, MD y PNG/JPG/WEBP, con tope de 50 MB y 20 archivos. No se transmitieron fixtures `[QA]` ni se crearon filas remotas.
+- La carga quedó bloqueada porque la extensión ChatGPT de Chrome no tiene habilitado `Allow access to file URLs`; `filechooser.setFiles` rechazó el fixture antes de transmitirlo. Queda pendiente habilitar esa opción manualmente para retomar F1–F3.
+- El texto del formulario indica que la extracción de PDF/DOCX queda pendiente en esta etapa. Se verificará contra el procesamiento real una vez que pueda cargarse el PDF de prueba.
+- La prueba de aislamiento SQL, las verificaciones visuales, la limpieza por la app y la Fase 4 siguen sin ejecutarse.
