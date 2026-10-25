@@ -2253,7 +2253,7 @@ COMMIT;
 - Solo si el dueño lo pide o queda tiempo en la fase. Instalar `tesseract.js` (versión exacta) en el worker; implementar `extractImage` con idioma `spa`, cache de datos de idioma en `modelsDirectory`; activar solo con `AI_BRIDGE_ENABLE_OCR=true`. Texto < 10 caracteres → tratar como imagen sin texto.
 - **Commit:** `feat(ai-bridge): add optional OCR for knowledge images`
 
-### [ ] T3.8 Frontend: estados de indexación y búsqueda semántica
+### [x] T3.8 Frontend: estados de indexación y búsqueda semántica
 - `src/lib/knowledge/search.ts`:
   - `keywordChunkSearch(query, filters, topK)` → `knowledge_search_chunks_text`.
   - `semanticSearch(query, filters, topK, signal)`: si `getAIBridgeState()` (de `src/lib/aiBridge.ts`) no es `idle`/`busy` → devolver `{ mode: 'keyword', notice: 'Tu PC vinculada está desconectada: se muestran resultados por palabras clave.' , results: await keywordChunkSearch(…) }`. Si está conectada → `knowledge_request_search` → sondear `knowledge_search_requests` (`select status, results, error`) cada 600 ms hasta 10 s → `completed` → `{ mode: 'semantic', results }`; `failed`/`expired`/timeout → fallback a palabras clave con aviso.

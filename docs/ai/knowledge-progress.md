@@ -210,3 +210,10 @@ Actualizado: 2026-10-25
 - El worker obtiene archivos con URL firmada y límite de descarga de 50 MiB, extrae texto según formato, guarda la extracción, fragmenta y envía embeddings en lotes de 32; heartbeat cada 60 s y detención segura entre lotes. Las imágenes usan título y descripción si OCR no produce texto.
 - Configuración y documentación: `AI_BRIDGE_ENABLE_KNOWLEDGE`, `AI_BRIDGE_MODELS_DIR` y `AI_BRIDGE_ENABLE_OCR`; versión del paquete actualizada a 1.5.0. Los errores compartidos redactan credenciales, URLs firmadas y rutas locales.
 - Verificación: worker `npm run typecheck` y `npm test` (23 pruebas) pasaron; raíz `npm run lint` y `npm test` (82 archivos, 514 pruebas) pasaron. No se ejecutó una indexación real ni se aplicaron cambios remotos.
+
+### T3.8 — Estados de indexación y búsqueda semántica
+
+- Agregado `src/lib/knowledge/search.ts`: búsqueda de fragmentos por palabras clave, solicitud semántica al worker, sondeo cada 600 ms hasta 10 s y fallback a palabras clave si la PC está desconectada, falla o vence la búsqueda.
+- La Biblioteca ahora ofrece un panel “Buscar en el contenido”, resultados agrupados por documento con sección, página, extracto expandible, relevancia relativa y modo usado. El filtro admite carpeta, categoría y etiquetas.
+- En el detalle, los estados `queued` y `processing` muestran avance y refrescan cada 5 s mientras la pestaña está visible; los errores muestran el mensaje y permiten reintentar documentos publicados habilitados para IA. Los badges de lista y detalle ya existían.
+- Verificación: `npm run lint`, `npm test` (83 archivos, 519 pruebas) y `npm run build` pasaron. El build generó el paquete local 1.5.0 como parte de `prebuild`; no se publicó ni se aplicaron cambios remotos.

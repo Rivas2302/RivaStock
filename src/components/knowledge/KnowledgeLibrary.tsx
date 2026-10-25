@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, Check, ChevronDown, FileText, Filter, FolderTree as FolderTreeIcon, Loader2, RefreshCw, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import FolderTree from './library/FolderTree';
+import KnowledgeChunkSearch from './KnowledgeChunkSearch';
 import Pagination from '../Pagination';
 import { getDocument, listCategories, listFolders, listTags, searchDocuments, setStatus, updateMetadata } from '../../lib/knowledge/api';
 import {
@@ -287,6 +288,12 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
         <button type="button" onClick={() => setMobileFiltersOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold md:hidden"><FolderTreeIcon size={16}/>Carpetas y filtros</button>
       </div>
     </div>
+
+    <KnowledgeChunkSearch filters={{
+      folderId: searchParams.get('folder'),
+      categoryId: searchParams.get('category'),
+      tagIds: selectedTagIds,
+    }}/>
 
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className="hidden md:block"><div className="sticky top-4 max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">

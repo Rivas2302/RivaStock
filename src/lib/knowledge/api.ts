@@ -299,6 +299,10 @@ export async function setRagEnabled(documentId: string, enabled: boolean): Promi
   return rpc<KnowledgeDocument>('knowledge_set_rag_enabled', { p_document_id: documentId, p_enabled: enabled });
 }
 
+export async function reindexDocument(documentId: string): Promise<void> {
+  await rpc<null>('knowledge_reindex_document', { p_document_id: documentId });
+}
+
 export async function restoreVersion(documentId: string, versionId: string): Promise<KnowledgeVersion> {
   return rpc<KnowledgeVersion>('knowledge_restore_version', { p_document_id: documentId, p_version_id: versionId });
 }

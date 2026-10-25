@@ -13,6 +13,7 @@ import {
   listFolders,
   listTags,
   listVersions,
+  reindexDocument,
   restoreVersion,
   setRagEnabled,
   setStatus,
@@ -176,6 +177,32 @@ export default function KnowledgeDocumentDetail() {
   }, [documentId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!document || (document.index_status !== 'queued' && document.index_status !== 'processing')) return;
+    let active = true;
+    let checking = false;
+    const refreshStatus = async () => {
+      if (!active || checking || window.document.visibilityState !== 'visible') return;
+      checking = true;
+      try {
+        const refreshed = await getDocument(documentId);
+        if (active) setDocument(refreshed);
+      } catch {
+        // Keep the last known status and retry on the next visible poll.
+      } finally {
+        checking = false;
+      }
+    };
+    const onVisibilityChange = () => { if (window.document.visibilityState === 'visible') void refreshStatus(); };
+    const timer = window.setInterval(() => void refreshStatus(), 5_000);
+    window.document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [document?.index_status, documentId]);
 
   const currentVersion = useMemo(
     () => versions.find((version) => version.id === document?.current_version_id) ?? null,
@@ -378,6 +405,22 @@ export default function KnowledgeDocumentDetail() {
     }
   };
 
+  const retryIndexing = async () => {
+    if (!document || busy) return;
+    setBusy(true);
+    setActionError('');
+    setNotice('');
+    try {
+      await reindexDocument(document.id);
+      setDocument(await getDocument(document.id));
+      setNotice('Se volvió a poner el documento en la cola de indexación.');
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'No se pudo volver a indexar el documento.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addTagInline = async () => {
     if (!newTagName.trim() || creatingTag) return;
     setCreatingTag(true);
@@ -431,6 +474,8 @@ export default function KnowledgeDocumentDetail() {
 
     {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">{actionError}</p>}
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{notice}</p>}
+    {visibleIndexStatus === 'error' && <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"><div><h2 className="text-sm font-bold">No se pudo indexar este documento</h2><p className="mt-1 text-sm">{document.index_error || 'La última indexación terminó con un error.'}</p></div>{document.status === 'published' && document.rag_enabled && <button type="button" disabled={busy} onClick={() => void retryIndexing()} className="inline-flex items-center gap-2 rounded-lg border border-current px-3 py-2 text-sm font-bold disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <RotateCcw size={14}/>}Reintentar indexación</button>}</section>}
+    {(visibleIndexStatus === 'queued' || visibleIndexStatus === 'processing') && <p role="status" className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand-soft)] px-4 py-3 text-sm font-semibold text-[var(--brand)]"><Loader2 size={16} className="animate-spin"/>La PC vinculada está procesando este documento.</p>}
 
     <nav className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="Secciones del documento">
       {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold ${activeTab === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={16}/>{label}</button>)}
