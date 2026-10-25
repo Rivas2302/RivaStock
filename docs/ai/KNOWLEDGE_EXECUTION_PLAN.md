@@ -2071,7 +2071,7 @@ COMMIT;
 - Test de contrato: `src/lib/knowledgeEdgeFunction.test.ts` con chequeos estáticos del archivo (no hay runtime Deno en Vitest): rechaza `Origin`, límite 1 MiB, no menciona `AI_BRIDGE_TOKEN`, todas las acciones de la tabla presentes. Seguir el estilo de `src/lib/deployment.security.test.ts` si aplica.
 - **Commit:** `feat(knowledge): add worker-only knowledge edge function`
 
-### [ ] T3.5 Worker: extracción, normalización y fragmentación
+### [x] T3.5 Worker: extracción, normalización y fragmentación
 **Archivos en `tools/rivastock-ai-bridge/src/knowledge/`:**
 - `errors.ts`: `export class NonRetryableError extends Error {}`.
 - `normalize.ts`:

@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@types/proper-lockfile": "4.1.4",
+    "fflate": "0.8.3",
     "tsx": "^4.23.1",
     "typescript": "~5.8.2"
   }

@@ -196,3 +196,10 @@ Actualizado: 2026-10-25
 - Agregados `supabase/functions/_shared/workerAuth.ts` con respuesta `no-store`, lectura JSON acotada, validación UUID y autorización exclusiva mediante `ai_bridge_authorize_device`; no acepta el token compartido legado.
 - Agregada `supabase/functions/knowledge/index.ts`: rechaza cualquier `Origin`, acepta solo POST y hasta 1 MiB, valida acciones y payloads, llama a `knowledge_worker` y genera URLs firmadas de 120 segundos para archivos reservados.
 - Verificación: npm run lint y npm test pasaron (82 archivos, 514 pruebas; incluye los 4 chequeos estáticos del contrato). Sin cambios remotos.
+
+### T3.5 — Extracción, normalización y fragmentación del worker
+
+- Agregados `NonRetryableError`, normalización de texto y limpieza de encabezados/pies repetidos; extracción de Markdown, TXT, PDF y DOCX con páginas, secciones y metadatos.
+- Agregada fragmentación determinística con prefijo de pasaje, SHA-256, solapamiento de 180 caracteres, límite de 1.400 caracteres y máximo de 2.000 fragmentos.
+- DOCX de prueba se genera en memoria con `fflate@0.8.3`; el fixture PDF de dos páginas se generó con jsPDF 4.2.1 y su origen quedó documentado en `test/fixtures/README.md`. El OCR queda para T3.7.
+- Verificación: `npm run typecheck` y `npm test` pasaron (18 pruebas del worker). Sin cambios en Supabase remoto.
