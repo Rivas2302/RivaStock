@@ -117,3 +117,8 @@ Actualizado: 2026-10-25
 - Renombrada la pestaña interna de Biblioteca a “Skills” con ícono `Wand2`, manteniendo el estado interno `library`; se quitó la creación de documentos heredados.
 - Agregado un aviso con enlace a Conocimientos y migración individual confirmada de archivos `knowledge/*`, con progreso, resumen y errores por archivo. Los documentos que fallan siguen disponibles para editar y reintentar; los migrados pasan a Conocimientos como publicados.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se conectó a producción ni se modificó Supabase remoto.
+
+### T1.13 — Cierre de Fase 1
+
+- Actualizados `AGENTS.md` y este registro con el estado, límites de despliegue y trabajo de Fase 2.
+- Verificación de cierre: `npm run lint`, `npm test` (76 archivos, 482 pruebas) y `npm run build` pasaron. No se hizo revisión manual contra Supabase porque el único proyecto conectado es producción y no hay staging; las migraciones siguen locales. La checklist F1 de §12.3 queda para ejecución en un entorno no productivo.

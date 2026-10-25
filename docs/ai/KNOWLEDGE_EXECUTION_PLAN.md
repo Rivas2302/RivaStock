@@ -1332,7 +1332,7 @@ COMMIT;
 - Agregar en `src/lib/knowledge/api.ts` `importWorkspaceFile(id)`.
 - **Commit:** `feat(knowledge): migrate legacy knowledge files and rename library to skills`
 
-### [ ] T1.13 Cierre de Fase 1
+### [x] T1.13 Cierre de Fase 1
 - `npm run lint && npm test && npm run build`. Revisar en `npm run dev` (sin aplicar migraciones a producción, la UI mostrará errores de RPC inexistente: es esperado; **no** apuntar a producción para probar).
 - Si el dueño autoriza y existe un entorno no productivo, aplicar las 3 migraciones ahí y probar manualmente la checklist de §12.3 (parte Fase 1).
 - Actualizar `AGENTS.md` (sección nueva “Conocimientos”) y `docs/ai/knowledge-progress.md`.
