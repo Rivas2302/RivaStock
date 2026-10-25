@@ -20,10 +20,11 @@ import type {
 
 type RpcArgs = Record<string, unknown>;
 type RpcError = { message: string };
-const dynamicRpc = supabase.rpc as unknown as (
+const dynamicRpc = (
   functionName: string,
   args?: RpcArgs,
-) => Promise<{ data: unknown; error: RpcError | null }>;
+): Promise<{ data: unknown; error: RpcError | null }> =>
+  supabase.rpc(functionName, args as never) as unknown as Promise<{ data: unknown; error: RpcError | null }>;
 
 async function rpc<T>(functionName: string, args: RpcArgs = {}): Promise<T> {
   const { data, error } = await dynamicRpc(functionName, args);
