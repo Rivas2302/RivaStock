@@ -76,3 +76,9 @@ Actualizado: 2026-10-25
 - Agregado el enlace “Conocimientos” en la navegación de AIHub; la entrada “IA” queda activa en sus rutas descendientes tanto en sidebar como en menús móviles.
 - Las vistas internas quedan como estados iniciales, sin botones de alta/carga hasta que T1.9 y T2.4 implementen sus acciones.
 - Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). No se aplicó ninguna migración.
+
+### T1.7 — Panel principal
+
+- Agregado el panel con estadísticas, barra de almacenamiento de 1 GB, documentos recientes y colas de revisión/errores de indexación.
+- Incluye skeletons, error con reintento, vista vacía y accesos a Biblioteca y Administración. El acceso de carga conserva `?upload=1` para abrir el diálogo cuando quede implementado en T1.9.
+- Verificación: `npm run lint` y `npm test` pasaron (76 archivos, 482 pruebas). Sin conexión de pruebas a producción.

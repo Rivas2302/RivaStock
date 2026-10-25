@@ -1273,7 +1273,7 @@ COMMIT;
 - En Fase 1, `KnowledgeAdmin` contiene solo la pestaña “Organización” (T1.11) y la lista de documentos en estado `deleting` con botón “Reintentar eliminación” (llama a `deleteDocument`). Las pestañas de RAG llegan en T3.9.
 - **Commit:** `feat(knowledge): add knowledge routes and navigation`
 
-### [ ] T1.7 Panel principal
+### [x] T1.7 Panel principal
 `src/components/knowledge/KnowledgePanel.tsx`
 - Llama `knowledge_stats()` y `knowledge_search_documents({ limit: 6 })` (recientes) y `knowledge_search_documents({ statuses: ['in_review'] })` + `({ index_statuses: ['error'] })` para “Requiere atención”.
 - Tarjetas: Documentos · Publicados · Disponibles para la IA · Pendientes de revisión · Con errores · Almacenamiento (`formatBytes(used)` de 1 GB con barra).
