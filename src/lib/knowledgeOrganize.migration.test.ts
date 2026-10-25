@@ -19,7 +19,7 @@ const BASE_MIGRATIONS = [
   '20261020014931_persistent_ai_chats.sql',
   '20261025152219_knowledge_extensions.sql',
   '20261025152408_knowledge_core.sql',
-  '20261025224258_knowledge_organize.sql',
+  '20261025233450_knowledge_organize.sql',
 ];
 
 let db: PGlite;

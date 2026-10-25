@@ -60,6 +60,30 @@ describe('Knowledge organization proposal', () => {
     expect(result.doc.content?.[4]).toMatchObject({ type: 'image', attrs: { assetPath: 'owner/doc/assets/1.png' } });
   });
 
+  it('applies missing information as a populated section without an empty duplicate heading', () => {
+    const result = proposalToTiptap({
+      ...proposal,
+      blocks: [
+        { type: 'heading', level: 2, text: 'Información faltante' },
+        ...proposal.blocks,
+      ],
+      missing_information: ['Proveedor', 'Fecha'],
+    }, {});
+    const missingHeadings = result.doc.content?.filter((node) => node.type === 'heading'
+      && node.content?.some((item) => item.text === 'Información faltante')) ?? [];
+    const missingHeadingIndex = result.doc.content?.findIndex((node) => node.type === 'heading'
+      && node.content?.some((item) => item.text === 'Información faltante')) ?? -1;
+
+    expect(missingHeadings).toHaveLength(1);
+    expect(result.doc.content?.[missingHeadingIndex + 1]).toMatchObject({
+      type: 'bulletList',
+      content: [
+        { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Proveedor' }] }] },
+        { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Fecha' }] }] },
+      ],
+    });
+  });
+
   it('rejects malformed proposals and image identifiers', () => {
     expect(() => validateProposal({ ...proposal, blocks: [{ type: 'steps', items: [{ text: 'Paso', image_ids: ['IMAGE1'] }] }] }))
       .toThrow('La IA devolvió una propuesta inválida');

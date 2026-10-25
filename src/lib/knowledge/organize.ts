@@ -89,6 +89,7 @@ export function proposalToTiptap(proposal: OrganizeProposal, imageMap: Knowledge
 
   for (const block of proposal.blocks) {
     if (block.type === 'heading') {
+      if (isMissingInformationHeading(block.text)) continue;
       blocks.push({ type: 'heading', attrs: { level: block.level }, content: inlineText(block.text) });
     } else if (block.type === 'paragraph') {
       blocks.push({ type: 'paragraph', content: inlineText(block.text) });
@@ -133,7 +134,21 @@ export function proposalToTiptap(proposal: OrganizeProposal, imageMap: Knowledge
       if (image) blocks.push(image);
     }
   }
+  if (proposal.missing_information.length > 0) {
+    blocks.push({ type: 'heading', attrs: { level: 2 }, content: inlineText('Información faltante') });
+    blocks.push({
+      type: 'bulletList',
+      content: proposal.missing_information.map((item) => ({
+        type: 'listItem',
+        content: [{ type: 'paragraph', content: inlineText(item) }],
+      })),
+    });
+  }
   return { doc: { type: 'doc', content: blocks }, warnings };
+}
+
+function isMissingInformationHeading(value: string): boolean {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase() === 'informacion faltante';
 }
 
 function validateBlock(value: unknown): OrganizeBlock {
