@@ -33,6 +33,7 @@ const Reports = lazy(() => import('./pages/Reports'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail'));
 const QuickPrice = lazy(() => import('./pages/QuickPrice'));
 const AIHub = lazy(() => import('./pages/AIHub'));
+const Knowledge = lazy(() => import('./pages/Knowledge'));
 
 function OwnerRoute({ children }: { children: React.ReactNode }) {
   const { isOwner } = useAuth();
@@ -106,6 +107,7 @@ function AppRoutes() {
           <Route path="calculadora" element={withSuspense(<Calculator />)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
           <Route path="automatizaciones" element={withSuspense(<RequirePermission module="stock"><Automations /></RequirePermission>)} />
+          <Route path="ia/conocimientos/*" element={withSuspense(<OwnerRoute><Knowledge /></OwnerRoute>)} />
           <Route path="ia" element={withSuspense(<OwnerRoute><AIHub /></OwnerRoute>)} />
           <Route path="trazabilidad" element={withSuspense(<RequirePermission module="config"><AuditTrail /></RequirePermission>)} />
         </Route>

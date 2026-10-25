@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BookOpen, Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wifi, WifiOff, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
+import ConnectionBadge from '../components/ai/ConnectionBadge';
 import { createAIBridgeWindowsInstaller, createAIBridgeWindowsUpdater } from '../lib/aiBridgeInstaller';
 import {
   createAIJob,
@@ -50,13 +52,6 @@ function statusLabel(status: AIJob['status']): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function ConnectionBadge({ state }: { state: AIBridgeState | null }) {
-  if (state === null) return <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"><Loader2 size={14} className="animate-spin"/>Consultando</span>;
-  if (state === 'busy') return <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200"><Loader2 size={14} className="animate-spin"/>Ocupada</span>;
-  if (state === 'idle') return <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><Wifi size={14}/>Conectada</span>;
-  return <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"><WifiOff size={14}/>Desconectada</span>;
 }
 
 export default function AIHub() {
@@ -306,9 +301,10 @@ export default function AIHub() {
         {([
           { id: 'chats', label: 'Chats', icon: MessageSquare },
           { id: 'tasks', label: 'Tareas', icon: ListChecks },
-          { id: 'library', label: 'Biblioteca', icon: BookOpen },
+          { id: 'library', label: 'Skills', icon: Wand2 },
           { id: 'connection', label: 'Conexión', icon: Cable },
         ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
+        <Link to="/ia/conocimientos" className="inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink)]"><Library size={17}/>Conocimientos</Link>
       </nav>
 
       {view === 'chats' && <AIChats/>}

@@ -60,7 +60,11 @@ export interface AIProvider {
 
 export interface BridgeConfig {
   endpoint: string;
+  knowledgeEndpoint: string | null;
   token: string;
+  knowledgeEnabled: boolean;
+  modelsDirectory: string;
+  ocrEnabled: boolean;
   codexEnabled: boolean;
   claudeEnabled: boolean;
   codexExecutable: string;
@@ -83,9 +87,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
   if (workerId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workerId)) {
     throw new Error('AI_BRIDGE_WORKER_ID debe ser el identificador UUID que muestra RivaStock.');
   }
+  const normalizedEndpoint = endpoint.replace(/\/$/, '');
+  const knowledgeEndpoint = normalizedEndpoint.endsWith('/functions/v1/ai-bridge')
+    ? normalizedEndpoint.replace(/\/functions\/v1\/ai-bridge$/, '/functions/v1/knowledge')
+    : null;
   return {
-    endpoint: endpoint.replace(/\/$/, ''),
+    endpoint: normalizedEndpoint,
+    knowledgeEndpoint,
     token,
+    knowledgeEnabled: env.AI_BRIDGE_ENABLE_KNOWLEDGE !== 'false',
+    modelsDirectory: resolve(env.AI_BRIDGE_MODELS_DIR?.trim()
+      || join(userDirectory, '.rivastock-ai-bridge', 'models')),
+    ocrEnabled: env.AI_BRIDGE_ENABLE_OCR === 'true',
     codexEnabled: env.AI_BRIDGE_ENABLE_CODEX === 'true',
     claudeEnabled: env.AI_BRIDGE_ENABLE_CLAUDE === 'true',
     codexExecutable: env.CODEX_CLI_PATH?.trim() || '',

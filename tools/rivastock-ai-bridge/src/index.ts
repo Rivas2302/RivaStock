@@ -4,7 +4,11 @@ import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as lockfile from 'proper-lockfile';
 import { BridgeClient } from './client.ts';
+import { configureModelCache } from './knowledge/embed.ts';
+import { KnowledgeClient } from './knowledge/client.ts';
+import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { providerFor } from './providers.ts';
+import { reportError } from './safeError.ts';
 import { collectProjectContext, createBusinessContext, createCombinedContext, syncWorkspaceFiles } from './workspace.ts';
 import { loadConfig, type AIProviderId } from './types.ts';
 
@@ -21,14 +25,6 @@ let lastWorkspaceSyncAt = 0;
 
 process.on('SIGINT', () => { stopping = true; activeController?.abort(); });
 process.on('SIGTERM', () => { stopping = true; activeController?.abort(); });
-
-function reportError(message: string): string {
-  return message
-    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(/(?:sk-[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9._-]{16,})/g, '[redacted]')
-    .replace(/[\r\n\t]+/g, ' ')
-    .slice(0, 500);
-}
 
 async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string }): Promise<void> {
   if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');
@@ -126,7 +122,27 @@ async function runWithInstanceLock(): Promise<void> {
 
   try {
     await client.start(workerId);
-    await run();
+    if (!config.knowledgeEnabled) {
+      await run();
+    } else if (!config.workerId) {
+      process.stdout.write('[AI Bridge] Conocimientos requiere vincular la PC desde RivaStock.\n');
+      await run();
+    } else if (!config.knowledgeEndpoint) {
+      process.stderr.write('[AI Bridge] Conocimientos deshabilitado: AI_BRIDGE_ENDPOINT no termina en /functions/v1/ai-bridge.\n');
+      await run();
+    } else {
+      configureModelCache(config.modelsDirectory);
+      process.stdout.write('[AI Bridge] Conocimientos activo; la primera indexación descargará aproximadamente 120 MB del modelo.\n');
+      const knowledgeClient = new KnowledgeClient(config.knowledgeEndpoint, config.token);
+      const knowledgeLoop = runKnowledgeLoop({
+        client: knowledgeClient,
+        workerId: config.workerId,
+        config,
+        isStopping: () => stopping,
+        log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+      });
+      await Promise.all([run(), knowledgeLoop]);
+    }
   } finally {
     await releaseLock();
   }

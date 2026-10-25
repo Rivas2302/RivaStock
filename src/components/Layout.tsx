@@ -37,6 +37,10 @@ interface NavItem {
   ownerOnly?: boolean;
 }
 
+function isNavItemActive(itemPath: string, pathname: string): boolean {
+  return itemPath === '/' ? pathname === '/' : pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+}
+
 const NAV_ITEMS: NavItem[] = [
   { name: 'Inicio', path: '/', icon: LayoutDashboard, module: null },
   { name: 'Consulta rápida', path: '/consulta-rapida', icon: ScanLine, module: 'stock' },
@@ -137,7 +141,7 @@ export default function Layout() {
               </p>
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive = isNavItemActive(item.path, location.pathname);
                 return (
                   <Link
                     key={item.path}
@@ -200,7 +204,7 @@ export default function Layout() {
         <nav className="md:hidden flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            const isActive = isNavItemActive(item.path, location.pathname);
             return (
               <Link
                 key={item.path}
@@ -244,7 +248,7 @@ export default function Layout() {
               <nav className="flex-1 min-h-0 px-4 pb-6 space-y-1 overflow-y-auto overscroll-contain">
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
+                  const isActive = isNavItemActive(item.path, location.pathname);
                   return (
                     <Link
                       key={item.path}
