@@ -2028,7 +2028,7 @@ COMMIT;
 ```
 - **Commit:** `feat(knowledge): add RAG schema, index lifecycle and hybrid retrieval`
 
-### [ ] T3.3 Tests de la migración RAG
+### [x] T3.3 Tests de la migración RAG
 **Archivo:** `src/lib/knowledgeRag.migration.test.ts`
 - Setup igual a T1.4 más: `new PGlite({ extensions: { vector, unaccent } })` con `import { vector } from '@electric-sql/pglite-pgvector'` (en PGlite 0.5 **no** existe `@electric-sql/pglite/vector`); ejecutar el archivo real `_knowledge_vector_extension.sql` y luego `_knowledge_rag.sql`; insertar en `ai_bridge_devices` (ya creada por las migraciones reales) un dispositivo activo para `owner` y uno revocado.
 - Helper `vec(seed)` que genera un arreglo de 384 floats normalizado y determinístico (por ejemplo, `Math.sin(seed * (i + 1))` normalizado).

@@ -185,3 +185,8 @@ Actualizado: 2026-10-25
 - Creada `20261025184450_knowledge_rag.sql` con cola de indexación, fragmentos vectoriales y de texto, búsqueda híbrida, control de reindexación, RPC del worker y permisos con RLS.
 - Validación local: la migración completa se aplicó correctamente en PGlite 0.5.11 con `vector` y `unaccent`, junto con las migraciones previas del Bridge y Conocimientos. Las pruebas funcionales del worker y la búsqueda siguen en T3.3.
 - No se aplicó en Supabase remoto: solo está conectado producción, no hay staging y T0.2 sigue pendiente.
+
+### T3.3 — Tests de la migración RAG
+
+- Agregada `src/lib/knowledgeRag.migration.test.ts` con 13 pruebas PGlite: cola y backfill, aislamiento por cuenta y dispositivo, dimensiones de embeddings, publicación/reindexación atómica, reutilización por hash, invalidación, reintentos y leases, filtros híbridos, vencimiento de búsquedas, orden por score y permisos.
+- Verificación: npm run lint y npm test pasaron (81 archivos, 510 pruebas; incluye las 13 de RAG). Sin cambios remotos.
