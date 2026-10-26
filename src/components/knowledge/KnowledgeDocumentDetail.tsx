@@ -36,6 +36,7 @@ import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
 import { diffLines, type LineDiffCell, type LineDiffRow } from '../../lib/knowledge/lineDiff';
 import { toPlainText } from '../../lib/knowledge/editorContent';
 import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge/pdfBrowser';
+import PdfPreview from './PdfPreview';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -670,12 +671,14 @@ function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
   }, [markdown, markdownCanRender]);
 
   if (!version) return <section className="rounded-2xl border border-dashed border-[var(--line-strong)] p-10 text-center"><FileText className="mx-auto text-[var(--ink-muted)]" size={28}/><h2 className="mt-3 font-bold">No hay una versión para mostrar</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Guardá una versión del documento para ver su contenido.</p></section>;
-  if (document.format === 'pdf') return <section className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm">
-    <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] p-4"><h2 className="font-bold">PDF · v{version.version_number}</h2>{signedUrl && <button type="button" onClick={onOpenPdf} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold md:hidden">Abrir PDF</button>}</div>
-    {signedError && <p role="alert" className="p-4 text-sm text-rose-700 dark:text-rose-300">{signedError}</p>}
-    {version.extraction_status !== 'done' && <p className="border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--ink-muted)]">{extractionMessage(version.extraction_status)}</p>}
-    {signedUrl ? <><iframe title={`Vista previa de ${document.title}`} src={signedUrl} className="hidden h-[70dvh] w-full md:block"/><p className="p-4 text-center text-sm text-[var(--ink-muted)] md:hidden">Abrí el PDF en una pestaña del navegador.</p></> : !signedError && <div className="grid h-60 place-items-center"><Loader2 className="animate-spin text-[var(--brand)]"/></div>}
-  </section>;
+  if (document.format === 'pdf') return <PdfPreview
+    title={document.title}
+    versionNumber={version.version_number}
+    extractionMessage={version.extraction_status !== 'done' ? extractionMessage(version.extraction_status) : null}
+    signedUrl={signedUrl}
+    signedError={signedError}
+    onOpenPdf={onOpenPdf}
+  />;
 
   if (document.format === 'image') return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">
     {signedError && <p role="alert" className="p-4 text-sm text-rose-700 dark:text-rose-300">{signedError}</p>}
