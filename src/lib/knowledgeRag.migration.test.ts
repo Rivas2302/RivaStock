@@ -17,6 +17,8 @@ const HASH_V2 = 'b'.repeat(64);
 const MIGRATIONS = new URL('../../supabase/migrations/', import.meta.url);
 const VECTOR_MIGRATION = '20261025184236_knowledge_vector_extension.sql';
 const RAG_MIGRATION = '20261025184450_knowledge_rag.sql';
+const ORGANIZE_MIGRATION = '20261025233450_knowledge_organize.sql';
+const RETRIEVAL_MIGRATION = '20261026020609_knowledge_chat_retrieval.sql';
 const BASE_MIGRATIONS = [
   '0076_ai_bridge.sql',
   '20261019222648_ai_agent_workspace.sql',
@@ -116,7 +118,7 @@ async function createDatabase(includeRag = true): Promise<PGlite> {
   }
 
   if (includeRag) {
-    for (const filename of [VECTOR_MIGRATION, RAG_MIGRATION]) {
+    for (const filename of [VECTOR_MIGRATION, RAG_MIGRATION, ORGANIZE_MIGRATION, RETRIEVAL_MIGRATION]) {
       try {
         await database.exec(readFileSync(new URL(filename, MIGRATIONS), 'utf8'));
       } catch (error) {
@@ -287,6 +289,24 @@ async function indexedDocument(title: string, content: string, seed = 1): Promis
   const versionId = await addVersion(id, 1, HASH_V1, content);
   const jobId = await indexDocument(id, [makeChunk(0, content, seed)]);
   return { id, versionId, jobId };
+}
+
+async function createTextJob(jobId: string, taskType: 'text_generation' | 'knowledge_organize' = 'text_generation'): Promise<void> {
+  await asSystem();
+  await db.query(
+    `INSERT INTO ai_jobs (id, user_id, idempotency_key, provider, task_type, input, status, worker_id, lease_expires_at)
+     VALUES ($1, $2, $3, 'codex', $4, 'cámara puerto configuración', 'processing', $5, now() + interval '2 minutes')`,
+    [jobId, OWNER, jobId, taskType, DEVICE],
+  );
+}
+
+async function retrieveKnowledge(jobId: string, embedding = makeVector(1)): Promise<Record<string, unknown>> {
+  await db.exec("RESET ROLE; SET test.uid = ''; SET ROLE service_role;");
+  const result = await db.query<{ result: Record<string, unknown> }>(
+    'SELECT knowledge_worker_retrieve($1, $2, $3, $4::jsonb) AS result',
+    [OWNER, DEVICE, jobId, JSON.stringify({ embedding, query: 'cámara puerto configuración', model: MODEL })],
+  );
+  return result.rows[0].result;
 }
 
 describe('Knowledge RAG migration', () => {
@@ -663,5 +683,94 @@ describe('Knowledge RAG migration', () => {
     } finally {
       await backfillDb.close();
     }
+  });
+});
+
+describe('Knowledge chat retrieval migration', () => {
+  it('stores ordered sources per reserved job and replaces them on retry', async () => {
+    await registerDevice();
+    const first = await indexedDocument('Chat retrieval camera', 'Cámara del taller; configuración del DVR y puerto 8080.', 1);
+    await indexedDocument('Chat retrieval port', 'Configuración del puerto 443 para la cámara del depósito.', 2);
+    const jobId = '30000000-0000-4000-8000-000000000001';
+    await createTextJob(jobId);
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_update_settings(true, 1, 0)');
+
+    const initial = await retrieveKnowledge(jobId);
+    expect(initial.enabled).toBe(true);
+    expect((initial.sources as Array<Record<string, unknown>>).map((source) => source.label)).toEqual(['K1']);
+    expect((initial.sources as Array<Record<string, unknown>>)[0]).toMatchObject({
+      document_id: first.id, title: 'Chat retrieval camera', version_number: 1,
+    });
+    await asSystem();
+    expect((await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [jobId],
+    )).rows[0].count).toBe(1);
+
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_update_settings(true, 2, 0)');
+    const retried = await retrieveKnowledge(jobId);
+    expect((retried.sources as Array<Record<string, unknown>>).map((source) => source.label)).toEqual(['K1', 'K2']);
+    await asSystem();
+    expect((await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [jobId],
+    )).rows[0].count).toBe(2);
+  });
+
+  it('honors the disabled setting and minimum similarity threshold', async () => {
+    await registerDevice();
+    await indexedDocument('Retrieval threshold', 'Cámara configurada en el puerto de red.', 1);
+    const disabledJob = '30000000-0000-4000-8000-000000000002';
+    await createTextJob(disabledJob);
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_update_settings(false, 6, 0)');
+    expect(await retrieveKnowledge(disabledJob)).toEqual({ enabled: false, sources: [] });
+
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_update_settings(true, 6, 0.9999)');
+    const enabledJob = '30000000-0000-4000-8000-000000000003';
+    await createTextJob(enabledJob);
+    const result = await retrieveKnowledge(enabledJob, makeVector(39));
+    expect(result).toEqual({ enabled: true, sources: [] });
+    await asSystem();
+    expect((await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [enabledJob],
+    )).rows[0].count).toBe(0);
+  });
+
+  it('rejects jobs reserved by another worker or for a different task type', async () => {
+    await registerDevice();
+    const otherWorkerJob = '30000000-0000-4000-8000-000000000004';
+    const organizeJob = '30000000-0000-4000-8000-000000000005';
+    await createTextJob(otherWorkerJob);
+    await asSystem();
+    await db.query('UPDATE ai_jobs SET worker_id = $2 WHERE id = $1', [otherWorkerJob, OTHER_DEVICE]);
+    await createTextJob(organizeJob, 'knowledge_organize');
+    const payload = JSON.stringify({ embedding: makeVector(1), query: 'cámara', model: MODEL });
+    await expectQueryError(
+      'SELECT knowledge_worker_retrieve($1, $2, $3, $4::jsonb)',
+      [OWNER, DEVICE, otherWorkerJob, payload], 'La tarea no está reservada por este worker',
+    );
+    await expectQueryError(
+      'SELECT knowledge_worker_retrieve($1, $2, $3, $4::jsonb)',
+      [OWNER, DEVICE, organizeJob, payload], 'La tarea no está reservada por este worker',
+    );
+  });
+
+  it('restricts source reads to the task owner', async () => {
+    await registerDevice();
+    await indexedDocument('Source visibility', 'La cámara del pasillo usa un puerto de red.', 1);
+    const jobId = '30000000-0000-4000-8000-000000000006';
+    await createTextJob(jobId);
+    await retrieveKnowledge(jobId);
+
+    await asUser(OWNER);
+    expect((await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [jobId],
+    )).rows[0].count).toBe(1);
+    await asUser(OTHER);
+    expect((await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [jobId],
+    )).rows[0].count).toBe(0);
   });
 });
