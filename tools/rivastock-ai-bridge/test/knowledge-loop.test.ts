@@ -56,7 +56,7 @@ async function runOne(
   await runKnowledgeLoop({
     client,
     workerId: 'worker-1',
-    config: { ocrEnabled: false },
+    config: { ocrEnabled: false, modelsDirectory: 'models' },
     isStopping: () => stopping,
     log: (message) => calls.push({ method: 'log', args: [message] }),
     sleep: async () => undefined,

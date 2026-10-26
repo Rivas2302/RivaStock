@@ -66,6 +66,9 @@ export interface KnowledgeStats {
   ms: number;
   pages: number | null;
   chars: number;
+  ocr?: boolean;
+  ocr_pages?: number;
+  ocr_notice?: string;
 }
 
 export class KnowledgeClient {

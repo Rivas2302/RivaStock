@@ -252,6 +252,19 @@ export async function listKnowledgeIndexJobs(limit = 50): Promise<KnowledgeIndex
   return jobs.map((job) => ({ ...job, document_title: titles.get(job.document_id) ?? null }));
 }
 
+export async function getLatestKnowledgeOcrStats(documentId: string): Promise<{ ocr: boolean; ocr_notice: string | null } | null> {
+  const { data, error } = await supabase.from('knowledge_index_jobs').select('stats')
+    .eq('document_id', documentId).eq('status', 'completed')
+    .order('completed_at', { ascending: false }).limit(1).maybeSingle();
+  throwQueryError(error);
+  const stats = (data as unknown as { stats?: Record<string, unknown> } | null)?.stats;
+  if (stats?.ocr !== true) return null;
+  return {
+    ocr: true,
+    ocr_notice: typeof stats.ocr_notice === 'string' ? stats.ocr_notice : null,
+  };
+}
+
 export async function getLatestKnowledgeEmbeddingModel(): Promise<string | null> {
   const { data, error } = await supabase.from('knowledge_index_jobs').select('stats')
     .eq('status', 'completed').order('completed_at', { ascending: false }).limit(1).maybeSingle();

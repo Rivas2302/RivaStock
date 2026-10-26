@@ -1,8 +1,14 @@
 import mammoth from 'mammoth';
 import { HTMLElement, NodeType, parse, type Node } from 'node-html-parser';
-import { extractText, getDocumentProxy } from 'unpdf';
+import { extractText, getDocumentProxy, renderPageAsImage } from 'unpdf';
 import { NonRetryableError } from './errors.ts';
 import { normalizeText, removeRepeatedLines } from './normalize.ts';
+import { createLocalOcrWorker, defaultModelsDirectory, type OcrWorkerFactory } from './ocr.ts';
+
+const MAX_OCR_PDF_PAGES = 30;
+const MIN_OCR_TEXT_LENGTH = 10;
+const PDF_OCR_SCALE = 2;
+const PDF_MAX_IMAGE_PIXELS = 16_777_216;
 
 export type SourceBlock = {
   text: string;
@@ -15,7 +21,15 @@ export type Extraction = {
   fullText: string;
   pageCount: number | null;
   extracted: boolean;
+  ocr?: { pages: number; totalPages: number; partial: boolean };
 };
+
+export interface OcrOptions {
+  modelsDirectory?: string;
+  log?: (message: string) => void;
+  createWorker?: OcrWorkerFactory;
+  renderPdfPage?: (pdf: Awaited<ReturnType<typeof getDocumentProxy>>, pageNumber: number) => Promise<Uint8Array>;
+}
 
 function blocksFromText(text: string, headingPath: string[] = [], page: number | null = null): SourceBlock[] {
   return text.split(/\n{2,}/)
@@ -66,19 +80,58 @@ export function extractPlain(text: string): Extraction {
   return { blocks, fullText, pageCount: null, extracted: false };
 }
 
-export async function extractPdf(buffer: Uint8Array): Promise<Extraction> {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
-  const { totalPages, text } = await extractText(pdf, { mergePages: false });
-  const pages = Array.isArray(text) ? text : [text];
-  const normalizedPages = removeRepeatedLines(pages).map((page) => normalizeText(page, { pdf: true }));
-  const fullText = normalizeText(normalizedPages.filter(Boolean).join('\n\n'));
-  if (fullText.length < 30) {
-    throw new NonRetryableError('El PDF no tiene texto seleccionable (posible escaneo). Subí una versión con texto o activá el OCR.');
-  }
+export async function extractPdf(buffer: Uint8Array, ocrOptions: OcrOptions & { ocrEnabled?: boolean } = {}): Promise<Extraction> {
+  const bytes = new Uint8Array(buffer);
+  const pdf = await getDocumentProxy(bytes, { maxImageSize: PDF_MAX_IMAGE_PIXELS });
+  try {
+    const { totalPages, text } = await extractText(pdf, { mergePages: false });
+    const pages = Array.isArray(text) ? text : [text];
+    const normalizedPages = removeRepeatedLines(pages).map((page) => normalizeText(page, { pdf: true }));
+    const fullText = normalizeText(normalizedPages.filter(Boolean).join('\n\n'));
+    if (fullText.length >= 30) {
+      const blocks = normalizedPages.flatMap((pageText, pageIndex) =>
+        blocksFromText(pageText).map((block) => ({ ...block, page: pageIndex + 1 })));
+      return { blocks, fullText, pageCount: totalPages, extracted: true };
+    }
+    if (!ocrOptions.ocrEnabled) throw new NonRetryableError('El PDF no tiene texto reconocible.');
 
-  const blocks = normalizedPages.flatMap((pageText, pageIndex) =>
-    blocksFromText(pageText).map((block) => ({ ...block, page: pageIndex + 1 })));
-  return { blocks, fullText, pageCount: totalPages, extracted: true };
+    const createWorker = ocrOptions.createWorker ?? createLocalOcrWorker;
+    const log = ocrOptions.log ?? (() => undefined);
+    const worker = await createWorker(ocrOptions.modelsDirectory ?? defaultModelsDirectory(), log);
+    try {
+      const renderPage = ocrOptions.renderPdfPage ?? (async (document, pageNumber) => {
+        const image = await renderPageAsImage(document, pageNumber, {
+          canvasImport: () => import('@napi-rs/canvas'),
+          scale: PDF_OCR_SCALE,
+        });
+        return new Uint8Array(image);
+      });
+      const pagesToOcr = Math.min(totalPages, MAX_OCR_PDF_PAGES);
+      const ocrPages: string[] = [];
+      for (let pageNumber = 1; pageNumber <= pagesToOcr; pageNumber += 1) {
+        const image = await renderPage(pdf, pageNumber);
+        const recognized = normalizeText(await worker.recognize(image), { pdf: true });
+        ocrPages.push(recognized);
+      }
+      const ocrFullText = normalizeText(ocrPages.filter(Boolean).join('\n\n'));
+      if (usefulCharacterCount(ocrFullText) < MIN_OCR_TEXT_LENGTH) {
+        throw new NonRetryableError('El PDF no tiene texto reconocible.');
+      }
+      const blocks = ocrPages.flatMap((pageText, pageIndex) =>
+        blocksFromText(pageText).map((block) => ({ ...block, page: pageIndex + 1 })));
+      return {
+        blocks,
+        fullText: ocrFullText,
+        pageCount: totalPages,
+        extracted: true,
+        ocr: { pages: pagesToOcr, totalPages, partial: totalPages > MAX_OCR_PDF_PAGES },
+      };
+    } finally {
+      await worker.terminate();
+    }
+  } finally {
+    await pdf.cleanup();
+  }
 }
 
 export async function extractDocx(buffer: Uint8Array): Promise<Extraction> {
@@ -130,7 +183,18 @@ export async function extractDocx(buffer: Uint8Array): Promise<Extraction> {
   return { blocks, fullText, pageCount: null, extracted: true };
 }
 
-export async function extractImage(_buffer: Uint8Array, ocrEnabled: boolean): Promise<string | null> {
+export async function extractImage(buffer: Uint8Array, ocrEnabled: boolean, options: OcrOptions = {}): Promise<string | null> {
   if (!ocrEnabled) return null;
-  throw new NonRetryableError('El OCR de imágenes no está disponible en esta versión del Bridge.');
+  const createWorker = options.createWorker ?? createLocalOcrWorker;
+  const worker = await createWorker(options.modelsDirectory ?? defaultModelsDirectory(), options.log ?? (() => undefined));
+  try {
+    const text = normalizeText(await worker.recognize(buffer));
+    return usefulCharacterCount(text) >= MIN_OCR_TEXT_LENGTH ? text : null;
+  } finally {
+    await worker.terminate();
+  }
+}
+
+export function usefulCharacterCount(text: string): number {
+  return (text.match(/[\p{L}\p{N}]/gu) ?? []).length;
 }

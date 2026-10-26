@@ -46,3 +46,12 @@ test('bridge config derives the Knowledge endpoint and local model settings', ()
   assert.equal(unsupportedEndpoint.knowledgeEndpoint, null);
   assert.equal(unsupportedEndpoint.knowledgeEnabled, false);
 });
+
+test('OCR is enabled by default and can be explicitly disabled', () => {
+  const base = {
+    AI_BRIDGE_ENDPOINT: 'https://demo.supabase.co/functions/v1/ai-bridge',
+    AI_BRIDGE_TOKEN: 'x'.repeat(40),
+  };
+  assert.equal(loadConfig(base).ocrEnabled, true);
+  assert.equal(loadConfig({ ...base, AI_BRIDGE_ENABLE_OCR: 'false' }).ocrEnabled, false);
+});

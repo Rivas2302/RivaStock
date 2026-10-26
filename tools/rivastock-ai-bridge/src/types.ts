@@ -103,7 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     knowledgeEnabled: env.AI_BRIDGE_ENABLE_KNOWLEDGE !== 'false',
     modelsDirectory: resolve(env.AI_BRIDGE_MODELS_DIR?.trim()
       || join(userDirectory, '.rivastock-ai-bridge', 'models')),
-    ocrEnabled: env.AI_BRIDGE_ENABLE_OCR === 'true',
+    ocrEnabled: env.AI_BRIDGE_ENABLE_OCR !== 'false',
     codexEnabled: env.AI_BRIDGE_ENABLE_CODEX === 'true',
     claudeEnabled: env.AI_BRIDGE_ENABLE_CLAUDE === 'true',
     codexExecutable: env.CODEX_CLI_PATH?.trim() || '',

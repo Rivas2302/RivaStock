@@ -27,7 +27,7 @@ export interface KnowledgeLoopClient extends Pick<KnowledgeClient,
 export interface KnowledgeLoopOptions {
   client: KnowledgeLoopClient;
   workerId: string;
-  config: Pick<BridgeConfig, 'ocrEnabled'>;
+  config: Pick<BridgeConfig, 'ocrEnabled' | 'modelsDirectory'>;
   isStopping: () => boolean;
   log: (message: string) => void;
   embedTexts?: (texts: string[], batchSize?: number) => Promise<number[][]>;
@@ -124,6 +124,11 @@ async function handleIndex(
       ms: Date.now() - startedAt,
       pages: extraction.pageCount,
       chars: extraction.fullText.length,
+      ...(extraction.ocr ? {
+        ocr: true,
+        ocr_pages: extraction.ocr.pages,
+        ...(extraction.ocr.partial ? { ocr_notice: `OCR parcial: ${extraction.ocr.pages} de ${extraction.ocr.totalPages} páginas` } : {}),
+      } : {}),
     };
     await options.client.complete(options.workerId, task.job_id, drafts.length, EMBEDDING_MODEL, stats);
     options.log(`Documento ${task.document_id} indexado (${drafts.length} fragmentos).`);
@@ -154,14 +159,21 @@ async function getExtraction(task: KnowledgeIndexTask, options: KnowledgeLoopOpt
   }
   const bytes = await downloadFile(file.url);
   switch (task.format) {
-    case 'pdf': return extractPdf(bytes);
+    case 'pdf': return extractPdf(bytes, {
+      ocrEnabled: options.config.ocrEnabled,
+      modelsDirectory: options.config.modelsDirectory,
+      log: options.log,
+    });
     case 'docx': return extractDocx(bytes);
     case 'txt': return extractPlain(new TextDecoder('utf-8').decode(bytes));
     case 'md':
     case 'editor': return extractMarkdown(new TextDecoder('utf-8').decode(bytes));
     case 'image': {
-      const text = await extractImage(bytes, options.config.ocrEnabled);
-      if (text) return extractPlain(text);
+      const text = await extractImage(bytes, options.config.ocrEnabled, {
+        modelsDirectory: options.config.modelsDirectory,
+        log: options.log,
+      });
+      if (text) return { ...extractPlain(text), ocr: { pages: 1, totalPages: 1, partial: false } };
       const fallback = [task.title, task.description].filter((part) => part.trim()).join('\n\n');
       if (!fallback) throw new NonRetryableError('La imagen no tiene texto indexable. Agregá una descripción o activá el OCR.');
       const block: SourceBlock = { text: fallback, headingPath: [], page: null };

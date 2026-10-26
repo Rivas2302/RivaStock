@@ -3,9 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createCanvas } from '@napi-rs/canvas';
 import { strToU8, zipSync } from 'fflate';
+import { jsPDF } from 'jspdf';
 import { extractDocx, extractImage, extractMarkdown, extractPdf, extractPlain } from '../src/knowledge/extract.ts';
 import { NonRetryableError } from '../src/knowledge/errors.ts';
+import type { OcrWorker, OcrWorkerFactory } from '../src/knowledge/ocr.ts';
 import { normalizeText, removeRepeatedLines } from '../src/knowledge/normalize.ts';
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -19,6 +22,41 @@ function makeDocx(body: string): Buffer {
     'word/document.xml': strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`),
   };
   return Buffer.from(zipSync(files));
+}
+
+function makeTextImage(text: string): Buffer {
+  const canvas = createCanvas(1000, 240);
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, 1000, 240);
+  context.fillStyle = '#111';
+  context.font = 'bold 48px Arial';
+  context.fillText(text, 24, 140);
+  return canvas.toBuffer('image/png');
+}
+
+function makeScannedPdf(images: Buffer[], pageCount = images.length): Uint8Array {
+  const pdf = new jsPDF({ unit: 'pt', format: [600, 300] });
+  for (let index = 0; index < pageCount; index += 1) {
+    if (index > 0) pdf.addPage([600, 300]);
+    const image = images[index % images.length];
+    pdf.addImage(`data:image/png;base64,${image.toString('base64')}`, 'PNG', 0, 0, 600, 300);
+  }
+  return new Uint8Array(pdf.output('arraybuffer'));
+}
+
+function fakeOcrFactory(textForCall: (image: Uint8Array, call: number) => string, calls: { created: number; recognized: number; terminated: number }): OcrWorkerFactory {
+  return async () => {
+    calls.created += 1;
+    const worker: OcrWorker = {
+      async recognize(image) {
+        calls.recognized += 1;
+        return textForCall(image, calls.recognized);
+      },
+      async terminate() { calls.terminated += 1; },
+    };
+    return worker;
+  };
 }
 
 test('normalizeText applies Unicode normalization, removes controls, and preserves paragraph breaks', () => {
@@ -92,7 +130,63 @@ test('extractPdf preserves page numbers and extracts text from the two-page fixt
   assert.match(result.fullText, /Camera connection port 8080 - page two/);
 });
 
-test('extractImage returns null without OCR and fails closed while OCR is not installed', async () => {
-  assert.equal(await extractImage(new Uint8Array(), false), null);
-  await assert.rejects(extractImage(new Uint8Array(), true), NonRetryableError);
+test('extractImage sends a generated text image through one reusable OCR worker and applies the useful-text threshold', async () => {
+  const calls = { created: 0, recognized: 0, terminated: 0 };
+  const image = makeTextImage('RIVA OCR PRUEBA 4821');
+  const text = await extractImage(image, true, {
+    createWorker: fakeOcrFactory((input) => {
+      assert.deepEqual([...input.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+      return 'Manual Riva prueba 4821';
+    }, calls),
+  });
+  assert.equal(text, 'Manual Riva prueba 4821');
+  assert.deepEqual(calls, { created: 1, recognized: 1, terminated: 1 });
+
+  const empty = await extractImage(image, true, {
+    createWorker: fakeOcrFactory(() => '---', { created: 0, recognized: 0, terminated: 0 }),
+  });
+  assert.equal(empty, null);
+  assert.equal(await extractImage(image, false), null);
+});
+
+test('extractPdf renders a two-page scanned PDF, reuses one OCR worker, and preserves page numbers', async () => {
+  const calls = { created: 0, recognized: 0, terminated: 0 };
+  const pdf = makeScannedPdf([makeTextImage('RIVA ESCANEO PAGINA UNO'), makeTextImage('RIVA ESCANEO PAGINA DOS')]);
+  const result = await extractPdf(pdf, {
+    ocrEnabled: true,
+    createWorker: fakeOcrFactory((_image, call) => `Manual escaneado página ${call} con texto legible.`, calls),
+  });
+  assert.equal(result.pageCount, 2);
+  assert.equal(result.ocr?.pages, 2);
+  assert.equal(result.ocr?.partial, false);
+  assert.deepEqual(result.blocks.map((block) => block.page), [1, 2]);
+  assert.match(result.fullText, /página 1/);
+  assert.match(result.fullText, /página 2/);
+  assert.deepEqual(calls, { created: 1, recognized: 2, terminated: 1 });
+});
+
+test('extractPdf OCR stops at 30 pages and reports a partial scan', async () => {
+  const calls = { created: 0, recognized: 0, terminated: 0 };
+  const pdf = makeScannedPdf([makeTextImage('RIVA ESCANEO DE PRUEBA')], 31);
+  const result = await extractPdf(pdf, {
+    ocrEnabled: true,
+    createWorker: fakeOcrFactory((_image, call) => `Página escaneada ${call} con contenido legible.`, calls),
+    renderPdfPage: async (_document, pageNumber) => new Uint8Array([pageNumber]),
+  });
+  assert.equal(result.pageCount, 31);
+  assert.deepEqual(result.ocr, { pages: 30, totalPages: 31, partial: true });
+  assert.equal(calls.recognized, 30);
+  assert.equal(calls.terminated, 1);
+});
+
+test('extractPdf reports when OCR is disabled or finds no recognizable text', async () => {
+  const pdf = makeScannedPdf([makeTextImage('RIVA ESCANEO VACIO')]);
+  await assert.rejects(extractPdf(pdf), (error: unknown) => error instanceof NonRetryableError && /no tiene texto reconocible/.test(error.message));
+  const calls = { created: 0, recognized: 0, terminated: 0 };
+  await assert.rejects(extractPdf(pdf, {
+    ocrEnabled: true,
+    createWorker: fakeOcrFactory(() => '  ---  ', calls),
+    renderPdfPage: async () => new Uint8Array([1]),
+  }), (error: unknown) => error instanceof NonRetryableError && /no tiene texto reconocible/.test(error.message));
+  assert.equal(calls.terminated, 1);
 });

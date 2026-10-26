@@ -7,6 +7,7 @@ import {
   createTag,
   deleteDocument,
   getDocument,
+  getLatestKnowledgeOcrStats,
   listCategories,
   listDocumentTagIds,
   listEvents,
@@ -116,6 +117,7 @@ export default function KnowledgeDocumentDetail() {
   const [document, setDocument] = useState<KnowledgeDocument | null>(null);
   const [versions, setVersions] = useState<KnowledgeVersion[]>([]);
   const [events, setEvents] = useState<KnowledgeEvent[]>([]);
+  const [ocrStats, setOcrStats] = useState<{ ocr: boolean; ocr_notice: string | null } | null>(null);
   const [folders, setFolders] = useState<KnowledgeFolder[]>([]);
   const [categories, setCategories] = useState<KnowledgeCategory[]>([]);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
@@ -146,7 +148,7 @@ export default function KnowledgeDocumentDetail() {
     setLoading(true);
     setPageError('');
     try {
-      const [nextDocument, nextVersions, nextEvents, nextFolders, nextCategories, nextTags, nextTagIds] = await Promise.all([
+      const [nextDocument, nextVersions, nextEvents, nextFolders, nextCategories, nextTags, nextTagIds, nextOcrStats] = await Promise.all([
         getDocument(documentId),
         listVersions(documentId),
         listEvents(documentId),
@@ -154,12 +156,14 @@ export default function KnowledgeDocumentDetail() {
         listCategories(),
         listTags(),
         listDocumentTagIds(documentId),
+        getLatestKnowledgeOcrStats(documentId),
       ]);
       setDocument(nextDocument);
       setVersions(nextVersions);
       setReviewVersionId(null);
       setCompareVersionId(null);
       setEvents(nextEvents);
+      setOcrStats(nextOcrStats);
       setFolders(nextFolders);
       setCategories(nextCategories);
       setTags(nextTags);
@@ -179,8 +183,20 @@ export default function KnowledgeDocumentDetail() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!document || (document.index_status !== 'queued' && document.index_status !== 'processing')) return;
+    if (!document) return;
     let active = true;
+    const refreshOcrStats = async () => {
+      try {
+        const stats = await getLatestKnowledgeOcrStats(documentId);
+        if (active) setOcrStats(stats);
+      } catch {
+        // Preserve the last known OCR status while retrying on a later refresh.
+      }
+    };
+    if (document.index_status !== 'queued' && document.index_status !== 'processing') {
+      void refreshOcrStats();
+      return () => { active = false; };
+    }
     let checking = false;
     const refreshStatus = async () => {
       if (!active || checking || window.document.visibilityState !== 'visible') return;
@@ -481,7 +497,10 @@ export default function KnowledgeDocumentDetail() {
       {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold ${activeTab === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={16}/>{label}</button>)}
     </nav>
 
-    {activeTab === 'preview' && <PreviewPane document={document} version={previewVersion} signedUrl={previewUrlPath === previewVersion?.storage_path ? previewUrl : ''} signedError={previewError} onOpenPdf={() => previewUrl && window.open(previewUrl, '_blank', 'noopener,noreferrer')}/>}
+    {activeTab === 'preview' && <>
+      {ocrStats?.ocr && <p role="note" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Texto obtenido por OCR, puede contener errores.{ocrStats.ocr_notice ? ` ${ocrStats.ocr_notice}.` : ''}</p>}
+      <PreviewPane document={document} version={previewVersion} signedUrl={previewUrlPath === previewVersion?.storage_path ? previewUrl : ''} signedError={previewError} onOpenPdf={() => previewUrl && window.open(previewUrl, '_blank', 'noopener,noreferrer')}/>
+    </>}
 
     {activeTab === 'info' && <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
       <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
