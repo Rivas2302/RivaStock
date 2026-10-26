@@ -97,12 +97,15 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409, origin);
   if (message.includes('Actualizá el AI Bridge')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('No se encontró el chat')) return jsonResponse({ error: message }, 404, origin);
+  if (message.includes('No se encontró la tarea')) return jsonResponse({ error: message }, 404, origin);
   if (message.includes('Esperá a que termine') || message.includes('Ya hay diez tareas')
     || message.includes('no se puede cambiar') || message.includes('actualización segura')) return jsonResponse({ error: message }, 409, origin);
+  if (message.includes('Computadora desvinculada')) return jsonResponse({ error: message }, 401, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
     || message.includes('mensaje debe') || message.includes('Opciones de contexto')
     || message.includes('Modelo') || message.includes('razonamiento') || message.includes('configuración enviada')
-    || message.includes('Nombre de computadora')) {
+    || message.includes('Nombre de computadora') || message.includes('tareas puntuales')
+    || message.includes('Período de retención') || message.includes('lápida') || message.includes('Worker inválido')) {
     return jsonResponse({ error: message }, status, origin);
   }
   console.error('[ai-bridge] Database operation failed.');
@@ -122,7 +125,8 @@ serve(async (req) => {
   if (action === 'worker_heartbeat' || action === 'worker_claim'
     || action === 'worker_complete' || action === 'worker_fail'
     || action === 'worker_workspace' || action === 'worker_context'
-    || action === 'worker_update_prepare' || action === 'worker_start') {
+    || action === 'worker_update_prepare' || action === 'worker_start'
+    || action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
     const authorization = req.headers.get('authorization') ?? '';
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
@@ -149,6 +153,22 @@ serve(async (req) => {
       if (!deviceError && !deviceHistory) ownerUid = AI_BRIDGE_OWNER_UID;
     }
     if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
+
+    if (action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
+      const chatIds = body.chat_ids;
+      if (action === 'worker_chat_tombstones_ack'
+        && (!Array.isArray(chatIds) || chatIds.length < 1 || chatIds.length > 50 || !chatIds.every(isUuid))) {
+        return jsonResponse({ error: 'Lista de lápidas inválida.' }, 400, origin);
+      }
+      const { data, error } = await serviceClient.rpc('ai_bridge_chat_tombstones', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_operation: action === 'worker_chat_tombstones' ? 'list' : 'ack',
+        p_ids: action === 'worker_chat_tombstones_ack' ? chatIds : null,
+      });
+      if (error) return safeDbError(error, 400, origin);
+      return jsonResponse(data ?? {}, 200, origin);
+    }
 
     if (action === 'worker_workspace') {
       const { data, error } = await serviceClient.from('ai_workspace_files')
@@ -313,11 +333,60 @@ serve(async (req) => {
   }
 
   if (action === 'chat_list') {
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
+    if (retentionError) return safeDbError(retentionError, 400, origin);
     const { data, error } = await userClient.from('ai_chats')
       .select('id, provider, title, model_id, reasoning_effort, created_at, updated_at, last_message_at')
       .order('last_message_at', { ascending: false }).limit(50);
     if (error) return safeDbError(error, 400, origin);
-    return jsonResponse({ chats: data ?? [] }, 200, origin);
+    const chats = data ?? [];
+    if (!chats.length) return jsonResponse({ chats }, 200, origin);
+    const { data: activeJobs, error: activeJobsError } = await serviceClient.from('ai_jobs')
+      .select('chat_id').eq('user_id', user.id).in('chat_id', chats.map((chat) => chat.id))
+      .in('status', ['pending', 'processing']);
+    if (activeJobsError) return safeDbError(activeJobsError, 400, origin);
+    const busyChatIds = new Set((activeJobs ?? []).map((job) => job.chat_id));
+    return jsonResponse({ chats: chats.map((chat) => ({ ...chat, has_pending_job: busyChatIds.has(chat.id) })) }, 200, origin);
+  }
+
+  if (action === 'chat_delete') {
+    if (!isUuid(body.chat_id)) return jsonResponse({ error: 'Identificador de chat inválido.' }, 400, origin);
+    const { data, error } = await userClient.rpc('ai_delete_chat', { p_chat_id: body.chat_id });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ deleted: data === true }, 200, origin);
+  }
+
+  if (action === 'task_delete') {
+    if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
+    const { data, error } = await userClient.rpc('ai_delete_task', { p_job_id: body.job_id });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ deleted: data === true }, 200, origin);
+  }
+
+  if (action === 'tasks_delete_all') {
+    const { data, error } = await userClient.rpc('ai_delete_all_tasks');
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ deleted_count: typeof data === 'number' ? data : 0 }, 200, origin);
+  }
+
+  if (action === 'history_settings_get') {
+    const { data, error } = await userClient.from('ai_history_settings')
+      .select('retention_days, updated_at').maybeSingle();
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ retention_days: data?.retention_days ?? null, updated_at: data?.updated_at ?? null }, 200, origin);
+  }
+
+  if (action === 'history_settings_update') {
+    const days = body.retention_days;
+    if (days !== null && days !== 30 && days !== 90 && days !== 180 && days !== 365) {
+      return jsonResponse({ error: 'Elegí una retención válida.' }, 400, origin);
+    }
+    const { data, error } = await userClient.rpc('ai_update_history_settings', { p_retention_days: days });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ retention_days: data?.retention_days ?? null, updated_at: data?.updated_at ?? null }, 200, origin);
   }
 
   if (action === 'chat_get') {
@@ -384,12 +453,22 @@ serve(async (req) => {
   }
 
   if (action === 'recent') {
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
+    if (retentionError) return safeDbError(retentionError, 400, origin);
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
-      .is('chat_id', null)
+      .eq('task_type', 'text_generation').is('chat_id', null)
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error, 400, origin);
-    return jsonResponse({ jobs: data ?? [] }, 200, origin);
+    const { count, error: countError } = await serviceClient.from('ai_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('task_type', 'text_generation').is('chat_id', null)
+      .in('status', ['completed', 'failed']);
+    if (countError) return safeDbError(countError, 400, origin);
+    return jsonResponse({ jobs: data ?? [], finished_task_count: count ?? 0 }, 200, origin);
   }
 
   if (action === 'status') {
