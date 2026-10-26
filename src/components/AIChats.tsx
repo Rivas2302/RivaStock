@@ -11,6 +11,8 @@ import {
   type CodexModelId,
   type CodexReasoningEffort,
 } from '../lib/aiBridge';
+import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+import KnowledgeSources from './ai/KnowledgeSources';
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
   { id: 'codex', label: 'Codex — Mi PC' },
@@ -46,6 +48,7 @@ export default function AIChats() {
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [jobs, setJobs] = useState<AIChatJob[]>([]);
+  const [jobSources, setJobSources] = useState<Record<string, KnowledgeJobSource[]>>({});
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
@@ -88,6 +91,7 @@ export default function AIChats() {
       setSelectedChat(null);
       setMessages([]);
       setJobs([]);
+      setJobSources({});
       setLoadingMessages(false);
       return;
     }
@@ -109,6 +113,8 @@ export default function AIChats() {
         setSelectedChat(detail.chat);
         setMessages(detail.messages);
         setJobs(detail.jobs);
+        const completedJobIds = detail.jobs.filter((job) => job.status === 'completed').map((job) => job.id);
+        setJobSources(await listJobSources(completedJobIds).catch(() => ({})));
         setError('');
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo cargar este chat.');
@@ -161,6 +167,7 @@ export default function AIChats() {
     setSelectedChat(null);
     setMessages([]);
     setJobs([]);
+    setJobSources({});
     setDraft('');
     setProvider('codex');
     setModelId('gpt-6-luna');
@@ -231,7 +238,7 @@ export default function AIChats() {
             {messages.map((message) => {
               const job = jobs.find((item) => item.id === message.job_id);
               const status = message.role === 'user' ? jobStatusText(job) : null;
-              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}</article>;
+              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}{message.role === 'assistant' && <KnowledgeSources sources={jobSources[message.job_id] ?? []}/>}</article>;
             })}
           </div>
 

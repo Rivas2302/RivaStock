@@ -38,6 +38,71 @@ async function ownerUid(action: 'read' | 'write' | 'delete' = 'write'): Promise<
   return rpc<string>('knowledge_owner_for', { p_action: action });
 }
 
+export interface KnowledgeChatSettings {
+  chat_retrieval_enabled: boolean;
+  top_k: number;
+  min_similarity: number;
+}
+
+export interface KnowledgeJobSource {
+  job_id: string;
+  rank: number;
+  label: string;
+  title: string;
+  document_id: string;
+  version_number: number | null;
+  section_path: string;
+  page_from: number | null;
+  page_to: number | null;
+  score: number;
+  deleted: boolean;
+}
+
+const DEFAULT_CHAT_SETTINGS: KnowledgeChatSettings = {
+  chat_retrieval_enabled: true,
+  top_k: 6,
+  min_similarity: 0,
+};
+
+export async function getKnowledgeChatSettings(): Promise<KnowledgeChatSettings> {
+  const { data, error } = await supabase.from('knowledge_settings').select(
+    'chat_retrieval_enabled, top_k, min_similarity',
+  ).maybeSingle();
+  throwQueryError(error);
+  return data ? data as unknown as KnowledgeChatSettings : DEFAULT_CHAT_SETTINGS;
+}
+
+export async function updateKnowledgeChatSettings(settings: KnowledgeChatSettings): Promise<KnowledgeChatSettings> {
+  return rpc<KnowledgeChatSettings>('knowledge_update_settings', {
+    p_chat_retrieval_enabled: settings.chat_retrieval_enabled,
+    p_top_k: settings.top_k,
+    p_min_similarity: settings.min_similarity,
+  });
+}
+
+export async function listJobSources(jobIds: string[]): Promise<Record<string, KnowledgeJobSource[]>> {
+  const ids = [...new Set(jobIds)].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (!ids.length) return {};
+  const { data, error } = await supabase.from('ai_job_knowledge_sources')
+    .select('job_id, rank, label, title, document_id, version_number, section_path, page_from, page_to, score')
+    .in('job_id', ids).order('job_id').order('rank');
+  throwQueryError(error);
+  const rows = (data ?? []) as unknown as Omit<KnowledgeJobSource, 'deleted'>[];
+  const documentIds = [...new Set(rows.map((row) => row.document_id))];
+  const existingIds = new Set<string>();
+  if (documentIds.length) {
+    const { data: documents, error: documentsError } = await supabase.from('knowledge_documents')
+      .select('id').in('id', documentIds);
+    throwQueryError(documentsError);
+    for (const document of documents ?? []) existingIds.add((document as { id: string }).id);
+  }
+  const byJob: Record<string, KnowledgeJobSource[]> = {};
+  for (const row of rows) {
+    (byJob[row.job_id] ??= []).push({ ...row, deleted: !existingIds.has(row.document_id) });
+  }
+  return byJob;
+}
+
 function throwQueryError(error: RpcError | null): void {
   if (error) throw new Error(error.message);
 }

@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
+import KnowledgeSources from '../components/ai/KnowledgeSources';
 import { createAIBridgeWindowsInstaller, createAIBridgeWindowsUpdater } from '../lib/aiBridgeInstaller';
 import { CODEX_MODELS, PROVIDERS, modelLabel, providerLabel, reasoningLabel } from '../lib/aiOptions';
 import {
@@ -22,6 +23,7 @@ import {
   type CodexReasoningEffort,
   type AIProviderId,
 } from '../lib/aiBridge';
+import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -40,6 +42,7 @@ export default function AIHub() {
   const [includeBusinessContext, setIncludeBusinessContext] = useState(false);
   const [includeProjectContext, setIncludeProjectContext] = useState(false);
   const [activeJob, setActiveJob] = useState<AIJob | null>(null);
+  const [activeJobSources, setActiveJobSources] = useState<KnowledgeJobSource[]>([]);
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<AIBridgeStatus | null>(null);
@@ -110,6 +113,20 @@ export default function AIHub() {
       });
     }, 2000);
     return () => { mounted = false; window.clearInterval(timer); };
+  }, [activeJob?.id, activeJob?.status]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!activeJob || activeJob.status !== 'completed') {
+      setActiveJobSources([]);
+      return () => { mounted = false; };
+    }
+    void listJobSources([activeJob.id]).then((sources) => {
+      if (mounted) setActiveJobSources(sources[activeJob.id] ?? []);
+    }).catch(() => {
+      if (mounted) setActiveJobSources([]);
+    });
+    return () => { mounted = false; };
   }, [activeJob?.id, activeJob?.status]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -306,6 +323,7 @@ export default function AIHub() {
               {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
               {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
               {activeJob.output && <div className="whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 leading-6">{activeJob.output}</div>}
+              {activeJob.status === 'completed' && <KnowledgeSources sources={activeJobSources}/>}
               {activeJob.error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-900 dark:bg-rose-950 dark:text-rose-200">{activeJob.error}</p>}
               <details className="rounded-xl border border-[var(--line)] px-4 py-3 text-xs">
                 <summary className="cursor-pointer font-semibold">Detalles de la tarea</summary>

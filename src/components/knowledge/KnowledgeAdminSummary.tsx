@@ -1,14 +1,25 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, Database, FileText, RefreshCw, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { AlertCircle, Database, FileText, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import ConnectionBadge from '../ai/ConnectionBadge';
 import { getAIBridgeState, type AIBridgeState } from '../../lib/aiBridge';
-import { getLatestKnowledgeEmbeddingModel, getStats } from '../../lib/knowledge/api';
+import {
+  getKnowledgeChatSettings,
+  getLatestKnowledgeEmbeddingModel,
+  getStats,
+  updateKnowledgeChatSettings,
+  type KnowledgeChatSettings,
+} from '../../lib/knowledge/api';
 import { formatBytes, formatDate } from '../../lib/knowledge/format';
 import type { KnowledgeStats } from '../../lib/knowledge/types';
 
 export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
   const [latestModel, setLatestModel] = useState<string | null>(null);
+  const [chatSettings, setChatSettings] = useState<KnowledgeChatSettings>({
+    chat_retrieval_enabled: true, top_k: 6, min_similarity: 0,
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState('');
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -17,9 +28,12 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
     setLoading(true);
     setError('');
     try {
-      const [nextStats, nextModel] = await Promise.all([getStats(), getLatestKnowledgeEmbeddingModel()]);
+      const [nextStats, nextModel, nextChatSettings] = await Promise.all([
+        getStats(), getLatestKnowledgeEmbeddingModel(), getKnowledgeChatSettings(),
+      ]);
       setStats(nextStats);
       setLatestModel(nextModel);
+      setChatSettings(nextChatSettings);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo cargar el resumen de Conocimientos.');
     } finally {
@@ -31,6 +45,20 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
       setBridgeState('offline');
     }
   }, []);
+
+  const saveChatSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingSettings(true);
+    setSettingsNotice('');
+    try {
+      setChatSettings(await updateKnowledgeChatSettings(chatSettings));
+      setSettingsNotice('Configuración guardada.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el uso de Conocimientos en Chats.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   useEffect(() => { void refresh(); }, [refresh, refreshKey]);
   useEffect(() => {
@@ -53,6 +81,15 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
         <MetricCard icon={<Database size={17}/>} label="Fragmentos indexados" value={stats.chunks.toLocaleString('es-AR')} detail={latestModel ? `Modelo ${latestModel}` : 'Todavía no hay un modelo registrado'}/>
         <MetricCard icon={<RefreshCw size={17}/>} label="Última indexación" value={stats.last_indexed_at ? formatDate(stats.last_indexed_at) : 'Sin indexaciones'} detail={stats.last_updated_at ? `Biblioteca actualizada ${formatDate(stats.last_updated_at)}` : 'Sin cambios recientes'}/>
       </div>
+      <form onSubmit={(event) => void saveChatSettings(event)} className="space-y-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+        <div><h3 className="font-bold">Uso en Chats y Tareas</h3><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Solo se usan documentos publicados y disponibles. Requiere AI Bridge 1.8.0 o posterior.</p></div>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={chatSettings.chat_retrieval_enabled} onChange={(event) => setChatSettings((current) => ({ ...current, chat_retrieval_enabled: event.target.checked }))} className="mt-0.5 accent-[#365fad]"/><span><strong>Incluir Conocimientos en Chats y Tareas</strong><span className="mt-0.5 block text-xs text-[var(--ink-muted)]">La IA recibe fragmentos relevantes y puede citar sus fuentes.</span></span></label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1.5"><span className="text-xs font-semibold">Fragmentos por consulta</span><input type="number" min={1} max={12} step={1} required value={chatSettings.top_k} onChange={(event) => setChatSettings((current) => ({ ...current, top_k: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold">Similitud mínima</span><input type="number" min={0} max={0.9} step={0.05} required value={chatSettings.min_similarity} onChange={(event) => setChatSettings((current) => ({ ...current, min_similarity: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={savingSettings || loading} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{savingSettings ? <Loader2 size={14} className="animate-spin"/> : null}Guardar configuración</button>{settingsNotice && <span role="status" className="text-xs text-emerald-700 dark:text-emerald-300">{settingsNotice}</span>}</div>
+      </form>
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="flex items-center justify-between gap-3 text-sm"><span className="font-bold">Almacenamiento</span><span>{formatBytes(stats.storage_bytes)} de {formatBytes(stats.storage_limit_bytes)} · {storagePercent}%</span></div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]"><div className="h-full rounded-full bg-[var(--brand)]" style={{ width: `${storagePercent}%` }}/></div>
