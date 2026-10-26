@@ -152,6 +152,9 @@ export interface KnowledgeIndexJob {
 
 export interface KnowledgeSearchFilters {
   query?: string;
+  documentIds?: string[];
+  folderIds?: string[];
+  categoryIds?: string[];
   folderId?: string | null;
   includeSubfolders?: boolean;
   categoryId?: string | null;

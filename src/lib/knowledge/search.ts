@@ -177,9 +177,12 @@ function normalizeTopK(topK: number): number {
 }
 
 function rpcFilters(filters: KnowledgeSearchFilters): Record<string, unknown> {
+  const folderIds = [...new Set([...(filters.folderIds ?? []), ...(filters.folderId ? [filters.folderId] : [])])];
+  const categoryIds = [...new Set([...(filters.categoryIds ?? []), ...(filters.categoryId ? [filters.categoryId] : [])])];
   return {
-    ...(filters.folderId ? { folder_ids: [filters.folderId] } : {}),
-    ...(filters.categoryId ? { category_ids: [filters.categoryId] } : {}),
+    ...(filters.documentIds?.length ? { document_ids: [...new Set(filters.documentIds)] } : {}),
+    ...(folderIds.length ? { folder_ids: folderIds } : {}),
+    ...(categoryIds.length ? { category_ids: categoryIds } : {}),
     ...(filters.tagIds?.length ? { tag_ids: filters.tagIds } : {}),
   };
 }
