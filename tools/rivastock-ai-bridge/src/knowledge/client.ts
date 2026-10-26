@@ -32,6 +32,12 @@ export interface KnowledgeFileUrl {
   file_size: number | null;
 }
 
+export interface KnowledgeOrganizeImage {
+  id: string;
+  url: string;
+  mime_type: string;
+}
+
 export interface KnowledgeChunkInput {
   chunk_index: number;
   content: string;
@@ -67,6 +73,25 @@ export class KnowledgeClient {
       throw new Error('El backend devolvió una URL de archivo inválida.');
     }
     return response;
+  }
+
+  async organizeImages(workerId: string, jobId: string): Promise<KnowledgeOrganizeImage[]> {
+    const response = await this.post<{ images: unknown }>('worker_organize_images', {
+      worker_id: workerId, job_id: jobId,
+    });
+    if (!Array.isArray(response.images) || response.images.length > 12) {
+      throw new Error('El backend devolvió una lista de capturas inválida.');
+    }
+    return response.images.map((image) => {
+      if (!image || typeof image !== 'object'
+        || typeof (image as KnowledgeOrganizeImage).id !== 'string'
+        || typeof (image as KnowledgeOrganizeImage).url !== 'string'
+        || !/^https:\/\//i.test((image as KnowledgeOrganizeImage).url)
+        || typeof (image as KnowledgeOrganizeImage).mime_type !== 'string') {
+        throw new Error('El backend devolvió una captura inválida.');
+      }
+      return image as KnowledgeOrganizeImage;
+    });
   }
 
   async extractedText(workerId: string, jobId: string, text: string, pageCount: number | null): Promise<void> {

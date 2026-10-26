@@ -17,6 +17,7 @@ import { removePaths, signedUrl, uploadAsset } from '../../../lib/knowledge/stor
 const KnowledgeEditorPreview = lazy(() => import('./KnowledgeEditor'));
 const MAX_NOTES_LENGTH = 7500;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_ORGANIZE_IMAGES = 12;
 const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 type RequestState = 'idle' | 'submitting' | 'pending' | 'processing' | 'completed' | 'failed';
@@ -162,6 +163,10 @@ export default function OrganizeWithAIDialog({
   }, [activeRequest, result?.proposalId]);
 
   const insertUploadedImage = async (file: File) => {
+    if (Object.keys(uploadedImages).length >= MAX_ORGANIZE_IMAGES) {
+      setError(`Podés organizar hasta ${MAX_ORGANIZE_IMAGES} capturas por vez.`);
+      return;
+    }
     if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
       setError('Usá imágenes PNG, JPEG o WebP.');
       return;
@@ -212,6 +217,10 @@ export default function OrganizeWithAIDialog({
 
   const submit = async () => {
     if (!connected || !activeNotes.trim() || activeNotes.length > MAX_NOTES_LENGTH || busy || awaitingJob) return;
+    if (Object.keys(activeImageMap).length > MAX_ORGANIZE_IMAGES) {
+      setError(`Podés organizar hasta ${MAX_ORGANIZE_IMAGES} capturas por vez.`);
+      return;
+    }
     setBusy(true);
     setRequestState('submitting');
     setError('');
@@ -232,7 +241,7 @@ export default function OrganizeWithAIDialog({
       setRequestState('failed');
       const message = errorMessage(cause);
       setError(message.includes('Tipo de tarea no permitido.')
-        ? 'Actualizá el AI Bridge a la versión 1.6.0 o posterior desde IA → Conexión.'
+        ? 'Actualizá el AI Bridge a la versión 1.7.0 o posterior desde IA → Conexión.'
         : message);
     } finally {
       setBusy(false);
@@ -280,6 +289,7 @@ export default function OrganizeWithAIDialog({
       <div className="space-y-5">
         {!result && <>
           <p className="text-sm text-[var(--ink-muted)]">La IA prepara una propuesta editable. No guarda ni publica el documento hasta que la apliques.</p>
+          <p className="text-sm text-[var(--ink-muted)]">La IA ve tus capturas (con Codex) y puede usar lo que muestran. Revisá siempre la propuesta antes de aplicarla.</p>
           <div className="flex gap-2 border-b border-[var(--line)]">
             <button type="button" aria-pressed={source === 'notes'} onClick={() => setSource('notes')} className={`border-b-2 px-3 py-2 text-sm font-semibold ${source === 'notes' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)]'}`}>Desde notas</button>
             <button type="button" aria-pressed={source === 'draft'} onClick={() => setSource('draft')} className={`border-b-2 px-3 py-2 text-sm font-semibold ${source === 'draft' ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)]'}`}>Desde el borrador actual</button>
@@ -300,9 +310,10 @@ export default function OrganizeWithAIDialog({
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-muted)]">
             <span>{activeNotes.length.toLocaleString('es-AR')} / {MAX_NOTES_LENGTH} caracteres</span>
             {source === 'notes' && <>
-              <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Elegir una captura" onChange={(event) => { handleImageFiles(event.currentTarget.files); event.currentTarget.value = ''; }}/>
-              <button type="button" disabled={busy} onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 font-semibold"><ImagePlus size={14}/>Agregar captura</button>
+              <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Elegir una captura" disabled={busy || Object.keys(uploadedImages).length >= MAX_ORGANIZE_IMAGES} onChange={(event) => { handleImageFiles(event.currentTarget.files); event.currentTarget.value = ''; }}/>
+              <button type="button" disabled={busy || Object.keys(uploadedImages).length >= MAX_ORGANIZE_IMAGES} onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 font-semibold disabled:opacity-50"><ImagePlus size={14}/>Agregar captura</button>
             </>}
+            <span>{Object.keys(activeImageMap).length} / {MAX_ORGANIZE_IMAGES} capturas</span>
           </div>
           {Object.keys(activeImageMap).length > 0 && <div className="flex flex-wrap gap-2">
             {Object.entries(activeImageMap).map(([imageId, image]) => <div key={imageId} className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-2 text-xs">

@@ -8,6 +8,7 @@ import { configureModelCache } from './knowledge/embed.ts';
 import { KnowledgeClient } from './knowledge/client.ts';
 import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
+import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { providerFor } from './providers.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, createBusinessContext, createCombinedContext, syncWorkspaceFiles } from './workspace.ts';
@@ -19,6 +20,7 @@ const HEARTBEAT_INTERVAL_MS = 20_000;
 const WORKSPACE_SYNC_INTERVAL_MS = 30_000;
 const config = loadConfig();
 const client = new BridgeClient(config.endpoint, config.token);
+const knowledgeClient = config.knowledgeEndpoint ? new KnowledgeClient(config.knowledgeEndpoint, config.token) : null;
 const workerId = config.workerId ?? randomUUID();
 let stopping = false;
 let activeController: AbortController | null = null;
@@ -39,18 +41,30 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
   try {
     if (job.task_type === 'knowledge_organize') {
       const jobContext = await client.jobContext(workerId, job.id);
-      const provider = providerFor(job.provider, config);
-      const rawOutput = job.provider === 'mock'
-        ? mockOrganize(job.input)
-        : (await provider.execute(buildOrganizePrompt(job.input), controller.signal, '', {
-          ...(jobContext.model_id ? { model_id: jobContext.model_id } : {}),
-          ...(jobContext.reasoning_effort ? { reasoning_effort: jobContext.reasoning_effort } : {}),
-          chat_id: null,
-          session_id: null,
-        })).output;
-      const output = parseOrganizeOutput(rawOutput);
-      if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
-      await client.complete(workerId, job.id, output);
+      if (job.provider === 'mock') {
+        const output = parseOrganizeOutput(mockOrganize(job.input));
+        if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+        await client.complete(workerId, job.id, output);
+      } else {
+        if (!knowledgeClient) throw new Error('Conocimientos requiere un endpoint de worker válido.');
+        const provider = providerFor(job.provider, config);
+        const remoteImages = await knowledgeClient.organizeImages(workerId, job.id);
+        await withDownloadedOrganizeImages(remoteImages, async (images, missingInformation) => {
+          const result = await provider.execute(buildOrganizePrompt(job.input), controller.signal, '', {
+            ...(jobContext.model_id ? { model_id: jobContext.model_id } : {}),
+            ...(jobContext.reasoning_effort ? { reasoning_effort: jobContext.reasoning_effort } : {}),
+            chat_id: null,
+            session_id: null,
+            images,
+          });
+          if (result.imageInputUnavailable) {
+            missingInformation.push('Claude Code no recibió las capturas; usá Codex para que la IA las vea.');
+          }
+          const output = parseOrganizeOutput(result.output, missingInformation);
+          if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+          await client.complete(workerId, job.id, output);
+        }, { jobId: job.id });
+      }
       process.stdout.write(`[AI Bridge] Propuesta de Conocimientos ${job.id} completada con ${job.provider}.\n`);
       return;
     }
@@ -150,11 +164,12 @@ async function runWithInstanceLock(): Promise<void> {
       process.stderr.write('[AI Bridge] Conocimientos deshabilitado: AI_BRIDGE_ENDPOINT no termina en /functions/v1/ai-bridge.\n');
       await run();
     } else {
+      const activeKnowledgeClient = knowledgeClient;
+      if (!activeKnowledgeClient) throw new Error('Conocimientos requiere un endpoint de worker válido.');
       configureModelCache(config.modelsDirectory);
       process.stdout.write('[AI Bridge] Conocimientos activo; la primera indexación descargará aproximadamente 120 MB del modelo.\n');
-      const knowledgeClient = new KnowledgeClient(config.knowledgeEndpoint, config.token);
       const knowledgeLoop = runKnowledgeLoop({
-        client: knowledgeClient,
+        client: activeKnowledgeClient,
         workerId: config.workerId,
         config,
         isStopping: () => stopping,

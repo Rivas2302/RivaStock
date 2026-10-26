@@ -22,6 +22,15 @@ test('accepts valid JSON wrapped in a code fence', () => {
   assert.deepEqual(JSON.parse(parseOrganizeOutput(`\`\`\`json\n${JSON.stringify(proposal)}\n\`\`\``)), proposal);
 });
 
+test('validates image descriptions and appends worker warnings', () => {
+  const withDescription = { ...proposal, image_descriptions: { IMG1: 'El botón Guardar aparece al pie.' } };
+  const parsed = JSON.parse(parseOrganizeOutput(JSON.stringify(withDescription), ['No se pudo cargar IMG2.']));
+  assert.equal(parsed.image_descriptions.IMG1, 'El botón Guardar aparece al pie.');
+  assert.deepEqual(parsed.missing_information, ['No se pudo cargar IMG2.', 'Indicar cómo registrar diferencias.']);
+  assert.throws(() => parseOrganizeOutput(JSON.stringify({ ...proposal, image_descriptions: { BAD: 'x' } })), /propuesta inválida/);
+  assert.throws(() => parseOrganizeOutput(JSON.stringify({ ...proposal, image_descriptions: { IMG1: 'x'.repeat(301) } })), /propuesta inválida/);
+});
+
 test('rejects invalid image ids', () => {
   const invalid = JSON.parse(JSON.stringify(proposal)) as {
     blocks: Array<{ items?: Array<{ image_ids: string[] }> }>;

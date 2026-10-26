@@ -10,6 +10,7 @@ export interface AIProviderOptions {
   reasoning_effort?: CodexReasoningEffort;
   chat_id?: string | null;
   session_id?: string | null;
+  images?: Array<{ id: string; path: string }>;
 }
 
 export interface AIWorkspaceFile {
@@ -55,7 +56,11 @@ export interface AIJob {
 }
 
 export interface AIProvider {
-  execute(input: string, signal: AbortSignal, workspaceContext?: string, options?: AIProviderOptions): Promise<{ output: string; session_id?: string }>;
+  execute(input: string, signal: AbortSignal, workspaceContext?: string, options?: AIProviderOptions): Promise<{
+    output: string;
+    session_id?: string;
+    imageInputUnavailable?: boolean;
+  }>;
 }
 
 export interface BridgeConfig {

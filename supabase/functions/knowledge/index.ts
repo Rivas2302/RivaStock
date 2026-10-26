@@ -17,7 +17,7 @@ const ACTIONS = {
   worker_search_fail: 'search_fail',
 } as const;
 
-type WorkerAction = keyof typeof ACTIONS | 'worker_file_url';
+type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images';
 type Body = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,6 +43,7 @@ function validateAction(action: WorkerAction, body: Body): string | null {
       return null;
     case 'worker_file_url':
     case 'worker_job_heartbeat':
+    case 'worker_organize_images':
       return isUuid(body.job_id) ? null : 'Identificador de tarea inválido.';
     case 'worker_extracted_text':
       if (!isUuid(body.job_id)) return 'Identificador de tarea inválido.';
@@ -95,7 +96,7 @@ function validateAction(action: WorkerAction, body: Body): string | null {
   }
 }
 
-function payloadFor(action: Exclude<WorkerAction, 'worker_file_url'>, body: Body): Body {
+function payloadFor(action: keyof typeof ACTIONS, body: Body): Body {
   switch (action) {
     case 'worker_next':
     case 'worker_job_heartbeat':
@@ -188,13 +189,81 @@ async function fileUrl(
   return jsonResponse({ url: data.signedUrl, mime_type: version.mime_type, file_size: version.file_size });
 }
 
+async function organizeImages(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerUid: string,
+  workerId: string,
+  jobId: string,
+): Promise<Response> {
+  const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
+    .select('id')
+    .eq('id', jobId)
+    .eq('user_id', ownerUid)
+    .eq('worker_id', workerId)
+    .eq('status', 'processing')
+    .eq('task_type', 'knowledge_organize')
+    .maybeSingle();
+  if (jobError) {
+    console.error('[knowledge] Organize job lookup failed.');
+    return jsonResponse({ error: 'No se pudo completar la operación de Conocimientos.' }, 500);
+  }
+  if (!job) return jsonResponse({ error: 'La tarea ya no está reservada por este worker.' }, 409);
+
+  const { data: proposal, error: proposalError } = await serviceClient.from('knowledge_ai_proposals')
+    .select('document_id, image_map')
+    .eq('job_id', jobId)
+    .eq('user_id', ownerUid)
+    .maybeSingle();
+  if (proposalError) {
+    console.error('[knowledge] Organize proposal lookup failed.');
+    return jsonResponse({ error: 'No se pudo completar la operación de Conocimientos.' }, 500);
+  }
+  if (!proposal || !isRecord(proposal.image_map)) return jsonResponse({ images: [] });
+
+  const requested = Object.entries(proposal.image_map)
+    .filter(([id, image]) => /^IMG\d{1,3}$/.test(id) && isRecord(image)
+      && typeof image.assetPath === 'string' && image.assetPath.length <= 400)
+    .slice(0, 12)
+    .map(([id, image]) => ({ id, path: (image as Record<string, unknown>).assetPath as string }));
+  if (!requested.length) return jsonResponse({ images: [] });
+
+  const { data: assets, error: assetsError } = await serviceClient.from('knowledge_assets')
+    .select('storage_path, mime_type')
+    .eq('user_id', ownerUid)
+    .eq('document_id', proposal.document_id)
+    .in('storage_path', requested.map((image) => image.path));
+  if (assetsError) {
+    console.error('[knowledge] Organize asset lookup failed.');
+    return jsonResponse({ error: 'No se pudo completar la operación de Conocimientos.' }, 500);
+  }
+  const assetsByPath = new Map((assets ?? []).map((asset) => [asset.storage_path, asset]));
+  const allowed = requested.filter((image) => assetsByPath.has(image.path));
+  if (!allowed.length) return jsonResponse({ images: [] });
+
+  const { data: signed, error: signedError } = await serviceClient.storage.from('knowledge')
+    .createSignedUrls(allowed.map((image) => image.path), 120);
+  if (signedError || !signed) {
+    console.error('[knowledge] Organize image URL creation failed.');
+    return jsonResponse({ error: 'No se pudieron preparar las capturas para el worker.' }, 500);
+  }
+  const signedByPath = new Map(signed
+    .filter((item) => typeof item.signedUrl === 'string')
+    .map((item) => [item.path, item.signedUrl]));
+  return jsonResponse({ images: allowed.flatMap((image) => {
+    const asset = assetsByPath.get(image.path);
+    const url = signedByPath.get(image.path);
+    return asset && url ? [{ id: image.id, url, mime_type: asset.mime_type }] : [];
+  }) });
+}
+
 serve(async (req: Request) => {
   if (req.headers.has('origin')) return jsonResponse({ error: 'Esta función solo acepta conexiones del worker.' }, 403);
   if (req.method !== 'POST') return jsonResponse({ error: 'Método no permitido.' }, 405);
 
   const body = await readJsonLimited(req, MAX_BODY_BYTES);
   if (!body) return jsonResponse({ error: 'Solicitud inválida o demasiado grande.' }, 413);
-  if (typeof body.action !== 'string' || (!Object.hasOwn(ACTIONS, body.action) && body.action !== 'worker_file_url')) {
+  if (typeof body.action !== 'string' || (!Object.hasOwn(ACTIONS, body.action)
+    && body.action !== 'worker_file_url' && body.action !== 'worker_organize_images')) {
     return jsonResponse({ error: 'Acción de worker no permitida.' }, 400);
   }
   const action = body.action as WorkerAction;
@@ -215,6 +284,9 @@ serve(async (req: Request) => {
   try {
     if (action === 'worker_file_url') {
       return await fileUrl(serviceClient, ownerUid, body.worker_id, body.job_id as string);
+    }
+    if (action === 'worker_organize_images') {
+      return await organizeImages(serviceClient, ownerUid, body.worker_id, body.job_id as string);
     }
 
     const { data, error } = await serviceClient.rpc('knowledge_worker', {

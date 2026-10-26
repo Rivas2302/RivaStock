@@ -22,6 +22,7 @@ export interface OrganizeProposal {
   title: string;
   summary: string;
   blocks: OrganizeBlock[];
+  image_descriptions?: Record<string, string>;
   missing_information: string[];
 }
 
@@ -53,12 +54,14 @@ export function validateProposal(value: unknown): OrganizeProposal {
   if (!isRecord(value)) return invalidProposal();
   const title = boundedString(value.title, 1, 160);
   const summary = boundedString(value.summary, 0, 600);
+  const imageDescriptions = validateImageDescriptions(value.image_descriptions);
   if (!Array.isArray(value.blocks) || value.blocks.length < 1 || value.blocks.length > 300
     || !Array.isArray(value.missing_information) || value.missing_information.length > 30) return invalidProposal();
   const proposal: OrganizeProposal = {
     title,
     summary,
     blocks: value.blocks.map(validateBlock),
+    ...(imageDescriptions ? { image_descriptions: imageDescriptions } : {}),
     missing_information: value.missing_information.map((item) => boundedString(item, 1, 1000)),
   };
   if (JSON.stringify(proposal).length > MAX_PROPOSAL_LENGTH) return invalidProposal();
@@ -80,11 +83,13 @@ export function proposalToTiptap(proposal: OrganizeProposal, imageMap: Knowledge
       return null;
     }
     usedImages.add(imageId);
+    const imageDescription = proposal.image_descriptions?.[imageId];
+    const alt = imageDescription !== undefined ? imageDescription : (caption || image.alt || '');
     if (!image.assetPath) {
       warnings.push(`Se conservó el texto alternativo de ${imageId}, pero no se encontró su archivo.`);
-      return { type: 'paragraph', content: inlineText(caption || image.alt || `[Imagen ${imageId}]`) };
+      return { type: 'paragraph', content: inlineText(alt || `[Imagen ${imageId}]`) };
     }
-    return { type: 'image', attrs: { assetPath: image.assetPath, alt: caption || image.alt || '', src: null } };
+    return { type: 'image', attrs: { assetPath: image.assetPath, alt, src: null } };
   };
 
   for (const block of proposal.blocks) {
@@ -196,6 +201,19 @@ function validateBlock(value: unknown): OrganizeBlock {
 function validateImageId(value: unknown): string {
   if (typeof value !== 'string' || !IMAGE_ID_PATTERN.test(value)) return invalidProposal();
   return value;
+}
+
+function validateImageDescriptions(value: unknown): Record<string, string> | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) return invalidProposal();
+  const entries = Object.entries(value);
+  if (entries.length > 12) return invalidProposal();
+  const descriptions: Record<string, string> = {};
+  for (const [id, description] of entries) {
+    if (!IMAGE_ID_PATTERN.test(id)) return invalidProposal();
+    descriptions[id] = boundedString(description, 0, 300);
+  }
+  return descriptions;
 }
 
 function boundedString(value: unknown, minimum: number, maximum: number): string {

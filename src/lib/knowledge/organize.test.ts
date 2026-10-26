@@ -47,6 +47,19 @@ describe('Knowledge organization proposal', () => {
     expect(result.doc.content?.[5]?.content?.[1]?.content?.[0]?.type).toBe('tableCell');
   });
 
+  it('uses literal image descriptions as alt text ahead of captions', () => {
+    const result = proposalToTiptap({
+      ...proposal,
+      image_descriptions: { IMG1: 'Pantalla de recepción; el botón Guardar está abajo a la derecha.' },
+      blocks: [{ type: 'image', image_id: 'IMG1', caption: 'Captura del proceso' }],
+    }, { IMG1: { assetPath: 'owner/doc/assets/1.png', alt: 'Nombre original' } });
+
+    expect(result.doc.content?.[2]).toMatchObject({
+      type: 'image',
+      attrs: { alt: 'Pantalla de recepción; el botón Guardar está abajo a la derecha.' },
+    });
+  });
+
   it('ignores unknown image ids and appends mapped images without a step', () => {
     const result = proposalToTiptap({
       ...proposal,
@@ -88,6 +101,10 @@ describe('Knowledge organization proposal', () => {
     expect(() => validateProposal({ ...proposal, blocks: [{ type: 'steps', items: [{ text: 'Paso', image_ids: ['IMAGE1'] }] }] }))
       .toThrow('La IA devolvió una propuesta inválida');
     expect(() => validateProposal({ ...proposal, blocks: [] }))
+      .toThrow('La IA devolvió una propuesta inválida');
+    expect(() => validateProposal({ ...proposal, image_descriptions: { IMAGE1: 'Descripción' } }))
+      .toThrow('La IA devolvió una propuesta inválida');
+    expect(() => validateProposal({ ...proposal, image_descriptions: { IMG1: 'x'.repeat(301) } }))
       .toThrow('La IA devolvió una propuesta inválida');
   });
 });

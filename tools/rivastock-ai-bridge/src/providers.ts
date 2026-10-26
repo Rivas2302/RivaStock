@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import type { BridgeConfig, AIProvider, AIProviderId, AIProviderOptions } from './types.ts';
@@ -52,8 +52,12 @@ export class CodexLocalProvider implements AIProvider {
         ? codex.resumeThread(savedSessionId, threadOptions)
         : codex.startThread(threadOptions);
       const executionSignal = AbortSignal.any([signal, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
+      const prompt = buildProviderPrompt(input, workspaceContext);
+      const turnInput = options.images?.length
+        ? [{ type: 'text' as const, text: prompt }, ...options.images.map((image) => ({ type: 'local_image' as const, path: image.path }))]
+        : prompt;
       const turn = await thread.run(
-        buildProviderPrompt(input, workspaceContext),
+        turnInput,
         { outputSchema: OUTPUT_SCHEMA, signal: executionSignal },
       );
       const parsed = JSON.parse(turn.finalResponse) as { text?: unknown };
@@ -78,7 +82,11 @@ export class CodexLocalProvider implements AIProvider {
 export class ClaudeLocalProvider implements AIProvider {
   constructor(private readonly executable: string, private readonly maxBudgetUsd: string, private readonly sessionDirectory: string) {}
 
-  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{ output: string; session_id?: string }> {
+  async execute(input: string, signal: AbortSignal, workspaceContext = '', options: AIProviderOptions = {}): Promise<{
+    output: string;
+    session_id?: string;
+    imageInputUnavailable?: boolean;
+  }> {
     let scratchDirectory: string | null = null;
     try {
       const workingDirectory = options.chat_id
@@ -97,10 +105,40 @@ export class ClaudeLocalProvider implements AIProvider {
       ];
       if (!options.chat_id) args.push('--no-session-persistence');
       if (savedSessionId) args.push('--resume', savedSessionId);
-      const result = await runProcess(this.executable, args,
-        buildProviderPrompt(input, workspaceContext), workingDirectory, PROVIDER_TIMEOUT_MS, signal);
+      const prompt = buildProviderPrompt(input, workspaceContext);
       let payload: unknown;
-      try { payload = JSON.parse(result.stdout); } catch { throw new Error('Claude Code devolvió una respuesta inválida.'); }
+      let imageInputUnavailable = false;
+      if (options.images?.length) {
+        try {
+          const streamArgs = args.slice();
+          streamArgs[streamArgs.indexOf('--output-format') + 1] = 'stream-json';
+          streamArgs[streamArgs.indexOf('--input-format') + 1] = 'stream-json';
+          streamArgs.push('--verbose');
+          const content = [
+            { type: 'text', text: prompt },
+            ...await Promise.all(options.images.map(async (image) => ({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mimeTypeForImagePath(image.path),
+                data: (await readFile(image.path)).toString('base64'),
+              },
+            }))),
+          ];
+          const result = await runProcess(this.executable, streamArgs,
+            `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`,
+            workingDirectory, PROVIDER_TIMEOUT_MS, signal);
+          payload = parseClaudeStreamResult(result.stdout);
+        } catch (error) {
+          if (!isClaudeImageInputUnavailable(error)) throw error;
+          const result = await runProcess(this.executable, args, prompt, workingDirectory, PROVIDER_TIMEOUT_MS, signal);
+          payload = parseClaudeJsonResult(result.stdout);
+          imageInputUnavailable = true;
+        }
+      } else {
+        const result = await runProcess(this.executable, args, prompt, workingDirectory, PROVIDER_TIMEOUT_MS, signal);
+        payload = parseClaudeJsonResult(result.stdout);
+      }
       const output = payload && typeof payload === 'object' && 'result' in payload
         ? (payload as { result?: unknown }).result : null;
       if (typeof output !== 'string' || output.trim().length === 0) throw new Error('Claude Code devolvió una respuesta vacía.');
@@ -112,6 +150,7 @@ export class ClaudeLocalProvider implements AIProvider {
       return {
         output: boundOutput(output),
         ...(options.chat_id && typeof sessionId === 'string' ? { session_id: sessionId } : {}),
+        ...(imageInputUnavailable ? { imageInputUnavailable: true } : {}),
       };
     } catch (error) {
       if (signal.aborted) throw new Error('La ejecución de Claude Code fue interrumpida.');
@@ -192,6 +231,48 @@ function compareVersion(left: number[], right: readonly number[]): number {
 
 interface ProcessResult { stdout: string; stderr: string; }
 
+class ProcessExecutionError extends Error {
+  constructor(message: string, readonly stderr: string) {
+    super(message);
+  }
+}
+
+function parseClaudeJsonResult(stdout: string): unknown {
+  try { return JSON.parse(stdout); }
+  catch { throw new Error('Claude Code devolvió una respuesta inválida.'); }
+}
+
+function parseClaudeStreamResult(stdout: string): unknown {
+  const events = stdout.split(/\r?\n/).filter(Boolean).map((line) => {
+    try { return JSON.parse(line) as unknown; }
+    catch { return null; }
+  });
+  const result = [...events].reverse().find((event) => event && typeof event === 'object'
+    && 'type' in event && event.type === 'result');
+  if (result && typeof result === 'object' && 'result' in result) return result;
+  const errorEvent = events.find((event) => event && typeof event === 'object'
+    && 'type' in event && event.type === 'error' && 'error' in event && typeof event.error === 'string');
+  if (errorEvent && typeof errorEvent === 'object' && 'error' in errorEvent) {
+    throw new Error(`Claude stream-json: ${String(errorEvent.error)}`);
+  }
+  throw new Error('Claude stream-json devolvió una respuesta inválida.');
+}
+
+function isClaudeImageInputUnavailable(error: unknown): boolean {
+  const message = error instanceof ProcessExecutionError
+    ? `${error.message}\n${error.stderr}`
+    : error instanceof Error ? error.message : '';
+  return /only text|text-only|text only|unsupported.*(?:image|input)|(?:image|input).*(?:unsupported|not supported|invalid)|expected.*text/i.test(message);
+}
+
+function mimeTypeForImagePath(path: string): string {
+  const extension = path.toLowerCase().slice(path.lastIndexOf('.'));
+  if (extension === '.webp') return 'image/webp';
+  if (extension === '.png') return 'image/png';
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg';
+  throw new Error('Tipo de captura no permitido.');
+}
+
 function runProcess(
   executable: string,
   args: string[],
@@ -231,7 +312,7 @@ function runProcess(
     });
     child.on('error', () => finish(new Error('No se pudo iniciar el proveedor local.')));
     child.on('close', (code) => {
-      if (code !== 0) return finish(new Error(`El proveedor terminó con código ${code ?? 'desconocido'}.`));
+      if (code !== 0) return finish(new ProcessExecutionError(`El proveedor terminó con código ${code ?? 'desconocido'}.`, stderr));
       finish(undefined, { stdout, stderr });
     });
     child.stdin.end(stdin);

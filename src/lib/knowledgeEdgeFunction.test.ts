@@ -29,6 +29,7 @@ describe('Knowledge Edge Function contract', () => {
       'worker_next',
       'worker_job_heartbeat',
       'worker_file_url',
+      'worker_organize_images',
       'worker_extracted_text',
       'worker_submit_chunks',
       'worker_complete',
@@ -39,5 +40,13 @@ describe('Knowledge Edge Function contract', () => {
       expect(functionSource).toContain(action);
     }
     expect(functionSource).toContain("rpc('knowledge_worker'");
+  });
+
+  it('limits organize image access to a reserved owned job and registered document assets', () => {
+    expect(functionSource).toContain(".eq('task_type', 'knowledge_organize')");
+    expect(functionSource).toContain(".eq('worker_id', workerId)");
+    expect(functionSource).toContain(".eq('status', 'processing')");
+    expect(functionSource).toContain(".eq('document_id', proposal.document_id)");
+    expect(functionSource).toContain('.createSignedUrls(allowed.map((image) => image.path), 120)');
   });
 });
