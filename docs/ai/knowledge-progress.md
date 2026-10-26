@@ -539,7 +539,7 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - Worker Bridge 1.9.0: `npm run typecheck` aprobado; `npm test` aprobó 47 pruebas.
 - `supabase migration list --linked`: todas las migraciones locales y remotas coinciden, incluida `20261026205303`; no hay migraciones pendientes.
 - El backup lógico anterior al cierre está fuera del repo en `%USERPROFILE%\rivastock-backups\20261026T211503Z`: 66 tablas y 13.030 filas, con conteos exactos verificados.
-- El commit `af58c77` tenía deploy de Vercel `success`. El commit documental de cierre queda pendiente de push/verificación de Vercel.
+- El commit de cierre documental `d7e5840` está en `main` y Vercel reportó `success`.
 
 #### Resultado y próximo paso
 

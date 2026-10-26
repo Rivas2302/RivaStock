@@ -173,5 +173,5 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 - El dueño confirmó Bridge 1.9.0 conectado. Tras restaurar la habilitación local de Claude, el worker volvió a reportar heartbeat e `idle`; no hay una respuesta real de Claude que permita cerrar C2.2.
 - C3 validó OCR de una captura legible y un PDF escaneado de dos páginas, con búsqueda por palabra clave y semántica; ambos documentos QA se eliminaron desde la app.
 - C4 validó en Chrome un PDF QA de cinco páginas, navegando de 1/5 a 5/5; en 375 px apareció “Abrir PDF” y abrió el archivo. Dos pruebas unitarias de `PdfPreview` pasaron. La renovación de URL firmada está cubierta por la prueba del componente; no se forzó un vencimiento en producción.
-- Vercel reportó `success` para `af58c77` antes del commit documental de cierre.
+- Vercel reportó `success` para `d7e5840`, el commit documental de cierre.
 - Cierre completo condicionado a resolver C2.2 y decidir si se agrega una ruta de borrado de trabajos `knowledge_organize` sin vaciar su auditoría.
