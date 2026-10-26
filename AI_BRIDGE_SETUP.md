@@ -16,7 +16,7 @@ Guía para conectar una PC local con la IA de cada cuenta de RivaStock. El flujo
 - Vercel sirve la SPA; este repositorio no tiene funciones `/api` de Vercel. El cliente invoca Supabase directamente, que ya figura en la CSP actual.
 - Mock funciona sin Codex ni Claude. Los dos proveedores reales vienen desactivados y requieren habilitación explícita.
 
-Las instrucciones y respuestas permanecen guardadas en Supabase como historial de tareas. No hay una política de borrado automático en esta demo.
+Las tareas y chats permanecen en Supabase hasta que se borran desde la UI o vence la retención elegida en **IA → Conexión → Historial** (sin borrado automático, 30, 90, 180 o 365 días). La compactación de contexto no está implementada.
 
 ## 1. Requisitos
 
@@ -25,7 +25,7 @@ Las instrucciones y respuestas permanecen guardadas en Supabase como historial d
 - Para probar esta versión multi-cuenta: la migración y la Edge Function están instaladas en el proyecto Supabase vinculado. La interfaz nueva se publica al desplegar el frontend.
 - Para proveedores reales: autenticación válida y revisión de facturación/condiciones de la cuenta que se vaya a usar.
 
-En la revisión local del 19 de octubre de 2026 se detectó Node.js 24.15.0, Codex CLI 0.130.0 y Claude Code 2.1.204. `claude auth status` informó `loggedIn: true` con `authMethod: api_key`; no se consultó ni se imprimió el valor de la clave. Codex está instalado, pero su consulta de sesión no pudo completarse en esta terminal sin TTY. No se hicieron llamadas de generación a ninguno de los dos proveedores.
+En la revisión del 19 de octubre se detectó Claude Code 2.1.204. El 26 de octubre, la PC del propietario tenía Claude Code 2.1.310 y `claude auth status` había informado sesión activa con `authMethod: api_key`; no se consultó ni se imprimió la clave. La prueba real de Claude en RivaStock terminó interrumpida. Un probe restringido de 30 segundos no produjo salida y se canceló; por eso la integración todavía no está validada como funcional.
 
 ## 2. Base de datos
 
@@ -115,7 +115,7 @@ La indexación y búsqueda semántica requieren AI Bridge 1.5.0 o posterior, las
 
 El worker consulta también la cola de indexación y de búsqueda semántica cuando `AI_BRIDGE_WORKER_ID` contiene el ID de la PC vinculada. `AI_BRIDGE_ENABLE_KNOWLEDGE` queda activado por defecto; podés desactivarlo con `false`. La URL de `AI_BRIDGE_ENDPOINT` debe terminar en `/functions/v1/ai-bridge`, para que el worker derive `/functions/v1/knowledge`.
 
-La primera indexación descarga aproximadamente 120 MB del modelo multilingüe y los guarda en `%USERPROFILE%\.rivastock-ai-bridge\models`. Podés cambiar la ubicación con `AI_BRIDGE_MODELS_DIR`. PDF, DOCX, Markdown y TXT se procesan en la PC. El OCR de imágenes queda desactivado por defecto y se configura con `AI_BRIDGE_ENABLE_OCR=true` cuando haya una versión del worker con OCR.
+La primera indexación descarga aproximadamente 120 MB del modelo multilingüe y los guarda en `%USERPROFILE%\.rivastock-ai-bridge\models`. Podés cambiar la ubicación con `AI_BRIDGE_MODELS_DIR`. PDF, DOCX, Markdown y TXT se procesan en la PC. El OCR local de imágenes y PDF escaneados está activo por defecto; agregá `AI_BRIDGE_ENABLE_OCR=false` al `.env` para desactivarlo. El OCR no consume el proveedor de IA.
 
 En Windows, revisá `%USERPROFILE%\.rivastock-ai-bridge\logs\worker.log`; en una instalación manual, los mensajes aparecen en la consola del worker. El worker procesa una tarea de RivaStock y una tarea de Conocimientos en paralelo.
 
@@ -159,7 +159,7 @@ Reiniciá el worker. La prueba real puede consumir el uso habilitado en esa cuen
 
 ## 8. Claude Code
 
-El adaptador usa `claude -p` con `--restricted`, `--safe-mode`, sin herramientas, un turno y límite de presupuesto de cliente de USD 1.00 por tarea. Las tareas puntuales desactivan la persistencia local; los chats guardan el `session_id` de Claude Code y pasan `--resume` en los turnos siguientes. Claude administra sus transcripciones locales en el perfil de Claude Code de esa PC. La carpeta de trabajo estable por chat queda bajo `%USERPROFILE%\.rivastock-ai-bridge\sessions`, salvo que configures `AI_BRIDGE_SESSION_DIR`. La documentación vigente de Anthropic exige Claude Code 2.1.248 o posterior para `--restricted`; en esta PC se detectó 2.1.204, así que el adaptador debe rechazarlo hasta que se actualice.
+El adaptador usa `claude -p` con `--restricted`, `--safe-mode`, sin herramientas, un turno y un límite de presupuesto de cliente de USD 1.00 por tarea. El worker rechaza versiones anteriores a 2.1.248. Las tareas puntuales desactivan la persistencia local; los chats guardan el `session_id` de Claude Code y pasan `--resume` en los turnos siguientes. Claude administra sus transcripciones locales en el perfil de Claude Code de esa PC. La carpeta de trabajo estable por chat queda bajo `%USERPROFILE%\.rivastock-ai-bridge\sessions`, salvo que configures `AI_BRIDGE_SESSION_DIR`.
 
 Antes de habilitarlo:
 
@@ -167,8 +167,9 @@ Antes de habilitarlo:
 2. Actualizá Claude Code a 2.1.248 o posterior y confirmá `claude --version`.
 3. Confirmá `claude auth status` en tu terminal.
 4. Solo si aprobás ese uso, configurá `AI_BRIDGE_ENABLE_CLAUDE=true` en el `.env` local y reiniciá el worker.
+5. En Windows, si Claude Code no encuentra Git Bash, configurá `CLAUDE_CODE_GIT_BASH_PATH` con la ruta local a `bash.exe`; no copies una ruta personal a otros equipos.
 
-La sesión presente indicó autenticación por API key de Anthropic, no una sesión `claude.ai`. En ese modo la generación puede facturarse por API. El tope de USD 1.00 es una estimación aplicada por el cliente y Anthropic advierte que la estimación puede exceder el importe final; no es un límite financiero garantizado. La documentación oficial también indica que el uso de API de Anthropic está sujeto a sus Commercial Terms incluso para personas individuales. No se envió ninguna solicitud real.
+La sesión presente indicó autenticación por API key de Anthropic, no una sesión `claude.ai`; en ese modo la generación puede facturarse por API. El valor de USD 1.00 es una estimación aplicada por el cliente, no un límite financiero garantizado. La PC del propietario tiene Claude habilitado en su `.env`; el probe restringido quedó sin respuesta durante 30 segundos y se canceló, y la tarea de producción reportó “La ejecución de Claude Code fue interrumpida”. No aumentar el presupuesto para diagnosticarlo.
 
 ## 9. Verificaciones disponibles
 
@@ -178,6 +179,7 @@ Desde la raíz:
 npm run lint
 npm test
 npm run build
+npm run perf:check
 ```
 
 Desde el worker:

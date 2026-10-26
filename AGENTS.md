@@ -16,6 +16,9 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Estado actual del AI Bridge
 
+- **Verificado el 26/10/2026:** AI Bridge 1.9.0 está instalado en la PC vinculada; el dueño confirmó “Conectado” y el worker envió heartbeat reciente a producción. `ai-bridge` está ACTIVE v10 con `verify_jwt=false`.
+- C1 agregó borrado de chats y tareas de texto desde la UI, retención configurable y limpieza de sesiones locales por lápida. Se verificó el borrado de chats/tareas de prueba y la limpieza local de una sesión. La retención de producción sigue en “Sin borrado automático”. El borrado solo permite `text_generation`; la app rechaza `knowledge_organize`.
+- Claude Code 2.1.310 cumple el mínimo aplicado por el worker (2.1.248). El dueño autorizó habilitarlo; `AI_BRIDGE_ENABLE_CLAUDE=true` y `CLAUDE_CODE_GIT_BASH_PATH` están configurados en el `.env` local y el worker se reinició. La tarea real de Claude terminó interrumpida y un probe restringido de 30 s no produjo salida; no afirmar que Claude funciona hasta completar una prueba real de tarea y chat.
 - El usuario confirmó que el instalador de Windows funciona después de corregir el error que ocurría cuando no existía la carpeta CODEX_HOME.
 - El selector de Codex ofrece GPT-6 Luna, GPT-6.1 Sol y GPT-6 Astra, además de esfuerzo Bajo, Medio, Alto y Muy alto. Muy alto se envía como xhigh. El modelo y el esfuerzo quedan guardados y se muestran en la tarea.
 - La integración usa el inicio de sesión local del proveedor en el CODEX_HOME aislado del Bridge; no configura una API key de OpenAI Platform por cliente dentro de RivaStock. Esto sigue usando el servicio de Codex/OpenAI.
@@ -30,11 +33,11 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 - Las tareas puntuales de Codex siguen iniciando hilos nuevos; los chats de RivaStock conservan y reanudan su hilo por chat. No aparecen como chats nuevos en Codex Desktop.
 - Las tareas puntuales de Claude Code siguen sin persistencia; los chats de RivaStock conservan y reanudan su sesión por chat en la PC vinculada.
-- La pantalla de Chats muestra hasta 100 mensajes por chat y hasta 50 chats recientes. No hay controles de borrado/retención ni compactación de contexto todavía.
+- La pantalla de Chats muestra hasta 100 mensajes por chat y hasta 50 chats recientes. Hay borrado de chats y tareas de texto, más retención configurable; no hay compactación de contexto. Los trabajos internos `knowledge_organize` no se borran desde C1.
 - Skills y documentos de conocimiento de la cuenta se adjuntan automáticamente a tareas de Codex y Claude. El contexto del proyecto es opcional y usa una lista acotada de archivos; el catálogo e inventario también son opcionales y limitados.
-- La biblioteca actual pasa archivos como texto de contexto. No tiene embeddings, búsqueda semántica ni recuperación RAG.
+- La biblioteca heredada `ai_workspace_files` pasa Skills como texto de contexto. Conocimientos es un módulo separado con embeddings, búsqueda semántica e híbrida.
 - El código del Bridge habilita en Codex búsqueda web en vivo, herramientas de terminal y archivos, y acceso completo a la PC vinculada sin aprobación por acción. El token de vínculo no se pasa al entorno del proceso, pero los archivos accesibles al usuario de Windows (incluido el `.env` del Bridge) siguen al alcance del acceso completo. Los datos comerciales siguen llegando como contexto acotado al tenant, sin conexión directa general a la base de datos.
-- El dueño confirmó AI Bridge 1.8.0 conectado en la PC vinculada el 26/10/2026. Los logs del worker quedan en %USERPROFILE%\.rivastock-ai-bridge\logs\worker.log.
+- El dueño confirmó AI Bridge 1.9.0 conectado en la PC vinculada el 26/10/2026. Los logs del worker quedan en `%USERPROFILE%\.rivastock-ai-bridge\logs\worker.log`.
 
 ## Decisiones y objetivos del propietario
 
@@ -47,27 +50,25 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Estado actual de Conocimientos
 
-- Fases 1–5, incluida Fase 4b, están desplegadas en RivaStock_Oficial. T0.2 quedó reconciliado. Migraciones aplicadas: 20261025152219_knowledge_extensions, 20261025152408_knowledge_core, 20261025152515_knowledge_storage, 20261025184236_knowledge_vector_extension, 20261025184450_knowledge_rag, 20261025233450_knowledge_organize, 20261026010929_knowledge_storage_limit y 20261026020609_knowledge_chat_retrieval. La Edge Function knowledge está activa en versión 3 con verify_jwt=false; ai-bridge permanece en versión 9.
-- Conocimientos permite administrar documentos, carpetas, categorías, etiquetas y versiones; publica, archiva y restaura documentos; aplica cuota de 500 MB; extrae PDF, DOCX, texto y Markdown; indexa con multilingual-e5-small ejecutado localmente y usa búsqueda híbrida con fallback por palabras clave. OCR opcional (T3.7) no está implementado.
+- Fases 1–5, Fase 4b y cierre C1/C3/C4 están desplegados en `RivaStock_Oficial`; T0.2 quedó reconciliado. Las migraciones de Conocimientos y la de C1 aparecen aplicadas. `knowledge` está ACTIVE v3 y `ai-bridge` ACTIVE v10, ambas con `verify_jwt=false`.
+- Conocimientos administra documentos, carpetas, categorías, etiquetas y versiones; ofrece cuota de 500 MB, extracción PDF/DOCX/texto/Markdown, OCR local por defecto para imágenes y PDF escaneados, indexación `multilingual-e5-small` y búsqueda híbrida con fallback por palabras clave. La vista previa del PDF multipágina se validó en producción con un documento de cinco páginas.
 - Organizar con IA genera propuestas revisables y mantiene capturas junto a los pasos. AI Bridge 1.7.0 habilitó capturas para Codex; 1.8.0 agrega recuperación para chats y tareas.
 - F5 consulta solo documentos publicados e indexados, almacena fuentes por tarea, encuadra el contexto como dato no confiable, muestra chips K1… en Chat y Tareas y deja activar top_k y similitud mínima desde Administración. searchKnowledge ofrece un contrato reutilizable en navegador. Skills, publicaciones, asistente técnico y cotizador todavía no lo consumen.
 - La migración 20261026020609_knowledge_chat_retrieval creó knowledge_settings y ai_job_knowledge_sources, con RLS, knowledge_update_settings y knowledge_worker_retrieve. La Edge Function valida worker_retrieve y el Bridge 1.8.0 recupera embeddings antes de responder; un fallo de recuperación no bloquea el turno.
-- El dueño confirmó Bridge 1.8.0 conectado en la PC. En producción se probó Chat y Tareas con respuestas correctas y chips de fuentes, la configuración desactivada produjo cero fuentes y luego se restauró a activa; una instrucción maliciosa recuperada fue tratada como dato no confiable. Los documentos de prueba se eliminaron por la app.
+- El dueño confirmó Bridge 1.8.0 durante la validación F5; la validación posterior confirmó Bridge 1.9.0. En producción se probó Chat y Tareas con respuestas correctas y chips de fuentes, la configuración desactivada produjo cero fuentes y luego se restauró a activa; una instrucción maliciosa recuperada fue tratada como dato no confiable.
 - El backup lógico previo a F5 está fuera del repo en %USERPROFILE%\rivastock-backups\20261026T021419Z: 67 tablas, 13.242 filas, 365 objetos assets, 2 objetos knowledge y 92 migraciones; los conteos exactos de cada tabla coincidieron con las filas exportadas. Incluye datos sensibles de producción y debe conservarse con acceso restringido.
 - Las verificaciones locales de F5 pasaron: lint, 540 pruebas en 88 archivos, build, perf:check, typecheck del worker y 39 pruebas. El bundle inicial es 207.466 bytes gzip JS y 21.518 bytes CSS. La auditoría registra 2 vulnerabilidades moderadas y 1 alta en dependencias de desarrollo del frontend, y 2 altas en sharp vía transformers 3.8.1; el arreglo del worker requiere un salto incompatible de Transformers, no se forzó.
-- La limpieza de documentos QA dejó cero documentos, versiones, assets, fragmentos, trabajos de índice y objetos Storage asociados. No hay controles de borrado para chats o tareas; quedaron registros QA históricos y fuentes retenidas por diseño. No eliminarlos por SQL.
+- La limpieza final desde la app dejó cero documentos, chats, mensajes, tareas `text_generation`, propuestas, fuentes QA y lápidas de chat sin confirmar. Permanecen seis filas históricas `knowledge_organize` con contenido QA; el RPC `ai_delete_task` las rechaza por diseño. `knowledge_events` conserva auditoría y las búsquedas QA caducan según su retención. No borrar estas trazas por SQL.
 - No hay staging conectado; usar producción para futuras migraciones requiere autorización y un backup verificado. El único uso de Bridge confirmado es el del propietario; antes de ofrecer compatibilidad comercial, revisar las condiciones actuales de cada proveedor y probar con otra cuenta.
 
 ## Próximas brechas confirmadas
 
-1. No existe staging de Supabase. Crear uno antes de futuras migraciones o despliegues que no tengan autorización expresa para producción.
-2. T3.7 OCR sigue opcional y desactivado; imágenes sin OCR se indexan por título y descripción.
-3. Chats y tareas no ofrecen borrado ni política de retención/compactación. Permanecen 9 trabajos, 3 chats y 11 filas de fuentes QA en producción; los documentos y sus archivos sí se borraron por la app.
-4. La integración de Claude no tuvo una prueba real con F5 y su versión mínima indicada por el plan no se revalidó. Confirmar versión y compatibilidad antes de anunciarla.
-5. Word no tiene vista previa en la UI y la vista previa de PDF multipágina no quedó verificada; el PDF de una página sí.
-6. No se implementó la selección de Skills desde una respuesta ni la Fase 6 opcional para colaboradores.
-7. La recuperación de chats usa el mensaje actual, no el historial completo; preguntas cortas de seguimiento pueden obtener menos fuentes. Revisar el enfoque al aumentar el uso.
-8. La búsqueda exacta por negocio debe revisarse al superar aproximadamente 100.000 fragmentos. Codex tiene acceso amplio a la PC; el encuadre de contenido no confiable reduce, pero no elimina, el riesgo de inyección.
+1. C2 de Claude sigue abierto: CLI 2.1.310 y configuración habilitada, pero el probe de 30 s no respondió y la tarea de producción fue interrumpida. Revalidar con el proveedor sin subir el presupuesto configurado.
+2. Quedan seis trazas QA `knowledge_organize` fuera del borrado C1, que rechaza ese tipo. Para borrarlas haría falta diseñar y autorizar un flujo específico; no usar SQL directo.
+3. No existe staging de Supabase. Preparar uno antes de futuras migraciones que no tengan autorización expresa para producción.
+4. Word no tiene vista previa en la UI. La selección de Skills desde una respuesta y la Fase 6 opcional para colaboradores no están implementadas.
+5. La recuperación de chats consulta el mensaje actual, no todo el historial; preguntas cortas de seguimiento pueden obtener menos fuentes. Revisar el enfoque al aumentar el uso.
+6. Revisar la búsqueda por negocio al superar aproximadamente 100.000 fragmentos. Codex tiene acceso amplio a la PC; encuadrar contenido como no confiable reduce, pero no elimina, el riesgo de inyección.
 ## Puntos de entrada útiles
 
 - Pantalla de IA: src/pages/AIHub.tsx

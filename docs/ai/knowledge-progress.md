@@ -504,3 +504,45 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 | stock_movements | 448 | 448 | 448 | OK |
 | supplier_orders | 1 | 1 | 1 | OK |
 | suppliers | 12 | 12 | 12 | OK |
+
+### Cierre C1–C4 — 2026-10-26
+
+#### C1 — Borrado, retención y cierre de sesiones
+
+- La migración `20261026205303_ai_chat_task_deletion` figura aplicada tanto local como remotamente. La Edge Function `ai-bridge` está ACTIVE v10 (`verify_jwt=false`); `knowledge` está ACTIVE v3 (`verify_jwt=false`).
+- En producción se borraron desde la UI los tres chats QA, las dos tareas puntuales de texto restantes y los documentos QA de esta validación. El borrado de chats eliminó en cascada mensajes, trabajos y fuentes; la sesión local de un chat de prueba se eliminó y confirmó por lápida. La retención quedó en “Sin borrado automático”.
+- Un documento OCR quedó inicialmente en estado `deleting`; el reintento desde **Conocimientos → Administración → Documentos → Reintentar eliminación** eliminó el objeto de Storage y finalizó el borrado.
+- Conteos de solo lectura tras la limpieza: 0 documentos QA, 0 chats, 0 mensajes QA, 0 tareas `text_generation`, 0 propuestas, 0 fuentes con títulos QA, 0 eliminaciones de documentos pendientes y 0 lápidas de chat sin confirmar.
+- Permanecen seis filas internas `ai_jobs.task_type = knowledge_organize` con texto de pruebas QA. C1 restringe expresamente `ai_delete_task` a tareas puntuales `text_generation`, por lo que la UI no ofrece un borrado para estas filas. No se borraron por SQL. `knowledge_events` conserva su auditoría append-only y las solicitudes de búsqueda vencen por su política de un día.
+
+#### C2 — Claude Code
+
+- Claude Code local: 2.1.310; `claude auth status` había indicado sesión activa por API key. El dueño autorizó habilitar Claude y confirmó que no estaba apagado a propósito. El `.env` activo ahora tiene `AI_BRIDGE_ENABLE_CLAUDE=true` y `CLAUDE_CODE_GIT_BASH_PATH`; el worker se reinició y reportó heartbeat reciente e `idle`.
+- La tarea de producción `[QA] C2 Claude one-shot` terminó fallida con “La ejecución de Claude Code fue interrumpida” y se borró desde la UI. El probe local `claude --restricted --safe-mode -p ... --output-format json --max-turns 1 --max-budget-usd 0.01 --disallowedTools "*"` no produjo salida durante 30 segundos y se canceló. No se elevó el presupuesto ni se repitió la llamada.
+- C2.1 está completa; C2.2 permanece pendiente: no se validaron la tarea exitosa, la reanudación de chat de tres turnos, recuperación de Conocimientos ni capturas con Claude.
+
+#### C3 — OCR en producción
+
+- OCR por defecto está activo en Bridge 1.9.0. Se publicó una captura real legible y un PDF escaneado de dos páginas; la UI mostró que el texto provenía de OCR. El índice del PDF quedó `ready`, con 3 fragmentos, 2 páginas OCR y 2.290 caracteres extraídos.
+- La búsqueda por palabras clave y semántica encontró texto exclusivo de cada imagen. Ambos documentos se eliminaron desde la app y no quedan documentos ni eliminaciones pendientes.
+
+#### C4 — PDF multipágina en producción
+
+- Se publicó un PDF QA válido de cinco páginas. En escritorio, el visor de Chrome cargó la página 1/5 y permitió navegar a 5/5. En viewport de 375 px apareció “Abrir PDF” y abrió el archivo. La respuesta de Storage fue HTTP 200 con `application/pdf`; no hubo errores de consola.
+- Las 2 pruebas de `PdfPreview` cubren carga inicial y renovación de URL firmada. No se forzó el vencimiento de una URL en producción. El PDF QA se eliminó desde la app.
+
+#### Verificaciones y estado de despliegue
+
+- `npm run lint`: aprobado.
+- `npm test -- --maxWorkers=1`: 552 pruebas en 90 archivos, aprobadas. Este worktree no incluye `.env.local`; Vitest se ejecutó con URL y clave Supabase ficticias en variables de proceso para inicializar el cliente, sin conectarse a producción.
+- `npm run build`: aprobado; `npm run perf:check`: aprobado. Bundle inicial: 207.456 bytes gzip JS y 21.564 bytes CSS.
+- Worker Bridge 1.9.0: `npm run typecheck` aprobado; `npm test` aprobó 47 pruebas.
+- `supabase migration list --linked`: todas las migraciones locales y remotas coinciden, incluida `20261026205303`; no hay migraciones pendientes.
+- El backup lógico anterior al cierre está fuera del repo en `%USERPROFILE%\rivastock-backups\20261026T211503Z`: 66 tablas y 13.030 filas, con conteos exactos verificados.
+- El commit `af58c77` tenía deploy de Vercel `success`. El commit documental de cierre queda pendiente de push/verificación de Vercel.
+
+#### Resultado y próximo paso
+
+- C1, C3 y C4 están cerradas. C2.1 está completa; C2.2 no se puede marcar como resuelta hasta que Claude responda al probe y complete las pruebas reales sin aumentar el presupuesto.
+- Se documentaron seis trazas `knowledge_organize` retenidas por el guard de borrado C1. Cualquier mecanismo para purgarlas debe preservar la auditoría y tener una ruta explícita en la app.
+- El publicador de Facebook queda planificado para AI Bridge 1.10.0, la siguiente versión menor después de 1.9.0.

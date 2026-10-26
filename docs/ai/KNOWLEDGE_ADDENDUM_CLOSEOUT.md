@@ -25,7 +25,7 @@ Navegador para validar: extensión de ChatGPT en Chrome o Playwright con el perf
 
 Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **sí** agrega acciones nuevas a `supabase/functions/ai-bridge/index.ts` y RPC nuevos. Sin cambiar el comportamiento de las acciones existentes.
 
-### [ ] C1.1 Migración
+### [x] C1.1 Migración
 **Archivo:** `supabase/migrations/<ts>_ai_chat_task_deletion.sql`
 - **`ai_delete_chat(p_chat_id uuid)`**, `SECURITY DEFINER`, solo el dueño (mismo control de colaborador que `ai_send_chat_message`):
   - si el chat tiene un job `pending` o `processing` → `RAISE 'Esperá a que termine la respuesta antes de borrar el chat'`;
@@ -49,7 +49,7 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
   - las lápidas se listan y se confirman.
 - **Commit:** `feat(ai): delete chats and tasks with optional retention`
 
-### [ ] C1.2 Edge Function `ai-bridge`: acciones nuevas
+### [x] C1.2 Edge Function `ai-bridge`: acciones nuevas
 - Usuario:
   - `chat_delete` → `ai_delete_chat`;
   - `task_delete` → `ai_delete_task`;
@@ -61,13 +61,13 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 - Mapear los errores nuevos en `safeDbError` con mensajes claros, sin cambiar los existentes. Desplegar como versión nueva de `ai-bridge` (`--no-verify-jwt`, igual que hoy).
 - **Commit:** `feat(ai-bridge): chat and task deletion actions`
 
-### [ ] C1.3 Bridge: limpiar la sesión local al borrar un chat
+### [x] C1.3 Bridge: limpiar la sesión local al borrar un chat
 - Cada 5 minutos, el loop principal pide `worker_chat_tombstones`. Para cada `chat_id`, borra con seguridad su carpeta en `AI_BRIDGE_SESSION_DIR/<provider>/<chat_id>`, reutilizando las validaciones de `chatWorkingDirectory` (UUID válido, dentro del directorio, sin enlaces simbólicos). Después hace `ack`.
 - No borrar archivos fuera de esa carpeta. Los hilos internos que Codex guarda en su `CODEX_HOME` no se tocan; documentarlo como límite.
 - Versión del Bridge: 1.9.0. Tests: borrado seguro (rechaza rutas fuera del directorio y enlaces), `ack` solo de lo limpiado.
 - **Commit:** `feat(ai-bridge): clean local chat sessions after deletion`
 
-### [ ] C1.4 UI
+### [x] C1.4 UI
 - **Chats (`AIChats.tsx`):** menú por chat con “Eliminar chat” y confirmación (“Se borran los mensajes y las fuentes de este chat. No se puede deshacer.”). Deshabilitado mientras hay una respuesta en curso.
 - **Tareas (`AIHub.tsx`):** “Eliminar” por tarea y “Eliminar tareas finalizadas” con confirmación y cantidad.
 - **IA → Conexión, tarjeta “Historial”:** selector de retención (Sin borrado automático / 30 / 90 / 180 / 365 días) y texto “Los chats sin actividad y las tareas más antiguas se borran automáticamente”.
@@ -83,11 +83,10 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 
 ## C2 — Claude Code real
 
-### [ ] C2.1 Actualizar Claude Code en la PC
-- Comprobar `claude --version` (hoy 2.1.204; el Bridge exige ≥ 2.1.248).
-- Actualizar con el método de instalación que tenga esta PC: `claude update` si está disponible; si se instaló con npm, `npm install -g @anthropic-ai/claude-code@latest`. Verificar de nuevo `claude --version`.
-- Si requiere iniciar sesión o confirmar algo, pedírselo al dueño en el mensaje agrupado. Nunca leer ni copiar credenciales.
-- Habilitar el proveedor en el `.env` del Bridge (`AI_BRIDGE_ENABLE_CLAUDE=true`) solo si el dueño no lo tenía deshabilitado a propósito. Si estaba en `false`, preguntarlo en el mensaje agrupado. Reiniciar el Bridge.
+### [x] C2.1 Actualizar Claude Code en la PC
+- Comprobado `claude --version`: 2.1.310; el worker rechaza versiones inferiores a 2.1.248.
+- No se necesitó actualizar: la CLI ya estaba en 2.1.310. No se solicitó autenticación adicional ni se leyeron credenciales.
+- El dueño confirmó que Claude no estaba apagado a propósito y autorizó habilitarlo. Se configuró `AI_BRIDGE_ENABLE_CLAUDE=true` y `CLAUDE_CODE_GIT_BASH_PATH` en el `.env` local y se reinició el worker. No se leyeron credenciales.
 
 ### [ ] C2.2 Pruebas reales con Claude
 - **Tarea puntual con Claude:** respuesta correcta.
@@ -98,13 +97,15 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 - Limpiar `[QA]` desde la app (incluidos estos chats, con C1).
 - **Commit:** `docs(ai): record Claude Code production validation`
 
+**Resultado parcial 2026-10-26:** la tarea real de producción terminó como fallida (“La ejecución de Claude Code fue interrumpida”). El probe restringido con presupuesto de cliente de USD 0.01 y sin herramientas no produjo salida durante 30 segundos; se canceló. No se subió el presupuesto ni se completaron las pruebas de chat, recuperación o capturas. C2.2 sigue pendiente.
+
 ---
 
 ## C3 — OCR de imágenes y PDF escaneados (T3.7 ampliada)
 
 OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 
-### [ ] C3.1 OCR en el Bridge
+### [x] C3.1 OCR en el Bridge
 - Dependencias con versión exacta en el worker:
   - `tesseract.js`, para OCR;
   - para PDF escaneados, `@napi-rs/canvas`, usado por `unpdf` para renderizar páginas (`renderPageAsImage`). Verificar en la documentación de la versión instalada de `unpdf` la forma exacta de inyectar el canvas.
@@ -121,18 +122,20 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 - Versión del Bridge: 1.9.0, la misma de C1.3 si salen juntos; si no, la siguiente.
 - **Commit:** `feat(ai-bridge): local OCR for images and scanned PDFs`
 
-### [ ] C3.2 Prueba en producción
+### [x] C3.2 Prueba en producción
 - Subir y publicar `[QA]`: una captura real con texto legible y un PDF escaneado (foto de una página impresa).
 - Ambos deben quedar “Disponible para la IA” y encontrarse en búsqueda semántica y por palabras clave con un texto que solo aparece en la imagen.
 - Reindexar el `[QA] escaneado sin texto` de la validación anterior si todavía existe; si no, usar uno nuevo.
 - Limpiar `[QA]`.
 - **Commit:** `docs(knowledge): record OCR production validation`
 
+**Validación de producción 2026-10-26:** una captura real con el aviso de conflicto de edición y un PDF escaneado de dos páginas quedaron publicados e indexados. La búsqueda por palabras clave y semántica encontró texto exclusivo de cada imagen; la UI mostró el aviso de OCR. Los dos documentos se eliminaron desde la app.
+
 ---
 
 ## C4 — Vista previa de PDF de varias páginas
 
-### [ ] C4.1 Diagnóstico y corrección
+### [x] C4.1 Diagnóstico y corrección
 - Con un PDF **real** de al menos 5 páginas (generarlo con `jspdf` en un script fuera del repo, con texto distinto en cada página), probar la vista previa del detalle en escritorio. En la validación anterior el iframe quedó en `about:blank`.
 - Causas a revisar en orden:
   1. la URL firmada vence o se renueva y deja el iframe vacío;
@@ -145,9 +148,11 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 - **Prueba en producción:** el PDF de 5 páginas se ve completo en escritorio y se puede pasar de página. En móvil (375 px) aparece “Abrir PDF” y funciona. Limpiar `[QA]`.
 - **Commit:** `fix(knowledge): reliable multi-page PDF preview`
 
+**Validación de producción 2026-10-26:** PDF QA de cinco páginas; Chrome mostró 1/5 y permitió navegar a 5/5. En viewport de 375 px se mostró “Abrir PDF” y el botón abrió el archivo. Dos pruebas de `PdfPreview` pasaron. Se comprobó HTTP 200 y `application/pdf`; la renovación forzada de URL firmada no se simuló en producción y sí está cubierta por la prueba del componente. El documento se eliminó desde la app; se completó el reintento de Storage desde Administración.
+
 ---
 
-## [ ] Cierre
+## [ ] Cierre — parcial
 
 - Correr `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`; en el worker, `npm run typecheck` y `npm test`.
 - Despliegue final:
@@ -155,8 +160,18 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
   - migraciones de C1;
   - `ai-bridge` y `knowledge` si cambiaron;
   - merge a `main` con Rivas2302 y Vercel en `success`;
-  - Bridge 1.9.0 instalado: pedirle al dueño que ejecute el actualizador, en el mensaje agrupado.
-- Verificar que no queda **ningún** dato `[QA]`: documentos, chats, tareas, propuestas y fuentes (las de búsquedas se purgan solas en 1 día).
-- Actualizar `AGENTS.md` (las brechas de borrado y de Claude quedan cerradas), `AI_BRIDGE_SETUP.md` (OCR, Claude) y `knowledge-progress.md` con el informe final.
+  - Bridge 1.9.0 instalado y conectado, confirmado por el dueño.
+- La app confirmó cero documentos, chats, mensajes, tareas `text_generation`, propuestas y fuentes QA. Permanecen seis filas internas `knowledge_organize`; el borrado C1 las rechaza y no existe una acción de UI para esos logs.
+- Actualizar `AGENTS.md`, `AI_BRIDGE_SETUP.md` y `knowledge-progress.md` con el resultado real: C1/C3/C4 cerradas y C2.2 pendiente.
 - En `docs/automation/AI_PUBLISHER_EXECUTION_PLAN.md`, actualizar la versión del Bridge prevista para el supervisor (siguiente menor después de este cierre).
 - **Commit:** `docs(ai): close knowledge and AI module pending items`
+
+### Estado de cierre verificado — 2026-10-26
+
+- Backup lógico HTTPS verificado antes de los cambios de cierre: `%USERPROFILE%\rivastock-backups\20261026T211503Z` (66 tablas, 13.030 filas, conteo exacto coincidente por tabla).
+- Producción `RivaStock_Oficial`: migración C1 `20261026205303_ai_chat_task_deletion` aplicada; `ai-bridge` ACTIVE v10 y `knowledge` ACTIVE v3, ambas con `verify_jwt=false`. No se agregaron migraciones para C2–C4.
+- El dueño confirmó Bridge 1.9.0 conectado. Tras restaurar la habilitación local de Claude, el worker volvió a reportar heartbeat e `idle`; no hay una respuesta real de Claude que permita cerrar C2.2.
+- C3 validó OCR de una captura legible y un PDF escaneado de dos páginas, con búsqueda por palabra clave y semántica; ambos documentos QA se eliminaron desde la app.
+- C4 validó en Chrome un PDF QA de cinco páginas, navegando de 1/5 a 5/5; en 375 px apareció “Abrir PDF” y abrió el archivo. Dos pruebas unitarias de `PdfPreview` pasaron. La renovación de URL firmada está cubierta por la prueba del componente; no se forzó un vencimiento en producción.
+- Vercel reportó `success` para `af58c77` antes del commit documental de cierre.
+- Cierre completo condicionado a resolver C2.2 y decidir si se agrega una ruta de borrado de trabajos `knowledge_organize` sin vaciar su auditoría.
