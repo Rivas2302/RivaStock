@@ -113,8 +113,10 @@ export function createCombinedContext(
   workspaceFiles: AIWorkspaceFile[],
   projectFiles: AIProjectContext[],
   businessFiles: AIProjectContext[],
+  knowledgeContext = '',
 ): string {
   const sections = [
+    knowledgeContext,
     createWorkspaceContext(workspaceFiles, 35_000),
     projectFiles.length ? createWorkspaceContext(projectFiles, 25_000) : '',
     businessFiles.length ? createWorkspaceContext(businessFiles, 20_000) : '',

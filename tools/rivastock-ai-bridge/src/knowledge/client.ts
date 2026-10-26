@@ -38,6 +38,19 @@ export interface KnowledgeOrganizeImage {
   mime_type: string;
 }
 
+export interface KnowledgeRetrievedSource {
+  label: string;
+  document_id: string;
+  title: string;
+  version_number: number | null;
+  section_path: string;
+  page_from: number | null;
+  page_to: number | null;
+  content: string;
+  similarity: number | null;
+  score: number;
+}
+
 export interface KnowledgeChunkInput {
   chunk_index: number;
   content: string;
@@ -91,6 +104,42 @@ export class KnowledgeClient {
         throw new Error('El backend devolvió una captura inválida.');
       }
       return image as KnowledgeOrganizeImage;
+    });
+  }
+
+  async retrieve(
+    workerId: string,
+    jobId: string,
+    embedding: number[],
+    query: string,
+    model: string,
+  ): Promise<KnowledgeRetrievedSource[]> {
+    const response = await this.post<{ enabled: unknown; sources: unknown }>('worker_retrieve', {
+      worker_id: workerId, job_id: jobId, embedding, query, model,
+    });
+    if (response.enabled === false) return [];
+    if (response.enabled !== true || !Array.isArray(response.sources)) {
+      throw new Error('El backend devolvió una respuesta de recuperación inválida.');
+    }
+    if (response.sources.length > 12) throw new Error('El backend devolvió demasiadas fuentes de Conocimientos.');
+    return response.sources.map((source) => {
+      if (!source || typeof source !== 'object') throw new Error('El backend devolvió una fuente inválida.');
+      const item = source as Partial<KnowledgeRetrievedSource>;
+      if (typeof item.label !== 'string' || !/^K[0-9]{1,2}$/.test(item.label)
+        || typeof item.document_id !== 'string' || typeof item.title !== 'string'
+        || typeof item.section_path !== 'string' || typeof item.content !== 'string'
+        || item.title.length > 160 || item.section_path.length > 300 || item.content.length > 4000
+        || typeof item.score !== 'number' || !Number.isFinite(item.score)
+        || (item.version_number !== null && (typeof item.version_number !== 'number'
+          || !Number.isSafeInteger(item.version_number) || item.version_number < 1))
+        || (item.page_from !== null && (typeof item.page_from !== 'number'
+          || !Number.isSafeInteger(item.page_from) || item.page_from < 1))
+        || (item.page_to !== null && (typeof item.page_to !== 'number'
+          || !Number.isSafeInteger(item.page_to) || item.page_to < 1))
+        || (item.similarity !== null && (typeof item.similarity !== 'number' || !Number.isFinite(item.similarity)))) {
+        throw new Error('El backend devolvió una fuente inválida.');
+      }
+      return item as KnowledgeRetrievedSource;
     });
   }
 

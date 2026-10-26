@@ -9,9 +9,10 @@ import { KnowledgeClient } from './knowledge/client.ts';
 import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
+import { executeTextGeneration } from './executeTextGeneration.ts';
 import { providerFor } from './providers.ts';
 import { reportError } from './safeError.ts';
-import { collectProjectContext, createBusinessContext, createCombinedContext, syncWorkspaceFiles } from './workspace.ts';
+import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { loadConfig, type AIProviderId } from './types.ts';
 
 const POLL_INTERVAL_MS = 3000;
@@ -76,20 +77,27 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     const jobContext = await client.jobContext(workerId, job.id);
     const projectFiles = jobContext.include_project_context
       ? await collectProjectContext(config.projectRootDirectory) : [];
-    const businessFiles = createBusinessContext(jobContext);
     const provider = providerFor(job.provider, config);
-    const result = await provider.execute(job.input, controller.signal,
-      createCombinedContext(workspaceFiles, projectFiles, businessFiles), {
+    await executeTextGeneration({
+      job,
+      provider,
+      signal: controller.signal,
+      jobContext,
+      workspaceFiles,
+      projectFiles,
+      knowledgeClient,
+      workerId: config.workerId,
+      knowledgeEnabled: config.knowledgeEnabled,
+      providerOptions: {
         model_id: jobContext.model_id ?? 'gpt-6-luna',
         reasoning_effort: jobContext.reasoning_effort ?? 'low',
         chat_id: jobContext.chat_id,
         session_id: jobContext.provider_session_id,
-      });
+      },
+      complete: (output, sessionId) => client.complete(workerId, job.id, output, sessionId),
+      log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+    });
     if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
-    if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
-      throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');
-    }
-    await client.complete(workerId, job.id, result.output.trim(), result.session_id);
     process.stdout.write(`[AI Bridge] Tarea ${job.id} completada con ${job.provider}.\n`);
   } catch (error) {
     const safeMessage = reportError(error instanceof Error ? error.message : 'Error local del proveedor.');
