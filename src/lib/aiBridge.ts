@@ -51,6 +51,12 @@ export interface AIChat {
   created_at: string;
   updated_at: string;
   last_message_at: string;
+  has_pending_job?: boolean;
+}
+
+export interface AIHistorySettings {
+  retention_days: number | null;
+  updated_at: string | null;
 }
 
 export interface AIChatMessage {
@@ -123,9 +129,9 @@ export async function getAIJob(jobId: string): Promise<AIJob> {
   return result.job;
 }
 
-export async function getRecentAIJobs(): Promise<AIJob[]> {
-  const result = await invoke<{ jobs: AIJob[] }>({ action: 'recent' });
-  return result.jobs;
+export async function getRecentAIJobs(): Promise<{ jobs: AIJob[]; finishedTaskCount: number }> {
+  const result = await invoke<{ jobs: AIJob[]; finished_task_count: number }>({ action: 'recent' });
+  return { jobs: result.jobs, finishedTaskCount: result.finished_task_count };
 }
 
 export async function getAIChats(): Promise<AIChat[]> {
@@ -135,6 +141,27 @@ export async function getAIChats(): Promise<AIChat[]> {
 
 export async function getAIChat(chatId: string): Promise<AIChatDetail> {
   return invoke({ action: 'chat_get', chat_id: chatId });
+}
+
+export async function deleteAIChat(chatId: string): Promise<void> {
+  await invoke({ action: 'chat_delete', chat_id: chatId });
+}
+
+export async function deleteAITask(jobId: string): Promise<void> {
+  await invoke({ action: 'task_delete', job_id: jobId });
+}
+
+export async function deleteAllAITasks(): Promise<number> {
+  const result = await invoke<{ deleted_count: number }>({ action: 'tasks_delete_all' });
+  return result.deleted_count;
+}
+
+export async function getAIHistorySettings(): Promise<AIHistorySettings> {
+  return invoke({ action: 'history_settings_get' });
+}
+
+export async function updateAIHistorySettings(retentionDays: number | null): Promise<AIHistorySettings> {
+  return invoke({ action: 'history_settings_update', retention_days: retentionDays });
 }
 
 export async function sendAIChatMessage(

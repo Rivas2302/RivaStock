@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Wand2, Zap } from 'lucide-react';
+import { Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
@@ -10,11 +10,15 @@ import { createAIBridgeWindowsInstaller, createAIBridgeWindowsUpdater } from '..
 import { CODEX_MODELS, PROVIDERS, modelLabel, providerLabel, reasoningLabel } from '../lib/aiOptions';
 import {
   createAIJob,
+  deleteAITask,
+  deleteAllAITasks,
   getAIBridgeState,
+  getAIHistorySettings,
   getAIJob,
   getRecentAIJobs,
   pairAIBridgeDevice,
   revokeAIBridgeDevice,
+  updateAIHistorySettings,
   type AIBridgeState,
   type AIBridgeStatus,
   type AIBridgePairing,
@@ -44,6 +48,14 @@ export default function AIHub() {
   const [activeJob, setActiveJob] = useState<AIJob | null>(null);
   const [activeJobSources, setActiveJobSources] = useState<KnowledgeJobSource[]>([]);
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
+  const [finishedTaskCount, setFinishedTaskCount] = useState(0);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [deletingAllTasks, setDeletingAllTasks] = useState(false);
+  const [historyRetention, setHistoryRetention] = useState<number | null>(null);
+  const [historySettingsLoading, setHistorySettingsLoading] = useState(false);
+  const [historySettingsSaving, setHistorySettingsSaving] = useState(false);
+  const [historySettingsNotice, setHistorySettingsNotice] = useState('');
+  const [historySettingsError, setHistorySettingsError] = useState('');
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<AIBridgeStatus | null>(null);
   const [pairing, setPairing] = useState<AIBridgePairing | null>(null);
@@ -61,9 +73,10 @@ export default function AIHub() {
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
-    const jobs = await getRecentAIJobs();
+    const { jobs, finishedTaskCount: count } = await getRecentAIJobs();
     setRecentJobs(jobs);
-    setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? current : jobs[0] ?? null);
+    setFinishedTaskCount(count);
+    setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? jobs[0] ?? null : jobs[0] ?? null);
   }, []);
 
   useEffect(() => {
@@ -71,11 +84,13 @@ export default function AIHub() {
     let mounted = true;
     const refresh = async () => {
       try {
-        const [bridge, jobs] = await Promise.all([getAIBridgeState(), getRecentAIJobs()]);
+        const [bridge, history] = await Promise.all([getAIBridgeState(), getRecentAIJobs()]);
         if (!mounted) return;
+        const { jobs } = history;
         setBridgeState(bridge.state);
         setBridgeStatus(bridge);
         setRecentJobs(jobs);
+        setFinishedTaskCount(history.finishedTaskCount);
         setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? current : jobs[0] ?? null);
         setError('');
       } catch (err) {
@@ -108,12 +123,13 @@ export default function AIHub() {
         if (!mounted) return;
         setActiveJob(job);
         setRecentJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 10));
+        if (job.status === 'completed' || job.status === 'failed') void refreshRecent();
       }).catch((err) => {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo actualizar la tarea.');
       });
     }, 2000);
     return () => { mounted = false; window.clearInterval(timer); };
-  }, [activeJob?.id, activeJob?.status]);
+  }, [activeJob?.id, activeJob?.status, refreshRecent]);
 
   useEffect(() => {
     let mounted = true;
@@ -168,6 +184,71 @@ export default function AIHub() {
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       setError('El navegador no permitió copiar la respuesta.');
+    }
+  };
+
+  const removeTask = async (job: AIJob) => {
+    if (job.status === 'pending' || job.status === 'processing') return;
+    if (!window.confirm('Se eliminará esta tarea y sus fuentes guardadas. No se puede deshacer.')) return;
+    setDeletingTaskId(job.id);
+    setError('');
+    try {
+      await deleteAITask(job.id);
+      setActiveJob((current) => current?.id === job.id ? null : current);
+      await refreshRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar la tarea.');
+    } finally {
+      setDeletingTaskId(null);
+    }
+  };
+
+  const removeFinishedTasks = async () => {
+    if (finishedTaskCount < 1 || deletingAllTasks) return;
+    const confirmed = window.confirm(
+      `Se eliminarán ${finishedTaskCount} tareas finalizadas de texto y sus fuentes. Las tareas activas y los chats se conservarán. No se puede deshacer.`,
+    );
+    if (!confirmed) return;
+    setDeletingAllTasks(true);
+    setError('');
+    try {
+      await deleteAllAITasks();
+      setActiveJob((current) => current && (current.status === 'pending' || current.status === 'processing') ? current : null);
+      await refreshRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron eliminar las tareas.');
+    } finally {
+      setDeletingAllTasks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (view !== 'connection') return;
+    let mounted = true;
+    setHistorySettingsLoading(true);
+    setHistorySettingsError('');
+    void getAIHistorySettings().then((settings) => {
+      if (mounted) setHistoryRetention(settings.retention_days);
+    }).catch((err) => {
+      if (mounted) setHistorySettingsError(err instanceof Error ? err.message : 'No se pudo cargar la retención.');
+    }).finally(() => {
+      if (mounted) setHistorySettingsLoading(false);
+    });
+    return () => { mounted = false; };
+  }, [view]);
+
+  const saveHistoryRetention = async () => {
+    setHistorySettingsSaving(true);
+    setHistorySettingsNotice('');
+    setHistorySettingsError('');
+    try {
+      const settings = await updateAIHistorySettings(historyRetention);
+      setHistoryRetention(settings.retention_days);
+      setHistorySettingsNotice('Preferencia de retención guardada.');
+    } catch (err) {
+      setHistorySettingsError(err instanceof Error ? err.message : 'No se pudo guardar la retención.');
+    } finally {
+      setHistorySettingsSaving(false);
     }
   };
 
@@ -307,8 +388,8 @@ export default function AIHub() {
 
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
-          <div className="mb-4 flex items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3>{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div>
-          {recentJobs.filter((job) => job.task_type === 'text_generation').length ? <ul className="space-y-2">{recentJobs.filter((job) => job.task_type === 'text_generation').map((job) => <li key={job.id}><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button></li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
+          {recentJobs.filter((job) => job.task_type === 'text_generation').length ? <ul className="space-y-2">{recentJobs.filter((job) => job.task_type === 'text_generation').map((job) => <li key={job.id} className="flex items-stretch gap-1.5"><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button>{(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${job.input.slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">{deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}</button>}</li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
           <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand)]"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
 
@@ -389,6 +470,13 @@ export default function AIHub() {
           </section>
 
           <aside className="space-y-4">
+            <section className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
+              <div><h4 className="font-bold">Historial</h4><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Los chats sin actividad y las tareas más antiguas se borran automáticamente cuando activás una retención.</p></div>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold">Retención</span><select value={historyRetention === null ? 'none' : String(historyRetention)} onChange={(event) => setHistoryRetention(event.target.value === 'none' ? null : Number(event.target.value))} disabled={historySettingsLoading || historySettingsSaving} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60"><option value="none">Sin borrado automático</option><option value="30">30 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365">365 días</option></select></label>
+              <button type="button" onClick={() => void saveHistoryRetention()} disabled={historySettingsLoading || historySettingsSaving} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{historySettingsSaving ? 'Guardando…' : 'Guardar retención'}</button>
+              {historySettingsNotice && <p role="status" className="text-xs text-emerald-800 dark:text-emerald-300">{historySettingsNotice}</p>}
+              {historySettingsError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{historySettingsError}</p>}
+            </section>
             <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
               <h4 className="font-bold">Cómo funciona</h4>
               <ol className="mt-4 space-y-4 text-sm"><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">1</span><span><strong>Vinculá tu PC</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">Descargá el instalador y ejecutalo en la computadora.</span></span></li><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">2</span><span><strong>Iniciá sesión en el proveedor</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">Usá la sesión local de Codex o Claude Code.</span></span></li><li className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand)]">3</span><span><strong>Empezá a usar IA</strong><span className="mt-1 block text-xs text-[var(--ink-muted)]">La PC recibe tareas y chats de este negocio.</span></span></li></ol>

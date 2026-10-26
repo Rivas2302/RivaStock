@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BookOpen, Database, Loader2, MessageSquare, Plus, Send, Sparkles } from 'lucide-react';
+import { BookOpen, Database, Loader2, MessageSquare, MoreHorizontal, Plus, Send, Sparkles, Trash2 } from 'lucide-react';
 import {
+  deleteAIChat,
   getAIChat,
   getAIChats,
   sendAIChatMessage,
@@ -59,6 +60,7 @@ export default function AIChats() {
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const submissionRef = useRef<{ signature: string; key: string } | null>(null);
 
@@ -177,6 +179,21 @@ export default function AIChats() {
     setError('');
   };
 
+  const removeChat = async (chat: AIChat) => {
+    if (chat.has_pending_job || (chat.id === selectedChatId && hasPendingJob)) return;
+    if (!window.confirm('Se borran los mensajes y las fuentes de este chat. No se puede deshacer.')) return;
+    setDeletingChatId(chat.id);
+    setError('');
+    try {
+      await deleteAIChat(chat.id);
+      await refreshChats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el chat.');
+    } finally {
+      setDeletingChatId(null);
+    }
+  };
+
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.trim() || sending || hasPendingJob) return;
@@ -221,7 +238,18 @@ export default function AIChats() {
           <div className="mb-2 mt-5 flex items-center justify-between gap-2 px-1"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Tus chats</h3>{loadingChats && <Loader2 size={14} className="animate-spin text-[var(--ink-muted)]"/>}</div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loadingChats ? <p className="flex items-center gap-2 py-3 text-sm text-[var(--ink-muted)]"><Loader2 size={15} className="animate-spin"/>Cargando chats…</p>
-              : chats.length ? <ul className="space-y-1.5">{chats.map((chat) => <li key={chat.id}><button type="button" onClick={() => setSelectedChatId(chat.id)} aria-current={selectedChatId === chat.id ? 'page' : undefined} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedChatId === chat.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-transparent hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-sm font-semibold">{chat.title}</span><span className="mt-1 block truncate text-[11px] text-[var(--ink-muted)]">{providerLabel(chat.provider)}</span><span className="mt-1.5 block text-[11px] text-[var(--ink-muted)]">{formatDate(chat.last_message_at)}</span></button></li>)}</ul>
+              : chats.length ? <ul className="space-y-1.5">{chats.map((chat) => {
+                const chatBusy = Boolean(chat.has_pending_job) || (chat.id === selectedChatId && hasPendingJob);
+                return <li key={chat.id} className="flex items-start gap-1">
+                  <button type="button" onClick={() => setSelectedChatId(chat.id)} aria-current={selectedChatId === chat.id ? 'page' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${selectedChatId === chat.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-transparent hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-sm font-semibold">{chat.title}</span><span className="mt-1 block truncate text-[11px] text-[var(--ink-muted)]">{providerLabel(chat.provider)}</span><span className="mt-1.5 block text-[11px] text-[var(--ink-muted)]">{formatDate(chat.last_message_at)}</span></button>
+                  <details className="relative shrink-0">
+                    <summary aria-label={`Opciones de ${chat.title}`} className="list-none cursor-pointer rounded-lg p-2 text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] [&::-webkit-details-marker]:hidden"><MoreHorizontal size={17}/></summary>
+                    <div className="absolute right-0 top-full z-20 mt-1 min-w-40 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-1 shadow-lg">
+                      <button type="button" onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); void removeChat(chat); }} disabled={chatBusy || deletingChatId !== null} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40"><Trash2 size={14}/>{deletingChatId === chat.id ? 'Eliminando…' : 'Eliminar chat'}</button>
+                    </div>
+                  </details>
+                </li>;
+              })}</ul>
               : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--ink-muted)]">Todavía no hay chats. Empezá uno para guardar el historial.</p>}
           </div>
         </aside>
@@ -231,6 +259,8 @@ export default function AIChats() {
             <span className="rounded-xl bg-[var(--brand-soft)] p-2 text-[var(--brand)]"><MessageSquare size={18}/></span>
             <div className="min-w-0"><h3 className="truncate font-bold">{currentChat?.title ?? 'Nuevo chat'}</h3><p className="mt-0.5 text-xs text-[var(--ink-muted)]">{currentChat ? `${providerLabel(currentChat.provider)} · Historial en este negocio; sesión en tu PC` : 'Mensajes guardados en este negocio; sesión del proveedor en tu PC.'}</p></div>
           </header>
+
+          {messages.length >= 100 && <p role="note" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Este chat es muy largo: para mejores respuestas y menor consumo, empezá un chat nuevo.</p>}
 
           <div className="min-h-80 flex-1 space-y-4 overflow-y-auto p-4 md:p-5" aria-live="polite">
             {loadingMessages && !messages.length && <p className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando historial…</p>}
