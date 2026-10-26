@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorker, isUuid, jsonResponse, readJsonLimited } from '../_shared/workerAuth.ts';
+import { validateWorkerRetrieveRequest } from './contract.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -17,7 +18,7 @@ const ACTIONS = {
   worker_search_fail: 'search_fail',
 } as const;
 
-type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images';
+type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images' | 'worker_retrieve';
 type Body = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,6 +46,8 @@ function validateAction(action: WorkerAction, body: Body): string | null {
     case 'worker_job_heartbeat':
     case 'worker_organize_images':
       return isUuid(body.job_id) ? null : 'Identificador de tarea inválido.';
+    case 'worker_retrieve':
+      return validateWorkerRetrieveRequest(body);
     case 'worker_extracted_text':
       if (!isUuid(body.job_id)) return 'Identificador de tarea inválido.';
       if (typeof body.text !== 'string' || body.text.length > 400_000) return 'Texto extraído inválido.';
@@ -122,7 +125,7 @@ function payloadFor(action: keyof typeof ACTIONS, body: Body): Body {
 
 function rpcErrorResponse(error: { message?: string } | null): Response {
   const message = error?.message ?? '';
-  if (message.includes('ya no está reservada')) {
+  if (message.includes('ya no está reservada') || message.includes('no está reservada por este worker')) {
     return jsonResponse({ error: 'La tarea ya no está reservada por este worker.' }, 409);
   }
   if (message.includes('Computadora desvinculada')) {
@@ -263,7 +266,8 @@ serve(async (req: Request) => {
   const body = await readJsonLimited(req, MAX_BODY_BYTES);
   if (!body) return jsonResponse({ error: 'Solicitud inválida o demasiado grande.' }, 413);
   if (typeof body.action !== 'string' || (!Object.hasOwn(ACTIONS, body.action)
-    && body.action !== 'worker_file_url' && body.action !== 'worker_organize_images')) {
+    && body.action !== 'worker_file_url' && body.action !== 'worker_organize_images'
+    && body.action !== 'worker_retrieve')) {
     return jsonResponse({ error: 'Acción de worker no permitida.' }, 400);
   }
   const action = body.action as WorkerAction;
@@ -287,6 +291,16 @@ serve(async (req: Request) => {
     }
     if (action === 'worker_organize_images') {
       return await organizeImages(serviceClient, ownerUid, body.worker_id, body.job_id as string);
+    }
+    if (action === 'worker_retrieve') {
+      const { data, error } = await serviceClient.rpc('knowledge_worker_retrieve', {
+        p_owner_uid: ownerUid,
+        p_worker_id: body.worker_id,
+        p_job_id: body.job_id,
+        p_payload: { embedding: body.embedding, query: body.query, model: body.model },
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
     }
 
     const { data, error } = await serviceClient.rpc('knowledge_worker', {
