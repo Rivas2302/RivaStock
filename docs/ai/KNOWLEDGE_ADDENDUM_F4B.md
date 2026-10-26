@@ -15,7 +15,7 @@ Pasos previos:
 
 ---
 
-## [ ] T4B.1 La IA ve las capturas en “Organizar con IA”
+## [x] T4B.1 La IA ve las capturas en “Organizar con IA”
 
 Hoy la IA solo recibe marcadores `[[IMG1]]` y no ve las imágenes. El cambio: el worker descarga las capturas de la propuesta y se las pasa al proveedor junto con las notas. La IA puede usar lo que se ve en ellas (texto, menús, valores en pantalla) y genera una descripción literal de cada captura. Esa descripción se guarda como texto alternativo, así las capturas también quedan buscables por el RAG sin costo extra.
 
@@ -53,7 +53,7 @@ Hoy la IA solo recibe marcadores `[[IMG1]]` y no ve las imágenes. El cambio: el
 - **Prueba en producción:** organizar notas con 2–3 capturas **reales** (no fixtures de 68 bytes) que muestren texto legible. La propuesta debe usar al menos un dato que solo aparezca en una captura, y cada imagen debe quedar con su descripción. Datos de prueba con prefijo `[QA]`, eliminados al final con el flujo de la app.
 - **Commit:** `feat(knowledge): let AI see screenshots when organizing documents`
 
-## [ ] T4B.2 Ajustar la cuota de almacenamiento al plan Free de Supabase
+## [x] T4B.2 Ajustar la cuota de almacenamiento al plan Free de Supabase
 
 El plan Free de Supabase tiene **1 GB de Storage para todo el proyecto**, compartido con el bucket `assets` de fotos de productos, y 500 MB de base de datos. La cuota de 1 GiB por cuenta de T1.2 podría llenar el proyecto y romper la carga de fotos de productos.
 
@@ -68,7 +68,7 @@ El plan Free de Supabase tiene **1 GB de Storage para todo el proyecto**, compar
 - **UI:** los textos que dicen “1 GB” pasan a usar el valor `storage_limit_bytes` de `knowledge_stats()`.
 - **Commit:** `feat(knowledge): align storage quota with Supabase free plan`
 
-## [ ] T4B.3 Cierre de Fase 4b
+## [x] T4B.3 Cierre de Fase 4b
 
 - Correr `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`; en el worker, `npm run typecheck` y `npm test`.
 - Despliegue con backup verificado. Migración solo de esta fase. Merge a `main` con la cuenta Rivas2302. Bridge nuevo instalado: avisar al dueño para que ejecute el actualizador.

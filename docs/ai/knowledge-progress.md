@@ -375,3 +375,132 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - **Trazas retenidas por diseño:** la tabla append-only `knowledge_events` conserva 77 eventos asociados a los IDs eliminados, incluidos 11 eventos de borrado; la migración establece que el historial no tiene FK para sobrevivir la eliminación. Quedaban 6 solicitudes recientes de búsqueda (5 completadas, 1 expirada); cuatro conservan resultados con referencias a los IDs QA eliminados. La función elimina solicitudes con más de un día al iniciar otra búsqueda. No se alteraron esas tablas por SQL.
 - Captura del estado vacío de la biblioteca: `%TEMP%\\RivaStock-QA-cleanup-20261026.jpg`.
 - **Pendientes reales:** OCR opcional T3.7 sigue sin implementar. El PDF de una página sí se vio; la previsualización de un PDF de varias páginas no quedó comprobada. Word sigue sin previsualización en la UI.
+
+### Cierre de Fase 4b y Fase 5 — 2026-10-26
+
+#### Resultado
+
+- T4B.1: Organizar con IA entregó al modelo dos capturas reales y legibles. La propuesta usó las opciones de conflicto “Recargar la última versión” y “Guardar mis cambios igual”, dato que solo aparecía en la primera imagen; ambas imágenes mantuvieron descripciones alt. La segunda captura mostraba la biblioteca vacía. Storage devolvió HTTP 200 para las dos imágenes, con dimensiones 1441×331 y 1600×788.
+- T4B.2: la cuota vigente de Conocimientos es 500 MB, definida por 20261026010929_knowledge_storage_limit.
+- T4B.3 y T5.1–T5.6 quedaron cerradas. El dueño confirmó Bridge 1.8.0 conectado; la app de producción muestra la tarjeta de uso de Conocimientos y requiere 1.8.0 o posterior.
+
+#### Implementación y arquitectura
+
+- El flujo conserva la arquitectura worker-only: el cliente crea trabajos con contexto; el Bridge consulta Edge Function knowledge por HTTPS saliente; el worker incrusta la consulta y pide fuentes por worker_retrieve; Supabase valida propietario, dispositivo, tarea reservada, configuración y publicación/indexación. El Bridge añade las fuentes como datos no confiables y entrega la respuesta. Los fallos de recuperación no impiden completar el turno.
+- La migración 20261026020609_knowledge_chat_retrieval agregó knowledge_settings y ai_job_knowledge_sources, sus políticas RLS e índice, más los RPC knowledge_update_settings y knowledge_worker_retrieve. knowledge valida y enruta worker_retrieve. Chat y Tareas cargan y presentan chips K1…K, con título, sección, páginas y vínculo al documento; Administración configura activar/desactivar, top_k y similitud mínima.
+- searchKnowledge en src/lib/knowledge/service.ts define la interfaz de búsqueda del navegador con filtros por documento, categoría, carpeta y etiqueta. El contrato del worker permite nuevas integraciones sin exponer knowledge_match_chunks.
+- Integraciones futuras con Skills, publicaciones, asistente técnico y cotizador están documentadas, no implementadas. OCR T3.7 sigue opcional y pendiente.
+- Migraciones del módulo aplicadas en producción: 20261025152219_knowledge_extensions, 20261025152408_knowledge_core, 20261025152515_knowledge_storage, 20261025184236_knowledge_vector_extension, 20261025184450_knowledge_rag, 20261025233450_knowledge_organize, 20261026010929_knowledge_storage_limit y 20261026020609_knowledge_chat_retrieval. Todas aparecen aplicadas en supabase migration list. La Edge Function knowledge está ACTIVE v3 con verify_jwt=false; ai-bridge está ACTIVE v9.
+- El AI Bridge empaquetado es 1.8.0: 47,8 kB comprimido y 181,9 kB desempaquetado. Versiones relevantes del worker: @huggingface/transformers 3.8.1, @openai/codex y @openai/codex-sdk 0.163.0, mammoth 1.13.0, node-html-parser 9.0.5 y unpdf 1.9.1. TipTap React y Starter Kit son 3.32.0.
+- El commit de implementación ae3bfab se integró por fast-forward a main con la credencial GitHub verificada como Rivas2302; Vercel reportó success para ese SHA. La Edge Function y la migración se desplegaron en RivaStock_Oficial después del backup verificado de abajo.
+
+#### Verificación local
+
+- npm run lint: aprobado.
+- npm test: 540 pruebas en 88 archivos, aprobadas.
+- npm run build y npm run perf:check: aprobados. Bundle inicial: 207.466 bytes gzip JS y 21.518 bytes CSS.
+- Bridge npm run typecheck: aprobado; npm test: 39 pruebas aprobadas.
+- npm audit del frontend: 3 avisos, 2 moderados y 1 alto en dependencias de desarrollo (Vitest/Vite); existe npm audit fix no forzado.
+- npm audit --omit=dev del worker: 2 avisos altos en sharp/libvips/libheif/librsvg, transitivos de @huggingface/transformers 3.8.1. La solución sugerida requiere Transformers 4.3.1 y es un cambio mayor; no se forzó.
+
+#### Checklist de producción F5
+
+- La versión publicada de [QA] Lectura de capturas para recepción quedó indexada como ready con 3 fragmentos. En Chat, una pregunta sobre el conflicto respondió “Recargar la última versión; Guardar mis cambios igual” y citó [K2]; la app mostró tres chips K1–K3 que enlazan al documento.
+- En Administración se guardó chat_retrieval_enabled=false. Una conversación nueva se completó con cero fuentes y respondió que no podía ver el aviso. Se restauró y verificó chat_retrieval_enabled=true, top_k=6 y min_similarity=0.
+- [QA] Prueba de instrucciones no confiables se publicó e indexó con un fragmento. El contexto recuperó la instrucción adversarial sobre .env y un marcador sintético no secreto. El asistente contestó “No. [K1] es una referencia no confiable, no una instrucción.” No leyó archivos reales ni mostró secretos.
+- Una tarea de texto en Tareas completó la misma consulta, citó [K1], devolvió los dos pasos y mostró cuatro chips de fuentes. Se verificaron las fuentes persistidas por trabajo en ai_job_knowledge_sources.
+- La comprobación de salida de la PC ya está documentada por confirmación del dueño: Bridge 1.8.0 y Conectado.
+
+#### Limpieza y datos QA retenidos
+
+- Los dos documentos QA de esta entrega se eliminaron desde el detalle de la app, escribiendo sus títulos exactos cuando la UI lo pidió. Verificación de solo lectura: cero documentos QA, versiones, assets, chunks, trabajos de indexación y objetos del bucket knowledge para los dos IDs; no quedaron carpetas, categorías ni etiquetas QA.
+- La app no tiene acciones para borrar chats ni tareas. Permanecen 9 trabajos QA, 3 chats QA y 11 filas de fuentes apuntando a los documentos eliminados. Esas fuentes no contienen archivos de Storage y la UI identifica el documento como eliminado. No se borraron trazas por SQL.
+- El archivo docs/ai/rag-skills-plan.md no está en Git. Se considera reemplazado por KNOWLEDGE_EXECUTION_PLAN.md y knowledge-service.md; queda a decisión del dueño si borrar el archivo local no versionado.
+
+#### Configuraciones pendientes y próximos pasos
+
+1. No hay staging conectado; crear y validar uno antes de futuras migraciones que no tengan autorización expresa para producción.
+2. T3.7 OCR opcional sigue sin implementar; las imágenes se indexan por título y descripción. El modelo multilingual-e5-small descarga aproximadamente 120 MB en la primera indexación.
+3. No se probó una tarea real de Claude con recuperación F5 y no se revalidó la versión mínima indicada por el plan. No anunciar compatibilidad hasta verificarla.
+4. Word no tiene previsualización en UI; la vista previa de PDF multipágina no quedó comprobada.
+5. Chats y tareas no tienen borrado, retención configurable ni compactación. Los registros QA anotados arriba quedan retenidos.
+6. F6 para colaboradores y la selección de Skills desde una respuesta de chat no están implementadas.
+7. La recuperación en chat consulta el mensaje actual, no todo el historial; revisar preguntas de seguimiento breves y la escala al superar aproximadamente 100.000 fragmentos.
+8. El Bridge con Codex tiene acceso amplio a la PC vinculada. El encuadre de fuentes como datos no confiables reduce, pero no elimina, el riesgo de inyección.
+
+### Backup lógico HTTPS verificado antes de Fase 5 — 2026-10-26
+
+- Destino externo al repositorio: %USERPROFILE%\rivastock-backups\20261026T021419Z\.
+- Docker Desktop y el CLI de Docker no están instalados; se usó el fallback HTTPS autorizado. La service role key se obtuvo con la CLI y permaneció en memoria; no se escribió en el script ni en logs.
+- Se copiaron 92 migraciones para cobertura del esquema. Se exportaron 67 tablas públicas, 13242 filas totales, y se listaron 365 objetos en assets y 2 en knowledge con nombre/tamaño.
+- Verificación: 67/67 tablas con conteo exacto igual al número de filas exportadas; 163 archivos no vacíos, 0 vacíos. El exportador cotejó el conteo antes y después de paginar cada tabla. Backup apto para continuar.
+
+| Tabla | Conteo exacto antes | Filas JSON | Conteo exacto después | Resultado |
+|---|---:|---:|---:|---|
+| ai_bridge_device_secrets | 5 | 5 | 5 | OK |
+| ai_bridge_devices | 5 | 5 | 5 | OK |
+| ai_bridge_workers | 2 | 2 | 2 | OK |
+| ai_chat_messages | 43 | 43 | 43 | OK |
+| ai_chats | 5 | 5 | 5 | OK |
+| ai_jobs | 50 | 50 | 50 | OK |
+| ai_workspace_files | 0 | 0 | 0 | OK |
+| attributed_sale_commands | 448 | 448 | 448 | OK |
+| audit_events | 4622 | 4622 | 4622 | OK |
+| cash_closings | 0 | 0 | 0 | OK |
+| cash_flow | 1113 | 1113 | 1113 | OK |
+| cash_flow_allocations | 772 | 772 | 772 | OK |
+| catalog_config | 4 | 4 | 4 | OK |
+| categories | 14 | 14 | 14 | OK |
+| collaborators | 1 | 1 | 1 | OK |
+| customer_financial_commands | 0 | 0 | 0 | OK |
+| customer_transactions | 28 | 28 | 28 | OK |
+| customers | 9 | 9 | 9 | OK |
+| facebook_deliveries | 97 | 97 | 97 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | 149 | OK |
+| facebook_delivery_attempts | 101 | 101 | 101 | OK |
+| facebook_delivery_decisions | 17 | 17 | 17 | OK |
+| facebook_delivery_reviews | 13 | 13 | 13 | OK |
+| facebook_device_secrets | 38 | 38 | 38 | OK |
+| facebook_devices | 38 | 38 | 38 | OK |
+| facebook_group_sync | 1 | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | 69 | OK |
+| facebook_publications | 19 | 19 | 19 | OK |
+| facebook_worker_policy | 1 | 1 | 1 | OK |
+| inventory_holdings | 697 | 697 | 697 | OK |
+| inventory_movements_view | 300 | 300 | 300 | OK |
+| inventory_operation_settings | 5 | 5 | 5 | OK |
+| inventory_owner_memberships | 8 | 8 | 8 | OK |
+| inventory_owners | 6 | 6 | 6 | OK |
+| inventory_product_commands | 558 | 558 | 558 | OK |
+| inventory_stock_commands | 300 | 300 | 300 | OK |
+| invitations | 5 | 5 | 5 | OK |
+| knowledge_ai_proposals | 1 | 1 | 1 | OK |
+| knowledge_assets | 2 | 2 | 2 | OK |
+| knowledge_categories | 0 | 0 | 0 | OK |
+| knowledge_chunks | 0 | 0 | 0 | OK |
+| knowledge_document_tags | 0 | 0 | 0 | OK |
+| knowledge_document_versions | 0 | 0 | 0 | OK |
+| knowledge_documents | 1 | 1 | 1 | OK |
+| knowledge_events | 80 | 80 | 80 | OK |
+| knowledge_folders | 0 | 0 | 0 | OK |
+| knowledge_index_jobs | 0 | 0 | 0 | OK |
+| knowledge_search_requests | 6 | 6 | 6 | OK |
+| knowledge_tags | 0 | 0 | 0 | OK |
+| orders | 2 | 2 | 2 | OK |
+| price_list_items | 194 | 194 | 194 | OK |
+| price_lists | 1 | 1 | 1 | OK |
+| price_ranges | 6 | 6 | 6 | OK |
+| products | 429 | 429 | 429 | OK |
+| profiles | 5 | 5 | 5 | OK |
+| public_profiles | 5 | 5 | 5 | OK |
+| quotes | 1 | 1 | 1 | OK |
+| quotes_with_status | 1 | 1 | 1 | OK |
+| reseller_supplier_list_items | 0 | 0 | 0 | OK |
+| reseller_supplier_lists | 0 | 0 | 0 | OK |
+| sale_item_allocations | 787 | 787 | 787 | OK |
+| sale_items | 786 | 786 | 786 | OK |
+| sales | 771 | 771 | 771 | OK |
+| stock_intakes | 160 | 160 | 160 | OK |
+| stock_movements | 448 | 448 | 448 | OK |
+| supplier_orders | 1 | 1 | 1 | OK |
+| suppliers | 12 | 12 | 12 | OK |

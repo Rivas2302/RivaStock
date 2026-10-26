@@ -111,7 +111,7 @@ Mantené esta consola abierta durante la demo. El worker consultará la cola cad
 
 ### Conocimientos
 
-La indexación y búsqueda semántica requieren AI Bridge 1.5.0 o posterior, las migraciones de Conocimientos y la Edge Function `knowledge` desplegadas en Supabase. “Organizar con IA” requiere AI Bridge 1.6.0 o posterior y el despliegue de la migración de Fase 4 junto con el frontend. La Biblioteca muestra resultados por significado y cambia a búsqueda por palabras clave cuando la PC vinculada no está disponible.
+La indexación y búsqueda semántica requieren AI Bridge 1.5.0 o posterior, las migraciones de Conocimientos y la Edge Function knowledge desplegadas en Supabase. “Organizar con IA” requiere AI Bridge 1.6.0 o posterior y el despliegue de la migración de Fase 4 junto con el frontend. Para que Codex vea las capturas de “Organizar con IA”, el Bridge necesita 1.7.0 o posterior. La cuota de Conocimientos es 500 MB por cuenta. La recuperación de fuentes para Chats y Tareas requiere AI Bridge 1.8.0 o posterior y la migración de Fase 5. En **IA → Conocimientos → Administración → Resumen** podés activarla, elegir hasta 12 fragmentos por consulta y definir la similitud mínima. Los fallos de recuperación no impiden que el Bridge responda. La Biblioteca muestra resultados por significado y cambia a búsqueda por palabras clave cuando la PC vinculada no está disponible.
 
 El worker consulta también la cola de indexación y de búsqueda semántica cuando `AI_BRIDGE_WORKER_ID` contiene el ID de la PC vinculada. `AI_BRIDGE_ENABLE_KNOWLEDGE` queda activado por defecto; podés desactivarlo con `false`. La URL de `AI_BRIDGE_ENDPOINT` debe terminar en `/functions/v1/ai-bridge`, para que el worker derive `/functions/v1/knowledge`.
 

@@ -2467,7 +2467,7 @@ Fase 4b: ver `docs/ai/KNOWLEDGE_ADDENDUM_F4B.md` (ejecutar antes de la Fase 5)
 
 **Resultado de la fase:** los chats y tareas de RivaStock consultan automáticamente los documentos **publicados y disponibles**, el modelo cita las fuentes `[K1]`, la UI muestra las fuentes debajo de cada respuesta, y existe un contrato de servicio reutilizable para Skills, automatizaciones, asistente técnico y cotizador.
 
-### [ ] T5.1 Migración: configuración y fuentes por tarea
+### [x] T5.1 Migración: configuración y fuentes por tarea
 **Archivo:** `supabase/migrations/<ts>_knowledge_chat_retrieval.sql`
 ```sql
 BEGIN;
@@ -2601,11 +2601,11 @@ COMMIT;
 - Test PGlite `src/lib/knowledgeRetrieval.migration.test.ts`: con un documento indexado (reusar helpers de T3.3) y un `ai_jobs` en `processing` para el worker: devuelve fuentes `K1..Kn` ordenadas y las guarda; con `chat_retrieval_enabled = false` devuelve `enabled:false`; job de otro worker o `knowledge_organize` → error; `min_similarity` filtra; reintento reemplaza las fuentes; RLS: otro usuario no ve `ai_job_knowledge_sources`.
 - **Commit:** `feat(knowledge): add chat retrieval settings and per-job sources`
 
-### [ ] T5.2 Edge Function: acción `worker_retrieve`
+### [x] T5.2 Edge Function: acción `worker_retrieve`
 - En `supabase/functions/knowledge/index.ts`: `worker_retrieve` → validar `job_id` uuid, `embedding` 384 finitos, `query` string ≤ 8000, `model` string → `rpc('knowledge_worker_retrieve', {...})`. Actualizar el test de contrato.
 - **Commit:** `feat(knowledge): add worker retrieval action`
 
-### [ ] T5.3 Worker: recuperación en chats y tareas
+### [x] T5.3 Worker: recuperación en chats y tareas
 **Archivos:** `tools/rivastock-ai-bridge/src/knowledge/retrieval.ts`, `src/workspace.ts`, `src/index.ts`.
 - `retrieveForJob(client, workerId, job)`: `embedQuery(job.input.slice(0, 2000))` → `client.retrieve(...)` → `sources`. Cualquier error → registrar en log y devolver `[]` (**nunca** hacer fallar el chat por la recuperación).
 - `buildKnowledgeContext(sources, maxCharacters = 20_000)`:
@@ -2626,14 +2626,14 @@ COMMIT;
 - Tests: `buildKnowledgeContext` neutraliza delimitadores, respeta presupuesto y numera; `executeJob` con recuperación que falla igual completa la tarea (inyectar dependencias).
 - **Commit:** `feat(ai-bridge): ground chats and tasks with knowledge retrieval`
 
-### [ ] T5.4 Frontend: fuentes en Chat/Tareas y configuración
+### [x] T5.4 Frontend: fuentes en Chat/Tareas y configuración
 - `src/lib/knowledge/api.ts`: `listJobSources(jobIds)` → `ai_job_knowledge_sources` (`select job_id, label, title, document_id, version_number, section_path, page_from, page_to, score`).
 - `src/components/AIChats.tsx`: debajo de cada mensaje `assistant`, si hay fuentes para su `job_id`, mostrar “Fuentes” con chips `K1 · Título · Sección · págs.` que enlazan a `/ia/conocimientos/doc/:id`. Cargar fuentes en lote al abrir el chat y cuando un job se completa. Si el documento ya no existe, chip sin enlace con “(eliminado)”.
 - `src/pages/AIHub.tsx` (vista Tareas): mismo bloque de fuentes para la tarea activa.
 - `KnowledgeAdmin` → pestaña **Resumen**: tarjeta “Uso en Chats y Tareas” con interruptor, cantidad de fragmentos por consulta (1–12) y similitud mínima (0–0,9, paso 0,05) → `knowledge_update_settings`; texto: “Solo se usan documentos publicados y disponibles. Requiere AI Bridge 1.8.0 o posterior.”
 - **Commit:** `feat(knowledge): show knowledge sources in chats and tasks`
 
-### [ ] T5.5 Contrato del servicio para módulos futuros
+### [x] T5.5 Contrato del servicio para módulos futuros
 - `docs/ai/knowledge-service.md` (archivo nuevo) con:
   - **Interfaz** (navegador): `searchKnowledge({ query, filters: { document_ids?, category_ids?, folder_ids?, tag_ids? }, topK, mode: 'auto' | 'keyword' }) → { mode, notice?, results: KnowledgeChunkResult[] }` (implementada en `src/lib/knowledge/service.ts` reutilizando `search.ts`).
   - **Interfaz** (worker/agentes): `retrieveForJob` y `buildKnowledgeContext` en `tools/rivastock-ai-bridge/src/knowledge/retrieval.ts`; nuevas capacidades deben agregar una acción a la Edge Function `knowledge` que valide la tarea reservada, **nunca** exponer `knowledge_match_chunks` directamente.
@@ -2643,7 +2643,7 @@ COMMIT;
 - `src/lib/knowledge/service.ts` con `searchKnowledge` + test unitario del mapeo de modos (mockear `search.ts`).
 - **Commit:** `docs(knowledge): define knowledge retrieval service contract`
 
-### [ ] T5.6 Cierre de Fase 5 y del proyecto
+### [x] T5.6 Cierre de Fase 5 y del proyecto
 - Lint, tests, build, perf, worker typecheck/tests, `npm audit` (anotar resultados; no forzar actualizaciones).
 - Actualizar `AGENTS.md` (estado final, brechas), `AI_BRIDGE_SETUP.md`, `docs/ai/knowledge-progress.md`.
 - Marcar `docs/ai/rag-skills-plan.md` como reemplazado: **no editarlo** (no está en Git); indicar en `knowledge-progress.md` que quedó obsoleto y que el dueño decida si lo borra.
@@ -2741,7 +2741,7 @@ No hay staging: **recomendación fuerte** de crear un proyecto/branch de Supabas
 ## 14. Configuraciones pendientes y límites conocidos
 
 1. **Producción sin staging:** migraciones, Edge Function y Bridge requieren autorización (§12). Recomendado crear un entorno de prueba.
-2. **Historial de migraciones:** reconciliar las 3 versiones distintas antes de `db push` (T0.2).
+2. **Historial de migraciones:** T0.2 quedó reconciliado el 25/10/2026. F1–F5 están aplicadas en RivaStock_Oficial; revisar la lista remota antes de futuras migraciones.
 3. **Modelo de embeddings:** la primera indexación descarga ~120 MB en la PC vinculada (requiere internet hacia `huggingface.co`).
 4. **Dependencia de la PC:** indexación, búsqueda semántica, Organizar con IA y recuperación en chats requieren la PC encendida con el Bridge ≥ 1.5/1.6/1.7/1.8 según la función. Biblioteca, editor, PDF y búsqueda por palabras clave funcionan siempre.
 5. **OCR:** desactivado por defecto; sin OCR, las imágenes solo se indexan por título y descripción.
