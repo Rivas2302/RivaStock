@@ -83,7 +83,7 @@ PDF con `unpdf` (texto por página → referencias de página), DOCX con `mammot
 Conocimientos queda **solo para el dueño** en la UI (igual que el resto de IA). El SQL ya contempla colaboradores con el permiso `conocimientos.{read,write,delete}` vía `has_permission`; como ese permiso no existe todavía en ningún colaborador, hoy nadie más accede. Habilitarlo es la Fase 6 opcional.
 
 ### 2.9 Cuotas por cuenta (configurables en SQL)
-50 MB por archivo · 1 GiB total por cuenta (versiones + imágenes del editor) · 2.000 documentos · 2.000 fragmentos por documento · 5 búsquedas semánticas pendientes simultáneas.
+50 MB por archivo · 500 MB total por cuenta (versiones + imágenes del editor; ajustado por T4B.2 al plan Free de Supabase) · 2.000 documentos · 2.000 fragmentos por documento · 5 búsquedas semánticas pendientes simultáneas.
 
 ### 2.10 Estado inicial al subir archivos — [D2]
 Los archivos subidos quedan en **Borrador**. El modal de carga tiene un interruptor “Publicar y habilitar para la IA” (apagado por defecto).
@@ -1221,7 +1221,7 @@ COMMIT;
   1. Dueño crea documento `file/pdf`; `other` no lo ve (`SELECT` devuelve 0) ni puede `knowledge_set_status` (error “Documento inexistente”).
   2. `staffNoPerm` recibe “Sin acceso a Conocimientos” en `knowledge_create_document` y ve 0 filas; `staffRead` ve los documentos del dueño pero no puede crear.
   3. `knowledge_add_file_version`: rechaza ruta de otro dueño, ruta con `..`, MIME que no coincide con el formato, tamaño > 50 MB, hash inválido; acepta ruta válida y numera v1, v2.
-  4. Cuota: con versiones que suman > 1 GiB se rechaza; la misma ruta repetida (restaurar) no cuenta doble.
+  4. Cuota: con versiones que suman > 500 MB se rechaza; la misma ruta repetida (restaurar) no cuenta doble. T4B.2 fija este límite con `knowledge_storage_limit_bytes()`.
   5. Transiciones: draft→in_review→published OK; archived→published rechazado; publicar sin versión rechazado; publicar setea `published_version_id`; versión nueva en documento publicado deja `published_version_id` intacto y `has_unpublished_changes = true` en la búsqueda.
   6. Editor: `knowledge_save_draft` con revisión vieja falla con “cambió en otra pestaña”; `knowledge_save_editor_version` con el mismo hash no crea versión nueva.
   7. `knowledge_restore_version` crea versión N+1 con `source = 'restore'`.
@@ -1276,7 +1276,7 @@ COMMIT;
 ### [x] T1.7 Panel principal
 `src/components/knowledge/KnowledgePanel.tsx`
 - Llama `knowledge_stats()` y `knowledge_search_documents({ limit: 6 })` (recientes) y `knowledge_search_documents({ statuses: ['in_review'] })` + `({ index_statuses: ['error'] })` para “Requiere atención”.
-- Tarjetas: Documentos · Publicados · Disponibles para la IA · Pendientes de revisión · Con errores · Almacenamiento (`formatBytes(used)` de 1 GB con barra).
+- Tarjetas: Documentos · Publicados · Disponibles para la IA · Pendientes de revisión · Con errores · Almacenamiento (`formatBytes(used)` de `storage_limit_bytes` con barra).
 - Accesos rápidos: Subir archivos, Ir a la Biblioteca, Administración (y “Nuevo documento” desde F2).
 - Estados de carga (skeleton), error con “Reintentar”, vacío con CTA “Subí tu primer documento”.
 - Responsive: grilla `grid-cols-2 md:grid-cols-3 xl:grid-cols-6`.
@@ -2454,12 +2454,14 @@ COMMIT;
 - Filtrar en `AIHub.tsx` la lista de “Tareas recientes” para mostrar solo `task_type === 'text_generation'` (las de organización se ven en el editor).
 - **Commit:** `feat(knowledge): add organize with AI flow in the editor`
 
-### [ ] T4.4 Cierre de Fase 4
+### [x] T4.4 Cierre de Fase 4
 - Lint, tests, build, worker typecheck/tests. Probar el flujo completo con **Mock** en un entorno autorizado.
 - Documentar en `AGENTS.md` y `AI_BRIDGE_SETUP.md` (versión mínima del Bridge 1.6.0).
 - **Commit:** `docs(knowledge): document phase 4 status`
 
 ---
+
+Fase 4b: ver `docs/ai/KNOWLEDGE_ADDENDUM_F4B.md` (ejecutar antes de la Fase 5)
 
 ## 10. Fase 5 — Integración con Chat IA, Tareas y futuras Skills
 
@@ -2620,7 +2622,7 @@ COMMIT;
   Neutralizar delimitadores en el contenido y en los títulos (reemplazar `<<<` por `‹‹‹` y `>>>` por `›››`). Respetar el presupuesto de caracteres (omitir fuentes que no entren e indicarlo).
 - `createCombinedContext(workspaceFiles, projectFiles, businessFiles, knowledgeContext = '')`: anteponer `knowledgeContext` si no está vacío.
 - `executeJob` (`text_generation`): si `config.knowledgeEnabled && config.workerId` → `retrieveForJob` antes de `provider.execute` y pasar el contexto. Log: “Tarea X: N fuentes de Conocimientos”.
-- Versión del worker: **1.7.0**.
+- Versión del worker: **1.8.0** (T4B.1 publica 1.7.0 antes de Fase 5).
 - Tests: `buildKnowledgeContext` neutraliza delimitadores, respeta presupuesto y numera; `executeJob` con recuperación que falla igual completa la tarea (inyectar dependencias).
 - **Commit:** `feat(ai-bridge): ground chats and tasks with knowledge retrieval`
 
@@ -2628,7 +2630,7 @@ COMMIT;
 - `src/lib/knowledge/api.ts`: `listJobSources(jobIds)` → `ai_job_knowledge_sources` (`select job_id, label, title, document_id, version_number, section_path, page_from, page_to, score`).
 - `src/components/AIChats.tsx`: debajo de cada mensaje `assistant`, si hay fuentes para su `job_id`, mostrar “Fuentes” con chips `K1 · Título · Sección · págs.` que enlazan a `/ia/conocimientos/doc/:id`. Cargar fuentes en lote al abrir el chat y cuando un job se completa. Si el documento ya no existe, chip sin enlace con “(eliminado)”.
 - `src/pages/AIHub.tsx` (vista Tareas): mismo bloque de fuentes para la tarea activa.
-- `KnowledgeAdmin` → pestaña **Resumen**: tarjeta “Uso en Chats y Tareas” con interruptor, cantidad de fragmentos por consulta (1–12) y similitud mínima (0–0,9, paso 0,05) → `knowledge_update_settings`; texto: “Solo se usan documentos publicados y disponibles. Requiere AI Bridge 1.7.0 o posterior.”
+- `KnowledgeAdmin` → pestaña **Resumen**: tarjeta “Uso en Chats y Tareas” con interruptor, cantidad de fragmentos por consulta (1–12) y similitud mínima (0–0,9, paso 0,05) → `knowledge_update_settings`; texto: “Solo se usan documentos publicados y disponibles. Requiere AI Bridge 1.8.0 o posterior.”
 - **Commit:** `feat(knowledge): show knowledge sources in chats and tasks`
 
 ### [ ] T5.5 Contrato del servicio para módulos futuros
@@ -2678,7 +2680,8 @@ No hay staging: **recomendación fuerte** de crear un proyecto/branch de Supabas
 | 4 | `supabase functions deploy knowledge --project-ref <REF> --no-verify-jwt` | Request sin token → 401; con `Origin` → 403 |
 | 5 | Merge F3 a `main` (publica Bridge 1.5.0 vía `prebuild`) y actualizar la PC desde IA → Conexión | Log del worker: descarga del modelo y “Conocimientos activo”; un documento publicado pasa a “Disponible para la IA” |
 | 6 | Aplicar `_knowledge_organize`; merge F4; Bridge 1.6.0 | Flujo Organizar con Mock y con Codex |
-| 7 | Aplicar `_knowledge_chat_retrieval`; redeploy `knowledge`; merge F5; Bridge 1.7.0 | Chat responde citando [K1] y muestra fuentes |
+| 6b | Aplicar `20261026010929_knowledge_storage_limit`; merge F4b; Bridge 1.7.0 | Organizar con IA analiza capturas y la cuota muestra 500 MB |
+| 7 | Aplicar `_knowledge_chat_retrieval`; redeploy `knowledge`; merge F5; Bridge 1.8.0 | Chat responde citando [K1] y muestra fuentes |
 
 ### 12.3 Checklist manual de punta a punta
 - **F1:** subir PDF, DOCX, TXT, MD e imagen (individual y múltiple, incluido uno > 50 MB que debe rechazarse); crear carpetas anidadas, categoría y etiquetas; filtrar y buscar “configuracion” encontrando “configuración”; vista previa de cada formato (PC y celular); editar metadatos; subir versión 2 y restaurar la 1; enviar a revisión, publicar, archivar, restaurar; eliminar y confirmar que los archivos desaparecen del bucket; migrar un `knowledge/*.md` de la biblioteca anterior; ver historial.
@@ -2740,13 +2743,13 @@ No hay staging: **recomendación fuerte** de crear un proyecto/branch de Supabas
 1. **Producción sin staging:** migraciones, Edge Function y Bridge requieren autorización (§12). Recomendado crear un entorno de prueba.
 2. **Historial de migraciones:** reconciliar las 3 versiones distintas antes de `db push` (T0.2).
 3. **Modelo de embeddings:** la primera indexación descarga ~120 MB en la PC vinculada (requiere internet hacia `huggingface.co`).
-4. **Dependencia de la PC:** indexación, búsqueda semántica, Organizar con IA y recuperación en chats requieren la PC encendida con el Bridge ≥ 1.5/1.6/1.7 según la función. Biblioteca, editor, PDF y búsqueda por palabras clave funcionan siempre.
+4. **Dependencia de la PC:** indexación, búsqueda semántica, Organizar con IA y recuperación en chats requieren la PC encendida con el Bridge ≥ 1.5/1.6/1.7/1.8 según la función. Biblioteca, editor, PDF y búsqueda por palabras clave funcionan siempre.
 5. **OCR:** desactivado por defecto; sin OCR, las imágenes solo se indexan por título y descripción.
 6. **Claude Code:** sigue pendiente actualizarlo a ≥ 2.1.248 (estado previo del proyecto); hasta entonces, usar Codex o Mock para Organizar con IA y chats.
 7. **Acceso amplio de Codex:** Codex corre con acceso completo a la PC. El contenido recuperado se encuadra como dato no confiable, pero el riesgo de inyección no es cero: mantener la publicación en manos del dueño (T6.3 si se habilitan colaboradores).
 8. **Recuperación por mensaje:** en chats se recupera con el mensaje actual, no con todo el historial; preguntas de seguimiento muy cortas pueden recuperar menos. Mejora futura: incluir el último mensaje del usuario en la consulta.
 9. **Escala:** con el filtro por cuenta, Postgres hace búsqueda exacta (el índice HNSW puede no usarse). Es correcto y rápido para decenas de miles de fragmentos; revisar a partir de ~100.000 (búsqueda iterativa de pgvector 0.8 o particionado).
-10. **Cuotas:** 50 MB por archivo, 1 GB y 2.000 documentos por cuenta; ajustables en SQL.
+10. **Cuotas:** 50 MB por archivo, 500 MB y 2.000 documentos por cuenta; ajustables en SQL. El límite vigente se consulta desde `knowledge_stats()`.
 
 ---
 
