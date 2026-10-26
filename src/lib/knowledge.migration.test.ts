@@ -19,6 +19,7 @@ const migrationFiles = [
   '20261020014931_persistent_ai_chats.sql',
   '20261025152219_knowledge_extensions.sql',
   '20261025152408_knowledge_core.sql',
+  '20261026010929_knowledge_storage_limit.sql',
 ];
 
 let db: PGlite;
@@ -253,14 +254,19 @@ describe('Knowledge core migration', () => {
       INSERT INTO knowledge_document_versions
         (user_id, document_id, version_number, source, storage_path, file_size, content_hash)
       SELECT $1, $2, n, 'upload', $4 || '/v' || n || '/file.pdf', 52428800, $3
-      FROM generate_series(1, 22) AS n
+      FROM generate_series(1, 10) AS n
     `, [OWNER, overQuotaDocument, 'e'.repeat(64), `${OWNER}/${overQuotaDocument}`]);
     await asUser(OWNER);
     await expectQueryError(
       'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
       [overQuotaDocument, `${OWNER}/${overQuotaDocument}/v23/file.pdf`, 'file.pdf', 'application/pdf', 1, 'f'.repeat(64)],
-      'Se alcanzó el límite de 1 GB de almacenamiento',
+      'Se alcanzó el límite de almacenamiento de Conocimientos',
     );
+
+    const stats = await db.query<{ storage_limit_bytes: string }>(
+      "SELECT knowledge_stats()->>'storage_limit_bytes' AS storage_limit_bytes",
+    );
+    expect(stats.rows[0].storage_limit_bytes).toBe('524288000');
   });
 
   it('enforces publication transitions and keeps the approved version until republishing', async () => {
