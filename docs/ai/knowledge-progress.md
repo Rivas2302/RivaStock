@@ -340,3 +340,15 @@ Actualizado: 2026-10-25
 | knowledge_index_jobs | 4 | 4 | 4 | 4 | OK |
 | knowledge_chunks | 0 | 0 | 0 | 0 | OK |
 | knowledge_search_requests | 4 | 4 | 4 | 4 | OK |
+
+### Despliegue y validación de Fase 4 — 2026-10-25
+
+- Backup HTTPS previo a F4 verificado en `%USERPROFILE%\\rivastock-backups\\20261025-202735`: 63/63 tablas, 12.918 filas cotejadas contra conteos exactos antes y después, 365 objetos de `assets`, 16 de `knowledge` y 90 migraciones copiadas. No se guardaron credenciales.
+- T0.2 se resolvió y la migración quedó alineada como `20261025233450_knowledge_organize`; Supabase confirmó su aplicación en `RivaStock_Oficial`. La Edge Function `knowledge` está activa y el frontend F4 se integró en `main`. El commit correctivo `b00861b` está en `main` y Vercel reportó éxito.
+- El dueño confirmó la instalación y conexión del AI Bridge 1.6.0 en la PC vinculada.
+- Prueba F4 con datos `[QA]`: Mock y Codex generaron pasos con tres capturas, conservaron los valores de 10/9 etiquetas y 20/20 tornillos, y listaron proveedor, fecha, número de remito/orden y responsable como datos faltantes. Se detectó que una primera aplicación omitía la lista; el fix en `b00861b` la agrega como encabezado y lista. Con el bundle de producción actualizado, la aplicación mostró los cuatro campos y las tres capturas; una edición manual adicional quedó guardada como borrador r27.
+- Publicación F4 pendiente: se pulsó “Publicar” y apareció la confirmación para crear la versión 4. Chrome dejó de responder al aceptar. La comprobación posterior de Supabase confirmó `status=draft`, `published_version_id=null` e `index_status=not_indexed`; por lo tanto no se acredita publicación ni indexación.
+- Validación local del fix: `npm run lint`, `npm test` (530 pruebas/86 archivos), `npm run build`, `npm run perf:check`, worker `npm run typecheck` y worker `npm test` (29 pruebas), todo aprobado. Bundle inicial: 207.450 bytes gzip JS y 21.518 bytes CSS.
+- Datos `[QA]` pendientes de eliminar desde la app: documentos `[QA] Procedimiento de recepción`, `[QA] escaneado sin texto`, `[QA] manual multipagina`, `[QA] configuración`, `[QA] guia recepcion`, `[QA] captura`, `[QA] inventario`; carpetas `[QA] Operaciones` y `[QA] Procedimientos`; categoría `[QA] Documentación operativa`; etiqueta `[QA] inventario`. La limpieza no se ejecutó porque Chrome dejó de responder.
+- F1/F2 aún tienen pendientes la vista previa por formato en PC/móvil, flujo de borrado de Storage, migración de `knowledge/*.md`, historial completo, reapertura/autoguardado, conflicto entre pestañas y revisión del PDF exportado. F3: falta probar el fallback offline de forma manual; el resto de las comprobaciones de indexación, búsqueda, versiones, archivo y PDF escaneado quedó registrado en la sección anterior.
+- Próximo paso: recuperar el control de la app, confirmar la publicación del documento `[QA]` y comprobar su disponibilidad; limpiar todos los elementos `[QA]` con el flujo normal y completar los pendientes F1/F2/F3.
