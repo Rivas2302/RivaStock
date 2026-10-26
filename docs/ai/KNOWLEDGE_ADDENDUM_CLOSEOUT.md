@@ -16,7 +16,7 @@ Se aplican las mismas reglas del prompt autónomo vigente:
 - datos `[QA]` eliminados desde la app al final;
 - registro en `docs/ai/knowledge-progress.md`.
 
-Versión del Bridge: la siguiente menor disponible (hoy 1.8.0, así que este cierre sale en 1.9.0). En consecuencia, el publicador de Facebook usará 1.10.0 o la que siga.
+Versión del Bridge: la siguiente menor disponible por entrega. C5.1 salió como 1.9.0; C5.2 usa 1.10.0. En consecuencia, el publicador de Facebook usará 1.11.0 o la que siga.
 
 Navegador para validar: extensión de ChatGPT en Chrome o Playwright con el perfil persistente `%USERPROFILE%\rivastock-qa-profile`. **No usar `computer-use`.** Todo lo que haga falta del dueño se pide **en un solo mensaje**.
 
@@ -193,7 +193,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
   - un recuerdo sobrevive al borrar su chat (C1).
 - **Commit:** `feat(ai): shared memory store across chats`
 
-### [ ] C5.2 Bridge: recordar, actualizar y usar la memoria
+### [x] C5.2 Bridge: recordar, actualizar y usar la memoria
 **Archivos:** `tools/rivastock-ai-bridge/src/memory/{retrieve,extract,filters}.ts` y cambios en `src/index.ts`.
 - **Usar (antes de responder), en `text_generation`, chat o tarea:**
   - `embedQuery(pregunta)` → `retrieve` → bloque de contexto, antepuesto al de Conocimientos:
@@ -236,7 +236,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
   6. **Recuperación sin IA:** `retrieve` usa solo el embedding local y SQL; nunca llama al proveedor.
   7. **Presupuesto en la respuesta:** como máximo 4000 caracteres de memoria por respuesta. Las preferencias fijadas van primero y no pueden ocupar más de 1000.
   8. **Métricas:** registrar por día las extracciones ejecutadas, evitadas por prefiltro, evitadas por deduplicación y hechas con el proveedor local o con Codex, y mostrarlas en la pestaña Memoria (“Uso de la memoria”).
-- Versión del Bridge: la de este cierre (1.9.0) si sale junto; si no, la siguiente.
+- Versión del Bridge: 1.10.0, porque C5.1 se entregó en 1.9.0 como una tarea separada.
 - Tests:
   - detección de órdenes explícitas;
   - validación del JSON;

@@ -29,6 +29,7 @@ const FILES = [
   '20261026020609_knowledge_chat_retrieval.sql',
   '20261026205303_ai_chat_task_deletion.sql',
   '20261026231901_ai_memory_shared_store.sql',
+  '20261026233017_ai_memory_worker_helpers.sql',
 ];
 const EMBEDDING = `[${[1, ...Array(383).fill(0)].join(',')}]`;
 
@@ -115,6 +116,31 @@ async function insertMemory(options: {
 }
 
 describe('ai_memory_shared_store migration', () => {
+  it('touches only similar active memories after a valid chat retrieval claim', async () => {
+    await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
+    const target = await insertMemory({ kind: 'fact', content: 'Los envíos salen los martes.' });
+    const summary = await insertMemory({ chat: CHAT, kind: 'summary', content: 'Se acordó el horario de entrega.' });
+    await worker(OWNER, DEVICE, JOB, 'retrieve', {
+      embedding: Array(384).fill(0), query: '¿Qué día salen los envíos?',
+    });
+    await asUser(OWNER);
+    const before = await db.query<{ last_used_at: string }>(
+      'SELECT last_used_at::text FROM public.ai_memories WHERE id = $1', [target]);
+    await new Promise((resolve) => setTimeout(resolve, 3));
+    await asService();
+    const touched = await db.query<{ touched: number }>(
+      'SELECT public.ai_memory_touch_similar($1, $2, $3, ARRAY[$4]::uuid[]) AS touched', [OWNER, DEVICE, JOB, target]);
+    expect(touched.rows[0]?.touched).toBe(1);
+    const chatSummary = await db.query<{ result: { summary: { id: string; content: string } | null } }>(
+      'SELECT public.ai_memory_chat_summary($1, $2, $3) AS result', [OWNER, DEVICE, JOB]);
+    expect(chatSummary.rows[0]?.result.summary?.id).toBe(summary);
+    expect(chatSummary.rows[0]?.result.summary?.content).toBe('Se acordó el horario de entrega.');
+    await asUser(OWNER);
+    const { rows } = await db.query<{ use_count: number; last_used_at: string }>(
+      'SELECT use_count, last_used_at::text FROM public.ai_memories WHERE id = $1', [target]);
+    expect(rows[0]?.use_count).toBe(1);
+    expect(Date.parse(rows[0]?.last_used_at ?? '')).toBeGreaterThan(Date.parse(before.rows[0]?.last_used_at ?? ''));
+  });
   it('isolates records by owner and rejects collaborator writes', async () => {
     const memoryId = await insertMemory({ kind: 'fact', content: 'Envíos a Santa Rosa los martes.' });
     await asUser(OTHER);

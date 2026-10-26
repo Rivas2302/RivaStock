@@ -104,7 +104,7 @@ Historial con línea de tiempo           + ai_function_settings (§13)          
  y capturas (F1)                                                                  + modo ensayo (F1)
 Panel de resultados (F5)                Edge Function `automation`  ◀── HTTPS ──  (capturas, pedidos de ayuda)
                                          (dispositivo FB o Bridge)
-                                                                       ◀── HTTPS ──  AI Bridge 1.8+
+                                                                       ◀── HTTPS ──  AI Bridge 1.11.0+
                                                                                      Loop D: supervisor
                                                                                      (Codex con visión, JSON cerrado)
 ```
@@ -254,7 +254,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - **Commit:** `docs(automation): define supervisor decision contract`
 
 ### [ ] T2.3 AI Bridge: loop D supervisor
-**Archivos:** `tools/rivastock-ai-bridge/src/automation/{client,supervisor,prompts,validate}.ts`, cambios en `src/index.ts` y `src/types.ts`. Versión **1.8.0**.
+**Archivos:** `tools/rivastock-ai-bridge/src/automation/{client,supervisor,prompts,validate}.ts`, cambios en `src/index.ts` y `src/types.ts`. Versión **1.11.0** (o la siguiente menor disponible al iniciar la tarea).
 - Loop independiente (como el de Conocimientos) que sondea `fb_supervisor_worker('next')` cada 2 s solo si `AI_BRIDGE_ENABLE_FB_SUPERVISOR !== 'false'`.
 - Para cada pedido:
   1. Descargar la captura (URL firmada de la Edge Function) a una carpeta temporal y borrarla en `finally`.
