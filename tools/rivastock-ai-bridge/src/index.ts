@@ -10,7 +10,7 @@ import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { executeTextGeneration } from './executeTextGeneration.ts';
-import { providerFor } from './providers.ts';
+import { cleanChatSessionDirectory, providerFor } from './providers.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { loadConfig, type AIProviderId } from './types.ts';
@@ -19,6 +19,7 @@ const POLL_INTERVAL_MS = 3000;
 const EXECUTION_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const WORKSPACE_SYNC_INTERVAL_MS = 30_000;
+const CHAT_TOMBSTONE_SYNC_INTERVAL_MS = 5 * 60_000;
 const config = loadConfig();
 const client = new BridgeClient(config.endpoint, config.token);
 const knowledgeClient = config.knowledgeEndpoint ? new KnowledgeClient(config.knowledgeEndpoint, config.token) : null;
@@ -26,6 +27,7 @@ const workerId = config.workerId ?? randomUUID();
 let stopping = false;
 let activeController: AbortController | null = null;
 let lastWorkspaceSyncAt = 0;
+let lastChatTombstoneSyncAt = 0;
 
 process.on('SIGINT', () => { stopping = true; activeController?.abort(); });
 process.on('SIGTERM', () => { stopping = true; activeController?.abort(); });
@@ -112,11 +114,29 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
   }
 }
 
+async function syncDeletedChatSessions(): Promise<void> {
+  if (!config.workerId) return;
+  if (Date.now() - lastChatTombstoneSyncAt < CHAT_TOMBSTONE_SYNC_INTERVAL_MS) return;
+  const tombstones = await client.chatTombstones(workerId);
+  const cleanedChatIds: string[] = [];
+  for (const tombstone of tombstones) {
+    try {
+      await cleanChatSessionDirectory(config.sessionDirectory, tombstone.provider, tombstone.chat_id);
+      cleanedChatIds.push(tombstone.chat_id);
+    } catch (error) {
+      process.stderr.write(`[AI Bridge] No se pudo limpiar la sesión del chat ${tombstone.chat_id}: ${reportError(error instanceof Error ? error.message : 'Error local de archivos.')}\n`);
+    }
+  }
+  if (cleanedChatIds.length) await client.acknowledgeChatTombstones(workerId, cleanedChatIds);
+  lastChatTombstoneSyncAt = Date.now();
+}
+
 async function run(): Promise<void> {
   process.stdout.write('[AI Bridge] Conectando a RivaStock por HTTPS.\n');
   while (!stopping) {
     try {
       await client.heartbeat(workerId, 'idle');
+      await syncDeletedChatSessions();
       if (Date.now() - lastWorkspaceSyncAt >= WORKSPACE_SYNC_INTERVAL_MS) {
         const files = await client.workspaceFiles(workerId);
         await syncWorkspaceFiles(config.workspaceDirectory, files);

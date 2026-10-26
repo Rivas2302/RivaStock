@@ -1,6 +1,13 @@
 import type { AIJob, AIJobContext, AIProviderId, AIWorkspaceFile } from './types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const CHAT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export interface AIChatTombstone {
+  chat_id: string;
+  provider: AIProviderId;
+  deleted_at: string;
+}
 
 export class BridgeClient {
   constructor(private readonly endpoint: string, private readonly token: string) {}
@@ -42,6 +49,29 @@ export class BridgeClient {
 
   async jobContext(workerId: string, jobId: string): Promise<AIJobContext> {
     return this.post('worker_context', { worker_id: workerId, job_id: jobId });
+  }
+
+  async chatTombstones(workerId: string): Promise<AIChatTombstone[]> {
+    const response = await this.post<{ tombstones: unknown }>('worker_chat_tombstones', { worker_id: workerId });
+    if (!Array.isArray(response.tombstones) || response.tombstones.length > 50) {
+      throw new Error('El backend devolvió lápidas de chat inválidas.');
+    }
+    return response.tombstones.map((item) => {
+      if (typeof item !== 'object' || item === null || !('chat_id' in item)
+        || typeof item.chat_id !== 'string' || !CHAT_ID_PATTERN.test(item.chat_id)
+        || !('provider' in item) || typeof item.provider !== 'string' || !isAIProviderId(item.provider)
+        || !('deleted_at' in item) || typeof item.deleted_at !== 'string') {
+        throw new Error('El backend devolvió una lápida de chat inválida.');
+      }
+      return { chat_id: item.chat_id, provider: item.provider, deleted_at: item.deleted_at };
+    });
+  }
+
+  async acknowledgeChatTombstones(workerId: string, chatIds: string[]): Promise<void> {
+    if (!chatIds.length || chatIds.length > 50 || !chatIds.every((id) => CHAT_ID_PATTERN.test(id))) {
+      throw new Error('Lista de lápidas inválida.');
+    }
+    await this.post('worker_chat_tombstones_ack', { worker_id: workerId, chat_ids: chatIds });
   }
 
   private async post<T = unknown>(action: string, fields: Record<string, unknown>): Promise<T> {

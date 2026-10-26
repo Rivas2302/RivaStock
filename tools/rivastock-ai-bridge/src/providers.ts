@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import type { BridgeConfig, AIProvider, AIProviderId, AIProviderOptions } from './types.ts';
@@ -170,8 +170,62 @@ async function chatWorkingDirectory(sessionDirectory: string | undefined, provid
   const root = resolve(sessionDirectory);
   const directory = resolve(root, provider, chatId);
   if (!directory.startsWith(`${root}${sep}`)) throw new Error('La ruta del chat no es válida.');
+  await mkdir(root, { recursive: true });
+  await ensureSafeDirectory(root);
+  await mkdir(resolve(root, provider), { recursive: true });
+  await ensureSafeDirectory(resolve(root, provider));
   await mkdir(directory, { recursive: true });
+  await ensureSafeDirectory(directory);
   return directory;
+}
+
+export async function cleanChatSessionDirectory(
+  sessionDirectory: string,
+  provider: string,
+  chatId: string,
+): Promise<void> {
+  if (provider === 'mock') return;
+  if ((provider !== 'codex' && provider !== 'claude') || !CHAT_ID_PATTERN.test(chatId)) {
+    throw new Error('Identificador de chat inválido.');
+  }
+  const root = resolve(sessionDirectory);
+  const providerDirectory = resolve(root, provider);
+  const chatDirectory = resolve(providerDirectory, chatId);
+  if (!providerDirectory.startsWith(`${root}${sep}`)
+    || !chatDirectory.startsWith(`${providerDirectory}${sep}`)) {
+    throw new Error('La ruta del chat no es válida.');
+  }
+
+  if (!await pathExists(root)) return;
+  await ensureSafeDirectory(root);
+  if (!await pathExists(providerDirectory)) return;
+  await ensureSafeDirectory(providerDirectory);
+  if (!await pathExists(chatDirectory)) return;
+  await assertNoSymlinks(chatDirectory);
+  await rm(chatDirectory, { recursive: true, force: false });
+}
+
+async function ensureSafeDirectory(path: string): Promise<void> {
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('La carpeta de sesión contiene un enlace simbólico.');
+  if (resolve(await realpath(path)) !== resolve(path)) throw new Error('La carpeta de sesión sale del directorio permitido.');
+}
+
+async function assertNoSymlinks(path: string): Promise<void> {
+  const info = await lstat(path);
+  if (info.isSymbolicLink()) throw new Error('La carpeta de sesión contiene un enlace simbólico.');
+  if (!info.isDirectory()) return;
+  for (const name of await readdir(path)) await assertNoSymlinks(resolve(path, name));
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 function validSessionId(value: string): string {
