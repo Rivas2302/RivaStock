@@ -25,8 +25,8 @@ beforeAll(async () => {
   `);
   const migrations = new URL('../../supabase/migrations/', import.meta.url);
   for (const file of readdirSync(migrations).sort()) {
-    // Knowledge migrations have their own PGlite fixture and extension setup.
-    if (file.includes('_knowledge_')) continue;
+    // Knowledge and AI memory migrations have dedicated PGlite fixtures and extensions.
+    if (file.includes('_knowledge_') || file.includes('_ai_memory_')) continue;
     // The historic 0006 assumes the text default was removed in the hosted DB.
     // Supply that prerequisite without changing the historic migration itself.
     if (file.startsWith('0006')) await sql.exec('ALTER TABLE quotes ALTER COLUMN client_id DROP DEFAULT');

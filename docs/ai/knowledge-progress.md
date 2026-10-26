@@ -546,3 +546,11 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - C1, C3 y C4 están cerradas. C2.1 está completa; C2.2 no se puede marcar como resuelta hasta que Claude responda al probe y complete las pruebas reales sin aumentar el presupuesto.
 - Se documentaron seis trazas `knowledge_organize` retenidas por el guard de borrado C1. Cualquier mecanismo para purgarlas debe preservar la auditoría y tener una ruta explícita en la app.
 - El publicador de Facebook queda planificado para AI Bridge 1.10.0, la siguiente versión menor después de 1.9.0.
+
+### C5.1 — Migración de memoria compartida — 2026-10-26
+
+- Se agregó `20261026231901_ai_memory_shared_store.sql`: tablas de recuerdos, ajustes, eventos append-only, métricas diarias y reservas breves de extracción por chat; índices HNSW y de propietario/estado/tipo; RLS de lectura por dueño y RPCs para edición, archivo, borrado, deshacer, revisión de propuestas y operaciones autenticadas del worker.
+- La recuperación excluye resúmenes del chat actual, respeta los umbrales semánticos, agrega preferencias fijadas y registra el uso. Al alcanzar 1000 recuerdos activos archiva el hecho elegible menos usado y más antiguo.
+- `src/lib/aiMemory.migration.test.ts`: 6 pruebas PGlite aprobadas, incluyendo aislamiento, límite, retrieval, modo apagado, `apply`/propuestas/undo y supervivencia del recuerdo al borrar su chat. `financialSql.test.ts` excluye esta migración porque su fixture no carga `pgvector`; la cobertura del esquema queda en la suite dedicada.
+- `npm run lint` aprobado. `npm test -- --maxWorkers=1`: 558 pruebas en 91 archivos, aprobadas (credenciales ficticias solo en variables de proceso para inicializar el cliente; no se conectó a Supabase).
+- La migración no se aplicó aún en producción. Se hará el backup completo nuevo y verificado antes del despliegue de C5.
