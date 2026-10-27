@@ -123,7 +123,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 
 ## 5. Fase 0 — Diagnóstico con datos reales
 
-### [ ] T0.1 Línea base y rama
+### [x] T0.1 Línea base y rama
 - Confirmar que Conocimientos Fase 4 está en `main`. Crear `feat/publicador-ia`. Correr las suites de línea base (`npm run verify`, `e2e/facebook-*.spec.ts`, `npm run test:facebook:concurrency`) y anotar resultados en `docs/automation/AI_PUBLISHER_PROGRESS.md`.
 - Anotar la versión instalada de la extensión, la publicada en `public/downloads` y la de `manifest.json`.
 - **Commit:** `chore(automation): record AI publisher baseline`

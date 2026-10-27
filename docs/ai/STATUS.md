@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-10-26 22:50 ART — Publicador de Facebook
+
+- **T0.1 completada:** Fase 4 de Conocimientos está en el historial de `main`; rama `feat/publicador-ia` creada desde `530ab25`. Línea base anotada en `docs/automation/AI_PUBLISHER_PROGRESS.md`.
+- **Desvío de línea base:** `npm run verify` pasó lint, 568 pruebas, build y `perf:check`, pero terminó con `npm audit` no cero (2 moderadas en Vitest y 1 alta en Vite). La primera prueba sin variables Supabase falló por entorno; con valores ficticios solo de proceso, las 568 pruebas pasaron.
+- **Desvío de línea base:** 83/91 e2e de Facebook pasaron; ocho escenarios de `facebook-receipt.spec.ts` se bloquearon antes del clic por el guard de fotos porque su fixture no tiene fotos. `npm run test:facebook:concurrency` falló al inicializar `service_role` en Postgres embebido.
+- **Extensión:** el paquete publicado y el manifest local son 0.5.15. El único dispositivo activo reportó 0.5.15 y heartbeat reciente; la extensión no aparece instalada en los perfiles Chrome locales inspeccionados, por lo que la validación en vivo requiere abrir el perfil correcto con Facebook y la extensión.
+- **Siguiente:** T0.2, informe de fallas de producción en solo lectura.
+
 ## 2026-10-26 22:40 ART
 
 - **Tarea actual:** continuar el publicador de Facebook tras cerrar C5.5.

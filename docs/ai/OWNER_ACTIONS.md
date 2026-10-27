@@ -11,3 +11,7 @@ Claude está habilitado en el Bridge, pero el dueño indicó que primero debe co
 ## AI Bridge 1.12.0 — activar la configuración de extracción
 
 El paquete con lectura de `ai_function_settings` está generado y el Edge Function `knowledge` v5 está activo. En la PC vinculada, ejecutar el actualizador habitual hasta que el Bridge muestre **1.12.0** y **Conectado**. Después confirmar desde IA → Conexión.
+
+## Ensayo en vivo del publicador de Facebook
+
+El perfil Chrome de RivaStock inspeccionado en esta PC no tiene instalada la extensión de Facebook. Cuando vuelvas, abrí el perfil con sesión de Facebook y la extensión cargada; si hace falta actualizarla o habilitar el permiso de capturas, hacelo desde Chrome y avisame. La validación en producción se limitará al modo ensayo, sin publicar.
