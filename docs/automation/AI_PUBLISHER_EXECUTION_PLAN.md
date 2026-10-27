@@ -157,7 +157,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 - Tests PGlite: aislamiento por dueño, unicidad de `seq`, límites de tamaño.
 - **Commit:** `feat(automation): add run trace schema`
 
-### [ ] T1.2 Edge Function `automation` (solo dispositivos)
+### [x] T1.2 Edge Function `automation` (solo dispositivos)
 **Archivos:** `supabase/functions/automation/index.ts`; reutilizar `supabase/functions/_shared/workerAuth.ts` de Conocimientos y agregar ahí `authorizeFacebookDevice(token)`. Esa función replica la validación del token de dispositivo de Facebook que usa `facebook_worker_v2`: buscar en las migraciones `0049`/`0050` cómo se resuelve el dueño desde `p_token` y reutilizar la misma función SQL vía RPC; no duplicar la lógica de hash.
 - Bucket privado **`automation-traces`** (migración aparte `<ts>_fb_traces_storage.sql`): límite de 1 MB por archivo, solo `image/jpeg` y sin políticas para `authenticated`. La web lee las capturas con URLs firmadas que genera la Edge Function al pedirlas el dueño.
 - Acciones para la extensión (token FB):

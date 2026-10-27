@@ -75,3 +75,29 @@ export async function authorizeWorker(
     return null;
   }
 }
+
+export type FacebookDeviceIdentity = {
+  ownerUid: string;
+  deviceId: string;
+};
+
+export async function authorizeFacebookDevice(
+  token: string,
+  serviceClient: SupabaseClient,
+): Promise<FacebookDeviceIdentity | null> {
+  if (token.length < 32 || token.length > 256) return null;
+
+  try {
+    const { data, error } = await serviceClient.rpc('facebook_trace_authorize_device', {
+      p_token: token,
+    });
+    if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+
+    const identity = data as Record<string, unknown>;
+    return isUuid(identity.owner_uid) && isUuid(identity.device_id)
+      ? { ownerUid: identity.owner_uid, deviceId: identity.device_id }
+      : null;
+  } catch {
+    return null;
+  }
+}

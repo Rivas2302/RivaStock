@@ -981,3 +981,179 @@ Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado 
 | suppliers | 12 | 12 | OK |
 
 - Total: 77 tablas, 13079 filas, 365 objetos ssets/knowledge; la variación entre copias es solo la fila singleton de b_trace_cleanup_state creada por T1.1.
+
+### Backup verificado antes de T1.2 — 2026-10-27
+
+- Ruta: `%USERPROFILE%\rivastock-backups\20261027T024455Z`.
+- Backup lógico de `public`: `schema.sql` y `data.sql`; snapshot repeatable-read compartido para conteos y dumps. Manifest de todos los objetos de Storage con bucket, nombre y tamaño; carpeta `migrations` copiada antes de aplicar T1.2 (100 archivos).
+- Verificación: 77 tablas, 13.079 filas exactas; las 77 cantidades coinciden con las filas exportadas en `data.sql`. 366 objetos de Storage. Los cuatro archivos requeridos no están vacíos.
+- SHA-256: `schema.sql` `BDB027F9A61CDA90468A99548B52134392537BF23A0C01F8CB1C529DBE52D256`; `data.sql` `D4D5995E3FD81A97361CEFE275CAB2A512E4AF9AE14DB4503BA4B0AD47158B6A`; `manifest.json` `CB153C5957A48877615B65691245774131CEB0F96141862555B613482786DDA5`; `public-table-counts.json` `E718271061034D47DFA8E826CB615A0D3B2570FAAAB9D3A39DF0810DCB258B3F`.
+- **Desvío:** Docker Desktop no está instalado. Se usó `pg_dump` 18.6 con autenticación temporal de la CLI, sin escribir la contraseña en archivos; una salida previa de la CLI mostró una credencial temporal, que expiró. `cli_login_postgres` ya no aparecía en `pg_roles`.
+
+| Tabla | Conteo exacto | Filas exportadas | Verificación |
+|---|---:|---:|---|
+| public.ai_bridge_device_secrets | 5 | 5 | OK |
+| public.ai_bridge_devices | 5 | 5 | OK |
+| public.ai_bridge_workers | 2 | 2 | OK |
+| public.ai_chat_messages | 45 | 45 | OK |
+| public.ai_chat_tombstones | 12 | 12 | OK |
+| public.ai_chats | 6 | 6 | OK |
+| public.ai_function_settings | 24 | 24 | OK |
+| public.ai_history_settings | 1 | 1 | OK |
+| public.ai_job_knowledge_sources | 0 | 0 | OK |
+| public.ai_jobs | 51 | 51 | OK |
+| public.ai_memories | 0 | 0 | OK |
+| public.ai_memory_events | 11 | 11 | OK |
+| public.ai_memory_job_claims | 0 | 0 | OK |
+| public.ai_memory_metrics | 1 | 1 | OK |
+| public.ai_memory_settings | 1 | 1 | OK |
+| public.ai_workspace_files | 0 | 0 | OK |
+| public.attributed_sale_commands | 453 | 453 | OK |
+| public.audit_events | 4647 | 4647 | OK |
+| public.cash_closings | 0 | 0 | OK |
+| public.cash_flow | 1119 | 1119 | OK |
+| public.cash_flow_allocations | 776 | 776 | OK |
+| public.catalog_config | 4 | 4 | OK |
+| public.categories | 14 | 14 | OK |
+| public.collaborators | 1 | 1 | OK |
+| public.customer_financial_commands | 0 | 0 | OK |
+| public.customer_transactions | 27 | 27 | OK |
+| public.customers | 9 | 9 | OK |
+| public.facebook_deliveries | 97 | 97 | OK |
+| public.facebook_delivery_attempt_events | 149 | 149 | OK |
+| public.facebook_delivery_attempts | 101 | 101 | OK |
+| public.facebook_delivery_decisions | 17 | 17 | OK |
+| public.facebook_delivery_reviews | 13 | 13 | OK |
+| public.facebook_device_secrets | 38 | 38 | OK |
+| public.facebook_devices | 38 | 38 | OK |
+| public.facebook_group_sync | 1 | 1 | OK |
+| public.facebook_groups | 69 | 69 | OK |
+| public.facebook_publications | 19 | 19 | OK |
+| public.facebook_worker_policy | 1 | 1 | OK |
+| public.fb_run_traces | 0 | 0 | OK |
+| public.fb_trace_cleanup_state | 1 | 1 | OK |
+| public.fb_trace_steps | 0 | 0 | OK |
+| public.inventory_holdings | 697 | 697 | OK |
+| public.inventory_operation_settings | 5 | 5 | OK |
+| public.inventory_owner_memberships | 8 | 8 | OK |
+| public.inventory_owners | 6 | 6 | OK |
+| public.inventory_product_commands | 559 | 559 | OK |
+| public.inventory_stock_commands | 300 | 300 | OK |
+| public.invitations | 5 | 5 | OK |
+| public.knowledge_ai_proposals | 0 | 0 | OK |
+| public.knowledge_assets | 0 | 0 | OK |
+| public.knowledge_categories | 0 | 0 | OK |
+| public.knowledge_chunks | 0 | 0 | OK |
+| public.knowledge_document_tags | 0 | 0 | OK |
+| public.knowledge_document_versions | 0 | 0 | OK |
+| public.knowledge_documents | 0 | 0 | OK |
+| public.knowledge_events | 113 | 113 | OK |
+| public.knowledge_folders | 0 | 0 | OK |
+| public.knowledge_index_jobs | 0 | 0 | OK |
+| public.knowledge_search_requests | 8 | 8 | OK |
+| public.knowledge_settings | 1 | 1 | OK |
+| public.knowledge_tags | 0 | 0 | OK |
+| public.orders | 2 | 2 | OK |
+| public.price_list_items | 194 | 194 | OK |
+| public.price_lists | 1 | 1 | OK |
+| public.price_ranges | 6 | 6 | OK |
+| public.products | 429 | 429 | OK |
+| public.profiles | 5 | 5 | OK |
+| public.quotes | 1 | 1 | OK |
+| public.reseller_supplier_list_items | 0 | 0 | OK |
+| public.reseller_supplier_lists | 0 | 0 | OK |
+| public.sale_item_allocations | 791 | 791 | OK |
+| public.sale_items | 790 | 790 | OK |
+| public.sales | 774 | 774 | OK |
+| public.stock_intakes | 160 | 160 | OK |
+| public.stock_movements | 453 | 453 | OK |
+| public.supplier_orders | 1 | 1 | OK |
+| public.suppliers | 12 | 12 | OK |
+
+### Backup verificado antes de T1.2 — índices de cuota, 2026-10-27
+
+- Ruta: `%USERPROFILE%\rivastock-backups\20261027T025322Z`.
+- Backup lógico de `public` con snapshot repeatable-read: 78 tablas y 13.079 filas; las 78 cantidades exactas coinciden con las filas exportadas. Manifest de Storage: 366 objetos. Se copiaron 101 migraciones antes de aplicar la migración de índices.
+- `schema.sql` 737.893 B; `data.sql` 38.038.757 B; `manifest.json` 66.415 B; `public-table-counts.json` 9.591 B. Todos no vacíos.
+- SHA-256: `schema.sql` `6AF4741DF318237FD15F94F07E75A720572812128163681E4B5D853BC14406D7`; `data.sql` `FC861793BC9637353F924D2CB47367787F40BABF5C7F1369E8D9D2AF2403CACF`; `manifest.json` `636282AD940341910047DD6D73A8C932ADFF63CD69F881BFD5CA1860F6E8A8B7`; `public-table-counts.json` `23BC609D177A8F346E5575216E8247BB5B19C23FCA2F519076C0769722458E76`.
+
+| Tabla | Conteo exacto | Filas exportadas | Verificación |
+|---|---:|---:|---|
+| public.ai_bridge_device_secrets | 5 | 5 | OK |
+| public.ai_bridge_devices | 5 | 5 | OK |
+| public.ai_bridge_workers | 2 | 2 | OK |
+| public.ai_chat_messages | 45 | 45 | OK |
+| public.ai_chat_tombstones | 12 | 12 | OK |
+| public.ai_chats | 6 | 6 | OK |
+| public.ai_function_settings | 24 | 24 | OK |
+| public.ai_history_settings | 1 | 1 | OK |
+| public.ai_job_knowledge_sources | 0 | 0 | OK |
+| public.ai_jobs | 51 | 51 | OK |
+| public.ai_memories | 0 | 0 | OK |
+| public.ai_memory_events | 11 | 11 | OK |
+| public.ai_memory_job_claims | 0 | 0 | OK |
+| public.ai_memory_metrics | 1 | 1 | OK |
+| public.ai_memory_settings | 1 | 1 | OK |
+| public.ai_workspace_files | 0 | 0 | OK |
+| public.attributed_sale_commands | 453 | 453 | OK |
+| public.audit_events | 4647 | 4647 | OK |
+| public.cash_closings | 0 | 0 | OK |
+| public.cash_flow | 1119 | 1119 | OK |
+| public.cash_flow_allocations | 776 | 776 | OK |
+| public.catalog_config | 4 | 4 | OK |
+| public.categories | 14 | 14 | OK |
+| public.collaborators | 1 | 1 | OK |
+| public.customer_financial_commands | 0 | 0 | OK |
+| public.customer_transactions | 27 | 27 | OK |
+| public.customers | 9 | 9 | OK |
+| public.facebook_deliveries | 97 | 97 | OK |
+| public.facebook_delivery_attempt_events | 149 | 149 | OK |
+| public.facebook_delivery_attempts | 101 | 101 | OK |
+| public.facebook_delivery_decisions | 17 | 17 | OK |
+| public.facebook_delivery_reviews | 13 | 13 | OK |
+| public.facebook_device_secrets | 38 | 38 | OK |
+| public.facebook_devices | 38 | 38 | OK |
+| public.facebook_group_sync | 1 | 1 | OK |
+| public.facebook_groups | 69 | 69 | OK |
+| public.facebook_publications | 19 | 19 | OK |
+| public.facebook_worker_policy | 1 | 1 | OK |
+| public.fb_run_traces | 0 | 0 | OK |
+| public.fb_trace_cleanup_state | 1 | 1 | OK |
+| public.fb_trace_steps | 0 | 0 | OK |
+| public.fb_trace_storage_reservations | 0 | 0 | OK |
+| public.inventory_holdings | 697 | 697 | OK |
+| public.inventory_operation_settings | 5 | 5 | OK |
+| public.inventory_owner_memberships | 8 | 8 | OK |
+| public.inventory_owners | 6 | 6 | OK |
+| public.inventory_product_commands | 559 | 559 | OK |
+| public.inventory_stock_commands | 300 | 300 | OK |
+| public.invitations | 5 | 5 | OK |
+| public.knowledge_ai_proposals | 0 | 0 | OK |
+| public.knowledge_assets | 0 | 0 | OK |
+| public.knowledge_categories | 0 | 0 | OK |
+| public.knowledge_chunks | 0 | 0 | OK |
+| public.knowledge_document_tags | 0 | 0 | OK |
+| public.knowledge_document_versions | 0 | 0 | OK |
+| public.knowledge_documents | 0 | 0 | OK |
+| public.knowledge_events | 113 | 113 | OK |
+| public.knowledge_folders | 0 | 0 | OK |
+| public.knowledge_index_jobs | 0 | 0 | OK |
+| public.knowledge_search_requests | 8 | 8 | OK |
+| public.knowledge_settings | 1 | 1 | OK |
+| public.knowledge_tags | 0 | 0 | OK |
+| public.orders | 2 | 2 | OK |
+| public.price_list_items | 194 | 194 | OK |
+| public.price_lists | 1 | 1 | OK |
+| public.price_ranges | 6 | 6 | OK |
+| public.products | 429 | 429 | OK |
+| public.profiles | 5 | 5 | OK |
+| public.quotes | 1 | 1 | OK |
+| public.reseller_supplier_list_items | 0 | 0 | OK |
+| public.reseller_supplier_lists | 0 | 0 | OK |
+| public.sale_item_allocations | 791 | 791 | OK |
+| public.sale_items | 790 | 790 | OK |
+| public.sales | 774 | 774 | OK |
+| public.stock_intakes | 160 | 160 | OK |
+| public.stock_movements | 453 | 453 | OK |
+| public.supplier_orders | 1 | 1 | OK |
+| public.suppliers | 12 | 12 | OK |
