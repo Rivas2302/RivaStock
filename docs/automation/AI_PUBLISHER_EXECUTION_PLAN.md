@@ -128,7 +128,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 - Anotar la versión instalada de la extensión, la publicada en `public/downloads` y la de `manifest.json`.
 - **Commit:** `chore(automation): record AI publisher baseline`
 
-### [ ] T0.2 Informe de fallas de producción (solo lectura)
+### [x] T0.2 Informe de fallas de producción (solo lectura)
 - Con SQL de solo lectura en producción, por entrega y por intento: estado final, `last_error_code`, mensaje, mecanismo, versión de la extensión, si hubo clic autorizado y duración. Período: todo el historial.
 - Generar `docs/automation/FAILURE_REPORT.md` con:
   - el ranking de causas (preparación fallida por paso, resultado desconocido por mecanismo, rechazos de evidencia, tiempos de espera);
@@ -280,6 +280,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - La autorización y el clic final no cambian (§2.3).
 - Implementación técnica: `form-actions.js` se ejecuta con `executeScript` y no puede esperar respuestas de red de forma limpia. Dividir cada acción en **subpasos reanudables**: el script devuelve `{needsSupervision, stepName, intent, domSummary}` al worker, el worker consulta al supervisor y vuelve a inyectar con `{decision}`. Documentar el protocolo en `SUPERVISOR_CONTRACT.md`.
 - Tests Playwright con fixtures donde una etiqueta cambia (por ejemplo, “Categoría” → “Categoría del artículo”): sin supervisor falla; con un supervisor falso que devuelve el índice correcto, completa el paso y crea la pista; en la segunda corrida usa la pista sin pedir supervisión.
+- Hallazgos de T0.2: agregar regresiones para entradas `null` en el baseline de `own_content_snapshot` y para una lista incompleta de anuncios existentes. El filtro debe ser null-safe; una lista incompleta debe seguir bloqueando el envío. Ninguna pista ni decisión de IA puede sustituir la evidencia determinista.
 - **Commit:** `feat(facebook): self-heal form steps with AI supervision and learned hints`
 
 ### [ ] T2.5 Cierre de Fase 2 con prueba en vivo
