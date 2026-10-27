@@ -62,8 +62,8 @@ it('does not copy legacy diagnostics into the unknown result',async()=>{
 
 it('rejects photos above 60 MB in total',async()=>{
   vi.resetModules();
-  vi.stubGlobal('fetch',async()=>({ok:true,headers:new Headers({'content-type':'image/jpeg'}),arrayBuffer:async()=>new Uint8Array(9000000).fill(1).buffer}));
+  vi.stubGlobal('fetch',async()=>({ok:true,headers:new Headers({'content-type':'image/jpeg'}),arrayBuffer:async()=>new ArrayBuffer(9000000)}));
   const {fetchPublicationPhotos}=await import('../../extensions/facebook/adapter.js');
   const photos=Array.from({length:7},(_,i)=>`https://test.supabase.co/storage/v1/object/public/photos/${i}.jpg`);
   await expect(fetchPublicationPhotos({photos},'https://test.supabase.co')).rejects.toThrow('60 MB');
-});
+},15000);

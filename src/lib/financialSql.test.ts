@@ -27,6 +27,16 @@ beforeAll(async () => {
   for (const file of readdirSync(migrations).sort()) {
     // Knowledge and AI memory migrations have dedicated PGlite fixtures and extensions.
     if (file.includes('_knowledge_') || file.includes('_ai_memory_')) continue;
+    if (file === '20261027020952_fb_run_traces.sql') {
+      // The trace migration reuses Conocimientos' owner-only helper; this suite skips its vector-backed migration.
+      await sql.exec(`CREATE OR REPLACE FUNCTION public.knowledge_owner_for(p_action text) RETURNS uuid
+        LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+          SELECT CASE WHEN auth.uid() IS NULL OR p_action NOT IN ('read','write','delete') THEN NULL
+            WHEN NOT EXISTS (SELECT 1 FROM public.collaborators WHERE user_uid=auth.uid() AND revoked_at IS NULL)
+              THEN auth.uid()
+            ELSE NULL END
+        $$`);
+    }
     // The historic 0006 assumes the text default was removed in the hosted DB.
     // Supply that prerequisite without changing the historic migration itself.
     if (file.startsWith('0006')) await sql.exec('ALTER TABLE quotes ALTER COLUMN client_id DROP DEFAULT');

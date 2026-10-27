@@ -15,7 +15,7 @@ try{
  for(let i=0;i<3;i++){const c=cluster.getPgClient('rivastock_facebook_audit','127.0.0.1');await c.connect();clients.push(c);await c.query("SET statement_timeout='8s'; SET lock_timeout='6s'");}
  const [admin,a,b]=clients;
  evidence.engine=(await admin.query('SELECT version()')).rows[0].version;
- await admin.query("CREATE ROLE anon;CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;CREATE TABLE profiles(id uuid PRIMARY KEY);CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);GRANT USAGE ON SCHEMA public,auth TO anon,authenticated;");
+ await admin.query("CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;CREATE TABLE profiles(id uuid PRIMARY KEY);CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);GRANT USAGE ON SCHEMA public,auth TO anon,authenticated,service_role;");
  const membership=await readFile('supabase/migrations/0019_collaborators_schema.sql','utf8');await admin.query(membership.slice(0,membership.indexOf('-- ─────────── handle_new_user')));
  for(const file of (await readdir('supabase/migrations')).filter(f=>/^00(49|5[0-9]|6[0-9]|7[0-9])_/.test(f)).sort())await admin.query(await readFile('supabase/migrations/'+file,'utf8'));
  const owner=crypto.randomUUID(),other=crypto.randomUUID(),staff=crypto.randomUUID();

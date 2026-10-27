@@ -144,7 +144,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 
 **Resultado:** cada ejecución, real o de ensayo, deja una línea de tiempo con pasos, datos y capturas, que el dueño y la IA pueden ver. Existe un modo ensayo que recorre el flujo completo sin publicar.
 
-### [ ] T1.1 Migración: trazas
+### [x] T1.1 Migración: trazas
 **Archivo:** `supabase/migrations/<ts>_fb_run_traces.sql`
 - `fb_run_traces`:
   - columnas: `id`, `user_id` (dueño), `device_id`, `delivery_id` (null en ensayo), `attempt_id` (null en ensayo), `mode` (`real`|`rehearsal`), `mechanism`, `extension_version`, `started_at`, `finished_at`, `outcome` (`completed`|`aborted`|`failed`|`rehearsal_ok`), `summary jsonb`;

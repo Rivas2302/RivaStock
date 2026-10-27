@@ -2,6 +2,16 @@
 
 Resolver estas acciones juntas cuando ya no quede trabajo independiente. No compartir contraseñas, claves, sesiones ni archivos `.env`.
 
+## Seguridad — rotar la `service_role` legacy expuesta por la CLI
+
+Al inspeccionar las claves con `supabase projects api-keys`, la CLI mostró la clave legacy `service_role` completa en una salida de herramienta. Se considera comprometida; no se volvió a usar y no se guardó en archivos versionados ni en el backup. No desactives la clave anterior antes de migrar y comprobar todos sus consumidores.
+
+1. En Supabase Dashboard → Settings → API Keys, crear una nueva secret key.
+2. Migrar los consumidores de backend que aún dependan de la clave legacy y verificar el funcionamiento de Edge Functions/Bridge.
+3. Solo cuando todos usen la nueva clave, desactivar las claves legacy `anon`/`service_role`.
+
+Seguir la guía oficial de [rotación de una clave comprometida](https://supabase.com/docs/guides/getting-started/api-keys#rotate-a-leaked-or-compromised-key).
+
 ## C2.2 — Habilitar una prueba real de Claude Code
 
 Claude está habilitado en el Bridge, pero el dueño indicó que primero debe completar su inicio interactivo. No se volverá a intentar desde el worker hasta que termine este paso.

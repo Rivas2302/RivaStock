@@ -807,3 +807,177 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - **Límites:** los diálogos son sintéticos y no contienen datos de clientes; el extractor sí fue real con Codex. La recuperación se simuló localmente con embeddings reales, top_k=5 y umbral 0,75; esta evaluación no mide latencia, red, permisos RLS ni el tráfico de la app de producción.
 - **Configuración final solicitada:** Codex · GPT-6 Luna · Bajo. La migración creada para `ai_function_settings` agrega y siembra `ai_memory_extract`; su despliegue y lectura por el Bridge se documentan como pendiente hasta que la migración, Edge Function y Bridge 1.12.0 queden activos.
 - Archivo completo y auditable (incluye resultado por caso, sin contenido conversacional): 	ools/rivastock-ai-bridge/test/memory-eval/results/20261027T012110489Z-low.json.
+### Backups verificados del publicador — T1.1 — 2026-10-27
+
+Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado en la ruta indicada; se verificó conectividad directa a Postgres con `psql` y se generaron dumps con `pg_dump` 18.6 usando los parámetros que imprime `supabase db dump --dry-run`, sin registrar credenciales. En ambos casos se comparó el conteo exacto antes/después del dump y se contó cada `INSERT` exportado por tabla. También se copiaron las migraciones y se inventariaron nombres/tamaños de objetos en `assets` y `knowledge.
+
+#### 20261027T020458Z — antes de 20261027020952_fb_run_traces
+
+- Archivo externo: `C:\Users\USER\rivastock-backups\20261027T020458Z`; schema 904440 B; data 39088597 B; migraciones copiadas 97; objetos Storage enumerados 365. Todos los archivos requeridos están presentes y no vacíos.
+- Conteos exactos y filas SQL exportadas coinciden en todas las tablas `public`:
+
+| Tabla | Conteo exacto | Filas exportadas | Resultado |
+|---|---:|---:|---|
+| ai_bridge_device_secrets | 5 | 5 | OK |
+| ai_bridge_devices | 5 | 5 | OK |
+| ai_bridge_workers | 2 | 2 | OK |
+| ai_chat_messages | 45 | 45 | OK |
+| ai_chat_tombstones | 12 | 12 | OK |
+| ai_chats | 6 | 6 | OK |
+| ai_function_settings | 24 | 24 | OK |
+| ai_history_settings | 1 | 1 | OK |
+| ai_job_knowledge_sources | 0 | 0 | OK |
+| ai_jobs | 51 | 51 | OK |
+| ai_memories | 0 | 0 | OK |
+| ai_memory_events | 11 | 11 | OK |
+| ai_memory_job_claims | 0 | 0 | OK |
+| ai_memory_metrics | 1 | 1 | OK |
+| ai_memory_settings | 1 | 1 | OK |
+| ai_workspace_files | 0 | 0 | OK |
+| attributed_sale_commands | 453 | 453 | OK |
+| audit_events | 4647 | 4647 | OK |
+| cash_closings | 0 | 0 | OK |
+| cash_flow | 1119 | 1119 | OK |
+| cash_flow_allocations | 776 | 776 | OK |
+| catalog_config | 4 | 4 | OK |
+| categories | 14 | 14 | OK |
+| collaborators | 1 | 1 | OK |
+| customer_financial_commands | 0 | 0 | OK |
+| customer_transactions | 27 | 27 | OK |
+| customers | 9 | 9 | OK |
+| facebook_deliveries | 97 | 97 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | OK |
+| facebook_delivery_attempts | 101 | 101 | OK |
+| facebook_delivery_decisions | 17 | 17 | OK |
+| facebook_delivery_reviews | 13 | 13 | OK |
+| facebook_device_secrets | 38 | 38 | OK |
+| facebook_devices | 38 | 38 | OK |
+| facebook_group_sync | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | OK |
+| facebook_publications | 19 | 19 | OK |
+| facebook_worker_policy | 1 | 1 | OK |
+| inventory_holdings | 697 | 697 | OK |
+| inventory_operation_settings | 5 | 5 | OK |
+| inventory_owner_memberships | 8 | 8 | OK |
+| inventory_owners | 6 | 6 | OK |
+| inventory_product_commands | 559 | 559 | OK |
+| inventory_stock_commands | 300 | 300 | OK |
+| invitations | 5 | 5 | OK |
+| knowledge_ai_proposals | 0 | 0 | OK |
+| knowledge_assets | 0 | 0 | OK |
+| knowledge_categories | 0 | 0 | OK |
+| knowledge_chunks | 0 | 0 | OK |
+| knowledge_document_tags | 0 | 0 | OK |
+| knowledge_document_versions | 0 | 0 | OK |
+| knowledge_documents | 0 | 0 | OK |
+| knowledge_events | 113 | 113 | OK |
+| knowledge_folders | 0 | 0 | OK |
+| knowledge_index_jobs | 0 | 0 | OK |
+| knowledge_search_requests | 8 | 8 | OK |
+| knowledge_settings | 1 | 1 | OK |
+| knowledge_tags | 0 | 0 | OK |
+| orders | 2 | 2 | OK |
+| price_list_items | 194 | 194 | OK |
+| price_lists | 1 | 1 | OK |
+| price_ranges | 6 | 6 | OK |
+| products | 429 | 429 | OK |
+| profiles | 5 | 5 | OK |
+| quotes | 1 | 1 | OK |
+| reseller_supplier_list_items | 0 | 0 | OK |
+| reseller_supplier_lists | 0 | 0 | OK |
+| sale_item_allocations | 791 | 791 | OK |
+| sale_items | 790 | 790 | OK |
+| sales | 774 | 774 | OK |
+| stock_intakes | 160 | 160 | OK |
+| stock_movements | 453 | 453 | OK |
+| supplier_orders | 1 | 1 | OK |
+| suppliers | 12 | 12 | OK |
+
+- Total: 74 tablas, 13078 filas, 365 objetos ssets/knowledge; la variación entre copias es solo la fila singleton de b_trace_cleanup_state creada por T1.1.
+
+#### 20261027T022055Z — antes de 20261027021953_fb_run_trace_fk_indexes
+
+- Archivo externo: `C:\Users\USER\rivastock-backups\20261027T022055Z`; schema 922922 B; data 39088952 B; migraciones copiadas 99; objetos Storage enumerados 365. Todos los archivos requeridos están presentes y no vacíos.
+- Conteos exactos y filas SQL exportadas coinciden en todas las tablas `public`:
+
+| Tabla | Conteo exacto | Filas exportadas | Resultado |
+|---|---:|---:|---|
+| ai_bridge_device_secrets | 5 | 5 | OK |
+| ai_bridge_devices | 5 | 5 | OK |
+| ai_bridge_workers | 2 | 2 | OK |
+| ai_chat_messages | 45 | 45 | OK |
+| ai_chat_tombstones | 12 | 12 | OK |
+| ai_chats | 6 | 6 | OK |
+| ai_function_settings | 24 | 24 | OK |
+| ai_history_settings | 1 | 1 | OK |
+| ai_job_knowledge_sources | 0 | 0 | OK |
+| ai_jobs | 51 | 51 | OK |
+| ai_memories | 0 | 0 | OK |
+| ai_memory_events | 11 | 11 | OK |
+| ai_memory_job_claims | 0 | 0 | OK |
+| ai_memory_metrics | 1 | 1 | OK |
+| ai_memory_settings | 1 | 1 | OK |
+| ai_workspace_files | 0 | 0 | OK |
+| attributed_sale_commands | 453 | 453 | OK |
+| audit_events | 4647 | 4647 | OK |
+| cash_closings | 0 | 0 | OK |
+| cash_flow | 1119 | 1119 | OK |
+| cash_flow_allocations | 776 | 776 | OK |
+| catalog_config | 4 | 4 | OK |
+| categories | 14 | 14 | OK |
+| collaborators | 1 | 1 | OK |
+| customer_financial_commands | 0 | 0 | OK |
+| customer_transactions | 27 | 27 | OK |
+| customers | 9 | 9 | OK |
+| facebook_deliveries | 97 | 97 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | OK |
+| facebook_delivery_attempts | 101 | 101 | OK |
+| facebook_delivery_decisions | 17 | 17 | OK |
+| facebook_delivery_reviews | 13 | 13 | OK |
+| facebook_device_secrets | 38 | 38 | OK |
+| facebook_devices | 38 | 38 | OK |
+| facebook_group_sync | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | OK |
+| facebook_publications | 19 | 19 | OK |
+| facebook_worker_policy | 1 | 1 | OK |
+| fb_run_traces | 0 | 0 | OK |
+| fb_trace_cleanup_state | 1 | 1 | OK |
+| fb_trace_steps | 0 | 0 | OK |
+| inventory_holdings | 697 | 697 | OK |
+| inventory_operation_settings | 5 | 5 | OK |
+| inventory_owner_memberships | 8 | 8 | OK |
+| inventory_owners | 6 | 6 | OK |
+| inventory_product_commands | 559 | 559 | OK |
+| inventory_stock_commands | 300 | 300 | OK |
+| invitations | 5 | 5 | OK |
+| knowledge_ai_proposals | 0 | 0 | OK |
+| knowledge_assets | 0 | 0 | OK |
+| knowledge_categories | 0 | 0 | OK |
+| knowledge_chunks | 0 | 0 | OK |
+| knowledge_document_tags | 0 | 0 | OK |
+| knowledge_document_versions | 0 | 0 | OK |
+| knowledge_documents | 0 | 0 | OK |
+| knowledge_events | 113 | 113 | OK |
+| knowledge_folders | 0 | 0 | OK |
+| knowledge_index_jobs | 0 | 0 | OK |
+| knowledge_search_requests | 8 | 8 | OK |
+| knowledge_settings | 1 | 1 | OK |
+| knowledge_tags | 0 | 0 | OK |
+| orders | 2 | 2 | OK |
+| price_list_items | 194 | 194 | OK |
+| price_lists | 1 | 1 | OK |
+| price_ranges | 6 | 6 | OK |
+| products | 429 | 429 | OK |
+| profiles | 5 | 5 | OK |
+| quotes | 1 | 1 | OK |
+| reseller_supplier_list_items | 0 | 0 | OK |
+| reseller_supplier_lists | 0 | 0 | OK |
+| sale_item_allocations | 791 | 791 | OK |
+| sale_items | 790 | 790 | OK |
+| sales | 774 | 774 | OK |
+| stock_intakes | 160 | 160 | OK |
+| stock_movements | 453 | 453 | OK |
+| supplier_orders | 1 | 1 | OK |
+| suppliers | 12 | 12 | OK |
+
+- Total: 77 tablas, 13079 filas, 365 objetos ssets/knowledge; la variación entre copias es solo la fila singleton de b_trace_cleanup_state creada por T1.1.

@@ -26,7 +26,7 @@ for(const scenario of ['toast','permalink','wrong-author','wrong-text','missing-
       };
       </script>`}));
     await page.goto('https://www.facebook.com/groups/123');
-    const baseline=['flow:fixture','group:/groups/123','author:111','photos:1','prepared-photos:'+JSON.stringify([photoSrc]),...(scenario==='old-post'?['https://www.facebook.com/groups/123/posts/987']:[])];
+    const baseline=['flow:fixture','group:/groups/123','author:111','photos:1','prepared-photos:'+JSON.stringify(['file:rivastock-1.png']),...(scenario==='old-post'?['https://www.facebook.com/groups/123/posts/987']:[])];
     const content={groupText:'Monopoly',selection:{marketplace:false}};
     const run=(action:string)=>page.evaluate(({source,content,baseline,action})=>new Function('return ('+source+')')()(action,content,[],baseline),{source:facebookFormAction.toString(),content,baseline,action});
     expect(await run('submit')).toEqual({clicked:true});

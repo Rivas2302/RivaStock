@@ -20,3 +20,17 @@
 - `FAILURE_REPORT.md` incluye estados por mecanismo, tasa de éxito estricta, duraciones, grupos anonimizados, cinco casos con mensajes y su asignación a F2/F3. El esquema no conserva un mensaje ni una versión de extensión inmutables por intento: se informó el mensaje actual de la entrega y la versión actual del dispositivo, sin presentarlos como snapshots históricos.
 - Cambio de plan derivado: T2.4 incluye pruebas para baseline nulo en `own_content_snapshot` y lista incompleta de anuncios; los dos casos siguen bloqueados y nunca pueden generar evidencia por decisión de IA.
 - No se modificó la base, no se descargaron datos y no se escribieron nombres de grupos, URLs ni identificadores de producción en el reporte.
+
+## 2026-10-26 — T1.1 Esquema de trazas
+
+- Aplicadas en `RivaStock_Oficial` únicamente las migraciones T1.1 `20261027020952_fb_run_traces` y `20261027021953_fb_run_trace_fk_indexes`; ambas figuran aplicadas en `supabase migration list --linked`.
+- Se agregaron `fb_run_traces`, `fb_trace_steps` y una tabla interna singleton para limitar a una vez por hora la selección de expiración entre instancias Edge. RLS está activo; lecturas de trazas solo para el dueño sin colaboración activa; inserción directa de usuarios y acceso directo del `service_role` a tablas están denegados. Las cinco RPC de escritura/retención solo pueden ejecutarse con `service_role`.
+- La limpieza primero devuelve IDs y rutas vencidas; la Edge Function deberá borrar los objetos de Storage y luego confirmar el borrado en Postgres. Los pasos nuevos y resultados respetan límites; una secuencia es única por traza.
+- Tests PGlite: aislamiento de dueño/colaborador, permisos de tabla/RPC, vínculos de dueño/dispositivo/entrega/intento, modo ensayo, unicidad, límites, cierre idempotente, retención, borrado en cascada e índices.
+- **Backup pre-migración 1:** `%USERPROFILE%\rivastock-backups\20261027T020458Z`; 74 tablas, 13.078 filas, 365 objetos Storage, 97 migraciones copiadas. `schema.sql` 904.440 B, `data.sql` 39.088.597 B y manifest no vacíos; conteo exacto y sentencias exportadas coinciden tabla por tabla. Detalle y SHA-256 en `docs/ai/knowledge-progress.md`.
+- **Backup pre-migración 2:** `%USERPROFILE%\rivastock-backups\20261027T022055Z`; 77 tablas, 13.079 filas, 365 objetos Storage, 99 migraciones copiadas. Contiene las tres tablas T1.1; la fila adicional es el estado singleton de retención. Conteo exacto y sentencias exportadas coinciden tabla por tabla. Detalle y SHA-256 en `docs/ai/knowledge-progress.md`.
+- **Desvío de backup:** Docker Desktop no está instalado en `C:\Program Files\Docker\Docker\Docker Desktop.exe`. La conexión Postgres sí respondió; se usó `pg_dump` 18.6 con la conexión emitida por `supabase db dump --dry-run` y `psql` para los conteos exactos. La contraseña de conexión quedó solo en memoria del proceso.
+- `npm run lint`, `npm test` (574/574), `npm run test:facebook:concurrency` (20 iteraciones) y `npx playwright test e2e/facebook` (91/91) pasan. Se corrigieron la fixture de fotos de `facebook-receipt`, el rol `service_role` ausente en el harness de concurrencia y el timeout del test de 63 MB bajo carga.
+- Advisories posteriores: quedaron solo hallazgos `INFO` esperables por la tabla interna de retención sin permisos/políticas y los índices aún no usados en tablas vacías; se agregaron los índices faltantes de las FK a dispositivo e intento.
+- **Commit de tarea:** `feat(automation): add run trace schema`.
+- **Siguiente:** T1.2, Edge Function `automation` y almacenamiento privado de trazas.
