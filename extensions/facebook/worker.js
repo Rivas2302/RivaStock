@@ -2,14 +2,16 @@ import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
 import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
 import { closeAutomationTab } from './automation-tabs.js';
+import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep } from './recorder.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
+void flushTraceQueue();
 
 let polling = false;
 let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.15';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.16';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -171,19 +173,24 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(activeJob){
       if(activeJob.deviceId!==connection.deviceId||activeJob.projectUrl!==connection.url){await chrome.storage.local.set({paused:true,status:'Hay un envío de otra conexión pendiente de revisar. No se ejecutó con esta cuenta.'});return;}
       // Captured evidence must be persisted before asking whether the attempt was retired.
-      if(activeJob.stage==='result'){await persistResult(connection,activeJob,serverFeatures);drain=true;return;}
+      if(activeJob.stage==='result'){await finishTrace('completed',{result:'captured'});await persistResult(connection,activeJob,serverFeatures);drain=true;return;}
       try{
         if(activeJob.attemptId){
+          await startTrace('real',{...activeJob.job,attemptId:activeJob.attemptId});
           const recovery=await workerRpc(connection,'recover',{protocol:2,delivery:activeJob.job.id,attempt:activeJob.attemptId});
-          if(recovery?.action==='retire'){await closeAutomationTab(activeJob.tabId);await chrome.storage.local.remove('activeJob');await chrome.storage.local.set({status:'Intento anterior registrado para revisión; la cola puede continuar.'});drain=true;return;}
+          if(recovery?.action==='retire'){await finishTrace('aborted',{reason:'attempt_retired'});await closeAutomationTab(activeJob.tabId);await chrome.storage.local.remove('activeJob');await chrome.storage.local.set({status:'Intento anterior registrado para revisión; la cola puede continuar.'});drain=true;return;}
           if(recovery?.action!=='reconcile_only')throw new Error('ATTEMPT_STALE');
         }else if(activeJob.stage!=='submitting'&&activeJob.stage!=='authorizing'){
+          await finishTrace('aborted',{reason:'preparation_interrupted'});
           await markAttention(connection,activeJob,'Preparación interrumpida. No se repitió el envío.',{serverFeatures});drain=true;return;
         }
+        await recordTraceStep('reconciliation_started','ok',{capture:false});
         const result=await facebookAdapter.reconcile(activeJob);
-        const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
+        const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
       }catch(error){
         if((await chrome.storage.local.get('activeJob')).activeJob?.stage==='result')throw error;
+        if(activeJob.tabId)await recordTraceStep('worker_failure','failed',{tabId:activeJob.tabId,capture:true});
+        await finishTrace(['submitting','authorizing'].includes(activeJob.stage)?'failed':'aborted',{stage:activeJob.stage});
         await markAttention(connection,activeJob,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,receipt:error.receipt,serverFeatures});drain=true;
       }
       return;
@@ -204,6 +211,8 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     const identity={schemaVersion:2,claimKey,attemptId:job.attemptId,protocol};
     let active={...identity,job,deviceId:connection.deviceId,projectUrl:connection.url,stage:'preparing'};
     await chrome.storage.local.set({activeJob:active});await chrome.storage.local.remove('pendingClaim');
+    await startTrace('real',{...job,attemptId:job.attemptId});
+    await recordTraceStep('job_claimed','ok',{capture:false});
     if(job.recovered){pendingSignal={source:'drain',received:performance.now(),receivedAt:new Date().toISOString()};return;}
     try{
       await chrome.storage.local.set({status:'Preparando '+(job.destination.name??'publicación')+' en una pestaña de Facebook…'});
@@ -212,27 +221,35 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       const timing={source:signal.source,receivedAt:signal.receivedAt,receipt_to_claim_ms:preparationStart-signal.received,claim_rpc_ms:preparationStart-claimStart,receipt_to_preparation_ms:preparationStart-signal.received};
       const reportTiming=()=>rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:'latency',p_delivery:job.id,p_message:JSON.stringify(timing)}).catch(()=>{});
       if(protocol<2)void reportTiming();
+      await recordTraceStep('facebook_navigation_started','ok',{capture:false});
       active={...await facebookAdapter.prepare(job,{...connection,journalIdentity:identity,onTiming:(phase,elapsed)=>{timing[phase]=elapsed;}}),...identity};
       timing.preparation_ms=performance.now()-preparationStart;if(protocol<2)void reportTiming();
       await chrome.storage.local.set({activeJob:active});
-      if(active.existing){const completed={...active,stage:'result'};await chrome.storage.local.set({activeJob:completed});await saveResult(connection,completed);drain=true;return;}
+      await recordTraceStep('form_prepared','ok',{tabId:active.tabId,capture:true});
+      if(active.existing){const completed={...active,stage:'result'};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result:'existing_content'});await saveResult(connection,completed);drain=true;return;}
       const before=await chrome.storage.local.get(['paused','connection']);
       if(before.paused!==false||before.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
       await facebookAdapter.action(active.tabId,'validate_submit',job.content,[],active.baseline);
+      await recordTraceStep('final_validation_passed','ok',{capture:false});
       const afterValidation=await chrome.storage.local.get(['paused','connection']);
       if(afterValidation.paused!==false||afterValidation.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
       await chrome.storage.local.set({activeJob:{...active,stage:'authorizing'}});
+      await recordTraceStep('checkpoint_requested','ok',{capture:false});
       const checkpoint=await workerRpc(connection,'checkpoint',{protocol,delivery:job.id,attempt:job.attemptId});
       if(checkpoint?.authorized!==true||(protocol>=2&&checkpoint.phase!=='authorized_now'))throw new Error('RESULT_UNKNOWN: no se concedió una nueva autorización de envío.');
+      await recordTraceStep('checkpoint_authorized','ok',{capture:false});
       await chrome.storage.local.set({activeJob:{...active,stage:'submitting'},status:'Enviando a Facebook; resultado todavía sin confirmar…'});
       // A click that navigates destroys the frame before replying; reconcile instead of failing.
       try{await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);}
       catch(error){if(errorCode(error)!=='TAB_LOST'&&error.message!=='No se pudo verificar el formulario de Facebook.')throw error;}
+      await recordTraceStep('post_click_observation','ok',{tabId:active.tabId,capture:true});
       const result=await facebookAdapter.reconcile(active);
-      const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await persistResult(connection,completed,serverFeatures);drain=true;
+      const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
     }catch(error){
       const journal=(await chrome.storage.local.get('activeJob')).activeJob;
       if(journal?.stage==='result')throw error;
+      if((journal??active).tabId)await recordTraceStep('worker_failure','failed',{tabId:(journal??active).tabId,capture:true});
+      await finishTrace(['submitting','authorizing'].includes(journal?.stage??active.stage)?'failed':'aborted',{stage:journal?.stage??active.stage});
       await markAttention(connection,journal??active,error.message,{issue:error.issue,code:error.code,candidateUrl:error.candidateUrl,receipt:error.receipt,serverFeatures});drain=true;
     }
   }catch(error){
@@ -369,13 +386,16 @@ export async function disconnectLocal(archiveUnresolved=false){
  }
  await chrome.storage.local.remove(['connection','workerProtocol','pendingClaim','queueCommandAt','lastIssue']);
  await chrome.storage.session.remove('pendingConnection');await chrome.alarms.clear('rivastock-queue');
- if(connection)await chrome.permissions.remove({origins:[connection.url+'/*']});
+ if(connection)await chrome.permissions.remove({origins:[connection.url+'/*','<all_urls>']});
  await chrome.storage.local.set({status:'Desconectada localmente. Revocá la PC anterior en RivaStock; la recuperación pendiente se conserva.'});
  return {done:true};
 }
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'rivastock-queue') void poll(undefined,true); });
-chrome.runtime.onInstalled.addListener(() => { void ensureQueueAlarm().then(poll).catch(()=>{}); });
-chrome.runtime.onStartup.addListener(() => { void ensureQueueAlarm().then(()=>poll({source:'startup',received:performance.now(),receivedAt:new Date().toISOString()},true)).catch(()=>{}); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === 'rivastock-queue') void poll(undefined,true);
+  if (alarm.name === 'rivastock-trace-upload') void flushTraceQueue();
+});
+chrome.runtime.onInstalled.addListener(() => { void ensureQueueAlarm().then(()=>{void flushTraceQueue();return poll();}).catch(()=>{}); });
+chrome.runtime.onStartup.addListener(() => { void ensureQueueAlarm().then(()=>{void flushTraceQueue();return poll({source:'startup',received:performance.now(),receivedAt:new Date().toISOString()},true);}).catch(()=>{}); });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(message.type==='disconnect-local'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')){
     void disconnectLocal(message.archive===true).then(reply).catch(error=>reply({error:error.message}));return true;
@@ -413,6 +433,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         reply({...summary,details});
       }catch{reply({error:'No se pudo inspeccionar un formulario inequívoco. Revisá su pestaña.'});}
     })();return true;
+  }
+  if(message.type==='trace-step'&&sender.id===chrome.runtime.id&&sender.tab&&typeof message.step==='string'){
+    void recordTraceStep(message.step,message.status??'ok',{
+      capture:message.capture===true,domSummary:message.domSummary,tabId:sender.tab.id,
+    }).then(()=>reply({queued:true})).catch(()=>reply({queued:false}));
+    return true;
   }
   const stages=['Seleccionando categoría','Seleccionando estado','Completando descripción y ubicación','Cargando fotos','Verificando destinos antes de publicar'];
   if(sender.id===chrome.runtime.id&&sender.tab&&message.type==='progress'&&stages.includes(message.stage)) {

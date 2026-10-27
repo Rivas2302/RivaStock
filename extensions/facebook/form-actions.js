@@ -1,8 +1,113 @@
 // Runs in Chrome's isolated content-script world. Only observed Spanish UI
 // controls are used; no Facebook credentials, cookies or private endpoints.
+export function domSummary(root = null) {
+  const hiddenFromTrace = '[role="feed"], [data-pagelet*="Feed"], [data-pagelet*="message" i], [aria-label*="Messenger" i], [aria-label*="mensajes" i]';
+  const visibleForTrace = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+  const traceSafe = element => !element.closest(hiddenFromTrace);
+  const traceName = element => {
+    const direct = element.getAttribute('aria-label');
+    if (direct) return direct;
+    const labelledBy = (element.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean)
+      .map(id => document.getElementById(id)).filter(node => node && traceSafe(node)).map(node => node.textContent.trim()).filter(Boolean);
+    if (labelledBy.length) return labelledBy.join(' ');
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)) {
+      const label = element.labels ? Array.from(element.labels).filter(traceSafe).map(node => node.textContent.trim()).join(' ') : '';
+      return label || element.getAttribute('placeholder') || element.getAttribute('name') || '';
+    }
+    if (element.isContentEditable) return '';
+    return element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  };
+  const activeDialog = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visibleForTrace).at(-1);
+  const requestedRoot = root?.nodeType === 1 ? root : null;
+  const scope = requestedRoot ?? activeDialog ?? document.querySelector('main') ?? document.body;
+  const headings = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
+    .filter(node => visibleForTrace(node) && traceSafe(node))
+    .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120))
+    .filter(Boolean).slice(0, 30);
+  const controls = Array.from(scope.querySelectorAll('button,[role="button"],[role="checkbox"],[role="switch"],[role="combobox"],a[href],input,textarea,select,[contenteditable="true"]'))
+    .filter(node => visibleForTrace(node) && traceSafe(node))
+    .filter(node => !(node.tagName === 'INPUT' && node.type === 'password'))
+    .slice(0, 80)
+    .map((node, index) => {
+      const rect = node.getBoundingClientRect();
+      const headingPath = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
+        .filter(heading => traceSafe(heading) && (heading.compareDocumentPosition(node) & 4))
+        .slice(-3).map(heading => heading.textContent.replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
+      return {
+        index,
+        role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.tagName.toLowerCase()),
+        name: traceName(node).replace(/\s+/g, ' ').trim().slice(0, 80),
+        text: node.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)
+          ? '' : (node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        state: {
+          ...(node.hasAttribute('aria-checked') ? { checked: node.getAttribute('aria-checked') } : {}),
+          ...(node.hasAttribute('aria-expanded') ? { expanded: node.getAttribute('aria-expanded') } : {}),
+          disabled: node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true',
+        },
+        box: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+        headingPath,
+      };
+    });
+  const alerts = Array.from(scope.querySelectorAll('[role="alert"],[role="status"]'))
+    .filter(node => visibleForTrace(node) && traceSafe(node))
+    .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120))
+    .filter(Boolean).slice(0, 20);
+  return { controls, headings, alerts };
+}
+
 export async function facebookFormAction(action, content, photos = [], baseline = []) {
   // Older attempts may contain null where an optional file snapshot was absent.
   baseline = Array.isArray(baseline) ? baseline.filter(value => typeof value === 'string') : [];
+  const reportTraceStep = async (name, status = 'ok', capture = true, requestedRoot = null) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.id) return;
+    const hidden = '[role="feed"], [data-pagelet*="Feed"], [data-pagelet*="message" i], [aria-label*="Messenger" i], [aria-label*="mensajes" i]';
+    const safe = element => !element.closest(hidden);
+    const visibleTraceNode = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
+    const traceControlName = element => {
+      const direct = element.getAttribute('aria-label');
+      if (direct) return direct;
+      const labels = (element.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean)
+        .map(id => document.getElementById(id)).filter(node => node && safe(node)).map(node => node.textContent.trim()).filter(Boolean);
+      if (labels.length) return labels.join(' ');
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)) {
+        const label = element.labels ? Array.from(element.labels).filter(safe).map(node => node.textContent.trim()).join(' ') : '';
+        return label || element.getAttribute('placeholder') || element.getAttribute('name') || '';
+      }
+      return element.isContentEditable ? '' : element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    };
+    const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visibleTraceNode).at(-1);
+    const scope = requestedRoot?.nodeType === 1 ? requestedRoot : dialog ?? document.querySelector('main') ?? document.body;
+    const headings = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
+      .filter(node => visibleTraceNode(node) && safe(node))
+      .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 30);
+    const controls = Array.from(scope.querySelectorAll('button,[role="button"],[role="checkbox"],[role="switch"],[role="combobox"],a[href],input,textarea,select,[contenteditable="true"]'))
+      .filter(node => visibleTraceNode(node) && safe(node))
+      .filter(node => !(node.tagName === 'INPUT' && node.type === 'password')).slice(0, 80)
+      .map((node, index) => {
+        const rect = node.getBoundingClientRect();
+        const headingPath = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
+          .filter(heading => safe(heading) && (heading.compareDocumentPosition(node) & 4))
+          .slice(-3).map(heading => heading.textContent.replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
+        return {
+          index,
+          role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.tagName.toLowerCase()),
+          name: traceControlName(node).replace(/\s+/g, ' ').trim().slice(0, 80),
+          text: node.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)
+            ? '' : (node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+          state: {
+            ...(node.hasAttribute('aria-checked') ? { checked: node.getAttribute('aria-checked') } : {}),
+            ...(node.hasAttribute('aria-expanded') ? { expanded: node.getAttribute('aria-expanded') } : {}),
+            disabled: node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true',
+          },
+          box: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+          headingPath,
+        };
+      });
+    const alerts = Array.from(scope.querySelectorAll('[role="alert"],[role="status"]'))
+      .filter(node => visibleTraceNode(node) && safe(node))
+      .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 20);
+    await chrome.runtime.sendMessage({ type: 'trace-step', step: name, status, capture, domSummary: { controls, headings, alerts } }).catch(() => {});
+  };
   try {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();
   const lines = value => (value ?? '').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ');
@@ -71,8 +176,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     throw new Error(`Facebook no respondió a tiempo durante: ${stage}. Verificá el resultado antes de repetir.`);
   };
-  const progress=stage=>{
+  const progress=async stage=>{
     if(typeof chrome!=='undefined'&&chrome.runtime?.id) void chrome.runtime.sendMessage({type:'progress',stage}).catch(()=>{});
+    await reportTraceStep(`form_${stage.toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`);
   };
   const activate=element=>{
     element.scrollIntoView({block:'nearest'});
@@ -106,6 +212,12 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (/restring|bloque|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
   };
   safety();
+  if (action === 'own_content_snapshot') await reportTraceStep('own_content_reconciliation_scan');
+  else if (action === 'check_existing') await reportTraceStep('marketplace_check_existing');
+  else if (action === 'marketplace_prepare') await reportTraceStep('marketplace_form_opened');
+  else if (action === 'group_prepare' || action === 'group_sale_prepare') await reportTraceStep('group_editor_opened');
+  else if (action === 'validate_submit') await reportTraceStep('final_validation');
+  else if (action === 'submit') await reportTraceStep('final_click_started');
   const marketplaceSnapshot=async includeIds=>{
     if(location.pathname.replace(/\/$/,'')!=='/marketplace/you/selling'||
       new URLSearchParams(location.search).get('title_search')!==content.title)
@@ -278,9 +390,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     await wait(() => buttons('Guardar borrador').length);
     const title = field('Título', 'input[type="text"]'); const price = field('Precio', 'input[type="text"]');
     if (title.value || price.value) throw new Error('Hay un borrador existente. No se sobrescribió.');
+    await progress('Completando título y precio');
     setValue(title, content.title); setValue(price, String(content.price));
     if(!parsePriceARS(price.value, content.price))throw new Error('El precio del formulario no coincide con el aprobado. No se envió.');
-    progress('Seleccionando categoría');
+    await reportTraceStep('marketplace_title_price_verified','ok',false);
+    await progress('Seleccionando categoría');
     const scrollable=()=>Array.from(document.querySelectorAll('*')).filter(element=>visible(element)&&element.scrollHeight>element.clientHeight+8&&/auto|scroll/.test(getComputedStyle(element).overflowY));
     const previousScrollers=new Set(scrollable());
     const categoryControl=combo('Categoría');
@@ -309,7 +423,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     if(!found)throw new Error(`No se encontró la categoría «${content.category}» en el menú de Facebook. No se envió.`);
     await wait(()=>text(categoryControl).includes(content.category)&&categoryControl.getAttribute('aria-expanded')!=='true','confirmar la categoría seleccionada');
-    progress('Seleccionando estado');
+    await progress('Seleccionando estado');
     const conditionControl=combo('Estado');
     activate(conditionControl);
     const condition = { new: 'Nuevo', like_new: 'Usado - Como nuevo', good: 'Usado - Buen estado', fair: 'Usado - Aceptable' }[content.condition];
@@ -318,7 +432,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     await wait(()=>text(conditionControl).includes(condition)&&conditionControl.getAttribute('aria-expanded')!=='true','confirmar el estado seleccionado');
     if(!text(categoryControl).includes(content.category))throw new Error('La categoría seleccionada no coincide con la aprobada. No se envió.');
     if(!text(conditionControl).includes(condition))throw new Error('El estado seleccionado no coincide con el aprobado. No se envió.');
-    progress('Completando descripción y ubicación');
+    await progress('Completando descripción y ubicación');
     if (!Array.from(document.querySelectorAll('textarea')).some(element => visible(element) && element.closest('label')?.textContent.includes('Descripción'))) button('Más detalles', document, true).click();
     await wait(()=>Array.from(document.querySelectorAll('textarea')).some(element=>visible(element)&&element.closest('label')?.textContent.includes('Descripción')),'abrir los detalles del producto');
     const description=field('Descripción', 'textarea');
@@ -336,7 +450,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if (control?.checked || control?.getAttribute('aria-checked') === 'true') throw new Error('Facebook cambió las preferencias de publicación. Revisá la pestaña.');
     }
     const input = one(Array.from(document.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*')));
-    progress('Cargando fotos');
+    await progress('Cargando fotos');
     attach(input);
     await wait(() => enabled(button('Siguiente')) && !buttons('Guardar borrador').some(element => !enabled(element)),'cargar fotos y habilitar Siguiente',PHOTO_UPLOAD_TIMEOUT_MS);
     const previews=()=>Array.from(document.querySelectorAll('img')).filter(img=>visible(img)&&/^(foto|photo)\b/i.test(img.alt));
@@ -347,7 +461,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     try{await wait(photosConfirmed,'verificar las fotos cargadas',PHOTO_UPLOAD_TIMEOUT_MS);}
     catch{throw new Error(`Se esperaban ${photos.length} fotos cargadas; Facebook indica ${Number.isNaN(photoCounter())?'sin contador':photoCounter()} y se observaron ${previews().length} vistas previas${previews().some(img=>!img.complete||img.naturalWidth===0)?' (alguna sin terminar de cargar)':''}. No se envió.`);}
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||!sameMarketplaceLocation(place.value,content.location)) throw new Error('Los valores del formulario no coinciden con el contenido aprobado. No se envió.');
-    progress('Verificando destinos antes de publicar');
+    await progress('Verificando destinos antes de publicar');
     button('Siguiente').click();
     await wait(() => /Publicar en más lugares/.test(document.body.innerText) && buttons('Publicar').length === 1,'abrir el paso final de Marketplace');
     if (document.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked')) throw new Error('Facebook seleccionó destinos adicionales. No se envió.');
@@ -390,18 +504,22 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     await wait(()=>buttons('Vender algo').length===1,'cargar Vender algo');activate(button('Vender algo'));
     const sale=await wait(()=>buttons('Artículo en venta',document,true).length===1&&buttons('Artículo en venta',document,true)[0],'elegir Artículo en venta');activate(sale);
     const dialog=await wait(()=>Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible).find(node=>text(node).includes('Artículo en venta')&&node.querySelector('input[type="file"]')),'abrir el formulario de venta');
+    await reportTraceStep('group_sale_editor_ready','ok',true,dialog);
     const saleField=(label,selector)=>one(Array.from(dialog.querySelectorAll('label')).filter(visible).filter(node=>Array.from(node.querySelectorAll('span')).some(span=>text(span)===label)).flatMap(node=>node.matches(selector)?[node]:Array.from(node.querySelectorAll(selector))));
     const title=saleField('Título','input');const price=saleField('Precio','input');
     if(title.value||price.value)throw new Error('El formulario de venta contiene un borrador.');
+    await reportTraceStep('group_sale_title_price_started','ok',true,dialog);
     setValue(title,content.title);setValue(price,String(content.price));
     if(!parsePriceARS(price.value, content.price))throw new Error('El precio de venta no coincide con el aprobado. No se envió.');
     const conditionControl=saleField('Estado','[role="combobox"]');
     // Facebook uses the label itself as the combobox in this composer.
+    await reportTraceStep('group_sale_condition_started','ok',true,dialog);
     activate(conditionControl);
     const condition={new:'Nuevo',like_new:'Usado - Como nuevo',good:'Usado - Buen estado',fair:'Usado - Aceptable'}[content.condition];
     activate(await wait(()=>Array.from(document.querySelectorAll('[role="option"]')).filter(visible).find(node=>text(node)===condition),'elegir el estado'));
     await wait(()=>text(conditionControl).includes(condition),'confirmar el estado de la venta');
     if(!text(conditionControl).includes(condition))throw new Error('El estado de la venta no coincide con el aprobado. No se envió.');
+    await reportTraceStep('group_sale_details_location_started','ok',true,dialog);
     if(!Array.from(dialog.querySelectorAll('textarea')).some(visible))activate(button('Más detalles',dialog,true));
     const description=await wait(()=>{try{return saleField('Descripción','textarea');}catch{return null;}},'abrir la descripción');
     setValue(description,content.description);
@@ -420,8 +538,9 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       else if(control.tagName==='SELECT'){control.value=value;control.dispatchEvent(new Event('change',{bubbles:true}));}else setValue(control,value);
     }
     if(missing.length)issue('group_sale_fields','El formulario requiere datos adicionales. Completalos y aprobá el formato de venta desde RivaStock.',{fields:missing.slice(0,12)});
+    await reportTraceStep('group_sale_photos_upload_started','ok',true,dialog);
     attach(one(Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(node=>(node.accept??'').split(',').includes('image/*'))));
-    progress('Verificando fotos del artículo en venta');
+    await progress('Verificando fotos del artículo en venta');
     await wait(()=>{
       const controls=Array.from(dialog.querySelectorAll('button,[role="button"]')).filter(visible).map(accessibleName).map(name=>name.match(/^Eliminar foto (\d+) de (\d+)$/)).filter(Boolean);
       const indexes=new Set(controls.map(match=>Number(match[1])));
@@ -430,11 +549,13 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       return controls.length===photos.length&&indexes.size===photos.length&&controls.every(match=>Number(match[2])===photos.length&&Number(match[1])>=1&&Number(match[1])<=photos.length)&&images.length===photos.length&&images.every(image=>image.complete&&image.naturalWidth>0)&&counter&&Number(counter[1])===photos.length&&enabled(button('Siguiente',dialog));
     },'verificar fotos del formulario de venta',PHOTO_UPLOAD_TIMEOUT_MS);
     if(title.value!==content.title||!parsePriceARS(price.value,content.price)||lines(description.value)!==lines(content.description)||normalize(place.value).toLowerCase()!==normalize(content.location).toLowerCase())throw new Error('Los datos de venta no coinciden con los aprobados.');
+    await reportTraceStep('group_sale_fields_verified');
     const notices=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>'notice:'+text(node));
     activate(button('Siguiente',dialog));
     await wait(()=>buttons('Publicar').length===1,'abrir la confirmación de venta');
     const final=button('Publicar').closest('[role="dialog"]');
     if(!final||!verifySaleAudience(final,target,originName))issue('group_sale_audience','No se pudo verificar que la venta se enviará únicamente al grupo aprobado. Revisá el formulario; no se autorizó Publicar.');
+    await reportTraceStep('group_sale_validation_passed');
     return {ready:true,baseline:[...rememberFlow('group_sale'),photoSnapshot(dialog),'salephotos:'+photos.length,...notices,'group:'+target,'sale:approved',...(originName?['sale:origin:'+originName]:[])]};
   }
   if (action === 'group_prepare') {
@@ -474,12 +595,14 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     let editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]'));
     const dialog = editor.closest('[role="dialog"]');
     if (!dialog || text(editor)) throw new Error('El editor del grupo contiene un borrador. No se sobrescribió.');
+    await reportTraceStep('group_editor_ready','ok',true,dialog);
     const anonymous = dialog.querySelector('[role="switch"][aria-label="Publicar de forma anónima"]');
     if (anonymous?.getAttribute('aria-checked') === 'true') throw new Error('El editor está en modo anónimo. No se envió.');
     const liveEditor = () => {
       if (!dialog.isConnected) throw new Error('Facebook reemplazó el formulario. No se envió.');
       return one(Array.from(dialog.querySelectorAll('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]')));
     };
+    await reportTraceStep('group_text_entry_started','ok',true,dialog);
     editor.focus();
     const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);selection.removeAllRanges();selection.addRange(range);
     await new Promise(resolve=>setTimeout(resolve,0));
@@ -506,6 +629,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     editor=liveEditor();
     if(!matchesEditor(editor,approved))throw new Error('El texto del editor no coincide con el aprobado. Se detuvo antes de cargar fotos y de enviar.');
+    await reportTraceStep('group_text_verified');
     const inputs = Array.from(dialog.querySelectorAll('input[type="file"][multiple]')).filter(element => (element.getAttribute('accept') ?? '').split(',').includes('image/*'));
     // Observed composer has equivalent image inputs. Upload exactly once using
     // the input closest to Foto/video; refuse ties instead of guessing.
@@ -513,15 +637,18 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     let scope = photoButton;
     while (scope !== dialog && !scope.querySelector('input[type="file"][multiple]')) scope = scope.parentElement;
     const associated = inputs.filter(input => scope.contains(input));
+    await reportTraceStep('group_photos_upload_started','ok',true,dialog);
     attach(one(associated));
     await wait(() => {
       const previews=Array.from(dialog.querySelectorAll('img')).filter(img=>/^rivastock-\d+\.(?:jpe?g|png|webp)$/i.test(img.alt));
       return enabled(button('Publicar', dialog))&&previews.length===photos.length&&
         previews.every((img,index)=>img.alt===`rivastock-${index+1}.${photos[index].extension}`&&visible(img)&&img.complete&&img.naturalWidth>0);
     },'carga y verificación de todas las fotos del grupo',PHOTO_UPLOAD_TIMEOUT_MS);
+    await reportTraceStep('group_photos_verified');
     if(dialog.querySelector('[role="checkbox"][aria-checked="true"],input[type="checkbox"]:checked'))throw new Error('El editor seleccionó otros grupos. No se envió.');
     const alerts=Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(node=>`notice:${text(node)}`);
     const existingPostUrls=Array.from(document.querySelectorAll('a[href]')).flatMap(element=>{try{const url=new URL(element.href);return url.origin===location.origin&&/^\/groups\/[A-Za-z0-9._-]+\/(posts|permalink)\/\d+\/?$/.test(url.pathname)?[url.origin+url.pathname]:[];}catch{return [];}});
+    await reportTraceStep('group_validation_passed');
     return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog,photos.length),photoFileSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))].filter(value=>typeof value==='string') };
   }
   if (action === 'submit' || action === 'validate_submit') {
@@ -577,7 +704,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
       if(action==='validate_submit')return {ready:true};
       if(submitFlow)document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:submitFlow,started:Date.now(),notices:[]}));
-      publish.click(); return { clicked: true };
+      publish.click(); await reportTraceStep('final_click_completed'); return { clicked: true };
     }
     const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
     const group=baseline.find(value=>value.startsWith('group:'))?.slice(6);
@@ -615,8 +742,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       observer.observe(document.body,{childList:true,subtree:true,characterData:true});
       setTimeout(()=>observer.disconnect(),30000);
     }
-    publish.click(); return { clicked: true };
+    publish.click(); await reportTraceStep('final_click_completed'); return { clicked: true };
   }
   throw new Error('Acción no autorizada.');
-  } catch(error) { return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }
+  } catch(error) { await reportTraceStep('form_failure', 'failed', true); return { error: error.message, code:error.issue?'FORM_VARIANT_UNSUPPORTED':/destino|audiencia/i.test(error.message)?'AUDIENCE_MISMATCH':/coincid|cambi|precio|fotos/i.test(error.message)?'CONTENT_MISMATCH':'FORM_VARIANT_UNSUPPORTED', ...(error.issue?{issue:error.issue}:{}) }; }
 }

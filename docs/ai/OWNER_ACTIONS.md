@@ -24,4 +24,4 @@ El paquete con lectura de `ai_function_settings` está generado y el Edge Functi
 
 ## Ensayo en vivo del publicador de Facebook
 
-El perfil Chrome de RivaStock inspeccionado en esta PC no tiene instalada la extensión de Facebook. Cuando vuelvas, abrí el perfil con sesión de Facebook y la extensión cargada; si hace falta actualizarla o habilitar el permiso de capturas, hacelo desde Chrome y avisame. La validación en producción se limitará al modo ensayo, sin publicar.
+El perfil Chrome de RivaStock inspeccionado en esta PC no tiene instalada la extensión de Facebook. La versión actual es **0.5.16**. Cuando vuelvas, abrí el perfil con sesión de Facebook y actualizá/recargá la extensión desde el ZIP de RivaStock; si querés trazas con imágenes, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso». Confirmá que la extensión está conectada. La validación en producción se limitará al modo ensayo, sin publicar.

@@ -1,6 +1,28 @@
 // Connection approval and permission request stay inside the extension page.
 const form=document.querySelector('#connect');
 document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
+const captureButton=document.querySelector('#capture-permission');
+const captureStatus=document.querySelector('#capture-status');
+async function renderCapturePermission() {
+  const granted=await chrome.permissions.contains({origins:['<all_urls>']});
+  captureButton.disabled=granted;
+  captureStatus.textContent=granted?'Capturas habilitadas. La grabación solo se activa durante una automatización de Facebook.':'Sin permiso de capturas; se registrará solo el resumen del formulario.';
+}
+captureButton.addEventListener('click',async()=>{
+  captureButton.disabled=true;
+  try {
+    const granted=await chrome.permissions.request({origins:['<all_urls>']});
+    if(!granted)throw new Error('No se habilitaron las capturas. La extensión seguirá registrando solo el resumen del formulario.');
+    captureStatus.textContent='Capturas habilitadas. La grabación solo se activa durante una automatización de Facebook.';
+  } catch(error) {
+    captureStatus.textContent=error.message;
+  } finally {
+    await renderCapturePermission();
+  }
+});
+chrome.permissions.onAdded.addListener(()=>{void renderCapturePermission();});
+chrome.permissions.onRemoved.addListener(()=>{void renderCapturePermission();});
+void renderCapturePermission();
 const diagnose=document.querySelector('#diagnose');
 const report=document.querySelector('#report');
 diagnose.addEventListener('click',async()=>{

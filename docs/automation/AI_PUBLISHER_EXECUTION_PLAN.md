@@ -170,7 +170,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 - Test de contrato estático (estilo `knowledgeEdgeFunction.test.ts`).
 - **Commit:** `feat(automation): add automation edge function for traces`
 
-### [ ] T1.3 Extensión: grabador de pasos
+### [x] T1.3 Extensión: grabador de pasos
 - Nuevo módulo `extensions/facebook/recorder.js`:
   - `startTrace(mode, job)`, `step(name, status, {domSummary, capture})` y `finishTrace(outcome, summary)`;
   - mantiene una cola local en `chrome.storage.local` para no perder pasos si el worker se reinicia, y envía en segundo plano sin bloquear el flujo.

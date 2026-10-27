@@ -2,6 +2,7 @@ import { test, expect, chromium } from '@playwright/test';
 import { mkdtempSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { domSummary } from '../extensions/facebook/form-actions.js';
 
 // Controlled replicas of the observed Spanish DOM. This exercises an actually
 // installed MV3 service worker and content scripts; it is not a Facebook test.
@@ -157,6 +158,32 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
   } finally {await context.close();}
 });
 
+test('Facebook DOM trace summary omits feed, Messenger, password, and field contents', async ({ page }) => {
+  await page.setContent(`<!doctype html><main>
+    <h1>Publicar artículo</h1>
+    <section role="feed"><button>PRIVATE-FEED-CONTENT</button><p>PRIVATE-FEED-MESSAGE</p></section>
+    <section role="dialog" aria-label="Editor">
+      <h2>Detalles del producto</h2>
+      <label>Título <input aria-label="Título" value="FIELD_PRIVATE_VALUE"></label>
+      <input type="password" aria-label="Password secret" value="PASSWORD_PRIVATE_VALUE">
+      <div contenteditable="true" aria-label="Mensaje de publicación">PRIVATE-DRAFT-CONTENT</div>
+      <section aria-label="Messenger"><button>PRIVATE-MESSENGER-MESSAGE</button><p>PRIVATE-MESSAGE-EXCERPT</p></section>
+      <button aria-label="Guardar cambios">Guardar</button>
+      <div role="alert">Formulario listo</div>
+    </section>
+  </main>`);
+
+  const summary = await page.evaluate(domSummary);
+  const serialized = JSON.stringify(summary);
+  expect(summary.controls.length).toBeLessThanOrEqual(80);
+  expect(summary.controls.some(control => control.name === 'Guardar cambios')).toBe(true);
+  expect(summary.controls.every(control => typeof control.box.x === 'number' && Array.isArray(control.headingPath) &&
+    typeof control.text === 'string' && control.text.length <= 80)).toBe(true);
+  for (const privateValue of ['PRIVATE-FEED', 'PRIVATE-DRAFT', 'PRIVATE-MESSAGE', 'PASSWORD_PRIVATE', 'FIELD_PRIVATE_VALUE']) {
+    expect(serialized).not.toContain(privateValue);
+  }
+});
+
 test('website links the installed extension without copying credentials and activates on consent',async () => {
   test.setTimeout(60000);
   const temporary=mkdtempSync(join(tmpdir(),'rivastock-pairing-test-'));
@@ -186,6 +213,8 @@ test('website links the installed extension without copying credentials and acti
     expect(response).toEqual({pending:true});
     const control=await controlEvent;
     await expect(control.getByRole('button',{name:'Conectar y activar esta PC'})).toBeVisible();
+    await expect(control.getByRole('button',{name:'Permitir capturas de la pestaña de Facebook para que la IA vea el proceso',exact:true})).toBeVisible();
+    await expect(control.getByRole('status').filter({hasText:'Sin permiso de capturas'})).toBeVisible();
     expect(redeemed).toBe(0);
     await control.getByRole('button',{name:'Conectar y activar esta PC'}).click();
     await expect(control.getByRole('button',{name:'Pausar cola',exact:true})).toBeEnabled();
