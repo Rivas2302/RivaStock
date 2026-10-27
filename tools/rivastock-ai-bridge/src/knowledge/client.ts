@@ -100,7 +100,7 @@ export interface SimilarMemoryResult {
 
 export interface PendingMemoryEmbedding {
   id: string;
-  kind: 'fact' | 'preference';
+  kind: 'fact' | 'preference' | 'summary';
   content: string;
 }
 
@@ -246,7 +246,8 @@ export class KnowledgeClient {
       if (!memory || typeof memory !== 'object') throw new Error('Un embedding pendiente es inválido.');
       const item = memory as Partial<PendingMemoryEmbedding>;
       if (typeof item.id !== 'string' || !UUID_PATTERN.test(item.id)
-        || (item.kind !== 'fact' && item.kind !== 'preference') || typeof item.content !== 'string' || item.content.length > 500) {
+        || (item.kind !== 'fact' && item.kind !== 'preference' && item.kind !== 'summary')
+        || typeof item.content !== 'string' || item.content.length > (item.kind === 'summary' ? 2000 : 500)) {
         throw new Error('Un embedding pendiente es inválido.');
       }
       return item as PendingMemoryEmbedding;

@@ -338,6 +338,26 @@ serve(async (req: Request) => {
       return jsonResponse(data as Record<string, unknown>);
     }
 
+    if (action === 'worker_memory_pending_embeddings') {
+      const { data, error } = await serviceClient.rpc('ai_memory_pending_embeddings', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action === 'worker_memory_store_embeddings') {
+      const { data, error } = await serviceClient.rpc('ai_memory_store_embeddings', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_embeddings: body.embeddings,
+        p_model: body.model,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
     if (action.startsWith('worker_memory_')) {
       const { data, error } = await serviceClient.rpc('ai_memory_worker', {
         p_owner: ownerUid,

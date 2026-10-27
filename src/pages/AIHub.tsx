@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
+import { Bot, Brain, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
@@ -28,6 +28,8 @@ import {
   type AIProviderId,
 } from '../lib/aiBridge';
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+
+const AIMemory = lazy(() => import('../components/AIMemory'));
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -69,7 +71,9 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection'>('chats');
+  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection' | 'memory'>('chats');
+  const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+  const [sourceChatId, setSourceChatId] = useState<string | null>(null);
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
@@ -377,14 +381,23 @@ export default function AIHub() {
           { id: 'chats', label: 'Chats', icon: MessageSquare },
           { id: 'tasks', label: 'Tareas', icon: ListChecks },
           { id: 'library', label: 'Skills', icon: Wand2 },
+          { id: 'memory', label: 'Memoria', icon: Brain },
           { id: 'connection', label: 'Conexión', icon: Cable },
         ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
         <Link to="/ia/conocimientos" className="inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink)]"><Library size={17}/>Conocimientos</Link>
       </nav>
 
-      {view === 'chats' && <AIChats/>}
+      {view === 'chats' && <AIChats
+        initialChatId={sourceChatId}
+        onOpenMemory={(memoryId) => { setSelectedMemoryId(memoryId); setView('memory'); }}
+      />}
 
       {view === 'library' && <AIWorkspace/>}
+
+      {view === 'memory' && <Suspense fallback={<div className="flex items-center gap-2 py-8 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando memoria…</div>}><AIMemory
+        initialSelectedId={selectedMemoryId}
+        onOpenChat={(chatId) => { setSourceChatId(chatId); setView('chats'); }}
+      /></Suspense>}
 
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
@@ -414,7 +427,7 @@ export default function AIHub() {
                   {activeJob.provider === 'codex' && <div><dt className="text-[var(--ink-muted)]">Modelo y razonamiento</dt><dd className="mt-1 font-semibold">{modelLabel(activeJob.model_id)} · {reasoningLabel(activeJob.reasoning_effort)}</dd></div>}
                   <div><dt className="text-[var(--ink-muted)]">Creada</dt><dd className="mt-1">{formatDate(activeJob.created_at)}</dd></div>
                   <div><dt className="text-[var(--ink-muted)]">Intentos</dt><dd className="mt-1">{activeJob.attempt_count}</dd></div>
-                  <div><dt className="text-[var(--ink-muted)]">Contexto incluido</dt><dd className="mt-1">{[activeJob.provider === 'mock' ? 'Sin contexto (Mock)' : 'Biblioteca de Skills y conocimiento', ...(activeJob.include_project_context ? ['Proyecto RivaStock'] : []), ...(activeJob.include_business_context ? ['Catálogo e inventario'] : [])].join(' · ')}</dd></div>
+                  <div><dt className="text-[var(--ink-muted)]">Contexto incluido</dt><dd className="mt-1">{[activeJob.provider === 'mock' ? 'Sin contexto (Mock)' : 'Skills, memoria y Conocimientos', ...(activeJob.include_project_context ? ['Proyecto RivaStock'] : []), ...(activeJob.include_business_context ? ['Catálogo e inventario'] : [])].join(' · ')}</dd></div>
                 </dl>
               </details>
             </div> : <div className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--line-strong)] p-8 text-center"><Bot size={28} className="text-[var(--brand)]"/><p className="mt-3 text-sm text-[var(--ink-muted)]">Escribí una instrucción para ver acá su progreso y respuesta.</p></div>}
@@ -437,7 +450,7 @@ export default function AIHub() {
           <fieldset className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-2 text-xs font-bold">Contexto opcional</legend>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Proyecto RivaStock</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Documentación y archivos seleccionados.</span></span></label>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Catálogo e inventario</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Hasta 100 productos de esta cuenta.</span></span></label>
-            <p className="text-[11px] leading-5 text-[var(--ink-muted)]">La biblioteca se incluye automáticamente. El Mock no usa contexto.</p>
+            <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente. El Mock no usa contexto.</p>
           </fieldset>
         </aside>
       </form>}

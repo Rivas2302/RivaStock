@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BookOpen, Database, Loader2, MessageSquare, MoreHorizontal, Plus, Send, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, Database, Loader2, MessageSquare, MoreHorizontal, Plus, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import {
   deleteAIChat,
   getAIChat,
@@ -13,6 +13,7 @@ import {
   type CodexReasoningEffort,
 } from '../lib/aiBridge';
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+import { listAIMemoryJobActivity, undoAIMemoryEvent, type AIMemoryJobActivity } from '../lib/aiMemory';
 import KnowledgeSources from './ai/KnowledgeSources';
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
@@ -43,13 +44,20 @@ function jobStatusText(job: AIChatJob | undefined): string | null {
   return null;
 }
 
-export default function AIChats() {
+export default function AIChats({
+  initialChatId,
+  onOpenMemory,
+}: {
+  initialChatId: string | null;
+  onOpenMemory: (memoryId: string) => void;
+}) {
   const [chats, setChats] = useState<AIChat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [jobs, setJobs] = useState<AIChatJob[]>([]);
   const [jobSources, setJobSources] = useState<Record<string, KnowledgeJobSource[]>>({});
+  const [jobMemoryActivity, setJobMemoryActivity] = useState<Record<string, AIMemoryJobActivity>>({});
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
@@ -61,6 +69,7 @@ export default function AIChats() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [undoingMemoryEventId, setUndoingMemoryEventId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const submissionRef = useRef<{ signature: string; key: string } | null>(null);
 
@@ -77,7 +86,8 @@ export default function AIChats() {
     void getAIChats().then((result) => {
       if (!mounted) return;
       setChats(result);
-      setSelectedChatId((current) => current ?? result[0]?.id ?? null);
+      setSelectedChatId((current) => current ?? (initialChatId && result.some((chat) => chat.id === initialChatId)
+        ? initialChatId : result[0]?.id ?? null));
       setError('');
     }).catch((err) => {
       if (mounted) setError(err instanceof Error ? err.message : 'No se pudieron cargar los chats.');
@@ -94,6 +104,7 @@ export default function AIChats() {
       setMessages([]);
       setJobs([]);
       setJobSources({});
+      setJobMemoryActivity({});
       setLoadingMessages(false);
       return;
     }
@@ -116,7 +127,13 @@ export default function AIChats() {
         setMessages(detail.messages);
         setJobs(detail.jobs);
         const completedJobIds = detail.jobs.filter((job) => job.status === 'completed').map((job) => job.id);
-        setJobSources(await listJobSources(completedJobIds).catch(() => ({})));
+        const [nextSources, nextMemoryActivity] = await Promise.all([
+          listJobSources(completedJobIds).catch(() => ({})),
+          listAIMemoryJobActivity(completedJobIds).catch(() => ({})),
+        ]);
+        if (!mounted) return;
+        setJobSources(nextSources);
+        setJobMemoryActivity(nextMemoryActivity);
         setError('');
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo cargar este chat.');
@@ -170,6 +187,7 @@ export default function AIChats() {
     setMessages([]);
     setJobs([]);
     setJobSources({});
+    setJobMemoryActivity({});
     setDraft('');
     setProvider('codex');
     setModelId('gpt-6-luna');
@@ -191,6 +209,19 @@ export default function AIChats() {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar el chat.');
     } finally {
       setDeletingChatId(null);
+    }
+  };
+
+  const undoMemoryChange = async (eventId: string) => {
+    setUndoingMemoryEventId(eventId);
+    setError('');
+    try {
+      await undoAIMemoryEvent(eventId);
+      setChatRefreshKey((current) => current + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo deshacer el cambio de memoria.');
+    } finally {
+      setUndoingMemoryEventId(null);
     }
   };
 
@@ -268,7 +299,12 @@ export default function AIChats() {
             {messages.map((message) => {
               const job = jobs.find((item) => item.id === message.job_id);
               const status = message.role === 'user' ? jobStatusText(job) : null;
-              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}{message.role === 'assistant' && <KnowledgeSources sources={jobSources[message.job_id] ?? []}/>}</article>;
+              const memoryActivity = message.role === 'assistant' ? jobMemoryActivity[message.job_id] : undefined;
+              return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}{message.role === 'assistant' && <>
+                <KnowledgeSources sources={jobSources[message.job_id] ?? []}/>
+                {memoryActivity?.changes.map((change) => <div key={change.id} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100"><span className="min-w-0 flex-1">Memoria actualizada: «{change.content}»</span>{change.canUndo && <button type="button" onClick={() => void undoMemoryChange(change.id)} disabled={undoingMemoryEventId !== null} className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 font-semibold disabled:opacity-50"><Undo2 size={12}/>{undoingMemoryEventId === change.id ? 'Deshaciendo…' : 'Deshacer'}</button>}<button type="button" onClick={() => onOpenMemory(change.memoryId)} className="rounded-md px-2 py-1 font-semibold underline underline-offset-2">Ver</button></div>)}
+                {memoryActivity?.used.length ? <div className="mt-3 rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="font-bold">Recordé: </span>{memoryActivity.used.map((memory, index) => <button key={memory.id} type="button" onClick={() => onOpenMemory(memory.id)} className="mr-1 inline underline underline-offset-2">{`M${index + 1}`}{memory.content ? ` «${memory.content}»` : ''}</button>)}</div> : null}
+              </>}</article>;
             })}
           </div>
 
@@ -290,7 +326,7 @@ export default function AIChats() {
           <fieldset className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-1 flex items-center gap-2 text-sm font-bold"><Database size={15}/>Contexto</legend><p className="text-xs leading-5 text-[var(--ink-muted)]">Se agrega al próximo mensaje.</p>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Proyecto RivaStock</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Documentación y archivos seleccionados.</span></span></label>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Catálogo e inventario</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Hasta 100 productos de esta cuenta.</span></span></label>
-            <div className="flex items-start gap-2 rounded-lg bg-[var(--brand-soft)] p-3 text-xs text-[var(--ink-subtle)]"><BookOpen size={15} className="mt-0.5 shrink-0 text-[var(--brand)]"/><span>La biblioteca se incluye automáticamente en cada tarea y chat.</span></div>
+            <div className="flex items-start gap-2 rounded-lg bg-[var(--brand-soft)] p-3 text-xs text-[var(--ink-subtle)]"><BookOpen size={15} className="mt-0.5 shrink-0 text-[var(--brand)]"/><span>Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente.</span></div>
           </fieldset>
         </aside>
       </div>

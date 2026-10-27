@@ -4,7 +4,7 @@ Resolver estas acciones juntas cuando ya no quede trabajo independiente para el 
 
 ## C2.2 — Habilitar una prueba real de Claude Code
 
-El Bridge 1.9.0 está configurado con Claude habilitado, pero la tarea real de producción terminó interrumpida y el probe local anterior no respondió en 30 segundos.
+El Bridge 1.9.0 está configurado con Claude habilitado, pero la tarea real de producción terminó interrumpida. El 26/10 se repitió el probe autorizado con tope de USD 0.01; no produjo salida en 29 segundos y se canceló con Ctrl+C (código 1).
 
 1. En PowerShell, verificá que Claude Code esté disponible con `claude --version` y `claude auth status`.
 2. Si Claude pide inicio de sesión o primer uso, completalo localmente. No compartas credenciales.

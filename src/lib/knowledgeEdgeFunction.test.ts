@@ -52,6 +52,8 @@ describe('Knowledge Edge Function contract', () => {
     expect(functionSource).toContain("rpc('ai_memory_worker'");
     expect(functionSource).toContain("rpc('ai_memory_touch_similar'");
     expect(functionSource).toContain("rpc('ai_memory_chat_summary'");
+    expect(functionSource).toContain("rpc('ai_memory_pending_embeddings'");
+    expect(functionSource).toContain("rpc('ai_memory_store_embeddings'");
   });
 
   it('limits organize image access to a reserved owned job and registered document assets', () => {

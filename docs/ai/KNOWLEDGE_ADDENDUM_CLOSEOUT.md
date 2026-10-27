@@ -16,7 +16,7 @@ Se aplican las mismas reglas del prompt autónomo vigente:
 - datos `[QA]` eliminados desde la app al final;
 - registro en `docs/ai/knowledge-progress.md`.
 
-Versión del Bridge: la siguiente menor disponible por entrega. C5.1 salió como 1.9.0; C5.2 usa 1.10.0. En consecuencia, el publicador de Facebook usará 1.11.0 o la que siga.
+Versión del Bridge: la siguiente menor disponible por entrega. C5.1 salió como 1.9.0; C5.2 usa 1.10.0; C5.3 usa 1.11.0 para reindexar recuerdos editados. En consecuencia, el publicador de Facebook usará 1.12.0 o la que siga.
 
 Navegador para validar: extensión de ChatGPT en Chrome o Playwright con el perfil persistente `%USERPROFILE%\rivastock-qa-profile`. **No usar `computer-use`.** Todo lo que haga falta del dueño se pide **en un solo mensaje**.
 
@@ -249,7 +249,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
   - la falla de memoria no rompe la respuesta.
 - **Commit:** `feat(ai-bridge): remember, update and recall shared memory`
 
-### [ ] C5.3 UI: memoria visible y controlable
+### [x] C5.3 UI: memoria visible y controlable
 - **Nueva pestaña “Memoria” en IA** (junto a Chats, Tareas, Skills, Conexión y Conocimientos):
   - listas por tipo, buscador, filtro por origen;
   - por recuerdo: editar, fijar (solo preferencias), archivar, borrar definitivamente, con fecha, chat de origen (enlace si existe) y veces usado;
@@ -262,6 +262,13 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
   - mostrar también qué recuerdos se usaron (“Recordé: M1, M2”), igual que las fuentes `[K1]`.
 - **Corrección de texto:** el panel derecho de Chats y Tareas dice “La biblioteca se incluye automáticamente en cada tarea y chat”. Reemplazarlo por: “Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente.”
 - **Commit:** `feat(ai): memory tab, chat memory chips and undo`
+- Implementación local: pestaña Memoria diferida en la carga; lista con tipo, búsqueda, origen y estado; edición, fijado solo para preferencias, archivo/restauración, borrado definitivo, altas manuales y revisión de propuestas.
+- Ajustes `auto`/`confirm`/`off`, top_k y conversaciones anteriores; métricas de 30 días por proveedor y causas de omisión.
+- Chats muestran recuerdos usados y cambios de memoria por turno; los chips permiten deshacer cuando el evento sigue siendo el último cambio y abrir el recuerdo. Se corrigió el texto del panel de contexto en Chats y Tareas.
+- La edición y el deshacer invalidan el embedding si cambió el contenido. La migración `20261026235518_ai_memory_ui_reembed.sql` agrega acciones de worker protegidas para volver a generar embeddings de hechos, resúmenes y preferencias no fijadas.
+- AI Bridge 1.11.0 acepta y procesa embeddings pendientes de resúmenes editados; el paquete está generado localmente, sin instalar.
+- Verificación local: lint aprobado; pruebas dirigidas de migración, Edge Function, UI y chips: 16 aprobadas; Bridge typecheck y 67 pruebas aprobados; suite completa: 565 pruebas en 93 archivos aprobadas con URL/key ficticios de proceso; build y perf aprobados. Cierre repetirá la verificación al terminar C5.5.
+- Producción: sin aplicar migraciones ni desplegar funciones, frontend o Bridge. Hace falta un backup lógico nuevo, verificado tabla por tabla.
 
 ### [ ] C5.4 Prueba en producción
 - Chat A: “Recordá que los envíos a Santa Rosa salen los martes y los hace Correo Argentino.” Debe aparecer el chip con el recuerdo guardado.
@@ -298,7 +305,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
   - migraciones de C1;
   - `ai-bridge` y `knowledge` si cambiaron;
   - merge a `main` con Rivas2302 y Vercel en `success`;
-  - Bridge 1.9.0 instalado: pedirle al dueño que ejecute el actualizador, en el mensaje agrupado.
+  - Bridge 1.11.0 para memoria (y 1.12.0 para el publicador futuro): pedir al dueño que ejecute el actualizador correspondiente en el mensaje agrupado.
 - Verificar que no queda **ningún** dato `[QA]`: documentos, chats, tareas, propuestas, fuentes y recuerdos (las de búsquedas se purgan solas en 1 día).
 - Actualizar `AGENTS.md` (las brechas de borrado y de Claude quedan cerradas; se agrega la memoria compartida), `AI_BRIDGE_SETUP.md` (OCR, Claude) y `knowledge-progress.md` con el informe final.
 - En `docs/automation/AI_PUBLISHER_EXECUTION_PLAN.md`, actualizar la versión del Bridge prevista para el supervisor (siguiente menor después de este cierre).

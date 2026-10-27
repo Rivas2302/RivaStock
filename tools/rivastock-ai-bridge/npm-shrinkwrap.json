@@ -1,12 +1,12 @@
 {
   "name": "rivastock-ai-bridge",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "rivastock-ai-bridge",
-      "version": "1.10.0",
+      "version": "1.11.0",
       "hasInstallScript": true,
       "dependencies": {
         "@huggingface/transformers": "3.8.1",

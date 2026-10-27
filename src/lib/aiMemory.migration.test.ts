@@ -30,6 +30,7 @@ const FILES = [
   '20261026205303_ai_chat_task_deletion.sql',
   '20261026231901_ai_memory_shared_store.sql',
   '20261026233017_ai_memory_worker_helpers.sql',
+  '20261026235518_ai_memory_ui_reembed.sql',
 ];
 const EMBEDDING = `[${[1, ...Array(383).fill(0)].join(',')}]`;
 
@@ -116,6 +117,38 @@ async function insertMemory(options: {
 }
 
 describe('ai_memory_shared_store migration', () => {
+  it('invalidates embeddings after an owner edit and lets the worker re-embed summaries', async () => {
+    await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
+    const summaryId = await insertMemory({ kind: 'summary', content: 'Resumen original.', chat: CHAT });
+    await asUser(OWNER);
+    await db.query("SELECT public.ai_memory_update($1, 'Resumen editado.', false)", [summaryId]);
+    const edited = await db.query<{ embedding: string | null }>(
+      'SELECT embedding::text FROM public.ai_memories WHERE id = $1', [summaryId]);
+    expect(edited.rows[0]?.embedding).toBeNull();
+    const updateEvent = await db.query<{ id: string }>(`SELECT id FROM public.ai_memory_events
+      WHERE memory_id = $1 AND action = 'updated' ORDER BY created_at DESC LIMIT 1`, [summaryId]);
+    await db.query('SELECT public.ai_memory_undo($1)', [updateEvent.rows[0].id]);
+    const undone = await db.query<{ content: string; embedding: string | null }>(
+      'SELECT content, embedding::text FROM public.ai_memories WHERE id = $1', [summaryId]);
+    expect(undone.rows[0]).toEqual({ content: 'Resumen original.', embedding: null });
+    await db.query("SELECT public.ai_memory_update($1, 'Resumen editado.', false)", [summaryId]);
+
+    await asService();
+    const pending = await db.query<{ result: { memories: Array<{ id: string; kind: string }> } }>(
+      'SELECT public.ai_memory_pending_embeddings($1, $2) AS result', [OWNER, DEVICE]);
+    expect(pending.rows[0]?.result.memories).toEqual([{ id: summaryId, kind: 'summary', content: 'Resumen editado.' }]);
+    const stored = await db.query<{ result: { stored: number } }>(
+      'SELECT public.ai_memory_store_embeddings($1, $2, $3::jsonb, $4) AS result', [
+        OWNER, DEVICE, JSON.stringify([{ id: summaryId, embedding: JSON.parse(EMBEDDING) }]), 'Xenova/multilingual-e5-small',
+      ]);
+    expect(stored.rows[0]?.result.stored).toBe(1);
+    await asUser(OWNER);
+    const embedded = await db.query<{ embedding: string | null; embedding_model: string | null }>(
+      'SELECT embedding::text, embedding_model FROM public.ai_memories WHERE id = $1', [summaryId]);
+    expect(embedded.rows[0]?.embedding).not.toBeNull();
+    expect(embedded.rows[0]?.embedding_model).toBe('Xenova/multilingual-e5-small');
+  });
+
   it('touches only similar active memories after a valid chat retrieval claim', async () => {
     await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
     const target = await insertMemory({ kind: 'fact', content: 'Los envíos salen los martes.' });
