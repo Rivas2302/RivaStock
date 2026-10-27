@@ -282,17 +282,12 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
 - Limpiar: borrar los recuerdos y chats `[QA]` desde la UI.
 - **Commit:** `docs(ai): record shared memory production validation`
 
-### [x] C5.5 Evaluación de calidad de memoria
-- Crear un conjunto dorado sintético y versionado de al menos 30 consultas relevantes (hechos, preferencias y resúmenes) y 10 controles sin coincidencia; no reutilizar datos comerciales reales.
-- Medir con resultados deterministas de recuperación, sin llamadas adicionales a un modelo:
-  - `Recall@5` ≥ 90 % sobre las consultas relevantes;
-  - precisión de los recuerdos devueltos ≥ 80 %;
-  - preferencias fijadas recuperadas en el 100 % de los casos aplicables;
-  - abstención correcta en ≥ 95 % de los controles sin coincidencia.
-- Añadir casos de regresión para 10 correcciones/olvidos explícitos: 100 % actualiza o archiva el recuerdo existente sin duplicarlo y el archivado nunca vuelve a la recuperación.
-- Casos de privacidad: 100 % de los ejemplos sensibles sintéticos se rechazan; 0 valores sensibles llegan a `ai_memories` o al contexto recuperado.
-- Aislamiento: 0 recuerdos de otro dueño en todas las pruebas de recuperación, incluso con vectores idénticos.
-- Publicar en `docs/ai/knowledge-progress.md` las métricas, tamaño del conjunto, comandos, límites y resultado. Si no se alcanza un objetivo, corregir antes del cierre; no rebajarlo para declarar éxito.
+### [ ] C5.5 Evaluación real de extracción y recuperación
+- Guardar 30 conversaciones reales de evaluación sintética en `tools/rivastock-ai-bridge/test/memory-eval/`, con ejemplos positivos y negativos de qué recordar, actualizar, archivar o bloquear; no usar datos de clientes.
+- El script `npm run eval:memory` debe ejecutar la extracción REAL con Codex CLI local (`gpt-6-luna`, esfuerzo bajo). Si no alcanza objetivos, ajustar el prompt de extracción y repetir con esfuerzo medio; nunca cambiar los casos para mejorar las métricas.
+- Objetivos: ≥95% de datos importantes retenidos, ≥85% recuperación general, ≥85% precisión, ≥90% actualizaciones correctas y 100% de datos sensibles bloqueados antes de embeddings/persistencia.
+- Registrar proveedor, modelo, esfuerzo, métricas por caso y agregadas, errores y límites en `docs/ai/knowledge-progress.md`. No declarar éxito si falta algún umbral.
+- Tras cumplir los objetivos, dejar el proveedor/modelo/esfuerzo predeterminado final en `ai_function_settings` y documentar el valor observado.
 - **Commit:** `test(ai): evaluate shared memory quality`
 
 ---
