@@ -36,10 +36,24 @@ describe('Knowledge Edge Function contract', () => {
       'worker_fail',
       'worker_search_result',
       'worker_search_fail',
+      'worker_memory_retrieve',
+      'worker_memory_similar',
+      'worker_memory_apply',
+      'worker_memory_metric',
+      'worker_memory_finish',
+      'worker_memory_chat_summary',
+      'worker_memory_pending_embeddings',
+      'worker_memory_store_embeddings',
+      'worker_memory_touch_similar',
     ]) {
       expect(functionSource).toContain(action);
     }
     expect(functionSource).toContain("rpc('knowledge_worker'");
+    expect(functionSource).toContain("rpc('ai_memory_worker'");
+    expect(functionSource).toContain("rpc('ai_memory_touch_similar'");
+    expect(functionSource).toContain("rpc('ai_memory_chat_summary'");
+    expect(functionSource).toContain("rpc('ai_memory_pending_embeddings'");
+    expect(functionSource).toContain("rpc('ai_memory_store_embeddings'");
   });
 
   it('limits organize image access to a reserved owned job and registered document assets', () => {

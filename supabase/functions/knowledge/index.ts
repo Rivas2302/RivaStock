@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorker, isUuid, jsonResponse, readJsonLimited } from '../_shared/workerAuth.ts';
-import { validateWorkerRetrieveRequest } from './contract.ts';
+import { memoryWorkerPayload, validateMemoryWorkerAction, validateWorkerRetrieveRequest } from './contract.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -16,9 +16,17 @@ const ACTIONS = {
   worker_fail: 'fail',
   worker_search_result: 'search_result',
   worker_search_fail: 'search_fail',
+  worker_memory_retrieve: 'retrieve',
+  worker_memory_similar: 'similar',
+  worker_memory_apply: 'apply',
+  worker_memory_metric: 'metric',
+  worker_memory_finish: 'finish',
+  worker_memory_chat_summary: 'chat_summary',
+  worker_memory_pending_embeddings: 'pending_embeddings',
+  worker_memory_store_embeddings: 'store_embeddings',
 } as const;
 
-type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images' | 'worker_retrieve';
+type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images' | 'worker_retrieve' | 'worker_memory_touch_similar';
 type Body = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -39,6 +47,9 @@ function isModel(value: unknown): value is string {
 }
 
 function validateAction(action: WorkerAction, body: Body): string | null {
+  if (action.startsWith('worker_memory_')) {
+    return validateMemoryWorkerAction(action as Parameters<typeof validateMemoryWorkerAction>[0], body);
+  }
   switch (action) {
     case 'worker_next':
       return null;
@@ -100,6 +111,9 @@ function validateAction(action: WorkerAction, body: Body): string | null {
 }
 
 function payloadFor(action: keyof typeof ACTIONS, body: Body): Body {
+  if (action.startsWith('worker_memory_')) {
+    return memoryWorkerPayload(action as Parameters<typeof memoryWorkerPayload>[0], body);
+  }
   switch (action) {
     case 'worker_next':
     case 'worker_job_heartbeat':
@@ -267,7 +281,7 @@ serve(async (req: Request) => {
   if (!body) return jsonResponse({ error: 'Solicitud inválida o demasiado grande.' }, 413);
   if (typeof body.action !== 'string' || (!Object.hasOwn(ACTIONS, body.action)
     && body.action !== 'worker_file_url' && body.action !== 'worker_organize_images'
-    && body.action !== 'worker_retrieve')) {
+    && body.action !== 'worker_retrieve' && body.action !== 'worker_memory_touch_similar')) {
     return jsonResponse({ error: 'Acción de worker no permitida.' }, 400);
   }
   const action = body.action as WorkerAction;
@@ -303,13 +317,67 @@ serve(async (req: Request) => {
       return jsonResponse(data as Record<string, unknown>);
     }
 
+    if (action === 'worker_memory_touch_similar') {
+      const { data, error } = await serviceClient.rpc('ai_memory_touch_similar', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_job_id: body.job_id,
+        p_ids: body.ids,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse({ touched: data });
+    }
+
+    if (action === 'worker_memory_chat_summary') {
+      const { data, error } = await serviceClient.rpc('ai_memory_chat_summary', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_job_id: body.job_id,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action === 'worker_memory_pending_embeddings') {
+      const { data, error } = await serviceClient.rpc('ai_memory_pending_embeddings', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action === 'worker_memory_store_embeddings') {
+      const { data, error } = await serviceClient.rpc('ai_memory_store_embeddings', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_embeddings: body.embeddings,
+        p_model: body.model,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action.startsWith('worker_memory_')) {
+      const { data, error } = await serviceClient.rpc('ai_memory_worker', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_operation: ACTIONS[action as keyof typeof ACTIONS],
+        p_job_id: action === 'worker_memory_pending_embeddings' || action === 'worker_memory_store_embeddings'
+          ? null : body.job_id,
+        p_payload: payloadFor(action as keyof typeof ACTIONS, body),
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
     const { data, error } = await serviceClient.rpc('knowledge_worker', {
       p_action: ACTIONS[action],
       p_owner_uid: ownerUid,
       p_worker_id: body.worker_id,
       p_job_id: action === 'worker_next' || action === 'worker_search_result' || action === 'worker_search_fail'
         ? null : body.job_id as string,
-      p_payload: payloadFor(action, body),
+      p_payload: payloadFor(action as keyof typeof ACTIONS, body),
     });
     if (error) return rpcErrorResponse(error);
     return jsonResponse({ data });

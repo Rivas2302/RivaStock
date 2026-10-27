@@ -546,3 +546,32 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - C1, C3 y C4 están cerradas. C2.1 está completa; C2.2 no se puede marcar como resuelta hasta que Claude responda al probe y complete las pruebas reales sin aumentar el presupuesto.
 - Se documentaron seis trazas `knowledge_organize` retenidas por el guard de borrado C1. Cualquier mecanismo para purgarlas debe preservar la auditoría y tener una ruta explícita en la app.
 - El publicador de Facebook queda planificado para AI Bridge 1.10.0, la siguiente versión menor después de 1.9.0.
+
+### C5.1 — Migración de memoria compartida — 2026-10-26
+
+- Se agregó `20261026231901_ai_memory_shared_store.sql`: tablas de recuerdos, ajustes, eventos append-only, métricas diarias y reservas breves de extracción por chat; índices HNSW y de propietario/estado/tipo; RLS de lectura por dueño y RPCs para edición, archivo, borrado, deshacer, revisión de propuestas y operaciones autenticadas del worker.
+- La recuperación excluye resúmenes del chat actual, respeta los umbrales semánticos, agrega preferencias fijadas y registra el uso. Al alcanzar 1000 recuerdos activos archiva el hecho elegible menos usado y más antiguo.
+- `src/lib/aiMemory.migration.test.ts`: 6 pruebas PGlite aprobadas, incluyendo aislamiento, límite, retrieval, modo apagado, `apply`/propuestas/undo y supervivencia del recuerdo al borrar su chat. `financialSql.test.ts` excluye esta migración porque su fixture no carga `pgvector`; la cobertura del esquema queda en la suite dedicada.
+- `npm run lint` aprobado. `npm test -- --maxWorkers=1`: 558 pruebas en 91 archivos, aprobadas (credenciales ficticias solo en variables de proceso para inicializar el cliente; no se conectó a Supabase).
+- La migración no se aplicó aún en producción. Se hará el backup completo nuevo y verificado antes del despliegue de C5.
+
+### C5.2 — Bridge: recordar, actualizar y usar la memoria — 2026-10-26
+
+- El AI Bridge se actualizó a `1.10.0`. Antes de responder tareas y chats recupera memoria por embedding local y SQL; el contexto va antes que Conocimientos, admite hasta 4.000 caracteres y reserva hasta 1.000 para preferencias fijadas. Comparte el embedding de la consulta con Conocimientos cuando ambos están habilitados.
+- Después de completar la respuesta, solo en chats, encola extracción en el primer turno, cada tres turnos o ante órdenes explícitas de recordar/olvidar. La cola local tiene tope de 20 y lotes de hasta seis del mismo chat; las tareas activas de la cola de Supabase tienen prioridad. Cada diez mensajes genera o actualiza un único resumen por chat.
+- Se agregaron prefiltro local (con log y métrica de extracciones evitadas), deduplicación por similitud ≥0,92 y distancia normalizada <0,1, filtro determinista de información sensible, JSON estricto y rechazo de IDs fuera de resultados `similar`. La deduplicación actualiza únicamente `last_used_at`. Los errores de memoria no impiden completar respuestas.
+- El endpoint opcional `AI_BRIDGE_LOCAL_LLM_URL` solo admite loopback HTTP y usa `AI_BRIDGE_LOCAL_LLM_MODEL`; si falla, el worker recurre a Codex · GPT-6 Luna · Bajo cuando Codex está habilitado. Se guardan métricas diarias y el Bridge rellena embeddings pendientes de recuerdos manuales cuando queda libre.
+- Se agregaron acciones worker de memoria en `knowledge`, contrato validado por tests y migración `20261026233017_ai_memory_worker_helpers.sql`. Esta valida reclamos para actualizar `last_used_at` y consultar exclusivamente el resumen activo del chat actual. El resumen previo se incluye como contexto al cumplirse diez mensajes, para que `apply` actualice la única fila de ese chat. PGlite confirma la recuperación aislada del resumen y la actualización del timestamp sin aumentar `use_count`.
+- Verificación local: `npm run lint` aprobado; `npm test -- --maxWorkers=1`: 561 pruebas en 91 archivos; `npm run build` aprobado; `npm run perf:check` aprobado con 207.456 bytes gzip JS y 21.564 bytes CSS iniciales. Bridge: `npm run typecheck` aprobado y `npm test`: 67 pruebas aprobadas. Los tests enfocados de migración/contrato aprobaron 16.
+- El paquete `rivastock-ai-bridge-1.10.0.tgz` se generó localmente. C5.2 no aplicó migraciones, no desplegó `knowledge` y no cambió datos de producción. Antes de desplegar C5 falta un backup lógico nuevo, verificado tabla por tabla.
+
+### C5.3 — UI de memoria y control por turno — 2026-10-26
+
+- La pestaña Memoria carga bajo demanda en IA. Permite filtrar por tipo, origen y texto; agregar, editar, fijar solo preferencias, archivar, restaurar, borrar definitivamente y aceptar/descartar propuestas. Muestra fecha, origen del chat cuando aún existe y cantidad de usos.
+- Ajustes disponibles: Automática / Con mi confirmación / Apagada, recuerdos por respuesta y conversaciones anteriores. La sección “Uso de la memoria” suma los últimos 30 días por extracciones, omisiones de prefiltro/deduplicación y proveedor.
+- Chats muestran los recuerdos usados y las altas/actualizaciones/archivados por turno. El chip de cambio ofrece Deshacer si ese evento continúa siendo el último cambio y Ver para abrir el recuerdo. Los dos paneles de contexto se actualizaron con el texto sobre Skills, memoria y Conocimientos.
+- La migración `20261026235518_ai_memory_ui_reembed.sql` invalida vectores cuando el dueño edita un recuerdo o deshace un cambio de contenido; agrega endpoints internos protegidos para completar embeddings faltantes, incluidos resúmenes. Los resúmenes editados vuelven a entrar al retrieval después de que el Bridge conectado procese su embedding.
+- AI Bridge se actualizó a `1.11.0`; el paquete se generó localmente, sin publicar ni instalar. El plan futuro del publicador se actualizó a `1.12.0` y sigue sin ejecutarse.
+- Pruebas dirigidas de C5.3: 16 aprobadas entre PGlite, Edge Function, pestaña Memoria y chips por turno; Bridge: `npm run typecheck` y 67 pruebas aprobadas. `npm run lint` aprobado; `npm test -- --maxWorkers=1` con URL/key ficticios de proceso: 565 pruebas en 93 archivos aprobadas, sin conexión remota; `npm run build` y `npm run perf:check` aprobados. Presupuesto de entrada: 207.686 bytes gzip JS y 21.685 bytes CSS; la pestaña Memoria queda en un chunk separado.
+- Sin cambios de producción: no se aplicó migración ni se desplegaron frontend, Edge Function o Bridge. Antes de C5.4 hace falta un backup actual y verificable, tabla por tabla.
+- Commit C5.3: `feat(ai): memory tab, chat memory chips and undo`.

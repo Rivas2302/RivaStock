@@ -11,6 +11,8 @@ import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowle
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { executeTextGeneration } from './executeTextGeneration.ts';
 import { cleanChatSessionDirectory, providerFor } from './providers.ts';
+import { MemoryTurnQueue } from './memory/queue.ts';
+import { processMemoryBatch, processPendingMemoryEmbeddings } from './memory/processor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { loadConfig, type AIProviderId } from './types.ts';
@@ -20,6 +22,7 @@ const EXECUTION_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const WORKSPACE_SYNC_INTERVAL_MS = 30_000;
 const CHAT_TOMBSTONE_SYNC_INTERVAL_MS = 5 * 60_000;
+const MEMORY_EMBEDDING_SYNC_INTERVAL_MS = 60_000;
 const config = loadConfig();
 const client = new BridgeClient(config.endpoint, config.token);
 const knowledgeClient = config.knowledgeEndpoint ? new KnowledgeClient(config.knowledgeEndpoint, config.token) : null;
@@ -28,6 +31,8 @@ let stopping = false;
 let activeController: AbortController | null = null;
 let lastWorkspaceSyncAt = 0;
 let lastChatTombstoneSyncAt = 0;
+let lastMemoryEmbeddingSyncAt = 0;
+const memoryQueue = new MemoryTurnQueue(20, 6);
 
 process.on('SIGINT', () => { stopping = true; activeController?.abort(); });
 process.on('SIGTERM', () => { stopping = true; activeController?.abort(); });
@@ -90,6 +95,13 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
       knowledgeClient,
       workerId: config.workerId,
       knowledgeEnabled: config.knowledgeEnabled,
+      memoryClient: knowledgeClient,
+      memoryWorkerId: config.workerId,
+      onMemoryTurn: (entry) => {
+        if (!memoryQueue.enqueue(entry)) {
+          process.stderr.write('[AI Bridge] La cola local de memoria está llena; se omitió este procesamiento posterior a la respuesta.\n');
+        }
+      },
       providerOptions: {
         model_id: jobContext.model_id ?? 'gpt-6-luna',
         reasoning_effort: jobContext.reasoning_effort ?? 'low',
@@ -148,7 +160,49 @@ async function run(): Promise<void> {
         continue;
       }
       if (claim.job) await executeJob(claim.job);
-      else await delay(POLL_INTERVAL_MS);
+      else if (memoryQueue.length && knowledgeClient && config.workerId) {
+        const memoryController = new AbortController();
+        activeController = memoryController;
+        const keepAlive = setInterval(() => {
+          void client.heartbeat(workerId, 'idle').catch(() => undefined);
+        }, HEARTBEAT_INTERVAL_MS);
+        try {
+          await processMemoryBatch({
+            client: knowledgeClient,
+            workerId: config.workerId,
+            entries: memoryQueue.takeNextBatch(),
+            codexProvider: config.codexEnabled
+              ? providerFor('codex', config)
+              : { async execute() { throw new Error('Codex está deshabilitado.'); } },
+            codexEnabled: config.codexEnabled,
+            localLlmUrl: config.localLlmUrl,
+            localLlmModel: config.localLlmModel,
+            signal: memoryController.signal,
+            log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+          });
+        } finally {
+          clearInterval(keepAlive);
+          activeController = null;
+        }
+      } else if (knowledgeClient && config.workerId
+        && Date.now() - lastMemoryEmbeddingSyncAt >= MEMORY_EMBEDDING_SYNC_INTERVAL_MS) {
+        const memoryController = new AbortController();
+        activeController = memoryController;
+        const keepAlive = setInterval(() => {
+          void client.heartbeat(workerId, 'idle').catch(() => undefined);
+        }, HEARTBEAT_INTERVAL_MS);
+        try {
+          const count = await processPendingMemoryEmbeddings(knowledgeClient, config.workerId,
+            undefined, memoryController.signal);
+          if (count) process.stdout.write(`[AI Bridge] Se generaron embeddings para ${count} recuerdo(s).\n`);
+        } catch {
+          process.stderr.write('[AI Bridge] No se pudieron actualizar los embeddings pendientes de memoria.\n');
+        } finally {
+          clearInterval(keepAlive);
+          activeController = null;
+        }
+        lastMemoryEmbeddingSyncAt = Date.now();
+      } else await delay(POLL_INTERVAL_MS);
     } catch (error) {
       const safeMessage = reportError(error instanceof Error ? error.message : 'Error de conexión.');
       process.stderr.write(`[AI Bridge] Conexión no disponible: ${safeMessage}\n`);
@@ -183,6 +237,7 @@ async function runWithInstanceLock(): Promise<void> {
 
   try {
     await client.start(workerId);
+    configureModelCache(config.modelsDirectory);
     if (!config.knowledgeEnabled) {
       await run();
     } else if (!config.workerId) {
@@ -194,7 +249,6 @@ async function runWithInstanceLock(): Promise<void> {
     } else {
       const activeKnowledgeClient = knowledgeClient;
       if (!activeKnowledgeClient) throw new Error('Conocimientos requiere un endpoint de worker válido.');
-      configureModelCache(config.modelsDirectory);
       process.stdout.write('[AI Bridge] Conocimientos activo; la primera indexación descargará aproximadamente 120 MB del modelo.\n');
       const knowledgeLoop = runKnowledgeLoop({
         client: activeKnowledgeClient,

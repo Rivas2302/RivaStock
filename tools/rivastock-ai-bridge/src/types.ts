@@ -80,6 +80,8 @@ export interface BridgeConfig {
   claudeMaxBudgetUsd: string;
   workspaceDirectory: string;
   projectRootDirectory: string;
+  localLlmUrl: string | null;
+  localLlmModel: string | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
@@ -117,6 +119,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
       || resolve(dirname(fileURLToPath(import.meta.url)), '../../../.rivastock-ai/workspace')),
     projectRootDirectory: resolve(env.AI_BRIDGE_PROJECT_ROOT?.trim()
       || resolve(dirname(fileURLToPath(import.meta.url)), '../../../')),
+    localLlmUrl: env.AI_BRIDGE_LOCAL_LLM_URL?.trim() || null,
+    localLlmModel: env.AI_BRIDGE_LOCAL_LLM_MODEL?.trim() || null,
   };
 }
 
