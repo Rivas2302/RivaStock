@@ -317,6 +317,30 @@ serve(async (req: Request) => {
       return jsonResponse(data as Record<string, unknown>);
     }
 
+    if (action === 'worker_memory_similar') {
+      const { data, error } = await serviceClient.rpc('ai_memory_worker', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_operation: ACTIONS[action],
+        p_job_id: body.job_id,
+        p_payload: payloadFor(action, body),
+      });
+      if (error) return rpcErrorResponse(error);
+
+      const { data: setting, error: settingError } = await serviceClient.from('ai_function_settings')
+        .select('provider, model_id, reasoning_effort')
+        .eq('user_id', ownerUid)
+        .eq('function_key', 'ai_memory_extract')
+        .maybeSingle();
+      if (settingError) console.error('[knowledge] Memory extraction setting lookup failed.');
+      const extractionSettings = setting?.provider === 'codex'
+        && ['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra'].includes(setting.model_id)
+        && ['low', 'medium', 'high', 'xhigh'].includes(setting.reasoning_effort)
+        ? { provider: 'codex', model_id: setting.model_id, reasoning_effort: setting.reasoning_effort }
+        : null;
+      return jsonResponse({ ...(data as Record<string, unknown>), extraction_settings: extractionSettings });
+    }
+
     if (action === 'worker_memory_touch_similar') {
       const { data, error } = await serviceClient.rpc('ai_memory_touch_similar', {
         p_owner: ownerUid,

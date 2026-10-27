@@ -82,6 +82,10 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
       exchanges: remaining,
       similar: extractionContext,
       summaryDue,
+      ...(similar.extraction_settings ? { providerOptions: {
+        model_id: similar.extraction_settings.model_id,
+        reasoning_effort: similar.extraction_settings.reasoning_effort,
+      } } : {}),
       localUrl: options.localLlmUrl ?? undefined,
       localModel: options.localLlmModel ?? undefined,
       dependencies: options.embedTexts ? { embed: options.embedTexts } : undefined,

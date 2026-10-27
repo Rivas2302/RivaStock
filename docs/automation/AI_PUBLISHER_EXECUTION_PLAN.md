@@ -375,7 +375,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 ## 10. Fase 5 — Calidad del contenido, fotos, grupos y ritmo
 
 ### [ ] T5.1 Configuración de modelos por función
-Ver §13. Migración `<ts>_ai_function_settings.sql`, sección “Modelos por función” en IA → Conexión (o en la Administración de Conocimientos) y uso en todas las llamadas nuevas.
+Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave `ai_memory_extract`; esta tarea agrega la sección “Modelos por función” en IA → Conexión (o en la Administración de Conocimientos) y usa la tabla en las llamadas nuevas, sin recrearla.
 - **Commit:** `feat(ai): per-function model and reasoning settings`
 
 ### [ ] T5.2 Redactar con IA
@@ -498,12 +498,13 @@ Las publicaciones reales respetan el perfil de bajo riesgo (T5.7), incluidos el 
 
 ## 13. Configuración de modelos y consumo
 
-- Migración `ai_function_settings`:
+- `ai_function_settings` se creó durante C5.5 y se sembró con la configuración de memoria:
   - columnas: `user_id`, `function_key`, `provider`, `model_id`, `reasoning_effort`, `escalate_provider`, `escalate_model_id`, `escalate_reasoning_effort`, `auto_escalate boolean default false`, `updated_at`;
   - `PRIMARY KEY (user_id, function_key)`.
 - Funciones y valores por defecto:
   | `function_key` | Uso | Por defecto |
   |---|---|---|
+  | `ai_memory_extract` | Extracción de memoria compartida | Codex · GPT-6 Luna · Bajo |
   | `knowledge_organize` | Organizar con IA | Codex · GPT-6 Luna · Bajo |
   | `fb_copywriting` | Redactar publicaciones | Codex · GPT-6 Luna · Bajo |
   | `fb_supervisor_recover` | Corregir pasos | Codex · GPT-6 Luna · Bajo |

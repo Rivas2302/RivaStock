@@ -26,7 +26,7 @@ Navegador para validar: extensión de ChatGPT en Chrome o Playwright con el perf
 
 Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **sí** agrega acciones nuevas a `supabase/functions/ai-bridge/index.ts` y RPC nuevos. Sin cambiar el comportamiento de las acciones existentes.
 
-### [ ] C1.1 Migración
+### [x] C1.1 Migración
 **Archivo:** `supabase/migrations/<ts>_ai_chat_task_deletion.sql`
 - **`ai_delete_chat(p_chat_id uuid)`**, `SECURITY DEFINER`, solo el dueño (mismo control de colaborador que `ai_send_chat_message`):
   - si el chat tiene un job `pending` o `processing` → `RAISE 'Esperá a que termine la respuesta antes de borrar el chat'`;
@@ -50,7 +50,7 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
   - las lápidas se listan y se confirman.
 - **Commit:** `feat(ai): delete chats and tasks with optional retention`
 
-### [ ] C1.2 Edge Function `ai-bridge`: acciones nuevas
+### [x] C1.2 Edge Function `ai-bridge`: acciones nuevas
 - Usuario:
   - `chat_delete` → `ai_delete_chat`;
   - `task_delete` → `ai_delete_task`;
@@ -62,13 +62,13 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 - Mapear los errores nuevos en `safeDbError` con mensajes claros, sin cambiar los existentes. Desplegar como versión nueva de `ai-bridge` (`--no-verify-jwt`, igual que hoy).
 - **Commit:** `feat(ai-bridge): chat and task deletion actions`
 
-### [ ] C1.3 Bridge: limpiar la sesión local al borrar un chat
+### [x] C1.3 Bridge: limpiar la sesión local al borrar un chat
 - Cada 5 minutos, el loop principal pide `worker_chat_tombstones`. Para cada `chat_id`, borra con seguridad su carpeta en `AI_BRIDGE_SESSION_DIR/<provider>/<chat_id>`, reutilizando las validaciones de `chatWorkingDirectory` (UUID válido, dentro del directorio, sin enlaces simbólicos). Después hace `ack`.
 - No borrar archivos fuera de esa carpeta. Los hilos internos que Codex guarda en su `CODEX_HOME` no se tocan; documentarlo como límite.
 - Versión del Bridge: 1.9.0. Tests: borrado seguro (rechaza rutas fuera del directorio y enlaces), `ack` solo de lo limpiado.
 - **Commit:** `feat(ai-bridge): clean local chat sessions after deletion`
 
-### [ ] C1.4 UI
+### [x] C1.4 UI
 - **Chats (`AIChats.tsx`):** menú por chat con “Eliminar chat” y confirmación (“Se borran los mensajes y las fuentes de este chat. No se puede deshacer.”). Deshabilitado mientras hay una respuesta en curso.
 - **Tareas (`AIHub.tsx`):** “Eliminar” por tarea y “Eliminar tareas finalizadas” con confirmación y cantidad.
 - **IA → Conexión, tarjeta “Historial”:** selector de retención (Sin borrado automático / 30 / 90 / 180 / 365 días) y texto “Los chats sin actividad y las tareas más antiguas se borran automáticamente”.
@@ -84,7 +84,7 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 
 ## C2 — Claude Code real
 
-### [ ] C2.1 Actualizar Claude Code en la PC
+### [x] C2.1 Actualizar Claude Code en la PC
 - Comprobar `claude --version` (hoy 2.1.204; el Bridge exige ≥ 2.1.248).
 - Actualizar con el método de instalación que tenga esta PC: `claude update` si está disponible; si se instaló con npm, `npm install -g @anthropic-ai/claude-code@latest`. Verificar de nuevo `claude --version`.
 - Si requiere iniciar sesión o confirmar algo, pedírselo al dueño en el mensaje agrupado. Nunca leer ni copiar credenciales.
@@ -105,7 +105,7 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 
 OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 
-### [ ] C3.1 OCR en el Bridge
+### [x] C3.1 OCR en el Bridge
 - Dependencias con versión exacta en el worker:
   - `tesseract.js`, para OCR;
   - para PDF escaneados, `@napi-rs/canvas`, usado por `unpdf` para renderizar páginas (`renderPageAsImage`). Verificar en la documentación de la versión instalada de `unpdf` la forma exacta de inyectar el canvas.
@@ -122,7 +122,7 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 - Versión del Bridge: 1.9.0, la misma de C1.3 si salen juntos; si no, la siguiente.
 - **Commit:** `feat(ai-bridge): local OCR for images and scanned PDFs`
 
-### [ ] C3.2 Prueba en producción
+### [x] C3.2 Prueba en producción
 - Subir y publicar `[QA]`: una captura real con texto legible y un PDF escaneado (foto de una página impresa).
 - Ambos deben quedar “Disponible para la IA” y encontrarse en búsqueda semántica y por palabras clave con un texto que solo aparece en la imagen.
 - Reindexar el `[QA] escaneado sin texto` de la validación anterior si todavía existe; si no, usar uno nuevo.
@@ -133,7 +133,7 @@ OCR local, gratis y sin consumir el plan de IA: solo usa CPU de la PC.
 
 ## C4 — Vista previa de PDF de varias páginas
 
-### [ ] C4.1 Diagnóstico y corrección
+### [x] C4.1 Diagnóstico y corrección
 - Con un PDF **real** de al menos 5 páginas (generarlo con `jspdf` en un script fuera del repo, con texto distinto en cada página), probar la vista previa del detalle en escritorio. En la validación anterior el iframe quedó en `about:blank`.
 - Causas a revisar en orden:
   1. la URL firmada vence o se renueva y deja el iframe vacío;
@@ -282,13 +282,18 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
 - Limpiar: borrar los recuerdos y chats `[QA]` desde la UI.
 - **Commit:** `docs(ai): record shared memory production validation`
 
-### [ ] C5.5 Evaluación real de extracción y recuperación
+**Resultado de la validación del 2026-10-26:** Bridge 1.11.0 quedó instalado y conectado. A→B recuperó martes; C actualizó a jueves y Deshacer restauró martes. La frase exacta “Olvidá lo de los envíos a Santa Rosa” no archivó; una orden más explícita sí archivó, pero el asistente respondió que no podía borrar el recuerdo. La protección sensible y el modo “Con mi confirmación” pasaron. Desvío: Claude no se probó por instrucción del dueño; la limpieza de chats y recuerdos QA desde la app terminó. La tarea permanece abierta hasta resolver la frase de olvido y la prueba real de Claude.
+
+### [x] C5.5 Evaluación real de extracción y recuperación
 - Guardar 30 conversaciones reales de evaluación sintética en `tools/rivastock-ai-bridge/test/memory-eval/`, con ejemplos positivos y negativos de qué recordar, actualizar, archivar o bloquear; no usar datos de clientes.
 - El script `npm run eval:memory` debe ejecutar la extracción REAL con Codex CLI local (`gpt-6-luna`, esfuerzo bajo). Si no alcanza objetivos, ajustar el prompt de extracción y repetir con esfuerzo medio; nunca cambiar los casos para mejorar las métricas.
 - Objetivos: ≥95% de datos importantes retenidos, ≥85% recuperación general, ≥85% precisión, ≥90% actualizaciones correctas y 100% de datos sensibles bloqueados antes de embeddings/persistencia.
 - Registrar proveedor, modelo, esfuerzo, métricas por caso y agregadas, errores y límites en `docs/ai/knowledge-progress.md`. No declarar éxito si falta algún umbral.
 - Tras cumplir los objetivos, dejar el proveedor/modelo/esfuerzo predeterminado final en `ai_function_settings` y documentar el valor observado.
 - **Commit:** `test(ai): evaluate shared memory quality`
+
+La evaluación PGlite anterior de `dd12d8e` usó proveedor falso y embeddings sintéticos; no cuenta para cerrar esta tarea.
+**Resultado C5.5 — 2026-10-27:** Codex local GPT-6 Luna Bajo superó todos los objetivos: importantes 20/20, recuperación top-5 20/20, precisión 24/24, actualizaciones 10/10, sensibles bloqueados 3/3 y archivos 4/4 (también ausentes de recuperación). La tabla `ai_function_settings` quedó desplegada y sembrada con `ai_memory_extract = codex / gpt-6-luna / low`; `knowledge` ACTIVE v5 entrega ese valor al worker. El paquete Bridge 1.12.0 está generado; falta que el dueño lo instale para que el worker local consuma la configuración persistida. Véase el desvío en `STATUS.md`.
 
 ---
 

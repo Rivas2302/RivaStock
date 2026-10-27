@@ -47,6 +47,11 @@ test('KnowledgeClient routes and validates memory retrieval and queued embedding
       return new Response(JSON.stringify({ enabled: true, mode: 'auto', top_k: 5, include_summaries: true,
         user_turn_count: 1, message_count: 1, memories: [] }), { status: 200 });
     }
+    if (body.action === 'worker_memory_similar') {
+      return new Response(JSON.stringify({ enabled: true, memories: [], extraction_settings: {
+        provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+      } }), { status: 200 });
+    }
     if (body.action === 'worker_memory_pending_embeddings') {
       return new Response(JSON.stringify({ memories: [
         { id: '123e4567-e89b-42d3-a456-426614174000', kind: 'summary', content: 'Resumen editado.' },
@@ -63,13 +68,15 @@ test('KnowledgeClient routes and validates memory retrieval and queued embedding
     const jobId = '123e4567-e89b-42d3-a456-426614174000';
     const retrieved = await client.memoryRetrieve(workerId, jobId, Array(384).fill(0), 'query', 'embedding-model');
     assert.equal(retrieved.mode, 'auto');
+    const similar = await client.memorySimilar(workerId, jobId, Array(384).fill(0));
+    assert.deepEqual(similar.extraction_settings, { provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low' });
     assert.deepEqual(await client.pendingMemoryEmbeddings(workerId), [
       { id: jobId, kind: 'summary', content: 'Resumen editado.' },
     ]);
     assert.equal(await client.memoryChatSummary(workerId, jobId), null);
     await client.storeMemoryEmbeddings(workerId, [{ id: jobId, embedding: Array(384).fill(0) }], 'embedding-model');
     assert.deepEqual(requests.map((request) => request.action), [
-      'worker_memory_retrieve', 'worker_memory_pending_embeddings', 'worker_memory_chat_summary', 'worker_memory_store_embeddings',
+      'worker_memory_retrieve', 'worker_memory_similar', 'worker_memory_pending_embeddings', 'worker_memory_chat_summary', 'worker_memory_store_embeddings',
     ]);
   } finally {
     globalThis.fetch = originalFetch;

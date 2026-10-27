@@ -96,6 +96,11 @@ export interface MemoryRetrievalResult {
 export interface SimilarMemoryResult {
   enabled: boolean;
   memories: Array<Pick<MemoryCandidate, 'id' | 'kind' | 'content' | 'source_chat_id' | 'similarity'>>;
+  extraction_settings?: {
+    provider: 'codex';
+    model_id: 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
+    reasoning_effort: 'low' | 'medium' | 'high' | 'xhigh';
+  } | null;
 }
 
 export interface PendingMemoryEmbedding {
@@ -205,8 +210,15 @@ export class KnowledgeClient {
     if (typeof response.enabled !== 'boolean' || !Array.isArray(response.memories) || response.memories.length > 8) {
       throw new Error('El backend devolvió recuerdos similares inválidos.');
     }
+    const extractionSettings = response.extraction_settings ?? null;
+    if (extractionSettings !== null && (extractionSettings.provider !== 'codex'
+      || !['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra'].includes(extractionSettings.model_id)
+      || !['low', 'medium', 'high', 'xhigh'].includes(extractionSettings.reasoning_effort))) {
+      throw new Error('La configuración de extracción de memoria es inválida.');
+    }
     return {
       ...response,
+      extraction_settings: extractionSettings,
       memories: response.memories.map((memory) => {
         const candidate = validateMemoryCandidate({
           ...memory, pinned: false, source_job_id: null, use_count: 0, created_at: '',

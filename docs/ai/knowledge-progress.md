@@ -663,8 +663,147 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 
 #### C5.5 — Evaluación determinista de memoria
 
+> **Desvío:** esta evaluación histórica usa proveedor falso y embeddings sintéticos. No mide extracción real con Codex y no sirve para cerrar C5.5. El dueño reabrió la tarea y pidió una nueva evaluación con 30 conversaciones y extracción Codex real; los resultados de abajo se conservan solo como evidencia del test determinista.
+
 - Fixture sintético versionado `memory-quality-v1`: 15 hechos, 10 resúmenes, 1 preferencia fijada; 30 consultas relevantes (15 hechos, 10 resúmenes y 5 preferencias), 10 consultas de control sin coincidencia, 10 comandos explícitos de corrección/olvido (5 actualizaciones y 5 archivos) y 11 valores sensibles sintéticos. Incluye un recuerdo de otro dueño con el mismo vector que un recuerdo del dueño.
 - Resultado: `Recall@5 = 100%` (30/30), precisión = 100%, recuerdo de preferencia fijada = 100%, abstención = 100% (10/10), aislamiento = 0 resultados ajenos. Las 10 correcciones/olvidos se aplicaron sin duplicados; 5/5 archivos dejaron de aparecer en retrieval. Los 11/11 ejemplos sensibles se descartaron antes de generar embeddings o payloads; llegaron 0 a `ai_memories` y 0 al contexto de memoria recuperado.
 - La evaluación ejecuta las migraciones reales con PGlite, el RPC `ai_memory_worker`, el extractor y el filtro del Bridge; no llama a un modelo. El evaluador desactiva los index scans aproximados de PGlite para que el ranking vectorial sintético sea reproducible. Por eso no mide la calidad semántica del modelo de embeddings ni la recuperación HNSW en producción; eso requiere C5.4 con el Bridge instalado.
 - Comandos aprobados: `npx vitest run src/lib/aiMemory.quality.test.ts --maxWorkers=1` (3 pruebas); `npm run lint`; `npm test -- --maxWorkers=1` (568 pruebas en 94 archivos; un timeout transitorio en modo paralelo pasó aislado y la suite serial completa); `npm run build`; `npm run perf:check` (entrada: 207.686 bytes gzip JS y 21.685 bytes CSS); Bridge 1.11.0 `npm run typecheck` y `npm test` (67 pruebas).
-- C5.5 queda cerrada localmente. C5.4 sigue pendiente de la validación de chats reales; en esta PC se necesita el Bridge 1.11.0 actualizado. C2.2 también sigue pendiente: el probe de Claude autorizado no devolvió salida durante más de 40 segundos; se canceló con Ctrl+C, código 1. No se aumentó el presupuesto. Los datos QA de memoria no se han creado.
+- C5.5 no queda cerrada: el resultado anterior es solo una prueba determinista con proveedor falso. C5.4 está pendiente de la validación real documentada a continuación; C2.2 requiere el inicio interactivo del dueño.
+
+### C5.4 — Validación real de memoria en producción — 2026-10-26
+
+- AI Bridge 1.11.0 se instaló desde el paquete local siguiendo el flujo del actualizador, sin ejecutar el `.bat`: se preservaron `.env` y sesiones, el worker anterior confirmó estado idle antes del cierre, la instalación quedó en la misma carpeta y el lanzador de Inicio con `wscript.exe` siguió apuntando allí. Se verificó un único worker (PID 13788), versión 1.11.0, estado idle, sin tarea activa, heartbeat reciente y “Conectada” en IA → Conexión.
+- La validación usó Codex en producción y el perfil persistente de Playwright. Chat A guardó un hecho de QA sobre envíos a Santa Rosa los martes por Correo Argentino. Chat B recuperó martes en un chat nuevo y mostró `Recordé: M1`. Chat C actualizó el mismo recuerdo a jueves, sin duplicarlo; el chip mostró “Memoria actualizada” y Deshacer restauró martes.
+- **Desvío C5.4:** la orden prevista “Olvidá lo de los envíos a Santa Rosa” no archivó el recuerdo (extracción: 0 operaciones). La variante más explícita “Borrá de la memoria el recuerdo de que los envíos a Santa Rosa salen los martes y los realiza Correo Argentino” sí lo archivó (1 operación), aunque la respuesta del asistente dijo que no podía borrarlo. Un chat nuevo no mostró chips de memoria ni referencias `[M1]`; su respuesta provino de búsqueda web, no de memoria.
+- La prueba `[QA] Mi clave del banco es 1234` terminó con 0 operaciones y ningún recuerdo sensible en la UI. En modo “Con mi confirmación”, la instrucción explícita de guardar una preferencia creó una propuesta; se descartó desde la app. El modo se restauró a `auto`, `top_k=5` y conversaciones anteriores activas.
+- Claude no se probó, por la instrucción posterior del dueño de esperar su inicio interactivo. C5.4 queda sin cerrar hasta esa prueba y hasta corregir o aceptar explícitamente el comportamiento de la frase de olvido exacta.
+- La limpieza desde la app eliminó 8 chats QA y los recuerdos/propuesta QA; Memoria quedó con 0 activos, 0 archivados y 0 propuestas, sin chats `[QA]` ni tareas `[QA]` visibles. Las operaciones de borrado de recuerdos no purgan eventos previos de `ai_memory_events`; la tabla conserva auditoría inmutable con snapshots de los recuerdos de prueba. No se usó SQL para borrarlos.
+
+### Backup verificado previo a C5.5 — 2026-10-27 01:26 UTC
+
+- Ubicación: %USERPROFILE%\rivastock-backups\20261027T012616Z\ (fuera del repositorio; ACL sin herencia, solo la cuenta local con FullControl). La service role key se obtuvo con Supabase CLI, se mantuvo en memoria/proceso y se eliminó del entorno al terminar; no quedó en archivos ni logs.
+- Verificación: 73 tablas public, 13.054 filas. En las 67 tablas accesibles por REST, count(*) exacto antes y después coincidió con las filas exportadas; los archivos JSON están parseados y no vacíos. Seis tablas de lápidas/memoria tienen privilegios REST revocados intencionalmente; el export REST informó permiso denegado. Se exportaron por una consulta SQL de solo lectura mediante Supabase HTTPS, con conteo exacto antes y después en la misma consulta. Todas las 73 coincidencias están abajo.
+- Storage: `assets` 365 objetos con ruta y tamaño; knowledge 0 objetos en esta inspección. El manifest incluye el inventario y tamaños.
+- Esquema: se copiaron las 96 migraciones existentes antes de crear la migración de C5.5; luego se agregó el SQL nuevo al respaldo y se verificaron 97 nombres, tamaños y SHA-256 contra el repositorio antes de aplicar.
+- Resultado: backup lógico verificado; habilita una migración aditiva. Desvío: seis tablas protegidas necesitaron export SQL de solo lectura por HTTPS, en lugar del endpoint REST.
+
+| Tabla | Conteo exacto antes | Filas exportadas | Conteo exacto después | Verificación |
+|---|---:|---:|---:|---|
+| ai_bridge_device_secrets | 5 | 5 | 5 | OK |
+| ai_bridge_devices | 5 | 5 | 5 | OK |
+| ai_bridge_workers | 2 | 2 | 2 | OK |
+| ai_chat_messages | 45 | 45 | 45 | OK |
+| ai_chat_tombstones | 12 | 12 | 12 | OK |
+| ai_chats | 6 | 6 | 6 | OK |
+| ai_history_settings | 1 | 1 | 1 | OK |
+| ai_job_knowledge_sources | 0 | 0 | 0 | OK |
+| ai_jobs | 51 | 51 | 51 | OK |
+| ai_memories | 0 | 0 | 0 | OK |
+| ai_memory_events | 11 | 11 | 11 | OK |
+| ai_memory_job_claims | 0 | 0 | 0 | OK |
+| ai_memory_metrics | 1 | 1 | 1 | OK |
+| ai_memory_settings | 1 | 1 | 1 | OK |
+| ai_workspace_files | 0 | 0 | 0 | OK |
+| attributed_sale_commands | 453 | 453 | 453 | OK |
+| audit_events | 4647 | 4647 | 4647 | OK |
+| cash_closings | 0 | 0 | 0 | OK |
+| cash_flow | 1119 | 1119 | 1119 | OK |
+| cash_flow_allocations | 776 | 776 | 776 | OK |
+| catalog_config | 4 | 4 | 4 | OK |
+| categories | 14 | 14 | 14 | OK |
+| collaborators | 1 | 1 | 1 | OK |
+| customer_financial_commands | 0 | 0 | 0 | OK |
+| customer_transactions | 27 | 27 | 27 | OK |
+| customers | 9 | 9 | 9 | OK |
+| facebook_deliveries | 97 | 97 | 97 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | 149 | OK |
+| facebook_delivery_attempts | 101 | 101 | 101 | OK |
+| facebook_delivery_decisions | 17 | 17 | 17 | OK |
+| facebook_delivery_reviews | 13 | 13 | 13 | OK |
+| facebook_device_secrets | 38 | 38 | 38 | OK |
+| facebook_devices | 38 | 38 | 38 | OK |
+| facebook_group_sync | 1 | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | 69 | OK |
+| facebook_publications | 19 | 19 | 19 | OK |
+| facebook_worker_policy | 1 | 1 | 1 | OK |
+| inventory_holdings | 697 | 697 | 697 | OK |
+| inventory_operation_settings | 5 | 5 | 5 | OK |
+| inventory_owner_memberships | 8 | 8 | 8 | OK |
+| inventory_owners | 6 | 6 | 6 | OK |
+| inventory_product_commands | 559 | 559 | 559 | OK |
+| inventory_stock_commands | 300 | 300 | 300 | OK |
+| invitations | 5 | 5 | 5 | OK |
+| knowledge_ai_proposals | 0 | 0 | 0 | OK |
+| knowledge_assets | 0 | 0 | 0 | OK |
+| knowledge_categories | 0 | 0 | 0 | OK |
+| knowledge_chunks | 0 | 0 | 0 | OK |
+| knowledge_document_tags | 0 | 0 | 0 | OK |
+| knowledge_document_versions | 0 | 0 | 0 | OK |
+| knowledge_documents | 0 | 0 | 0 | OK |
+| knowledge_events | 113 | 113 | 113 | OK |
+| knowledge_folders | 0 | 0 | 0 | OK |
+| knowledge_index_jobs | 0 | 0 | 0 | OK |
+| knowledge_search_requests | 8 | 8 | 8 | OK |
+| knowledge_settings | 1 | 1 | 1 | OK |
+| knowledge_tags | 0 | 0 | 0 | OK |
+| orders | 2 | 2 | 2 | OK |
+| price_list_items | 194 | 194 | 194 | OK |
+| price_lists | 1 | 1 | 1 | OK |
+| price_ranges | 6 | 6 | 6 | OK |
+| products | 429 | 429 | 429 | OK |
+| profiles | 5 | 5 | 5 | OK |
+| quotes | 1 | 1 | 1 | OK |
+| reseller_supplier_list_items | 0 | 0 | 0 | OK |
+| reseller_supplier_lists | 0 | 0 | 0 | OK |
+| sale_item_allocations | 791 | 791 | 791 | OK |
+| sale_items | 790 | 790 | 790 | OK |
+| sales | 774 | 774 | 774 | OK |
+| stock_intakes | 160 | 160 | 160 | OK |
+| stock_movements | 453 | 453 | 453 | OK |
+| supplier_orders | 1 | 1 | 1 | OK |
+| suppliers | 12 | 12 | 12 | OK |
+
+### C5.5 — Evaluación real de extracción y recuperación — 2026-10-27
+
+- **Proveedor/modelo/esfuerzo:** Codex local SDK/CLI en el CODEX_HOME aislado del Bridge; gpt-6-luna, bajo. Ejecutada del 2026-10-27T01:19:03.470Z al 2026-10-27T01:21:10.489Z. El prompt se ajustó antes de esta primera ejecución por el fallo de olvido observado en C5.4. Los 30 casos quedaron fijados antes de la ejecución y no se editaron para mejorar el resultado.
+- **Agregados:** 20/20 datos importantes retenidos (100%, objetivo 95%); 20/20 recuperados en top 5 con embeddings locales y similitud mínima 0,75 (100%, objetivo 85%); 24/24 operaciones aceptadas correctas (100%, objetivo 85%); 10/10 actualizaciones correctas (100%, objetivo 90%); 3/3 sensibles bloqueados antes de embeddings (100%); 4/4 archivos correctos y 4/4 ausentes de la recuperación posterior.
+- **Por caso:** `accepted` es la cantidad de operaciones validadas y `embeddings` la cantidad enviada al embedder local. En los archivos no se guardan prompts ni respuestas del proveedor.
+
+| Caso | Esperado | Operaciones aceptadas | Embeddings | Recuperado | Resultado |
+|---|---|---:|---:|---|---|
+| A01-belgrano-prep-time | add | 1 | 1 | sí | OK |
+| A02-horizonte-delivery | add | 1 | 1 | sí | OK |
+| A03-refurbished-accessories | add | 1 | 1 | sí | OK |
+| A04-accessory-returns | add | 1 | 1 | sí | OK |
+| A05-centro-supplier-hours | add | 1 | 1 | sí | OK |
+| A06-garment-reservation | add | 1 | 1 | sí | OK |
+| A07-general-stock-count | add | 1 | 1 | sí | OK |
+| A08-artisan-lamp-warranty | add | 1 | 1 | sí | OK |
+| A09-web-order-pickup | add | 1 | 1 | sí | OK |
+| A10-cordoba-carrier | add | 1 | 1 | sí | OK |
+| U01-friosur-delivery-day | update | 1 | 1 | sí | OK |
+| U02-footwear-return-window | update | 1 | 1 | sí | OK |
+| U03-online-prep-time | update | 1 | 1 | sí | OK |
+| U04-norte-customer-hours | update | 1 | 1 | sí | OK |
+| U05-equipment-reservation | update | 1 | 1 | sí | OK |
+| U06-perfumery-count-day | update | 1 | 1 | sí | OK |
+| U07-appliance-warranty | update | 1 | 1 | sí | OK |
+| U08-pickup-identification | update | 1 | 1 | sí | OK |
+| U09-parana-shipping-carrier | update | 1 | 1 | sí | OK |
+| U10-glass-label-color | update | 1 | 1 | sí | OK |
+| R01-forget-depot-opening | archive | 1 | 0 | — | OK |
+| R02-forget-internal-label | archive | 1 | 0 | — | OK |
+| R03-forget-paper-supplier | archive | 1 | 0 | — | OK |
+| R04-forget-neuquen-carrier | archive | 1 | 0 | — | OK |
+| N01-temporary-delivery-delay | none | 0 | 0 | — | OK |
+| N02-one-off-arithmetic | none | 0 | 0 | — | OK |
+| N03-transient-thanks | none | 0 | 0 | — | OK |
+| S01-bank-password | blocked | 0 | 0 | — | OK |
+| S02-lab-api-token | blocked | 0 | 0 | — | OK |
+| S03-medical-diagnosis | blocked | 0 | 0 | — | OK |
+
+- **Errores:** 0 errores del proveedor, 30/30 casos aprobados, sin repetición en esfuerzo medio porque Luna Bajo alcanzó todos los umbrales.
+- **Límites:** los diálogos son sintéticos y no contienen datos de clientes; el extractor sí fue real con Codex. La recuperación se simuló localmente con embeddings reales, top_k=5 y umbral 0,75; esta evaluación no mide latencia, red, permisos RLS ni el tráfico de la app de producción.
+- **Configuración final solicitada:** Codex · GPT-6 Luna · Bajo. La migración creada para `ai_function_settings` agrega y siembra `ai_memory_extract`; su despliegue y lectura por el Bridge se documentan como pendiente hasta que la migración, Edge Function y Bridge 1.12.0 queden activos.
+- Archivo completo y auditable (incluye resultado por caso, sin contenido conversacional): 	ools/rivastock-ai-bridge/test/memory-eval/results/20261027T012110489Z-low.json.

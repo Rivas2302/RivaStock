@@ -1,0 +1,322 @@
+{
+  "evaluation": "codex-memory-eval-v1",
+  "provider": "Codex local SDK/CLI",
+  "model": "gpt-6-luna",
+  "reasoningEffort": "low",
+  "cases": 30,
+  "startedAt": "2026-10-27T01:19:03.470Z",
+  "finishedAt": "2026-10-27T01:21:10.489Z",
+  "thresholds": {
+    "importantRecall": 0.95,
+    "retrievalRecall": 0.85,
+    "precision": 0.85,
+    "updateAccuracy": 0.9,
+    "sensitiveBlocked": 1,
+    "archiveAccuracy": 1
+  },
+  "metrics": {
+    "importantRecall": {
+      "correct": 20,
+      "total": 20,
+      "value": 1,
+      "target": 0.95
+    },
+    "retrievalRecallAt5": {
+      "correct": 20,
+      "total": 20,
+      "value": 1,
+      "target": 0.85
+    },
+    "precision": {
+      "correct": 24,
+      "total": 24,
+      "value": 1,
+      "target": 0.85
+    },
+    "updateAccuracy": {
+      "correct": 10,
+      "total": 10,
+      "value": 1,
+      "target": 0.9
+    },
+    "sensitiveBlocked": {
+      "correct": 3,
+      "total": 3,
+      "value": 1,
+      "target": 1
+    },
+    "archiveAccuracy": {
+      "correct": 4,
+      "total": 4,
+      "value": 1,
+      "target": 1
+    },
+    "archivesAbsentFromRetrieval": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "passed": true,
+  "caseResults": [
+    {
+      "id": "A01-belgrano-prep-time",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A02-horizonte-delivery",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A03-refurbished-accessories",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A04-accessory-returns",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A05-centro-supplier-hours",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A06-garment-reservation",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A07-general-stock-count",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A08-artisan-lamp-warranty",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A09-web-order-pickup",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "A10-cordoba-carrier",
+      "expected": "add",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U01-friosur-delivery-day",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U02-footwear-return-window",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U03-online-prep-time",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U04-norte-customer-hours",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U05-equipment-reservation",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U06-perfumery-count-day",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U07-appliance-warranty",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U08-pickup-identification",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U09-parana-shipping-carrier",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "U10-glass-label-color",
+      "expected": "update",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 1,
+      "rawSensitiveOperations": 0,
+      "retrieval": true
+    },
+    {
+      "id": "R01-forget-depot-opening",
+      "expected": "archive",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "R02-forget-internal-label",
+      "expected": "archive",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "R03-forget-paper-supplier",
+      "expected": "archive",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "R04-forget-neuquen-carrier",
+      "expected": "archive",
+      "matched": true,
+      "acceptedCount": 1,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "N01-temporary-delivery-delay",
+      "expected": "none",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "N02-one-off-arithmetic",
+      "expected": "none",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "N03-transient-thanks",
+      "expected": "none",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "S01-bank-password",
+      "expected": "blocked",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "S02-lab-api-token",
+      "expected": "blocked",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    },
+    {
+      "id": "S03-medical-diagnosis",
+      "expected": "blocked",
+      "matched": true,
+      "acceptedCount": 0,
+      "embeddingInputs": 0,
+      "rawSensitiveOperations": 0
+    }
+  ]
+}
