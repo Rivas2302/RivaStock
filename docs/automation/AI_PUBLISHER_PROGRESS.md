@@ -56,5 +56,6 @@
 - El manifest subió a **0.5.16**. ZIP generado: 162.696 bytes, SHA-256 `781a6c82f062b2b4698cb9e2802919abdf56358e0e71910e9293f33ed4fd45df`; el hash coincide con `rivastock-facebook-version.json` y el paquete incluye `recorder.js`.
 - Verificación local final: `npm run lint` aprobado; `npm test` aprobado (**583/583, 97 archivos**); `npx playwright test e2e/facebook-extension.spec.ts --workers=1` aprobado (**4/4**); `npm run build` y `npm run perf:check` aprobados. No se aplicaron migraciones ni se generaron datos de producción.
 - La extensión y la pantalla de conexión se validaron con Chromium desechable y fixtures; no se abrió Facebook real ni se publicó contenido. El ensayo con el perfil de Chrome del dueño queda para T1.6.
-- **Commit de tarea:** `feat(facebook): record step traces with DOM summaries and screenshots`.
+- **Commit de tarea:** `7e8ad69` (`feat(facebook): record step traces with DOM summaries and screenshots`), pusheado directo a `main`.
+- Vercel quedó verificado por HTTP: el JSON público informa 0.5.16 y el ZIP descargado coincide exactamente con el artefacto local (162.696 B, SHA-256 `781a6c82f062b2b4698cb9e2802919abdf56358e0e71910e9293f33ed4fd45df`).
 - **Siguiente:** T1.4, modo ensayo aislado de publicaciones.
