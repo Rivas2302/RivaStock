@@ -1,14 +1,11 @@
 # Estado de ejecución autónoma
 
-## 2026-10-26 21:01 ART
+## 2026-10-26 21:38 ART
 
-- **Tarea actual:** C5.3 — UI de memoria compartida y control por turno.
-- **Terminada localmente:** C5.1 migración de datos; C5.2 recuperación/extracción en Bridge 1.10.0; C5.3 pestaña Memoria, propuestas, métricas, chips con Deshacer/Ver y reindexación de recuerdos editados en Bridge 1.11.0.
-- **Evidencia:** `npm run lint` aprobado; `npm test -- --maxWorkers=1` con URL/key ficticios solo en el proceso: 565 pruebas en 93 archivos aprobadas, sin conexión remota; `npm run build` y `npm run perf:check` aprobados (207.686 bytes gzip JS, 21.685 bytes CSS de entrada); Bridge 1.11.0 `npm run typecheck` y 67 pruebas aprobados; 16 pruebas focalizadas C5.3 aprobadas.
-- **Pendiente:** C5.4 validación de producción y C5.5 evaluación sintética; desplegar C5 solo después de backup lógico nuevo verificado. C2.2 Claude continúa pendiente.
-- **Bloqueos:** el probe real de Claude se ejecutó con los límites autorizados y no produjo salida en 29 segundos; se canceló con Ctrl+C, código 1. La prueba completa de producción de Claude sigue pendiente.
-- **Acciones del dueño:** C2.2 está en `docs/ai/OWNER_ACTIONS.md`; mantener agrupada para el cierre.
-- **Próximo paso:** C5.4 requiere primero backup actual verificado tabla por tabla.
-- **Despliegues conocidos:** `main` en `13038f8`, Vercel `success`; AI Bridge 1.9.0 conectado, confirmado por el dueño. Los paquetes 1.10.0 y 1.11.0 están generados localmente, sin publicar ni instalar.
-- **Commits locales:** C5.2 `ea9d03e`; C5.3 está en `HEAD`.
-- **Producción:** C5.1–C5.3 no aplicaron migraciones, no desplegaron funciones/frontend ni crearon datos.
+- **Tarea actual:** C5.4 — validación real de memoria compartida; C5.5 ya cerrada localmente.
+- **C5.5:** fixture `memory-quality-v1` con 30 consultas relevantes, 10 controles, 10 correcciones/olvidos, 11 ejemplos sensibles y un caso de aislamiento con vector idéntico. Métricas deterministas: recall, precisión, preferencia fijada y abstención en 100%; 0 duplicados, archivos recuperados o datos sensibles almacenados/contextualizados.
+- **Verificación:** `npm run lint`; `npm test -- --maxWorkers=1` (568/568 en 94 archivos); `npm run build`; `npm run perf:check` (207.686 bytes gzip JS, 21.685 bytes CSS de entrada); Bridge 1.11.0 `npm run typecheck` y 67 pruebas; evaluación C5.5 3 pruebas. La suite paralela inicial tuvo un timeout aislado en una prueba de 63 MB; la prueba aislada y la suite completa serial pasaron.
+- **Producción:** backup verificado fuera del repo en `%USERPROFILE%\rivastock-backups\20261027T001233Z` (68 tablas, 13.033 filas, cuentas exactas antes/snapshot/exportadas/después); las tres migraciones C5 están aplicadas, no quedan migraciones pendientes; `knowledge` ACTIVE v4; `ai-bridge` ACTIVE v10; Vercel `success` en `1b60b19c930903d64971256f01f44fa1000bf6c5`. La UI de Memoria en producción cargó y mostró inventario vacío, sin mutaciones.
+- **Pendiente:** C5.4 requiere instalar Bridge 1.11.0 y completar la checklist de recuperación/actualización/olvido/undo, modo `confirm` y limpieza QA desde la app. C2.2 Claude sigue pendiente: el probe con tope USD 0.01 no respondió durante más de 40 segundos y terminó por Ctrl+C (código 1).
+- **Acciones del dueño:** se agrupan en `docs/ai/OWNER_ACTIONS.md`: actualizar Bridge y revisar localmente Claude sin compartir credenciales.
+- **Próximo paso:** recibir el resultado de esas dos acciones en un único mensaje; completar C5.4 y C2.2 en producción, limpiar todos los datos QA, luego cerrar documentación y preparar el publicador según el plan.

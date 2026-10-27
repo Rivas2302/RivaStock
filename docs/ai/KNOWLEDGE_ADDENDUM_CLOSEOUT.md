@@ -282,7 +282,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
 - Limpiar: borrar los recuerdos y chats `[QA]` desde la UI.
 - **Commit:** `docs(ai): record shared memory production validation`
 
-### [ ] C5.5 Evaluación de calidad de memoria
+### [x] C5.5 Evaluación de calidad de memoria
 - Crear un conjunto dorado sintético y versionado de al menos 30 consultas relevantes (hechos, preferencias y resúmenes) y 10 controles sin coincidencia; no reutilizar datos comerciales reales.
 - Medir con resultados deterministas de recuperación, sin llamadas adicionales a un modelo:
   - `Recall@5` ≥ 90 % sobre las consultas relevantes;

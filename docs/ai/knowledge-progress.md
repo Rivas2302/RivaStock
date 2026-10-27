@@ -575,3 +575,96 @@ Esta entrada actualiza los pendientes de la revisión anterior.
 - Pruebas dirigidas de C5.3: 16 aprobadas entre PGlite, Edge Function, pestaña Memoria y chips por turno; Bridge: `npm run typecheck` y 67 pruebas aprobadas. `npm run lint` aprobado; `npm test -- --maxWorkers=1` con URL/key ficticios de proceso: 565 pruebas en 93 archivos aprobadas, sin conexión remota; `npm run build` y `npm run perf:check` aprobados. Presupuesto de entrada: 207.686 bytes gzip JS y 21.685 bytes CSS; la pestaña Memoria queda en un chunk separado.
 - Sin cambios de producción: no se aplicó migración ni se desplegaron frontend, Edge Function o Bridge. Antes de C5.4 hace falta un backup actual y verificable, tabla por tabla.
 - Commit C5.3: `feat(ai): memory tab, chat memory chips and undo`.
+
+### Despliegue C5 y evaluación de calidad C5.5 — 2026-10-26
+
+#### Backup verificado antes de aplicar C5
+
+- Ubicación externa al repositorio: `%USERPROFILE%\rivastock-backups\20261027T001233Z` (`schema/`, `data/`, `manifest.json`, `verification.json`).
+- El manifiesto de verificación registra 68 tablas, 13.033 filas, 68 archivos JSON no vacíos, 0 archivos vacíos, 0 tablas fallidas, 96 migraciones copiadas (0 vacías), 365 objetos en `assets` y 0 en `knowledge`.
+- En la tabla siguiente, las cuatro cuentas exactas —antes, durante el snapshot, filas exportadas y después— coinciden en cada fila. El backup es una fotografía previa a las migraciones C5; no incluye el esquema nuevo de esas migraciones.
+
+| Tabla | Count antes | Count snapshot | Filas exportadas | Count después | Estado |
+|---|---:|---:|---:|---:|---|
+| ai_bridge_device_secrets | 5 | 5 | 5 | 5 | OK |
+| ai_bridge_devices | 5 | 5 | 5 | 5 | OK |
+| ai_bridge_workers | 2 | 2 | 2 | 2 | OK |
+| ai_chat_messages | 45 | 45 | 45 | 45 | OK |
+| ai_chat_tombstones | 4 | 4 | 4 | 4 | OK |
+| ai_chats | 6 | 6 | 6 | 6 | OK |
+| ai_history_settings | 1 | 1 | 1 | 1 | OK |
+| ai_job_knowledge_sources | 0 | 0 | 0 | 0 | OK |
+| ai_jobs | 51 | 51 | 51 | 51 | OK |
+| ai_workspace_files | 0 | 0 | 0 | 0 | OK |
+| attributed_sale_commands | 453 | 453 | 453 | 453 | OK |
+| audit_events | 4647 | 4647 | 4647 | 4647 | OK |
+| cash_closings | 0 | 0 | 0 | 0 | OK |
+| cash_flow | 1119 | 1119 | 1119 | 1119 | OK |
+| cash_flow_allocations | 776 | 776 | 776 | 776 | OK |
+| catalog_config | 4 | 4 | 4 | 4 | OK |
+| categories | 14 | 14 | 14 | 14 | OK |
+| collaborators | 1 | 1 | 1 | 1 | OK |
+| customer_financial_commands | 0 | 0 | 0 | 0 | OK |
+| customer_transactions | 27 | 27 | 27 | 27 | OK |
+| customers | 9 | 9 | 9 | 9 | OK |
+| facebook_deliveries | 97 | 97 | 97 | 97 | OK |
+| facebook_delivery_attempt_events | 149 | 149 | 149 | 149 | OK |
+| facebook_delivery_attempts | 101 | 101 | 101 | 101 | OK |
+| facebook_delivery_decisions | 17 | 17 | 17 | 17 | OK |
+| facebook_delivery_reviews | 13 | 13 | 13 | 13 | OK |
+| facebook_device_secrets | 38 | 38 | 38 | 38 | OK |
+| facebook_devices | 38 | 38 | 38 | 38 | OK |
+| facebook_group_sync | 1 | 1 | 1 | 1 | OK |
+| facebook_groups | 69 | 69 | 69 | 69 | OK |
+| facebook_publications | 19 | 19 | 19 | 19 | OK |
+| facebook_worker_policy | 1 | 1 | 1 | 1 | OK |
+| inventory_holdings | 697 | 697 | 697 | 697 | OK |
+| inventory_operation_settings | 5 | 5 | 5 | 5 | OK |
+| inventory_owner_memberships | 8 | 8 | 8 | 8 | OK |
+| inventory_owners | 6 | 6 | 6 | 6 | OK |
+| inventory_product_commands | 559 | 559 | 559 | 559 | OK |
+| inventory_stock_commands | 300 | 300 | 300 | 300 | OK |
+| invitations | 5 | 5 | 5 | 5 | OK |
+| knowledge_ai_proposals | 0 | 0 | 0 | 0 | OK |
+| knowledge_assets | 0 | 0 | 0 | 0 | OK |
+| knowledge_categories | 0 | 0 | 0 | 0 | OK |
+| knowledge_chunks | 0 | 0 | 0 | 0 | OK |
+| knowledge_document_tags | 0 | 0 | 0 | 0 | OK |
+| knowledge_document_versions | 0 | 0 | 0 | 0 | OK |
+| knowledge_documents | 0 | 0 | 0 | 0 | OK |
+| knowledge_events | 113 | 113 | 113 | 113 | OK |
+| knowledge_folders | 0 | 0 | 0 | 0 | OK |
+| knowledge_index_jobs | 0 | 0 | 0 | 0 | OK |
+| knowledge_search_requests | 8 | 8 | 8 | 8 | OK |
+| knowledge_settings | 1 | 1 | 1 | 1 | OK |
+| knowledge_tags | 0 | 0 | 0 | 0 | OK |
+| orders | 2 | 2 | 2 | 2 | OK |
+| price_list_items | 194 | 194 | 194 | 194 | OK |
+| price_lists | 1 | 1 | 1 | 1 | OK |
+| price_ranges | 6 | 6 | 6 | 6 | OK |
+| products | 429 | 429 | 429 | 429 | OK |
+| profiles | 5 | 5 | 5 | 5 | OK |
+| quotes | 1 | 1 | 1 | 1 | OK |
+| reseller_supplier_list_items | 0 | 0 | 0 | 0 | OK |
+| reseller_supplier_lists | 0 | 0 | 0 | 0 | OK |
+| sale_item_allocations | 791 | 791 | 791 | 791 | OK |
+| sale_items | 790 | 790 | 790 | 790 | OK |
+| sales | 774 | 774 | 774 | 774 | OK |
+| stock_intakes | 160 | 160 | 160 | 160 | OK |
+| stock_movements | 453 | 453 | 453 | 453 | OK |
+| supplier_orders | 1 | 1 | 1 | 1 | OK |
+| suppliers | 12 | 12 | 12 | 12 | OK |
+
+#### Despliegue C5 en producción
+
+- `supabase db push --linked --dry-run` mostró solo las migraciones C5 `20261026231901_ai_memory_shared_store`, `20261026233017_ai_memory_worker_helpers` y `20261026235518_ai_memory_ui_reembed`; `supabase db push --linked --yes` las aplicó. La lista local/remota coincide y no quedan migraciones pendientes.
+- Edge Function `knowledge`: ACTIVE v4, `verify_jwt=false`. `ai-bridge`: ACTIVE v10. La UI de producción en `/ia` cargó la pestaña **Memoria** con ajustes, métricas e inventario; mostró 0 recuerdos activos, archivados y propuestas. La inspección fue de solo lectura y no creó datos.
+- Vercel reportó `success` para `main` en `1b60b19c930903d64971256f01f44fa1000bf6c5`. El paquete AI Bridge 1.11.0 se generó en build y el actualizador del dueño queda pendiente.
+
+#### C5.5 — Evaluación determinista de memoria
+
+- Fixture sintético versionado `memory-quality-v1`: 15 hechos, 10 resúmenes, 1 preferencia fijada; 30 consultas relevantes (15 hechos, 10 resúmenes y 5 preferencias), 10 consultas de control sin coincidencia, 10 comandos explícitos de corrección/olvido (5 actualizaciones y 5 archivos) y 11 valores sensibles sintéticos. Incluye un recuerdo de otro dueño con el mismo vector que un recuerdo del dueño.
+- Resultado: `Recall@5 = 100%` (30/30), precisión = 100%, recuerdo de preferencia fijada = 100%, abstención = 100% (10/10), aislamiento = 0 resultados ajenos. Las 10 correcciones/olvidos se aplicaron sin duplicados; 5/5 archivos dejaron de aparecer en retrieval. Los 11/11 ejemplos sensibles se descartaron antes de generar embeddings o payloads; llegaron 0 a `ai_memories` y 0 al contexto de memoria recuperado.
+- La evaluación ejecuta las migraciones reales con PGlite, el RPC `ai_memory_worker`, el extractor y el filtro del Bridge; no llama a un modelo. El evaluador desactiva los index scans aproximados de PGlite para que el ranking vectorial sintético sea reproducible. Por eso no mide la calidad semántica del modelo de embeddings ni la recuperación HNSW en producción; eso requiere C5.4 con el Bridge instalado.
+- Comandos aprobados: `npx vitest run src/lib/aiMemory.quality.test.ts --maxWorkers=1` (3 pruebas); `npm run lint`; `npm test -- --maxWorkers=1` (568 pruebas en 94 archivos; un timeout transitorio en modo paralelo pasó aislado y la suite serial completa); `npm run build`; `npm run perf:check` (entrada: 207.686 bytes gzip JS y 21.685 bytes CSS); Bridge 1.11.0 `npm run typecheck` y `npm test` (67 pruebas).
+- C5.5 queda cerrada localmente. C5.4 sigue pendiente de la validación de chats reales; en esta PC se necesita el Bridge 1.11.0 actualizado. C2.2 también sigue pendiente: el probe de Claude autorizado no devolvió salida durante más de 40 segundos; se canceló con Ctrl+C, código 1. No se aumentó el presupuesto. Los datos QA de memoria no se han creado.
