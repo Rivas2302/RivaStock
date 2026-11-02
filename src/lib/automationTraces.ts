@@ -59,4 +59,3 @@ export function traceOutcomeLabel(outcome: string | null): string {
 export function traceStepDecision(step: AutomationTraceStep): unknown {
   return step.dom_summary.ai_decision ?? step.dom_summary.decision ?? null;
 }
-
