@@ -1,5 +1,16 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T3.3 implementada y desplegada; ensayo histórico pendiente
+
+- Commit `463006f` (`feat(automation): AI-assisted review for historical unknown results`) se publicó directamente a `main`; la cuenta local de Git es Rivas2302 y Vercel terminó en `success`.
+- La versión pública de la extensión es **0.5.21**, HTTP 200, **257.273 bytes**. El SHA-256 publicado `552f8165d7eebd0dcd11c2c15c90d8cced80921832f830f6874422f6a98b96a8` coincide con el ZIP generado localmente. AI Bridge 1.14.0 sigue publicado; no cambió su paquete.
+- En Automatizaciones → Historial aparece **Revisar con IA** para una entrega desconocida con clic autorizado y un intento finalizado ligado a dispositivo. La extensión lee únicamente las listas propias, consulta el supervisor existente y guarda una candidata con `facebook_worker_v2`/`attention`. El estado no se actualiza a éxito, y no hay ruta de reenvío. La persona debe confirmar o descartar.
+- La revisión histórica exige coincidencia de autor, título, estado y enlace extraído de una tarjeta del DOM; no acepta URL inventada. La operación comparte exclusión mutua con ejecución y sincronización de grupos. Se agregó prueba unitaria del camino Marketplace candidate-only y un fixture Playwright que verifica el RPC, la traza y la ausencia de una operación de resultado.
+- Verificación final: `npm run lint`; `npm test -- --maxWorkers=1` con URL/clave Supabase ficticias limitadas al proceso (**618 pruebas/102 archivos**); `npx playwright test e2e/facebook-extension.spec.ts --workers=1` (**5/5**); `npm run build`; `npm run perf:check`; `git diff --check`.
+- No hubo migración, backup ni datos QA para esta tarea. No se usó una sesión Facebook real. La versión requiere actualizar el Bridge a 1.14.0 y recargar extensión 0.5.21 para el ensayo.
+- **Desvío/pendiente:** la tarea T3.3 exige usar la revisión sobre desconocidos históricos existentes en producción y contar los resultados. No se pudo hacer sin la sesión Facebook del dueño, por lo que T3.3 y T3.4 siguen sin `[x]` en el plan. T1.6 y T2.5 continúan pendientes por la misma condición.
+- **Siguiente trabajo:** T4.1 requiere capturar el paso real de Marketplace “Publicar en más lugares”; hasta contar con la sesión, se puede adelantar el diseño/modelo de T4.2, con backup verificado antes de su migración.
+
 ## 2026-11-02 — T3.2 verificación supervisada
 
 - Implementada la revisión asistida posterior al envío con captura de la lista propia, evaluación JSON cerrada y extracción de un ID real desde la tarjeta seleccionada. La IA no inventa enlaces; un candidato en baseline, con título/autor discordante o con evaluación de baja confianza queda para confirmación humana. No se reenvía una publicación.

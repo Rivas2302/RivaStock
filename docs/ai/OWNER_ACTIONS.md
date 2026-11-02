@@ -25,19 +25,25 @@ Claude está habilitado en el Bridge, pero el dueño indicó que primero debe co
 
 1. En PowerShell escribir `claude`, completar inicio de sesión o primer uso, salir con `/exit` y probar: `claude -p "Respond exactly RIVA-CLAUDE-PROBE-OK" --output-format json --max-turns 1`.
 
-## Bridge 1.13.0 — actualización completada
+## AI Bridge 1.14.0 y extensión Facebook 0.5.21
 
-El Bridge se actualizó desde el paquete generado en el repo con el procedimiento del actualizador. Hay un solo worker, el heartbeat de producción es reciente, y Playwright confirmó **Conectada** en IA → Conexión. No hace falta actualizarlo manualmente.
+La aplicación ya publica los paquetes AI Bridge 1.14.0 y extensión Facebook 0.5.21; Vercel terminó el despliegue de T3.3. La PC vinculada todavía necesita activar esas versiones antes de las validaciones en vivo.
+
+1. Ejecutá el actualizador del AI Bridge hasta ver **1.14.0** y **Conectado**.
+2. En el perfil Chrome con sesión de Facebook, instalá o recargá la extensión Facebook **0.5.21** desde el flujo habitual de RivaStock.
+3. Confirmá que la conexión figura activa. Para trazas con imagen, habilitá el permiso de capturas desde el panel de conexión.
 
 ## Ensayo en vivo del publicador de Facebook
 
-La versión pública confirmada es **0.5.19** (HTTP 200; SHA-256 del ZIP coincide con el paquete generado). Falta validar el perfil de Chrome de Riva con la sesión y la extensión activa.
+La versión pública confirmada es **0.5.21** (HTTP 200; SHA-256 publicado coincide con el paquete generado). Falta validar el perfil de Chrome de Riva con la sesión y la extensión activa.
 
-1. Abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.19 desde la app.
+1. Abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.21 desde la app.
 2. Confirmá que la extensión está conectada. Si querés capturas en las trazas, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso».
 3. Para cerrar T1.6, ejecutá cinco ensayos de Marketplace y cinco de grupo directo con productos y grupos elegidos por vos. La app debe mostrar las trazas y ningún contenido se publica.
 4. Si el ensayo se detiene por un borrador sin el marcador de la prueba, preservalo. El código no elimina borradores previos del dueño; no lo borres como parte del QA.
 
 5. Para T2.5, completar 20 ensayos en total (Marketplace y grupos, productos/categorías distintos), revisar 20 trazas y confirmar cero decisiones prohibidas ejecutadas; anotar cuántas solicitudes de IA se evitaron por pistas repetidas.
+
+6. Para T3.3, en Automatizaciones → Historial, usar **Revisar con IA** en los resultados históricos desconocidos con clic autorizado. La herramienta solo lee las listas propias; cualquier candidata requiere confirmación humana y nunca repite el envío. Registrar cuántos resultados se resolvieron.
 
 La prueba en vivo debe confirmar los nombres accesibles reales de los controles para cerrar/descartar y que la verificación deja vacíos los formularios. No se publicará contenido fuera del modo ensayo.
