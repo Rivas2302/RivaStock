@@ -1,5 +1,15 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T4.2 desplegada; cierre exacto pendiente
+
+- Comparé el plan del worktree con `C:\Users\USER\Desktop\IA\RivaStock\docs\automation\AI_PUBLISHER_EXECUTION_PLAN.md`: el archivo del worktree (SHA-256 `5B6C52C72CB6AF1F17A35B20B51036D506057D6FEC94F8737FFCE17840019969`, 2/11) es más reciente que la copia de Desktop (SHA-256 `E370BA20F2F127C8C5744078114C144086A939AF82A42EB2F2060BCE8A6BDE76`, 25/10); seguí el plan del worktree.
+- Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261102T190329Z`. Docker Desktop no está instalado. Usé el login temporal de Supabase CLI y `pg_dump` 18.6 por Postgres 5432. `schema.sql` (770.805 B), `data.sql` (40.109.417 B), manifest y tabla de conteos no vacíos; 108 migraciones copiadas. Los 81 conteos SQL exactos previos y posteriores coinciden con las filas de `COPY` de cada tabla: 13.740 filas en total. `table-counts.csv` contiene los 81 resultados por tabla.
+- Apliqué exclusivamente `20261102200000_fb_marketplace_groups.sql`; `supabase migration list` confirma que quedó aplicada. La verificación de catálogo en producción confirmó tabla, columnas, PK, RLS/política de lectura y permisos. No inserté filas ni ejecuté una publicación.
+- `facebook_worker_v2` se envolvió en una RPC compatible que delega al cuerpo anterior e incorpora `target_groups` en la respuesta de `claim`; el cuerpo renombrado no queda ejecutable desde `anon`/`authenticated`. La aprobación genera un solo destino Marketplace con el snapshot de grupos y filas `pending` por grupo.
+- Verificación local: lint; 623 pruebas en 102 archivos; suite SQL PGlite 53/53; concurrencia PostgreSQL 20 iteraciones más caso de aprobación idempotente/claim exclusivo; build y `perf:check`. El build produjo AI Bridge 1.14.0 y extensión 0.5.21 sin cambios de versión.
+- **Desvío:** el plan enumera seis parámetros para `approve_facebook_publication_v2`, mientras que la implementación conserva `p_repeat_of` como séptimo argumento opcional para no perder la semántica de repetición existente. T4.2 sigue `[ ]` hasta resolver el cumplimiento exacto; no adelanté T4.3 sin la inspección real requerida por T4.1.
+- **Credencial:** `supabase db dump --linked --dry-run` mostró una credencial temporal `PGPASSWORD` en la salida de herramienta durante la obtención del login de Postgres. No se guardó en el backup ni en el repositorio; ver acción de revisión/revocación en `docs/ai/OWNER_ACTIONS.md`.
+
 ## 2026-11-02 — T3.3 implementada y desplegada; ensayo histórico pendiente
 
 - Commit `463006f` (`feat(automation): AI-assisted review for historical unknown results`) se publicó directamente a `main`; la cuenta local de Git es Rivas2302 y Vercel terminó en `success`.

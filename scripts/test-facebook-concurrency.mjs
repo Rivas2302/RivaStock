@@ -18,6 +18,7 @@ try{
  await admin.query("CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;CREATE TABLE profiles(id uuid PRIMARY KEY);CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);GRANT USAGE ON SCHEMA public,auth TO anon,authenticated,service_role;");
  const membership=await readFile('supabase/migrations/0019_collaborators_schema.sql','utf8');await admin.query(membership.slice(0,membership.indexOf('-- ─────────── handle_new_user')));
  for(const file of (await readdir('supabase/migrations')).filter(f=>/^00(49|5[0-9]|6[0-9]|7[0-9])_/.test(f)).sort())await admin.query(await readFile('supabase/migrations/'+file,'utf8'));
+ await admin.query(await readFile('supabase/migrations/20261102200000_fb_marketplace_groups.sql','utf8'));
  const owner=crypto.randomUUID(),other=crypto.randomUUID(),staff=crypto.randomUUID();
  await admin.query('INSERT INTO auth.users SELECT unnest($1::uuid[])',[[owner,other,staff]]);await admin.query('INSERT INTO profiles SELECT id FROM auth.users');
  await admin.query('INSERT INTO collaborators(owner_uid,user_uid,email,permissions) VALUES($1,$2,$3,$4::jsonb)',[owner,staff,'staff@test.invalid',JSON.stringify({stock:{read:true,write:true},config:{write:false}})]);
@@ -69,6 +70,27 @@ try{
   await a.query('BEGIN');await a.query('SELECT cancel_facebook_delivery($1)',[cancelId]);assert.equal(await call(b,pc2,'claim',null,{claimKey:crypto.randomUUID()}),null);await a.query('COMMIT');
   evidence.checks.push({iteration:n+1,approval:'idempotent',claim:'exclusive',checkpoint:'single',lateEvidence:'blocks subsequent checkpoint',distinctIntents:'exclusive',oldAttempt:'rejected',pauseAndRevocation:'win before authorization',parallelDestinations:'independent',cancelBeforeClaim:'preserved'});
  }
+ await cleanup();
+ const sharedProduct=await product(),sharedKey=crypto.randomUUID();
+ const sharedGroups=[crypto.randomUUID(),crypto.randomUUID()];
+ await admin.query('INSERT INTO facebook_groups(id,user_id,name,url) VALUES($1,$2,$3,$4),($5,$2,$6,$7)',[
+  sharedGroups[0],owner,'Concurrency group 1','https://www.facebook.com/groups/market-groups-1',
+  sharedGroups[1],'Concurrency group 2','https://www.facebook.com/groups/market-groups-2',
+ ]);
+ await actor(a);await actor(b);
+ const approveMarketplaceGroups=c=>c.query(
+  "SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],true,'marketplace_groups') AS id",
+  [sharedProduct,sharedKey,JSON.stringify(body),sharedGroups]);
+ const sharedApprovals=await Promise.all([approveMarketplaceGroups(a),approveMarketplaceGroups(b)]);
+ assert.equal(sharedApprovals[0].rows[0].id,sharedApprovals[1].rows[0].id);
+ const sharedDelivery=(await admin.query('SELECT id,target_groups FROM facebook_deliveries WHERE publication_id=$1',[sharedApprovals[0].rows[0].id])).rows[0];
+ assert.equal(sharedDelivery.target_groups.length,2);
+ assert.equal((await admin.query('SELECT group_id FROM fb_delivery_group_results WHERE delivery_id=$1',[sharedDelivery.id])).rows.length,2);
+ await a.query('SET ROLE anon');await b.query('SET ROLE anon');
+ const sharedClaims=await Promise.all([call(a,pc1,'claim',null,{claimKey:crypto.randomUUID()}),call(b,pc2,'claim',null,{claimKey:crypto.randomUUID()})]);
+ assert.equal(sharedClaims.filter(Boolean).length,1);
+ assert.equal(sharedClaims.find(Boolean).target_groups.length,2);
+ evidence.checks.push({marketplaceGroupsApproval:'idempotent',delivery:'one marketplace item',groupResults:'two initialized',claim:'exclusive with targets'});
  await actor(a,other);assert.equal((await a.query('SELECT * FROM facebook_publications')).rows.length,0);assert.equal((await a.query('SELECT * FROM facebook_delivery_attempts')).rows.length,0);
  await actor(a,staff);await assert.rejects(a.query('SELECT set_facebook_worker_protocol(2)'));
  await admin.query('UPDATE collaborators SET revoked_at=now() WHERE user_uid=$1',[staff]);await actor(a,staff);assert.equal((await a.query('SELECT * FROM facebook_publications')).rows.length,0);

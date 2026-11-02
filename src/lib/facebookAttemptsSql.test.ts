@@ -18,7 +18,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261102200000_fb_marketplace_groups.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -35,10 +35,55 @@ beforeEach(async()=>{
  await worker('heartbeat',null,{version:'0.5.1',capabilities:CURRENT_CAPABILITIES});
 });
 async function approve(groups:string[]=[],marketplace=true,repeat:string|null=null){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,$3::uuid[],$4,$5) AS id',[product,JSON.stringify(content),groups,marketplace,repeat])).rows[0].id;}
+async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',key=crypto.randomUUID(),repeat:string|null=null,body=content){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6,$7) AS id',[product,key,JSON.stringify(body),groups,true,mode,repeat])).rows[0].id;}
 async function worker(op:string,attempt:string|null=null,data:any={},delivery:string|null=null){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_worker_v2($1,$2,$3,$4,$5::jsonb) AS data',[token,op,delivery,attempt,JSON.stringify(data)])).rows[0].data;}
 async function inspect(sql:string,args:any[]=[]){await db.exec('RESET ROLE');return db.query<any>(sql,args);}
 async function claim(){return worker('claim',null,{claimKey:crypto.randomUUID()});}
 async function group(url='https://www.facebook.com/groups/123'){await actor();return (await db.query<{id:string}>("INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Group',$2) RETURNING id",[owner,url])).rows[0].id;}
+it('approves one Marketplace delivery with immutable targets and isolated per-group results',async()=>{
+ const first=await group('https://www.facebook.com/groups/123');const second=await group('https://www.facebook.com/groups/456');
+ const key=crypto.randomUUID();const id=await approveV2([second,first],'marketplace_groups',key);
+ const deliveries=(await inspect('SELECT id,destination,destination_key,target_groups FROM facebook_deliveries WHERE publication_id=$1',[id])).rows;
+ expect(deliveries).toHaveLength(1);
+ expect(deliveries[0]).toMatchObject({destination:{name:'Marketplace',mechanism:'marketplace_groups',url:'https://www.facebook.com/marketplace/create/item'},destination_key:'marketplace'});
+ expect(deliveries[0].target_groups.map((entry:any)=>entry.group_id)).toEqual([first,second].sort());
+ expect(deliveries[0].target_groups.map((entry:any)=>entry.canonical_id).sort()).toEqual(['123','456']);
+ expect((await inspect('SELECT group_id,status FROM fb_delivery_group_results WHERE delivery_id=$1 ORDER BY group_id',[deliveries[0].id])).rows)
+  .toEqual([first,second].sort().map(group_id=>({group_id,status:'pending'})));
+ const saved=(await inspect('SELECT content FROM facebook_publications WHERE id=$1',[id])).rows[0].content;
+ expect(saved.selection).toMatchObject({marketplace:true,groups:[first,second].sort(),mode:'marketplace_groups'});
+ await actor(other);
+ expect((await db.query('SELECT * FROM fb_delivery_group_results')).rows).toHaveLength(0);
+ await expect(db.query("INSERT INTO fb_delivery_group_results(delivery_id,group_id) VALUES($1,$2)",[deliveries[0].id,first])).rejects.toThrow();
+});
+it('keeps separate approval unchanged',async()=>{
+ const target=await group();const key=crypto.randomUUID();const first=await approveV2([target],'separate',key);
+ expect((await inspect('SELECT destination->>\'mechanism\' AS mechanism,target_groups FROM facebook_deliveries WHERE publication_id=$1 ORDER BY destination_key',[first])).rows)
+  .toEqual([{mechanism:'group_direct',target_groups:[]},{mechanism:'marketplace',target_groups:[]}]);
+});
+it('deduplicates Marketplace group approvals by intent',async()=>{
+ const shared=await group('https://www.facebook.com/groups/789');const sharedKey=crypto.randomUUID();
+ const id=await approveV2([shared],'marketplace_groups',sharedKey);
+ expect(await approveV2([shared],'marketplace_groups',sharedKey)).toBe(id);
+ await expect(approveV2([], 'marketplace_groups', sharedKey)).rejects.toThrow();
+});
+it('rejects cross-tenant, duplicate canonical and malformed Marketplace group targets',async()=>{
+ const target=await group();
+ await expect(approveV2([target],'marketplace_groups',crypto.randomUUID(),null,{...content,groupText:''})).rejects.toThrow();
+ await actor(other);
+ await expect(db.query('SELECT approve_facebook_publication_v2($1,gen_random_uuid(),$2::jsonb,$3::uuid[],true,$4)',[product,JSON.stringify(content),[target],'marketplace_groups'])).rejects.toThrow();
+ await actor();
+ const alias=await group('https://www.facebook.com/groups/123/');
+ const canonical=await group('https://www.facebook.com/groups/PicoVendedeTodo');
+ const canonicalAlias=await group('https://www.facebook.com/groups/710102875717376');
+ await expect(approveV2([alias,await group('https://www.facebook.com/groups/456')],'marketplace_groups')).resolves.toBeTruthy();
+ await expect(approveV2([canonical,canonicalAlias],'marketplace_groups')).rejects.toThrow();
+});
+it('returns immutable target groups to the worker claim and accepts Marketplace evidence URLs',async()=>{
+ const target=await group();await approveV2([target],'marketplace_groups');
+ const job=await claim();expect(job.target_groups).toHaveLength(1);expect(job.target_groups[0]).toMatchObject({group_id:target,name:'Group',canonical_id:'123'});
+ expect((await inspect("SELECT facebook_valid_evidence_url('https://www.facebook.com/marketplace/item/987/','{\"mechanism\":\"marketplace_groups\",\"url\":\"https://www.facebook.com/marketplace/create/item\"}'::jsonb) AS valid")).rows[0].valid).toBe(true);
+});
 it('keeps a single guarded approval entry point and denies private backends',async()=>{
  await approve();await expect(approve()).rejects.toThrow('pendiente');
  await db.exec('SET ROLE anon');await expect(db.query("SELECT facebook_worker_legacy_dispatch($1,'claim')",[token])).rejects.toThrow('permission denied');

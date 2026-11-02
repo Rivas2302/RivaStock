@@ -24,13 +24,16 @@ export function validateGroupSelection(groups:FacebookGroup[],selected:string[])
 }
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
 export interface FacebookAttempt {id:string;device_id?:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;pending_post_id?:string|null;tracking_checked_at?:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string;status?:string;message?:string;post_submit_observations?:unknown[]}}[]}
-export const facebookDeliveryFields='*,facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,device_id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,pending_post_id,tracking_checked_at,events:facebook_delivery_attempt_events(type,created_at,data))';
+export interface FacebookGroupTarget {group_id:string;name:string;url:string;canonical_id?:string}
+export interface FacebookGroupResult {group_id:string;status:'pending'|'selected'|'not_found_in_list'|'published'|'pending_approval'|'not_approved'|'unknown';post_id:string|null;url:string|null;message:string|null;checked_at:string|null}
+export const facebookDeliveryFields='*,fb_delivery_group_results(*),facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,device_id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,pending_post_id,tracking_checked_at,events:facebook_delivery_attempt_events(type,created_at,data))';
 export async function refreshFacebookDeliveryStates(){
  const {error}=await supabase.rpc('refresh_facebook_delivery_states');
  if(error&&!['PGRST202','42883'].includes(error.code))throw new Error('No se pudo comprobar si hay ejecuciones interrumpidas.');
 }
 export interface FacebookDelivery {
   recovery_required?:boolean;active_attempt_id?:string|null;facebook_delivery_attempts?:FacebookAttempt[];
+  target_groups?:FacebookGroupTarget[];fb_delivery_group_results?:FacebookGroupResult[];
   id: string; status: string; message: string | null; evidence_url: string | null;
   issue?: {kind:string;message:string;candidates?:{title:string;summary:string;status:string|null;url:string|null}[];fields?:{label:string;supported?:boolean;options?:{value:string;label:string}[]|null}[]}|null;
   resolution?: {action:string;url?:string|null;observedStatus?:string|null}|null;
@@ -39,7 +42,7 @@ export interface FacebookDelivery {
   execution_timing?: {source?:string;approval_to_claim_ms?:number;receipt_to_preparation_ms?:number;claim_rpc_ms?:number;photos_ms?:number;navigation_ms?:number;preparation_ms?:number};
   destination: { name: string; url: string; mechanism: string };
 }
-export interface FacebookPublication { id: string; product_id?: string; repeat_of?: string | null; content: PublicationContent & {selection?:{marketplace:boolean;groups:string[]}}; approved_at: string; facebook_deliveries: FacebookDelivery[] }
+export interface FacebookPublication { id: string; product_id?: string; repeat_of?: string | null; content: PublicationContent & {selection?:{marketplace:boolean;groups:string[];mode?:'separate'|'marketplace_groups'}}; approved_at: string; facebook_deliveries: FacebookDelivery[] }
 export const publicationStatus: Record<string, string> = {
   pending: 'Pendiente', running: 'En ejecución', submitted: 'Enviado', published: 'Publicado',
   pending_approval: 'Pendiente de aprobación', attention: 'Requiere atención', cancelled: 'Cancelado',

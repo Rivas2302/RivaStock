@@ -103,7 +103,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
     try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
     const requestStarted=performance.now();
-    await facebookRpc('approve_facebook_publication', { ...payload, p_intent: key });
+    await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: 'separate' });
     void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
     onApproved?.();
     setNotice('Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
