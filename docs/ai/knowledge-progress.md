@@ -1157,3 +1157,13 @@ Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado 
 | public.stock_movements | 453 | 453 | OK |
 | public.supplier_orders | 1 | 1 | OK |
 | public.suppliers | 12 | 12 | OK |
+
+### B2 — Olvido coloquial de recuerdos compartidos — 2026-11-02
+
+- Se reprodujo la frase exacta “Olvidá lo de los envíos a Santa Rosa”. El filtro anterior no identificaba de forma confiable todas las órdenes coloquiales; además, buscar similitud con la instrucción completa podía bajar la correspondencia con el recuerdo. La búsqueda ahora usa solo el tema extraído; órdenes sin un tema claro no archivan ningún candidato.
+- La extracción recibe instrucciones explícitas de aceptar un único archivo por ID cuando el tema coincide claramente, y de no añadir/actualizar/resumir durante una orden de olvido. El prompt de respuesta contextualiza el comportamiento automático, el modo de confirmación y la memoria desactivada para evitar el mensaje contradictorio “no puedo borrar recuerdos”. La Edge Function `knowledge` ya admitía `archive` validado por ID; no se requirió una migración ni redeploy de esa función.
+- Se agregaron 11 conversaciones (8 olvidos coloquiales y 3 sin candidato claro) a los 30 casos de evaluación originales. Los casos se mantuvieron fijos durante los ajustes.
+- `npm run eval:memory`, con Codex local SDK/CLI real, GPT-6 Luna Bajo, 41 conversaciones: retención importante 20/20 (100%, objetivo 95%); recuperación top-5 20/20 (100%, objetivo 85%); precisión 32/32 (100%, objetivo 85%); actualizaciones 10/10 (100%, objetivo 90%); datos sensibles bloqueados 3/3 (100%); archivo total 12/12 (100%); nuevos casos de olvido 11/11 (100%). Resultado final: `tools/rivastock-ai-bridge/test/memory-eval/results/20261102T232028757Z-low.json`.
+- Validación local: lint, frontend 666/666 pruebas, Bridge typecheck y 92/92 pruebas, build y `perf:check` aprobados. Bundle inicial: 207.874 B gzip JS y 21.807 B CSS. El paquete AI Bridge 1.18.0 se generó correctamente.
+- **Versión:** la instalación informada es 1.17.0; se eligió 1.18.0 como el siguiente minor disponible, en lugar de la versión 1.12.1 referida por antigüedad en el renglón B2 del plan. No degradar la instalación.
+- **Pendiente:** commit/push, deploy, instalación y verificación del Bridge 1.18.0, checklist en producción (incluida la frase exacta, el no-candidato, Deshacer y modo de confirmación) y eliminación de los datos `[QA]` desde la app. No marcar B2 como cerrada hasta completar todo.

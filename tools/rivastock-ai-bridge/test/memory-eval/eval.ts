@@ -13,6 +13,7 @@ import type { MemoryItem } from '../../src/memory/retrieve.ts';
 type ExpectedAction = 'add' | 'update' | 'archive' | 'none' | 'blocked';
 interface EvalCase {
   id: string;
+  forgetCommand?: boolean;
   exchanges: Array<{ input: string; output: string }>;
   similar: MemoryItem[];
   expected: {
@@ -49,6 +50,7 @@ const THRESHOLDS = {
   updateAccuracy: 0.9,
   sensitiveBlocked: 1,
   archiveAccuracy: 1,
+  forgetAccuracy: 1,
 };
 
 function argument(name: string, fallback: string): string {
@@ -64,8 +66,13 @@ const model = argument('--model', MODEL);
 if (model !== MODEL) throw new Error(`La evaluación C5.5 requiere ${MODEL}.`);
 const providerOptions: AIProviderOptions = { model_id: MODEL, reasoning_effort: effort };
 const dataset = JSON.parse(await readFile(join(EVALUATION_DIR, 'cases.json'), 'utf8')) as EvalDataset;
-if (dataset.cases.length !== 30 || new Set(dataset.cases.map((item) => item.id)).size !== 30) {
-  throw new Error('El conjunto C5.5 debe contener exactamente 30 casos únicos.');
+if (dataset.cases.length < 30 || new Set(dataset.cases.map((item) => item.id)).size !== dataset.cases.length) {
+  throw new Error('El conjunto C5.5 debe contener al menos 30 casos únicos.');
+}
+const forgetCases = dataset.cases.filter((item) => item.forgetCommand === true);
+if (forgetCases.filter((item) => item.expected.op === 'archive').length < 8
+  || forgetCases.filter((item) => item.expected.op === 'none').length < 3) {
+  throw new Error('La evaluación requiere ocho olvidos coloquiales relacionados y tres sin candidato.');
 }
 
 const userHome = process.env.USERPROFILE || homedir();
@@ -241,7 +248,7 @@ for (const item of dataset.cases) {
     rawSensitiveOperations,
     ...(failed ? { error: 'provider_or_extraction_error' as const } : {}),
   });
-  console.log(`[${caseResults.length.toString().padStart(2, '0')}/30] ${item.id}: ${matched ? 'PASS' : 'FAIL'}; accepted=${accepted.length}; embeddings=${embeddingInputs}`);
+  console.log(`[${caseResults.length.toString().padStart(2, '0')}/${dataset.cases.length}] ${item.id}: ${matched ? 'PASS' : 'FAIL'}; accepted=${accepted.length}; embeddings=${embeddingInputs}`);
 }
 
 const retrievalCases = dataset.cases.filter((item) => item.expected.important && item.probe);
@@ -270,6 +277,8 @@ const precision = correctlyAcceptedOperationCount / Math.max(1, acceptedOperatio
 const updateAccuracy = updatesCorrect / Math.max(1, updateCount);
 const sensitiveBlockedRate = sensitiveBlocked / Math.max(1, sensitiveCount);
 const archiveAccuracy = archivesCorrect / Math.max(1, archiveCount);
+const forgetCorrect = forgetCases.filter((item) => caseResults.find((result) => result.id === item.id)?.matched).length;
+const forgetAccuracy = forgetCorrect / Math.max(1, forgetCases.length);
 const metrics = {
   importantRecall: { correct: importantCorrect, total: importantCount, value: importantRecall, target: THRESHOLDS.importantRecall },
   retrievalRecallAt5: { correct: retrievalCorrect, total: retrievalCases.length, value: retrievalRecall, target: THRESHOLDS.retrievalRecall },
@@ -277,6 +286,7 @@ const metrics = {
   updateAccuracy: { correct: updatesCorrect, total: updateCount, value: updateAccuracy, target: THRESHOLDS.updateAccuracy },
   sensitiveBlocked: { correct: sensitiveBlocked, total: sensitiveCount, value: sensitiveBlockedRate, target: THRESHOLDS.sensitiveBlocked },
   archiveAccuracy: { correct: archivesCorrect, total: archiveCount, value: archiveAccuracy, target: THRESHOLDS.archiveAccuracy },
+  forgetAccuracy: { correct: forgetCorrect, total: forgetCases.length, value: forgetAccuracy, target: THRESHOLDS.forgetAccuracy },
   archivesAbsentFromRetrieval: { correct: archivesAbsentFromRetrieval, total: archiveCases.length },
 };
 const passed = importantRecall >= THRESHOLDS.importantRecall
@@ -285,6 +295,7 @@ const passed = importantRecall >= THRESHOLDS.importantRecall
   && updateAccuracy >= THRESHOLDS.updateAccuracy
   && sensitiveBlockedRate >= THRESHOLDS.sensitiveBlocked
   && archiveAccuracy >= THRESHOLDS.archiveAccuracy
+  && forgetAccuracy >= THRESHOLDS.forgetAccuracy
   && archivesAbsentFromRetrieval === archiveCases.length;
 const finishedAt = new Date().toISOString();
 const output = {

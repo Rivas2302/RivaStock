@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — B2 implementada localmente; despliegue y prueba de producción pendientes
+
+- Antes de continuar se comparó `docs/ai/ACTION_PLAN.md` con Desktop: el plan local es más reciente por timestamp (23:02Z frente a 21:23Z) y contiene los cierres de A3/A4 y B1. Se conserva ese estado; la sección B2 coincide con la copia maestra.
+- Reproducción de la frase exacta “Olvidá lo de los envíos a Santa Rosa” y pruebas de filtros/selección: la gramática anterior no reconocía varias formas coloquiales como comandos de memoria y usaba la frase entera para buscar candidatos; la actualización extraía el tema, acotaba el archivo a un único ID candidato y respondía en forma coherente con los modos automático, confirmación y apagado. La capa SQL/Edge ya valida y aplica `archive`; no requiere migración ni despliegue de Edge Function.
+- Verificación local final: `npm run lint`; `npm test` **666/666** en 108 archivos (variables Supabase ficticias limitadas al proceso); Bridge typecheck y **92/92** pruebas; `npm run build`; `npm run perf:check` (207.874 B gzip JS y 21.807 B gzip CSS del inicio); `git diff --check` aprobado.
+- Evaluación real con Codex local SDK/CLI, GPT-6 Luna Bajo, 41 casos: **20/20** retención importante, **20/20** recuperación top-5, **32/32** precisión, **10/10** actualizaciones, **3/3** sensibles bloqueados, **12/12** archivos correctos y **11/11** nuevos casos de olvido. Ejecución final: `tools/rivastock-ai-bridge/test/memory-eval/results/20261102T232028757Z-low.json`; los casos no se modificaron para elevar el resultado.
+- El paquete generado es AI Bridge **1.18.0** (la instalación conocida es 1.17.0; se usa el siguiente minor disponible en vez de degradar a 1.12.1 literal del plan). El build empaquetó correctamente el artefacto. No se desplegó ni instaló todavía; no se creó dato QA ni se hizo cambio de base.
+- **Estado de B2:** lógica, tests y evaluación local listos; falta commit/push, deploy de Vercel, instalación segura de 1.18.0 y checklist/limpieza `[QA]` en producción. Mantener B2 `[ ]` hasta cerrar esas verificaciones.
+- **Siguiente:** cerrar artefacto local y desplegar B2; validar memoria en producción con Bridge 1.18.0.
+
 ## 2026-11-02 — B1 registrada; B2 sigue
 
 - La comparación previa con Desktop confirmó el plan maestro de las 18:30; `origin/main` estaba en `d0cf096`. El plan local solo añade los cierres verificados de A3/A4.

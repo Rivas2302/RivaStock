@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { containsSensitiveMemoryData, hasExplicitMemoryCommand, normalizedEditDistance, shouldSkipMemoryPrefilter } from '../src/memory/filters.ts';
+import { containsSensitiveMemoryData, hasExplicitMemoryCommand, isMemoryForgetCommand, memorySimilarityQuery, normalizedEditDistance, shouldSkipMemoryPrefilter } from '../src/memory/filters.ts';
 import { buildExtractionPrompt, extractMemoryOperations, validateMemoryOperations } from '../src/memory/extract.ts';
 import { MemoryTurnQueue } from '../src/memory/queue.ts';
 import { buildMemoryContext, retrieveMemory, type MemoryItem } from '../src/memory/retrieve.ts';
 import { processMemoryBatch } from '../src/memory/processor.ts';
 import { executeTextGeneration } from '../src/executeTextGeneration.ts';
+import { buildProviderPrompt } from '../src/providers.ts';
 import type { MemoryQueueEntry } from '../src/memory/queue.ts';
 
 const memoryId = '123e4567-e89b-42d3-a456-426614174000';
@@ -21,6 +22,50 @@ test('detects explicit memory commands without case or accent sensitivity', () =
   assert.equal(hasExplicitMemoryCommand('RECORDÁ que los envíos salen los martes'), true);
   assert.equal(hasExplicitMemoryCommand('No te olvides de responder en español'), true);
   assert.equal(hasExplicitMemoryCommand('El local abre a las nueve'), false);
+});
+
+test('detects colloquial forget requests and embeds the topic instead of the imperative', () => {
+  const cases = [
+    ['Olvidá lo de los envíos a Santa Rosa.', 'envios a santa rosa'],
+    ['Olvidate de lo del proveedor para Bariloche.', 'proveedor para bariloche'],
+    ['Borrá lo de que el depósito recibe mercadería.', 'deposito recibe mercaderia'],
+    ['Sacá de la memoria el dato de que abre los domingos.', 'abre los domingos'],
+    ['Ya no recuerdes qué transporte usamos.', 'transporte usamos'],
+    ['Borrá de la memoria que usamos etiqueta azul.', 'usamos etiqueta azul'],
+    ['Por favor, olvidá el recuerdo sobre informes largos.', 'informes largos'],
+    ['Quitá de la memoria el día de reposición.', 'dia de reposicion'],
+  ];
+  for (const [input, expectedQuery] of cases) {
+    assert.equal(isMemoryForgetCommand(input), true, input);
+    assert.equal(hasExplicitMemoryCommand(input), true, input);
+    assert.equal(memorySimilarityQuery(input), expectedQuery, input);
+    assert.equal(shouldSkipMemoryPrefilter(input), false, input);
+  }
+  assert.equal(memorySimilarityQuery('Olvidá eso.'), '');
+  assert.equal(isMemoryForgetCommand('No te olvides de responder en español.'), false);
+  assert.equal(hasExplicitMemoryCommand('Borrá el archivo de facturas.'), false);
+  assert.equal(isMemoryForgetCommand('Borrá el archivo de facturas.'), false);
+  assert.equal(hasExplicitMemoryCommand('El dato C09 ya no sirve; olvidá el recuerdo anterior.'), true);
+  assert.equal(isMemoryForgetCommand('El dato C09 ya no sirve; olvidá el recuerdo anterior.'), true);
+  assert.equal(memorySimilarityQuery('Los envíos salen los martes.'), 'Los envíos salen los martes.');
+});
+
+test('response prompt gives a direct, accurate acknowledgment for memory commands', () => {
+  const automatic = buildProviderPrompt('Olvidá lo de los envíos a Santa Rosa.', '', {
+    memory_response_guidance: 'forget-auto',
+  });
+  assert.match(automatic, /vas a olvidarlo/);
+  assert.match(automatic, /Nunca digas que no podés borrar recuerdos/);
+  assert.match(automatic, /no afirmes que ya se archivó/);
+  assert.match(buildProviderPrompt('Recordá que abrimos los sábados.', '', {
+    memory_response_guidance: 'remember-auto',
+  }), /vas a recordar/);
+  assert.match(buildProviderPrompt('Olvidá eso.', '', {
+    memory_response_guidance: 'forget-confirm',
+  }), /proponer el olvido para revisión/);
+  assert.match(buildProviderPrompt('Recordá esto.', '', {
+    memory_response_guidance: 'disabled',
+  }), /memoria compartida está desactivada/);
 });
 
 test('local prefilter avoids greetings and questions without statements, but keeps explicit commands', () => {
@@ -377,6 +422,92 @@ test('uses the saved ai_memory_extract Codex model and effort for extraction', a
     embedQuery: async () => Array(384).fill(0),
   });
   assert.deepEqual(receivedOptions, { model_id: 'gpt-6-luna', reasoning_effort: 'low' });
+});
+
+test('exact Santa Rosa forget request searches by its topic and applies only the matching archive', async () => {
+  let embeddedQuery = '';
+  let extractionPrompt = '';
+  let applied: Array<Record<string, unknown>> = [];
+  const forgetEntry: MemoryQueueEntry = {
+    jobId, chatId, input: 'Olvidá lo de los envíos a Santa Rosa.',
+    output: 'No puedo borrar recuerdos, pero puedo ayudarte con otra cosa.',
+    shouldExtract: true, summaryDue: false, metric: null,
+  };
+  const candidate = memory({ content: 'Los envíos a Santa Rosa salen los martes y los hace Correo Argentino.' });
+  await processMemoryBatch({
+    client: {
+      async memorySimilar() { return { enabled: true, memories: [candidate], extraction_settings: {
+        provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+      } }; },
+      async memoryChatSummary() { return null; },
+      async memoryApply(_worker, _job, payload) { applied = payload.operations; },
+      async memoryMetric() {}, async memoryFinish() {}, async touchSimilarMemory() {},
+      async pendingMemoryEmbeddings() { return []; }, async storeMemoryEmbeddings() {},
+    },
+    workerId: 'worker', entries: [forgetEntry], codexEnabled: true,
+    codexProvider: { async execute(prompt, _signal, _context, options) {
+      extractionPrompt = prompt;
+      assert.deepEqual(options, { model_id: 'gpt-6-luna', reasoning_effort: 'low' });
+      return { output: JSON.stringify({ operations: [
+        { op: 'archive', id: memoryId, reason: 'El usuario pidió olvidarlo.' },
+        { op: 'add', kind: 'fact', content: 'No debo agregar un recuerdo al procesar un olvido.' },
+      ] }) };
+    } },
+    localLlmUrl: null, localLlmModel: null, log() {},
+    embedQuery: async (query) => { embeddedQuery = query; return Array(384).fill(0.25); },
+  });
+  assert.equal(embeddedQuery, 'envios a santa rosa');
+  assert.match(extractionPrompt, /Los envíos a Santa Rosa salen los martes/);
+  assert.match(extractionPrompt, /No puedo borrar recuerdos/);
+  assert.match(extractionPrompt, /La orden del usuario tiene prioridad/);
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0]?.op, 'archive');
+  assert.equal(applied[0]?.id, memoryId);
+});
+
+test('vague forget requests discard broad candidates and cannot archive an arbitrary memory', async () => {
+  let extractionPrompt = '';
+  let applied = 0;
+  const candidate = memory({ content: 'El local abre a las nueve.' });
+  await processMemoryBatch({
+    client: {
+      async memorySimilar() { return { enabled: true, memories: [candidate] }; },
+      async memoryChatSummary() { return null; },
+      async memoryApply() { applied += 1; }, async memoryMetric() {}, async memoryFinish() {},
+      async touchSimilarMemory() {}, async pendingMemoryEmbeddings() { return []; }, async storeMemoryEmbeddings() {},
+    },
+    workerId: 'worker',
+    entries: [{ jobId, chatId, input: 'Olvidá eso.', output: 'De acuerdo.', shouldExtract: true, summaryDue: true, metric: null }],
+    codexEnabled: true,
+    codexProvider: { async execute(prompt) {
+      extractionPrompt = prompt;
+      return { output: JSON.stringify({ operations: [{ op: 'archive', id: memoryId, reason: 'El usuario lo pidió.' }] }) };
+    } },
+    localLlmUrl: null, localLlmModel: null, log() {},
+    embedQuery: async () => Array(384).fill(0.25),
+  });
+  assert.match(extractionPrompt, /Recuerdos similares disponibles.*\(ninguno\)/s);
+  assert.equal(applied, 0);
+});
+
+test('explicit forget response is instructed without claiming an archive before the async operation', async () => {
+  let optionsSeen: unknown;
+  const queued: MemoryQueueEntry[] = [];
+  await executeTextGeneration({
+    job: { id: jobId, input: 'Olvidá lo de los envíos a Santa Rosa.' },
+    provider: { async execute(_input, _signal, _context, options) { optionsSeen = options; return { output: 'Lo voy a olvidar.' }; } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: chatId, provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [], knowledgeClient: null, workerId: null, knowledgeEnabled: false,
+    memoryClient: { async memoryRetrieve() { return { enabled: true, mode: 'auto', top_k: 5,
+      include_summaries: true, user_turn_count: 2, message_count: 1, memories: [] }; } },
+    memoryWorkerId: 'worker', onMemoryTurn(entry) { queued.push(entry); },
+    memoryRetrievalDependencies: { embed: async () => Array(384).fill(0.25) },
+    providerOptions: {}, complete: async () => undefined, log() {},
+  });
+  assert.deepEqual(optionsSeen, { memory_response_guidance: 'forget-auto' });
+  assert.equal(queued[0]?.shouldExtract, true);
 });
 
 test('normalized edit distance is accent and case insensitive', () => {

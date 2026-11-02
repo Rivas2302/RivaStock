@@ -1,7 +1,7 @@
 import { embedQuery, embedTexts, EMBEDDING_MODEL, PASSAGE_PREFIX } from '../knowledge/embed.ts';
 import type { KnowledgeClient } from '../knowledge/client.ts';
 import type { AIProvider } from '../types.ts';
-import { normalizedEditDistance } from './filters.ts';
+import { memorySimilarityQuery, normalizedEditDistance } from './filters.ts';
 import {
   extractMemoryOperations, isNearDuplicate, makeApplyPayload,
   type MemoryExchange,
@@ -42,8 +42,10 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
     const anchor = extractEntries[0];
     if (!anchor) return;
     const embed = options.embedQuery ?? embedQuery;
-    const similarQuery = await embed(anchor.input.slice(0, 2000));
-    const similar = await options.client.memorySimilar(options.workerId, anchor.jobId, similarQuery);
+    const candidateQuery = memorySimilarityQuery(anchor.input);
+    const similarQuery = await embed(candidateQuery || anchor.input.slice(0, 2000));
+    const candidateResult = await options.client.memorySimilar(options.workerId, anchor.jobId, similarQuery);
+    const similar = candidateQuery ? candidateResult : { ...candidateResult, memories: [] };
     const chatSummary = entries.some((entry) => entry.summaryDue)
       ? await options.client.memoryChatSummary(options.workerId, anchor.jobId) : null;
     const extractionContext = chatSummary

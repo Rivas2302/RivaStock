@@ -1,7 +1,7 @@
 import type { KnowledgeClient, KnowledgeRetrievedSource } from './knowledge/client.ts';
 import { buildKnowledgeContext, retrieveForJob, type RetrievalDependencies } from './knowledge/retrieval.ts';
 import { buildMemoryContext, retrieveMemory, type MemoryRetrievalDependencies } from './memory/retrieve.ts';
-import { hasExplicitMemoryCommand, shouldSkipMemoryPrefilter } from './memory/filters.ts';
+import { hasExplicitMemoryCommand, isMemoryForgetCommand, shouldSkipMemoryPrefilter } from './memory/filters.ts';
 import type { MemoryQueueEntry } from './memory/queue.ts';
 import { embedQuery } from './knowledge/embed.ts';
 import type { AIJobContext, AIProjectContext, AIProvider, AIProviderOptions, AIWorkspaceFile } from './types.ts';
@@ -39,14 +39,23 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
   };
   let memoryContext = '';
   let memoryTurn: MemoryQueueEntry | null = null;
+  let memoryResponseGuidance: AIProviderOptions['memory_response_guidance'];
   if (input.memoryClient && input.memoryWorkerId) {
     const memories = await retrieveMemory(input.memoryClient, input.memoryWorkerId, input.job.id,
       input.job.input, { log: input.log, ...input.memoryRetrievalDependencies, embed: embedQueryOnce });
-    if (memories?.enabled) {
-      memoryContext = buildMemoryContext(memories.memories);
+    if (memories) {
       const chatId = input.jobContext.chat_id;
-      if (chatId && memories.mode !== 'off') {
-        const explicitCommand = hasExplicitMemoryCommand(input.job.input);
+      const explicitCommand = hasExplicitMemoryCommand(input.job.input);
+      if (chatId && explicitCommand) {
+        if (!memories.enabled || memories.mode === 'off') memoryResponseGuidance = 'disabled';
+        else if (isMemoryForgetCommand(input.job.input)) {
+          memoryResponseGuidance = memories.mode === 'confirm' ? 'forget-confirm' : 'forget-auto';
+        } else {
+          memoryResponseGuidance = memories.mode === 'confirm' ? 'remember-confirm' : 'remember-auto';
+        }
+      }
+      if (memories.enabled) memoryContext = buildMemoryContext(memories.memories);
+      if (chatId && memories.enabled && memories.mode !== 'off') {
         const cadenceDue = memories.user_turn_count === 1 || memories.user_turn_count % 3 === 0;
         const summaryDue = memories.message_count > 0 && memories.message_count % 10 === 9;
         const prefiltered = cadenceDue && !explicitCommand && !summaryDue
@@ -75,7 +84,7 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
   const result = await input.provider.execute(input.job.input, input.signal,
     createCombinedContext(input.workspaceFiles, input.projectFiles, businessFiles,
       [memoryContext, buildKnowledgeContext(sources)].filter(Boolean).join('\n\n')),
-    input.providerOptions);
+    { ...input.providerOptions, ...(memoryResponseGuidance ? { memory_response_guidance: memoryResponseGuidance } : {}) });
   if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
     throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');
   }
