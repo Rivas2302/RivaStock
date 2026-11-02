@@ -13,6 +13,8 @@ import { executeTextGeneration } from './executeTextGeneration.ts';
 import { cleanChatSessionDirectory, providerFor } from './providers.ts';
 import { MemoryTurnQueue } from './memory/queue.ts';
 import { processMemoryBatch, processPendingMemoryEmbeddings } from './memory/processor.ts';
+import { SupervisorClient } from './automation/client.ts';
+import { runFacebookSupervisorLoop } from './automation/supervisor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { loadConfig, type AIProviderId } from './types.ts';
@@ -26,16 +28,24 @@ const MEMORY_EMBEDDING_SYNC_INTERVAL_MS = 60_000;
 const config = loadConfig();
 const client = new BridgeClient(config.endpoint, config.token);
 const knowledgeClient = config.knowledgeEndpoint ? new KnowledgeClient(config.knowledgeEndpoint, config.token) : null;
+const supervisorClient = config.automationEndpoint ? new SupervisorClient(config.automationEndpoint, config.token) : null;
 const workerId = config.workerId ?? randomUUID();
 let stopping = false;
 let activeController: AbortController | null = null;
+let supervisorController: AbortController | null = null;
 let lastWorkspaceSyncAt = 0;
 let lastChatTombstoneSyncAt = 0;
 let lastMemoryEmbeddingSyncAt = 0;
 const memoryQueue = new MemoryTurnQueue(20, 6);
 
-process.on('SIGINT', () => { stopping = true; activeController?.abort(); });
-process.on('SIGTERM', () => { stopping = true; activeController?.abort(); });
+function stopBridge(): void {
+  stopping = true;
+  activeController?.abort();
+  supervisorController?.abort();
+}
+
+process.on('SIGINT', stopBridge);
+process.on('SIGTERM', stopBridge);
 
 async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string }): Promise<void> {
   const controller = new AbortController();
@@ -156,7 +166,7 @@ async function run(): Promise<void> {
       }
       const claim = await client.claim(workerId);
       if (claim.shouldStop) {
-        stopping = true;
+        stopBridge();
         continue;
       }
       if (claim.job) await executeJob(claim.job);
@@ -224,8 +234,7 @@ async function runWithInstanceLock(): Promise<void> {
     update: 10_000,
     retries: 0,
     onCompromised: (error) => {
-      stopping = true;
-      activeController?.abort();
+      stopBridge();
       process.stderr.write(`[AI Bridge] Se perdió el bloqueo de instancia: ${reportError(error.message)}\n`);
     },
   }).catch((error: unknown) => {
@@ -238,27 +247,42 @@ async function runWithInstanceLock(): Promise<void> {
   try {
     await client.start(workerId);
     configureModelCache(config.modelsDirectory);
+    const loops: Promise<void>[] = [run()];
     if (!config.knowledgeEnabled) {
-      await run();
+      process.stdout.write('[AI Bridge] Conocimientos deshabilitado por configuración.\n');
     } else if (!config.workerId) {
       process.stdout.write('[AI Bridge] Conocimientos requiere vincular la PC desde RivaStock.\n');
-      await run();
     } else if (!config.knowledgeEndpoint) {
       process.stderr.write('[AI Bridge] Conocimientos deshabilitado: AI_BRIDGE_ENDPOINT no termina en /functions/v1/ai-bridge.\n');
-      await run();
     } else {
       const activeKnowledgeClient = knowledgeClient;
       if (!activeKnowledgeClient) throw new Error('Conocimientos requiere un endpoint de worker válido.');
       process.stdout.write('[AI Bridge] Conocimientos activo; la primera indexación descargará aproximadamente 120 MB del modelo.\n');
-      const knowledgeLoop = runKnowledgeLoop({
+      loops.push(runKnowledgeLoop({
         client: activeKnowledgeClient,
         workerId: config.workerId,
         config,
         isStopping: () => stopping,
         log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
-      });
-      await Promise.all([run(), knowledgeLoop]);
+      }));
     }
+    if (config.fbSupervisorEnabled && config.workerId && supervisorClient) {
+      process.stdout.write('[AI Bridge] Supervisor de Facebook activo.\n');
+      loops.push(runFacebookSupervisorLoop({
+        client: supervisorClient,
+        workerId: config.workerId,
+        config,
+        isStopping: () => stopping,
+        log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+        onControllerStart: (controller) => { supervisorController = controller; },
+        onControllerFinish: (controller) => {
+          if (supervisorController === controller) supervisorController = null;
+        },
+      }));
+    } else if (config.fbSupervisorEnabled) {
+      process.stdout.write('[AI Bridge] Supervisor de Facebook requiere vincular la PC y un endpoint de automatización válido.\n');
+    }
+    await Promise.all(loops);
   } finally {
     await releaseLock();
   }

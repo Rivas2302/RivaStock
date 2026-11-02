@@ -25,9 +25,9 @@ Claude está habilitado en el Bridge, pero el dueño indicó que primero debe co
 
 1. En PowerShell escribir `claude`, completar inicio de sesión o primer uso, salir con `/exit` y probar: `claude -p "Respond exactly RIVA-CLAUDE-PROBE-OK" --output-format json --max-turns 1`.
 
-## AI Bridge 1.12.0 — activar la configuración de extracción
+## AI Bridge 1.13.0 — activar el supervisor visual de Facebook
 
-El paquete con lectura de `ai_function_settings` está generado y el Edge Function `knowledge` v5 está activo. En la PC vinculada, ejecutar el actualizador habitual hasta que el Bridge muestre **1.12.0** y **Conectado**. Después confirmar desde IA → Conexión.
+El paquete con el loop supervisor y lectura de `ai_function_settings` está generado. En la PC vinculada, ejecutar el actualizador habitual hasta que el Bridge muestre **1.13.0** y **Conectado**. Después, con Chrome abierto y la sesión de Facebook más la extensión activa, hacer los ensayos en vivo pendientes de Fase 1 y T2.5. Si Chrome pide recargar la extensión o conceder permiso de capturas, hacerlo desde la conexión de la extensión.
 
 ## Ensayo en vivo del publicador de Facebook
 

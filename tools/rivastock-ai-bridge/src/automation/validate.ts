@@ -13,6 +13,8 @@ export interface SupervisorControl {
 export interface SupervisorDomSummary {
   scope: 'dialog' | 'form' | 'page';
   controls: SupervisorControl[];
+  headings?: string[];
+  alerts?: string[];
 }
 
 export interface SupervisorIntent {
@@ -63,4 +65,21 @@ export function validateSupervisorDecision(value: unknown, dom: SupervisorDomSum
     if (!Number.isInteger(decision.wait_ms) || (decision.wait_ms as number) < 500 || (decision.wait_ms as number) > 10000) return false;
   } else if ('wait_ms' in decision) return false;
   return true;
+}
+
+export function parseSupervisorOutput(
+  output: string,
+  dom: SupervisorDomSummary,
+  intent: SupervisorIntent,
+): { decision: SupervisorDecision } | { error: string } {
+  const trimmed = output.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const json = fenced?.[1] ?? trimmed;
+  let parsed: unknown;
+  try { parsed = JSON.parse(json); }
+  catch { return { error: 'La respuesta no era un objeto JSON válido.' }; }
+  if (!validateSupervisorDecision(parsed, dom, intent)) {
+    return { error: 'La respuesta no cumple el contrato de decisión supervisada.' };
+  }
+  return { decision: parsed };
 }

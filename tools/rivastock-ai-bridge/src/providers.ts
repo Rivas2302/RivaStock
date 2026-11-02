@@ -103,6 +103,7 @@ export class ClaudeLocalProvider implements AIProvider {
         '--input-format', 'text', '--max-turns', '1',
         '--max-budget-usd', this.maxBudgetUsd, '--disallowedTools', '*',
       ];
+      if (options.model_id) args.push('--model', options.model_id);
       if (!options.chat_id) args.push('--no-session-persistence');
       if (savedSessionId) args.push('--resume', savedSessionId);
       const prompt = buildProviderPrompt(input, workspaceContext);

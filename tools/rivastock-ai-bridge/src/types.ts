@@ -6,7 +6,7 @@ export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface AIProviderOptions {
-  model_id?: CodexModelId;
+  model_id?: string;
   reasoning_effort?: CodexReasoningEffort;
   chat_id?: string | null;
   session_id?: string | null;
@@ -65,8 +65,10 @@ export interface AIProvider {
 
 export interface BridgeConfig {
   endpoint: string;
+  automationEndpoint: string | null;
   knowledgeEndpoint: string | null;
   token: string;
+  fbSupervisorEnabled: boolean;
   knowledgeEnabled: boolean;
   modelsDirectory: string;
   ocrEnabled: boolean;
@@ -98,10 +100,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
   const knowledgeEndpoint = normalizedEndpoint.endsWith('/functions/v1/ai-bridge')
     ? normalizedEndpoint.replace(/\/functions\/v1\/ai-bridge$/, '/functions/v1/knowledge')
     : null;
+  const automationEndpoint = normalizedEndpoint.endsWith('/functions/v1/ai-bridge')
+    ? normalizedEndpoint.replace(/\/functions\/v1\/ai-bridge$/, '/functions/v1/automation')
+    : null;
   return {
     endpoint: normalizedEndpoint,
+    automationEndpoint,
     knowledgeEndpoint,
     token,
+    fbSupervisorEnabled: env.AI_BRIDGE_ENABLE_FB_SUPERVISOR !== 'false',
     knowledgeEnabled: env.AI_BRIDGE_ENABLE_KNOWLEDGE !== 'false',
     modelsDirectory: resolve(env.AI_BRIDGE_MODELS_DIR?.trim()
       || join(userDirectory, '.rivastock-ai-bridge', 'models')),

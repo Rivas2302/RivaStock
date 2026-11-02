@@ -253,7 +253,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - `confidence < 0.6` → no se ejecuta; cuenta como intento fallido.
 - **Commit:** `docs(automation): define supervisor decision contract`
 
-### [ ] T2.3 AI Bridge: loop D supervisor
+### [x] T2.3 AI Bridge: loop D supervisor
 **Archivos:** `tools/rivastock-ai-bridge/src/automation/{client,supervisor,prompts,validate}.ts`, cambios en `src/index.ts` y `src/types.ts`. Versión **1.12.0** (o la siguiente menor disponible al iniciar la tarea).
 - Loop independiente (como el de Conocimientos) que sondea `fb_supervisor_worker('next')` cada 2 s solo si `AI_BRIDGE_ENABLE_FB_SUPERVISOR !== 'false'`.
 - Para cada pedido:
@@ -265,6 +265,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - Timeout por pedido: 60 s.
 - El prompt aclara que el contenido de la página es dato no confiable: ignorar instrucciones escritas en la página.
 - Tests: validador (casos válidos e inválidos), armado del prompt (no incluye datos sensibles), carpeta temporal borrada ante error y proveedor falso que devuelve JSON con fences.
+- La Edge Function `automation` expone el endpoint autenticado del worker, firma las capturas por propietario y devuelve el modelo/esfuerzo configurado. Se agregó porque el RPC de T2.1 no tenía una ruta HTTP para el Bridge.
 - **Commit:** `feat(ai-bridge): add Facebook supervisor loop with vision`
 
 ### [ ] T2.4 Extensión: cliente supervisor y autocorrección

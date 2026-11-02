@@ -1,5 +1,17 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T2.3 loop supervisor del AI Bridge
+
+- Implementado el loop independiente, sondeo cada 2 s detrás de `AI_BRIDGE_ENABLE_FB_SUPERVISOR`, con parada cooperativa junto al worker. El supervisor descarga capturas firmadas a directorios temporales eliminados en `finally`, usa ajustes por función, aplica timeout de 60 s y reintenta una sola vez una salida JSON inválida.
+- Los prompts separan `recover_step`, `verify_result`, `review_content` y `review_photos`; muestran controles DOM numerados y pistas fallidas, tratan contenido de Facebook como dato no confiable y prohíben autorizar el envío final. La validación de acciones se mantiene alineada con el contrato SQL/Bridge/extensión.
+- La Edge Function `automation` agregó `supervisor_worker`: autorización con token del AI Bridge, RPC `fb_supervisor_worker`, URL firmada de Storage con alcance del dueño y configuración de `ai_function_settings`. No hubo cambios de esquema ni migraciones.
+- Paquete AI Bridge **1.13.0**, la siguiente versión menor disponible al iniciar la tarea. El `prebuild` generó `public/downloads/rivastock-ai-bridge-latest.tgz` (71.9 KB comprimido; SHA-1 interno del paquete `b591cef3f7dba00c5cb04746fc514592add2f737`). Requiere actualización en la PC y ensayo real posterior; queda en `docs/ai/OWNER_ACTIONS.md`.
+- Edge Function `automation` desplegada en `RivaStock_Oficial`: ACTIVE **v6**, `verify_jwt=false`. No se creó una solicitud de supervisión de producción ni se transmitió una captura real porque Chrome/Facebook no están disponibles.
+- Verificación local: lint; `npm test` **600/600**; Bridge typecheck y **74/74** pruebas; build y `perf:check` aprobados. JS inicial gzip **207.684 B**, CSS **21.732 B**. Pruebas nuevas: prompt sin correo/token, fences JSON con reintento y eliminación de carpeta temporal aunque falle el proveedor.
+- Ninguna migración, ninguna escritura QA y ninguna prueba de Facebook real. La prueba requiere perfil Chrome de Facebook y Bridge actualizado; no se publicó contenido.
+- **Desvío:** el plan de T2.3 no enumeraba la Edge Function `automation`, pero sin su acción worker no existía transporte HTTPS para el loop descrito. Se agregó el endpoint mínimo en la función existente; no se alteró el esquema.
+- **T2.3 `[x]`**. Siguiente tarea independiente: T2.4, autocorrección de formularios con revalidación determinista. T2.5/T1.6 en vivo siguen sujetos al perfil autenticado de Facebook de Riva.
+
 ## 2026-11-02 — T1.5 visor, exportador y decisiones supervisadas
 
 - `ExecutionTraceViewer` muestra pasos, estado, duración, notas, cada decisión IA guardada en `fb_supervision_requests` con proveedor/modelo/esfuerzo, y capturas firmadas ampliables; vista de ensayos limitada al dueño; script `scripts/automation-trace-dump.mjs` y comando `npm run dump:automation-traces`.

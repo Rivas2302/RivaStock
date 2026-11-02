@@ -54,4 +54,16 @@ describe('automation Edge Function trace contract', () => {
     expect(edgeSource).toContain('!isUuid(rehearsalId)');
     expect(edgeSource).toContain("body.mode === 'real' && rehearsalId !== null");
   });
+
+  it('authorizes the Bridge worker, signs only owner-scoped screenshots, and loads per-function settings', () => {
+    expect(edgeSource).toContain("body.action === 'supervisor_worker'");
+    expect(edgeSource).toContain('authorizeWorker(req, body, serviceClient)');
+    expect(edgeSource).toContain("serviceClient.rpc('fb_supervisor_worker'");
+    expect(edgeSource).toContain('isTraceObjectPath(data.screenshot_path, ownerUid, data.trace_id)');
+    expect(edgeSource).toContain("createSignedUrl(data.screenshot_path, 120)");
+    expect(edgeSource).toContain(".from('ai_function_settings')");
+    expect(edgeSource).toContain("'fb_supervisor_recover'");
+    expect(edgeSource).toContain("'fb_supervisor_verify'");
+    expect(edgeSource).toContain("'fb_photo_review'");
+  });
 });

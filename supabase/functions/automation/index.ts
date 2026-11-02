@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { authorizeFacebookDevice, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
+import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -9,6 +9,12 @@ const MAX_BODY_BYTES = 1_048_576;
 const MAX_SCREENSHOT_BYTES = 600_000;
 const MAX_SUMMARY_BYTES = 20_480;
 const TRACE_BUCKET = 'automation-traces';
+const SUPERVISOR_FUNCTION_KEYS: Record<string, string> = {
+  recover_step: 'fb_supervisor_recover',
+  verify_result: 'fb_supervisor_verify',
+  review_content: 'fb_copywriting',
+  review_photos: 'fb_photo_review',
+};
 const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -145,6 +151,112 @@ async function cleanupExpiredTraces(serviceClient: ReturnType<typeof createClien
   }
 }
 
+async function supervisorWorker(
+  body: JsonRecord,
+  req: Request,
+  serviceClient: ReturnType<typeof createClient>,
+  origin?: string | null,
+): Promise<Response> {
+  if (!['next', 'answer', 'fail'].includes(String(body.operation))) {
+    return jsonResponseWithCors({ error: 'Operación de supervisor inválida.' }, 400, origin);
+  }
+  const ownerUid = await authorizeWorker(req, body, serviceClient);
+  if (!ownerUid) return jsonResponseWithCors({ error: 'Conexión del AI Bridge vencida o revocada.' }, 401, origin);
+  const workerId = body.worker_id as string;
+
+  if (body.operation === 'next') {
+    if (body.id !== undefined || body.data !== undefined) {
+      return jsonResponseWithCors({ error: 'Solicitud de supervisor inválida.' }, 400, origin);
+    }
+    const { data, error } = await serviceClient.rpc('fb_supervisor_worker', {
+      p_owner: ownerUid,
+      p_worker: workerId,
+      p_operation: 'next',
+      p_id: null,
+      p_data: {},
+    });
+    if (error) return jsonResponseWithCors({ error: 'No se pudo consultar la cola del supervisor.' }, 503, origin);
+    if (data === null) return jsonResponseWithCors({ task: null }, 200, origin);
+    if (!isRecord(data) || !isUuid(data.id) || !isUuid(data.trace_id)
+      || !isInteger(data.step_seq, 1, 10000) || !Object.hasOwn(SUPERVISOR_FUNCTION_KEYS, String(data.kind))
+      || !isRecord(data.intent) || !validSummary(data.dom_summary)) {
+      return jsonResponseWithCors({ error: 'La solicitud de supervisor no es válida.' }, 503, origin);
+    }
+
+    let screenshotUrl: string | null = null;
+    if (data.screenshot_path !== null && data.screenshot_path !== undefined) {
+      if (typeof data.screenshot_path !== 'string'
+        || !isTraceObjectPath(data.screenshot_path, ownerUid, data.trace_id)) {
+        await serviceClient.rpc('fb_supervisor_worker', {
+          p_owner: ownerUid, p_worker: workerId, p_operation: 'fail', p_id: data.id,
+          p_data: { error: 'La captura de supervisión no tiene una ruta válida.' },
+        });
+        return jsonResponseWithCors({ error: 'La captura de supervisión no está disponible.' }, 503, origin);
+      }
+      const { data: signed, error: signedError } = await serviceClient.storage.from(TRACE_BUCKET)
+        .createSignedUrl(data.screenshot_path, 120);
+      if (signedError || !signed?.signedUrl || !/^https:\/\//i.test(signed.signedUrl)) {
+        await serviceClient.rpc('fb_supervisor_worker', {
+          p_owner: ownerUid, p_worker: workerId, p_operation: 'fail', p_id: data.id,
+          p_data: { error: 'No se pudo obtener la captura para supervisión.' },
+        });
+        return jsonResponseWithCors({ error: 'La captura de supervisión no está disponible.' }, 503, origin);
+      }
+      screenshotUrl = signed.signedUrl;
+    }
+
+    const functionKey = SUPERVISOR_FUNCTION_KEYS[String(data.kind)];
+    const { data: setting, error: settingError } = await serviceClient.from('ai_function_settings')
+      .select('provider, model_id, reasoning_effort')
+      .eq('user_id', ownerUid)
+      .eq('function_key', functionKey)
+      .maybeSingle();
+    if (settingError) console.error('[automation] Supervisor settings lookup failed.');
+    const provider = setting?.provider === 'claude' || setting?.provider === 'local' ? setting.provider : 'codex';
+    const modelId = typeof setting?.model_id === 'string' && setting.model_id.length <= 120
+      && (provider !== 'codex' || ['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra'].includes(setting.model_id))
+      ? setting.model_id : 'gpt-6-luna';
+    const reasoningEffort = ['low', 'medium', 'high', 'xhigh'].includes(setting?.reasoning_effort)
+      ? setting.reasoning_effort : (data.kind === 'verify_result' ? 'medium' : 'low');
+    return jsonResponseWithCors({ task: {
+      id: data.id,
+      trace_id: data.trace_id,
+      step_seq: data.step_seq,
+      kind: data.kind,
+      intent: data.intent,
+      dom_summary: data.dom_summary,
+      screenshot_url: screenshotUrl,
+      settings: { provider, model_id: modelId, reasoning_effort: reasoningEffort },
+      lease_expires_at: data.lease_expires_at,
+    } }, 200, origin);
+  }
+
+  if (!isUuid(body.id) || !isRecord(body.data) || new TextEncoder().encode(JSON.stringify(body.data)).byteLength > 12_000) {
+    return jsonResponseWithCors({ error: 'Respuesta de supervisor inválida.' }, 400, origin);
+  }
+  if (body.operation === 'answer') {
+    const answer = body.data;
+    if (!isRecord(answer.decision) || !['codex', 'claude'].includes(String(answer.provider))
+      || typeof answer.model_id !== 'string' || answer.model_id.length < 1 || answer.model_id.length > 80
+      || !['low', 'medium', 'high', 'xhigh'].includes(String(answer.reasoning_effort))) {
+      return jsonResponseWithCors({ error: 'Respuesta de supervisor inválida.' }, 400, origin);
+    }
+  } else if (Object.keys(body.data).some((key) => key !== 'error')
+    || typeof body.data.error !== 'string' || body.data.error.length > 500) {
+    return jsonResponseWithCors({ error: 'Respuesta de supervisor inválida.' }, 400, origin);
+  }
+
+  const { data, error } = await serviceClient.rpc('fb_supervisor_worker', {
+    p_owner: ownerUid,
+    p_worker: workerId,
+    p_operation: body.operation,
+    p_id: body.id,
+    p_data: body.data,
+  });
+  if (error) return jsonResponseWithCors({ error: 'No se pudo guardar la respuesta del supervisor.' }, 409, origin);
+  return jsonResponseWithCors(data as Record<string, unknown>, 200, origin);
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   if (origin && !ALLOWED_ORIGINS.has(origin)) {
@@ -157,7 +269,8 @@ serve(async (req) => {
   const body = await readJsonLimited(req, MAX_BODY_BYTES);
   if (!body) return jsonResponseWithCors({ error: 'Solicitud inválida o demasiado grande.' }, 413, origin);
   if (body.action !== 'trace_start' && body.action !== 'trace_step'
-    && body.action !== 'trace_finish' && body.action !== 'trace_signed_urls') {
+    && body.action !== 'trace_finish' && body.action !== 'trace_signed_urls'
+    && body.action !== 'supervisor_worker') {
     return jsonResponseWithCors({ error: 'Operación no permitida.' }, 400, origin);
   }
 
@@ -165,6 +278,8 @@ serve(async (req) => {
   const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  if (body.action === 'supervisor_worker') return await supervisorWorker(body, req, serviceClient, origin);
 
   if (body.action === 'trace_signed_urls') {
     if (!authorization.startsWith('Bearer ') || bearerToken(req).length < 20) {
