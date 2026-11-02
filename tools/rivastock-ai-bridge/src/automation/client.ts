@@ -1,4 +1,4 @@
-import type { SupervisorDecision, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
+import type { SupervisorDecision, SupervisedResultAssessment, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
 import type { CodexModelId, CodexReasoningEffort } from '../types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -25,7 +25,7 @@ export interface SupervisorTask {
 }
 
 export interface SupervisorDecisionRecord {
-  decision: SupervisorDecision;
+  decision: SupervisorDecision | SupervisedResultAssessment;
   provider: 'codex' | 'claude';
   model_id: string;
   reasoning_effort: CodexReasoningEffort;
@@ -94,7 +94,9 @@ function isDomSummary(value: unknown): value is SupervisorDomSummary {
     && Number.isSafeInteger(control.index) && (control.index as number) >= 0 && (control.index as number) <= 79
     && typeof control.role === 'string' && control.role.length <= 40
     && typeof control.name === 'string' && control.name.length <= 120
-    && (control.text === undefined || (typeof control.text === 'string' && control.text.length <= 120))
+    && (control.text === undefined || (typeof control.text === 'string' && control.text.length <= 500))
+    && (control.links === undefined || (Array.isArray(control.links) && control.links.length <= 5
+      && control.links.every(link => typeof link === 'string' && link.length <= 300 && /^https:\/\/www\.facebook\.com\//i.test(link))))
     && (control.type === undefined || (typeof control.type === 'string' && control.type.length <= 40))
     && (control.placeholder === undefined || (typeof control.placeholder === 'string' && control.placeholder.length <= 120))
     && (control.state === undefined || (isRecord(control.state)

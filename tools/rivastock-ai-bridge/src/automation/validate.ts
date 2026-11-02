@@ -5,6 +5,7 @@ export interface SupervisorControl {
   role: string;
   name: string;
   text?: string;
+  links?: string[];
   type?: string;
   placeholder?: string;
   state?: { disabled?: boolean };
@@ -30,6 +31,16 @@ export interface SupervisorDecision {
   confidence: number;
   observation: string;
   reason: string;
+}
+
+export type SupervisedResultState = 'published' | 'pending_approval' | 'not_approved' | 'unknown';
+
+export interface SupervisedResultAssessment {
+  found: boolean;
+  element_index: number | null;
+  state: SupervisedResultState;
+  observation: string;
+  confidence: number;
 }
 
 const ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container', 'wait', 'reload', 'skip_destination', 'abort']);
@@ -67,19 +78,43 @@ export function validateSupervisorDecision(value: unknown, dom: SupervisorDomSum
   return true;
 }
 
+export function validateSupervisedResultAssessment(
+  value: unknown,
+  dom: SupervisorDomSummary,
+): value is SupervisedResultAssessment {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const assessment = value as Record<string, unknown>;
+  if (Object.keys(assessment).length !== 5
+    || Object.keys(assessment).some(key => !['found', 'element_index', 'state', 'observation', 'confidence'].includes(key))
+    || typeof assessment.found !== 'boolean'
+    || !['published', 'pending_approval', 'not_approved', 'unknown'].includes(String(assessment.state))
+    || typeof assessment.observation !== 'string' || !assessment.observation.trim() || assessment.observation.length > 300
+    || typeof assessment.confidence !== 'number' || !Number.isFinite(assessment.confidence)
+    || assessment.confidence < 0 || assessment.confidence > 1) return false;
+
+  if (!assessment.found) return assessment.element_index === null && assessment.state === 'unknown';
+  if (!Number.isSafeInteger(assessment.element_index) || (assessment.element_index as number) < 0 || (assessment.element_index as number) > 79
+    || dom.scope !== 'page') return false;
+  const candidate = dom.controls.find(control => control.index === assessment.element_index);
+  return candidate?.role === 'article' && Array.isArray(candidate.links) && candidate.links.length > 0;
+}
+
 export function parseSupervisorOutput(
   output: string,
   dom: SupervisorDomSummary,
   intent: SupervisorIntent,
-): { decision: SupervisorDecision } | { error: string } {
+  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' = 'recover_step',
+): { decision: SupervisorDecision | SupervisedResultAssessment } | { error: string } {
   const trimmed = output.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const json = fenced?.[1] ?? trimmed;
   let parsed: unknown;
   try { parsed = JSON.parse(json); }
   catch { return { error: 'La respuesta no era un objeto JSON válido.' }; }
-  if (!validateSupervisorDecision(parsed, dom, intent)) {
-    return { error: 'La respuesta no cumple el contrato de decisión supervisada.' };
+  if (kind === 'verify_result') {
+    if (validateSupervisedResultAssessment(parsed, dom)) return { decision: parsed };
+  } else if (validateSupervisorDecision(parsed, dom, intent)) {
+    return { decision: parsed };
   }
-  return { decision: parsed };
+  return { error: 'La respuesta no cumple el contrato de decisión supervisada.' };
 }

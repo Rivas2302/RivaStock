@@ -109,6 +109,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/20261102135148_fb_supervision.sql', 'utf8'));
   await db.exec(readFileSync('supabase/migrations/20261102190000_fb_supervisor_contract.sql', 'utf8'));
   await db.exec(readFileSync('supabase/migrations/20261102190001_fb_post_submit_observations.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261102193000_fb_supervised_result_validation.sql', 'utf8'));
 });
 
 beforeEach(async () => {
@@ -141,6 +142,21 @@ async function requestOne(stepSeq = 1) {
     dom_summary: domSummary,
   });
 }
+
+const resultDomSummary = {
+  scope: 'page',
+  controls: [{ index: 0, role: 'article', name: 'Publicación 1', text: 'Perfume de prueba',
+    links: ['https://www.facebook.com/groups/12345/permalink/987654321/'] }],
+  headings: ['Publicaciones del grupo'], alerts: [],
+};
+const resultIntent = {
+  step: 'verify_result.owned_content', intent_key: 'verify_result:group_direct',
+  supervisor_kind: 'verify_result', objective: 'Find the new listing.',
+};
+const validResultAssessment = {
+  found: true, element_index: 0, state: 'published',
+  observation: 'La primera tarjeta coincide con el título y el autor.', confidence: 0.94,
+};
 
 async function worker(operation: string, id: string | null = null, data: Record<string, unknown> = {}, workerOwner = owner) {
   await db.exec('RESET ROLE; SET ROLE service_role; SET test.role = \'service_role\';');
@@ -221,6 +237,33 @@ describe('Facebook supervision SQL contract', () => {
       decision: validDecision, provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
     });
     expect(await request('poll', {}, created.id)).toMatchObject({ status: 'answered', provider: 'codex' });
+  });
+
+  it('validates verify_result answers against numbered Facebook cards and stores no invented URL', async () => {
+    await db.exec(`RESET ROLE; UPDATE public.fb_trace_steps SET dom_summary = '${JSON.stringify(resultDomSummary)}'::jsonb,
+      screenshot_path = '${owner}/${trace}/2.jpg' WHERE trace_id = '${trace}' AND seq = 2;`);
+    const created = await request('request', {
+      kind: 'verify_result', trace_id: trace, step_seq: 2, intent: resultIntent, dom_summary: resultDomSummary,
+    });
+    expect(created.status).toBe('pending');
+    await expect(worker('next')).resolves.toMatchObject({ id: created.id, kind: 'verify_result', dom_summary: resultDomSummary });
+
+    await expect(worker('answer', created.id, {
+      decision: { ...validResultAssessment, element_index: 1 }, provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+    })).rejects.toThrow('SUPERVISION_DECISION_INVALID');
+    await expect(worker('answer', created.id, {
+      decision: { ...validResultAssessment, url: 'https://www.facebook.com/marketplace/item/123' },
+      provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+    })).rejects.toThrow('SUPERVISION_DECISION_INVALID');
+    await expect(worker('answer', created.id, {
+      decision: { found: false, element_index: 0, state: 'unknown', observation: 'No se ve.', confidence: 0.2 },
+      provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+    })).rejects.toThrow('SUPERVISION_DECISION_INVALID');
+
+    await worker('answer', created.id, {
+      decision: validResultAssessment, provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
+    });
+    expect(await request('poll', {}, created.id)).toMatchObject({ status: 'answered', decision: validResultAssessment });
   });
 
   it('stores only owner-scoped, trace-linked post-submit observations without attributing an outcome', async () => {

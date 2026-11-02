@@ -1,5 +1,6 @@
 import { facebookFormAction, validateSupervisorDecision } from './form-actions.js';
 import { openAutomationTab, closeAutomationTab } from './automation-tabs.js';
+import { resolveSupervisedResult } from './result-verification.js';
 export function validateFacebookDestination(destination) {
   if (destination.mechanism === 'marketplace' && destination.url === 'https://www.facebook.com/marketplace/create/item') return;
   if (destination.mechanism === 'group_direct' && /^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(destination.url)) return;
@@ -70,6 +71,25 @@ async function readMarketplaceOwnContent(job,baseline) {
   } finally {
     await closeAutomationTab(tab.id);
   }
+}
+async function readMarketplaceCandidates(job,baseline) {
+  const tab=await openAutomationTab(marketplaceSearchUrl(job.content.title));
+  try {
+    await waitForFacebookTab(tab.id,'/marketplace/you/selling');
+    return await facebookAdapter.action(tab.id,'own_content_candidates',job.content,[],baseline);
+  } finally { await closeAutomationTab(tab.id); }
+}
+async function readGroupCandidates(job,baseline,state) {
+  const group=new URL(job.destination.url);
+  const groupPath=group.pathname.replace(/\/$/,'');
+  const path=`${groupPath}/${state}`;
+  const tab=await openAutomationTab(`https://www.facebook.com${path}`);
+  try {
+    await waitForFacebookTab(tab.id,path);
+    return await facebookAdapter.action(tab.id,'own_content_candidates',{
+      ...job.content,targetGroupUrl:job.destination.url,
+    },[],baseline);
+  } finally { await closeAutomationTab(tab.id); }
 }
 export function ownedGroupResult(job,baseline,snapshots) {
   if(!baseline.includes('own-baseline:group')||snapshots.length!==2||snapshots.some(snapshot=>snapshot.complete!==true))return null;
@@ -367,7 +387,7 @@ export const facebookAdapter = {
     }
     return result;
   },
-  async reconcile(active) {
+  async reconcile(active, options = {}) {
     if(active.job.destination.mechanism==='marketplace') {
       if(!active.baseline.includes('own-baseline:marketplace'))throw new Error('Resultado desconocido. No había un baseline causal de Marketplace para este intento; no se repetirá el envío.');
       for(let attempt=0;attempt<4;attempt++){
@@ -384,7 +404,11 @@ export const facebookAdapter = {
         }
         if(attempt<3)await new Promise(resolve=>setTimeout(resolve,1000));
       }
-      throw new Error('Resultado desconocido. No apareció exactamente un anuncio nuevo con ID verificable; no se repetirá el envío.');
+      const assisted=await verifyResultWithSupervisor(active,options,()=>readMarketplaceCandidates(active.job,active.baseline));
+      if(assisted?.result)return assisted.result;
+      const error=new Error('Resultado desconocido. No apareció exactamente un anuncio nuevo con ID verificable; no se repetirá el envío.');
+      if(assisted?.candidateUrl)error.candidateUrl=assisted.candidateUrl;
+      throw error;
     }
     if(active.job.destination.mechanism!=='group_direct')throw new Error('Resultado desconocido. El destino no tiene un lector de contenido propio verificado; no se repetirá el envío.');
     let lastError=null;
@@ -397,7 +421,15 @@ export const facebookAdapter = {
       if(attempt<3)await new Promise(resolve=>setTimeout(resolve,1000));
     }
     const suffix=lastError?` Último error: ${String(lastError.message).slice(0,160)}`:'';
-    throw new Error(`Resultado desconocido. No hubo exactamente un ID nuevo identificable en las listas de contenido propio; no se repetirá el envío.${suffix}`);
+    let assistedCandidateUrl=null;
+    for(const state of groupOwnContentPaths){
+      const assisted=await verifyResultWithSupervisor(active,options,()=>readGroupCandidates(active.job,active.baseline,state));
+      if(assisted?.result)return assisted.result;
+      assistedCandidateUrl=assisted?.candidateUrl??assistedCandidateUrl;
+    }
+    const error=new Error(`Resultado desconocido. No hubo exactamente un ID nuevo identificable en las listas de contenido propio; no se repetirá el envío.${suffix}`);
+    if(assistedCandidateUrl)error.candidateUrl=assistedCandidateUrl;
+    throw error;
   },
   async track(job,tracker,pendingPostId) {
     if(job.destination.mechanism==='group_direct') {
@@ -420,3 +452,24 @@ export const facebookAdapter = {
     return null;
   },
 };
+
+async function verifyResultWithSupervisor(active,options,loadSnapshot){
+  if(typeof options.requestVerifyResult!=='function')return null;
+  let snapshot;
+  try{snapshot=await loadSnapshot();}catch{return null;}
+  if(snapshot?.complete!==true||!Array.isArray(snapshot.items)||!snapshot.items.length
+    ||!snapshot.dom_summary||!Number.isSafeInteger(snapshot.trace_seq))return null;
+  let assessment;
+  try{assessment=await options.requestVerifyResult(snapshot);}catch{return null;}
+  const resolved=resolveSupervisedResult(active.job,active.baseline,snapshot,assessment);
+  if(resolved.result){
+    await options.recordTraceStep?.('supervised_result_verified','supervised',{
+      tabId:active.tabId,capture:false,note:resolved.result.message,
+    }).catch(()=>{});
+  }else if(resolved.reason!=='not_found'){
+    await options.recordTraceStep?.('supervised_result_requires_confirmation','retry',{
+      tabId:active.tabId,capture:false,note:`${resolved.reason}: ${String(assessment?.observation??'').slice(0,240)}`,
+    }).catch(()=>{});
+  }
+  return resolved;
+}

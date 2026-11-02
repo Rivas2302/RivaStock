@@ -641,6 +641,103 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     return {complete:true,items};
   };
+  const supervisedOwnContentSnapshot=async()=>{
+    const path=location.pathname.replace(/\/$/,'');
+    const marketplace=path==='/marketplace/you/selling';
+    const groupMatch=path.match(/^\/groups\/([A-Za-z0-9._-]+)\/(my_pending_content|my_posted_content)$/);
+    if(!marketplace&&!groupMatch)throw new Error('La verificación asistida solo puede leer las listas propias del destino activo.');
+    if(marketplace&&new URLSearchParams(location.search).get('title_search')!==content.title)
+      throw new Error('La verificación asistida requiere la búsqueda exacta del título aprobado.');
+    if(groupMatch&&content.targetGroupUrl&&new URL(content.targetGroupUrl).pathname.split('/')[2]!==groupMatch[1])
+      throw new Error('La verificación asistida abrió una lista de otro grupo.');
+    const root=marketplace
+      ? document.querySelector('[role="main"][aria-label="Colección de tus artículos de Marketplace"]')
+      : document.querySelector('main,[role="main"]');
+    if(!root)throw new Error('No se encontró la lista de publicaciones propias.');
+    const signature=()=>normalize(root.innerText)+'|'+Array.from(root.querySelectorAll('a[href]')).map(link=>link.getAttribute('href')).join('|');
+    let previous='',stable=0;
+    for(let attempt=0;attempt<40;attempt++){
+      const current=signature();stable=current===previous?stable+1:0;previous=current;
+      const busy=Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible);
+      const loaded=marketplace
+        ? root.querySelector('input[aria-label="Buscar en tus publicaciones"]')?.value===content.title
+          && Array.from(root.querySelectorAll('h1')).some(node=>text(node)==='Tus publicaciones')
+        : /No hay publicaciones para mostrar/i.test(root.innerText)||root.querySelector('article,[role="article"],h3,[role="heading"]');
+      if(stable>=2&&!busy&&loaded)break;
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    if(stable<2||Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"]')).some(visible))
+      throw new Error('La lista de publicaciones propias no terminó de cargar.');
+
+    const expectedTitle=normalize(content.title).toLocaleLowerCase('es');
+    let cards=Array.from(root.querySelectorAll('article,[role="article"]')).filter(visible);
+    if(marketplace&&!cards.length){
+      const links=Array.from(root.querySelectorAll('a[href]')).filter(link=>visible(link)&&/^\/marketplace\/item\/\d+\/?$/.test(new URL(link.href).pathname));
+      cards=links.map(link=>{let scope=link;while(scope.parentElement&&scope.parentElement!==root&&scope.parentElement.querySelectorAll('a[href*="/marketplace/item/"]').length===1)scope=scope.parentElement;return scope;});
+    }
+    if(!marketplace&&!cards.length){
+      const groupSegment=groupMatch[1];
+      for(const heading of Array.from(root.querySelectorAll('h3,[role="heading"]')).filter(visible)){
+        let scope=heading.parentElement;
+        while(scope&&scope!==root){
+          const groupLinks=Array.from(scope.querySelectorAll('a[href]')).filter(link=>{
+            try{return new URL(link.href).origin===location.origin&&new URL(link.href).pathname.replace(/\/$/,'')===`/groups/${groupSegment}`;}catch{return false;}
+          });
+          const headings=Array.from(scope.querySelectorAll('h3,[role="heading"]')).filter(visible);
+          if(groupLinks.length&&headings.length===1){cards.push(scope);break;}
+          scope=scope.parentElement;
+        }
+      }
+    }
+    cards=[...new Set(cards)].filter((card,index,list)=>!list.some((other,otherIndex)=>otherIndex!==index&&other.contains(card)));
+    if(marketplace&&!cards.length){
+      const fallback=await marketplaceSnapshot(true);
+      if(fallback.complete){
+        cards=fallback.items.slice(0,10).map(item=>({
+          __rivastockItem:item,
+          innerText:`${content.title} ${item.state}`,
+          querySelectorAll:()=>[],
+        }));
+      }
+    }
+    const items=cards.slice(0,10).map(card=>{
+      const fallback=card.__rivastockItem;
+      const cardText=normalize(card.innerText??'').slice(0,600);
+      const state=/(?:no se aprob[oó]|rechazad[ao])/i.test(cardText)?'not_approved'
+        :marketplace&&/(?:pendiente|en revisi[oó])/i.test(cardText)?'pending_approval'
+          :!marketplace&&groupMatch[2]==='my_pending_content'?'pending_approval':'published';
+      const links=[];
+      if(fallback?.id)links.push(`https://www.facebook.com/marketplace/item/${fallback.id}/`);
+      for(const link of Array.from(card.querySelectorAll('a[href]')).filter(visible)){
+        try{
+          const url=new URL(link.href);
+          if(url.origin!==location.origin)continue;
+          if(marketplace){
+            const id=url.pathname.match(/^\/marketplace\/item\/(\d+)\/?$/)?.[1];
+            if(id)links.push(`https://www.facebook.com/marketplace/item/${id}/`);
+          }else{
+            const groupSegment=groupMatch[1];
+            const id=url.pathname.match(new RegExp(`^/groups/${groupSegment}/(?:posts|permalink)/(\\d+)/?$`))?.[1]
+              ??url.searchParams.get('set')?.match(/^(?:gm|pcb)\.(\d+)$/)?.[1]
+              ??url.searchParams.get('multi_permalinks')?.match(/^(\d+)$/)?.[1];
+            if(id)links.push(`https://www.facebook.com/groups/${groupSegment}/permalink/${id}/`);
+          }
+        }catch{/* Malformed and non-Facebook links are excluded. */}
+      }
+      const uniqueLinks=[...new Set(links)].slice(0,3);
+      const authorId=baseline.find(value=>value.startsWith('author:'))?.slice(7);
+      const authorMatches=marketplace||Boolean(authorId&&Array.from(card.querySelectorAll('a[href]')).some(link=>{
+        try{return new URL(link.href).origin===location.origin&&new URL(link.href).pathname.replace(/\/$/,'')===`/groups/${groupMatch[1]}/user/${authorId}`;}catch{return false;}
+      }));
+      const titleMatches=Boolean(expectedTitle&&cardText.toLocaleLowerCase('es').includes(expectedTitle));
+      return {id:fallback?.id??null,state,authorMatches,titleMatches,title:content.title,text:cardText,links:uniqueLinks};
+    }).filter(item=>item.links.length>0||item.text.toLocaleLowerCase('es').includes(expectedTitle));
+    const domSummary={scope:'page',controls:items.map((item,index)=>({
+      index,role:'article',name:`Publicación ${index+1}`,text:`Estado de lista: ${item.state}. ${item.text}`.slice(0,500),links:item.links,
+    })),headings:[marketplace?'Tus publicaciones':'Publicaciones del grupo'],alerts:visibleSubmitAlerts().slice(0,10)};
+    const trace=await reportTraceStep('supervised_result_list','ok',true,root,domSummary);
+    return {complete:true,items,dom_summary:domSummary,trace_seq:Number.isSafeInteger(trace?.seq)?trace.seq:null};
+  };
   if(action==='diagnose') {
     return {
       path:location.pathname,
@@ -719,6 +816,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     }
     throw new Error('No se abrió una lista de contenido propio compatible.');
   }
+  if(action==='own_content_candidates')return await supervisedOwnContentSnapshot();
   // Result pages and feed notices are not causal evidence. Only the adapter's
   // before/after snapshots of owned-content lists may resolve a new attempt.
   if(action==='result')return {waiting:true};

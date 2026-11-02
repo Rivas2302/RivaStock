@@ -26,6 +26,7 @@ if(sessionStorage.getItem('submitted')){if(sessionStorage.getItem('remote-succes
 const groupOwnContent=`<!doctype html><html><body><main><p>No hay publicaciones para mostrar</p></main><script>
 const parts=location.pathname.split('/');const segment=parts[2];const state=parts[3];const id=localStorage.getItem('group-post-'+segment);if(state==='my_posted_content'&&id){document.querySelector('main').innerHTML='<div><h3><a href="/groups/'+segment+'/user/42/">Test</a> publicó en <a href="/groups/'+segment+'">Grupo de prueba</a></h3><section><a href="/photo/?fbid=1&set=gm.'+id+'">Foto 1</a><p>Perfume de prueba Precio: ARS 43000.00 Disponible en General Pico.</p></section></div>'}else document.querySelector('main').innerHTML='<p>No hay publicaciones para mostrar</p>';
 </script></body></html>`;
+const groupVariantOwnContent=`<!doctype html><html><body><main><section><h3><a href="/groups/78910/user/42/">Test</a> publicó en <a href="/groups/78910">Grupo de prueba</a></h3></section><section><h3><a href="/groups/11111/user/42/">Test</a> publicó en <a href="/groups/11111">Otro grupo</a></h3></section><article><a href="/groups/78910/user/42/">Test</a><a href="/groups/78910/posts/987654321">Ver publicación</a><p>Perfume floral · Precio: ARS 43000.00</p></article></main></body></html>`;
 const groupForm = `<!doctype html><html><body><header><h1>Grupo de prueba</h1><span>49,5 mil miembros</span></header><div><a href="/groups/12345/user/42/">Perfil de Test</a><button id="open">Escribe algo...</button></div><script>
 document.querySelector('#open').onclick=()=>{const d=document.createElement('div');d.role='dialog';d.innerHTML='<h2>Crear publicación</h2><div role="textbox" contenteditable="true" aria-label="Crea una publicación pública..."></div><div><button aria-label="Foto/video">Foto/video</button><input type="file" multiple accept="image/*,video/*"></div><input type="file" multiple accept="image/*,video/*"><button id="publish" disabled>Publicar</button>';
 document.body.append(d);d.querySelector('input').onchange=e=>{window.groupUploads=Array.from(e.target.files).map(f=>({name:f.name,size:f.size}));for(const file of e.target.files){const img=document.createElement('img');img.alt=file.name;img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';d.append(img);const remove=document.createElement('button');remove.textContent='Eliminar archivo adjunto de la publicación';d.append(remove);}d.querySelector('#publish').disabled=false};
@@ -256,6 +257,10 @@ test('reports an existing Marketplace candidate without associating it or clicki
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(async()=>{
       const runtime=(globalThis as any).chrome;
+      const createWindow=runtime.windows.create.bind(runtime.windows);
+      runtime.windows.create=async(options:any)=>{
+        state.calls.push('windows.create:start');const window=await createWindow(options);state.calls.push('windows.create:done:'+window?.id);return window;
+      };
       const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
       runtime.tabs.create=async(options:any)=>{
         const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));await update(tab.id,{url:options.url});
@@ -279,4 +284,109 @@ test('reports an existing Marketplace candidate without associating it or clicki
     expect(operations).toContainEqual(expect.objectContaining({p_operation:'issue',p_delivery:'existing',p_message:expect.stringContaining('marketplace_conflict')}));
     expect(operations.some((op:any)=>['checkpoint','result'].includes(op.p_operation))).toBe(false);expect(createForms).toBe(0);
   } finally{await context.close();}
+});
+
+test('uses a fake verify_result assessment only to resolve a new DOM-linked group post', async () => {
+  test.setTimeout(120000);
+  const temporary=mkdtempSync(join(tmpdir(),'rivastock-result-verification-test-'));
+  const extension=join(temporary,'extension');cpSync(resolve('extensions/facebook'),extension,{recursive:true});
+  const manifest=JSON.parse(readFileSync(join(extension,'manifest.json'),'utf8'));
+  manifest.host_permissions=['https://www.facebook.com/*','https://test.supabase.co/*'];
+  writeFileSync(join(extension,'manifest.json'),JSON.stringify(manifest));
+  const context=await chromium.launchPersistentContext(join(temporary,'profile'),{
+    channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP www.facebook.com ~NOTFOUND'],
+  });
+  try {
+    await context.route('https://www.facebook.com/**',async route=>{
+      const path=new URL(route.request().url()).pathname;
+      const body=/\/groups\/78910\/my_(pending|posted)_content$/.test(path)?groupVariantOwnContent:
+        path.includes('/joins/')?'<main><h2>Todos los grupos a los que te uniste (0)</h2></main>':groupForm.replaceAll('12345','78910');
+      await route.fulfill({contentType:'text/html; charset=utf-8',body});
+    });
+    const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
+    const fixtureState={supervisionRequests:[] as any[],resultCalls:[] as any[],traceSteps:[] as any[],attentionCalls:[] as any[]};
+    await worker.evaluate(async(state:any)=>{
+      (globalThis as any).fixtureState=state;
+      const runtime=(globalThis as any).chrome;
+      const create=runtime.tabs.create.bind(runtime.tabs);const update=runtime.tabs.update.bind(runtime.tabs);
+      runtime.tabs.create=async(options:any)=>{
+        const tab=await create({...options,url:'about:blank'});await new Promise(resolve=>setTimeout(resolve,300));
+        return update(tab.id,{url:options.url});
+      };
+      runtime.permissions.contains=async()=>true;
+      const canvas=new OffscreenCanvas(2,2);const context=canvas.getContext('2d');
+      if(!context)throw new Error('Could not create the fixture screenshot.');
+      context.fillStyle='#2468ac';context.fillRect(0,0,2,2);
+      const screenshotBlob=await canvas.convertToBlob({type:'image/png'});
+      const screenshotBytes=new Uint8Array(await screenshotBlob.arrayBuffer());let screenshotBinary='';
+      for(const byte of screenshotBytes)screenshotBinary+=String.fromCharCode(byte);
+      const screenshotDataUrl=`data:image/png;base64,${btoa(screenshotBinary)}`;
+      runtime.tabs.captureVisibleTab=async()=> screenshotDataUrl;
+      const content={title:'Perfume floral',description:'Descripción aprobada',groupText:'Perfume floral\n\nPrecio: ARS 43000.00',price:43000,
+        condition:'new',category:'Salud y belleza',location:'General Pico',photos:['https://test.supabase.co/storage/v1/object/public/assets/owner/product.jpg'],selection:{marketplace:false}};
+      const automationWindow=await runtime.windows.getCurrent();
+      const activeJob={schemaVersion:2,claimKey:'claim-fixture',attemptId:'70000000-0000-4000-8000-000000000009',protocol:2,
+        job:{id:'delivery-fixture',attemptId:'70000000-0000-4000-8000-000000000009',content,
+          destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/78910',name:'Grupo de prueba'}},
+        deviceId:'fixture-device',projectUrl:'https://test.supabase.co',stage:'submitting',startedAt:Date.now(),postSubmitStartedAt:Date.now(),
+        postSubmitObservations:[0,3000,8000].map(sample_offset_ms=>({sample_offset_ms,elapsed_ms:sample_offset_ms,capture_status:'unavailable',trace_seq:null,alerts:[],new_urls:[]})),
+        baseline:['author:42','own-baseline:group']};
+      await runtime.storage.local.set({connection:{url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture-token',deviceId:'fixture-device'},
+        workerProtocol:2,serverFeatures:['result-candidates','evidence-receipts','own-content-tracking'],paused:false,activeJob,
+        automationTabIds:[],automationWindowId:automationWindow.id});
+      globalThis.fetch=async(input:any,options:any)=>{
+        const url=String(input);
+        if(url.startsWith('data:')){
+          const [metadata,payload]=url.split(',',2);const type=metadata.match(/^data:([^;]+)/)?.[1]??'application/octet-stream';
+          return new Response(Uint8Array.from(atob(payload),character=>character.charCodeAt(0)),{headers:{'content-type':type}});
+        }
+        if(url.startsWith('https://test.supabase.co/storage/'))return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII='),c=>c.charCodeAt(0)),{headers:{'content-type':'image/png'}});
+        if(url.endsWith('/functions/v1/automation')){
+          const body=JSON.parse(options.body);
+          if(body.action==='trace_start')return Response.json({trace_id:'fixture-result-trace'});
+          if(body.action==='trace_step'){state.traceSteps.push(body);return Response.json({step_id:'fixture-step',screenshot_saved:Boolean(body.screenshot_base64)});}
+          if(body.action==='trace_finish')return Response.json({finished:true});
+          if(body.operation==='post_submit_observations')return Response.json({saved:true,already_saved:false});
+          throw new Error('Unexpected automation request '+body.action);
+        }
+        const args=JSON.parse(options.body);
+        if(url.endsWith('/facebook_group_discovery'))return Response.json(null);
+        if(url.endsWith('/facebook_supervision')){
+          if(args.p_operation==='request'){state.supervisionRequests.push(args.p_data);return Response.json({id:'verify-request',status:'pending'});}
+          if(args.p_operation==='poll'){
+            const pending=state.supervisionRequests.at(-1)?.dom_summary?.controls?.[0]?.text?.includes('pending_approval');
+            return Response.json({id:args.p_id,status:'answered',decision:pending
+              ?{found:false,element_index:null,state:'unknown',observation:'No hay una tarjeta pendiente que coincida con el envío.',confidence:0.3}
+              :{found:true,element_index:0,state:'published',observation:'La tarjeta enlazada coincide con el título aprobado.',confidence:0.94}});
+          }
+          throw new Error('Unexpected supervision operation '+args.p_operation);
+        }
+        if(url.endsWith('/facebook_worker_v2')){
+          if(args.p_operation==='heartbeat')return Response.json({worker_protocol:2,features:['result-candidates','evidence-receipts','own-content-tracking'],queue_enabled:true});
+          if(args.p_operation==='recover')return Response.json({action:'reconcile_only'});
+          if(args.p_operation==='claim')return Response.json(null);
+          if(args.p_operation==='result'){state.resultCalls.push(args);return Response.json({saved:true});}
+          if(args.p_operation==='attention')state.attentionCalls.push(args);
+          return Response.json({saved:true,queue_enabled:true});
+        }
+        if(url.endsWith('/facebook_watchdog'))return Response.json({checked:true});
+        throw new Error('Unexpected network target '+url);
+      };
+    },fixtureState);
+    const extensionId=new URL(worker.url()).hostname;
+    const control=await context.newPage();await control.goto(`chrome-extension://${extensionId}/connect.html`);
+    await control.evaluate(async()=>new Promise(resolve=>(window as any).chrome.runtime.sendMessage({type:'queue-control',paused:false},resolve)));
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.resultCalls.length),{timeout:30000}).toBe(1);
+    const state=await worker.evaluate(()=>(globalThis as any).fixtureState);
+    expect(state.supervisionRequests).toHaveLength(2);
+    expect(state.supervisionRequests[0]).toMatchObject({kind:'verify_result',intent:{supervisor_kind:'verify_result',approved_submission:{title:'Perfume floral',price:43000}}});
+    expect(state.supervisionRequests[0].dom_summary.controls[0].text).toContain('pending_approval');
+    expect(state.supervisionRequests[1].dom_summary.controls[0]).toMatchObject({index:0,role:'article',links:['https://www.facebook.com/groups/78910/permalink/987654321/']});
+    expect(state.supervisionRequests[1].dom_summary.controls[0].text).toContain('published');
+    expect(state.traceSteps.find((step:any)=>step.step==='supervised_result_list')).toMatchObject({screenshot_base64:expect.any(String)});
+    expect(state.resultCalls[0].p_data).toMatchObject({status:'published',url:'https://www.facebook.com/groups/78910/permalink/987654321/',message:expect.stringContaining('Verificado con ayuda de la IA')});
+    expect(state.attentionCalls).toHaveLength(0);
+    expect(state.resultCalls.some((call:any)=>call.p_data.url==='https://www.facebook.com/groups/78910/posts/987654321')).toBe(false);
+    expect(await worker.evaluate(async()=>(await (globalThis as any).chrome.storage.local.get('activeJob')).activeJob)).toBeUndefined();
+  } finally {await context.close();}
 });

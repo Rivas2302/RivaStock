@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateSupervisorDecision, type SupervisorDomSummary, type SupervisorIntent } from '../src/automation/validate.ts';
+import { parseSupervisorOutput, validateSupervisedResultAssessment, validateSupervisorDecision, type SupervisorDomSummary, type SupervisorIntent } from '../src/automation/validate.ts';
 
 const dom: SupervisorDomSummary = {
   scope: 'dialog',
@@ -35,4 +35,22 @@ test('rejects publish, unscoped, disabled, unlisted and field-target violations'
   assert.equal(validateSupervisorDecision({ ...base, action: 'click', element_index: 0, confidence: 0.59 }, dom, {}), false);
   assert.equal(validateSupervisorDecision({ ...base, action: 'reload', wait_ms: 500 }, dom, {}), false);
   assert.equal(validateSupervisorDecision({ ...base, action: 'wait', wait_ms: 10001 }, dom, {}), false);
+});
+
+const resultDom: SupervisorDomSummary = {
+  scope: 'page',
+  controls: [{ index: 0, role: 'article', name: 'Publicación 1', text: 'Perfume floral',
+    links: ['https://www.facebook.com/marketplace/item/123456789/'] }],
+};
+const resultAssessment = {
+  found: true, element_index: 0, state: 'published', observation: 'La tarjeta coincide con el título.', confidence: 0.92,
+};
+
+test('accepts only evidence-linked verify_result assessments and never accepts invented IDs or URLs', () => {
+  assert.equal(validateSupervisedResultAssessment(resultAssessment, resultDom), true);
+  assert.deepEqual(parseSupervisorOutput(JSON.stringify(resultAssessment), resultDom, {}, 'verify_result'), { decision: resultAssessment });
+  assert.equal(validateSupervisedResultAssessment({ ...resultAssessment, element_index: 1 }, resultDom), false);
+  assert.equal(validateSupervisedResultAssessment({ ...resultAssessment, url: 'https://www.facebook.com/marketplace/item/123' }, resultDom), false);
+  assert.equal(validateSupervisedResultAssessment({ found: false, element_index: 0, state: 'unknown', observation: 'No se ve.', confidence: 0.1 }, resultDom), false);
+  assert.equal(validateSupervisorDecision(resultAssessment, resultDom, {}), false);
 });

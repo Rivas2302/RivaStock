@@ -73,6 +73,32 @@ test('supervisor prompt marks the page as untrusted and removes sensitive values
   assert.match(prompt, /\[redacted\]/);
 });
 
+test('verify_result prompt includes approved context and observations without exposing the photo URL', () => {
+  const prompt = buildSupervisorPrompt({
+    ...task,
+    kind: 'verify_result',
+    intent: {
+      approved_submission: {
+        title: 'Perfume floral', price: 43000, submitted_at: '2026-11-02T17:00:00.000Z',
+        first_photo_url: 'https://test.supabase.co/storage/v1/object/public/assets/owner/product.jpg',
+        post_submit_observations: [{ sample_offset_ms: 0, elapsed_ms: 12, capture_status: 'captured',
+          alerts: ['Tu publicación se creó'], new_urls: ['https://www.facebook.com/marketplace/item/123456789/'] }],
+      },
+    },
+    dom_summary: {
+      scope: 'page', controls: [{ index: 0, role: 'article', name: 'Publicación 1', text: 'Perfume floral',
+        links: ['https://www.facebook.com/marketplace/item/123456789/'] }],
+    },
+  });
+  assert.match(prompt, /found/);
+  assert.match(prompt, /Perfume floral/);
+  assert.match(prompt, /Tu publicación se creó/);
+  assert.match(prompt, /first_photo_attached/);
+  assert.match(prompt, /no inventes/i);
+  assert.doesNotMatch(prompt, /test\.supabase\.co|product\.jpg/);
+  assert.match(prompt, /123456789/);
+});
+
 test('retries invalid provider output once and accepts a JSON fenced response', async () => {
   let providerCalls = 0;
   const { calls, options } = loopOptions({
@@ -106,10 +132,57 @@ test('removes a downloaded screenshot temp directory when the provider fails', a
         },
       }),
     });
-    await processSupervisorTask({ ...task, screenshot_url: 'https://storage.example/signed/capture' }, options);
+    await processSupervisorTask({ ...task, screenshot_url: 'https://test.supabase.co/storage/v1/object/sign/facebook-traces/owner/trace/1.jpg?token=short-lived' }, options);
     assert.equal(calls.failures.length, 1);
     assert.ok(imagePath);
     await assert.rejects(access(imagePath));
+    assert.deepEqual(await readdir(temporaryRoot), []);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('verify_result sends the owned-content capture and first approved product photo to Codex', async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'rivastock-supervisor-result-test-'));
+  try {
+    const imagePaths: string[] = [];
+    const callsResult = loopOptions({
+      temporaryRoot,
+      fetchImage: async () => new Response(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), {
+        headers: { 'content-type': 'image/jpeg', 'content-length': '4' },
+      }),
+      createProvider: () => ({
+        async execute(_input, _signal, _context, providerOptions) {
+          imagePaths.push(...(providerOptions?.images ?? []).map(image => image.path));
+          for (const path of imagePaths) await access(path);
+          return { output: JSON.stringify({
+            found: true, element_index: 0, state: 'published', observation: 'La tarjeta coincide.', confidence: 0.94,
+          }) };
+        },
+      }),
+    });
+    const verifyTask: SupervisorTask = {
+      ...task,
+      kind: 'verify_result',
+      screenshot_url: 'https://test.supabase.co/storage/v1/object/sign/facebook-traces/owner/trace/1.jpg?token=short-lived',
+      intent: {
+        approved_submission: {
+          title: 'Perfume floral', price: 43000,
+          first_photo_url: 'https://test.supabase.co/storage/v1/object/public/assets/owner/product.jpg',
+          post_submit_observations: [],
+        },
+      },
+      dom_summary: {
+        scope: 'page',
+        controls: [{ index: 0, role: 'article', name: 'Publicación 1', text: 'Perfume floral',
+          links: ['https://www.facebook.com/marketplace/item/123456789/'] }],
+      },
+    };
+    await processSupervisorTask(verifyTask, callsResult.options);
+    assert.equal(callsResult.calls.answers.length, 1);
+    assert.equal(imagePaths.length, 2);
+    assert.equal(callsResult.calls.failures.length, 0);
+    for (const path of imagePaths) await assert.rejects(access(path));
     assert.deepEqual(await readdir(temporaryRoot), []);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

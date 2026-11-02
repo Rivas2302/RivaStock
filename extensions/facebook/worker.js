@@ -4,6 +4,7 @@ import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js
 import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
+import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
 void flushTraceQueue();
 
@@ -14,7 +15,7 @@ let readingGroups = false;
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
 const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
 let flushingPostSubmitObservations=false;
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.19';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.20';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -212,6 +213,46 @@ async function requestFacebookSupervision(connection, descriptor) {
   }
   return null;
 }
+async function requestFacebookResultVerification(connection, active, snapshot) {
+  await flushTraceQueue();
+  const traceId=await traceIdForJob(active.attemptId);
+  if(!traceId||!Number.isSafeInteger(snapshot?.trace_seq)||!snapshot?.dom_summary)return null;
+  const approvedSubmission={
+    title:String(active.job.content.title??'').slice(0,240),
+    price:active.job.content.price,
+    submitted_at:new Date(active.postSubmitStartedAt??active.startedAt??Date.now()).toISOString(),
+    ...(typeof active.job.content.photos?.[0]==='string'?{first_photo_url:active.job.content.photos[0]}:{}),
+    post_submit_observations:Array.isArray(active.postSubmitObservations)?active.postSubmitObservations:[],
+  };
+  const intent={
+    step:'verify_result.owned_content',intent_key:`verify_result:${active.job.destination.mechanism}`,
+    objective:'Identify one newly appeared listing by matching its title, author and approved product image.',
+    restrictions:['Read only. Do not interact with the page. Never invent an ID or URL. Select only a numbered card from the supplied DOM summary.'],
+    supervisor_kind:'verify_result',
+    approved_submission:approvedSubmission,
+  };
+  let request;
+  try{
+    request=await rpc(connection,'facebook_supervision',{
+      p_token:connection.token,p_operation:'request',p_id:null,
+      p_data:{kind:'verify_result',trace_id:traceId,step_seq:snapshot.trace_seq,intent,dom_summary:snapshot.dom_summary},
+    });
+  }catch{return null;}
+  if(!request?.id)return null;
+  const deadline=Date.now()+SUPERVISION_WAIT_MS;
+  while(Date.now()<deadline){
+    let response;
+    try{
+      response=await rpc(connection,'facebook_supervision',{
+        p_token:connection.token,p_operation:'poll',p_id:request.id,p_data:{},
+      });
+    }catch{return null;}
+    if(response?.status==='answered'&&isSupervisedResultAssessment(response.decision,snapshot.dom_summary))return response.decision;
+    if(['failed','expired'].includes(response?.status))return null;
+    await new Promise(resolve=>setTimeout(resolve,SUPERVISION_POLL_MS));
+  }
+  return null;
+}
 async function loadFacebookSupervisionHints(connection,step){
   const result=await rpc(connection,'facebook_supervision',{
     p_token:connection.token,p_operation:'hints',p_id:null,p_data:{step},
@@ -404,7 +445,10 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         }
         if(activeJob.stage==='submitting')await completePostSubmitCapture(connection,activeJob);
         await recordTraceStep('reconciliation_started','ok',{capture:false});
-        const result=await facebookAdapter.reconcile(activeJob);
+        const result=await facebookAdapter.reconcile(activeJob,{
+          requestVerifyResult:snapshot=>requestFacebookResultVerification(connection,activeJob,snapshot),
+          recordTraceStep:(step,status,options)=>recordTraceStep(step,status,{...options,jobKey:activeJob.attemptId}),
+        });
         const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
       }catch(error){
         if((await chrome.storage.local.get('activeJob')).activeJob?.stage==='result')throw error;
@@ -494,7 +538,10 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       });
       active=await completePostSubmitCapture(connection,active);
       await recordTraceStep('post_click_observation','ok',{tabId:active.tabId,capture:true});
-      const result=await facebookAdapter.reconcile(active);
+      const result=await facebookAdapter.reconcile(active,{
+        requestVerifyResult:snapshot=>requestFacebookResultVerification(connection,active,snapshot),
+        recordTraceStep:(step,status,options)=>recordTraceStep(step,status,{...options,jobKey:active.attemptId}),
+      });
       const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
     }catch(error){
       const journal=(await chrome.storage.local.get('activeJob')).activeJob;
@@ -686,9 +733,14 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     })();return true;
   }
   if(message.type==='trace-step'&&sender.id===chrome.runtime.id&&sender.tab&&typeof message.step==='string'){
-    void chrome.storage.local.get(['activeJob','activeRehearsal']).then(async({activeJob,activeRehearsal})=>{
+    void chrome.storage.local.get(['activeJob','activeRehearsal','automationTabIds']).then(async({activeJob,activeRehearsal,automationTabIds})=>{
       const postSubmitStep=['post_click_observation','post_submit_0ms','post_submit_3000ms','post_submit_8000ms'].includes(message.step);
-      const real=activeJob?.tabId===sender.tab.id&&(activeJob.stage==='preparing'||(activeJob.stage==='submitting'&&postSubmitStep))?activeJob:null;
+      const supervisedResultStep=message.step==='supervised_result_list'&&activeJob?.stage==='submitting'
+        &&Boolean(activeJob.attemptId)&&Number.isSafeInteger(sender.tab.id)
+        &&Array.isArray(automationTabIds)&&automationTabIds.includes(sender.tab.id)
+        &&isResultListUrl(activeJob.job,sender.tab.url);
+      const real=(activeJob?.tabId===sender.tab.id&&(activeJob.stage==='preparing'||(activeJob.stage==='submitting'&&postSubmitStep))
+        ||supervisedResultStep)?activeJob:null;
       const rehearsal=activeRehearsal?.tabId===sender.tab.id?activeRehearsal:null;
       const jobKey=real?.attemptId??rehearsal?.rehearsalId;
       if(!jobKey){reply({queued:false});return;}
