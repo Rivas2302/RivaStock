@@ -380,7 +380,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave `ai_memory_extract`; esta tarea agrega la sección “Modelos por función” en IA → Conexión (o en la Administración de Conocimientos) y usa la tabla en las llamadas nuevas, sin recrearla.
 - **Commit:** `feat(ai): per-function model and reasoning settings`
 
-### [ ] T5.2 Redactar con IA
+### [x] T5.2 Redactar con IA
 - En el modal de publicación, botón **“Redactar con IA”**. Crea un trabajo `ai_jobs` con `task_type 'fb_copywriting'`, mediante una migración aditiva que amplía el CHECK igual que T4.1 de Conocimientos y una RPC nueva `request_fb_copywriting`. Los datos de entrada son:
   - el producto (nombre, categoría, descripción, precio, stock, estado);
   - las **fichas de Conocimientos** del producto, si existen (recuperación por título y categoría con `knowledge_search_chunks_text`; el worker puede usar `retrieveForJob` de Conocimientos F5);

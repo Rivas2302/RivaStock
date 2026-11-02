@@ -25,13 +25,12 @@ Claude está habilitado en el Bridge, pero el dueño indicó que primero debe co
 
 1. En PowerShell escribir `claude`, completar inicio de sesión o primer uso, salir con `/exit` y probar: `claude -p "Respond exactly RIVA-CLAUDE-PROBE-OK" --output-format json --max-turns 1`.
 
-## AI Bridge 1.14.0 y extensión Facebook 0.5.21
+## AI Bridge 1.15.0 y extensión Facebook 0.5.21
 
-La aplicación ya publica los paquetes AI Bridge 1.14.0 y extensión Facebook 0.5.21; Vercel terminó el despliegue de T3.3. La PC vinculada todavía necesita activar esas versiones antes de las validaciones en vivo.
+La PC vinculada ya tiene el AI Bridge **1.15.0** instalado desde el paquete generado; se verificó un solo worker activo y heartbeat reciente. La extensión pública sigue en **0.5.21**. Para las validaciones en vivo pendientes hace falta el perfil de Chrome de Riva con sesión de Facebook y la extensión activa.
 
-1. Ejecutá el actualizador del AI Bridge hasta ver **1.14.0** y **Conectado**.
-2. En el perfil Chrome con sesión de Facebook, instalá o recargá la extensión Facebook **0.5.21** desde el flujo habitual de RivaStock.
-3. Confirmá que la conexión figura activa. Para trazas con imagen, habilitá el permiso de capturas desde el panel de conexión.
+1. En el perfil Chrome de RivaStock con sesión de Facebook, instalá o recargá la extensión Facebook **0.5.21** desde el flujo habitual de RivaStock.
+2. Confirmá que la extensión está conectada. Para trazas con imagen, habilitá el permiso de capturas desde el panel de conexión.
 
 ## Ensayo en vivo del publicador de Facebook
 

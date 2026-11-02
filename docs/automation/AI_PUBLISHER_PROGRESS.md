@@ -1,5 +1,17 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T5.2 desplegada
+
+- T5.2 `[x]`: el modal ofrece **Redactar con IA**, muestra proveedor/modelo/razonamiento, permite editar la propuesta y aplicarla al formulario; aplicar nunca aprueba ni crea una publicación. La RPC construye el contexto del producto, fichas de Conocimientos coincidentes y tono; la validación del JSON y las reglas del prompt se cubren con pruebas.
+- Commit `ed4b522` (`feat(automation): add AI copywriting for Facebook`) está en `main`, publicado directamente con Rivas2302. GitHub reportó el check de Vercel en `success`.
+- Producción: ambas migraciones exclusivas de T5.2 (`20261102200041_fb_ai_copywriting` y `20261102200438_fb_ai_copywriting_privileges`) están aplicadas. Verifiqué la RPC y sus permisos (authenticated sí; anon y service_role no). Un smoke SQL autenticado dentro de `BEGIN … ROLLBACK` devolvió `request_succeeded=true`; la cuenta persistida de tareas `fb_copywriting` quedó en cero.
+- Playwright con el perfil persistente autenticado abrió Automatizaciones → Nueva publicación → un producto existente; en su modal de preparación se vieron los selectores y el botón de redacción. No ejecuté la redacción, no aprobé contenido ni guardé una publicación. No hubo filas QA ni interacción con Facebook.
+- Backup 1, previo a la primera migración: `%USERPROFILE%\rivastock-backups\20261102T195547Z`; schema 808.673 B y datos 40.109.940 B; 82 tablas/13.740 filas y 373 objetos de Storage; 109 migraciones copiadas. Los conteos exactos por tabla coinciden con las filas de `COPY`.
+- Backup 2, previo a la migración de permisos: `%USERPROFILE%\rivastock-backups\20261102T200628Z`; schema 815.704 B y datos 40.111.107 B; 82 tablas/13.740 filas y 373 objetos; 110 migraciones copiadas. Verificación exacta y hashes en el directorio de backup.
+- **Desvío de backup:** Docker Desktop/CLI no está instalado; `supabase db dump --linked` no pudo ejecutarse. Para no dejar la base sin respaldo verificado, usé `pg_dump` 18.6 por Postgres 5432 con el login temporal entregado por Supabase CLI, solo en memoria. No persistí secretos.
+- Verificación local: `npm run lint`; `npm test -- --maxWorkers=1` (637 pruebas/104 archivos); `npm run build`; `npm run perf:check`; typecheck y 83 pruebas del Bridge; `git diff --check`, todo aprobado. Bridge 1.15.0 instalado desde el paquete generado; un worker activo y heartbeat reciente en producción.
+- **Siguiente:** T5.3, revisión opcional de fotos con IA y mejoras locales no destructivas.
+
 ## 2026-11-02 — T5.1 desplegada
 
 - T5.1 `[x]`: IA → Conexión permite configurar proveedor, modelo y razonamiento para las seis funciones en `ai_function_settings`; Organizar con IA usa la preferencia guardada como valor inicial y deja cambiarla para cada ejecución.
