@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — T5.1 desplegada; sigue T5.2
+
+- T5.1 `[x]`: IA → Conexión carga y guarda proveedor, modelo y razonamiento para las seis funciones existentes en `ai_function_settings`; Organizar con IA aplica la configuración guardada como predeterminado y permite cambiarla por ejecución.
+- Commit `12a711c` (`feat(ai): per-function model and reasoning settings`) está en `main`; Vercel confirmó `success`.
+- Verificación local: lint; 626 pruebas en 103 archivos; build y `perf:check` aprobados. La tabla y los valores predeterminados por función también están presentes en `RivaStock_Oficial`.
+- No hubo publicación ni actividad de Facebook.
+- **Siguiente:** T5.2, redacción asistida con propuesta editable y sin aprobación automática.
+
 ## 2026-11-02 — T4.2 desplegada; cierre exacto pendiente
 
 - La migración única `20261102200000_fb_marketplace_groups` quedó aplicada en `RivaStock_Oficial`. El claim versionado devuelve `target_groups`; la RPC original se preserva detrás de la nueva envoltura. Producción confirma `fb_delivery_group_results` con PK `(delivery_id, group_id)`, RLS/lectura autenticada y permisos de ejecución previstos para las RPC.

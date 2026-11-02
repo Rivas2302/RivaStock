@@ -376,7 +376,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 
 ## 10. Fase 5 — Calidad del contenido, fotos, grupos y ritmo
 
-### [ ] T5.1 Configuración de modelos por función
+### [x] T5.1 Configuración de modelos por función
 Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave `ai_memory_extract`; esta tarea agrega la sección “Modelos por función” en IA → Conexión (o en la Administración de Conocimientos) y usa la tabla en las llamadas nuevas, sin recrearla.
 - **Commit:** `feat(ai): per-function model and reasoning settings`
 

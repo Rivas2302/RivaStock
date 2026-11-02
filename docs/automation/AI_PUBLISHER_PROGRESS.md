@@ -1,5 +1,13 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T5.1 desplegada
+
+- T5.1 `[x]`: IA → Conexión permite configurar proveedor, modelo y razonamiento para las seis funciones en `ai_function_settings`; Organizar con IA usa la preferencia guardada como valor inicial y deja cambiarla para cada ejecución.
+- Commit `12a711c` publicado directamente en `main` con Rivas2302; Vercel terminó con `success`.
+- Verificación local: lint, 626 pruebas/103 archivos, build y `perf:check` aprobados. Producción contiene las filas y valores predeterminados por función.
+- No hubo migración, ensayos de Facebook ni publicaciones.
+- **Siguiente:** T5.2, propuesta de redacción asistida editable, validada y nunca aprobada automáticamente.
+
 ## 2026-11-02 — T4.2 desplegada; cierre exacto pendiente
 
 - Comparé el plan del worktree con `C:\Users\USER\Desktop\IA\RivaStock\docs\automation\AI_PUBLISHER_EXECUTION_PLAN.md`: el archivo del worktree (SHA-256 `5B6C52C72CB6AF1F17A35B20B51036D506057D6FEC94F8737FFCE17840019969`, 2/11) es más reciente que la copia de Desktop (SHA-256 `E370BA20F2F127C8C5744078114C144086A939AF82A42EB2F2060BCE8A6BDE76`, 25/10); seguí el plan del worktree.
