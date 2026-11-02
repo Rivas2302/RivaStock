@@ -1,11 +1,12 @@
 # Ejecución del plan del publicador de IA
 
-## 2026-11-02 — T1.5 visor y exportador de trazas
+## 2026-11-02 — T1.5 visor, exportador y decisiones supervisadas
 
-- Implementados en el worktree: `ExecutionTraceViewer` con pasos, estado, duración, notas, decisión opcional y captura firmada ampliable; vista de ensayos limitada al dueño; script `scripts/automation-trace-dump.mjs` y comando `npm run dump:automation-traces`.
+- `ExecutionTraceViewer` muestra pasos, estado, duración, notas, cada decisión IA guardada en `fb_supervision_requests` con proveedor/modelo/esfuerzo, y capturas firmadas ampliables; vista de ensayos limitada al dueño; script `scripts/automation-trace-dump.mjs` y comando `npm run dump:automation-traces`.
 - El exportador acepta `SUPABASE_USER_JWT` (anon key más sesión del dueño) o `SUPABASE_SERVICE_ROLE_KEY` con `SUPABASE_OWNER_ID` obligatorio. La clave queda en memoria del proceso; las rutas de capturas se validan contra propietario, traza y secuencia antes de firmar. Los pasos se consultan en páginas de 1000 filas y los archivos se guardan fuera del repo en `%USERPROFILE%\rivastock-traces\<fecha-hora>\`.
-- Verificación: lint; **593/593** pruebas Vitest; Playwright de Automatizaciones **31/31** con fixtures (incluye lectura de traza, decisión y captura ampliada); build y `perf:check`; `npm run dump:automation-traces -- --help`. Vercel confirmó `success` para `5e92259`. Playwright con el perfil persistente autenticado cargó la vista real de Ensayos vacía, sin alertas; no se escribieron datos ni se generaron casos QA.
-- **No marcar T1.5 `[x]` aún:** el visor presenta el campo de decisión cuando existe, pero F2 todavía no escribe decisiones supervisadas en la traza; también falta una comprobación de producción con la sesión autenticada del dueño. Resolver la integración de decisiones al completar F2 y luego validar el despliegue.
+- Commit de integración directa a `main`: `7a254c7` (`feat(automation): show supervised decisions in traces`), con autor/committer Rivas2302. Vercel confirmó `success`.
+- Verificación: lint; `npm test` **598/598**; Playwright `e2e/automations.spec.ts` **31/31** con respuesta fixture de `fb_supervision_requests` (incluye proveedor, modelo, decisión y captura ampliada); build y `perf:check`. Playwright con el perfil persistente autenticado abrió producción en `/automatizaciones?view=rehearsals`: autenticado, sin alertas y con la vista Ensayos vacía. La base no tiene trazas aún, por lo que no hay una decisión de producción que mostrar; el flujo real de la consulta se verificó con fixture. No se escribieron datos QA.
+- **T1.5 `[x]`**: vista owner-only, timeline, decisiones supervisadas, capturas ampliables y exportador implementados y desplegados. T1.4/T1.6 siguen pendientes de ensayos con la sesión real de Facebook.
 
 ## 2026-11-02 — T1.4 desplegada; ensayo real pendiente
 
@@ -266,7 +267,7 @@
 - Verificación local: lint aprobado; `npm test` **598/598**; build aprobado; `perf:check` aprobado. No se crearon solicitudes ni filas `[QA]` en producción.
 - Backup externo verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261102T140450Z`. `schema.sql` 731075 bytes (SHA-256 `B90C75F81ADF4A3C2D0B50D0CD6BCC8FCB79A2E4EA0D093E36AAD6DF77B6930E`); `data.sql` 41157728 bytes (SHA-256 `7DD84145A4AC5B2FC055ACAE167DCC91D11AF72A440C2E2E2C342035877395E0`); 104 archivos de migración copiados; manifiesto de Storage con 373 objetos (todos con tamaño). ACL protegida para la cuenta local. Los 79 conteos exactos antes, filas exportadas como `INSERT` y conteos exactos posteriores coinciden: 13739 filas en total. Evidencia completa en `table-verification.json` y `storage-manifest.json` fuera del repo.
 - **Desvío de credencial:** `supabase db dump --linked --dry-run` imprimió en una salida de herramienta la contraseña CLI temporal de `cli_login_postgres`. Se trató como expuesta; no se guardó en archivos. Revisión/invalidez y la rotación pendiente de `service_role` están en `docs/ai/OWNER_ACTIONS.md`.
-- T1.5 permanece `[ ]` hasta asociar decisiones reales de `fb_supervision_requests` a la cronología. T2.1 sí cumple sus criterios; siguiente es integrar T1.5 y continuar con T2.2.
+- T2.1 cumple sus criterios; T1.5 quedó cerrada con el commit `7a254c7`. Siguiente tarea de código: T2.2. T1.4/T1.6 siguen pendientes de ensayos con Facebook real.
 
 ### Conteos exactos del backup T2.1
 

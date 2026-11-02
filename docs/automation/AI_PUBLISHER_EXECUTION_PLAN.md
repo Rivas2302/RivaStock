@@ -197,7 +197,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 - Tests: Playwright con fixtures (el ensayo nunca invoca `submit` ni `checkpoint`; el descarte deja el formulario vacío) y PGlite (`fb_rehearsals` aislada por dueño, límite de pendientes).
 - **Commit:** `feat(facebook): add rehearsal mode that never publishes`
 
-### [ ] T1.5 Visor de trazas en RivaStock
+### [x] T1.5 Visor de trazas en RivaStock
 - En `src/components/automations/PublicationHistory.tsx`, cada entrega e intento tiene un botón “Ver ejecución” que abre una línea de tiempo con pasos, estado, duración, notas, decisiones de la IA (F2) y capturas ampliables (URLs firmadas de `trace_signed_urls`).
 - Vista “Ensayos” en Automatizaciones: lista de ensayos con resultado y acceso a su traza.
 - Script para el ejecutor `scripts/automation-trace-dump.mjs`: descarga las últimas N trazas (JSON y capturas) a `%USERPROFILE%\rivastock-traces\` (fuera del repo) usando la Edge Function con la sesión del dueño o la service role en memoria. **Así el ejecutor ve en vivo** cada ejecución y revisa las capturas con su visor de imágenes.
