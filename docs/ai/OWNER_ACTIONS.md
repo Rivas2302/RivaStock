@@ -24,9 +24,9 @@ El paquete con lectura de `ai_function_settings` está generado y el Edge Functi
 
 ## Ensayo en vivo del publicador de Facebook
 
-El perfil Chrome inspeccionado no tiene instalada la extensión de Facebook. La versión publicada actual es **0.5.16**; la entrega T1.4 genera **0.5.17** y requiere que Vercel termine antes de instalarla.
+La versión pública confirmada es **0.5.17** (HTTP 200; SHA-256 del ZIP coincide con el paquete generado). Falta validar el perfil de Chrome de Riva con la sesión y la extensión activa.
 
-1. Cuando el JSON público de versión indique 0.5.17, abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.17.
+1. Abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.17 desde la app.
 2. Confirmá que la extensión está conectada. Si querés capturas en las trazas, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso».
 3. Para cerrar T1.6, ejecutá cinco ensayos de Marketplace y cinco de grupo directo con productos y grupos elegidos por vos. La app debe mostrar las trazas y ningún contenido se publica.
 4. Si el ensayo se detiene por un borrador sin el marcador de la prueba, preservalo. El código no elimina borradores previos del dueño; no lo borres como parte del QA.

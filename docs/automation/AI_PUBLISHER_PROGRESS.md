@@ -1,5 +1,13 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T1.4 desplegada; ensayo real pendiente
+
+- Push directo a `main` como Rivas2302: `a5adf89` (`feat(facebook): add safe rehearsal mode`), padre `9728340`. GitHub confirma autor y committer Rivas2302; Vercel muestra `success`.
+- Verificación pública: `rivastock-facebook-version.json` = **0.5.17**, protocolo 2. El ZIP respondió HTTP 200, tamaño **181.947 bytes**; SHA-256 público y local igual: `00e5c1870598e4ec2a4d505a28f53a1b10bed0f77d2c8be2b7ff92d48ca1984a`.
+- Suites previas al push: lint aprobado; 591/591 tests con claves Supabase ficticias solo en el proceso; build y `perf:check` aprobados; `e2e/facebook` **97/97** (`test-results/.last-run.json` = passed); ensayo con fixtures **5/5**, concurrencia **20/20**, Bridge typecheck y tests **69/69**. No se publicaron datos de prueba ni se usó Facebook real.
+- **T1.4 no se cierra**: no hay sesión de Riva en la PC para ejecutar ensayo real. En consecuencia T1.6 sigue pendiente (5 ensayos Marketplace + 5 de grupo, 10 trazas revisadas, cero borradores y cero clics de publicar). No modificar las marcas `[ ]` del plan.
+- **Desvío registrado:** el plan requiere descartar un borrador preexistente. La implementación falla cerrada si no puede demostrar que el formulario fue creado por el ensayo actual; preserva borradores reales o ambiguos. Se necesita la sesión en vivo para confirmar los controles accesibles y luego revisar cómo satisfacer el descarte seguro.
+
 ## 2026-10-26 — T0.1 Línea base
 
 - Fase 4 de Conocimientos está presente en `main` (ancestro `af58c77`). Se creó `feat/publicador-ia` desde `530ab25`.
