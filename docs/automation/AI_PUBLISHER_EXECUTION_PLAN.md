@@ -301,7 +301,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - Guardar en el intento (`data.post_submit_observations`, nueva operación de la RPC de supervisión, no de `facebook_worker_v2`) los textos de aviso y las URLs visibles nuevas, sin atribuir resultado.
 - **Commit:** `feat(facebook): capture post-submit observations`
 
-### [ ] T3.2 Verificación supervisada
+### [x] T3.2 Verificación supervisada
 - Cuando `adapter.reconcile` está por lanzar “Resultado desconocido” (Marketplace o grupo):
   1. Abrir la lista de contenido propio como hoy (“Tus publicaciones” filtrada por título o `my_pending_content`/`my_posted_content`).
   2. Pedido `verify_result` con la captura de la lista, el resumen del DOM (cada tarjeta numerada con su texto y enlaces), el título, el precio, la primera foto aprobada, el momento del clic y las observaciones de T3.1.

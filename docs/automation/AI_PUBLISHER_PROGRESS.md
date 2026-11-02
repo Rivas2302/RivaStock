@@ -1,5 +1,16 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T3.2 verificación supervisada
+
+- Implementada la revisión asistida posterior al envío con captura de la lista propia, evaluación JSON cerrada y extracción de un ID real desde la tarjeta seleccionada. La IA no inventa enlaces; un candidato en baseline, con título/autor discordante o con evaluación de baja confianza queda para confirmación humana. No se reenvía una publicación.
+- **Producción:** commit `8bf3d87` integrado y pusheado directamente a `main` con Rivas2302; el check de Vercel terminó `success`. El paquete público de la extensión 0.5.20 responde HTTP 200 (247.055 bytes) y su SHA-256 coincide con el artefacto local (`4429be4cc3562bdeedb596bb0c8dcf87b6632302a657f208abf5bb56df406ef6`). AI Bridge 1.14.0 responde HTTP 200. Los contenidos del paquete remoto y el local son iguales tras normalizar CRLF/LF; cambian el tamaño y hash del contenedor por normalización de finales de línea del deploy.
+- Se aplicó únicamente `20261102193000_fb_supervised_result_validation`. Backup previo verificado fuera del repo en `%USERPROFILE%\rivastock-backups\20261102T180927Z`: schema y datos no vacíos, 81 tablas/13.740 filas, 373 objetos de Storage y 107 migraciones; conteos exactos antes/durante/después coinciden para las 81 tablas. Detalle tabla por tabla en `table-counts.csv` del backup.
+- Validación de la RPC en producción: acepta candidate válido y “not found”; rechaza índice inválido, URL inventada y origen externo; ningún rol de cliente tiene `EXECUTE` directo.
+- **Desvío:** Supabase MCP aplicó la DDL con versión de ejecución `20261102181223`, distinta del nombre del archivo. Se reparó solo el historial (`reverted` para esa versión y `applied` para `20261102193000`); no se volvió a ejecutar la DDL. El historial final contiene una sola entrada con el nombre del archivo.
+- Verificación local: `npm run lint`; `npm test -- --maxWorkers=1` (**614 pruebas/102 archivos**); Playwright Facebook (**5/5**); Bridge `npm run typecheck && npm test` (**77/77**); `npm run build && npm run perf:check`; concurrencia PostgreSQL Facebook (**20 iteraciones**); `git diff --check`: todo aprobado.
+- T3.2 cumple criterios de implementación, fixture, seguridad, despliegue y smoke de base; no se probó contra una sesión real de Facebook. Sigue pendiente que Riva actualice el Bridge a 1.14.0 y recargue la extensión 0.5.20 para ensayos reales.
+- **Siguiente:** T3.3 revisión asistida de resultados históricos; no se confirmará éxito cuando la traza no conserve una línea de base causal.
+
 ## 2026-11-02 — T3.1 captura posterior al clic
 
 - T3.1 `[x]`: tras el clic de envío se registran muestras de 0, 3 y 8 segundos con captura y resumen del DOM, avisos `role=alert|status` y URLs de Facebook nuevas respecto del baseline visible anterior al envío. El observador de avisos abarca Marketplace y grupos; las observaciones no asignan estado de publicación.
