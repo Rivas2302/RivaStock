@@ -134,7 +134,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 - Ejecutarlo una vez y registrar totales en `STATUS.md`.
 - **Commit:** `feat(ops): verified backup of Supabase Storage files`
 
-### [ ] A4 Vulnerabilidades de dependencias
+### [x] A4 Vulnerabilidades de dependencias
 - `npm audit` reporta 1 alta (Vite) y 2 moderadas (Vitest). Actualizar a versiones corregidas dentro de la misma versión mayor si es posible; si exige mayor, evaluar el changelog y actualizar solo si `npm run verify` pasa completo. Lo mismo en `tools/rivastock-ai-bridge`.
 - Criterio: `npm run verify` termina en cero o cada aviso restante queda justificado en `STATUS.md`.
 - **Commit:** `chore(deps): fix audited vulnerabilities`

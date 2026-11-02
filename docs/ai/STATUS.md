@@ -1,8 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — A4 completada; Bloque B sigue
+
+- La comparación previa mostró que Desktop conserva el plan maestro de las 18:30; `origin/main` tenía la misma versión base. La única diferencia local en `ACTION_PLAN.md` es el avance de A3/A4.
+- A4 `[x]`: root actualizó Vite a 6.4.5 y Vitest a 4.1.12 dentro de sus versiones mayores. `npm run verify` pasó completo: lint, **666/666** pruebas en 108 archivos, build, secret scan, `perf:check` y `npm audit` con cero vulnerabilidades.
+- El Bridge tenía dos vulnerabilidades altas en `@huggingface/transformers` 3.8.1/`sharp`; la corrección disponible es Transformers 4.3.2, salto mayor. Las notas oficiales de v4 describen una reescritura del runtime ONNX/WebGPU; la ruta concreta usada aquí (`env.cacheDir`, `pipeline('feature-extraction', …)` y salida `tolist()`) pasó typecheck y 87 pruebas, además de un embedding local real de 384 dimensiones usando el cache existente. Bridge `npm audit` terminó en cero vulnerabilidades.
+- **Siguiente:** B1, verificar la configuración de extracción de memoria que fija el plan y registrar el estado actual del Bridge; después B2.
+
 ## 2026-11-02 — A3 completada; A4 sigue
 
-- A3 `[x]`: `scripts/backup-storage.mjs` y `npm run backup:storage` descargan objetos de todos los buckets, mantienen nombres originales y SHA-256 en `storage-manifest.json`, contrastan el inventario antes y después y pueden reanudar desde el manifiesto parcial. `backup:db -- --with-storage` integra ambos respaldos y ahora admite `--backup-dir` para retomar una carpeta marcada como no verificada.
+- A3 `[x]`: `scripts/backup-storage.mjs` y `npm run backup:storage` descargan objetos de todos los buckets, mantienen nombres originales y SHA-256 en `storage-manifest.json`, contrastan el inventario antes y después y pueden reanudar desde el manifiesto parcial. `backup:db -- --with-storage` integra ambos respaldos y ahora admite `--backup-dir` para retomar una carpeta marcada como no verificada. La comparación con Desktop/origin no halló un plan posterior; solo se marcó A3 completada en la copia del repo.
 - Backup completo verificado fuera del repo: `%USERPROFILE%\rivastock-backups\20261102T224109Z`. Postgres: 82 tablas, 13.740 filas, `schema.sql` 802.172 B, `data.sql` 40.111.111 B; los conteos exactos antes/después coincidieron tabla por tabla con los bloques exportados. Storage: 4 buckets, 374 objetos y 132.374.670 B (`assets` 373/132.272.608 B; `supplier-order-documents` 1/102.062 B; `automation-traces` y `knowledge` vacíos). Manifest, tamaños y hashes locales verificados; `BACKUP-UNVERIFIED.txt` fue retirado solo tras completar todas las verificaciones.
 - La primera exportación integrada agotó el límite inicial de 180 s con 198 objetos ya respaldados. Se amplió el timeout del proceso Storage y se reanudó esa misma carpeta; la ejecución final volvió a exportar y verificar Postgres y completó el inventario íntegro de Storage.
 - **Desvío:** Storage requiere JWT para Authorization aunque el gateway use `sb_secret_` en `apikey`; el script mantiene ambas credenciales solo en memoria y usa el JWT legacy solo para Storage. Ver A1 y `KEY_ROTATION.md`. No aplicar migraciones sin un respaldo nuevo que vuelva a pasar.
