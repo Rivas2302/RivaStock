@@ -31,9 +31,9 @@ El Bridge se actualizó desde el paquete generado en el repo con el procedimient
 
 ## Ensayo en vivo del publicador de Facebook
 
-La versión pública confirmada es **0.5.17** (HTTP 200; SHA-256 del ZIP coincide con el paquete generado). La versión nueva **0.5.18** agrega supervisión de formularios y está pendiente de despliegue/validación. Falta validar el perfil de Chrome de Riva con la sesión y la extensión activa.
+La versión pública confirmada es **0.5.18** (HTTP 200; SHA-256 del ZIP coincide con el paquete generado). Falta validar el perfil de Chrome de Riva con la sesión y la extensión activa.
 
-1. Abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.18 desde la app cuando esté desplegado. Si ya aparece como versión pública, no reinstales otra versión.
+1. Abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.18 desde la app.
 2. Confirmá que la extensión está conectada. Si querés capturas en las trazas, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso».
 3. Para cerrar T1.6, ejecutá cinco ensayos de Marketplace y cinco de grupo directo con productos y grupos elegidos por vos. La app debe mostrar las trazas y ningún contenido se publica.
 4. Si el ensayo se detiene por un borrador sin el marcador de la prueba, preservalo. El código no elimina borradores previos del dueño; no lo borres como parte del QA.
