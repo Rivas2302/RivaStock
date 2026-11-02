@@ -50,7 +50,7 @@ Proyecto: `nkfqhuqrgrpfufdymkcr` (RivaStock_Oficial)
 | Archivo | Cambio principal |
 |---------|-----------------|
 | `vercel.json` | Security headers: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy |
-| `.env.example` | Creado con VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_SENTRY_DSN |
+| `.env.example` | Creado con VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SENTRY_DSN |
 | `supabase/migrations/0002-0011` | 10 migraciones nuevas o actualizadas |
 
 ---
@@ -60,7 +60,7 @@ Proyecto: `nkfqhuqrgrpfufdymkcr` (RivaStock_Oficial)
 | Variable | Requerida | Descripción |
 |----------|-----------|-------------|
 | `VITE_SUPABASE_URL` | ✅ SÍ | URL del proyecto Supabase |
-| `VITE_SUPABASE_ANON_KEY` | ✅ SÍ | Anon key pública de Supabase |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Opcional | Sobrescribe la clave pública versionada; no hace falta configurarla en Vercel |
 | `VITE_SENTRY_DSN` | ❌ Opcional | DSN de Sentry para error tracking (no implementado aún) |
 
 > Las variables de build ya están configuradas en `vercel.json`. Para nuevos deployos o entornos, copiar `.env.example` → `.env.local`.

@@ -1,15 +1,19 @@
-export function publicConnection(message) {
-  const url = new URL(message.url);
+export function publicSupabaseProjectUrl(value) {
+  const url = new URL(value);
   if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Proyecto inválido.');
+  return url.origin;
+}
+
+export function isPublishableSupabaseKey(value) {
+  return typeof value === 'string' && /^sb_publishable_[A-Za-z0-9_-]+$/.test(value);
+}
+
+export function publicConnection(message) {
+  const projectUrl = publicSupabaseProjectUrl(message.url);
   const key = message.key;
-  if (typeof key !== 'string') throw new Error('Clave pública inválida.');
-  if (key.startsWith('ey')) {
-    let payload;
-    try { payload = JSON.parse(atob(key.split('.')[1].replaceAll('-', '+').replaceAll('_', '/'))); } catch { throw new Error('Clave pública inválida.'); }
-    if (payload.role !== 'anon') throw new Error('Solo se permiten claves públicas.');
-  } else if (!key.startsWith('sb_publishable_')) throw new Error('Solo se permiten claves públicas.');
+  if (!isPublishableSupabaseKey(key)) throw new Error('Usá únicamente la clave publishable.');
   if (!/^[a-f0-9]{64}$/.test(message.code)) throw new Error('Código inválido.');
-  return {url:url.origin,key,code:message.code,expiresAt:Date.now()+5*60*1000};
+  return {url:projectUrl,key,code:message.code,expiresAt:Date.now()+5*60*1000};
 }
 
 export function trustedPairingSender(sender) {
@@ -22,7 +26,24 @@ export function trustedPairingSender(sender) {
 export function registerPairing({wakeGroups,wakePublications,reviewUnknown} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
-    if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function',historicalReview:typeof reviewUnknown==='function'}); return; }
+    if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,publicKeyRefresh:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function',historicalReview:typeof reviewUnknown==='function'}); return; }
+    if (message?.type === 'rivastock-update-public-key') {
+      void (async () => {
+        try {
+          const projectUrl = publicSupabaseProjectUrl(message.projectUrl);
+          if (projectUrl !== message.projectUrl || !isPublishableSupabaseKey(message.key)) throw new Error();
+          const { connection, activeJob } = await chrome.storage.local.get(['connection', 'activeJob']);
+          if (!connection || connection.url !== projectUrl) { reply({ updated: false, keyChanged: false }); return; }
+          if (activeJob) { reply({ updated: false, keyChanged: false, busy: true }); return; }
+          const keyChanged = connection.key !== message.key;
+          if (keyChanged) await chrome.storage.local.set({ connection: { ...connection, key: message.key } });
+          reply({ updated: true, keyChanged });
+        } catch {
+          reply({ error: 'No se pudo actualizar la clave pública de esta conexión.' });
+        }
+      })();
+      return true;
+    }
     if(['rivastock-connection-status','rivastock-open-connection'].includes(message?.type)){
       void (async()=>{
         try{

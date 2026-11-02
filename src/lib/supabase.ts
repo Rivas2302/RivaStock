@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { fetchWithDeadline } from './readRecovery';
+import { headersWithoutOpaqueApiKeyBearer, resolveSupabasePublicKey, SUPABASE_PUBLISHABLE_KEY } from './supabasePublicConfig';
 
 function normalizeSupabaseUrl(value: string | undefined): string {
   const trimmedValue = value?.trim() ?? '';
@@ -10,10 +11,14 @@ function normalizeSupabaseUrl(value: string | undefined): string {
 }
 
 export const supabaseProjectUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL as string | undefined);
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? '';
+export const supabasePublicApiKey = resolveSupabasePublicKey(
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined,
+  SUPABASE_PUBLISHABLE_KEY,
+  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
+);
 
-if (!supabaseProjectUrl || !supabaseAnonKey) {
-  console.warn('[Supabase] Credentials missing or invalid; set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
+if (!supabaseProjectUrl || !supabasePublicApiKey) {
+  console.warn('[Supabase] Credentials missing or invalid; set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env.local');
 }
 
 // Module-level singleton — guard against accidental re-instantiation (HMR, tests).
@@ -24,7 +29,7 @@ declare global {
 
 export const supabase: SupabaseClient =
   globalThis.__rivastock_supabase__ ??
-  createClient(supabaseProjectUrl, supabaseAnonKey, {
+  createClient(supabaseProjectUrl, supabasePublicApiKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -37,7 +42,14 @@ export const supabase: SupabaseClient =
       flowType: 'implicit',
     },
     global: {
-      fetch: fetchWithDeadline,
+      fetch: (input, init) => {
+        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+        return fetchWithDeadline(input, {
+          ...init,
+          headers: headersWithoutOpaqueApiKeyBearer(headers, supabasePublicApiKey),
+        });
+      },
     },
   });
 

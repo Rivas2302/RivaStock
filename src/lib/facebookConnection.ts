@@ -1,7 +1,8 @@
 import { facebookExtensionId } from './facebookExtensionId';
 import { facebookRpc } from './facebookPublications';
+import { supabasePublicApiKey } from './supabase';
 
-export type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;publicationsWake?:boolean;historicalReview?:boolean;candidateFound?:boolean;message?:string;accepted?:boolean;state?:string;protocol?:number;connectionStatus?:boolean;hasConnection?:boolean;matches?:boolean;hasActiveJob?:boolean;paused?:boolean;errorCode?:string;recoveryPending?:boolean;pairingPending?:boolean};
+export type ExtensionResponse = {installed?:boolean;pending?:boolean;updated?:boolean;busy?:boolean;error?:string;version?:string;groupsWake?:boolean;publicationsWake?:boolean;historicalReview?:boolean;publicKeyRefresh?:boolean;publicKeyUpdated?:boolean;publicKeyRefreshBusy?:boolean;candidateFound?:boolean;message?:string;accepted?:boolean;state?:string;protocol?:number;connectionStatus?:boolean;hasConnection?:boolean;matches?:boolean;hasActiveJob?:boolean;paused?:boolean;errorCode?:string;recoveryPending?:boolean;pairingPending?:boolean};
 type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: ExtensionResponse|undefined)=>void)=>void };
 function extensionMessage(message:unknown,timeoutMs=10000) {
   const runtime = (window as Window & {chrome?:{runtime?:Runtime}}).chrome?.runtime;
@@ -17,9 +18,14 @@ function extensionMessage(message:unknown,timeoutMs=10000) {
   });
 }
 function facebookProjectUrl(){const raw=(import.meta.env.VITE_SUPABASE_URL as string).trim();return new URL(raw.startsWith('https://')?raw:'https://'+raw).origin;}
-export async function facebookExtensionInfo(){try{return await extensionMessage({type:'rivastock-installed'});}catch{return null;}}
+async function refreshExtensionPublicKey(info:ExtensionResponse):Promise<ExtensionResponse>{
+ if(!info.publicKeyRefresh)return info;
+ const result=await extensionMessage({type:'rivastock-update-public-key',projectUrl:facebookProjectUrl(),key:supabasePublicApiKey});
+ return {...info,publicKeyUpdated:result.updated===true,publicKeyRefreshBusy:result.busy===true};
+}
+export async function facebookExtensionInfo(){try{return await refreshExtensionPublicKey(await extensionMessage({type:'rivastock-installed'}));}catch{return null;}}
 export async function connectFacebookComputer(deviceIds:string[]=[]):Promise<string>{
- const installed=await extensionMessage({type:'rivastock-installed'});
+ const installed=await refreshExtensionPublicKey(await extensionMessage({type:'rivastock-installed'}));
  if(!installed.installed||!installed.connectionStatus)throw new Error('Actualizá la extensión a 0.5.1 y recargala antes de vincular.');
  const projectUrl=facebookProjectUrl();
  const state=await extensionMessage({type:'rivastock-connection-status',projectUrl,deviceIds});
@@ -31,7 +37,7 @@ export async function connectFacebookComputer(deviceIds:string[]=[]):Promise<str
   return 'La extensión conserva otra vinculación o una credencial revocada. Revisá y cerrá esa conexión desde el panel antes de vincular.';
  }
  const {code}=await facebookRpc<{code:string}>('pair_facebook_device',{p_name:'Chrome de RivaStock'});
- const result=await extensionMessage({type:'rivastock-connect',code,url:projectUrl,key:import.meta.env.VITE_SUPABASE_ANON_KEY});
+ const result=await extensionMessage({type:'rivastock-connect',code,url:projectUrl,key:supabasePublicApiKey});
  if(!result.pending)throw new Error('No se pudo iniciar la conexión.');
  return 'En la pestaña de la extensión, presioná Conectar y activar esta PC y aceptá los permisos de Chrome.';
 }

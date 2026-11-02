@@ -1,9 +1,13 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY')!;
-const SUPABASE_SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
+  Deno.env.get('SUPABASE_SECRET_KEYS'),
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+);
+logSupabaseAdminKeyMode('invite-collaborator', SUPABASE_ADMIN_KEY_MODE);
 const APP_URL               = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
 
 const CORS = {
@@ -46,7 +50,7 @@ serve(async (req) => {
       { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const userClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: { user }, error: userErr } = await userClient.auth.getUser();
@@ -55,7 +59,9 @@ serve(async (req) => {
       { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
+  const admin = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
+  });
   const { data: collabRows } = await admin
     .from('collaborators')
     .select('id')

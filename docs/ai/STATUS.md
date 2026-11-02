@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — A1 implementada localmente; producción y cierre pendientes
+
+- Inventario de consumidores y `cli_login_postgres` completados en `KEY_ROTATION.md`. Supabase documenta que la contraseña temporal de `cli_login_postgres` vence a los pocos minutos; la consulta de solo lectura confirmó que ya estaba vencida. No hay consumidores de la contraseña en la app ni en las funciones.
+- A1 implementada: selector compartido de `SUPABASE_SECRET_KEYS` para las cinco Edge Functions, clave publishable en clientes web/extensión, scripts históricos y guías actualizados, y renovación segura de la clave almacenada por la extensión. No se modificó la base ni se desactivaron claves legacy.
+- Verificación local: lint aprobado; **661 pruebas** en 107 archivos; build completado por Playwright; secret scan aprobado; pruebas E2E de Facebook **102/102**. Se reparó un mock E2E que aún interceptaba el RPC anterior `approve_facebook_publication` en vez de `approve_facebook_publication_v2`.
+- **A1 sigue `[ ]`**: faltan deploy de las cinco funciones, push y comprobación del bundle servido, smoke completo y desactivación reversible de claves legacy. La extensión de producción reportó 0.5.15 con heartbeat vencido, por lo que G2 permanece cerrada; no desactivar `anon`/`service_role` legacy hasta que el dueño recargue la extensión compatible y envíe heartbeat reciente.
+- No se desplegó ninguna función, no se aplicó ninguna migración y no se instaló una versión del Bridge durante A1.
+- **Siguiente:** desplegar el commit A1 y continuar la verificación que no depende de G2; en paralelo avanzar A3 y A4 según §5.2 mientras la prueba en vivo espera la extensión.
+
 ## 2026-11-02 — A2 completada; sigue A1
 
 - Se adoptó `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke SQL y ambos scripts SQL desde Desktop; `node docs/ai/multi-business-sql-smoke.mjs` terminó en `TODO OK`. El commit `fcbdb36` de adopción está en `main` con la cuenta `Rivas2302`.

@@ -19,7 +19,7 @@ Todo lo que está marcado como **copy-paste** podés copiar y ejecutar directame
    |---|---|
    | `Project URL` | Settings → API → Project URL |
    | `anon public` key | Settings → API → Project API keys → anon |
-   | `service_role` key | Settings → API → Project API keys → service_role (**secreto**) |
+| Secret key | Settings → API Keys → default secret (**secreto**) |
 
 ---
 
@@ -70,7 +70,7 @@ Crear el archivo `.env.local` en la raíz del proyecto (nunca commitear):
 
 ```
 VITE_SUPABASE_URL=https://<tu-project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon-public-key>
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 GEMINI_API_KEY=<tu-gemini-key-si-la-tenes>
 APP_URL=http://localhost:5173
 ```
@@ -92,7 +92,7 @@ FIRESTORE_PROJECT_ID=ai-studio-2c688b86-9af4-48db-a0ad-ae1a01a32d4a
 FIRESTORE_DATABASE_ID=ai-studio-2c688b86-9af4-48db-a0ad-ae1a01a32d4a
 
 SUPABASE_URL=https://<tu-project-ref>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
 También copiar el archivo `firebase-sa.json` (service account de Firebase) dentro de la carpeta `scripts/migrate/`.
@@ -178,7 +178,7 @@ Abrir **http://localhost:5173** y recorrer el `MIGRATION_CHECKLIST.md`:
    | Variable | Valor |
    |---|---|
    | `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-   | `VITE_SUPABASE_ANON_KEY` | `<anon-public-key>` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Optional override; the bundled publishable key is used by default |
    | `GEMINI_API_KEY` | `<tu-gemini-key>` |
    | `APP_URL` | `https://<tu-dominio>.vercel.app` |
 

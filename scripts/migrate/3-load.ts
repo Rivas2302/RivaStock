@@ -1,7 +1,7 @@
 /**
  * Step 3 — Load transformed data into Supabase
  *
- * Uses service role key to bypass RLS.
+ * Uses a Supabase secret key to bypass RLS.
  * Inserts in batches of 500, upsert mode (on_conflict=id) so re-runs are safe.
  *
  * Order matters for FK constraints:
@@ -14,10 +14,12 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import 'dotenv/config';
+import { supabaseSecretKeyFetch } from './supabaseKeyFetch';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.SUPABASE_SECRET_KEY!,
+  { global: { fetch: supabaseSecretKeyFetch } },
 );
 
 const TRANSFORMED_DIR = resolve('./transformed');

@@ -79,17 +79,29 @@ function isTraceScreenshotPath(trace,step) {
 async function run() {
   const limit=parseLimit(process.argv.slice(2));
   if(limit===null) {
-    console.log('Usage: npm run dump:automation-traces -- [--limit N]\nSet SUPABASE_USER_JWT for owner-scoped access, or SUPABASE_SERVICE_ROLE_KEY plus SUPABASE_OWNER_ID. Keys must remain in the process environment.');
+    console.log('Usage: npm run dump:automation-traces -- [--limit N]\nSet SUPABASE_USER_JWT for owner-scoped access, or SUPABASE_SECRET_KEY plus SUPABASE_OWNER_ID. Keys must remain in the process environment.');
     return;
   }
   const url=requiredEnv('SUPABASE_URL','VITE_SUPABASE_URL');
   const userJwt=process.env.SUPABASE_USER_JWT?.trim();
-  const serviceRole=process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if(Boolean(userJwt)===Boolean(serviceRole))throw new Error('Configurá exactamente una de SUPABASE_USER_JWT o SUPABASE_SERVICE_ROLE_KEY.');
-  const ownerId=serviceRole?requiredEnv('SUPABASE_OWNER_ID'):null;
+  const secretKey=process.env.SUPABASE_SECRET_KEY?.trim();
+  if(Boolean(userJwt)===Boolean(secretKey))throw new Error('Configurá exactamente una de SUPABASE_USER_JWT o SUPABASE_SECRET_KEY.');
+  const ownerId=secretKey?requiredEnv('SUPABASE_OWNER_ID'):null;
   if(ownerId&&!/^[0-9a-f-]{36}$/i.test(ownerId))throw new Error('SUPABASE_OWNER_ID debe ser un UUID.');
-  const anonKey=serviceRole?null:requiredEnv('SUPABASE_ANON_KEY','VITE_SUPABASE_ANON_KEY');
-  const client=createClient(url,serviceRole??anonKey,{auth:{autoRefreshToken:false,persistSession:false},global:userJwt?{headers:{Authorization:`Bearer ${userJwt}`}}:undefined});
+  const publishableKey=secretKey?null:requiredEnv('SUPABASE_PUBLISHABLE_KEY','VITE_SUPABASE_PUBLISHABLE_KEY');
+    const client=createClient(url,secretKey??publishableKey,{
+      auth:{autoRefreshToken:false,persistSession:false},
+      global:{
+        ...(userJwt?{headers:{Authorization:`Bearer ${userJwt}`}}:{}),
+        fetch:(input,init)=>{
+          const headers=new Headers(input instanceof Request?input.headers:undefined);
+          new Headers(init?.headers).forEach((value,key)=>headers.set(key,value));
+          const apiKey=headers.get('apikey')??'';
+          if((apiKey.startsWith('sb_secret_')||apiKey.startsWith('sb_publishable_'))&&headers.get('Authorization')===`Bearer ${apiKey}`)headers.delete('Authorization');
+          return fetch(input,{...init,headers});
+        },
+      },
+    });
   let traceQuery=client.from('fb_run_traces').select(TRACE_FIELDS);
   if(ownerId)traceQuery=traceQuery.eq('user_id',ownerId);
   const {data:traces,error:traceError}=await traceQuery.order('started_at',{ascending:false}).limit(limit);

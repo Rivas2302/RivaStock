@@ -1,9 +1,13 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
+  Deno.env.get('SUPABASE_SECRET_KEYS'),
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+);
+logSupabaseAdminKeyMode('ai-bridge', SUPABASE_ADMIN_KEY_MODE);
 const AI_BRIDGE_TOKEN = Deno.env.get('AI_BRIDGE_TOKEN') ?? '';
 const AI_BRIDGE_OWNER_UID = Deno.env.get('AI_BRIDGE_OWNER_UID') ?? '';
 const MAX_BODY_BYTES = 16_384;
@@ -88,7 +92,7 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 
 function validateWorkerConfiguration(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(SUPABASE_URL && SUPABASE_ADMIN_KEY);
 }
 
 function safeDbError(error: { message?: string } | null, status = 400, origin?: string | null): Response {
@@ -132,8 +136,9 @@ serve(async (req) => {
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400, origin);
 
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
     let ownerUid: string | null = null;
     if (suppliedToken.length >= 32 && suppliedToken.length <= 256) {
@@ -284,8 +289,8 @@ serve(async (req) => {
 
   const authorization = req.headers.get('authorization');
   if (!authorization) return jsonResponse({ error: 'No autenticado.' }, 401, origin);
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return jsonResponse({ error: 'El backend de IA no está configurado.' }, 503, origin);
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return jsonResponse({ error: 'El backend de IA no está configurado.' }, 503, origin);
+  const userClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: { headers: { Authorization: authorization } },
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -333,8 +338,9 @@ serve(async (req) => {
   }
 
   if (action === 'chat_list') {
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);
@@ -453,8 +459,9 @@ serve(async (req) => {
   }
 
   if (action === 'recent') {
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);

@@ -27,7 +27,7 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
     if(name==='products') data=[{id:product,user_id:owner,name:'Silla de prueba',category:'Muebles',sale_price:1500,purchase_price:1000,stock:3,min_stock:1,images:[photo],image_url:photo,description:'Silla nueva de prueba',show_in_catalog:true}];
     if(name==='facebook_groups') data=[{id:'30000000-0000-4000-8000-000000000001',name:'Grupo de prueba',url:'https://www.facebook.com/groups/PicoVendedeTodo',mechanism:'group_direct'}];
     if(name==='facebook_publications') data=publications;
-    if(name==='approve_facebook_publication') {
+    if(name==='approve_facebook_publication_v2') {
       const args=route.request().postDataJSON(); approvals.push(args);
       if(!publications.length) publications.push({id:'publication',content:args.p_content,approved_at:new Date().toISOString(),facebook_deliveries:[{id:'delivery',status:'pending',destination:{name:'Marketplace',mechanism:'marketplace'},message:null,evidence_url:null},{id:'group-delivery',status:'pending',destination:{name:'Grupo de prueba',mechanism:'group_direct'},message:null,evidence_url:null}]});
       data='publication';

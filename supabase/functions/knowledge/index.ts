@@ -2,9 +2,14 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorker, isUuid, jsonResponse, readJsonLimited } from '../_shared/workerAuth.ts';
 import { memoryWorkerPayload, validateMemoryWorkerAction, validateWorkerRetrieveRequest } from './contract.ts';
+import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
+  Deno.env.get('SUPABASE_SECRET_KEYS'),
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+);
+logSupabaseAdminKeyMode('knowledge', SUPABASE_ADMIN_KEY_MODE);
 const MAX_BODY_BYTES = 1_048_576;
 
 const ACTIONS = {
@@ -286,15 +291,16 @@ serve(async (req: Request) => {
   }
   const action = body.action as WorkerAction;
   if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400);
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_ADMIN_KEY) {
     return jsonResponse({ error: 'La función de Conocimientos no está configurada.' }, 503);
   }
 
   const validationError = validateAction(action, body);
   if (validationError) return jsonResponse({ error: validationError }, 400);
 
-  const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
   });
   const ownerUid = await authorizeWorker(req, body, serviceClient);
   if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401);

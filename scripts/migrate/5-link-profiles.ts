@@ -6,7 +6,7 @@
  * have a different UUID assigned by Supabase.
  *
  * This script:
- *   1. Reads auth.users (via service role) to get email → auth_uid mapping
+ *   1. Reads auth.users (via a Supabase secret key) to get email → auth_uid mapping
  *   2. For each profile, finds the matching auth user by email
  *   3. Updates profiles.id to the auth_uid AND updates all FK references
  *      (sales.user_id, products.user_id, etc.)
@@ -19,11 +19,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
+import { supabaseSecretKeyFetch } from './supabaseKeyFetch';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
+  process.env.SUPABASE_SECRET_KEY!,
+  { auth: { persistSession: false }, global: { fetch: supabaseSecretKeyFetch } }
 );
 
 // Tables that have user_id referencing profiles.id

@@ -16,7 +16,7 @@ export default defineConfig({
     env: {
       // All requests in fixture tests are intercepted; never connect to a live tenant.
       VITE_SUPABASE_URL: 'https://rivastock-test.invalid',
-      VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test-fixture',
     },
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,

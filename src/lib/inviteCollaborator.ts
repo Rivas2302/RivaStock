@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabasePublicApiKey } from './supabase';
 import type { PermissionMatrix, StaffRole } from '../types';
 
 export async function inviteCollaborator(args: {
@@ -17,7 +17,7 @@ export async function inviteCollaborator(args: {
     headers: {
       'Content-Type':  'application/json',
       'Authorization': `Bearer ${session.access_token}`,
-      'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'apikey':        supabasePublicApiKey,
     },
     body: JSON.stringify(args),
   });

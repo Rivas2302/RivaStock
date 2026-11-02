@@ -5,14 +5,14 @@
 - Node.js 20+
 - Firebase service account JSON at `./firebase-sa.json`
 - Supabase project with schema already applied (run `supabase/migrations/` first)
-- Supabase **service role** key (not anon key)
+- Supabase **secret** key (never a publishable key)
 
 ## Setup
 
 ```bash
 cd scripts/migrate
 cp .env.example .env
-# Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, confirm FIRESTORE_* values
+# Fill in SUPABASE_URL, SUPABASE_SECRET_KEY, confirm FIRESTORE_* values
 npm install
 ```
 
@@ -66,4 +66,4 @@ tsx 5-link-profiles.ts
 
 - `dump/` and `transformed/` are in `.gitignore` — they may contain PII.
 - `firebase-sa.json` is also in `.gitignore` — never commit it.
-- Use the Supabase **service role** key only for migration; the app uses the anon key.
+- These legacy migration scripts are historical and are not part of the application. Use `SUPABASE_SECRET_KEY` only; the app uses the publishable key.

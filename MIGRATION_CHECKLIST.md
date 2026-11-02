@@ -7,8 +7,8 @@ Complete these steps in order. Do NOT merge to `main` until step 10 is verified 
 ## 1 · Supabase Project Setup
 
 - [ ] Create project at supabase.com (region: closest to Argentina, e.g. São Paulo)
-- [ ] Note `Project URL` and `anon key` from Settings → API
-- [ ] Note `service role key` (keep it secret, only for migration scripts)
+- [ ] Note `Project URL` and the publishable key from Settings → API Keys
+- [ ] Note the secret key (keep it confidential; use only for migration scripts)
 
 ## 2 · Apply Database Schema
 
@@ -52,13 +52,13 @@ Create `.env` at repo root (never commit):
 
 ```
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon-key>
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
 In Vercel → Project → Settings → Environment Variables:
 
 - [ ] `VITE_SUPABASE_URL`  — Production + Preview
-- [ ] `VITE_SUPABASE_ANON_KEY` — Production + Preview
+- [ ] Optional `VITE_SUPABASE_PUBLISHABLE_KEY` override; production and preview also use the bundled publishable key
 - [ ] Remove any old Firebase variables (`VITE_FIREBASE_*`)
 
 ## 6 · Run Migration Scripts
@@ -66,7 +66,7 @@ In Vercel → Project → Settings → Environment Variables:
 ```bash
 cd scripts/migrate
 cp .env.example .env
-# fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, confirm FIRESTORE_* values
+# fill in SUPABASE_URL, SUPABASE_SECRET_KEY, confirm FIRESTORE_* values
 # put firebase-sa.json service account file in this directory
 npm install
 

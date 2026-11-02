@@ -2,10 +2,14 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
 import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
+import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
+  Deno.env.get('SUPABASE_SECRET_KEYS'),
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+);
+logSupabaseAdminKeyMode('automation', SUPABASE_ADMIN_KEY_MODE);
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_SCREENSHOT_BYTES = 600_000;
 const MAX_SUMMARY_BYTES = 20_480;
@@ -81,7 +85,7 @@ function errorResponse(message = 'No se pudo completar la operación de automati
 }
 
 function configured(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY && SUPABASE_ADMIN_KEY);
 }
 
 function bearerToken(req: Request): string {
@@ -96,7 +100,7 @@ async function signedUrls(
   origin?: string | null,
 ): Promise<Response> {
   if (!isUuid(body.trace_id)) return jsonResponseWithCors({ error: 'Identificador de traza inválido.' }, 400, origin);
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const userClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: { headers: { Authorization: authorization } },
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -280,8 +284,9 @@ serve(async (req) => {
   }
 
   const authorization = req.headers.get('authorization') ?? '';
-  const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
   });
 
   if (body.action === 'supervisor_worker') return await supervisorWorker(body, req, serviceClient, origin);

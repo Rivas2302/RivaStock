@@ -10,7 +10,7 @@ Guía para conectar una PC local con la IA de cada cuenta de RivaStock. El flujo
 - `ai_jobs` guarda instrucción, resultado, estado, fechas, intentos y lease. Las instrucciones admiten hasta 8.000 caracteres y los resultados hasta 20.000.
 - La reserva se hace con una RPC transaccional, `FOR UPDATE SKIP LOCKED` y un lease de 90 segundos. El worker renueva el lease cada 20 segundos y recupera hasta tres intentos interrumpidos.
 - Cada cuenta admite hasta diez tareas pendientes o en ejecución; las solicitudes se deduplican con una clave idempotente.
-- La tabla no expone escrituras directas a usuarios. El navegador usa su sesión Supabase; el worker se autentica con un token propio. La clave `service_role` solo se usa dentro de Supabase.
+- La tabla no expone escrituras directas a usuarios. El navegador usa su sesión Supabase; el worker se autentica con un token propio. Las claves secretas se usan solo dentro de las Edge Functions.
 - La biblioteca `ai_workspace_files` solo permite que el propietario administre archivos de texto. El worker sincroniza Skills y documentos a `.rivastock-ai/workspace`; el agente los recibe como referencia de texto y nunca ejecuta sus scripts.
 - Cada tarea puede incluir, con dos casillas apagadas por defecto, una selección fija de archivos fuente del proyecto y hasta 100 productos del comercio. La consulta de negocio solo lee campos autorizados de `products` filtrados por el UID del propietario; no permite SQL ni escrituras libres.
 - Vercel sirve la SPA; este repositorio no tiene funciones `/api` de Vercel. El cliente invoca Supabase directamente, que ya figura en la CSP actual.
@@ -60,13 +60,13 @@ Configurá como secretos de Edge Functions:
 - `AI_BRIDGE_TOKEN` y `AI_BRIDGE_OWNER_UID`: opcionales y solo para la transición de la instalación anterior. No copies estos secretos a clientes nuevos.
 - `AI_BRIDGE_ALLOWED_ORIGINS`: opcional. Por defecto permite `https://rivastock.vercel.app` y `http://localhost:5173`; agregá el origen exacto si usás otra URL de Preview.
 
-Los secretos integrados `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` se leen en la Edge Function. No los copies a `tools/rivastock-ai-bridge/.env`; en particular, nunca pongas `service_role` en Vercel, el navegador ni la PC.
+Las Edge Functions leen `SUPABASE_SECRET_KEYS` (el mapa JSON de claves secretas inyectado por Supabase) para las operaciones administrativas y usan el publishable integrado al código para validar sesiones. No copies claves secretas a `tools/rivastock-ai-bridge/.env`; nunca pongas una clave secreta en Vercel, el navegador ni la PC.
 
 ## 4. Configuración de Vercel
 
-La SPA ya usa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. Confirmá que Vercel Preview apunta al mismo proyecto Supabase de prueba y que su URL esté en `AI_BRIDGE_ALLOWED_ORIGINS`.
+La SPA usa `VITE_SUPABASE_URL` y prefiere `VITE_SUPABASE_PUBLISHABLE_KEY`; si esta última falta, usa el publishable versionado en `src/lib/supabasePublicConfig.ts`. No hace falta configurar la clave en Vercel. Confirmá que Vercel Preview apunta al mismo proyecto Supabase de prueba y que su URL esté en `AI_BRIDGE_ALLOWED_ORIGINS`.
 
-No agregues el token del worker ni la clave `service_role` a Vercel. El puente no usa variables Vercel ni un endpoint `/api`.
+No agregues el token del worker ni claves secretas a Vercel. El puente no usa variables Vercel ni un endpoint `/api`.
 
 ## 5. Instalar y arrancar el worker
 

@@ -38,7 +38,7 @@ Crear un archivo `.env.local` en la raíz del proyecto:
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
 ### Desarrollo
