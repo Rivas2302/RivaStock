@@ -3,6 +3,7 @@ import { registerPairing } from './pairing.js';
 import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
 import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
+import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
 void flushTraceQueue();
 
@@ -11,7 +12,9 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.18';}}
+const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
+let flushingPostSubmitObservations=false;
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.19';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -116,6 +119,78 @@ export async function workerRpc(connection,operation,params={}){
   return rpc(connection,'facebook_worker',{p_token:connection.token,p_operation:operation,
     ...(params.delivery?{p_delivery:params.delivery}:{}),...(operation==='heartbeat'||params.message!==undefined?{p_message:params.message??null}:{}),
     ...((params.status??params.data?.status)?{p_status:params.status??params.data.status}:{}),...(params.url?{p_url:params.url}:{})});
+}
+async function sendPostSubmitObservations(connection,item){
+  const response=await fetch(`${connection.url}/functions/v1/automation`,{
+    method:'POST',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(15000),
+    headers:{apikey:connection.key,Authorization:`Bearer ${connection.token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({action:'supervisor_worker',operation:'post_submit_observations',worker_id:connection.deviceId,
+      id:item.attemptId,data:{post_submit_observations:item.observations}}),
+  });
+  const result=await response.json().catch(()=>null);
+  if(!response.ok||result?.saved!==true){
+    const error=new Error('No se pudieron guardar las observaciones posteriores al envío.');
+    error.status=response.status;
+    throw error;
+  }
+}
+async function flushPendingPostSubmitObservations(connection){
+  if(flushingPostSubmitObservations||!connection)return;
+  flushingPostSubmitObservations=true;
+  try{
+    const state=await chrome.storage.local.get(POST_SUBMIT_QUEUE_KEY);
+    const queue=Array.isArray(state[POST_SUBMIT_QUEUE_KEY])?state[POST_SUBMIT_QUEUE_KEY]:[];
+    for(const item of queue){
+      if(item?.projectUrl!==connection.url||item?.deviceId!==connection.deviceId)continue;
+      if(!Number.isFinite(item.queuedAt)||Date.now()-item.queuedAt>15*60*1000){
+        await chrome.storage.local.set({[POST_SUBMIT_QUEUE_KEY]:queue.filter(entry=>entry.attemptId!==item.attemptId)});
+        continue;
+      }
+      let saved=false;
+      for(let attempt=0;attempt<3&&!saved;attempt++){
+        try{await sendPostSubmitObservations(connection,item);saved=true;}
+        catch(error){
+          if(error.status&&error.status>=400&&error.status<500&&error.status!==409){
+            await chrome.storage.local.set({postSubmitUploadIssue:'Facebook no aceptó el registro de observaciones.'});
+            const current=await chrome.storage.local.get(POST_SUBMIT_QUEUE_KEY);
+            const pending=Array.isArray(current[POST_SUBMIT_QUEUE_KEY])?current[POST_SUBMIT_QUEUE_KEY]:[];
+            await chrome.storage.local.set({[POST_SUBMIT_QUEUE_KEY]:pending.filter(entry=>entry.attemptId!==item.attemptId)});
+            break;
+          }
+          if(attempt<2)await new Promise(resolve=>setTimeout(resolve,attempt===0?400:1000));
+        }
+      }
+      if(saved){
+        const current=await chrome.storage.local.get(POST_SUBMIT_QUEUE_KEY);
+        const pending=Array.isArray(current[POST_SUBMIT_QUEUE_KEY])?current[POST_SUBMIT_QUEUE_KEY]:[];
+        await chrome.storage.local.set({[POST_SUBMIT_QUEUE_KEY]:pending.filter(entry=>entry.attemptId!==item.attemptId),postSubmitUploadIssue:null});
+      }
+    }
+  }finally{flushingPostSubmitObservations=false;}
+}
+async function queuePostSubmitObservations(connection,attemptId,observations){
+  if(!connection||typeof attemptId!=='string'||!Array.isArray(observations)||observations.length!==3)return;
+  const state=await chrome.storage.local.get(POST_SUBMIT_QUEUE_KEY);
+  const queue=Array.isArray(state[POST_SUBMIT_QUEUE_KEY])?state[POST_SUBMIT_QUEUE_KEY]:[];
+  if(!queue.some(item=>item.attemptId===attemptId))queue.push({attemptId,deviceId:connection.deviceId,projectUrl:connection.url,queuedAt:Date.now(),observations});
+  await chrome.storage.local.set({[POST_SUBMIT_QUEUE_KEY]:queue});
+  await flushTraceQueue();
+  await flushPendingPostSubmitObservations(connection);
+}
+async function completePostSubmitCapture(connection,active){
+  let observations=Array.isArray(active.postSubmitObservations)?active.postSubmitObservations.slice():[];
+  if(observations.length<POST_SUBMIT_SAMPLE_OFFSETS.length){
+    const byOffset=new Map(observations.map(item=>[item.sample_offset_ms,item]));
+    observations=POST_SUBMIT_SAMPLE_OFFSETS.map(sampleOffsetMs=>byOffset.get(sampleOffsetMs)??{
+      sample_offset_ms:sampleOffsetMs,
+      elapsed_ms:Math.min(120000,Math.max(0,Date.now()-(active.postSubmitStartedAt??Date.now()))),
+      capture_status:'unavailable',trace_seq:null,alerts:[],new_urls:[],
+    });
+    active={...active,postSubmitObservations:observations};
+    await chrome.storage.local.set({activeJob:active});
+  }
+  await queuePostSubmitObservations(connection,active.attemptId,observations);
+  return active;
 }
 const SUPERVISION_WAIT_MS=90000;
 const SUPERVISION_POLL_MS=1500;
@@ -312,6 +387,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         await chrome.storage.local.set({lastHeartbeat:Date.now()});
       })().catch(()=>{});
     },20000);
+    await flushPendingPostSubmitObservations(connection);
     if(activeJob){
       if(activeJob.deviceId!==connection.deviceId||activeJob.projectUrl!==connection.url){await chrome.storage.local.set({paused:true,status:'Hay un envío de otra conexión pendiente de revisar. No se ejecutó con esta cuenta.'});return;}
       // Captured evidence must be persisted before asking whether the attempt was retired.
@@ -326,6 +402,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
           await finishTrace('aborted',{reason:'preparation_interrupted'});
           await markAttention(connection,activeJob,'Preparación interrumpida. No se repitió el envío.',{serverFeatures});drain=true;return;
         }
+        if(activeJob.stage==='submitting')await completePostSubmitCapture(connection,activeJob);
         await recordTraceStep('reconciliation_started','ok',{capture:false});
         const result=await facebookAdapter.reconcile(activeJob);
         const completed={...activeJob,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
@@ -388,7 +465,9 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       if(active.existing){const completed={...active,stage:'result'};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result:'existing_content'});await saveResult(connection,completed);drain=true;return;}
       const before=await chrome.storage.local.get(['paused','connection']);
       if(before.paused!==false||before.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
-      await facebookAdapter.action(active.tabId,'validate_submit',job.content,[],active.baseline);
+      const finalValidation=await facebookAdapter.action(active.tabId,'validate_submit',job.content,[],active.baseline);
+      active={...active,postSubmitBaselineUrls:Array.isArray(finalValidation?.visible_urls)?finalValidation.visible_urls:[]};
+      await chrome.storage.local.set({activeJob:active});
       await recordTraceStep('final_validation_passed','ok',{capture:false});
       const afterValidation=await chrome.storage.local.get(['paused','connection']);
       if(afterValidation.paused!==false||afterValidation.connection?.token!==connection.token)throw new Error('Cola pausada o conexión cambiada antes del envío. No se publicó.');
@@ -397,10 +476,23 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       const checkpoint=await workerRpc(connection,'checkpoint',{protocol,delivery:job.id,attempt:job.attemptId});
       if(checkpoint?.authorized!==true||(protocol>=2&&checkpoint.phase!=='authorized_now'))throw new Error('RESULT_UNKNOWN: no se concedió una nueva autorización de envío.');
       await recordTraceStep('checkpoint_authorized','ok',{capture:false});
-      await chrome.storage.local.set({activeJob:{...active,stage:'submitting'},status:'Enviando a Facebook; resultado todavía sin confirmar…'});
+      active={...active,stage:'submitting',postSubmitStartedAt:Date.now()};
+      await chrome.storage.local.set({activeJob:active,status:'Enviando a Facebook; resultado todavía sin confirmar…'});
       // A click that navigates destroys the frame before replying; reconcile instead of failing.
       try{await facebookAdapter.action(active.tabId,'submit',job.content,[],active.baseline);}
       catch(error){if(errorCode(error)!=='TAB_LOST'&&error.message!=='No se pudo verificar el formulario de Facebook.')throw error;}
+      const observationStart=performance.now();
+      await collectPostSubmitObservations({
+        startedAt:observationStart,
+        sample:async({sampleOffsetMs,elapsedMs})=>await facebookAdapter.action(active.tabId,'post_submit_observe',{
+          sample_offset_ms:sampleOffsetMs,elapsed_ms:elapsedMs,baseline_urls:active.postSubmitBaselineUrls??[],
+        },[],active.baseline),
+        persist:async observations=>{
+          active={...active,postSubmitObservations:observations};
+          await chrome.storage.local.set({activeJob:active});
+        },
+      });
+      active=await completePostSubmitCapture(connection,active);
       await recordTraceStep('post_click_observation','ok',{tabId:active.tabId,capture:true});
       const result=await facebookAdapter.reconcile(active);
       const completed={...active,stage:'result',result};await chrome.storage.local.set({activeJob:completed});await finishTrace('completed',{result_status:result.status});await persistResult(connection,completed,serverFeatures);drain=true;
@@ -595,14 +687,16 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   }
   if(message.type==='trace-step'&&sender.id===chrome.runtime.id&&sender.tab&&typeof message.step==='string'){
     void chrome.storage.local.get(['activeJob','activeRehearsal']).then(async({activeJob,activeRehearsal})=>{
-      const real=activeJob?.tabId===sender.tab.id&&activeJob.stage==='preparing'?activeJob:null;
+      const postSubmitStep=['post_click_observation','post_submit_0ms','post_submit_3000ms','post_submit_8000ms'].includes(message.step);
+      const real=activeJob?.tabId===sender.tab.id&&(activeJob.stage==='preparing'||(activeJob.stage==='submitting'&&postSubmitStep))?activeJob:null;
       const rehearsal=activeRehearsal?.tabId===sender.tab.id?activeRehearsal:null;
       const jobKey=real?.attemptId??rehearsal?.rehearsalId;
       if(!jobKey){reply({queued:false});return;}
       const seq=await stepWithSequence(message.step,message.status??'ok',{
         capture:message.capture===true,domSummary:message.domSummary,tabId:sender.tab.id,jobKey,
       });
-      await flushTraceQueue();
+      if(!postSubmitStep)await flushTraceQueue();
+      else void flushTraceQueue();
       const traceId=jobKey?await traceIdForJob(jobKey):null;
       reply({queued:typeof seq==='number',seq,traceId});
     }).catch(()=>reply({queued:false}));

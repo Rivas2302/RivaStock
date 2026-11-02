@@ -150,6 +150,52 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     const domSummary = suppliedSummary ?? summarizeDom(requestedRoot);
     return await chrome.runtime.sendMessage({ type: 'trace-step', step: name, status, capture, domSummary }).catch(() => null);
   };
+  const normalizedFacebookUrl = value => {
+    try {
+      const url = new URL(value, location.href);
+      if (url.protocol !== 'https:' || !/(^|\.)facebook\.com$/i.test(url.hostname) || url.origin !== location.origin
+        || url.username || url.password) return null;
+      url.search = '';
+      url.hash = '';
+      return `${url.origin}${url.pathname}`.slice(0, 300);
+    } catch {
+      return null;
+    }
+  };
+  const visibleFacebookUrls = () => {
+    const urls = [];
+    const current = normalizedFacebookUrl(location.href);
+    if (current) urls.push(current);
+    for (const link of Array.from(document.querySelectorAll('a[href]'))) {
+      if (!visible(link)) continue;
+      const url = normalizedFacebookUrl(link.href);
+      if (url) urls.push(url);
+    }
+    return [...new Set(urls)].slice(0, 40);
+  };
+  const visibleSubmitAlerts = () => Array.from(document.querySelectorAll('[role="alert"],[role="status"]'))
+    .filter(node => visible(node) && !node.closest('[role="feed"], [data-pagelet*="Feed"], [data-pagelet*="message" i], [aria-label*="Messenger" i], [aria-label*="mensajes" i]'))
+    .map(text).filter(Boolean).map(message => message.slice(0, 160)).slice(0, 20);
+  const startSubmitObserver = flow => {
+    if (!flow) return;
+    const previousAlerts = visibleSubmitAlerts();
+    const record = { flow, started: Date.now(), previous_alerts: previousAlerts, notices: [] };
+    const save = () => document.documentElement.setAttribute('data-rivastock-submit', JSON.stringify(record));
+    save();
+    // Keep short-lived alerts from both Marketplace and group submissions even if
+    // Facebook removes them before the later samples run.
+    const observer = new MutationObserver(() => {
+      const existing = new Set([...record.previous_alerts, ...record.notices.map(notice => notice.message)]);
+      for (const message of visibleSubmitAlerts()) {
+        if (existing.has(message)) continue;
+        existing.add(message);
+        record.notices.push({ message });
+      }
+      if (record.notices.length) save();
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    setTimeout(() => observer.disconnect(), 30000);
+  };
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();
   const lines = value => (value ?? '').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ');
   const locationParts=value=>normalize(value).replace(/\s*Ciudad$/i,'').split(',').map(part=>part.trim().toLocaleLowerCase('es'));
@@ -1161,8 +1207,8 @@ export async function facebookFormAction(action, content, photos = [], baseline 
 
       const publish = button('Publicar');
       if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
-      if(action==='validate_submit')return {ready:true};
-      if(submitFlow)document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify({flow:submitFlow,started:Date.now(),notices:[]}));
+      if(action==='validate_submit')return {ready:true,visible_urls:visibleFacebookUrls()};
+      startSubmitObserver(submitFlow);
       publish.click(); await reportTraceStep('final_click_completed'); return { clicked: true };
     }
     const editor = document.querySelector('[aria-label="Crea una publicación pública..."][contenteditable="true"],[role="textbox"][aria-label="Escribe algo..."][contenteditable="true"]');
@@ -1181,27 +1227,39 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     // The prepared preview snapshot above verifies the exact approved photo set.
     const publish = button('Publicar', root);
     if (!enabled(publish)) throw new Error('Facebook no habilitó Publicar.');
-    if(action==='validate_submit')return {ready:true};
+    if(action==='validate_submit')return {ready:true,visible_urls:visibleFacebookUrls()};
     const flow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
-    if(group&&flow){
-      checkFlow();
-      const record={flow,started:Date.now(),notices:[]};
-      const old=new Set(Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).map(text));
-      const save=()=>document.documentElement.setAttribute('data-rivastock-submit',JSON.stringify(record));
-      save();
-      // Observe before clicking: a toast may disappear between reconciliation polls.
-      const observer=new MutationObserver(()=>{
-        for(const node of Array.from(document.querySelectorAll('[role="alert"],[role="status"]')).filter(visible)){
-          const message=text(node);
-          if(old.has(message)||!/^Tu publicación (se publicó|se creó|está pendiente de aprobación|se envió a los administradores)([.!\s]|$)/i.test(message))continue;
-          record.notices.push({message,urls:Array.from(node.querySelectorAll('a[href]')).map(link=>link.href)});
-        }
-        if(record.notices.length){observer.disconnect();save();}
-      });
-      observer.observe(document.body,{childList:true,subtree:true,characterData:true});
-      setTimeout(()=>observer.disconnect(),30000);
-    }
+    if(group&&flow)checkFlow();
+    startSubmitObserver(flow);
     publish.click(); await reportTraceStep('final_click_completed'); return { clicked: true };
+  }
+  if (action === 'post_submit_observe') {
+    const sampleOffset = content?.sample_offset_ms;
+    if (![0, 3000, 8000].includes(sampleOffset)) throw new Error('El momento de observación posterior al envío no es válido.');
+    const baselineUrls = new Set((Array.isArray(content?.baseline_urls) ? content.baseline_urls : [])
+      .filter(value => typeof value === 'string').map(normalizedFacebookUrl).filter(Boolean));
+    const visibleUrls = visibleFacebookUrls();
+    let record = null;
+    try { record = JSON.parse(document.documentElement.getAttribute('data-rivastock-submit')); } catch { /* The page may have navigated after submitting. */ }
+    const previous = new Set(Array.isArray(record?.previous_alerts) ? record.previous_alerts : []);
+    const capturedNotices = Array.isArray(record?.notices) ? record.notices.map(notice => notice?.message) : [];
+    const alerts = [...new Set([...capturedNotices, ...visibleSubmitAlerts().filter(message => !previous.has(message))])]
+      .filter(message => typeof message === 'string' && message.trim()).slice(0, 3).map(message => message.slice(0, 160));
+    const newUrls = visibleUrls.filter(url => !baselineUrls.has(url)).slice(0, 5);
+    const root = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible).at(-1)
+      ?? Array.from(document.querySelectorAll('form')).filter(visible).at(-1)
+      ?? document.querySelector('main') ?? document.body;
+    const domSummary = summarizeDom(root);
+    const trace = await reportTraceStep(`post_submit_${sampleOffset}ms`, 'ok', true, root, domSummary);
+    const traceSeq = Number.isSafeInteger(trace?.seq) && trace.seq > 0 ? trace.seq : null;
+    return {
+      sample_offset_ms: sampleOffset,
+      elapsed_ms: Number.isSafeInteger(content?.elapsed_ms) ? Math.max(0, Math.min(content.elapsed_ms, 120000)) : 0,
+      capture_status: traceSeq === null ? 'unavailable' : 'captured',
+      trace_seq: traceSeq,
+      alerts,
+      new_urls: newUrls,
+    };
   }
   throw new Error('Acción no autorizada.');
   } catch(error) {

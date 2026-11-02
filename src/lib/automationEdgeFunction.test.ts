@@ -66,4 +66,10 @@ describe('automation Edge Function trace contract', () => {
     expect(edgeSource).toContain("'fb_supervisor_verify'");
     expect(edgeSource).toContain("'fb_photo_review'");
   });
+
+  it('accepts only bounded post-submit observation payloads through the authenticated supervisor worker route', () => {
+    expect(edgeSource).toContain("'post_submit_observations'");
+    expect(edgeSource).toContain('isPostSubmitObservations(body.data)');
+    expect(edgeSource).toContain("import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts'");
+  });
 });

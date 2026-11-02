@@ -1,5 +1,24 @@
 import { it,expect,vi } from 'vitest';
 
+vi.mock('../../extensions/facebook/post-submit.js', () => ({
+  POST_SUBMIT_SAMPLE_OFFSETS: [0, 3000, 8000],
+  collectPostSubmitObservations: async ({ sample, persist }: any) => {
+    const observations: any[] = [];
+    for (const sampleOffsetMs of [0, 3000, 8000]) {
+      let captured: any = null;
+      try { captured = await sample({ sampleOffsetMs, elapsedMs: sampleOffsetMs }); } catch { captured = null; }
+      observations.push({
+        sample_offset_ms: sampleOffsetMs, elapsed_ms: sampleOffsetMs,
+        capture_status: captured?.capture_status === 'captured' && Number.isSafeInteger(captured?.trace_seq) ? 'captured' : 'unavailable',
+        trace_seq: Number.isSafeInteger(captured?.trace_seq) ? captured.trace_seq : null,
+        alerts: captured?.alerts ?? [], new_urls: captured?.new_urls ?? [],
+      });
+      await persist(observations);
+    }
+    return observations;
+  },
+}));
+
 function persistentWorker(memory:any,request:any) {
   let listener:any;let startup:any;
   const alarms=new Map<string,unknown>();

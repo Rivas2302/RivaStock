@@ -33,7 +33,7 @@ d.querySelector('#publish').onclick=()=>{window.groupSubmits=(window.groupSubmit
 };</script></body></html>`;
 
 test('installed extension blocks an unverifiable Marketplace baseline and captures a group-owned content ID', async ({},testInfo) => {
-  test.setTimeout(100000);
+  test.setTimeout(150000);
   const temporary=mkdtempSync(join(tmpdir(),'rivastock-extension-test-'));
   const extension=join(temporary,'extension'); cpSync(resolve('extensions/facebook'),extension,{recursive:true});
   // Test-only pregrant avoids an OS permission prompt in disposable Chromium.
@@ -63,7 +63,7 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
         return realUpdate(tab.id,{url:options.url});
       };
       const content={title:'Perfume de prueba',description:'Descripción aprobada',groupText:'Perfume de prueba\n\nPrecio: ARS 43000.00\nDisponible en General Pico.',price:43000,condition:'new',category:'Salud y belleza',location:'General Pico',photos:['https://test.supabase.co/storage/v1/object/public/photos/test.png'],selection:{marketplace:true}};
-      const state={groups:[] as any[],memberCounts:[] as any[],memberTargets:[] as string[],memberOffset:0,timingReports:[] as any[],remoteApprovedAt:0,remoteClaimAt:0,remotePreparationAt:0,remoteJob:{id:'remote',content:{...content,allowRepublish:true},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/45678'}},publicationsEnabled:false,refreshRequests:0,refreshMissing:false,discoveryRequested:true,operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',content:{...content,allowRepublish:true},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',content:{...content,photos:[...content.photos,'https://test.supabase.co/storage/v1/object/public/photos/second.png']},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/12345'}}]};
+      const state={groups:[] as any[],memberCounts:[] as any[],memberTargets:[] as string[],memberOffset:0,timingReports:[] as any[],postSubmitRequests:[] as any[],traceRequests:[] as any[],remoteApprovedAt:0,remoteClaimAt:0,remotePreparationAt:0,remoteJob:{id:'remote',attemptId:'attempt-remote',content:{...content,allowRepublish:true},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/45678'}},publicationsEnabled:false,refreshRequests:0,refreshMissing:false,discoveryRequested:true,operations:[] as any[],results:[] as any[],checkpoint:[] as string[],jobs:[{id:'market',attemptId:'attempt-market',content:{...content,allowRepublish:true},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}},{id:'group',attemptId:'attempt-group',content:{...content,photos:[...content.photos,'https://test.supabase.co/storage/v1/object/public/photos/second.png']},destination:{mechanism:'group_direct',url:'https://www.facebook.com/groups/12345'}}]};
       (globalThis as any).fixtureState=state;
       const realRemove=(globalThis as any).chrome.tabs.remove.bind((globalThis as any).chrome.tabs);
       (globalThis as any).chrome.tabs.remove=async(id:any)=>{
@@ -78,6 +78,14 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
       globalThis.fetch=async (input:any,options:any) => {
         const url=String(input); if(!url.startsWith('https://test.supabase.co/')) throw new Error('Unexpected network target');
         if(url.includes('/storage/'))return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII='),c=>c.charCodeAt(0)),{headers:{'content-type':'image/png'}});
+        if(url.endsWith('/functions/v1/automation')){
+          const payload=JSON.parse(options.body);state.traceRequests.push(payload);
+          if(payload.action==='trace_start')return Response.json({trace_id:'fixture-trace-'+(payload.attempt_id??payload.rehearsal_id)});
+          if(payload.action==='trace_step')return Response.json({step_id:'fixture-step',screenshot_saved:false});
+          if(payload.action==='trace_finish')return Response.json({finished:true});
+          if(payload.operation==='post_submit_observations'){state.postSubmitRequests.push(payload);return Response.json({saved:true,already_saved:false});}
+          throw new Error('Unexpected automation endpoint operation');
+        }
         if(url.endsWith('/request_facebook_groups_from_device')){if(state.refreshMissing)return Response.json({code:'PGRST202',message:'missing RPC'},{status:404});state.discoveryRequested=false;state.refreshRequests++;return Response.json('request-made');}
         if(url.endsWith('/facebook_group_discovery')){
           const args=JSON.parse(options.body);
@@ -129,7 +137,7 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
     await worker.evaluate(async()=>{(globalThis as any).fixtureState.publicationsEnabled=true;await (globalThis as any).chrome.storage.local.set({paused:false});});
     await web.bringToFront();
     const localWake=await signal();expect(localWake.reply).toMatchObject({accepted:true});expect(localWake.ackMs).toBeLessThan(2000);
-    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.results.length),{timeout:20000}).toBe(1);
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.results.length),{timeout:45000}).toBe(1);
     expect(await web.evaluate(()=>document.visibilityState)).toBe('visible');
     const timing=await worker.evaluate(()=>(globalThis as any).fixtureState.timingReports);
     expect(timing.find((t:any)=>t.source==='local').receipt_to_preparation_ms).toBeLessThan(2000);
@@ -137,13 +145,20 @@ test('installed extension blocks an unverifiable Marketplace baseline and captur
     // Remote mode: no local wake, real Chrome alarm after a 30-second phase.
     await worker.evaluate(async()=>{const state=(globalThis as any).fixtureState;state.remoteApprovedAt=Date.now();state.jobs.push(state.remoteJob);await (globalThis as any).chrome.alarms.create('rivastock-queue',{when:Date.now()+30000,periodInMinutes:0.5});});
     await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.remoteClaimAt),{timeout:45000}).toBeGreaterThan(0);
-    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.results.length),{timeout:20000}).toBe(2);
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.results.length),{timeout:30000}).toBe(2);
     const remotePreparationMs=await worker.evaluate(()=>{const state=(globalThis as any).fixtureState;return state.remotePreparationAt-state.remoteApprovedAt;});
     const remoteMs=await worker.evaluate(()=>{const state=(globalThis as any).fixtureState;return state.remoteClaimAt-state.remoteApprovedAt;});
     expect(remoteMs).toBeGreaterThanOrEqual(29000);
     await testInfo.attach('dispatch-latency',{body:JSON.stringify({localAckMs:localWake.ackMs,pausedAckMs:pausedWake.ackMs,timing,remoteAlarmMs:remoteMs,remotePreparationMs,environment:'Disposable Chromium, controlled server and Facebook pages; no physical mobile device'}),contentType:'application/json'});
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.groups)).toEqual([123,456,789,901,902,903,904].map(id=>({name:'Group '+id,url:'https://www.facebook.com/groups/'+id})));
     const results=await worker.evaluate(() => (globalThis as any).fixtureState.results);
+    const postSubmitRequests=await worker.evaluate(()=>(globalThis as any).fixtureState.postSubmitRequests);
+    expect(postSubmitRequests).toHaveLength(2);
+    expect(postSubmitRequests.map((request:any)=>request.data.post_submit_observations.map((sample:any)=>sample.sample_offset_ms)))
+      .toEqual([[0,3000,8000],[0,3000,8000]]);
+    expect(postSubmitRequests.every((request:any)=>request.data.post_submit_observations.every((sample:any)=>sample.capture_status==='captured'&&Number.isInteger(sample.trace_seq)))).toBe(true);
+    expect(postSubmitRequests.some((request:any)=>request.data.post_submit_observations[0].alerts.some((alert:string)=>alert.includes('Tu publicación se publicó')))).toBe(true);
+    expect(postSubmitRequests.some((request:any)=>request.data.post_submit_observations[0].new_urls.some((url:string)=>url.includes('/groups/12345/posts/987654321')))).toBe(true);
     expect(results.some((result:any)=>result.p_delivery==='market')).toBe(false);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.operations.some((operation:any)=>operation.p_operation==='attention'&&operation.p_delivery==='market'))).toBe(true);
     expect(await worker.evaluate(()=>(globalThis as any).fixtureState.checkpoint.includes('market'))).toBe(false);

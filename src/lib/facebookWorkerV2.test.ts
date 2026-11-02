@@ -1,5 +1,17 @@
 import {it,expect,vi,afterEach} from 'vitest';
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
+vi.mock('../../extensions/facebook/post-submit.js', () => ({
+ POST_SUBMIT_SAMPLE_OFFSETS:[0,3000,8000],
+ collectPostSubmitObservations:async({sample,persist}:any)=>{
+  const observations:any[]=[];
+  for(const sampleOffsetMs of [0,3000,8000]){
+   let captured:any=null;try{captured=await sample({sampleOffsetMs,elapsedMs:sampleOffsetMs});}catch{captured=null;}
+   observations.push({sample_offset_ms:sampleOffsetMs,elapsed_ms:sampleOffsetMs,capture_status:captured?.capture_status==='captured'&&Number.isSafeInteger(captured?.trace_seq)?'captured':'unavailable',trace_seq:Number.isSafeInteger(captured?.trace_seq)?captured.trace_seq:null,alerts:captured?.alerts??[],new_urls:captured?.new_urls??[]});
+   await persist(observations);
+  }
+  return observations;
+ },
+}));
 async function fixture(handler:(args:any,memory:any)=>any){
  vi.resetModules();
  const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture-secret',deviceId:'pc'};
@@ -30,7 +42,7 @@ it('persists a claim key before sending and the authorizing journal before check
   if(a.p_operation==='claim'){expect(m.pendingClaim.claimKey).toBe(a.p_data.claimKey);return job;}
   if(a.p_operation==='checkpoint'){expect(m.activeJob.stage).toBe('authorizing');expect(m.activeJob.attemptId).toBe('attempt');return {authorized:true,phase:'authorized_now'};}
   return {connected:true,saved:true};
- });job=f.job;await f.worker.poll();expect(f.action.mock.calls.map(call=>call[1])).toEqual(['validate_submit','submit']);expect(f.submit).toHaveBeenCalledTimes(1);expect(f.memory.activeJob).toBeUndefined();
+ });job=f.job;await f.worker.poll();expect(f.action.mock.calls.map(call=>call[1])).toEqual(['validate_submit','submit','post_submit_observe','post_submit_observe','post_submit_observe']);expect(f.submit).toHaveBeenCalledTimes(1);expect(f.memory.activeJob).toBeUndefined();
 });
 it('never clicks when checkpoint reports an earlier authorization',async()=>{
  let job:any;const f=await fixture(a=>a.p_operation==='claim'?job:a.p_operation==='checkpoint'?{authorized:false,phase:'authorized_before'}:{saved:true});job=f.job;await f.worker.poll();expect(f.action.mock.calls.map(call=>call[1])).toEqual(['validate_submit']);expect(f.submit).not.toHaveBeenCalled();expect(f.operations.some(a=>a.p_operation==='attention')).toBe(true);

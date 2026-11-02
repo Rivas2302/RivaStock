@@ -9,6 +9,9 @@ const collaborator = '10000000-0000-4000-8000-000000000003';
 const device = '20000000-0000-4000-8000-000000000001';
 const workerDevice = '30000000-0000-4000-8000-000000000001';
 const trace = '40000000-0000-4000-8000-000000000001';
+const publication = '50000000-0000-4000-8000-000000000001';
+const delivery = '60000000-0000-4000-8000-000000000001';
+const attempt = '70000000-0000-4000-8000-000000000001';
 const token = 'facebook-supervision-device-token-for-sql-tests';
 const intent = { step: 'marketplace.category', intent_key: 'marketplace.category:Electronics', objective: 'Select Electronics', expected_value: 'Electronics', restrictions: ['Do not submit'], target: { element_index: 0, role: 'combobox', name: 'Category' } };
 const domSummary: SupervisorDomSummary = {
@@ -55,6 +58,7 @@ beforeAll(async () => {
     CREATE TABLE public.facebook_device_secrets(device_id uuid PRIMARY KEY, token_hash text, token_expires_at timestamptz);
     CREATE TABLE public.fb_run_traces(
       id uuid PRIMARY KEY, user_id uuid NOT NULL, device_id uuid NOT NULL,
+      delivery_id uuid, attempt_id uuid,
       started_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
     );
     CREATE TABLE public.fb_trace_steps(
@@ -64,6 +68,24 @@ beforeAll(async () => {
     CREATE TABLE public.ai_bridge_devices(
       id uuid PRIMARY KEY, user_id uuid NOT NULL, revoked_at timestamptz, last_seen_at timestamptz
     );
+    CREATE TABLE public.facebook_publications(id uuid PRIMARY KEY, user_id uuid NOT NULL);
+    CREATE TABLE public.facebook_deliveries(id uuid PRIMARY KEY, publication_id uuid NOT NULL, active_attempt_id uuid);
+    CREATE TABLE public.facebook_delivery_attempts(
+      id uuid PRIMARY KEY, delivery_id uuid NOT NULL, device_id uuid NOT NULL,
+      started_at timestamptz NOT NULL DEFAULT now(), authorized_at timestamptz,
+      finished_at timestamptz, lease_expires_at timestamptz NOT NULL DEFAULT now() + interval '2 minutes'
+    );
+    CREATE TABLE public.facebook_delivery_attempt_events(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), attempt_id uuid NOT NULL, type text NOT NULL,
+      data jsonb NOT NULL DEFAULT '{}'::jsonb, idempotency_key text NOT NULL,
+      UNIQUE(attempt_id, idempotency_key)
+    );
+    CREATE FUNCTION public.facebook_attempt_event(p_attempt uuid, p_type text, p_data jsonb, p_idempotency_key text)
+      RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+      BEGIN
+        INSERT INTO public.facebook_delivery_attempt_events(attempt_id,type,data,idempotency_key)
+        VALUES(p_attempt,p_type,p_data,p_idempotency_key) ON CONFLICT(attempt_id,idempotency_key) DO NOTHING;
+      END $$;
     GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
     INSERT INTO public.profiles VALUES ('${owner}'), ('${other}'), ('${collaborator}');
     INSERT INTO public.collaborators VALUES ('${collaborator}', '${owner}', NULL);
@@ -71,23 +93,35 @@ beforeAll(async () => {
     INSERT INTO public.facebook_device_secrets VALUES (
       '${device}', encode(sha256(convert_to('${token}', 'UTF8')), 'hex'), now() + interval '1 day'
     );
-    INSERT INTO public.fb_run_traces(id, user_id, device_id) VALUES ('${trace}', '${owner}', '${device}');
+    INSERT INTO public.facebook_publications(id, user_id) VALUES ('${publication}', '${owner}');
+    INSERT INTO public.facebook_deliveries(id, publication_id, active_attempt_id) VALUES ('${delivery}', '${publication}', '${attempt}');
+    INSERT INTO public.facebook_delivery_attempts(id, delivery_id, device_id, authorized_at)
+      VALUES ('${attempt}', '${delivery}', '${device}', now());
+    INSERT INTO public.fb_run_traces(id, user_id, device_id, delivery_id, attempt_id)
+      VALUES ('${trace}', '${owner}', '${device}', '${delivery}', '${attempt}');
     INSERT INTO public.fb_trace_steps(trace_id, seq, dom_summary, screenshot_path)
       VALUES ('${trace}', 1, '${JSON.stringify(domSummary)}'::jsonb, '${owner}/${trace}/1.jpg');
+    INSERT INTO public.fb_trace_steps(trace_id, seq, dom_summary, screenshot_path)
+      VALUES ('${trace}', 2, '${JSON.stringify(domSummary)}'::jsonb, '${owner}/${trace}/2.jpg'),
+        ('${trace}', 3, '${JSON.stringify(domSummary)}'::jsonb, '${owner}/${trace}/3.jpg');
     INSERT INTO public.ai_bridge_devices VALUES ('${workerDevice}', '${owner}', NULL, now());
   `);
   await db.exec(readFileSync('supabase/migrations/20261102135148_fb_supervision.sql', 'utf8'));
   await db.exec(readFileSync('supabase/migrations/20261102190000_fb_supervisor_contract.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261102190001_fb_post_submit_observations.sql', 'utf8'));
 });
 
 beforeEach(async () => {
   await db.exec(`RESET ROLE;
     TRUNCATE public.fb_supervision_requests, public.fb_learned_hints CASCADE;
+    TRUNCATE public.facebook_delivery_attempt_events;
     UPDATE public.facebook_devices SET revoked_at = NULL;
     UPDATE public.ai_bridge_devices SET revoked_at = NULL, last_seen_at = now();
     UPDATE public.fb_run_traces SET started_at = now(), finished_at = NULL;
     UPDATE public.fb_trace_steps SET dom_summary = '${JSON.stringify(domSummary)}'::jsonb,
       screenshot_path = '${owner}/${trace}/1.jpg';
+    UPDATE public.facebook_delivery_attempts SET authorized_at = now(), started_at = now(), finished_at = NULL;
+    UPDATE public.facebook_deliveries SET active_attempt_id = '${attempt}';
   `);
 });
 
@@ -108,17 +142,24 @@ async function requestOne(stepSeq = 1) {
   });
 }
 
-async function worker(operation: string, id: string | null = null, data: Record<string, unknown> = {}) {
+async function worker(operation: string, id: string | null = null, data: Record<string, unknown> = {}, workerOwner = owner) {
   await db.exec('RESET ROLE; SET ROLE service_role; SET test.role = \'service_role\';');
   return (await db.query<{ result: any }>(
     'SELECT public.fb_supervisor_worker($1, $2, $3, $4, $5::jsonb) AS result',
-    [owner, workerDevice, operation, id, JSON.stringify(data)],
+    [workerOwner, workerDevice, operation, id, JSON.stringify(data)],
   )).rows[0].result;
 }
 
 const validDecision = {
   action: 'select_option', element_index: 0, text: 'Electronics', confidence: 0.92,
   observation: 'The category selector is open.', reason: 'This matches the requested category.',
+};
+const postSubmitData = {
+  post_submit_observations: [0, 3000, 8000].map((sample_offset_ms, index) => ({
+    sample_offset_ms, elapsed_ms: sample_offset_ms, capture_status: 'captured', trace_seq: index + 1,
+    alerts: index === 0 ? ['Tu publicación se creó'] : [],
+    new_urls: index === 0 ? ['https://www.facebook.com/marketplace/item/12345'] : [],
+  })),
 };
 
 describe('Facebook supervision SQL contract', () => {
@@ -180,6 +221,42 @@ describe('Facebook supervision SQL contract', () => {
       decision: validDecision, provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
     });
     expect(await request('poll', {}, created.id)).toMatchObject({ status: 'answered', provider: 'codex' });
+  });
+
+  it('stores only owner-scoped, trace-linked post-submit observations without attributing an outcome', async () => {
+    expect(await worker('post_submit_observations', attempt, postSubmitData)).toMatchObject({ saved: true, already_saved: false });
+    await db.exec('RESET ROLE');
+    expect((await db.query<{ type: string; data: any }>(
+      'SELECT type, data FROM public.facebook_delivery_attempt_events WHERE attempt_id = $1', [attempt],
+    )).rows).toEqual([{ type: 'progress', data: postSubmitData }]);
+    expect((await db.query<{ authorized_at: Date | null; finished_at: Date | null }>(
+      'SELECT authorized_at, finished_at FROM public.facebook_delivery_attempts WHERE id = $1', [attempt],
+    )).rows[0].finished_at).toBeNull();
+    expect(await worker('post_submit_observations', attempt, postSubmitData)).toMatchObject({ saved: true, already_saved: true });
+
+    const conflicting = structuredClone(postSubmitData);
+    conflicting.post_submit_observations[0].alerts = ['Different observation'];
+    await expect(worker('post_submit_observations', attempt, conflicting)).rejects.toThrow('POST_SUBMIT_OBSERVATIONS_CONFLICT');
+  });
+
+  it('rejects invalid samples, unsafe URLs, missing trace steps, wrong owners, and non-service-role writes', async () => {
+    const missingSample = { post_submit_observations: postSubmitData.post_submit_observations.slice(0, 2) };
+    await expect(worker('post_submit_observations', attempt, missingSample)).rejects.toThrow('POST_SUBMIT_OBSERVATIONS_INVALID');
+
+    const unsafeUrl = structuredClone(postSubmitData);
+    unsafeUrl.post_submit_observations[0].new_urls = ['https://example.com/new'];
+    await expect(worker('post_submit_observations', attempt, unsafeUrl)).rejects.toThrow('POST_SUBMIT_OBSERVATIONS_INVALID');
+
+    const missingTrace = structuredClone(postSubmitData);
+    missingTrace.post_submit_observations[0].trace_seq = 4;
+    await expect(worker('post_submit_observations', attempt, missingTrace)).rejects.toThrow('POST_SUBMIT_TRACE_INVALID');
+    await expect(worker('post_submit_observations', attempt, postSubmitData, other)).rejects.toThrow('SUPERVISOR_WORKER_INVALID');
+
+    await db.exec('RESET ROLE; SET ROLE authenticated; SET test.role = \'authenticated\';');
+    await expect(db.query(
+      'SELECT public.fb_supervisor_worker($1, $2, $3, $4, $5::jsonb)',
+      [owner, workerDevice, 'post_submit_observations', attempt, JSON.stringify(postSubmitData)],
+    )).rejects.toThrow('permission denied');
   });
 
   it('uses the same closed-menu checks in the extension before execution', () => {

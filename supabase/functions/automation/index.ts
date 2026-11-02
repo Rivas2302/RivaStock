@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
+import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -157,7 +158,7 @@ async function supervisorWorker(
   serviceClient: ReturnType<typeof createClient>,
   origin?: string | null,
 ): Promise<Response> {
-  if (!['next', 'answer', 'fail'].includes(String(body.operation))) {
+  if (!['next', 'answer', 'fail', 'post_submit_observations'].includes(String(body.operation))) {
     return jsonResponseWithCors({ error: 'Operación de supervisor inválida.' }, 400, origin);
   }
   const ownerUid = await authorizeWorker(req, body, serviceClient);
@@ -240,6 +241,10 @@ async function supervisorWorker(
       || typeof answer.model_id !== 'string' || answer.model_id.length < 1 || answer.model_id.length > 80
       || !['low', 'medium', 'high', 'xhigh'].includes(String(answer.reasoning_effort))) {
       return jsonResponseWithCors({ error: 'Respuesta de supervisor inválida.' }, 400, origin);
+    }
+  } else if (body.operation === 'post_submit_observations') {
+    if (!isPostSubmitObservations(body.data)) {
+      return jsonResponseWithCors({ error: 'Observaciones posteriores al envío inválidas.' }, 400, origin);
     }
   } else if (Object.keys(body.data).some((key) => key !== 'error')
     || typeof body.data.error !== 'string' || body.data.error.length > 500) {
