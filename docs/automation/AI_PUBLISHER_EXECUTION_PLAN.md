@@ -296,7 +296,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 
 **Resultado:** después del clic, si la reconciliación determinista no encuentra el ID, la IA mira la pantalla, ubica la publicación nueva y la extensión extrae su ID real; el servidor lo valida como hoy. Se reducen los “Resultado desconocido”.
 
-### [ ] T3.1 Captura del momento posterior al clic
+### [x] T3.1 Captura del momento posterior al clic
 - En `worker.js`/`adapter.js`, justo después de `submit`: registrar 3 capturas (0 s, 3 s, 8 s) con su resumen del DOM, más los avisos (`role=alert|status`). El observador de avisos de grupos ya existe; extenderlo a Marketplace.
 - Guardar en el intento (`data.post_submit_observations`, nueva operación de la RPC de supervisión, no de `facebook_worker_v2`) los textos de aviso y las URLs visibles nuevas, sin atribuir resultado.
 - **Commit:** `feat(facebook): capture post-submit observations`

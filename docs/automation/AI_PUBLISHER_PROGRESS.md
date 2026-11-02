@@ -1,5 +1,15 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T3.1 captura posterior al clic
+
+- T3.1 `[x]`: tras el clic de envío se registran muestras de 0, 3 y 8 segundos con captura y resumen del DOM, avisos `role=alert|status` y URLs de Facebook nuevas respecto del baseline visible anterior al envío. El observador de avisos abarca Marketplace y grupos; las observaciones no asignan estado de publicación.
+- El worker guarda cada muestra en `activeJob`, recupera las muestras faltantes como `unavailable` y reintenta su envío. Una operación de `fb_supervisor_worker` registra el paquete como evento idempotente de intento; valida propietario, dispositivo, intento autorizado, secuencia de traza, estructura y dominios permitidos. No se usa `facebook_worker_v2` para esta operación.
+- Migración `20261102190001_fb_post_submit_observations` aplicada en `RivaStock_Oficial`; `automation` ACTIVE v7 (`verify_jwt=false`). Se verificaron la migración, las funciones SECURITY DEFINER, sus `search_path` y permisos de producción.
+- Backup lógico previo, fuera del repo: `%USERPROFILE%\rivastock-backups\20261102T171426Z`. Archivos schema/data no vacíos; 81 tablas y 13.740 filas; 373 objetos entre `assets` y `knowledge`. Los conteos exportados coincidieron tabla por tabla con conteos exactos antes y después. Incluye manifiesto de objetos, migraciones y SHA-256.
+- Verificación local: `npm run lint`; `npm test -- --maxWorkers=1` **607/607**; `npx playwright test e2e/facebook-extension.spec.ts --workers=1` **4/4**; `npm run build`; `npm run perf:check`; `git diff --check`. Sin datos `[QA]` ni cambios de contenido Facebook.
+- Paquete de extensión generado y público: **0.5.19**, 228.958 bytes; SHA-256 local/público `c02304dd5eb5491776b9724fff6eef8a25c8c12580507bcea4249b590fed75a0`. El artefacto público respondió HTTP 200 y GitHub confirmó el deployment de Vercel en `success`.
+- Commit `5f46dd2` (`feat(facebook): capture post-submit observations`) pusheado directamente a `main` con identidad Rivas2302. No se hizo prueba real de Facebook.
+
 ## 2026-11-02 13:01 ART — T2.4 supervisión de formularios implementada; cierre pendiente
 
 - La extensión agrega pistas aprendidas por paso (rol, nombre accesible, texto y encabezado), recuperación con DOM idéntico al persistido, sondeo con traza, límites de 3 decisiones por paso/8 por intento, recarga de la pestaña de preparación y revalidación determinista antes de continuar. La versión de extensión se elevó a **0.5.18**.
