@@ -18,6 +18,7 @@ export type AIFunctionSetting = {
   provider: AIFunctionProvider;
   model_id: string;
   reasoning_effort: AIFunctionReasoningEffort;
+  business_tone: string;
 };
 
 export const CODEX_FUNCTION_MODELS = [
@@ -49,6 +50,7 @@ export function defaultAIFunctionSetting(userId: string, functionKey: AIFunction
     provider: 'codex',
     model_id: 'gpt-6-luna',
     reasoning_effort: DEFAULT_EFFORTS[functionKey],
+    business_tone: 'Amable, claro y profesional, sin exageraciones.',
   };
 }
 
@@ -67,13 +69,16 @@ function normalizeSetting(userId: string, value: unknown, functionKey: AIFunctio
   const reasoningEffort = typeof row.reasoning_effort === 'string'
     && REASONING_EFFORTS.includes(row.reasoning_effort as AIFunctionReasoningEffort)
     ? row.reasoning_effort as AIFunctionReasoningEffort : fallback.reasoning_effort;
-  return { ...fallback, provider, model_id: modelId, reasoning_effort: reasoningEffort };
+  const businessTone = typeof row.business_tone === 'string'
+    && row.business_tone.trim().length > 0 && row.business_tone.length <= 500
+    ? row.business_tone.trim() : fallback.business_tone;
+  return { ...fallback, provider, model_id: modelId, reasoning_effort: reasoningEffort, business_tone: businessTone };
 }
 
 export async function getAIFunctionSettings(userId: string): Promise<AIFunctionSetting[]> {
   if (!userId) throw new Error('No se pudo identificar la cuenta para cargar los modelos.');
   const { data, error } = await supabase.from('ai_function_settings')
-    .select('function_key, provider, model_id, reasoning_effort')
+    .select('function_key, provider, model_id, reasoning_effort, business_tone')
     .eq('user_id', userId);
   if (error) throw new Error('No se pudieron cargar los modelos por función.');
   const rows = new Map<AIFunctionKey, unknown>();
@@ -103,14 +108,18 @@ export async function saveAIFunctionSetting(
   if (!REASONING_EFFORTS.includes(setting.reasoning_effort)) {
     throw new Error('Elegí un nivel de razonamiento válido.');
   }
+  if (typeof setting.business_tone !== 'string' || setting.business_tone.trim().length < 1 || setting.business_tone.length > 500) {
+    throw new Error('El tono de las publicaciones debe tener entre 1 y 500 caracteres.');
+  }
   const { data, error } = await supabase.from('ai_function_settings').upsert({
     user_id: setting.user_id,
     function_key: setting.function_key,
     provider: setting.provider,
     model_id: setting.model_id,
     reasoning_effort: setting.reasoning_effort,
+    business_tone: setting.business_tone.trim(),
   }, { onConflict: 'user_id,function_key' })
-    .select('function_key, provider, model_id, reasoning_effort')
+    .select('function_key, provider, model_id, reasoning_effort, business_tone')
     .single();
   if (error || !data) throw new Error('No se pudo guardar el modelo de esta función.');
   return normalizeSetting(setting.user_id, data, setting.function_key);

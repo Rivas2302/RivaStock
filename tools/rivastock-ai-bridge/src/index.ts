@@ -10,6 +10,7 @@ import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { executeTextGeneration } from './executeTextGeneration.ts';
+import { buildFacebookCopywritingPrompt, parseFacebookCopywritingContext, parseFacebookCopywritingOutput } from './facebookCopywriting.ts';
 import { cleanChatSessionDirectory, providerFor } from './providers.ts';
 import { MemoryTurnQueue } from './memory/queue.ts';
 import { processMemoryBatch, processPendingMemoryEmbeddings } from './memory/processor.ts';
@@ -84,6 +85,27 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
         }, { jobId: job.id });
       }
       process.stdout.write(`[AI Bridge] Propuesta de Conocimientos ${job.id} completada con ${job.provider}.\n`);
+      return;
+    }
+    if (job.task_type === 'fb_copywriting') {
+      if (job.provider === 'mock') throw new Error('La redacción de Facebook requiere un proveedor real.');
+      const context = parseFacebookCopywritingContext(job.input);
+      const jobContext = await client.jobContext(workerId, job.id);
+      const provider = providerFor(job.provider, config);
+      const providerOptions = job.provider === 'codex'
+        ? {
+          model_id: jobContext.model_id ?? context.provider_model_id,
+          reasoning_effort: jobContext.reasoning_effort ?? 'low',
+          chat_id: null,
+          session_id: null,
+          safe_text_only: true,
+        }
+        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true };
+      const result = await provider.execute(buildFacebookCopywritingPrompt(context), controller.signal, '', providerOptions);
+      const output = parseFacebookCopywritingOutput(result.output, context);
+      if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+      await client.complete(workerId, job.id, JSON.stringify(output));
+      process.stdout.write(`[AI Bridge] Propuesta de Facebook ${job.id} completada con ${job.provider}.\n`);
       return;
     }
     if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');

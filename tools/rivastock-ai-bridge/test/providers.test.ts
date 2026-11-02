@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MockProvider, providerFor } from '../src/providers.ts';
+import { codexExecutionPolicy, MockProvider, providerFor } from '../src/providers.ts';
 import { loadConfig } from '../src/types.ts';
 
 test('MockProvider returns generated text without an external process', async () => {
@@ -18,6 +18,14 @@ test('real providers stay opt-in and fail closed by default', () => {
   assert.throws(() => providerFor('codex', config), /Codex está deshabilitado/);
   assert.throws(() => providerFor('claude', config), /Claude Code está deshabilitado/);
   assert.equal(providerFor('mock', config).constructor.name, 'MockProvider');
+});
+
+test('text-only Codex jobs disable shell, image, sleep, network, and web search', () => {
+  assert.deepEqual(codexExecutionPolicy(true), {
+    features: { shell_tool: false, view_image: false, sleep_tool: false },
+    thread: { sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false, webSearchMode: 'disabled' },
+  });
+  assert.equal(codexExecutionPolicy(false).thread.sandboxMode, 'danger-full-access');
 });
 
 test('bridge config requires HTTPS and a long token', () => {

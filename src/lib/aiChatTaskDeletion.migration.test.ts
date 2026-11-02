@@ -16,6 +16,7 @@ const baseMigrations = [
   '20261020002235_ai_bridge_business_pairing.sql',
   '20261020012915_allow_xhigh_reasoning_effort.sql',
   '20261020014931_persistent_ai_chats.sql',
+  '20261027013321_ai_function_settings_memory_default.sql',
 ];
 
 let db: PGlite;
@@ -62,6 +63,32 @@ beforeAll(async () => {
     );
   `);
   await db.exec(readFileSync(new URL('20261026205303_ai_chat_task_deletion.sql', MIGRATIONS), 'utf8'));
+  await db.exec(`
+    CREATE TABLE public.products (
+      id uuid PRIMARY KEY, user_id uuid NOT NULL, name text NOT NULL, category text,
+      description text, sale_price numeric NOT NULL, stock integer NOT NULL DEFAULT 0
+    );
+    CREATE TABLE public.profiles (id uuid PRIMARY KEY, business_name text);
+    INSERT INTO public.products (id, user_id, name, category, description, sale_price, stock)
+      VALUES ('50000000-0000-4000-8000-000000000001', '${OWNER}', 'QA Desk Lamp', 'Hogar', 'LED articulada', 25000, 2),
+             ('50000000-0000-4000-8000-000000000002', '${OTHER}', 'Other lamp', 'Hogar', 'Other owner', 20000, 1);
+    INSERT INTO public.profiles (id, business_name) VALUES ('${OWNER}', 'QA Store');
+    CREATE TABLE public.test_knowledge_queries (query text, top_k integer, filters jsonb);
+    CREATE FUNCTION public.knowledge_search_chunks_text(p_query text, p_top_k integer DEFAULT 10, p_filters jsonb DEFAULT '{}'::jsonb)
+    RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO public.test_knowledge_queries VALUES (p_query, p_top_k, p_filters);
+      RETURN '[{"title":"QA lamp sheet","section_path":"Care","content":"Clean with a dry cloth."}]'::jsonb;
+    END;
+    $$;
+  `);
+  try {
+    await db.exec(readFileSync(new URL('20261102200041_fb_ai_copywriting.sql', MIGRATIONS), 'utf8'));
+    await db.exec(readFileSync(new URL('20261102200438_fb_ai_copywriting_privileges.sql', MIGRATIONS), 'utf8'));
+  } catch (error) {
+    const detail = error as { message?: string; position?: string; detail?: string; where?: string };
+    throw new Error(`T5.2 migration at ${detail.position ?? 'unknown'}: ${detail.message ?? 'failed'} ${detail.where ?? ''}`, { cause: error });
+  }
 }, 60_000);
 
 beforeEach(async () => { await db.exec("BEGIN; RESET ROLE; SET test.uid = ''; "); });
@@ -230,6 +257,140 @@ describe('AI chat and task deletion migration', () => {
     `);
     expect(counts.rows[0]).toEqual({ expired_chat: 0, active_chat: 1, old_task: 0, new_task: 1, active_task: 1, tombstone: 1 });
     expect(activeChatJob).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it('creates an idempotent copywriting task from owner product, saved tone, and published knowledge', async () => {
+    await asSystem();
+    await db.query(`UPDATE public.ai_function_settings SET business_tone = 'Directo y cordial', model_id = 'gpt-6.1-sol', reasoning_effort = 'medium'
+      WHERE user_id = $1 AND function_key = 'fb_copywriting'`, [OWNER]);
+    await asUser(OWNER);
+    const key = '60000000-0000-4000-8000-000000000001';
+    const request = () => db.query<{ result: { job_id: string } }>(
+      'SELECT public.request_fb_copywriting($1, $2, $3) AS result',
+      ['50000000-0000-4000-8000-000000000001', key, 'good'],
+    );
+    const first = await request();
+    const retry = await request();
+    expect(retry.rows[0].result.job_id).toBe(first.rows[0].result.job_id);
+    const job = await db.query<{ task_type: string; model_id: string; reasoning_effort: string; input: string }>(
+      'SELECT task_type, model_id, reasoning_effort, input FROM public.ai_jobs WHERE id = $1', [first.rows[0].result.job_id],
+    );
+    const input = JSON.parse(job.rows[0].input) as {
+      product: { name: string; category: string; description: string; price: number; stock: number; state: string };
+      business: { name: string; tone: string };
+      condition: string;
+      knowledge: Array<{ title: string; section_path: string; content: string }>;
+    };
+    expect(job.rows[0]).toMatchObject({ task_type: 'fb_copywriting', model_id: 'gpt-6.1-sol', reasoning_effort: 'medium' });
+    expect(input).toMatchObject({
+      product: { name: 'QA Desk Lamp', category: 'Hogar', description: 'LED articulada', price: 25000, stock: 2, state: 'in_stock' },
+      business: { name: 'QA Store', tone: 'Directo y cordial' },
+      condition: 'good',
+      knowledge: [{ title: 'QA lamp sheet', section_path: 'Care', content: 'Clean with a dry cloth.' }],
+    });
+    await asSystem();
+    const search = await db.query<{ query: string; top_k: number; filters: unknown }>(
+      'SELECT query, top_k, filters FROM public.test_knowledge_queries ORDER BY ctid DESC LIMIT 1',
+    );
+    expect(search.rows[0]).toMatchObject({ query: 'QA Desk Lamp Hogar', top_k: 3, filters: {} });
+  });
+
+  it('rejects collaborators, other owners, invalid conditions, and a full shared queue', async () => {
+    await asUser(COLLABORATOR);
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3)',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'good'],
+      'Solo el propietario',
+    );
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3)',
+      ['50000000-0000-4000-8000-000000000002', crypto.randomUUID(), 'good'],
+      'No se encontró el producto',
+    );
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3)',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'damaged'],
+      'condición',
+    );
+    await asSystem();
+    await db.query(`INSERT INTO public.ai_jobs (user_id, idempotency_key, provider, task_type, input)
+      SELECT $1, gen_random_uuid(), 'mock', 'text_generation', 'pending QA task' FROM generate_series(1, 10)`, [OWNER]);
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3)',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'good'],
+      'diez tareas pendientes',
+    );
+  });
+
+  it('uses Claude settings without violating the Codex-only job model constraint', async () => {
+    await asSystem();
+    await db.query(`UPDATE public.ai_function_settings SET provider = 'claude', model_id = 'claude-sonnet-4.5'
+      WHERE user_id = $1 AND function_key = 'fb_copywriting'`, [OWNER]);
+    await asUser(OWNER);
+    const created = await db.query<{ result: { job_id: string } }>(
+      'SELECT public.request_fb_copywriting($1, $2, $3) AS result',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'like_new'],
+    );
+    const job = await db.query<{ provider: string; model_id: string | null; reasoning_effort: string | null; input: string }>(
+      'SELECT provider, model_id, reasoning_effort, input FROM public.ai_jobs WHERE id = $1', [created.rows[0].result.job_id],
+    );
+    expect(job.rows[0]).toMatchObject({ provider: 'claude', model_id: null, reasoning_effort: null });
+    expect(JSON.parse(job.rows[0].input).provider_model_id).toBe('claude-sonnet-4.5');
+  });
+
+  it('accepts per-execution Codex overrides without changing saved defaults', async () => {
+    await asUser(OWNER);
+    const created = await db.query<{ result: { job_id: string } }>(
+      'SELECT public.request_fb_copywriting($1, $2, $3, $4, $5, $6) AS result',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'good', 'codex', 'gpt-6-astra', 'high'],
+    );
+    const job = await db.query<{ model_id: string; reasoning_effort: string; input: string }>(
+      'SELECT model_id, reasoning_effort, input FROM public.ai_jobs WHERE id = $1', [created.rows[0].result.job_id],
+    );
+    expect(job.rows[0]).toMatchObject({ model_id: 'gpt-6-astra', reasoning_effort: 'high' });
+    expect(JSON.parse(job.rows[0].input).provider_model_id).toBe('gpt-6-astra');
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3, $4, $5, $6)',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'good', 'codex', 'gpt-6-astra', 'ultra'],
+      'razonamiento de Codex',
+    );
+  });
+
+  it('rejects switching to Claude for one run without a valid model id', async () => {
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT public.request_fb_copywriting($1, $2, $3, $4, $5, $6)',
+      ['50000000-0000-4000-8000-000000000001', crypto.randomUUID(), 'good', 'claude', null, null],
+      'modelo de Claude',
+    );
+  });
+
+  it('limits the copywriting RPC to authenticated users', async () => {
+    const result = await db.query<{ anon: boolean; authenticated: boolean; service_role: boolean }>(`
+      SELECT
+        has_function_privilege('anon', 'public.request_fb_copywriting(uuid,uuid,text,text,text,text)', 'EXECUTE') AS anon,
+        has_function_privilege('authenticated', 'public.request_fb_copywriting(uuid,uuid,text,text,text,text)', 'EXECUTE') AS authenticated,
+        has_function_privilege('service_role', 'public.request_fb_copywriting(uuid,uuid,text,text,text,text)', 'EXECUTE') AS service_role
+    `);
+    expect(result.rows[0]).toEqual({ anon: false, authenticated: true, service_role: false });
+  });
+  it('allows the normal delete and retention flows to remove finished copywriting tasks', async () => {
+    const oldCopywriting = await createJob({ taskType: 'fb_copywriting', createdAt: "now() - interval '31 days'" });
+    const manualCopywriting = await createJob({ taskType: 'fb_copywriting' });
+    await db.query('INSERT INTO public.ai_history_settings (user_id, retention_days) VALUES ($1, 30)', [OWNER]);
+    await asUser(OWNER);
+    await db.query('SELECT public.ai_delete_task($1)', [manualCopywriting]);
+    await asServiceRole();
+    await db.query('SELECT public.ai_apply_history_retention($1)', [OWNER]);
+    await asSystem();
+    const remaining = await db.query<{ old_count: number; manual_count: number }>(
+      `SELECT (SELECT count(*)::int FROM public.ai_jobs WHERE id = $1) AS old_count,
+              (SELECT count(*)::int FROM public.ai_jobs WHERE id = $2) AS manual_count`,
+      [oldCopywriting, manualCopywriting],
+    );
+    expect(remaining.rows[0]).toEqual({ old_count: 0, manual_count: 0 });
   });
 
   it('throttles retention to one run per owner per six hours', async () => {

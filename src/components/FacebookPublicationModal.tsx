@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Plus, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Sparkles, Wifi, WifiOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import type { Product } from '../types';
 import Modal from './Modal';
-import { deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication } from '../lib/facebookPublications';
+import { composeGroupPublicationText, deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication } from '../lib/facebookPublications';
 import { formatCurrency } from '../lib/utils';
 import { marketplaceCategories } from '../../extensions/facebook/marketplace-contract.js';
 import FacebookGroupPicker from './automations/FacebookGroupPicker';
@@ -14,6 +14,8 @@ import PublicationHistory from './automations/PublicationHistory';
 import {publicationBlock,validateGroupSelection} from '../lib/facebookPublications';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 import { preparePublicationPhotos } from '../lib/facebookPublicationPhotos';
+import { createFacebookCopywritingJob, waitForFacebookCopywritingJob, type FacebookCopywritingProposal } from '../lib/facebookCopywriting';
+import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
 
 export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean }) {
   const { ownerUid, isOwner } = useAuth();
@@ -34,6 +36,10 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [rehearsalDestination, setRehearsalDestination] = useState('marketplace');
   const [approved, setApproved] = useState(false);
   const [repeatOf,setRepeatOf]=useState<string|null>(null);
+  const [copywritingProposal,setCopywritingProposal]=useState<FacebookCopywritingProposal|null>(null);
+  const [copywritingWarnings,setCopywritingWarnings]=useState<string[]>([]);
+  const [copywritingSetting,setCopywritingSetting]=useState<AIFunctionSetting>(()=>defaultAIFunctionSetting(ownerUid??'','fb_copywriting'));
+  const [copywritingSettingLoading,setCopywritingSettingLoading]=useState(true);
   const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal?'compose':'loading');
   const hydrated=useRef(false);
   const viewTouched=useRef(startInRehearsal);
@@ -66,6 +72,22 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     const timer = setInterval(refresh, 10000);
     return () => { active = false; clearInterval(timer); };
   }, [product.id, ownerUid]);
+  useEffect(() => {
+    let active = true;
+    if (!ownerUid) {
+      setCopywritingSettingLoading(false);
+      return () => { active = false; };
+    }
+    setCopywritingSettingLoading(true);
+    void getAIFunctionSetting(ownerUid, 'fb_copywriting').then((setting) => {
+      if (active) setCopywritingSetting(setting);
+    }).catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : 'No se pudo cargar el modelo de redacción.');
+    }).finally(() => {
+      if (active) setCopywritingSettingLoading(false);
+    });
+    return () => { active = false; };
+  }, [ownerUid]);
   useEffect(()=>{if(ready)try{localStorage.setItem(selectionKey,JSON.stringify({marketplace,groups:selectedGroups}));}catch{/* Storage can be unavailable in private browsing. */}},[ready,selectionKey,marketplace,selectedGroups]);
   const refresh = async () => {
     const data = await loadFacebookPublicationData(product.id);
@@ -133,7 +155,40 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     });
     setNotice(`Ensayo solicitado para ${activeRehearsalTarget.name}. No crea una publicación ni autoriza el clic de Publicar. Referencia: ${id}. La PC lo procesará cuando consulte su cola.`);
   });
-  const update = (patch: Partial<typeof content>) => { setContent(value => ({ ...value, ...patch })); setApproved(false); };
+  const writeWithAI = () => run(async () => {
+    setCopywritingProposal(null);
+    setCopywritingWarnings([]);
+    const selectedCondition = content.condition;
+    const jobId = await createFacebookCopywritingJob(publicationProduct.id, selectedCondition, copywritingSetting);
+    setNotice('La PC vinculada está redactando. La propuesta no aprueba ni envía la publicación.');
+    const proposal = await waitForFacebookCopywritingJob(jobId, selectedCondition);
+    setCopywritingProposal(proposal);
+    setCopywritingWarnings(proposal.warnings);
+    setNotice('La propuesta está lista. Revisala y editá el texto antes de aplicarlo.');
+  });
+  const applyCopywritingProposal = () => {
+    if (!copywritingProposal) return;
+    const nextContent = {
+      ...content,
+      title: copywritingProposal.title,
+      description: copywritingProposal.description,
+      category: copywritingProposal.category,
+      condition: copywritingProposal.condition,
+    };
+    update({ ...nextContent, groupText: composeGroupPublicationText(nextContent, copywritingProposal.group_text) });
+    setCopywritingProposal(null);
+    setNotice('Propuesta aplicada al formulario. Revisá también el precio, las fotos y los destinos antes de aprobar.');
+  };
+  const update = (patch: Partial<typeof content>) => {
+    setContent(value => {
+      const next = { ...value, ...patch };
+      if (patch.groupText === undefined && value.groupText?.trim()) {
+        next.groupText = composeGroupPublicationText(next, value.groupText);
+      }
+      return next;
+    });
+    setApproved(false);
+  };
   const blockReason=publicationBlock(publications,marketplace,selectedGroups,groups);
   const productImage=productPhotos(publicationProduct)[0];
   const connected=devices.some(device=>deviceConnected(device));
@@ -196,9 +251,30 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
               <div>
                 <h3 className="font-bold">Contenido de la publicación</h3>
                 <p className="mt-1 text-xs text-slate-500">Este contenido se revisa y aprueba antes de crear los trabajos.</p>
+                <div className="mt-3 grid gap-2 rounded-xl border border-indigo-200 p-3 dark:border-indigo-900 sm:grid-cols-2">
+                  <label className="block space-y-1 text-xs font-semibold"><span>Proveedor para esta propuesta</span><select aria-label="Proveedor para esta propuesta" disabled={busy||copywritingSettingLoading} value={copywritingSetting.provider} onChange={event=>setCopywritingSetting(current=>({...current,provider:event.target.value as AIFunctionProvider,model_id:event.target.value==='codex'?'gpt-6-luna':''}))} className={inputClass}><option value="codex">Codex — mi PC</option><option value="claude">Claude Code — mi PC</option></select></label>
+                  <label className="block space-y-1 text-xs font-semibold"><span>Modelo para esta propuesta</span>{copywritingSetting.provider==='codex'
+                    ? <select aria-label="Modelo para esta propuesta" disabled={busy||copywritingSettingLoading} value={copywritingSetting.model_id} onChange={event=>setCopywritingSetting(current=>({...current,model_id:event.target.value}))} className={inputClass}>{CODEX_FUNCTION_MODELS.map(model=><option key={model.id} value={model.id}>{model.label}</option>)}</select>
+                    : <input aria-label="Modelo para esta propuesta" disabled={busy||copywritingSettingLoading} value={copywritingSetting.model_id} onChange={event=>setCopywritingSetting(current=>({...current,model_id:event.target.value}))} placeholder="Identificador de Claude Code" maxLength={120} className={inputClass}/>}</label>
+                  {copywritingSetting.provider==='codex'&&<label className="block space-y-1 text-xs font-semibold sm:col-span-2"><span>Razonamiento para esta propuesta</span><select aria-label="Razonamiento para esta propuesta" disabled={busy||copywritingSettingLoading} value={copywritingSetting.reasoning_effort} onChange={event=>setCopywritingSetting(current=>({...current,reasoning_effort:event.target.value as AIFunctionReasoningEffort}))} className={inputClass}><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option><option value="xhigh">Muy alto</option></select></label>}
+                  <p className="text-xs text-slate-500 sm:col-span-2">Se inicia desde el modelo predeterminado de «Modelos por función»; este cambio solo afecta esta propuesta.</p>
+                </div>
+                <button type="button" onClick={writeWithAI} disabled={busy||!ready||copywritingSettingLoading||!ownerUid} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-300">{busy?<Loader2 size={15} className="animate-spin"/>:<Sparkles size={15}/>} {busy?'Redactando…':'Redactar con IA'}</button>
               </div>
               <label className="block text-sm">Título<input className={inputClass} value={content.title} maxLength={100} onChange={event=>update({title:event.target.value})}/></label>
               <label className="block text-sm">Descripción<textarea className={inputClass} rows={4} maxLength={5000} value={content.description} onChange={event=>update({description:event.target.value})}/></label>
+              {copywritingWarnings.length>0&&<ul aria-label="Advertencias de la propuesta de IA" className="list-disc space-y-1 rounded-xl bg-amber-50 p-3 pl-7 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{copywritingWarnings.map((warning,index)=><li key={`${index}-${warning}`}>{warning}</li>)}</ul>}
+              {copywritingProposal&&<section aria-label="Propuesta de redacción con IA" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
+                <h4 className="font-bold">Propuesta para revisar</h4>
+                <label className="block text-sm">Título propuesto<input className={inputClass} value={copywritingProposal.title} maxLength={100} onChange={event=>setCopywritingProposal(current=>current?{...current,title:event.target.value}:current)}/></label>
+                <label className="block text-sm">Descripción propuesta<textarea className={inputClass} rows={4} value={copywritingProposal.description} maxLength={2000} onChange={event=>setCopywritingProposal(current=>current?{...current,description:event.target.value}:current)}/></label>
+                <label className="block text-sm">Texto propuesto para grupos<textarea className={inputClass} rows={4} value={copywritingProposal.group_text} maxLength={2000} onChange={event=>setCopywritingProposal(current=>current?{...current,group_text:event.target.value}:current)}/></label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">Categoría propuesta<select className={inputClass} value={copywritingProposal.category} onChange={event=>setCopywritingProposal(current=>current?{...current,category:event.target.value as FacebookCopywritingProposal['category']}:current)}>{marketplaceCategories.map(category=><option key={category} value={category}>{category}</option>)}</select></label>
+                  <label className="block text-sm">Condición propuesta<select className={inputClass} value={copywritingProposal.condition} onChange={event=>setCopywritingProposal(current=>current?{...current,condition:event.target.value as FacebookCopywritingProposal['condition']}:current)}><option value="new">Nuevo</option><option value="like_new">Usado, como nuevo</option><option value="good">Usado, buen estado</option><option value="fair">Usado, estado aceptable</option></select></label>
+                </div>
+                <button type="button" onClick={applyCopywritingProposal} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">Aplicar al formulario</button>
+              </section>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">Precio<input className={inputClass} type="number" min="0.01" step="0.01" value={content.price} onChange={event=>update({price:Number(event.target.value)})}/></label>
                 <label className="block text-sm">Condición<select aria-label="Condición" className={inputClass} value={content.condition} onChange={event=>update({condition:event.target.value as typeof content.condition})}><option value="new">Nuevo</option><option value="like_new">Usado, como nuevo</option><option value="good">Usado, buen estado</option><option value="fair">Usado, estado aceptable</option></select></label>
@@ -240,7 +316,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
             <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
               <h4 className="text-sm font-bold">Destinos seleccionados</h4>
               <ul className="mt-2 space-y-1 text-xs">{[...(marketplace?['Marketplace']:[]),...groups.filter(group=>selectedGroups.includes(group.id)).map(group=>group.name)].map((name,index)=><li key={`${name}-${index}`} className="break-words">{name}</li>)}</ul>
-              {selectedGroups.length>0&&<div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><h4 className="text-sm font-bold">Texto exacto para los grupos</h4><p className="mt-1 text-xs text-slate-500">Publicación directa; no comparte un anuncio de Marketplace.</p><p className="mt-2 whitespace-pre-wrap break-words text-sm">{groupPublicationText(content)}</p></div>}
+              {selectedGroups.length>0&&<div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><h4 className="text-sm font-bold">Texto exacto para los grupos</h4><p className="mt-1 text-xs text-slate-500">Publicación directa; no comparte un anuncio de Marketplace.</p><textarea aria-label="Texto exacto para los grupos" className={`${inputClass} mt-2`} rows={8} value={content.groupText??groupPublicationText(content)} onChange={event=>update({groupText:event.target.value})}/></div>}
             </div>
           </section>
         </fieldset>

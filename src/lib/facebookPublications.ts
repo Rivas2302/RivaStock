@@ -8,8 +8,19 @@ export interface PublicationContent {
   location: string; category: string; condition: 'new' | 'like_new' | 'good' | 'fair';
   groupText?: string;
 }
+const GROUP_METADATA_SUFFIX = /\n\nPrecio: [^\n]*\nEstado: [^\n]*\nUbicación: [^\n]*\nCategoría: [^\n]*$/;
+
+function stripGroupMetadata(value: string): string {
+  return value.replace(GROUP_METADATA_SUFFIX, '').trim();
+}
+
 export function groupPublicationText(content: PublicationContent): string {
-  return `${content.title}\n\n${content.description}\n\nPrecio: ${formatCurrency(content.price).replace(/\s/g,'')}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
+  const narrative = content.groupText?.trim() || `${content.title}\n\n${content.description}`;
+  return composeGroupPublicationText(content, narrative);
+}
+export function composeGroupPublicationText(content: PublicationContent, copy: string): string {
+  const narrative = stripGroupMetadata(copy) || `${content.title}\n\n${content.description}`;
+  return `${narrative}\n\nPrecio: ${formatCurrency(content.price).replace(/\s/g,'')}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
 export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null }
 export function groupCompatibility(group:FacebookGroup):string|null {

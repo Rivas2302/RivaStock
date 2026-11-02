@@ -11,6 +11,7 @@ export interface AIProviderOptions {
   chat_id?: string | null;
   session_id?: string | null;
   images?: Array<{ id: string; path: string }>;
+  safe_text_only?: boolean;
 }
 
 export interface AIWorkspaceFile {
@@ -47,7 +48,7 @@ export interface AIJobContext {
 export interface AIJob {
   id: string;
   provider: AIProviderId;
-  task_type: 'text_generation' | 'knowledge_organize';
+  task_type: 'text_generation' | 'knowledge_organize' | 'fb_copywriting';
   input: string;
   model_id?: CodexModelId | null;
   reasoning_effort?: CodexReasoningEffort | null;

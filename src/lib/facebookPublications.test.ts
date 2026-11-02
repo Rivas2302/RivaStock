@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
 vi.mock('./supabase', () => ({supabase:{}}));
-import { initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection,deliveryCandidate,deliveryLabel,type FacebookDelivery } from './facebookPublications';
+import { composeGroupPublicationText,groupPublicationText,initialPublication,validatePublication,normalizeGroupUrl,deviceConnected,validateGroupSelection,deliveryCandidate,deliveryLabel,type FacebookDelivery } from './facebookPublications';
 import type { Product } from '../types';
 import { facebookAdapter,validateFacebookDestination,fetchPublicationPhotos } from '../../extensions/facebook/adapter.js';
 import { readFileSync } from 'node:fs';
@@ -15,6 +15,17 @@ describe('Facebook publication preparation',() => {
     expect(validatePublication({...content,photos:[],location:'BA',category:'Muebles'},true,[])).toContain('1 y 10 fotos');
     expect(validatePublication({...content,location:'BA',category:'Muebles'},false,[])).toMatch('grupo');
     expect(validatePublication({...content,price:NaN},true,[])).toMatch('precio');
+  });
+  it('uses the reviewed group text override and appends exact product fields to an AI draft', () => {
+    const content={...initialPublication(product),price:1200,condition:'good' as const,location:'Buenos Aires',category:'Hogar'};
+    const composed=composeGroupPublicationText(content,'Una opción práctica para el escritorio.');
+    expect(composed).toContain('Una opción práctica para el escritorio.');
+    expect(composed).toContain('Precio: $1.200');
+    expect(groupPublicationText({...content,groupText:composed})).toBe(composed);
+    const rebased=groupPublicationText({...content,groupText:composed,price:1500,location:'Rosario'});
+    expect(rebased).toContain('Precio: $1.500');
+    expect(rebased).toContain('Ubicación: Rosario');
+    expect(rebased.match(/Precio:/g)).toHaveLength(1);
   });
   it('restricts group destinations and detects a stale or revoked computer',() => {
     expect(normalizeGroupUrl('https://www.facebook.com/groups/123/?ref=test')).toBe('https://www.facebook.com/groups/123');
