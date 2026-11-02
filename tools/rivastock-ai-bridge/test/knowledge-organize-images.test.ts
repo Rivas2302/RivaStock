@@ -58,3 +58,28 @@ test('continues without an oversized or unavailable capture and reports it', asy
     assert.deepEqual(missingInformation, ['No se pudo cargar la captura IMG1 para que la IA la analice.']);
   }, { fetchImage: async () => new Response(new Uint8Array(10 * 1024 * 1024 + 1), { status: 200 }) });
 });
+
+test('uses the actual image MIME type only when correction is explicitly enabled', async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'rivastock-organize-test-'));
+  try {
+    await withDownloadedOrganizeImages([remoteImage], async (images, warnings) => {
+      assert.deepEqual(warnings, []);
+      assert.match(images[0].path, /IMG1\.jpg$/);
+      assert.equal(await readFile(images[0].path, 'utf8'), 'jpeg-data');
+    }, {
+      temporaryRoot,
+      allowMimeTypeCorrection: true,
+      fetchImage: async () => new Response('jpeg-data', { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    });
+
+    await withDownloadedOrganizeImages([remoteImage], async (images, warnings) => {
+      assert.deepEqual(images, []);
+      assert.deepEqual(warnings, ['No se pudo cargar la captura IMG1 para que la IA la analice.']);
+    }, {
+      temporaryRoot,
+      fetchImage: async () => new Response('jpeg-data', { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    });
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});

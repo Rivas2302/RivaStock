@@ -146,6 +146,7 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
         await client.complete(workerId, job.id, JSON.stringify(output));
       }, {
         jobId: job.id,
+        allowMimeTypeCorrection: true,
         fetchImage: (input, init = {}) => fetch(input, { ...init, redirect: 'error' }),
       });
       process.stdout.write(`[AI Bridge] Revisión de fotos ${job.id} completada con ${job.provider}.\n`);

@@ -20,7 +20,7 @@ export interface LocalOrganizeImage {
 export async function withDownloadedOrganizeImages<T>(
   remoteImages: RemoteOrganizeImage[],
   execute: (images: LocalOrganizeImage[], missingInformation: string[]) => Promise<T>,
-  options: { jobId?: string; temporaryRoot?: string; fetchImage?: typeof fetch } = {},
+  options: { jobId?: string; temporaryRoot?: string; fetchImage?: typeof fetch; allowMimeTypeCorrection?: boolean } = {},
 ): Promise<T> {
   const jobLabel = options.jobId?.replace(/[^0-9a-z-]/gi, '').slice(0, 36) || 'job';
   const directory = await mkdtemp(join(options.temporaryRoot ?? tmpdir(), `rivastock-organize-${jobLabel}-`));
@@ -30,9 +30,9 @@ export async function withDownloadedOrganizeImages<T>(
 
   try {
     for (const image of remoteImages.slice(0, MAX_IMAGES)) {
-      const extension = extensionForMimeType(image.mime_type);
+      const declaredExtension = extensionForMimeType(image.mime_type);
       try {
-        if (!/^IMG\d{1,3}$/.test(image.id) || !extension || !/^https:\/\//i.test(image.url)) {
+        if (!/^IMG\d{1,3}$/.test(image.id) || !declaredExtension || !/^https:\/\//i.test(image.url)) {
           throw new Error('Invalid image descriptor.');
         }
         const response = await fetchImage(image.url, { signal: AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS) });
@@ -40,7 +40,11 @@ export async function withDownloadedOrganizeImages<T>(
         const declaredLength = Number(response.headers.get('content-length') ?? '0');
         if (declaredLength > MAX_IMAGE_BYTES) throw new Error('Image exceeds the size limit.');
         const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim();
-        if (contentType && contentType !== image.mime_type) throw new Error('Image MIME type mismatch.');
+        if (contentType && contentType !== image.mime_type && !options.allowMimeTypeCorrection) {
+          throw new Error('Image MIME type mismatch.');
+        }
+        const extension = extensionForMimeType(contentType || image.mime_type);
+        if (!extension) throw new Error('Unsupported image MIME type.');
         const bytes = await readBoundedImage(response);
         if (bytes.length < 1 || bytes.length > MAX_IMAGE_BYTES) throw new Error('Image exceeds the size limit.');
         const path = join(directory, `${image.id}${extension}`);
