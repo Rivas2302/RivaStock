@@ -12,6 +12,13 @@ Al inspeccionar las claves con `supabase projects api-keys`, la CLI mostró la c
 
 Seguir la guía oficial de [rotación de una clave comprometida](https://supabase.com/docs/guides/getting-started/api-keys#rotate-a-leaked-or-compromised-key).
 
+## Seguridad — credencial de conexión emitida por Supabase CLI
+
+Durante el backup del 2/11, la salida de `supabase db dump --linked --dry-run` mostró la variable `PGPASSWORD` del rol temporal `cli_login_postgres`. No se copió a archivos ni al repositorio, pero debe tratarse como expuesta hasta que Supabase confirme su vencimiento.
+
+1. Revisá en Supabase la sesión/credencial CLI asociada al rol `cli_login_postgres` del proyecto `RivaStock_Oficial`; revocala si sigue vigente y rotá la contraseña de base si el CLI no garantiza su expiración.
+2. Confirmá esta revisión junto con la rotación de la clave `service_role` legacy indicada arriba.
+
 ## C2.2 — Habilitar una prueba real de Claude Code
 
 Claude está habilitado en el Bridge, pero el dueño indicó que primero debe completar su inicio interactivo. No se volverá a intentar desde el worker hasta que termine este paso.

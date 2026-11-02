@@ -257,3 +257,97 @@
 | `suppliers` | 12 |
 
 </details>
+
+## 2026-11-02 — T2.1 Supervisión y pistas aprendidas
+
+- Se aplicó **solo** `20261102135148_fb_supervision` a `RivaStock_Oficial`, después de la verificación PGlite y el backup de abajo. `supabase migration list --linked` confirma versión local y remota iguales. No se desplegó una Edge Function: el contrato del plan reserva la ruta del worker para T2.3.
+- `fb_supervision_requests` y `fb_learned_hints` tienen RLS activo. La tabla de solicitudes permite lectura al dueño autenticado sin colaboración activa; las pistas no tienen acceso directo. Las escrituras pasan por RPC `SECURITY DEFINER`; `facebook_supervision` se ejecuta por `anon`/`authenticated` con token del dispositivo y `fb_supervisor_worker` solo por `service_role`, validando propietario y Bridge activo.
+- Decisión SQL probada en producción: formulario válido aceptado; acción fuera del menú y clic en «Publicar» rechazados. Catálogo confirma los índices de reserva, traza/paso, lease, consulta de pistas y FK de la solicitud fuente. PGlite cubre aislamiento, vencimiento a 120 s, límite de 10, leasing, decisiones inválidas y contadores de pistas (**5/5**).
+- Verificación local: lint aprobado; `npm test` **598/598**; build aprobado; `perf:check` aprobado. No se crearon solicitudes ni filas `[QA]` en producción.
+- Backup externo verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261102T140450Z`. `schema.sql` 731075 bytes (SHA-256 `B90C75F81ADF4A3C2D0B50D0CD6BCC8FCB79A2E4EA0D093E36AAD6DF77B6930E`); `data.sql` 41157728 bytes (SHA-256 `7DD84145A4AC5B2FC055ACAE167DCC91D11AF72A440C2E2E2C342035877395E0`); 104 archivos de migración copiados; manifiesto de Storage con 373 objetos (todos con tamaño). ACL protegida para la cuenta local. Los 79 conteos exactos antes, filas exportadas como `INSERT` y conteos exactos posteriores coinciden: 13739 filas en total. Evidencia completa en `table-verification.json` y `storage-manifest.json` fuera del repo.
+- **Desvío de credencial:** `supabase db dump --linked --dry-run` imprimió en una salida de herramienta la contraseña CLI temporal de `cli_login_postgres`. Se trató como expuesta; no se guardó en archivos. Revisión/invalidez y la rotación pendiente de `service_role` están en `docs/ai/OWNER_ACTIONS.md`.
+- T1.5 permanece `[ ]` hasta asociar decisiones reales de `fb_supervision_requests` a la cronología. T2.1 sí cumple sus criterios; siguiente es integrar T1.5 y continuar con T2.2.
+
+### Conteos exactos del backup T2.1
+
+| Tabla | Exacto antes | Filas exportadas | Exacto después | Verificado |
+|---|---:|---:|---:|---|
+| public.ai_bridge_device_secrets | 5 | 5 | 5 | True |
+| public.ai_bridge_devices | 5 | 5 | 5 | True |
+| public.ai_bridge_workers | 2 | 2 | 2 | True |
+| public.ai_chat_messages | 47 | 47 | 47 | True |
+| public.ai_chat_tombstones | 12 | 12 | 12 | True |
+| public.ai_chats | 7 | 7 | 7 | True |
+| public.ai_function_settings | 24 | 24 | 24 | True |
+| public.ai_history_settings | 1 | 1 | 1 | True |
+| public.ai_job_knowledge_sources | 0 | 0 | 0 | True |
+| public.ai_jobs | 52 | 52 | 52 | True |
+| public.ai_memories | 0 | 0 | 0 | True |
+| public.ai_memory_events | 11 | 11 | 11 | True |
+| public.ai_memory_job_claims | 0 | 0 | 0 | True |
+| public.ai_memory_metrics | 2 | 2 | 2 | True |
+| public.ai_memory_settings | 1 | 1 | 1 | True |
+| public.ai_workspace_files | 0 | 0 | 0 | True |
+| public.attributed_sale_commands | 487 | 487 | 487 | True |
+| public.audit_events | 4946 | 4946 | 4946 | True |
+| public.cash_closings | 0 | 0 | 0 | True |
+| public.cash_flow | 1161 | 1161 | 1161 | True |
+| public.cash_flow_allocations | 811 | 811 | 811 | True |
+| public.catalog_config | 4 | 4 | 4 | True |
+| public.categories | 14 | 14 | 14 | True |
+| public.collaborators | 1 | 1 | 1 | True |
+| public.customer_financial_commands | 0 | 0 | 0 | True |
+| public.customer_transactions | 27 | 27 | 27 | True |
+| public.customers | 9 | 9 | 9 | True |
+| public.facebook_deliveries | 97 | 97 | 97 | True |
+| public.facebook_delivery_attempt_events | 149 | 149 | 149 | True |
+| public.facebook_delivery_attempts | 101 | 101 | 101 | True |
+| public.facebook_delivery_decisions | 17 | 17 | 17 | True |
+| public.facebook_delivery_reviews | 13 | 13 | 13 | True |
+| public.facebook_device_secrets | 38 | 38 | 38 | True |
+| public.facebook_devices | 38 | 38 | 38 | True |
+| public.facebook_group_sync | 1 | 1 | 1 | True |
+| public.facebook_groups | 69 | 69 | 69 | True |
+| public.facebook_publications | 19 | 19 | 19 | True |
+| public.facebook_worker_policy | 1 | 1 | 1 | True |
+| public.fb_rehearsals | 0 | 0 | 0 | True |
+| public.fb_run_traces | 0 | 0 | 0 | True |
+| public.fb_trace_cleanup_state | 1 | 1 | 1 | True |
+| public.fb_trace_steps | 0 | 0 | 0 | True |
+| public.fb_trace_storage_reservations | 0 | 0 | 0 | True |
+| public.inventory_holdings | 718 | 718 | 718 | True |
+| public.inventory_operation_settings | 5 | 5 | 5 | True |
+| public.inventory_owner_memberships | 8 | 8 | 8 | True |
+| public.inventory_owners | 6 | 6 | 6 | True |
+| public.inventory_product_commands | 588 | 588 | 588 | True |
+| public.inventory_stock_commands | 331 | 331 | 331 | True |
+| public.invitations | 5 | 5 | 5 | True |
+| public.knowledge_ai_proposals | 0 | 0 | 0 | True |
+| public.knowledge_assets | 0 | 0 | 0 | True |
+| public.knowledge_categories | 0 | 0 | 0 | True |
+| public.knowledge_chunks | 0 | 0 | 0 | True |
+| public.knowledge_document_tags | 0 | 0 | 0 | True |
+| public.knowledge_document_versions | 0 | 0 | 0 | True |
+| public.knowledge_documents | 0 | 0 | 0 | True |
+| public.knowledge_events | 113 | 113 | 113 | True |
+| public.knowledge_folders | 0 | 0 | 0 | True |
+| public.knowledge_index_jobs | 0 | 0 | 0 | True |
+| public.knowledge_search_requests | 8 | 8 | 8 | True |
+| public.knowledge_settings | 1 | 1 | 1 | True |
+| public.knowledge_tags | 0 | 0 | 0 | True |
+| public.orders | 2 | 2 | 2 | True |
+| public.price_list_items | 194 | 194 | 194 | True |
+| public.price_lists | 1 | 1 | 1 | True |
+| public.price_ranges | 6 | 6 | 6 | True |
+| public.products | 439 | 439 | 439 | True |
+| public.profiles | 5 | 5 | 5 | True |
+| public.quotes | 1 | 1 | 1 | True |
+| public.reseller_supplier_list_items | 0 | 0 | 0 | True |
+| public.reseller_supplier_lists | 0 | 0 | 0 | True |
+| public.sale_item_allocations | 825 | 825 | 825 | True |
+| public.sale_items | 824 | 824 | 824 | True |
+| public.sales | 807 | 807 | 807 | True |
+| public.stock_intakes | 178 | 178 | 178 | True |
+| public.stock_movements | 488 | 488 | 488 | True |
+| public.supplier_orders | 1 | 1 | 1 | True |
+| public.suppliers | 12 | 12 | 12 | True |

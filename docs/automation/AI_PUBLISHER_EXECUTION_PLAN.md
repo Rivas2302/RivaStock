@@ -215,7 +215,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 
 **Resultado:** cuando el motor no encuentra o no confirma un control, la IA mira la pantalla y elige la acción correcta de un menú cerrado; la extensión la aplica y revalida. Las soluciones se aprenden.
 
-### [ ] T2.1 Migración: supervisión y pistas aprendidas
+### [x] T2.1 Migración: supervisión y pistas aprendidas
 **Archivo:** `supabase/migrations/<ts>_fb_supervision.sql`
 - `fb_supervision_requests`:
   - columnas: `id`, `user_id`, `trace_id`, `step_seq`, `kind` (`recover_step`|`verify_result`|`review_content`|`review_photos`), `intent jsonb` (objetivo, valor esperado, restricciones), `dom_summary jsonb`, `screenshot_path`, `status` (`pending`|`processing`|`answered`|`failed`|`expired`), `decision jsonb`, `provider`, `model_id`, `reasoning_effort`, `worker_id`, `lease_expires_at`, `created_at`, `answered_at`, `error`;
