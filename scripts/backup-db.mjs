@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -389,29 +389,61 @@ function compareCounts(before, exported, after) {
   return mismatches;
 }
 
-async function getTimestampedBackupDir() {
-  const backupRoot = process.env.RIVASTOCK_BACKUP_ROOT || join(process.env.USERPROFILE || homedir(), 'rivastock-backups');
+function isPathInside(parent, child) {
+  const pathFromParent = relative(parent, child);
+  return pathFromParent === '' || (pathFromParent !== '..' && !pathFromParent.startsWith(`..${sep}`) && !isAbsolute(pathFromParent));
+}
+
+async function getTimestampedBackupDir(requestedPath = null) {
+  const configuredRoot = resolve(process.env.RIVASTOCK_BACKUP_ROOT || join(process.env.USERPROFILE || homedir(), 'rivastock-backups'));
+  await mkdir(configuredRoot, { recursive: true });
+  const backupRoot = await realpath(configuredRoot);
+  const repositoryRoot = await realpath(ROOT);
+  if (isPathInside(repositoryRoot, backupRoot)) throw new Error('backup-directory-inside-repository');
+  if (requestedPath) {
+    const requested = resolve(requestedPath);
+    if (!existsSync(requested)) throw new Error('backup-directory-missing');
+    const backupDir = await realpath(requested);
+    if (!isPathInside(backupRoot, backupDir) || isPathInside(repositoryRoot, backupDir)) {
+      throw new Error('backup-directory-outside-root');
+    }
+    if (!existsSync(join(backupDir, 'BACKUP-UNVERIFIED.txt'))) throw new Error('backup-directory-not-resumable');
+    return backupDir;
+  }
   const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const directory = join(backupRoot, timestamp);
-  await mkdir(backupRoot, { recursive: true });
   await mkdir(directory, { recursive: false });
   return directory;
 }
 
 function parseScriptArgs(argv) {
   const withStorage = argv.includes('--with-storage');
-  const unknown = argv.filter((value) => value !== '--with-storage');
+  let backupDir = null;
+  const unknown = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--with-storage') continue;
+    if (argv[index] === '--backup-dir' && argv[index + 1] && !backupDir) {
+      backupDir = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    unknown.push(argv[index]);
+  }
   if (unknown.length > 0) throw new Error('unsupported-options');
-  return { withStorage };
+  return { withStorage, backupDir };
 }
 
 async function runBackup(argv = process.argv.slice(2)) {
-  const { withStorage } = parseScriptArgs(argv);
+  const { withStorage, backupDir: requestedBackupDir } = parseScriptArgs(argv);
   const { connection } = runSupabaseDryRun();
   const pgEnvironment = makePgEnvironment(connection);
   const pgDumpBinary = process.env.PG_DUMP_BIN || 'pg_dump';
   const psqlBinary = process.env.PSQL_BIN || 'psql';
-  const backupDir = await getTimestampedBackupDir();
+  const backupDir = await getTimestampedBackupDir(requestedBackupDir);
+  const unverifiedMarker = join(backupDir, 'BACKUP-UNVERIFIED.txt');
+  if (!existsSync(unverifiedMarker)) {
+    await writeFile(unverifiedMarker, 'Backup verification has not completed. Do not use these files for migration.\n', { flag: 'wx' });
+  }
   const schemaPath = join(backupDir, 'schema.sql');
   const dataPath = join(backupDir, 'data.sql');
   const before = await getLiveCounts(connection, psqlBinary);
@@ -446,8 +478,9 @@ async function runBackup(argv = process.argv.slice(2)) {
       return `${JSON.stringify(schema)},${JSON.stringify(table)},${count}`;
     }),
     '',
-  ].join('\n'), { flag: 'wx' });
+  ].join('\n'));
 
+  let storageSummary = null;
   if (withStorage) {
     const storageScript = join(ROOT, 'scripts', 'backup-storage.mjs');
     if (!existsSync(storageScript)) throw new Error('Storage backup is not implemented yet');
@@ -455,18 +488,33 @@ async function runBackup(argv = process.argv.slice(2)) {
       cwd: ROOT,
       env: process.env,
       label: 'Storage backup',
+      timeout: 60 * 60 * 1000,
       maxBuffer: 8 * 1024 * 1024,
     });
-    void result;
+    try {
+      const parsed = JSON.parse((result.stdout || '').trim());
+      if (!Array.isArray(parsed.buckets) || !Number.isSafeInteger(parsed.objects)
+        || !Number.isSafeInteger(parsed.bytes) || parsed.verification !== 'passed') throw new Error();
+      storageSummary = {
+        buckets: parsed.buckets,
+        objects: parsed.objects,
+        bytes: parsed.bytes,
+        verification: parsed.verification,
+      };
+    } catch {
+      throw new Error('Storage backup summary was invalid; do not use the partial backup.');
+    }
   }
 
   const exportedRows = [...exported.values()].reduce((total, value) => total + value, 0);
+  await rm(unverifiedMarker, { force: true });
   console.log(JSON.stringify({
     backup: backupDir,
     tables: before.size,
     rows: exportedRows,
     schemaBytes: schemaInfo.size,
     dataBytes: dataInfo.size,
+    ...(storageSummary ? { storage: storageSummary } : {}),
     verification: 'passed',
   }));
 }
@@ -490,6 +538,7 @@ if (isMainModule()) {
 export {
   compareCounts,
   countExportedRows,
+  parseScriptArgs,
   parseCountRows,
   parseCopyTable,
   parseDryRunOutput,

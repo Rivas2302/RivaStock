@@ -6,8 +6,16 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SCRIPT = fileURLToPath(new URL('./backup-db.mjs', import.meta.url));
+const { parseScriptArgs } = await import('./backup-db.mjs');
 
 describe('database backup credential handling', () => {
+  it('parses a resumable backup directory without accepting unknown arguments', () => {
+    expect(parseScriptArgs(['--with-storage', '--backup-dir', 'C:\\backups\\partial']))
+      .toEqual({ withStorage: true, backupDir: 'C:\\backups\\partial' });
+    expect(() => parseScriptArgs(['--unknown'])).toThrow('unsupported-options');
+    expect(() => parseScriptArgs(['--backup-dir'])).toThrow('unsupported-options');
+  });
+
   it('keeps CLI credentials out of output, logs, and exported files', async () => {
     const temp = await mkdtemp(join(tmpdir(), 'rivastock-backup-test-'));
     const fakeCli = join(temp, 'fake-supabase.mjs');

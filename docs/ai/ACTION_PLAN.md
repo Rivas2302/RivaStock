@@ -127,7 +127,7 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 - Script `scripts/check-no-secrets.mjs` (en `npm run verify` y en `prebuild`) que falle si el repo o `dist/` contienen patrones `sb_secret_`, JWT con `"role":"service_role"`, `SUPABASE_SERVICE_ROLE_KEY=` con valor o claves privadas. Tests.
 - **Commit:** `chore(security): add secret scanning guard and agent rules`
 
-### [ ] A3 Backup de archivos de Storage
+### [x] A3 Backup de archivos de Storage
 Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye archivos.
 - `scripts/backup-storage.mjs` (`npm run backup:storage`): descarga todos los objetos de los buckets (`assets`, `knowledge`, `automation-traces` opcional) a `<carpeta de backup>\storage\<bucket>\…`, con la clave secreta solo en memoria; genera `storage-manifest.json` con ruta, tamaño y SHA-256; verifica que la cantidad y los tamaños coincidan con el listado remoto. Reanudable (salta lo que ya tiene con el mismo hash).
 - Integrarlo al procedimiento de §1.4 y a `AGENTS.md`.

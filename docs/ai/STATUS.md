@@ -1,13 +1,22 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — A3 completada; A4 sigue
+
+- A3 `[x]`: `scripts/backup-storage.mjs` y `npm run backup:storage` descargan objetos de todos los buckets, mantienen nombres originales y SHA-256 en `storage-manifest.json`, contrastan el inventario antes y después y pueden reanudar desde el manifiesto parcial. `backup:db -- --with-storage` integra ambos respaldos y ahora admite `--backup-dir` para retomar una carpeta marcada como no verificada.
+- Backup completo verificado fuera del repo: `%USERPROFILE%\rivastock-backups\20261102T224109Z`. Postgres: 82 tablas, 13.740 filas, `schema.sql` 802.172 B, `data.sql` 40.111.111 B; los conteos exactos antes/después coincidieron tabla por tabla con los bloques exportados. Storage: 4 buckets, 374 objetos y 132.374.670 B (`assets` 373/132.272.608 B; `supplier-order-documents` 1/102.062 B; `automation-traces` y `knowledge` vacíos). Manifest, tamaños y hashes locales verificados; `BACKUP-UNVERIFIED.txt` fue retirado solo tras completar todas las verificaciones.
+- La primera exportación integrada agotó el límite inicial de 180 s con 198 objetos ya respaldados. Se amplió el timeout del proceso Storage y se reanudó esa misma carpeta; la ejecución final volvió a exportar y verificar Postgres y completó el inventario íntegro de Storage.
+- **Desvío:** Storage requiere JWT para Authorization aunque el gateway use `sb_secret_` en `apikey`; el script mantiene ambas credenciales solo en memoria y usa el JWT legacy solo para Storage. Ver A1 y `KEY_ROTATION.md`. No aplicar migraciones sin un respaldo nuevo que vuelva a pasar.
+- Verificación local: `npm run lint` aprobado; suite completa **666/666** en 108 archivos con valores Supabase ficticios limitados al proceso; 19 pruebas dirigidas, `node --check` de ambos scripts y `git diff --check` aprobados.
+- **Siguiente:** A4, auditoría y actualización de dependencias.
+
 ## 2026-11-02 — Compatibilidad de Storage restaurada; A1 sigue abierta
 
 - Tras desplegar claves `sb_secret_` en A1, una prueba de Storage confirmó que el endpoint aún exige un JWT y rechaza la clave opaca en `Authorization` (`Invalid Compact JWS`). Sin esa cabecera se rechazan las operaciones de Storage.
 - Para conservar la lectura de documentos y las trazas, `automation` y `knowledge` usan el `sb_secret_` en `apikey` y el JWT legacy solo en solicitudes `/storage/v1/` al mismo origen. Los clientes PostgREST siguen usando solo la clave nueva. **Desvío:** el JWT `service_role` sigue consumiéndose en servidor para Storage; no desactivar las API keys legacy hasta reemplazar esta ruta con credenciales S3 del servidor.
 - `automation` ACTIVE v10 y `knowledge` ACTIVE v8 desplegadas con `verify_jwt=false`, como estaban antes; una primera publicación con el valor por defecto `true` se corrigió de inmediato, y la consulta posterior confirmó ambas funciones activas con `false`.
-- Verificación local de la mitigación: 19 pruebas dirigidas y `npm run lint` aprobados; `git diff --check` aprobado. No se tocó el esquema ni se aplicaron migraciones.
+- Verificación local de la mitigación: `npm run lint` y suite completa **666/666** en 108 archivos con valores Supabase ficticios limitados al proceso; 19 pruebas dirigidas y `git diff --check` aprobados. No se tocó el esquema ni se aplicaron migraciones.
 - **A1 sigue `[ ]`**: además de G2 (extensión Facebook 0.5.15/heartbeat vencido), falta reemplazar la autenticación Storage legacy antes de desactivar las claves. Ver `KEY_ROTATION.md`; A3 documenta el backup completo.
-- **Siguiente:** completar y registrar A3; luego A4. Reanudar A1 cuando Storage tenga autenticación de servidor sin JWT legacy y G2 abra.
+- **Siguiente:** A4. Reanudar A1 cuando Storage tenga autenticación de servidor sin JWT legacy y G2 abra.
 
 ## 2026-11-02 — A1 implementada localmente; producción y cierre pendientes
 

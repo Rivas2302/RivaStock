@@ -17,6 +17,7 @@
     "test:e2e": "playwright test",
     "verify": "npm run lint && npm test && npm run build && npm run check:no-secrets && npm run perf:check && npm audit",
     "backup:db": "node scripts/backup-db.mjs",
+    "backup:storage": "node scripts/backup-storage.mjs",
     "check:no-secrets": "node scripts/check-no-secrets.mjs",
     "perf:bundle": "node scripts/performance-report.mjs",
     "perf:check": "node scripts/performance-report.mjs --check",
