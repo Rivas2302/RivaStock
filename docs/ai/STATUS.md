@@ -1,13 +1,24 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — Compatibilidad de Storage restaurada; A1 sigue abierta
+
+- Tras desplegar claves `sb_secret_` en A1, una prueba de Storage confirmó que el endpoint aún exige un JWT y rechaza la clave opaca en `Authorization` (`Invalid Compact JWS`). Sin esa cabecera se rechazan las operaciones de Storage.
+- Para conservar la lectura de documentos y las trazas, `automation` y `knowledge` usan el `sb_secret_` en `apikey` y el JWT legacy solo en solicitudes `/storage/v1/` al mismo origen. Los clientes PostgREST siguen usando solo la clave nueva. **Desvío:** el JWT `service_role` sigue consumiéndose en servidor para Storage; no desactivar las API keys legacy hasta reemplazar esta ruta con credenciales S3 del servidor.
+- `automation` ACTIVE v10 y `knowledge` ACTIVE v8 desplegadas con `verify_jwt=false`, como estaban antes; una primera publicación con el valor por defecto `true` se corrigió de inmediato, y la consulta posterior confirmó ambas funciones activas con `false`.
+- Verificación local de la mitigación: 19 pruebas dirigidas y `npm run lint` aprobados; `git diff --check` aprobado. No se tocó el esquema ni se aplicaron migraciones.
+- **A1 sigue `[ ]`**: además de G2 (extensión Facebook 0.5.15/heartbeat vencido), falta reemplazar la autenticación Storage legacy antes de desactivar las claves. Ver `KEY_ROTATION.md`; A3 documenta el backup completo.
+- **Siguiente:** completar y registrar A3; luego A4. Reanudar A1 cuando Storage tenga autenticación de servidor sin JWT legacy y G2 abra.
+
 ## 2026-11-02 — A1 implementada localmente; producción y cierre pendientes
 
 - Inventario de consumidores y `cli_login_postgres` completados en `KEY_ROTATION.md`. Supabase documenta que la contraseña temporal de `cli_login_postgres` vence a los pocos minutos; la consulta de solo lectura confirmó que ya estaba vencida. No hay consumidores de la contraseña en la app ni en las funciones.
 - A1 implementada: selector compartido de `SUPABASE_SECRET_KEYS` para las cinco Edge Functions, clave publishable en clientes web/extensión, scripts históricos y guías actualizados, y renovación segura de la clave almacenada por la extensión. No se modificó la base ni se desactivaron claves legacy.
 - Verificación local: lint aprobado; **661 pruebas** en 107 archivos; build completado por Playwright; secret scan aprobado; pruebas E2E de Facebook **102/102**. Se reparó un mock E2E que aún interceptaba el RPC anterior `approve_facebook_publication` en vez de `approve_facebook_publication_v2`.
-- **A1 sigue `[ ]`**: faltan deploy de las cinco funciones, push y comprobación del bundle servido, smoke completo y desactivación reversible de claves legacy. La extensión de producción reportó 0.5.15 con heartbeat vencido, por lo que G2 permanece cerrada; no desactivar `anon`/`service_role` legacy hasta que el dueño recargue la extensión compatible y envíe heartbeat reciente.
-- No se desplegó ninguna función, no se aplicó ninguna migración y no se instaló una versión del Bridge durante A1.
-- **Siguiente:** desplegar el commit A1 y continuar la verificación que no depende de G2; en paralelo avanzar A3 y A4 según §5.2 mientras la prueba en vivo espera la extensión.
+- Commit `69ecadd` (`fix(security): migrate off legacy keys (A1 remains open)`) en `main` con Rivas2302; Vercel terminó en `success`. El bundle servido contiene `sb_publishable_` y no contiene un JWT legacy.
+- Las cinco funciones están desplegadas y emitieron `key_mode: secret`: `ai-bridge` v12 / `verify_jwt=false`, `automation` v8 / `false`, `knowledge` v6 / `false`, `invite-collaborator` v19 / `true`, `delete-collaborator` v5 / `true`. Smoke autenticado: lectura de productos 200; AI Bridge `idle` y emparejado; automation, knowledge, invite y delete devolvieron los errores esperados para solicitudes inocuas sin crear datos.
+- **A1 sigue `[ ]`**: la extensión de producción aún reporta 0.5.15 y el último heartbeat está vencido, por lo que G2 permanece cerrada. No desactivar `anon`/`service_role` legacy hasta que el dueño recargue la extensión compatible, renueve su clave almacenada y envíe heartbeat reciente; después repetir el smoke y desactivar las claves legacy.
+- No se aplicó ninguna migración ni se instaló una versión del Bridge durante A1.
+- **Siguiente:** A3, después A4; dejar el cierre de A1 en “Pendiente por puerta” hasta que G2 abra.
 
 ## 2026-11-02 — A2 completada; sigue A1
 

@@ -286,7 +286,10 @@ serve(async (req) => {
   const authorization = req.headers.get('authorization') ?? '';
   const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
-    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY, fetch, {
+      supabaseUrl: SUPABASE_URL,
+      legacyServiceRoleJwt: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    }) },
   });
 
   if (body.action === 'supervisor_worker') return await supervisorWorker(body, req, serviceClient, origin);

@@ -300,7 +300,10 @@ serve(async (req: Request) => {
 
   const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY, fetch, {
+      supabaseUrl: SUPABASE_URL,
+      legacyServiceRoleJwt: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    }) },
   });
   const ownerUid = await authorizeWorker(req, body, serviceClient);
   if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401);
