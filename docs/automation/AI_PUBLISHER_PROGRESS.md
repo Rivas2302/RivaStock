@@ -352,3 +352,96 @@
 | public.stock_movements | 488 | 488 | 488 | True |
 | public.supplier_orders | 1 | 1 | 1 | True |
 | public.suppliers | 12 | 12 | 12 | True |
+
+## 2026-11-02 — T2.2 Contrato de decisión
+
+- **Backup previo a migración:** `%USERPROFILE%\rivastock-backups\20261102T142835Z`; verificado y restringido al usuario de Windows. `schema.sql` 757.868 B (`9FA7EB96ADB6D3F5304A25070B814171D9CDE6D0DE3819A1681FCBEE9ED407EB`); `data.sql` 41.157.910 B (`EF5C082870FF5D258D8C1C323413C00BEDF6D3F7B55C985B507C762B5841FE57`). 81 tablas, 13.739 filas exactas, 374 objetos Storage (373 `assets`, 1 `supplier-order-documents`, todos con tamaño), y 105 migraciones copiadas. `table-counts.csv` coincide por tabla en conteo anterior, filas INSERT exportadas y conteo posterior.
+- `pg_dump --data-only --inserts --rows-per-insert=1` avisó de FK circulares en tablas de publicaciones, entregas/intentos y conocimiento. El respaldo conserva todas las filas verificadas; al restaurar puede ser necesario deshabilitar triggers durante la carga. No hubo cambios de datos de producción durante la migración.
+- Aplicada únicamente `20261102190000_fb_supervisor_contract` en `RivaStock_Oficial`. Producción confirmó la versión aplicada, funciones protegidas y RPC worker exclusiva de `service_role`. Smoke SQL dentro de `BEGIN … ROLLBACK`: selector válido aceptado; Publicar, scope de página, campo distinto y confianza baja rechazados.
+- Verificación local final: lint y build aprobados; `npm test` **599/599** con variables Supabase ficticias limitadas al proceso y un worker; AI Bridge 1.12.0 typecheck y pruebas **71/71**; `perf:check` aprobado; Playwright `e2e/facebook-extension.spec.ts` **4/4**. Una ejecución e2e inicial reveló que `executeScript` no conserva helpers del módulo; el resumen se movió al cuerpo serializado y la suite completa pasó.
+- No se ejecutó Facebook real ni se crearon datos `[QA]`. C2.2 Claude y los ensayos en vivo siguen pendientes según `docs/ai/OWNER_ACTIONS.md`.
+- Conteo exacto exportado por tabla:
+
+| Tabla | Exacto antes | Filas exportadas | Exacto después | Verificado |
+|---|---:|---:|---:|---|
+| `public.ai_bridge_device_secrets` | 5 | 5 | 5 | Sí |
+| `public.ai_bridge_devices` | 5 | 5 | 5 | Sí |
+| `public.ai_bridge_workers` | 2 | 2 | 2 | Sí |
+| `public.ai_chat_messages` | 47 | 47 | 47 | Sí |
+| `public.ai_chat_tombstones` | 12 | 12 | 12 | Sí |
+| `public.ai_chats` | 7 | 7 | 7 | Sí |
+| `public.ai_function_settings` | 24 | 24 | 24 | Sí |
+| `public.ai_history_settings` | 1 | 1 | 1 | Sí |
+| `public.ai_job_knowledge_sources` | 0 | 0 | 0 | Sí |
+| `public.ai_jobs` | 52 | 52 | 52 | Sí |
+| `public.ai_memories` | 0 | 0 | 0 | Sí |
+| `public.ai_memory_events` | 11 | 11 | 11 | Sí |
+| `public.ai_memory_job_claims` | 0 | 0 | 0 | Sí |
+| `public.ai_memory_metrics` | 2 | 2 | 2 | Sí |
+| `public.ai_memory_settings` | 1 | 1 | 1 | Sí |
+| `public.ai_workspace_files` | 0 | 0 | 0 | Sí |
+| `public.attributed_sale_commands` | 487 | 487 | 487 | Sí |
+| `public.audit_events` | 4946 | 4946 | 4946 | Sí |
+| `public.cash_closings` | 0 | 0 | 0 | Sí |
+| `public.cash_flow` | 1161 | 1161 | 1161 | Sí |
+| `public.cash_flow_allocations` | 811 | 811 | 811 | Sí |
+| `public.catalog_config` | 4 | 4 | 4 | Sí |
+| `public.categories` | 14 | 14 | 14 | Sí |
+| `public.collaborators` | 1 | 1 | 1 | Sí |
+| `public.customer_financial_commands` | 0 | 0 | 0 | Sí |
+| `public.customer_transactions` | 27 | 27 | 27 | Sí |
+| `public.customers` | 9 | 9 | 9 | Sí |
+| `public.facebook_deliveries` | 97 | 97 | 97 | Sí |
+| `public.facebook_delivery_attempt_events` | 149 | 149 | 149 | Sí |
+| `public.facebook_delivery_attempts` | 101 | 101 | 101 | Sí |
+| `public.facebook_delivery_decisions` | 17 | 17 | 17 | Sí |
+| `public.facebook_delivery_reviews` | 13 | 13 | 13 | Sí |
+| `public.facebook_device_secrets` | 38 | 38 | 38 | Sí |
+| `public.facebook_devices` | 38 | 38 | 38 | Sí |
+| `public.facebook_group_sync` | 1 | 1 | 1 | Sí |
+| `public.facebook_groups` | 69 | 69 | 69 | Sí |
+| `public.facebook_publications` | 19 | 19 | 19 | Sí |
+| `public.facebook_worker_policy` | 1 | 1 | 1 | Sí |
+| `public.fb_learned_hints` | 0 | 0 | 0 | Sí |
+| `public.fb_rehearsals` | 0 | 0 | 0 | Sí |
+| `public.fb_run_traces` | 0 | 0 | 0 | Sí |
+| `public.fb_supervision_requests` | 0 | 0 | 0 | Sí |
+| `public.fb_trace_cleanup_state` | 1 | 1 | 1 | Sí |
+| `public.fb_trace_steps` | 0 | 0 | 0 | Sí |
+| `public.fb_trace_storage_reservations` | 0 | 0 | 0 | Sí |
+| `public.inventory_holdings` | 718 | 718 | 718 | Sí |
+| `public.inventory_operation_settings` | 5 | 5 | 5 | Sí |
+| `public.inventory_owner_memberships` | 8 | 8 | 8 | Sí |
+| `public.inventory_owners` | 6 | 6 | 6 | Sí |
+| `public.inventory_product_commands` | 588 | 588 | 588 | Sí |
+| `public.inventory_stock_commands` | 331 | 331 | 331 | Sí |
+| `public.invitations` | 5 | 5 | 5 | Sí |
+| `public.knowledge_ai_proposals` | 0 | 0 | 0 | Sí |
+| `public.knowledge_assets` | 0 | 0 | 0 | Sí |
+| `public.knowledge_categories` | 0 | 0 | 0 | Sí |
+| `public.knowledge_chunks` | 0 | 0 | 0 | Sí |
+| `public.knowledge_document_tags` | 0 | 0 | 0 | Sí |
+| `public.knowledge_document_versions` | 0 | 0 | 0 | Sí |
+| `public.knowledge_documents` | 0 | 0 | 0 | Sí |
+| `public.knowledge_events` | 113 | 113 | 113 | Sí |
+| `public.knowledge_folders` | 0 | 0 | 0 | Sí |
+| `public.knowledge_index_jobs` | 0 | 0 | 0 | Sí |
+| `public.knowledge_search_requests` | 8 | 8 | 8 | Sí |
+| `public.knowledge_settings` | 1 | 1 | 1 | Sí |
+| `public.knowledge_tags` | 0 | 0 | 0 | Sí |
+| `public.orders` | 2 | 2 | 2 | Sí |
+| `public.price_list_items` | 194 | 194 | 194 | Sí |
+| `public.price_lists` | 1 | 1 | 1 | Sí |
+| `public.price_ranges` | 6 | 6 | 6 | Sí |
+| `public.products` | 439 | 439 | 439 | Sí |
+| `public.profiles` | 5 | 5 | 5 | Sí |
+| `public.quotes` | 1 | 1 | 1 | Sí |
+| `public.reseller_supplier_list_items` | 0 | 0 | 0 | Sí |
+| `public.reseller_supplier_lists` | 0 | 0 | 0 | Sí |
+| `public.sale_item_allocations` | 825 | 825 | 825 | Sí |
+| `public.sale_items` | 824 | 824 | 824 | Sí |
+| `public.sales` | 807 | 807 | 807 | Sí |
+| `public.stock_intakes` | 178 | 178 | 178 | Sí |
+| `public.stock_movements` | 488 | 488 | 488 | Sí |
+| `public.supplier_orders` | 1 | 1 | 1 | Sí |
+| `public.suppliers` | 12 | 12 | 12 | Sí |

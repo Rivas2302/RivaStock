@@ -230,7 +230,7 @@ Panel de resultados (F5)                Edge Function `automation`  ◀── HT
 - Tests PGlite: aislamiento, vencimiento, límite, validación de decisiones inválidas (acción fuera del menú, índice inexistente) y contadores de pistas.
 - **Commit:** `feat(automation): add AI supervision requests and learned hints`
 
-### [ ] T2.2 Contrato de decisión (menú cerrado)
+### [x] T2.2 Contrato de decisión (menú cerrado)
 Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo validador en SQL, en el Bridge y en la extensión:
 ```json
 {

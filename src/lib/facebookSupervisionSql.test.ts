@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { validateSupervisorDecision, type SupervisorDomSummary } from '../../extensions/facebook/form-actions.js';
 
 const owner = '10000000-0000-4000-8000-000000000001';
 const other = '10000000-0000-4000-8000-000000000002';
@@ -9,8 +10,9 @@ const device = '20000000-0000-4000-8000-000000000001';
 const workerDevice = '30000000-0000-4000-8000-000000000001';
 const trace = '40000000-0000-4000-8000-000000000001';
 const token = 'facebook-supervision-device-token-for-sql-tests';
-const intent = { step: 'marketplace.category', intent_key: 'marketplace.category:Electronics', objective: 'Select Electronics', expected_value: 'Electronics', restrictions: ['Do not submit'] };
-const domSummary = {
+const intent = { step: 'marketplace.category', intent_key: 'marketplace.category:Electronics', objective: 'Select Electronics', expected_value: 'Electronics', restrictions: ['Do not submit'], target: { element_index: 0, role: 'combobox', name: 'Category' } };
+const domSummary: SupervisorDomSummary = {
+  scope: 'dialog',
   controls: [
     { index: 0, role: 'combobox', name: 'Category', text: 'Select category', state: { disabled: false } },
     { index: 1, role: 'button', name: 'Next', text: 'Next', state: { disabled: false } },
@@ -75,6 +77,7 @@ beforeAll(async () => {
     INSERT INTO public.ai_bridge_devices VALUES ('${workerDevice}', '${owner}', NULL, now());
   `);
   await db.exec(readFileSync('supabase/migrations/20261102135148_fb_supervision.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261102190000_fb_supervisor_contract.sql', 'utf8'));
 });
 
 beforeEach(async () => {
@@ -177,6 +180,13 @@ describe('Facebook supervision SQL contract', () => {
       decision: validDecision, provider: 'codex', model_id: 'gpt-6-luna', reasoning_effort: 'low',
     });
     expect(await request('poll', {}, created.id)).toMatchObject({ status: 'answered', provider: 'codex' });
+  });
+
+  it('uses the same closed-menu checks in the extension before execution', () => {
+    expect(validateSupervisorDecision(validDecision, domSummary, intent)).toBe(true);
+    expect(validateSupervisorDecision({ ...validDecision, action: 'click', element_index: 2, text: undefined }, domSummary, intent)).toBe(false);
+    expect(validateSupervisorDecision({ ...validDecision, action: 'type', element_index: 0, text: 'x' }, domSummary, intent)).toBe(false);
+    expect(validateSupervisorDecision({ ...validDecision, action: 'select_option', element_index: 0, text: 'x' }, { ...domSummary, scope: 'page' }, intent)).toBe(false);
   });
 
   it('learns only selector-safe matches, updates success/failure counts, and returns positive hints', async () => {

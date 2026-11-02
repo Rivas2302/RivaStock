@@ -18,8 +18,12 @@ export function domSummary(root = null) {
     return element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
   };
   const activeDialog = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visibleForTrace).at(-1);
+  const activeForm = Array.from(document.querySelectorAll('form')).filter(form => visibleForTrace(form)
+    && form.querySelector('button,[role="button"],input,textarea,select,[contenteditable="true"]')).at(-1);
   const requestedRoot = root?.nodeType === 1 ? root : null;
-  const scope = requestedRoot ?? activeDialog ?? document.querySelector('main') ?? document.body;
+  const scope = requestedRoot ?? activeDialog ?? activeForm ?? document.querySelector('main') ?? document.body;
+  const scopeType = scope.closest?.('[role="dialog"]') || scope.matches?.('[role="dialog"]') || scope === activeDialog
+    ? 'dialog' : scope.closest?.('form') || scope.matches?.('form') || scope === activeForm ? 'form' : 'page';
   const headings = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
     .filter(node => visibleForTrace(node) && traceSafe(node))
     .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120))
@@ -35,10 +39,12 @@ export function domSummary(root = null) {
         .slice(-3).map(heading => heading.textContent.replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
       return {
         index,
-        role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.tagName.toLowerCase()),
+        role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.isContentEditable ? 'textbox' : node.tagName.toLowerCase()),
         name: traceName(node).replace(/\s+/g, ' ').trim().slice(0, 80),
         text: node.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)
           ? '' : (node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        ...(node instanceof HTMLInputElement ? { type: node.type } : {}),
+        ...(['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName) && node.getAttribute('placeholder') ? { placeholder: node.getAttribute('placeholder').slice(0, 80) } : {}),
         state: {
           ...(node.hasAttribute('aria-checked') ? { checked: node.getAttribute('aria-checked') } : {}),
           ...(node.hasAttribute('aria-expanded') ? { expanded: node.getAttribute('aria-expanded') } : {}),
@@ -52,18 +58,48 @@ export function domSummary(root = null) {
     .filter(node => visibleForTrace(node) && traceSafe(node))
     .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120))
     .filter(Boolean).slice(0, 20);
-  return { controls, headings, alerts };
+  return { scope: scopeType, controls, headings, alerts };
+}
+
+export function validateSupervisorDecision(value, dom, intent = {}) {
+  const actions = ['click', 'type', 'select_option', 'scroll_container', 'wait', 'reload', 'skip_destination', 'abort'];
+  const elementActions = ['click', 'type', 'select_option', 'scroll_container'];
+  const blocked = /\b(?:publicar(?: ahora)?|compartir ahora|publish(?: now)?|share now|send now|enviar ahora|cerrar sesi[oó]n|log\s*out|sign\s*out|settings|configuraci[oó]n|account settings)\b/i;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['action', 'element_index', 'text', 'wait_ms', 'confidence', 'observation', 'reason'].includes(key))) return false;
+  const decision = value;
+  if (!actions.includes(decision.action) || !Number.isFinite(decision.confidence) || decision.confidence < 0.6 || decision.confidence > 1
+    || typeof decision.observation !== 'string' || !decision.observation.trim() || decision.observation.length > 300
+    || typeof decision.reason !== 'string' || !decision.reason.trim() || decision.reason.length > 300) return false;
+  if (elementActions.includes(decision.action)) {
+    if (!Number.isInteger(decision.element_index) || decision.element_index < 0 || decision.element_index > 79
+      || !['dialog', 'form'].includes(dom?.scope) || !Array.isArray(dom?.controls)) return false;
+    const control = dom.controls.find(candidate => candidate.index === decision.element_index);
+    if (!control || control.state?.disabled === true || blocked.test(`${control.name} ${control.text ?? ''}`)) return false;
+    if (decision.action === 'click' && /^(?:submit|formsubmit)$/i.test(control.role)) return false;
+    if (decision.action === 'type' || decision.action === 'select_option') {
+      const target = intent?.target;
+      if (!target || target.element_index !== control.index || target.role !== control.role || target.name !== control.name || !String(target.name ?? '').trim()
+        || typeof decision.text !== 'string' || decision.text.length > 200) return false;
+      if (decision.action === 'type' && !['input', 'textarea', 'textbox'].includes(control.role)) return false;
+      if (decision.action === 'select_option' && !['select', 'combobox'].includes(control.role)) return false;
+    } else if ('text' in decision) return false;
+  } else if ('element_index' in decision || 'text' in decision) return false;
+  if (decision.action === 'wait') {
+    if (!Number.isInteger(decision.wait_ms) || decision.wait_ms < 500 || decision.wait_ms > 10000) return false;
+  } else if ('wait_ms' in decision) return false;
+  return true;
 }
 
 export async function facebookFormAction(action, content, photos = [], baseline = []) {
   // Older attempts may contain null where an optional file snapshot was absent.
   baseline = Array.isArray(baseline) ? baseline.filter(value => typeof value === 'string') : [];
-  const reportTraceStep = async (name, status = 'ok', capture = true, requestedRoot = null) => {
-    if (typeof chrome === 'undefined' || !chrome.runtime?.id) return;
+  // executeScript serializes this function body, so helpers used in the injected
+  // page must be declared inside it instead of closing over module bindings.
+  const summarizeDom = (root = null) => {
     const hidden = '[role="feed"], [data-pagelet*="Feed"], [data-pagelet*="message" i], [aria-label*="Messenger" i], [aria-label*="mensajes" i]';
+    const visible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
     const safe = element => !element.closest(hidden);
-    const visibleTraceNode = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
-    const traceControlName = element => {
+    const nameOf = element => {
       const direct = element.getAttribute('aria-label');
       if (direct) return direct;
       const labels = (element.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean)
@@ -75,14 +111,17 @@ export async function facebookFormAction(action, content, photos = [], baseline 
       }
       return element.isContentEditable ? '' : element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     };
-    const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visibleTraceNode).at(-1);
-    const scope = requestedRoot?.nodeType === 1 ? requestedRoot : dialog ?? document.querySelector('main') ?? document.body;
-    const headings = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
-      .filter(node => visibleTraceNode(node) && safe(node))
+    const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible).at(-1);
+    const form = Array.from(document.querySelectorAll('form')).filter(candidate => visible(candidate)
+      && candidate.querySelector('button,[role="button"],input,textarea,select,[contenteditable="true"]')).at(-1);
+    const requested = root?.nodeType === 1 ? root : null;
+    const scope = requested ?? dialog ?? form ?? document.querySelector('main') ?? document.body;
+    const scopeType = scope.closest?.('[role="dialog"]') || scope.matches?.('[role="dialog"]') || scope === dialog
+      ? 'dialog' : scope.closest?.('form') || scope.matches?.('form') || scope === form ? 'form' : 'page';
+    const headings = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]')).filter(node => visible(node) && safe(node))
       .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 30);
     const controls = Array.from(scope.querySelectorAll('button,[role="button"],[role="checkbox"],[role="switch"],[role="combobox"],a[href],input,textarea,select,[contenteditable="true"]'))
-      .filter(node => visibleTraceNode(node) && safe(node))
-      .filter(node => !(node.tagName === 'INPUT' && node.type === 'password')).slice(0, 80)
+      .filter(node => visible(node) && safe(node)).filter(node => !(node.tagName === 'INPUT' && node.type === 'password')).slice(0, 80)
       .map((node, index) => {
         const rect = node.getBoundingClientRect();
         const headingPath = Array.from(scope.querySelectorAll('h1,h2,h3,[role="heading"]'))
@@ -90,23 +129,23 @@ export async function facebookFormAction(action, content, photos = [], baseline 
           .slice(-3).map(heading => heading.textContent.replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
         return {
           index,
-          role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.tagName.toLowerCase()),
-          name: traceControlName(node).replace(/\s+/g, ' ').trim().slice(0, 80),
-          text: node.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)
-            ? '' : (node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
-          state: {
-            ...(node.hasAttribute('aria-checked') ? { checked: node.getAttribute('aria-checked') } : {}),
-            ...(node.hasAttribute('aria-expanded') ? { expanded: node.getAttribute('aria-expanded') } : {}),
-            disabled: node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true',
-          },
+          role: node.getAttribute('role') || (node.tagName === 'A' ? 'link' : node.isContentEditable ? 'textbox' : node.tagName.toLowerCase()),
+          name: nameOf(node).replace(/\s+/g, ' ').trim().slice(0, 80),
+          text: node.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName) ? '' : (node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+          ...(node.tagName === 'INPUT' ? { type: node.type } : {}),
+          ...(['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName) && node.getAttribute('placeholder') ? { placeholder: node.getAttribute('placeholder').slice(0, 80) } : {}),
+          state: { ...(node.hasAttribute('aria-checked') ? { checked: node.getAttribute('aria-checked') } : {}), ...(node.hasAttribute('aria-expanded') ? { expanded: node.getAttribute('aria-expanded') } : {}), disabled: node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true' },
           box: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
           headingPath,
         };
       });
-    const alerts = Array.from(scope.querySelectorAll('[role="alert"],[role="status"]'))
-      .filter(node => visibleTraceNode(node) && safe(node))
+    const alerts = Array.from(scope.querySelectorAll('[role="alert"],[role="status"]')).filter(node => visible(node) && safe(node))
       .map(node => node.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 20);
-    await chrome.runtime.sendMessage({ type: 'trace-step', step: name, status, capture, domSummary: { controls, headings, alerts } }).catch(() => {});
+    return { scope: scopeType, controls, headings, alerts };
+  };
+  const reportTraceStep = async (name, status = 'ok', capture = true, requestedRoot = null) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.id) return;
+    await chrome.runtime.sendMessage({ type: 'trace-step', step: name, status, capture, domSummary: summarizeDom(requestedRoot) }).catch(() => {});
   };
   try {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim();

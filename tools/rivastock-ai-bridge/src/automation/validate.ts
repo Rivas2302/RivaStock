@@ -1,0 +1,66 @@
+export type SupervisorAction = 'click' | 'type' | 'select_option' | 'scroll_container' | 'wait' | 'reload' | 'skip_destination' | 'abort';
+
+export interface SupervisorControl {
+  index: number;
+  role: string;
+  name: string;
+  text?: string;
+  type?: string;
+  placeholder?: string;
+  state?: { disabled?: boolean };
+}
+
+export interface SupervisorDomSummary {
+  scope: 'dialog' | 'form' | 'page';
+  controls: SupervisorControl[];
+}
+
+export interface SupervisorIntent {
+  target?: { element_index: number; role: string; name: string };
+  [key: string]: unknown;
+}
+
+export interface SupervisorDecision {
+  action: SupervisorAction;
+  element_index?: number;
+  text?: string;
+  wait_ms?: number;
+  confidence: number;
+  observation: string;
+  reason: string;
+}
+
+const ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container', 'wait', 'reload', 'skip_destination', 'abort']);
+const ELEMENT_ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container']);
+const BLOCKED = /\b(?:publicar(?: ahora)?|compartir ahora|publish(?: now)?|share now|send now|enviar ahora|cerrar sesi[oó]n|log\s*out|sign\s*out|settings|configuraci[oó]n|account settings)\b/i;
+
+export function validateSupervisorDecision(value: unknown, dom: SupervisorDomSummary, intent: SupervisorIntent): value is SupervisorDecision {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const decision = value as Record<string, unknown>;
+  if (Object.keys(decision).some(key => !['action', 'element_index', 'text', 'wait_ms', 'confidence', 'observation', 'reason'].includes(key))) return false;
+  if (typeof decision.action !== 'string' || !ACTIONS.has(decision.action as SupervisorAction)) return false;
+  if (typeof decision.confidence !== 'number' || !Number.isFinite(decision.confidence) || decision.confidence < 0.6 || decision.confidence > 1) return false;
+  if (typeof decision.observation !== 'string' || !decision.observation.trim() || decision.observation.length > 300 || typeof decision.reason !== 'string' || !decision.reason.trim() || decision.reason.length > 300) return false;
+
+  const action = decision.action as SupervisorAction;
+  if (ELEMENT_ACTIONS.has(action)) {
+    if (!Number.isInteger(decision.element_index) || (decision.element_index as number) < 0 || (decision.element_index as number) > 79) return false;
+    if (dom.scope !== 'dialog' && dom.scope !== 'form') return false;
+    const control = dom.controls.find(candidate => candidate.index === decision.element_index);
+    if (!control || control.state?.disabled === true) return false;
+    if (BLOCKED.test(`${control.name} ${control.text ?? ''}`)) return false;
+    if (action === 'click' && /^(?:submit|formsubmit)$/i.test(control.role)) return false;
+    if (action === 'type' || action === 'select_option') {
+      const target = intent.target;
+      if (!target || !Number.isInteger(target.element_index) || target.element_index !== control.index || target.role !== control.role || target.name !== control.name || !target.name.trim()) return false;
+      if (typeof decision.text !== 'string' || decision.text.length > 200) return false;
+      if (action === 'type' && !['input', 'textarea', 'textbox'].includes(control.role)) return false;
+      if (action === 'select_option' && !['select', 'combobox'].includes(control.role)) return false;
+    } else if ('text' in decision) return false;
+  } else if ('element_index' in decision || 'text' in decision) return false;
+
+  if (action === 'wait') {
+    if (!Number.isInteger(decision.wait_ms) || (decision.wait_ms as number) < 500 || (decision.wait_ms as number) > 10000) return false;
+  } else if ('wait_ms' in decision) return false;
+  return true;
+}
