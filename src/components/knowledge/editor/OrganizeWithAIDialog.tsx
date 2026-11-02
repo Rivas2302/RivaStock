@@ -3,6 +3,7 @@ import type { JSONContent } from '@tiptap/core';
 import { AlertTriangle, ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
 import Modal from '../../Modal';
 import { CODEX_MODELS, PROVIDERS } from '../../../lib/aiOptions';
+import { getAIFunctionSetting, isCodexFunctionModel } from '../../../lib/aiFunctionSettings';
 import { getAIBridgeState, type AIProviderId, type CodexModelId, type CodexReasoningEffort } from '../../../lib/aiBridge';
 import {
   getKnowledgeOrganizeJob,
@@ -58,6 +59,7 @@ export default function OrganizeWithAIDialog({
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
   const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
+  const [functionSettingsLoading, setFunctionSettingsLoading] = useState(false);
   const [bridgeState, setBridgeState] = useState<'offline' | 'idle' | 'busy' | null>(null);
   const [requestState, setRequestState] = useState<RequestState>(initialProposal ? 'completed' : 'idle');
   const [activeRequest, setActiveRequest] = useState<OrganizeRequest | null>(null);
@@ -100,6 +102,23 @@ export default function OrganizeWithAIDialog({
     const interval = window.setInterval(() => void refreshBridgeState(), 10_000);
     return () => window.clearInterval(interval);
   }, [refreshBridgeState]);
+
+  useEffect(() => {
+    if (!isOpen || initialProposal) return undefined;
+    let active = true;
+    setFunctionSettingsLoading(true);
+    void getAIFunctionSetting(ownerUid, 'knowledge_organize').then((setting) => {
+      if (!active) return;
+      setProvider(setting.provider);
+      if (isCodexFunctionModel(setting.model_id)) setModelId(setting.model_id);
+      setReasoningEffort(setting.reasoning_effort);
+    }).catch(() => {
+      if (active) setError('No se pudieron cargar los valores guardados; podés elegirlos manualmente.');
+    }).finally(() => {
+      if (active) setFunctionSettingsLoading(false);
+    });
+    return () => { active = false; };
+  }, [initialProposal, isOpen, ownerUid]);
 
   useEffect(() => {
     if (!initialProposal || requestState !== 'idle') return;
@@ -338,7 +357,7 @@ export default function OrganizeWithAIDialog({
               {bridgeState === null ? <Loader2 size={15} className="animate-spin"/> : <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`}/>}
               <span>{bridgeState === null ? 'Consultando la PC vinculada…' : connected ? 'PC vinculada conectada' : 'La PC vinculada está desconectada'}</span>
             </div>
-            <button type="button" disabled={!connected || busy || awaitingJob || !activeNotes.trim() || activeNotes.length > MAX_NOTES_LENGTH} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" disabled={!connected || busy || awaitingJob || functionSettingsLoading || !activeNotes.trim() || activeNotes.length > MAX_NOTES_LENGTH} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-50">
               {busy || awaitingJob ? <Loader2 size={15} className="animate-spin"/> : <Sparkles size={15}/>}Organizar
             </button>
           </div>

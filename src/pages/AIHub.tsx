@@ -30,6 +30,7 @@ import {
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
+const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -40,7 +41,7 @@ function formatDate(value: string): string {
 }
 
 export default function AIHub() {
-  const { isOwner } = useAuth();
+  const { isOwner, ownerUid } = useAuth();
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
   const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
@@ -497,6 +498,7 @@ export default function AIHub() {
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/40"><div className="flex gap-3"><ShieldAlert size={19} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300"/><div><h4 className="font-bold text-amber-950 dark:text-amber-100">Permisos del agente</h4><p className="mt-2 text-xs leading-5 text-amber-900 dark:text-amber-200">Con Codex, las tareas y los chats pueden buscar en la web, ejecutar comandos y leer o modificar archivos accesibles para el usuario de Windows que ejecuta el Bridge, sin pedir aprobación por acción. Usá una PC de confianza.</p></div></div></section>
           </aside>
         </div>
+        {isOwner && ownerUid && <Suspense fallback={<p role="status" className="text-sm text-[var(--ink-muted)]">Cargando modelos…</p>}><AIFunctionSettings ownerUid={ownerUid}/></Suspense>}
       </section>}
     </div>
   );
