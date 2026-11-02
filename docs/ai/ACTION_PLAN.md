@@ -143,7 +143,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 
 ## 4. Bloque B — Cierre del módulo IA
 
-### [ ] B1 Instalar AI Bridge 1.12.0
+### [x] B1 AI Bridge y configuración de extracción de memoria
 - Con la autorización 1.1.4. Verificar que el worker lee `ai_function_settings` (`ai_memory_extract = codex / gpt-6-luna / low`) y registrarlo.
 - Quitar de `OWNER_ACTIONS.md` la acción “AI Bridge 1.12.0” si quedó resuelta.
 - **Commit:** `docs(ai): record AI Bridge 1.12.0 rollout`

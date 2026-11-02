@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — B1 registrada; B2 sigue
+
+- La comparación previa con Desktop confirmó el plan maestro de las 18:30; `origin/main` estaba en `d0cf096`. El plan local solo añade los cierres verificados de A3/A4.
+- B1 `[x]`: la base tiene `ai_memory_extract = codex / gpt-6-luna / low` en las cuatro cuentas configuradas. `knowledge.worker_memory_similar` lee la configuración por owner y la incluye en su respuesta; el Bridge la valida y pasa `model_id`/`reasoning_effort` a `extractMemoryOperations`. En los últimos 30 días producción registra 8 extracciones Codex, 0 locales.
+- Producción: 1 de 2 dispositivos activos tuvo heartbeat en menos de 3 minutos; cero estaban ocupados y cero jobs activos. El plan maestro reportó Bridge 1.17.0 ya instalado, que supera el 1.12.0 pedido por B1.
+- **Desvío de versión:** no se instaló ni se degradó el Bridge. La versión instalada reportada por el plan es 1.17.0; el heartbeat actual no expone la versión. La comprobación de código y de configuración está hecha, pero no se atribuye a una extracción en vivo reciente el uso exacto de Luna Bajo.
+- No hubo migraciones, despliegues ni datos QA en B1. B2 requiere corregir el olvido coloquial y correr la evaluación real de memoria.
+- **Siguiente:** B2.
+
 ## 2026-11-02 — A4 completada; Bloque B sigue
 
 - La comparación previa mostró que Desktop conserva el plan maestro de las 18:30; `origin/main` tenía la misma versión base. La única diferencia local en `ACTION_PLAN.md` es el avance de A3/A4.
