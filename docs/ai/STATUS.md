@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 10:44 ART — T1.5 visor y exportación implementados
+
+- La UI local muestra trazas por intento, pasos/estado/duración/notas, decisiones si F2 las agrega al resumen, capturas con URL firmada y ampliación; agrega el historial de ensayos solo para el dueño. El exportador descarga trazas JSON y capturas a `%USERPROFILE%\rivastock-traces\` y requiere sesión de dueño o service role más UID explícito para aislar la exportación.
+- Verificación local: lint aprobado; `npm test` **593/593**; Playwright `e2e/automations.spec.ts` **31/31**; build y `perf:check` aprobados; el modo `--help` del exportador funciona. El build mantiene la extensión en **0.5.17** y el AI Bridge en **1.12.0**.
+- No hubo migraciones ni datos QA nuevos. **T1.5 sigue `[ ]`** hasta comprobar decisiones de supervisión reales de F2 en la cronología y validar el despliegue con sesión autenticada. F2 aún no escribe decisiones en los pasos de traza; el visor solo muestra el campo cuando exista.
+- **Siguiente trabajo independiente:** T2.1, esquema de supervisión y pistas aprendidas; la prueba Facebook real de T1.4/T1.6 permanece pendiente de Riva.
+
 ## 2026-11-02 10:38 ART — T1.4 desplegada; validación en vivo pendiente
 
 - El commit `a5adf89` (`feat(facebook): add safe rehearsal mode`) se publicó directamente en `main` con la cuenta Rivas2302. Vercel reportó `success`; el JSON público confirma la extensión **0.5.17**, HTTP 200 para el ZIP de **181.947 bytes** y SHA-256 idéntico al paquete local (`00e5c1870598e4ec2a4d505a28f53a1b10bed0f77d2c8be2b7ff92d48ca1984a`).

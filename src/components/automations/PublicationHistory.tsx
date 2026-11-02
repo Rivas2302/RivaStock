@@ -2,11 +2,14 @@ import PublicationDecision from './PublicationDecision';
 import {useState,useEffect} from 'react';
 import {Link} from 'react-router-dom';
 import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft,ArrowLeft} from 'lucide-react';
+import {useAuth} from '../../AuthContext';
 import {usePermission} from '../../hooks/usePermission';
 import {deliveryLabel,deliveryState,deliveryCandidate,deliveryReceipt,deliveryRejectedEvidence,facebookRpc,publicationStatus,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
+import ExecutionTraceViewer from './ExecutionTraceViewer';
 
 function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDelivery;onRefresh:()=>Promise<void>;compact?:boolean}) {
+  const {isOwner}=useAuth();
   const canWrite=usePermission('stock','write');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const [review,setReview]=useState(false);const [checked,setChecked]=useState(false);const [url,setUrl]=useState('');
@@ -95,7 +98,7 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     </div>}
 
     {/* Technical details (collapsible) */}
-    {(delivery.message||current||delivery.execution_timing||late.length>0)&&<details className="text-xs">
+    {(delivery.message||current||delivery.execution_timing||late.length>0||isOwner&&attempts.length>0)&&<details className="text-xs">
       <summary className="cursor-pointer select-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Ver detalles</summary>
       <div className="mt-2 space-y-2 text-slate-600 dark:text-slate-300">
         {delivery.recovery_required&&<p>Llegó evidencia después de una revisión anterior. Otro envío a este destino queda bloqueado hasta revisar esta información.</p>}
@@ -106,6 +109,10 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
           {([['approval_to_claim_ms','Hasta tomar el trabajo'],['photos_ms','Descarga de fotos'],['navigation_ms','Navegación acumulada'],['preparation_ms','Preparación completa']]as const).map(([key,label])=>{const ms=delivery.execution_timing?.[key];return typeof ms==='number'?<div key={key}><dt className="inline">{label}: </dt><dd className="inline">{(ms/1000).toLocaleString('es-AR',{maximumFractionDigits:2})} s</dd></div>:null;})}
           <div>Origen: {delivery.execution_timing.source==='local'?'aviso local':delivery.execution_timing.source==='drain'?'continuación de cola':'comprobación periódica'}</div>
         </dl>}
+        {isOwner&&attempts.length>0&&<div className="space-y-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+          <p className="font-semibold">Ejecuciones</p>
+          {attempts.map(attempt=><div key={attempt.id} className="space-y-1.5 rounded-lg bg-slate-100 p-2 dark:bg-slate-800"><p>Intento iniciado {new Date(attempt.started_at).toLocaleString('es-AR')} · {attempt.outcome??'En curso'}</p><ExecutionTraceViewer attemptId={attempt.id}/></div>)}
+        </div>}
       </div>
     </details>}
 

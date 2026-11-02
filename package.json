@@ -7,6 +7,7 @@
     "predev": "node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
     "prebuild": "node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
     "package:ai-bridge": "node scripts/package-ai-bridge.mjs",
+    "dump:automation-traces": "node scripts/automation-trace-dump.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

@@ -106,6 +106,36 @@ test('owner can request a rehearsal from Automations without approving a publica
   expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(0);
 });
 
+test('owner can inspect rehearsal trace steps and enlarge a signed screenshot',async({page})=>{
+  await fixture(page);
+  await page.route('**/rest/v1/fb_rehearsals*',route=>route.fulfill({json:[{
+    id:'rehearsal-1',status:'rehearsal_ok',created_at:'2026-11-02T12:00:00Z',started_at:'2026-11-02T12:00:01Z',finished_at:'2026-11-02T12:00:03Z',
+    trace_id:'trace-1',error_step:null,content:{title:'[QA] Mesa'},destination:{name:'Marketplace',mechanism:'marketplace'},result:{draft_discarded:true},
+  }]}));
+  await page.route('**/rest/v1/fb_trace_steps*',route=>route.fulfill({json:[{
+    id:'step-1',trace_id:'trace-1',seq:1,step:'marketplace.category_selected',status:'supervised',elapsed_ms:1200,
+    dom_summary:{ai_decision:{action:'click',index:3}},screenshot_path:'owner/trace-1/1.jpg',note:'Categoría verificada',created_at:'2026-11-02T12:00:02Z',
+  }]}));
+  await page.route('**/rest/v1/fb_run_traces*',route=>route.fulfill({json:[{
+    id:'trace-1',delivery_id:null,attempt_id:null,mode:'rehearsal',mechanism:'marketplace',extension_version:'0.5.17',
+    started_at:'2026-11-02T12:00:01Z',finished_at:'2026-11-02T12:00:03Z',outcome:'rehearsal_ok',summary:{draft_discarded:true},
+  }]}));
+  await page.route('**/functions/v1/automation',route=>route.fulfill({json:{screenshots:[{seq:1,url:'https://rivastock-test.invalid/storage/v1/object/sign/automation-traces/owner/trace-1/1.jpg'}]}}));
+  await page.goto('/automatizaciones?view=rehearsals');
+  await expect(page.getByRole('heading',{name:'[QA] Mesa'})).toBeVisible();
+  const rehearsal=page.getByRole('article').filter({hasText:'[QA] Mesa'});
+  await rehearsal.getByRole('button',{name:'Ver ejecución'}).click();
+  await expect(rehearsal.getByText('Marketplace category selected')).toBeVisible();
+  await expect(rehearsal.getByText('Decisión de IA:')).toBeVisible();
+  await rehearsal.getByRole('button',{name:'Ampliar captura del paso 1'}).click();
+  await expect(page.getByRole('dialog',{name:'Captura ampliada'})).toBeVisible();
+});
+
+test('collaborators do not see owner-only rehearsals',async({page})=>{
+  await fixture(page,'viewer');await page.goto('/automatizaciones');
+  await expect(page.getByRole('button',{name:'Ensayos',exact:true})).toHaveCount(0);
+});
+
 test('requires a separate decision and approval before publishing again',async({page})=>{
   const {calls,productIds}=await fixture(page);await page.goto(`/automatizaciones?product=${productIds[0]}`);
   const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});await expect(modal.getByRole('link',{name:'Ver publicación',exact:true})).toBeVisible();

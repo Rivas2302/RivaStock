@@ -1,5 +1,12 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T1.5 visor y exportador de trazas
+
+- Implementados en el worktree: `ExecutionTraceViewer` con pasos, estado, duración, notas, decisión opcional y captura firmada ampliable; vista de ensayos limitada al dueño; script `scripts/automation-trace-dump.mjs` y comando `npm run dump:automation-traces`.
+- El exportador acepta `SUPABASE_USER_JWT` (anon key más sesión del dueño) o `SUPABASE_SERVICE_ROLE_KEY` con `SUPABASE_OWNER_ID` obligatorio. La clave queda en memoria del proceso; las rutas de capturas se validan contra propietario, traza y secuencia antes de firmar. Cada traza se pagina y se guarda fuera del repo en `%USERPROFILE%\rivastock-traces\<fecha-hora>\`.
+- Verificación: lint; **593/593** pruebas Vitest; Playwright de Automatizaciones **31/31** con fixtures (incluye lectura de traza, decisión y captura ampliada); build y `perf:check`; `npm run dump:automation-traces -- --help`. No se consultó ni escribió producción ni se generaron datos QA.
+- **No marcar T1.5 `[x]` aún:** el visor presenta el campo de decisión cuando existe, pero F2 todavía no escribe decisiones supervisadas en la traza; también falta una comprobación de producción con la sesión autenticada del dueño. Resolver la integración de decisiones al completar F2 y luego validar el despliegue.
+
 ## 2026-11-02 — T1.4 desplegada; ensayo real pendiente
 
 - Push directo a `main` como Rivas2302: `a5adf89` (`feat(facebook): add safe rehearsal mode`), padre `9728340`. GitHub confirma autor y committer Rivas2302; Vercel muestra `success`.
