@@ -83,4 +83,29 @@ describe('AIChats memory activity', () => {
     await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Deshacer')) as HTMLButtonElement);
     expect(mocks.undoAIMemoryEvent).toHaveBeenCalledWith(EVENT_ID);
   });
+
+  it('refreshes memory activity after the asynchronous extraction finishes', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-02T23:00:00Z'));
+    mocks.getAIChat.mockResolvedValue({
+      chat: { id: CHAT_ID, provider: 'codex', title: 'Memoria QA', model_id: null, reasoning_effort: null, created_at: '2026-11-02T23:00:00Z', updated_at: '2026-11-02T23:00:00Z', last_message_at: '2026-11-02T23:00:00Z' },
+      messages: [{ id: 'message-1', job_id: JOB_ID, role: 'assistant', content: 'Lo voy a recordar.', created_at: '2026-11-02T23:00:00Z' }],
+      jobs: [{ id: JOB_ID, status: 'completed', error: null, created_at: '2026-11-02T23:00:00Z' }],
+    });
+    mocks.listAIMemoryJobActivity.mockReset()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({
+        [JOB_ID]: {
+          used: [],
+          changes: [{ id: EVENT_ID, memoryId: MEMORY_ID, action: 'created', content: 'Los envíos salen los martes.', canUndo: true }],
+        },
+      });
+
+    await render(<AIChats initialChatId={CHAT_ID} onOpenMemory={vi.fn()}/>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+
+    expect(mocks.listAIMemoryJobActivity).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain('Memoria actualizada: «Los envíos salen los martes.»');
+    vi.useRealTimers();
+  });
 });

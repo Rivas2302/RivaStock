@@ -98,6 +98,8 @@ export default function AIChats({
   }, []);
 
   const hasPendingJob = jobs.some((job) => job.status === 'pending' || job.status === 'processing');
+  const latestCompletedJob = jobs.filter((job) => job.status === 'completed').at(-1);
+  const latestJobMemoryActivity = latestCompletedJob ? jobMemoryActivity[latestCompletedJob.id] : undefined;
   useEffect(() => {
     if (!selectedChatId) {
       setSelectedChat(null);
@@ -172,6 +174,34 @@ export default function AIChats({
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [selectedChatId, hasPendingJob, chatRefreshKey]);
+
+  useEffect(() => {
+    if (!selectedChatId || loadingMessages || hasPendingJob || !latestCompletedJob || latestJobMemoryActivity) return;
+    if (Date.now() - Date.parse(latestCompletedJob.created_at) > 10 * 60_000) return;
+
+    let mounted = true;
+    let timer: number | null = null;
+    const deadline = Date.now() + 60_000;
+    const poll = async (): Promise<void> => {
+      if (!mounted) return;
+      const activity = await listAIMemoryJobActivity([latestCompletedJob.id]).catch(() => ({}));
+      if (!mounted) return;
+      const next = activity[latestCompletedJob.id];
+      if (next && (next.changes.length > 0 || next.used.length > 0)) {
+        setJobMemoryActivity((current) => ({ ...current, [latestCompletedJob.id]: next }));
+        return;
+      }
+      if (Date.now() < deadline) {
+        timer = window.setTimeout(() => void poll(), 3000);
+      }
+    };
+
+    timer = window.setTimeout(() => void poll(), 1500);
+    return () => {
+      mounted = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [selectedChatId, loadingMessages, hasPendingJob, latestCompletedJob?.id, latestCompletedJob?.created_at, latestJobMemoryActivity]);
 
   useEffect(() => {
     if (!selectedChat) return;

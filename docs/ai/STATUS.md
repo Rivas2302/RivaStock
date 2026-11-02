@@ -1,14 +1,17 @@
 # Estado de ejecución autónoma
 
-## 2026-11-02 — B2 implementada localmente; despliegue y prueba de producción pendientes
+## 2026-11-02 — B2 desplegada; checklist de producción en curso
 
 - Antes de continuar se comparó `docs/ai/ACTION_PLAN.md` con Desktop: el plan local es más reciente por timestamp (23:02Z frente a 21:23Z) y contiene los cierres de A3/A4 y B1. Se conserva ese estado; la sección B2 coincide con la copia maestra.
 - Reproducción de la frase exacta “Olvidá lo de los envíos a Santa Rosa” y pruebas de filtros/selección: la gramática anterior no reconocía varias formas coloquiales como comandos de memoria y usaba la frase entera para buscar candidatos; la actualización extraía el tema, acotaba el archivo a un único ID candidato y respondía en forma coherente con los modos automático, confirmación y apagado. La capa SQL/Edge ya valida y aplica `archive`; no requiere migración ni despliegue de Edge Function.
-- Verificación local final: `npm run lint`; `npm test` **666/666** en 108 archivos (variables Supabase ficticias limitadas al proceso); Bridge typecheck y **92/92** pruebas; `npm run build`; `npm run perf:check` (207.874 B gzip JS y 21.807 B gzip CSS del inicio); `git diff --check` aprobado.
+- Verificación local final: `npm run lint`; `npm test` **667/667** en 108 archivos con variables Supabase ficticias limitadas al proceso; Bridge typecheck y **92/92** pruebas; `npm run build`; `npm run perf:check` (207.878 B gzip JS y 21.807 B gzip CSS del inicio); `git diff --check` aprobado. El test nuevo cubre el chip cuando la extracción termina después del job.
 - Evaluación real con Codex local SDK/CLI, GPT-6 Luna Bajo, 41 casos: **20/20** retención importante, **20/20** recuperación top-5, **32/32** precisión, **10/10** actualizaciones, **3/3** sensibles bloqueados, **12/12** archivos correctos y **11/11** nuevos casos de olvido. Ejecución final: `tools/rivastock-ai-bridge/test/memory-eval/results/20261102T232028757Z-low.json`; los casos no se modificaron para elevar el resultado.
-- El paquete generado es AI Bridge **1.18.0** (la instalación conocida es 1.17.0; se usa el siguiente minor disponible en vez de degradar a 1.12.1 literal del plan). El build empaquetó correctamente el artefacto. No se desplegó ni instaló todavía; no se creó dato QA ni se hizo cambio de base.
-- **Estado de B2:** lógica, tests y evaluación local listos; falta commit/push, deploy de Vercel, instalación segura de 1.18.0 y checklist/limpieza `[QA]` en producción. Mantener B2 `[ ]` hasta cerrar esas verificaciones.
-- **Siguiente:** cerrar artefacto local y desplegar B2; validar memoria en producción con Bridge 1.18.0.
+- El commit `c032151` (`fix(ai): reliable memory forget handling (B2 remains open)`) está en `main` con Rivas2302 y Vercel terminó en `success`. No hubo migraciones ni cambios de Edge Function.
+- AI Bridge **1.18.0** quedó instalado desde el paquete generado con el actualizador estándar, preservando el `.env` y el lanzador de Inicio. Verificado un único worker (PID 27200), paquete 1.18.0, heartbeat reciente y “Conectada” en IA → Conexión. La carpeta de sesiones estaba vacía antes y después. Se conservó rollback 1.17.0 fuera del repo en `%LOCALAPPDATA%\RivaStock\BridgeRollback\20261102T232632Z`.
+- En producción se creó el chat `[QA] B2 20261102…`. El asistente respondió en una línea y la memoria de martes se guardó; el evento de memoria se creó 6 segundos después de completar el job. La UI no mostró el chip en la primera vista porque la extracción asíncrona terminaba luego de la carga inicial de actividad; el chip apareció al volver a abrir el chat. Se agregó localmente un sondeo acotado para actualizar el chip cuando termine la extracción. La regresión dirigida `AIChats.memory.test.tsx` pasó 2/2; falta desplegar esta corrección y verificarla en vivo.
+- Una invocación inicial de la suite completa falló por variables Supabase ausentes y un timeout de PGlite; se repitió con valores ficticios solo de proceso y terminó **667/667**.
+- **Estado de B2:** la corrección de olvido, eval real y Bridge ya están desplegados; el fix del chip pasó pruebas locales pero todavía no está desplegado. Faltan completar C5.4 (B–D, no-candidato, Deshacer, sensible, confirmación), repetir la verificación A con el nuevo frontend y limpiar chats/memorias `[QA]` desde la app. Mantener B2 `[ ]`.
+- **Siguiente:** validar la corrección de actividad del chip, completar la checklist y limpiar todos los datos de prueba desde la UI.
 
 ## 2026-11-02 — B1 registrada; B2 sigue
 
