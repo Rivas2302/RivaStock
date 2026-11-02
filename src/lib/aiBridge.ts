@@ -27,7 +27,7 @@ export interface AIBridgePairing {
 export interface AIJob {
   id: string;
   provider: AIProviderId;
-  task_type: 'text_generation' | 'knowledge_organize' | 'fb_copywriting';
+  task_type: 'text_generation' | 'knowledge_organize' | 'fb_copywriting' | 'fb_photo_review';
   input: string;
   output: string | null;
   status: AIJobStatus;

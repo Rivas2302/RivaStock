@@ -66,12 +66,17 @@ beforeAll(async () => {
   await db.exec(`
     CREATE TABLE public.products (
       id uuid PRIMARY KEY, user_id uuid NOT NULL, name text NOT NULL, category text,
-      description text, sale_price numeric NOT NULL, stock integer NOT NULL DEFAULT 0
+      description text, sale_price numeric NOT NULL, stock integer NOT NULL DEFAULT 0,
+      image_url text, images text[] NOT NULL DEFAULT '{}', updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, business_name text);
-    INSERT INTO public.products (id, user_id, name, category, description, sale_price, stock)
-      VALUES ('50000000-0000-4000-8000-000000000001', '${OWNER}', 'QA Desk Lamp', 'Hogar', 'LED articulada', 25000, 2),
-             ('50000000-0000-4000-8000-000000000002', '${OTHER}', 'Other lamp', 'Hogar', 'Other owner', 20000, 1);
+    INSERT INTO public.products (id, user_id, name, category, description, sale_price, stock, image_url, images)
+      VALUES ('50000000-0000-4000-8000-000000000001', '${OWNER}', 'QA Desk Lamp', 'Hogar', 'LED articulada', 25000, 2,
+                'https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/50000000-0000-4000-8000-000000000001/lamp.jpg',
+                ARRAY['https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/50000000-0000-4000-8000-000000000001/lamp.jpg', 'https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/50000000-0000-4000-8000-000000000001/detail.webp']),
+             ('50000000-0000-4000-8000-000000000002', '${OTHER}', 'Other lamp', 'Hogar', 'Other owner', 20000, 1,
+                'https://project.supabase.co/storage/v1/object/public/assets/${OTHER}/products/50000000-0000-4000-8000-000000000002/lamp.jpg',
+                ARRAY['https://project.supabase.co/storage/v1/object/public/assets/${OTHER}/products/50000000-0000-4000-8000-000000000002/lamp.jpg']);
     INSERT INTO public.profiles (id, business_name) VALUES ('${OWNER}', 'QA Store');
     CREATE TABLE public.test_knowledge_queries (query text, top_k integer, filters jsonb);
     CREATE FUNCTION public.knowledge_search_chunks_text(p_query text, p_top_k integer DEFAULT 10, p_filters jsonb DEFAULT '{}'::jsonb)
@@ -81,13 +86,16 @@ beforeAll(async () => {
       RETURN '[{"title":"QA lamp sheet","section_path":"Care","content":"Clean with a dry cloth."}]'::jsonb;
     END;
     $$;
+    CREATE SCHEMA storage;
+    CREATE TABLE storage.objects (bucket_id text NOT NULL, name text NOT NULL, PRIMARY KEY (bucket_id, name));
   `);
   try {
     await db.exec(readFileSync(new URL('20261102200041_fb_ai_copywriting.sql', MIGRATIONS), 'utf8'));
     await db.exec(readFileSync(new URL('20261102200438_fb_ai_copywriting_privileges.sql', MIGRATIONS), 'utf8'));
+    await db.exec(readFileSync(new URL('20261102202448_fb_photo_review_and_enhancements.sql', MIGRATIONS), 'utf8'));
   } catch (error) {
     const detail = error as { message?: string; position?: string; detail?: string; where?: string };
-    throw new Error(`T5.2 migration at ${detail.position ?? 'unknown'}: ${detail.message ?? 'failed'} ${detail.where ?? ''}`, { cause: error });
+    throw new Error(`Facebook AI migration at ${detail.position ?? 'unknown'}: ${detail.message ?? 'failed'} ${detail.where ?? ''}`, { cause: error });
   }
 }, 60_000);
 
@@ -402,6 +410,81 @@ describe('AI chat and task deletion migration', () => {
       'SELECT public.ai_apply_history_retention($1) AS ai_apply_history_retention', [OWNER],
     );
     expect(result.rows[0].ai_apply_history_retention.applied).toBe(false);
+  });
+
+  it('queues an idempotent photo review for only the owner’s current product assets', async () => {
+    const productId = '50000000-0000-4000-8000-000000000001';
+    const photos = [
+      `https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/${productId}/lamp.jpg`,
+      `https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/${productId}/detail.webp`,
+    ];
+    await asUser(OWNER);
+    const key = '60000000-0000-4000-8000-000000000003';
+    const create = () => db.query<{ result: { job_id: string } }>(
+      'SELECT public.request_fb_photo_review($1, $2, $3::text[]) AS result', [productId, key, photos],
+    );
+    const first = await create();
+    const retry = await create();
+    expect(retry.rows[0].result.job_id).toBe(first.rows[0].result.job_id);
+    const job = await db.query<{ task_type: string; input: string; model_id: string; reasoning_effort: string }>(
+      'SELECT task_type, input, model_id, reasoning_effort FROM public.ai_jobs WHERE id = $1', [first.rows[0].result.job_id],
+    );
+    expect(job.rows[0]).toMatchObject({ task_type: 'fb_photo_review', model_id: 'gpt-6-luna', reasoning_effort: 'low' });
+    expect(JSON.parse(job.rows[0].input).photos).toEqual([
+      { id: 'IMG001', url: photos[0], mime_type: 'image/jpeg' },
+      { id: 'IMG002', url: photos[1], mime_type: 'image/webp' },
+    ]);
+    await asSystem();
+    await db.query("UPDATE public.ai_jobs SET status = 'completed', output = '{}', completed_at = now() WHERE id = $1", [first.rows[0].result.job_id]);
+    const expired = await createJob({ taskType: 'fb_photo_review', status: 'completed', createdAt: "now() - interval '31 days'" });
+    await db.query('INSERT INTO public.ai_history_settings (user_id, retention_days) VALUES ($1, 30)', [OWNER]);
+    await asUser(OWNER);
+    await db.query('SELECT public.ai_delete_task($1)', [first.rows[0].result.job_id]);
+    await asServiceRole();
+    await db.query('SELECT public.ai_apply_history_retention($1)', [OWNER]);
+    await asSystem();
+    const expiredCount = await db.query<{ count: number }>('SELECT count(*)::int AS count FROM public.ai_jobs WHERE id = $1', [expired]);
+    expect(expiredCount.rows[0].count).toBe(0);
+  });
+
+  it('rejects collaborator access, duplicate photos, external assets, and unsupported providers', async () => {
+    const productId = '50000000-0000-4000-8000-000000000001';
+    const photo = `https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/${productId}/lamp.jpg`;
+    await asUser(COLLABORATOR);
+    await expectQueryError('SELECT public.request_fb_photo_review($1, $2, $3::text[])', [productId, crypto.randomUUID(), [photo]], 'Solo el propietario');
+    await asUser(OWNER);
+    await expectQueryError('SELECT public.request_fb_photo_review($1, $2, $3::text[])', [productId, crypto.randomUUID(), [photo, photo]], 'duplicados');
+    await expectQueryError('SELECT public.request_fb_photo_review($1, $2, $3::text[])', [productId, crypto.randomUUID(), ['https://example.com/photo.jpg']], 'fotos actuales del producto');
+    await expectQueryError('SELECT public.request_fb_photo_review($1, $2, $3::text[], $4)', [productId, crypto.randomUUID(), [photo], 'mock'], 'proveedor elegido');
+  });
+
+  it('appends an enhanced asset atomically while preserving the source photo', async () => {
+    const productId = '50000000-0000-4000-8000-000000000001';
+    const source = `https://project.supabase.co/storage/v1/object/public/assets/${OWNER}/products/${productId}/lamp.jpg`;
+    const newPath = `${OWNER}/products/${productId}/facebook-enhanced-60000000-0000-4000-8000-000000000004.jpg`;
+    const newPhoto = `https://project.supabase.co/storage/v1/object/public/assets/${newPath}`;
+    await db.query("INSERT INTO storage.objects (bucket_id, name) VALUES ('assets', $1)", [newPath]);
+    await asUser(OWNER);
+    const result = await db.query<{ result: { images: string[]; image_url: string; updated_at: string } }>(
+      'SELECT public.append_facebook_product_photo($1, $2, $3) AS result', [productId, source, newPhoto],
+    );
+    expect(result.rows[0].result.images).toContain(source);
+    expect(result.rows[0].result.images).toContain(newPhoto);
+    expect(result.rows[0].result.image_url).toBe(source);
+    expect(result.rows[0].result.updated_at).toBeTruthy();
+  });
+
+  it('limits photo review and enhanced-photo RPCs to authenticated users', async () => {
+    const result = await db.query<{ review_anon: boolean; review_authenticated: boolean; review_service: boolean; append_anon: boolean; append_authenticated: boolean; append_service: boolean }>(`
+      SELECT
+        has_function_privilege('anon', 'public.request_fb_photo_review(uuid,uuid,text[],text,text,text)', 'EXECUTE') AS review_anon,
+        has_function_privilege('authenticated', 'public.request_fb_photo_review(uuid,uuid,text[],text,text,text)', 'EXECUTE') AS review_authenticated,
+        has_function_privilege('service_role', 'public.request_fb_photo_review(uuid,uuid,text[],text,text,text)', 'EXECUTE') AS review_service,
+        has_function_privilege('anon', 'public.append_facebook_product_photo(uuid,text,text)', 'EXECUTE') AS append_anon,
+        has_function_privilege('authenticated', 'public.append_facebook_product_photo(uuid,text,text)', 'EXECUTE') AS append_authenticated,
+        has_function_privilege('service_role', 'public.append_facebook_product_photo(uuid,text,text)', 'EXECUTE') AS append_service
+    `);
+    expect(result.rows[0]).toEqual({ review_anon: false, review_authenticated: true, review_service: false, append_anon: false, append_authenticated: true, append_service: false });
   });
 
   it('lists and acknowledges only this owner’s tombstones for an active worker', async () => {

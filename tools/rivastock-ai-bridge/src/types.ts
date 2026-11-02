@@ -48,7 +48,7 @@ export interface AIJobContext {
 export interface AIJob {
   id: string;
   provider: AIProviderId;
-  task_type: 'text_generation' | 'knowledge_organize' | 'fb_copywriting';
+  task_type: 'text_generation' | 'knowledge_organize' | 'fb_copywriting' | 'fb_photo_review';
   input: string;
   model_id?: CodexModelId | null;
   reasoning_effort?: CodexReasoningEffort | null;

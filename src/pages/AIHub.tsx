@@ -36,6 +36,12 @@ function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
 }
 
+function taskLabel(job: AIJob): string {
+  if (job.task_type === 'fb_copywriting') return 'Redacción asistida para Facebook';
+  if (job.task_type === 'fb_photo_review') return 'Revisión de fotos para Facebook';
+  return job.input;
+}
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -194,7 +200,7 @@ export default function AIHub() {
 
   const removeTask = async (job: AIJob) => {
     if (job.status === 'pending' || job.status === 'processing') return;
-    if (!window.confirm('Se eliminará esta tarea y sus fuentes guardadas. No se puede deshacer.')) return;
+    if (!window.confirm('Se eliminará esta tarea y sus datos guardados. No se puede deshacer.')) return;
     setDeletingTaskId(job.id);
     setError('');
     try {
@@ -211,7 +217,7 @@ export default function AIHub() {
   const removeFinishedTasks = async () => {
     if (finishedTaskCount < 1 || deletingAllTasks) return;
     const confirmed = window.confirm(
-      `Se eliminarán ${finishedTaskCount} tareas finalizadas de texto y sus fuentes. Las tareas activas y los chats se conservarán. No se puede deshacer.`,
+      `Se eliminarán ${finishedTaskCount} tareas finalizadas de texto, redacción y revisión de fotos. Las tareas activas y los chats se conservarán. No se puede deshacer.`,
     );
     if (!confirmed) return;
     setDeletingAllTasks(true);
@@ -403,7 +409,7 @@ export default function AIHub() {
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
-          {recentJobs.filter((job) => job.task_type === 'text_generation').length ? <ul className="space-y-2">{recentJobs.filter((job) => job.task_type === 'text_generation').map((job) => <li key={job.id} className="flex items-stretch gap-1.5"><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{job.input}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button>{(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${job.input.slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">{deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}</button>}</li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
+          {recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type)).length ? <ul className="space-y-2">{recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type)).map((job) => <li key={job.id} className="flex items-stretch gap-1.5"><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{taskLabel(job)}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button>{(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${taskLabel(job).slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">{deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}</button>}</li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
           <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand)]"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
 
@@ -414,7 +420,7 @@ export default function AIHub() {
               {activeJob?.output && <button type="button" onClick={() => void copyOutput()} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold hover:bg-[var(--surface-muted)]">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiada' : 'Copiar respuesta'}</button>}
             </div>
             {activeJob ? <div className="space-y-4 text-sm">
-              <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">{activeJob.input}</p>
+              <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">{taskLabel(activeJob)}</p>
               {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
               {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
               {activeJob.output && <div className="whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 leading-6">{activeJob.output}</div>}

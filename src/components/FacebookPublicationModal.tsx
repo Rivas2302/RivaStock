@@ -15,6 +15,10 @@ import {publicationBlock,validateGroupSelection} from '../lib/facebookPublicatio
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 import { preparePublicationPhotos } from '../lib/facebookPublicationPhotos';
 import { createFacebookCopywritingJob, waitForFacebookCopywritingJob, type FacebookCopywritingProposal } from '../lib/facebookCopywriting';
+import { appendFacebookProductPhoto, createFacebookPhotoReviewJob, waitForFacebookPhotoReviewJob, type FacebookPhotoReview } from '../lib/facebookPhotoReview';
+import { enhanceFacebookPhoto, loadProductPhotoBlob, type FacebookPhotoCrop } from '../lib/facebookPhotoEnhancements';
+import { deleteFromStorage, supabase, uploadToStorage } from '../lib/db';
+import { supabaseProjectUrl } from '../lib/supabase';
 import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
 
 export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean }) {
@@ -40,6 +44,11 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [copywritingWarnings,setCopywritingWarnings]=useState<string[]>([]);
   const [copywritingSetting,setCopywritingSetting]=useState<AIFunctionSetting>(()=>defaultAIFunctionSetting(ownerUid??'','fb_copywriting'));
   const [copywritingSettingLoading,setCopywritingSettingLoading]=useState(true);
+  const [photoReviewSetting,setPhotoReviewSetting]=useState<AIFunctionSetting>(()=>defaultAIFunctionSetting(ownerUid??'','fb_photo_review'));
+  const [photoReviewSettingLoading,setPhotoReviewSettingLoading]=useState(true);
+  const [photoReview,setPhotoReview]=useState<FacebookPhotoReview|null>(null);
+  const [photoReviewPhotoUrls,setPhotoReviewPhotoUrls]=useState<string[]>([]);
+  const [photoCrop,setPhotoCrop]=useState<FacebookPhotoCrop>('square');
   const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal?'compose':'loading');
   const hydrated=useRef(false);
   const viewTouched=useRef(startInRehearsal);
@@ -85,6 +94,22 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       if (active) setError(cause instanceof Error ? cause.message : 'No se pudo cargar el modelo de redacción.');
     }).finally(() => {
       if (active) setCopywritingSettingLoading(false);
+    });
+    return () => { active = false; };
+  }, [ownerUid]);
+  useEffect(() => {
+    let active = true;
+    if (!ownerUid) {
+      setPhotoReviewSettingLoading(false);
+      return () => { active = false; };
+    }
+    setPhotoReviewSettingLoading(true);
+    void getAIFunctionSetting(ownerUid, 'fb_photo_review').then((setting) => {
+      if (active) setPhotoReviewSetting(setting);
+    }).catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : 'No se pudo cargar el modelo de revisión de fotos.');
+    }).finally(() => {
+      if (active) setPhotoReviewSettingLoading(false);
     });
     return () => { active = false; };
   }, [ownerUid]);
@@ -166,6 +191,68 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     setCopywritingWarnings(proposal.warnings);
     setNotice('La propuesta está lista. Revisala y editá el texto antes de aplicarlo.');
   });
+  const reviewPhotos = () => run(async () => {
+    if (!ownerUid || !content.photos.length || content.photos.length > 10) throw new Error('Seleccioná entre 1 y 10 fotos del producto para revisar.');
+    setPhotoReview(null);
+    const prepared = await preparePublicationPhotos(publicationProduct, ownerUid);
+    const photosToReview = content.photos.map(photo => prepared.replacements.get(photo) ?? photo);
+    if (prepared.replacements.size) {
+      setPublicationProduct(prepared.product);
+      setContent(value => ({ ...value, photos: value.photos.map(photo => prepared.replacements.get(photo) ?? photo) }));
+      onProductUpdated?.(prepared.product);
+    }
+    const jobId = await createFacebookPhotoReviewJob(publicationProduct.id, photosToReview, photoReviewSetting);
+    setNotice('La PC vinculada está revisando las fotos. La propuesta no modifica ni publica contenido.');
+    const result = await waitForFacebookPhotoReviewJob(jobId, photosToReview.length);
+    setPhotoReviewPhotoUrls(photosToReview);
+    setPhotoReview(result);
+    setNotice('La revisión está lista. Las observaciones y el orden sugerido son recomendaciones para que decidas.');
+  });
+  const enhancePhoto = (sourcePhoto: string) => run(async () => {
+    if (!ownerUid) throw new Error('No se pudo identificar la cuenta para guardar una copia mejorada.');
+    const prepared = await preparePublicationPhotos(publicationProduct, ownerUid);
+    const storedSourcePhoto = prepared.replacements.get(sourcePhoto) ?? sourcePhoto;
+    if (prepared.replacements.size) {
+      setPublicationProduct(prepared.product);
+      setContent(value => ({ ...value, photos: value.photos.map(photo => prepared.replacements.get(photo) ?? photo) }));
+      onProductUpdated?.(prepared.product);
+    }
+    const source = await loadProductPhotoBlob(storedSourcePhoto, supabaseProjectUrl, ownerUid, publicationProduct.id);
+    const enhanced = await enhanceFacebookPhoto(source, photoCrop);
+    const extension = enhanced.mimeType === 'image/png' ? 'png' : enhanced.mimeType === 'image/webp' ? 'webp' : 'jpg';
+    const path = `${ownerUid}/products/${publicationProduct.id}/facebook-enhanced-${crypto.randomUUID()}.${extension}`;
+    const newPhoto = await uploadToStorage(path, enhanced.blob, enhanced.mimeType);
+    let updatedPhotos: Awaited<ReturnType<typeof appendFacebookProductPhoto>>;
+    try {
+      updatedPhotos = await appendFacebookProductPhoto(publicationProduct.id, storedSourcePhoto, newPhoto);
+    } catch (cause) {
+      const { data, error } = await supabase.from('products').select('images, image_url').eq('id', publicationProduct.id).maybeSingle();
+      const committed = !error && (data?.image_url === newPhoto || data?.images?.includes(newPhoto));
+      if (!error && !committed) await deleteFromStorage(newPhoto);
+      throw cause;
+    }
+    const nextProduct = {
+      ...publicationProduct,
+      images: updatedPhotos.images,
+      imageUrl: updatedPhotos.image_url ?? undefined,
+      updatedAt: updatedPhotos.updated_at,
+    };
+    setPublicationProduct(nextProduct);
+    onProductUpdated?.(nextProduct);
+    setContent(value => ({ ...value, photos: value.photos.map(photo => photo === storedSourcePhoto ? newPhoto : photo) }));
+    setPhotoReview(null);
+    setPhotoReviewPhotoUrls([]);
+    setNotice(`Se guardó una copia nueva de ${enhanced.width} × ${enhanced.height}. La foto original sigue en el producto.`);
+  });
+  const applyPhotoOrder = () => {
+    if (!photoReview) return;
+    const ordered = [...photoReview.photos].sort((left, right) => left.suggested_order - right.suggested_order)
+      .map(photo => photoReviewPhotoUrls[Number(photo.id.slice(3)) - 1]);
+    if (ordered.some(photo => !photo)) return;
+    update({ photos: ordered });
+    setPhotoReview(photoReview);
+    setNotice('Se aplicó el orden sugerido a esta publicación. Revisá la portada y las fotos antes de autorizar.');
+  };
   const applyCopywritingProposal = () => {
     if (!copywritingProposal) return;
     const nextContent = {
@@ -180,6 +267,11 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     setNotice('Propuesta aplicada al formulario. Revisá también el precio, las fotos y los destinos antes de aprobar.');
   };
   const update = (patch: Partial<typeof content>) => {
+    if (patch.photos && (patch.photos.length !== content.photos.length
+      || patch.photos.some(photo => !content.photos.includes(photo)))) {
+      setPhotoReview(null);
+      setPhotoReviewPhotoUrls([]);
+    }
     setContent(value => {
       const next = { ...value, ...patch };
       if (patch.groupText === undefined && value.groupText?.trim()) {
@@ -290,6 +382,32 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
                   {content.photos.indexOf(url)>0&&<button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold" aria-label={`Subir foto ${index+1}`} onClick={event=>{event.preventDefault();const photos=[...content.photos];const position=photos.indexOf(url);[photos[position-1],photos[position]]=[photos[position],photos[position-1]];update({photos});}}>↑ Subir</button>}
                 </label>)}</div>
               </fieldset>
+              <section aria-label="Revisión y mejora de fotos" className="space-y-3 rounded-xl border border-indigo-200 p-3 dark:border-indigo-900">
+                <div>
+                  <h4 className="font-bold">Revisar y mejorar fotos</h4>
+                  <p className="mt-1 text-xs text-slate-500">La IA propone observaciones y orden. Las mejoras se procesan en este navegador y se guardan como copias nuevas; los originales se conservan.</p>
+                  <p className="mt-1 text-xs text-slate-500">Modelo: {photoReviewSetting.provider==='codex'?`${CODEX_FUNCTION_MODELS.find(model=>model.id===photoReviewSetting.model_id)?.label??photoReviewSetting.model_id} · ${photoReviewSetting.reasoning_effort}`:`Claude Code · ${photoReviewSetting.model_id}`}</p>
+                </div>
+                <button type="button" onClick={reviewPhotos} disabled={busy||!ready||!isOwner||!ownerUid||photoReviewSettingLoading||content.photos.length<1||content.photos.length>10} className="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-300">{busy?'Revisando…':'Revisar fotos con IA'}</button>
+                {photoReview&&<div className="space-y-3 rounded-lg bg-indigo-50 p-3 dark:bg-indigo-950/30">
+                  <h5 className="text-sm font-bold">Recomendación de portada</h5>
+                  <p className="text-sm">{photoReview.recommended_cover_photo_id?`Foto ${Number(photoReview.recommended_cover_photo_id.slice(3))}: `:'Sin una portada utilizable. '}{photoReview.cover_reason}</p>
+                  <ol aria-label="Evaluación de fotos" className="space-y-2">{[...photoReview.photos].sort((left,right)=>left.suggested_order-right.suggested_order).map(result=>{
+                    const index=Number(result.id.slice(3))-1;const photo=photoReviewPhotoUrls[index];
+                    return <li key={result.id} className="flex items-start gap-2 rounded-lg border border-indigo-200 p-2 text-xs dark:border-indigo-800">
+                      {photo&&<img src={photo} alt={`Foto ${index+1} evaluada`} className="h-12 w-12 shrink-0 rounded object-cover"/>}
+                      <span><strong>Orden sugerido {result.suggested_order}{photoReview.recommended_cover_photo_id===result.id?' · portada recomendada':''}</strong><br/>{result.usable?'Utilizable':'No recomendada'}{result.issues.length?` · ${result.issues.join(', ')}`:''}</span>
+                    </li>;
+                  })}</ol>
+                  <button type="button" onClick={applyPhotoOrder} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">Aplicar orden sugerido</button>
+                </div>}
+                <label className="block space-y-1 text-xs font-semibold"><span>Recorte para la copia mejorada</span><select aria-label="Recorte para la copia mejorada" value={photoCrop} onChange={event=>setPhotoCrop(event.target.value as FacebookPhotoCrop)} className={inputClass}><option value="square">Cuadrado (1:1)</option><option value="four_three">Horizontal (4:3)</option></select></label>
+                <div className="grid gap-2 sm:grid-cols-2">{content.photos.map((url,index)=><div key={`enhance-${url}`} className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                  <img src={url} alt={`Foto seleccionada ${index+1}`} className="h-10 w-10 shrink-0 rounded object-cover"/>
+                  <span className="min-w-0 flex-1 text-xs">Foto {index+1}</span>
+                  <button type="button" onClick={()=>enhancePhoto(url)} disabled={busy||!isOwner||!ownerUid} className="rounded-lg border px-2 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50">Mejorar</button>
+                </div>)}</div>
+              </section>
             </section>
 
             <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">

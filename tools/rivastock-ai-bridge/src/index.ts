@@ -11,6 +11,7 @@ import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowle
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { executeTextGeneration } from './executeTextGeneration.ts';
 import { buildFacebookCopywritingPrompt, parseFacebookCopywritingContext, parseFacebookCopywritingOutput } from './facebookCopywriting.ts';
+import { buildFacebookPhotoReviewPrompt, parseFacebookPhotoReviewContext, parseFacebookPhotoReviewOutput } from './facebookPhotoReview.ts';
 import { cleanChatSessionDirectory, providerFor } from './providers.ts';
 import { MemoryTurnQueue } from './memory/queue.ts';
 import { processMemoryBatch, processPendingMemoryEmbeddings } from './memory/processor.ts';
@@ -106,6 +107,48 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
       if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
       await client.complete(workerId, job.id, JSON.stringify(output));
       process.stdout.write(`[AI Bridge] Propuesta de Facebook ${job.id} completada con ${job.provider}.\n`);
+      return;
+    }
+    if (job.task_type === 'fb_photo_review') {
+      if (job.provider === 'mock') throw new Error('La revisión de fotos requiere un proveedor visual real.');
+      const context = parseFacebookPhotoReviewContext(job.input);
+      const projectUrl = new URL(config.endpoint);
+      const remoteImages = context.photos.map(photo => {
+        const url = new URL(photo.url);
+        if (url.origin !== projectUrl.origin || !url.pathname.startsWith('/storage/v1/object/public/assets/')
+          || url.username || url.password || url.search || url.hash) {
+          throw new Error('Las fotos de revisión deben pertenecer al almacenamiento público de RivaStock.');
+        }
+        return photo;
+      });
+      const jobContext = await client.jobContext(workerId, job.id);
+      const provider = providerFor(job.provider, config);
+      const providerOptions = job.provider === 'codex'
+        ? {
+          model_id: jobContext.model_id ?? context.provider_model_id,
+          reasoning_effort: jobContext.reasoning_effort ?? 'low',
+          chat_id: null,
+          session_id: null,
+          safe_text_only: true,
+        }
+        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true };
+      await withDownloadedOrganizeImages(remoteImages, async (images, missingInformation) => {
+        if (images.length !== remoteImages.length || missingInformation.length) {
+          throw new Error('No se pudieron cargar todas las fotos para revisarlas.');
+        }
+        const result = await provider.execute(buildFacebookPhotoReviewPrompt(context), controller.signal, '', {
+          ...providerOptions,
+          images,
+        });
+        if (result.imageInputUnavailable) throw new Error('El proveedor no pudo recibir las fotos para revisarlas.');
+        const output = parseFacebookPhotoReviewOutput(result.output, context.photos);
+        if (stopping || controller.signal.aborted) throw new Error('La revisión fue interrumpida antes de completarse.');
+        await client.complete(workerId, job.id, JSON.stringify(output));
+      }, {
+        jobId: job.id,
+        fetchImage: (input, init = {}) => fetch(input, { ...init, redirect: 'error' }),
+      });
+      process.stdout.write(`[AI Bridge] Revisión de fotos ${job.id} completada con ${job.provider}.\n`);
       return;
     }
     if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');

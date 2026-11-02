@@ -460,12 +460,12 @@ serve(async (req) => {
     if (retentionError) return safeDbError(retentionError, 400, origin);
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
-      .eq('task_type', 'text_generation').is('chat_id', null)
+      .in('task_type', ['text_generation', 'fb_copywriting', 'fb_photo_review']).is('chat_id', null)
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error, 400, origin);
     const { count, error: countError } = await serviceClient.from('ai_jobs')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id).eq('task_type', 'text_generation').is('chat_id', null)
+      .eq('user_id', user.id).in('task_type', ['text_generation', 'fb_copywriting', 'fb_photo_review']).is('chat_id', null)
       .in('status', ['completed', 'failed']);
     if (countError) return safeDbError(countError, 400, origin);
     return jsonResponse({ jobs: data ?? [], finished_task_count: count ?? 0 }, 200, origin);
