@@ -115,7 +115,7 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 8. **Credencial temporal de la CLI (`cli_login_postgres`):** buscá en la documentación oficial de Supabase si esas credenciales vencen solas y cuándo. Si vencen, registralo en `KEY_ROTATION.md` y sacá la acción de `OWNER_ACTIONS.md`. Si no vencen o no está claro, verificá en el inventario que ningún consumidor use la contraseña de la base (las Edge Functions y la app usan claves, no la contraseña). Si nadie la usa, restablecé la contraseña de la base con la Management API sin imprimirla y documentá; si algo la usa, dejá en `OWNER_ACTIONS.md` un único paso exacto.
 - **Commit:** `fix(security): migrate backend and clients off legacy Supabase keys`
 
-### [ ] A2 Prevención de nuevas exposiciones
+### [x] A2 Prevención de nuevas exposiciones
 - Agregá a `AGENTS.md` una sección “Secretos” con la regla de §1.2 y la lista de comandos prohibidos.
 - **`scripts/backup-db.mjs` (`npm run backup:db`)**, el único método de backup permitido:
   - obtiene la conexión temporal ejecutando `supabase db dump --linked --dry-run` como proceso hijo y **captura su salida en memoria** (nunca la muestra, ni la escribe en logs o archivos);

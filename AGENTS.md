@@ -2,6 +2,14 @@
 
 Este archivo es el contexto compartido de los agentes de código que trabajan en este repositorio. Codex lo lee como instrucciones del proyecto; CLAUDE.md lo importa para Claude Code. Es memoria del proyecto de desarrollo, no la biblioteca de IA visible para clientes.
 
+## Secretos
+
+- Nunca ejecutes un comando que imprima claves, tokens, contraseñas, cadenas de conexión o `PGPASSWORD`. Si necesitás un valor, leelo dentro de un proceso y usalo sin mostrarlo.
+- No ejecutes `supabase projects api-keys` sin un filtro que excluya las claves; no uses `cat`/`type` para `.env`, `env`, `vercel env pull` hacia la consola, ni volcados de `Get-ChildItem Env:`.
+- No ejecutes `supabase db dump --dry-run` directamente en la consola. Usá solo `npm run backup:db`, que captura la salida sensible en memoria y la descarta.
+- Nunca guardes claves, contraseñas, tokens o contenido de `.env` en archivos versionados, logs, capturas o mensajes.
+- Si una salida muestra un secreto, dejá de usarlo y registrá el incidente en `docs/ai/OWNER_ACTIONS.md` sin copiar el valor.
+
 ## Producto y arquitectura
 
 RivaStock es una aplicación de gestión de negocios, construida con React, TypeScript y Vite. Supabase provee autenticación, Postgres y Edge Functions; la aplicación web se despliega en Vercel. El proyecto también contiene la extensión de Facebook y un AI Bridge local.

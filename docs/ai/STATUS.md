@@ -1,5 +1,24 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — A2 completada; sigue A1
+
+- Se adoptó `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke SQL y ambos scripts SQL desde Desktop; `node docs/ai/multi-business-sql-smoke.mjs` terminó en `TODO OK`. El commit `fcbdb36` de adopción está en `main` con la cuenta `Rivas2302`.
+- A2 `[x]`: `npm run backup:db` captura la salida de `supabase db dump --linked --dry-run` en memoria; `pg_dump` y los conteos exactos usan variables de entorno en procesos hijos. La prueba con CLI falsa confirmó que la salida y los archivos no contienen su `PGPASSWORD`.
+- Backup verificado en `%USERPROFILE%\rivastock-backups\20261102T214119Z`: 82 tablas, 13.740 filas, `schema.sql` 802.172 B, `data.sql` 40.111.107 B; `table-counts.csv` contiene 82 conteos cuya suma es 13.740. Los conteos previos y posteriores coinciden con los bloques `COPY` exportados.
+- Los intentos previos sin verificación no se usaron: `20261102T214016Z` conserva solo `schema.sql` y tiene `BACKUP-UNVERIFIED.txt`; `20261102T212224Z` también sigue marcado como no verificado. Se eliminaron solo directorios vacíos creados durante el diagnóstico. No hubo migraciones ni despliegues.
+- Verificación local final: lint aprobado; 652 pruebas en 107 archivos; build, secret scan y `perf:check` aprobados. `npm run verify` termina en `npm audit` con 2 vulnerabilidades moderadas de Vitest y 1 alta de Vite; queda para A4.
+- T5.4 sigue implementada pero sin migración ni despliegue; quedó aislada en `wip/t5.4-group-performance-open`. No se incluyó su frontend en `main`.
+- La revisión inicial de dependencias deja 2 vulnerabilidades moderadas y 1 alta para A4. Las salidas de CLI con `cli_login_postgres` expuestas anteriormente quedan registradas para A1; el nuevo backup no volvió a imprimir credenciales.
+- **Siguiente:** A1, empezando por el inventario de consumidores y la sustitución segura de claves.
+
+## 2026-11-02 — T5.4 pausada en punto seguro; plan maestro adoptado
+
+- T5.4 tiene implementación local de sugerencias deterministas, panel de rendimiento y vista SQL `fb_group_performance`; todavía **no** se aplicó la migración, no se desplegó y no se probó en producción.
+- Verificación local: `npm run lint` aprobado; `npm test -- --maxWorkers=1` pasó **652/652** en 107 archivos; `e2e/automations.spec.ts` pasó **32/32**; `npm run test:facebook:concurrency` pasó 20 iteraciones. Se actualizaron los fixtures E2E al RPC `approve_facebook_publication_v2`.
+- El backup parcial `%USERPROFILE%\rivastock-backups\20261102T212224Z` **no está verificado**: `schema.sql` y `data.sql` se exportaron, pero una primera rutina no reconoció los nombres de tabla entre comillas al validar los bloques `COPY`. No usarlo para migraciones; revisar el marcador `BACKUP-UNVERIFIED.txt`. No se aplicó ningún cambio a la base.
+- No hubo despliegue de frontend, cambios de Bridge ni actividad/publicación de Facebook. Se conserva `supabase/.temp/cli-latest` sin incluirlo en commits.
+- T5.4 se preserva en `wip/t5.4-group-performance-open`; el plan maestro y sus documentos requeridos están en `main`. No se aplicó la migración ni se desplegó la interfaz de T5.4.
+
 ## 2026-11-02 — T5.3 desplegada; sigue T5.4
 
 - T5.3 `[x]` quedó implementada y en producción: revisión visual y recomendaciones de orden/portada; mejoras locales no destructivas con copia nueva y RPC que conserva la original. Migración aplicada tras backup verificado.
