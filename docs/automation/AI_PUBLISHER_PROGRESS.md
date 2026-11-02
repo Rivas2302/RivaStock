@@ -1,5 +1,18 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 — T5.3 desplegada; sigue T5.4
+
+- T5.3 `[x]`: el modal permite pedir una revisión visual de las fotos actuales, muestra por foto utilidad/problemas/orden y recomienda portada; el usuario conserva la decisión. El editor también permite recortar 1:1 o 4:3, limitar a 2048 px, ajustar brillo/contraste y componer PNG transparente sobre blanco. Cada mejora se sube como foto nueva y la RPC la añade al producto sin quitar el original; no se implementó quitar fondo.
+- La migración única `20261102202448_fb_photo_review_and_enhancements` quedó aplicada en `RivaStock_Oficial`; Supabase confirma que figura aplicada. `ai-bridge` quedó ACTIVE v11 con `verify_jwt=false`. Los permisos de las RPC se verificaron en producción y sus regresiones PGlite pasan.
+- Backup lógico verificado fuera del repo: `%USERPROFILE%\rivastock-backups\20261102T204025Z`. Incluye `schema.sql` (792.598 B), `data.sql` (41.160.113 B), 82 tablas/13.740 filas, 373 objetos `assets`, 0 `knowledge` y 111 migraciones copiadas. Todos los conteos exactos previos, filas exportadas y conteos posteriores coinciden por tabla; manifiesto y dumps no están vacíos.
+- `adf56dd` y el arreglo `0b5911f` se publicaron directamente en `main` con Rivas2302; ambos checks de Vercel terminaron `success`. El paquete generado del Bridge pasó 1.15.0 → 1.16.0 y, tras detectar metadatos MIME inconsistentes en fotos reales, a 1.17.0. El actualizador in-place preservó `.env` y sesiones, dejó un solo worker, bloqueo activo, heartbeat reciente y estado idle. IA → Conexión mostró “Conectada”.
+- Ensayo real de producción, sin publicar: la PC revisó tres fotos existentes con texto visual; la app recibió tres evaluaciones y una portada recomendada. Se eliminó la tarea desde IA → Tareas; la base quedó con cero tareas `fb_photo_review` del ensayo. No se modificó el producto ni hubo actividad en Facebook.
+- Primera revisión real falló porque el nombre `.webp` de las fotos no coincidía con `Content-Type: image/jpeg` del Storage. El Bridge ahora usa el MIME real descargado solo para esta revisión, mantiene el modo estricto por defecto para otros consumidores y nombra el archivo temporal según ese MIME. Se agregó una regresión; Bridge typecheck y **87/87** pruebas pasaron.
+- Verificación de la tarea: `npm run lint`, `npm test` (**648/648**, 106 archivos), `npm run test:facebook:concurrency` (20 iteraciones), PGlite de migración, y Bridge typecheck/test aprobados. `git diff --check` aprobado. Build y `perf:check` quedan para el cierre de fase T5.6 según el plan.
+- El artefacto local 1.17.0 instalado mide 79.385 B (SHA-256 `DA05787614020C2E599099DC0E020043E8C0223F6C9EA131C5CC6825E29CB115`). Vercel sirve 1.17.0 en un tar de 79.018 B; contiene los mismos 38 archivos y el código del worker/helper coincide tras normalizar LF/CRLF. El hash del contenedor difiere por la normalización de texto durante el build.
+- **Desvío de credencial:** otro `supabase db dump --linked --dry-run` ejecutado a las 20:39Z volvió a mostrar en la salida de herramienta la contraseña temporal de `cli_login_postgres`; solo se usó en memoria. La revisión/revocación quedó anotada en `docs/ai/OWNER_ACTIONS.md`.
+- **Siguiente:** T5.4, sugerencias y rendimiento por grupo. No se publicó contenido ni se ejecutó una acción de la extensión de Facebook.
+
 ## 2026-11-02 — T5.2 desplegada
 
 - T5.2 `[x]`: el modal ofrece **Redactar con IA**, muestra proveedor/modelo/razonamiento, permite editar la propuesta y aplicarla al formulario; aplicar nunca aprueba ni crea una publicación. La RPC construye el contexto del producto, fichas de Conocimientos coincidentes y tono; la validación del JSON y las reglas del prompt se cubren con pruebas.

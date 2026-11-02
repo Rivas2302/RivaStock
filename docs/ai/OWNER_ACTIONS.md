@@ -16,6 +16,8 @@ Seguir la guía oficial de [rotación de una clave comprometida](https://supabas
 
 Durante el backup del 2/11, la salida de `supabase db dump --linked --dry-run` mostró la variable `PGPASSWORD` del rol temporal `cli_login_postgres` (se repitió al obtener el login temporal para el dump PostgreSQL). No se copió a archivos ni al repositorio, pero debe tratarse como expuesta hasta que Supabase confirme su vencimiento.
 
+El 2/11 a las 20:39Z volvió a aparecer la contraseña temporal en la salida de herramienta durante otra ejecución de `supabase db dump --linked --dry-run`. No se guardó en archivos; tratala como una exposición adicional y verificá su vencimiento o revocación.
+
 1. Revisá en Supabase la sesión/credencial CLI asociada al rol `cli_login_postgres` del proyecto `RivaStock_Oficial`; revocala si sigue vigente y rotá la contraseña de base si el CLI no garantiza su expiración.
 2. Confirmá esta revisión junto con la rotación de la clave `service_role` legacy indicada arriba.
 
@@ -25,9 +27,9 @@ Claude está habilitado en el Bridge, pero el dueño indicó que primero debe co
 
 1. En PowerShell escribir `claude`, completar inicio de sesión o primer uso, salir con `/exit` y probar: `claude -p "Respond exactly RIVA-CLAUDE-PROBE-OK" --output-format json --max-turns 1`.
 
-## AI Bridge 1.15.0 y extensión Facebook 0.5.21
+## AI Bridge 1.17.0 y extensión Facebook 0.5.21
 
-La PC vinculada ya tiene el AI Bridge **1.15.0** instalado desde el paquete generado; se verificó un solo worker activo y heartbeat reciente. La extensión pública sigue en **0.5.21**. Para las validaciones en vivo pendientes hace falta el perfil de Chrome de Riva con sesión de Facebook y la extensión activa.
+La PC vinculada ya tiene el AI Bridge **1.17.0** instalado desde el paquete generado; se verificó un solo worker activo y heartbeat reciente. La extensión pública sigue en **0.5.21**. Para las validaciones en vivo pendientes hace falta el perfil de Chrome de Riva con sesión de Facebook y la extensión activa.
 
 1. En el perfil Chrome de RivaStock con sesión de Facebook, instalá o recargá la extensión Facebook **0.5.21** desde el flujo habitual de RivaStock.
 2. Confirmá que la extensión está conectada. Para trazas con imagen, habilitá el permiso de capturas desde el panel de conexión.

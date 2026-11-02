@@ -399,7 +399,7 @@ Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave
 - Tests del validador y del armado del prompt.
 - **Commit:** `feat(automation): AI copywriting for Marketplace and group posts`
 
-### [ ] T5.3 Revisión de fotos con IA y mejoras locales
+### [x] T5.3 Revisión de fotos con IA y mejoras locales
 - **Revisión** (`review_photos`, vía supervisor o `ai_jobs`): la IA ve las fotos aprobadas y devuelve, por foto, `{usable, issues: ["borrosa","oscura","fondo desordenado","texto/marca de agua ajena","no muestra el producto"], suggested_order}` y una recomendación de portada. Se muestra en el modal antes de aprobar. Es opcional y el usuario decide.
 - **Mejoras locales sin costo** (en el navegador, `canvas`, sin IA):
   - recorte cuadrado o 4:3 centrado;
