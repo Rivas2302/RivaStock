@@ -156,6 +156,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
   };
   const rememberFlow=variant=>{const id=crypto.randomUUID();document.documentElement.setAttribute('data-rivastock-flow',id);return ['variant:'+variant,'flow:'+id];};
   const checkFlow=()=>{const id=baseline.find(value=>value.startsWith('flow:'))?.slice(5);if(!id||document.documentElement.getAttribute('data-rivastock-flow')!==id)throw new Error('Cambió el formulario después de prepararlo. No se envió.');};
+  const markRehearsalDraft=()=>{
+    if(content?.rehearsal!==true)return;
+    if(typeof content.rehearsalId!=='string'||!content.rehearsalId)throw new Error('El ensayo no tiene un identificador local para proteger el borrador.');
+    document.documentElement.dataset.rivastockRehearsalId=content.rehearsalId;
+  };
   const issue = (kind,message,details={}) => {const error=new Error(message);error.issue={kind,message,...details};throw error;};
   const visible = element => element.getClientRects().length > 0;
   const text = element => normalize(element.textContent);
@@ -212,6 +217,119 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     if (/restring|bloque|verifica|verificaci[oó]n/i.test(alerts)) throw new Error('Facebook mostró una restricción o verificación. Revisá la pestaña.');
   };
   safety();
+  if (action === 'submit' && content?.rehearsal === true) {
+    throw new Error('El modo ensayo no permite enviar a Facebook.');
+  }
+  if (action === 'discard_draft') {
+    if (content?.rehearsal !== true) throw new Error('Descartar borradores requiere un ensayo activo.');
+    await reportTraceStep('rehearsal_discard_draft_started', 'ok', true);
+    const discardNames = ['Descartar', 'Descartar borrador', 'Descartar publicación', 'Salir sin guardar', 'Salir sin guardar cambios'];
+    const closeNames = ['Cerrar', 'Salir', 'Close'];
+    const exactButton = (names, root = document) => {
+      const matches = Array.from(root.querySelectorAll('button,[role="button"]')).filter(visible)
+        .filter(element => names.includes(accessibleName(element)));
+      return matches.length === 1 ? matches[0] : null;
+    };
+    const dialogs = () => Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
+    const confirmDiscard = async () => {
+      const dialog = dialogs().find(node => /descartar|salir sin guardar/i.test(text(node)));
+      if (!dialog) throw new Error('Facebook no mostró una confirmación identificable para descartar el borrador.');
+      const discard = exactButton(discardNames, dialog);
+      if (!discard || !enabled(discard)) throw new Error('No se encontró un control inequívoco para descartar el borrador.');
+      discard.click();
+      await wait(() => !dialogs().includes(dialog), 'confirmar el descarte del borrador');
+    };
+    if (content.rehearsalMechanism === 'marketplace') {
+      if (location.pathname.replace(/\/$/, '') !== '/marketplace/create/item' || location.search) {
+        return { clean: true, requiresBlankVerification: false };
+      }
+      const fields = () => ({
+        title: Array.from(document.querySelectorAll('label')).filter(node => Array.from(node.querySelectorAll('span')).some(span => text(span) === 'Título'))
+          .flatMap(node => Array.from(node.querySelectorAll('input[type="text"]'))),
+        price: Array.from(document.querySelectorAll('label')).filter(node => Array.from(node.querySelectorAll('span')).some(span => text(span) === 'Precio'))
+          .flatMap(node => Array.from(node.querySelectorAll('input[type="text"]'))),
+        description: Array.from(document.querySelectorAll('label')).filter(node => Array.from(node.querySelectorAll('span')).some(span => text(span) === 'Descripción'))
+          .flatMap(node => Array.from(node.querySelectorAll('textarea'))),
+      });
+      const current = fields();
+      if (!current.title.length || !current.price.length) throw new Error('No se pudo verificar el formulario de Marketplace antes de limpiar el borrador.');
+      if(content.rehearsalPhase==='preflight') {
+        if ([...current.title, ...current.price, ...current.description].some(field => field.value.trim())) {
+          throw new Error('Hay un borrador de Marketplace previo. Se conservó sin cambios; cerralo manualmente antes de ensayar.');
+        }
+        return { clean: true, requiresBlankVerification: true };
+      }
+      if(document.documentElement.dataset.rivastockRehearsalId!==content.rehearsalId) {
+        throw new Error('El borrador no pertenece a este ensayo. Se conservó sin cambios.');
+      }
+      if(current.title.length!==1||current.price.length!==1
+        ||(current.title[0].value.trim()&&normalize(current.title[0].value)!==normalize(content.title))
+        ||(current.price[0].value.trim()&&!parsePriceARS(current.price[0].value,content.price))
+        ||(current.description.length&&current.description.some(field=>field.value.trim()&&lines(field.value).trim()!==lines(content.description).trim()))) {
+        throw new Error('El borrador cambió respecto del ensayo. Se conservó sin cambios.');
+      }
+      if ([...current.title, ...current.price, ...current.description].every(field => !field.value.trim())) {
+        return { clean: true, requiresBlankVerification: true };
+      }
+      const close = exactButton(closeNames);
+      if (!close || !enabled(close)) throw new Error('No se encontró un control inequívoco para cerrar el borrador de Marketplace.');
+      close.click();
+      await wait(() => dialogs().some(node => /descartar|salir sin guardar/i.test(text(node))) || location.pathname.replace(/\/$/, '') !== '/marketplace/create/item', 'cerrar el formulario de Marketplace');
+      if (!dialogs().some(node => /descartar|salir sin guardar/i.test(text(node)))) {
+        throw new Error('Facebook cerró el formulario sin confirmar el descarte del borrador.');
+      }
+      await confirmDiscard();
+      delete document.documentElement.dataset.rivastockRehearsalId;
+      return { discarded: true, requiresBlankVerification: true };
+    }
+    if (content.rehearsalMechanism === 'group_direct') {
+      const dialog = dialogs().find(node => node.querySelector('[contenteditable="true"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]'));
+      if(content.rehearsalPhase==='preflight') {
+        if(dialog)throw new Error('Hay un editor de grupo previo. Se conservó sin cambios; cerralo manualmente antes de ensayar.');
+        return { clean: true, requiresBlankVerification: false };
+      }
+      if (!dialog) return { clean: true, requiresBlankVerification: false };
+      const editor=dialog.querySelector('[contenteditable="true"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]');
+      if(document.documentElement.dataset.rivastockRehearsalId!==content.rehearsalId) {
+        throw new Error('El editor no tiene la marca del ensayo activo. Se conservó sin cambios.');
+      }
+      if(!editor||!matchesEditor(editor,content.groupText)) {
+        throw new Error('El editor no coincide con este ensayo. Se conservó sin cambios.');
+      }
+      if(photoPreviews(dialog).length!==(Array.isArray(content.photos)?content.photos.length:0)) {
+        throw new Error('Las fotos del editor cambiaron respecto del ensayo. Se conservaron sin cambios.');
+      }
+      const close = exactButton(closeNames, dialog);
+      if (!close || !enabled(close)) throw new Error('No se encontró un control inequívoco para cerrar el borrador del grupo.');
+      close.click();
+      await wait(() => dialogs().some(node => /descartar|salir sin guardar/i.test(text(node))) || !dialogs().includes(dialog), 'cerrar el editor del grupo');
+      if (!dialogs().some(node => /descartar|salir sin guardar/i.test(text(node)))) {
+        throw new Error('Facebook cerró el editor del grupo sin confirmar el descarte.');
+      }
+      await confirmDiscard();
+      await wait(() => !dialogs().some(node => node.querySelector('[contenteditable="true"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]')), 'verificar que el editor del grupo se descartó');
+      delete document.documentElement.dataset.rivastockRehearsalId;
+      return { discarded: true, requiresBlankVerification: false };
+    }
+    throw new Error('El destino del ensayo no admite descarte de borrador.');
+  }
+  if (action === 'verify_draft_blank') {
+    if (content?.rehearsal !== true || content.rehearsalMechanism !== 'marketplace'
+      || location.pathname.replace(/\/$/, '') !== '/marketplace/create/item' || location.search) {
+      throw new Error('La verificación de borrador vacío requiere Marketplace y un ensayo activo.');
+    }
+    await wait(() => buttons('Guardar borrador').length, 'abrir el formulario vacío de Marketplace');
+    const title = Array.from(document.querySelectorAll('label')).filter(node => Array.from(node.querySelectorAll('span')).some(span => text(span) === 'Título'))
+      .flatMap(node => Array.from(node.querySelectorAll('input[type="text"]')));
+    const price = Array.from(document.querySelectorAll('label')).filter(node => Array.from(node.querySelectorAll('span')).some(span => text(span) === 'Precio'))
+      .flatMap(node => Array.from(node.querySelectorAll('input[type="text"]')));
+    if (title.length !== 1 || price.length !== 1 || title[0].value || price[0].value) {
+      throw new Error('Marketplace conservó datos del borrador anterior. El ensayo no se marcó como terminado.');
+    }
+    if(document.documentElement.dataset.rivastockRehearsalId===content.rehearsalId)delete document.documentElement.dataset.rivastockRehearsalId;
+    await reportTraceStep('rehearsal_draft_discarded', 'ok', true);
+    return { ready: true, blank: true };
+  }
   if (action === 'own_content_snapshot') await reportTraceStep('own_content_reconciliation_scan');
   else if (action === 'check_existing') await reportTraceStep('marketplace_check_existing');
   else if (action === 'marketplace_prepare') await reportTraceStep('marketplace_form_opened');
@@ -390,6 +508,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     await wait(() => buttons('Guardar borrador').length);
     const title = field('Título', 'input[type="text"]'); const price = field('Precio', 'input[type="text"]');
     if (title.value || price.value) throw new Error('Hay un borrador existente. No se sobrescribió.');
+    markRehearsalDraft();
     await progress('Completando título y precio');
     setValue(title, content.title); setValue(price, String(content.price));
     if(!parsePriceARS(price.value, content.price))throw new Error('El precio del formulario no coincide con el aprobado. No se envió.');
@@ -595,6 +714,7 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     let editor = await wait(() => document.querySelector('[contenteditable="true"][role="textbox"][aria-label="Crea una publicación pública..."],[contenteditable="true"][role="textbox"][aria-label="Escribe algo..."]'));
     const dialog = editor.closest('[role="dialog"]');
     if (!dialog || text(editor)) throw new Error('El editor del grupo contiene un borrador. No se sobrescribió.');
+    markRehearsalDraft();
     await reportTraceStep('group_editor_ready','ok',true,dialog);
     const anonymous = dialog.querySelector('[role="switch"][aria-label="Publicar de forma anónima"]');
     if (anonymous?.getAttribute('aria-checked') === 'true') throw new Error('El editor está en modo anónimo. No se envió.');
@@ -652,6 +772,11 @@ export async function facebookFormAction(action, content, photos = [], baseline 
     return { ready: true, baseline: [...rememberFlow('group'),photoSnapshot(dialog,photos.length),photoFileSnapshot(dialog),...before,...new Set(existingPostUrls),...alerts,`author:${authorId}`,`group:${actual}`,`photos:${photos.length}`,`target:${target}`,...new Set([targetSeg,actualSeg,/^\d+$/.test(authorGroupSeg??'')?authorGroupSeg:null].filter(Boolean).map(seg=>'groupseg:'+seg))].filter(value=>typeof value==='string') };
   }
   if (action === 'submit' || action === 'validate_submit') {
+    if (action === 'submit' && content?.rehearsal === true) throw new Error('El modo ensayo no permite enviar a Facebook.');
+    if (action === 'validate_submit' && content?.rehearsal === true
+      && document.documentElement.dataset.rivastockRehearsalId!==content.rehearsalId) {
+      throw new Error('El formulario no pertenece al ensayo activo. No se envió.');
+    }
     // One final click per tab and flow: a repeated submit never clicks again.
     const submitFlow=baseline.find(value=>value.startsWith('flow:'))?.slice(5);
     const priorSubmit=(()=>{try{return JSON.parse(document.documentElement.getAttribute('data-rivastock-submit'));}catch{return null;}})();

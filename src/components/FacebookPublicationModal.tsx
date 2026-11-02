@@ -15,8 +15,8 @@ import {publicationBlock,validateGroupSelection} from '../lib/facebookPublicatio
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 import { preparePublicationPhotos } from '../lib/facebookPublicationPhotos';
 
-export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void }) {
-  const { ownerUid } = useAuth();
+export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean }) {
+  const { ownerUid, isOwner } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const [publicationProduct, setPublicationProduct] = useState(product);
   const [content, setContent] = useState(() => initialPublication(product));
@@ -31,11 +31,12 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [notice, setNotice] = useState('');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rehearsalDestination, setRehearsalDestination] = useState('marketplace');
   const [approved, setApproved] = useState(false);
   const [repeatOf,setRepeatOf]=useState<string|null>(null);
-  const [view,setView]=useState<'loading'|'manage'|'compose'>('loading');
+  const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal?'compose':'loading');
   const hydrated=useRef(false);
-  const viewTouched=useRef(false);
+  const viewTouched=useRef(startInRehearsal);
   const submitting = useRef(false);
   // Persist the intent before the request. Reopening or reloading retries the
   // same approved content without generating another job after a lost response.
@@ -109,6 +110,28 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     await refresh();
     setRepeatOf(null);setApproved(false);
     if(!onApproved){viewTouched.current=true;setView('manage');}
+  });
+  const rehearsalTargets:Array<{key:string;name:string;mechanism:'marketplace'|'group_direct';url:string;groupId?:string}>=[
+    ...(marketplace?[{key:'marketplace',name:'Marketplace',mechanism:'marketplace' as const,url:'https://www.facebook.com/marketplace/create/item'}]:[]),
+    ...groups.filter(group=>selectedGroups.includes(group.id)).map(group=>({key:group.id,name:group.name,mechanism:'group_direct' as const,url:group.url,groupId:group.id})),
+  ];
+  const activeRehearsalTarget=rehearsalTargets.find(target=>target.key===rehearsalDestination)??rehearsalTargets[0];
+  const rehearse = () => run(async () => {
+    if(!isOwner)throw new Error('Solo el dueño puede iniciar ensayos de publicación.');
+    if(!canWrite||!ownerUid)throw new Error('No tenés permiso para preparar este ensayo.');
+    if(!activeRehearsalTarget)throw new Error('Elegí Marketplace o un grupo seleccionado para ensayar.');
+    const targetGroup=activeRehearsalTarget.groupId?groups.find(group=>group.id===activeRehearsalTarget.groupId):undefined;
+    if(targetGroup&&!selectedGroups.includes(targetGroup.id))throw new Error('Volvé a seleccionar el grupo antes de iniciar el ensayo.');
+    const rehearsalContent={...content,...(targetGroup?{groupText:groupPublicationText(content)}:{})};
+    const contentProblem=validatePublication(rehearsalContent,activeRehearsalTarget.mechanism==='marketplace',targetGroup?[targetGroup.id]:[],true);
+    if(contentProblem)throw new Error(contentProblem);
+    if(!devices.some(device=>deviceConnected(device)))throw new Error('Conectá la PC vinculada para procesar el ensayo.');
+    const id=await facebookRpc<string>('request_facebook_rehearsal',{
+      p_product:publicationProduct.id,
+      p_content:rehearsalContent,
+      p_destination:{mechanism:activeRehearsalTarget.mechanism,name:activeRehearsalTarget.name,url:activeRehearsalTarget.url},
+    });
+    setNotice(`Ensayo solicitado para ${activeRehearsalTarget.name}. No crea una publicación ni autoriza el clic de Publicar. Referencia: ${id}. La PC lo procesará cuando consulte su cola.`);
   });
   const update = (patch: Partial<typeof content>) => { setContent(value => ({ ...value, ...patch })); setApproved(false); };
   const blockReason=publicationBlock(publications,marketplace,selectedGroups,groups);
@@ -223,6 +246,17 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         </fieldset>
 
         {blockReason&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">{blockReason}</p>}
+        {isOwner&&<section aria-label="Ensayo sin publicar" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <h3 className="font-bold">Ensayar sin publicar</h3>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">La PC preparará, validará y descartará un destino. El ensayo nunca autoriza el clic de Publicar.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="min-w-0 flex-1 text-sm">Destino del ensayo<select aria-label="Destino del ensayo" className={inputClass} value={activeRehearsalTarget?.key??''} onChange={event=>setRehearsalDestination(event.target.value)} disabled={busy||!rehearsalTargets.length}>
+              {!rehearsalTargets.length&&<option value="">Seleccioná Marketplace o un grupo</option>}
+              {rehearsalTargets.map(target=><option key={target.key} value={target.key}>{target.name}</option>)}
+            </select></label>
+            <button type="button" disabled={busy||!ready||!rehearsalTargets.length||Boolean(validateGroupSelection(groups,selectedGroups))} onClick={rehearse} className="rounded-xl border border-amber-700 px-4 py-3 text-sm font-bold text-amber-950 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-100">{busy?'Solicitando…':'Ensayar sin publicar'}</button>
+          </div>
+        </section>}
         <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy||!canWrite} checked={approved} onChange={event=>setApproved(event.target.checked)}/>Revisé el contenido, las fotos y los destinos y autorizo esta publicación.</label>

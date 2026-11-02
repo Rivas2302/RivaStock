@@ -9,6 +9,7 @@ let stepSerial = Promise.resolve();
 let flushing = false;
 let pendingFlush = null;
 let lastCaptureAt = 0;
+let activeTraceLocalKey = null;
 
 const withStorageLock = (operation) => {
   const result = storageSerial.then(operation, operation);
@@ -145,7 +146,7 @@ export function flushTraceQueue() {
       const event = trace?.events?.[0];
       if (!trace || !event) {
         if (trace?.finished) {
-          await updateQueue(current => { if (current[0]?.attemptId === trace.attemptId) current.shift(); });
+          await updateQueue(current => { if (current[0]?.localKey === trace.localKey) current.shift(); });
           continue;
         }
         return;
@@ -156,7 +157,7 @@ export function flushTraceQueue() {
       try {
         const result = await postEvent(connection, event, trace);
         await updateQueue(current => {
-          const active = current.find(item => item.attemptId === trace.attemptId);
+          const active = current.find(item => item.localKey === trace.localKey);
           if (!active || active.events?.[0]?.id !== event.id) return;
           active.events.shift();
           if (event.action === 'trace_start') active.traceId = result.trace_id;
@@ -180,15 +181,19 @@ export function flushTraceQueue() {
 }
 
 export async function startTrace(mode, job) {
-  if (!['real', 'rehearsal'].includes(mode) || !job?.attemptId || !job?.destination?.mechanism) return null;
+  const jobKey = mode === 'real' ? job?.attemptId : job?.rehearsalId;
+  if (!['real', 'rehearsal'].includes(mode) || !jobKey || !job?.destination?.mechanism) return null;
   const { connection } = await chrome.storage.local.get('connection');
   if (!connection) return null;
   const localKey = await updateQueue(queue => {
-    const existing = queue.find(trace => trace.attemptId === job.attemptId && trace.deviceId === connection.deviceId);
+    const existing = queue.find(trace => trace.jobKey === jobKey && trace.mode === mode && trace.deviceId === connection.deviceId);
     if (existing) return existing.localKey;
     const trace = {
       localKey: crypto.randomUUID(),
-      attemptId: job.attemptId,
+      jobKey,
+      attemptId: mode === 'real' ? job.attemptId : null,
+      rehearsalId: mode === 'rehearsal' ? job.rehearsalId : null,
+      mode,
       deviceId: connection.deviceId,
       projectUrl: connection.url,
       traceId: null,
@@ -200,6 +205,7 @@ export async function startTrace(mode, job) {
           mode,
           delivery_id: mode === 'real' ? job.id : null,
           attempt_id: mode === 'real' ? job.attemptId : null,
+          rehearsal_id: mode === 'rehearsal' ? job.rehearsalId : null,
           mechanism: job.destination.mechanism,
           extension_version: extensionVersion(),
           summary: { source: 'facebook-extension', resumed: false },
@@ -209,8 +215,14 @@ export async function startTrace(mode, job) {
     queue.push(trace);
     return trace.localKey;
   });
+  activeTraceLocalKey = localKey;
   void flushTraceQueue();
   return localKey;
+}
+
+export async function traceIdForJob(jobKey) {
+  const queue = await readQueue();
+  return queue.find(trace => trace.jobKey === jobKey)?.traceId ?? null;
 }
 
 async function recordStep(name, status, options = {}) {
@@ -222,7 +234,9 @@ async function recordStep(name, status, options = {}) {
 
   const eventId = crypto.randomUUID();
   const accepted = await updateQueue(queue => {
-    const trace = queue.find(isOpenTrace);
+    const trace = options.jobKey
+      ? queue.find(item => item.jobKey === options.jobKey && isOpenTrace(item))
+      : queue.find(item => item.localKey === activeTraceLocalKey && isOpenTrace(item)) ?? [...queue].reverse().find(isOpenTrace);
     if (!trace) return false;
     const seq = trace.nextSeq++;
     trace.events.push({
@@ -266,11 +280,15 @@ export function step(name, status, options = {}) {
   return result;
 }
 
-export async function finishTrace(outcome, summary = {}) {
+export async function finishTrace(outcome, summary = {}, jobKey = null) {
   if (!['completed', 'aborted', 'failed', 'rehearsal_ok'].includes(outcome)) return false;
+  let finishedLocalKey = null;
   const accepted = await updateQueue(queue => {
-    const trace = [...queue].reverse().find(isOpenTrace);
+    const trace = jobKey
+      ? queue.find(item => item.jobKey === jobKey && isOpenTrace(item))
+      : queue.find(item => item.localKey === activeTraceLocalKey && isOpenTrace(item)) ?? [...queue].reverse().find(isOpenTrace);
     if (!trace) return false;
+    finishedLocalKey = trace.localKey;
     trace.finished = true;
     const summaryText = JSON.stringify(summary && typeof summary === 'object' ? summary : {});
     trace.events.push({
@@ -280,6 +298,9 @@ export async function finishTrace(outcome, summary = {}) {
     });
     return true;
   });
-  if (accepted) void flushTraceQueue();
+  if (accepted) {
+    if (activeTraceLocalKey === finishedLocalKey) activeTraceLocalKey = null;
+    void flushTraceQueue();
+  }
   return accepted;
 }

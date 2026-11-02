@@ -186,22 +186,35 @@ serve(async (req) => {
       }
       const deliveryId = body.delivery_id ?? null;
       const attemptId = body.attempt_id ?? null;
+      const rehearsalId = body.rehearsal_id ?? null;
       if (body.mode === 'real' && (!isUuid(deliveryId) || !isUuid(attemptId))) {
         return jsonResponseWithCors({ error: 'La traza real requiere un envío e intento válidos.' }, 400, origin);
       }
-      if (body.mode === 'rehearsal' && (deliveryId !== null || attemptId !== null)) {
+      if (body.mode === 'real' && rehearsalId !== null) {
+        return jsonResponseWithCors({ error: 'La traza real no puede vincularse a un ensayo.' }, 400, origin);
+      }
+      if (body.mode === 'rehearsal' && (deliveryId !== null || attemptId !== null || !isUuid(rehearsalId))) {
         return jsonResponseWithCors({ error: 'El ensayo no puede vincularse a un envío real.' }, 400, origin);
       }
-      const { data, error } = await serviceClient.rpc('fb_trace_start', {
-        p_user_id: identity.ownerUid,
-        p_device_id: identity.deviceId,
-        p_delivery_id: deliveryId,
-        p_attempt_id: attemptId,
-        p_mode: body.mode,
-        p_mechanism: body.mechanism,
-        p_extension_version: body.extension_version,
-        p_summary: body.summary ?? {},
-      });
+      const { data, error } = body.mode === 'rehearsal'
+        ? await serviceClient.rpc('fb_trace_start_for_rehearsal', {
+          p_user_id: identity.ownerUid,
+          p_device_id: identity.deviceId,
+          p_rehearsal_id: rehearsalId,
+          p_mechanism: body.mechanism,
+          p_extension_version: body.extension_version,
+          p_summary: body.summary ?? {},
+        })
+        : await serviceClient.rpc('fb_trace_start', {
+          p_user_id: identity.ownerUid,
+          p_device_id: identity.deviceId,
+          p_delivery_id: deliveryId,
+          p_attempt_id: attemptId,
+          p_mode: body.mode,
+          p_mechanism: body.mechanism,
+          p_extension_version: body.extension_version,
+          p_summary: body.summary ?? {},
+        });
       if (error || !isUuid(data)) return errorResponse(undefined, origin);
       await cleanupExpiredTraces(serviceClient);
       return jsonResponseWithCors({ trace_id: data }, 201, origin);

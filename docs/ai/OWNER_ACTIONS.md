@@ -24,4 +24,11 @@ El paquete con lectura de `ai_function_settings` está generado y el Edge Functi
 
 ## Ensayo en vivo del publicador de Facebook
 
-El perfil Chrome de RivaStock inspeccionado en esta PC no tiene instalada la extensión de Facebook. La versión actual es **0.5.16**. Cuando vuelvas, abrí el perfil con sesión de Facebook y actualizá/recargá la extensión desde el ZIP de RivaStock; si querés trazas con imágenes, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso». Confirmá que la extensión está conectada. La validación en producción se limitará al modo ensayo, sin publicar.
+El perfil Chrome inspeccionado no tiene instalada la extensión de Facebook. La versión publicada actual es **0.5.16**; la entrega T1.4 genera **0.5.17** y requiere que Vercel termine antes de instalarla.
+
+1. Cuando el JSON público de versión indique 0.5.17, abrí el perfil de Chrome de RivaStock con sesión de Facebook e instalá/recargá el ZIP 0.5.17.
+2. Confirmá que la extensión está conectada. Si querés capturas en las trazas, abrí el panel de conexión y pulsá «Permitir capturas de la pestaña de Facebook para que la IA vea el proceso».
+3. Para cerrar T1.6, ejecutá cinco ensayos de Marketplace y cinco de grupo directo con productos y grupos elegidos por vos. La app debe mostrar las trazas y ningún contenido se publica.
+4. Si el ensayo se detiene por un borrador sin el marcador de la prueba, preservalo. El código no elimina borradores previos del dueño; no lo borres como parte del QA.
+
+La prueba en vivo debe confirmar los nombres accesibles reales de los controles para cerrar/descartar y que la verificación deja vacíos los formularios. No se publicará contenido fuera del modo ensayo.

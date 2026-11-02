@@ -119,13 +119,29 @@ export const facebookAdapter = {
     const photos = await fetchPublicationPhotos(job.content, config.url);
     config.onTiming?.('photos_ms',performance.now()-started);
     const marketplace=job.destination.mechanism==='marketplace';
-    const tab = await openAutomationTab(marketplace?marketplaceSearchUrl(job.content.title):job.destination.url);
-    await chrome.storage.local.set({ activeJob: { ...config.journalIdentity, job, deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'preparing', baseline: [] } });
+    const rehearsal=Boolean(config.rehearsalId);
+    const journalKey=rehearsal?'activeRehearsal':'activeJob';
+    const journal={...config.journalIdentity,job,deviceId:config.deviceId,projectUrl:config.url,stage:'preparing',baseline:[],...(rehearsal?{rehearsalId:config.rehearsalId,validated:false}: {})};
+    const tab = await openAutomationTab(marketplace?(rehearsal?job.destination.url:marketplaceSearchUrl(job.content.title)):job.destination.url);
+    journal.tabId=tab.id;
+    await chrome.storage.local.set({ [journalKey]: journal });
     for (let attempt = 0; attempt < 60; attempt++) {
       if ((await chrome.tabs.get(tab.id)).status === 'complete') break;
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     if(marketplace) {
+      const rehearsalContent={...job.content,rehearsal:true,rehearsalMechanism:'marketplace'};
+      if(rehearsal) {
+        const preflight={...rehearsalContent,rehearsalId:config.rehearsalId,rehearsalPhase:'preflight'};
+        const checked=await this.action(tab.id,'discard_draft',preflight);
+        if(checked.requiresBlankVerification)await this.action(tab.id,'verify_draft_blank',preflight);
+        await chrome.tabs.update(tab.id,{url:marketplaceSearchUrl(job.content.title)});
+        for(let attempt=0;attempt<60;attempt++) {
+          const current=await chrome.tabs.get(tab.id);
+          if(current.status==='complete'&&new URL(current.url).pathname.replace(/\/$/,'')==='/marketplace/you/selling')break;
+          await new Promise(resolve=>setTimeout(resolve,500));
+        }
+      }
       if(job.content.allowRepublish!==true) {
         await this.action(tab.id,'check_existing',job.content);
       }
@@ -135,9 +151,17 @@ export const facebookAdapter = {
         if(current.status==='complete'&&current.url===job.destination.url)break;
         await new Promise(resolve=>setTimeout(resolve,500));
       }
+      if(rehearsal) {
+        const preflight={...rehearsalContent,rehearsalId:config.rehearsalId,rehearsalPhase:'preflight'};
+        const checked=await this.action(tab.id,'discard_draft',preflight);
+        if(checked.requiresBlankVerification)await this.action(tab.id,'verify_draft_blank',preflight);
+      }
+    } else if(rehearsal) {
+      await this.action(tab.id,'discard_draft',{...job.content,rehearsal:true,rehearsalMechanism:'group_direct',rehearsalId:config.rehearsalId,rehearsalPhase:'preflight'});
     }
     config.onTiming?.('navigation_ms',performance.now()-started);
-    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', {...job.content,targetGroupUrl:marketplace?null:job.destination.url,targetGroupName:marketplace?null:job.destination.name??null}, photos);
+    const preparedContent={...job.content,...(rehearsal?{rehearsal:true,rehearsalId:config.rehearsalId}:{}),targetGroupUrl:marketplace?null:job.destination.url,targetGroupName:marketplace?null:job.destination.name??null};
+    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', preparedContent, photos);
     if (!result.ready) throw new Error('El formulario no está listo.');
     let baseline=result.baseline;
     if(!marketplace) {
@@ -149,7 +173,26 @@ export const facebookAdapter = {
       if(snapshot.complete!==true)throw new Error('«Tus publicaciones» no expone una lista completa con IDs de anuncio verificables. No se autorizó el clic.');
       baseline=[...baseline,'own-baseline:marketplace',...new Set((snapshot.items??[]).map(item=>item.id).filter(id=>/^\d+$/.test(id)).map(id=>'own:'+id))];
     }
-    return { job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline };
+    const prepared={...journal,job,deviceId:config.deviceId,projectUrl:config.url,tabId: tab.id, stage: 'prepared', baseline};
+    await chrome.storage.local.set({ [journalKey]: prepared });
+    return prepared;
+  },
+  async discardRehearsalDraft(active) {
+    if(!active?.tabId||!active?.job?.content)throw new Error('No se identificó la pestaña del ensayo para descartar el borrador.');
+    const content={...active.job.content,rehearsal:true,rehearsalId:active.rehearsalId,rehearsalMechanism:active.job.destination.mechanism};
+    const result=await this.action(active.tabId,'discard_draft',content);
+    if(result.requiresBlankVerification) {
+      if(result.discarded) {
+        await chrome.tabs.update(active.tabId,{url:'https://www.facebook.com/marketplace/create/item'});
+        for(let attempt=0;attempt<60;attempt++) {
+          const current=await chrome.tabs.get(active.tabId);
+          if(current.status==='complete'&&current.url==='https://www.facebook.com/marketplace/create/item')break;
+          await new Promise(resolve=>setTimeout(resolve,500));
+        }
+      }
+      await this.action(active.tabId,'verify_draft_blank',content);
+    }
+    return result;
   },
   async reconcile(active) {
     if(active.job.destination.mechanism==='marketplace') {

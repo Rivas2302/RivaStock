@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { finishTrace, flushTraceQueue, startTrace, step } from './recorder.js';
+import { finishTrace, flushTraceQueue, startTrace, step, traceIdForJob } from './recorder.js';
 
 const deviceId = '10000000-0000-4000-8000-000000000001';
 const attemptId = '20000000-0000-4000-8000-000000000001';
 const deliveryId = '30000000-0000-4000-8000-000000000001';
+const rehearsalId = '60000000-0000-4000-8000-000000000001';
 
 let values: Record<string, unknown>;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -22,7 +23,7 @@ beforeEach(() => {
     connection: { deviceId, url: 'https://project.supabase.co', key: 'public-key', token: 'device-token' },
   };
   const chromeMock = {
-    runtime: { getManifest: () => ({ version: '0.5.16' }) },
+    runtime: { getManifest: () => ({ version: '0.5.17' }) },
     storage: { local: {
       get: vi.fn(async (keys: string | string[]) => {
         const list = Array.isArray(keys) ? keys : [keys];
@@ -78,6 +79,26 @@ describe('Facebook trace recorder', () => {
     expect((values.automationTraceQueue as Array<{ events: unknown[] }>)[0].events).toEqual([]);
     await finishTrace('aborted', { reason: 'retry_test_complete' });
     await flushTraceQueue();
+    expect(values.automationTraceQueue).toEqual([]);
+  });
+
+  it('links a rehearsal trace only to its rehearsal and scopes its steps by job key', async () => {
+    await startTrace('rehearsal', { id: rehearsalId, rehearsalId, destination: { mechanism: 'marketplace' } });
+    const queued = (values.automationTraceQueue as Array<{ mode: string; jobKey: string; events: Array<{ payload: Record<string, unknown> }> }>)[0];
+    expect(queued.mode).toBe('rehearsal');
+    expect(queued.jobKey).toBe(rehearsalId);
+    expect(queued.events[0].payload).toMatchObject({
+      mode: 'rehearsal', delivery_id: null, attempt_id: null, rehearsal_id: rehearsalId,
+    });
+    await flushTraceQueue();
+    expect(await traceIdForJob(rehearsalId)).toBe('40000000-0000-4000-8000-000000000001');
+    await step('rehearsal_form_prepared', 'ok', { capture: false, jobKey: rehearsalId });
+    await finishTrace('rehearsal_ok', { draft_discarded: true }, rehearsalId);
+    await flushTraceQueue();
+    const events = fetchMock.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(events[0]).toMatchObject({ action: 'trace_start', mode: 'rehearsal', rehearsal_id: rehearsalId, delivery_id: null, attempt_id: null });
+    expect(events[1]).toMatchObject({ action: 'trace_step', step: 'rehearsal_form_prepared' });
+    expect(events[2]).toMatchObject({ action: 'trace_finish', outcome: 'rehearsal_ok' });
     expect(values.automationTraceQueue).toEqual([]);
   });
 });

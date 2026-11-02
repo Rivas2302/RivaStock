@@ -2,7 +2,7 @@ import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
 import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
 import { closeAutomationTab } from './automation-tabs.js';
-import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep } from './recorder.js';
+import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, traceIdForJob } from './recorder.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
 void flushTraceQueue();
 
@@ -11,7 +11,7 @@ let pendingSignal=null;
 let readingGroups = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.16';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.17';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -137,11 +137,111 @@ async function trackPending(connection) {
     }
   }
 }
+async function finishRehearsal(connection, active, outcome, errorStep = null, summary = {}) {
+  const rehearsalId=active?.rehearsalId??active?.job?.id;
+  if(!rehearsalId)throw new Error('REHEARSAL_STALE');
+  if(!active.traceFinished) {
+    await finishTrace(outcome==='rehearsal_ok'?'rehearsal_ok':'failed',{...summary,...(errorStep?{error_step:errorStep}:{})},rehearsalId);
+    active={...active,traceFinished:true,stage:'finalizing'};
+    await chrome.storage.local.set({activeRehearsal:active});
+    await flushTraceQueue();
+  }
+  const traceId=active.traceId??await traceIdForJob(rehearsalId);
+  if(outcome==='rehearsal_ok'&&!traceId)throw new Error('REHEARSAL_TRACE_MISSING');
+  const result=await rpc(connection,'facebook_rehearsal_worker',{
+    p_token:connection.token,
+    p_operation:'finish',
+    p_id:rehearsalId,
+    p_data:{outcome,...(errorStep?{error_step:String(errorStep).slice(0,160)}:{}),summary},
+  });
+  await closeAutomationTab(active.tabId);
+  await chrome.storage.local.remove(['activeRehearsal','pendingRehearsalClaim']);
+  await chrome.storage.local.set({status:result?.status==='rehearsal_ok'?'Ensayo terminado sin publicar.':'Ensayo finalizado con un bloqueo antes de publicar.'});
+  return result;
+}
+
+async function processRehearsal(connection, rehearsal, claimKey) {
+  const rehearsalId=rehearsal.id;
+  const job={...rehearsal,rehearsalId,id:rehearsalId,content:{...rehearsal.content,rehearsal:true,rehearsalId}};
+  let active={rehearsalId,claimKey,job,deviceId:connection.deviceId,projectUrl:connection.url,stage:'claimed',validated:false,traceFinished:false};
+  await chrome.storage.local.set({activeRehearsal:active});
+  try {
+    await startTrace('rehearsal',{...job,rehearsalId});
+    await flushTraceQueue();
+    active={...active,traceId:await traceIdForJob(rehearsalId),traceStarted:true};
+    await chrome.storage.local.set({activeRehearsal:active});
+    if(!active.traceId)throw new Error('REHEARSAL_TRACE_MISSING');
+    await recordTraceStep('rehearsal_claimed','ok',{capture:false,jobKey:rehearsalId});
+    const prepared=await facebookAdapter.prepare(job,{...connection,rehearsalId,journalIdentity:active});
+    active={...active,...prepared,job,traceId:active.traceId,validated:false};
+    await chrome.storage.local.set({activeRehearsal:active});
+    await recordTraceStep('rehearsal_form_prepared','ok',{tabId:active.tabId,capture:true,jobKey:rehearsalId});
+    await facebookAdapter.action(active.tabId,'validate_submit',job.content,[],active.baseline);
+    active={...active,validated:true,stage:'validated'};
+    await chrome.storage.local.set({activeRehearsal:active});
+    await recordTraceStep('rehearsal_final_validation_passed','ok',{tabId:active.tabId,capture:true,jobKey:rehearsalId});
+    await facebookAdapter.discardRehearsalDraft(active);
+    active={...active,draftDiscarded:true,stage:'discarded'};
+    await chrome.storage.local.set({activeRehearsal:active});
+    await closeAutomationTab(active.tabId);
+    return await finishRehearsal(connection,active,'rehearsal_ok',null,{validated:true,draft_discarded:true});
+  } catch(error) {
+    const message=String(error?.message??'REHEARSAL_FAILED').slice(0,160);
+    const persisted=(await chrome.storage.local.get('activeRehearsal')).activeRehearsal;
+    if(persisted?.rehearsalId===rehearsalId)active={...active,...persisted,job:job};
+    let draftClean=!active.tabId;
+    if(active.tabId) {
+      try{await facebookAdapter.discardRehearsalDraft(active);draftClean=true;await closeAutomationTab(active.tabId);}catch{/* Keep the active journal until Facebook confirms the discard. */}
+    }
+    if(!draftClean) {
+      await chrome.storage.local.set({activeRehearsal:{...active,stage:'needs_review',lastError:message}});
+      throw error;
+    }
+    try{return await finishRehearsal(connection,active,'failed',message,{validated:Boolean(active.validated),draft_discarded:Boolean(active.draftDiscarded)});}
+    catch(finishError){
+      await chrome.storage.local.set({activeRehearsal:{...active,stage:'needs_review',lastError:String(finishError?.message??'REHEARSAL_FINISH_FAILED').slice(0,160)}});
+      throw finishError;
+    }
+  }
+}
+
+async function recoverActiveRehearsal(connection, active) {
+  let clean=Boolean(active.draftDiscarded);
+  if(active.tabId&&!clean) {
+    try { await facebookAdapter.discardRehearsalDraft(active);clean=true; }
+    catch { clean=false; }
+  }
+  if(!clean) {
+    await chrome.storage.local.set({activeRehearsal:{...active,stage:'needs_review',lastError:'Facebook no confirmó el descarte del borrador.'},status:'Ensayo interrumpido; no se confirmó el descarte del borrador.'});
+    return false;
+  }
+  if(active.tabId&&clean)await closeAutomationTab(active.tabId);
+  const successful=Boolean(active.validated&&clean&&active.traceId);
+  await finishRehearsal(connection,active,successful?'rehearsal_ok':'failed',successful?null:'worker_interrupted',
+    {validated:Boolean(active.validated),draft_discarded:clean,recovered_after_worker_restart:true});
+  return true;
+}
+
+async function claimAndProcessRehearsal(connection, saved) {
+  const pending=saved.pendingRehearsalClaim;
+  const claimKey=pending?.deviceId===connection.deviceId&&pending.projectUrl===connection.url?pending.claimKey:crypto.randomUUID();
+  await chrome.storage.local.set({pendingRehearsalClaim:{claimKey,deviceId:connection.deviceId,projectUrl:connection.url}});
+  const rehearsal=await rpc(connection,'facebook_rehearsal_worker',{
+    p_token:connection.token,p_operation:'claim',p_data:{claimKey},
+  });
+  if(!rehearsal?.id) {
+    await chrome.storage.local.remove('pendingRehearsalClaim');
+    return false;
+  }
+  await processRehearsal(connection,rehearsal,claimKey);
+  return true;
+}
+
 export async function poll(signal={source:'alarm',received:performance.now(),receivedAt:new Date().toISOString()},chain=false){
   if(polling){pendingSignal=signal;return;}
   polling=true;const lifetime=globalThis.chrome;let heartbeatTimer;let drain=false;
   try{
-    const saved=await chrome.storage.local.get(['connection','paused','activeJob','lastIssue','status','queueCommandAt','pendingClaim','workerProtocol','serverFeatures']);
+    const saved=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','lastIssue','status','queueCommandAt','pendingClaim','pendingRehearsalClaim','workerProtocol','serverFeatures']);
     let serverFeatures=saved.serverFeatures??[];
     const {connection,activeJob}=saved;if(!connection)return;
     let protocol=saved.workerProtocol??1;let heartbeat;
@@ -195,6 +295,10 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       }
       return;
     }
+    if(saved.activeRehearsal) {
+      drain=await recoverActiveRehearsal(connection,saved.activeRehearsal);
+      return;
+    }
     if(protocol>=2&&serverFeatures.includes('own-content-tracking')) {
       try{await trackPending(connection);await chrome.storage.local.remove('lastTrackingErrorCode');}
       catch(error){await chrome.storage.local.set({lastTrackingErrorCode:errorCode(error)});}
@@ -207,7 +311,14 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(protocol>=2)await chrome.storage.local.set({pendingClaim:{claimKey,deviceId:connection.deviceId,projectUrl:connection.url}});
     const claimStart=performance.now();
     const job=await workerRpc(connection,'claim',{protocol,data:{claimKey}});
-    if(!job){await chrome.storage.local.remove('pendingClaim');if(chain)void maintainGroups(connection);await chrome.storage.local.set({status:saved.lastIssue?'Cola activa. Último envío requiere revisión: '+saved.lastIssue:'Conectada. Sin trabajos pendientes.'});return;}
+    if(!job){
+      await chrome.storage.local.remove('pendingClaim');
+      const rehearsalProcessed=await claimAndProcessRehearsal(connection,saved);
+      if(rehearsalProcessed){drain=true;return;}
+      if(chain)void maintainGroups(connection);
+      await chrome.storage.local.set({status:saved.lastIssue?'Cola activa. Último envío requiere revisión: '+saved.lastIssue:'Conectada. Sin trabajos pendientes.'});
+      return;
+    }
     const identity={schemaVersion:2,claimKey,attemptId:job.attemptId,protocol};
     let active={...identity,job,deviceId:connection.deviceId,projectUrl:connection.url,stage:'preparing'};
     await chrome.storage.local.set({activeJob:active});await chrome.storage.local.remove('pendingClaim');
@@ -435,9 +546,10 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     })();return true;
   }
   if(message.type==='trace-step'&&sender.id===chrome.runtime.id&&sender.tab&&typeof message.step==='string'){
-    void recordTraceStep(message.step,message.status??'ok',{
+    void chrome.storage.local.get('activeRehearsal').then(({activeRehearsal})=>recordTraceStep(message.step,message.status??'ok',{
       capture:message.capture===true,domSummary:message.domSummary,tabId:sender.tab.id,
-    }).then(()=>reply({queued:true})).catch(()=>reply({queued:false}));
+      ...(activeRehearsal?.tabId===sender.tab.id?{jobKey:activeRehearsal.rehearsalId}:{}),
+    })).then(()=>reply({queued:true})).catch(()=>reply({queued:false}));
     return true;
   }
   const stages=['Seleccionando categoría','Seleccionando estado','Completando descripción y ubicación','Cargando fotos','Verificando destinos antes de publicar'];

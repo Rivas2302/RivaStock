@@ -46,4 +46,12 @@ describe('automation Edge Function trace contract', () => {
     expect(migrationSource).toContain('GRANT EXECUTE ON FUNCTION public.fb_trace_storage_reserve(uuid, uuid, text, integer) TO service_role');
     expect(migrationSource).toContain('REVOKE ALL ON TABLE public.fb_trace_storage_reservations FROM PUBLIC, anon, authenticated, service_role');
   });
+
+  it('links rehearsal traces to an active rehearsal and never accepts delivery links for them', () => {
+    expect(edgeSource).toContain('const rehearsalId = body.rehearsal_id ?? null');
+    expect(edgeSource).toContain("serviceClient.rpc('fb_trace_start_for_rehearsal'");
+    expect(edgeSource).toContain("serviceClient.rpc('fb_trace_start'");
+    expect(edgeSource).toContain('!isUuid(rehearsalId)');
+    expect(edgeSource).toContain("body.mode === 'real' && rehearsalId !== null");
+  });
 });

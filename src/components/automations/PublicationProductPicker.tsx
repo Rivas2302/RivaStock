@@ -6,7 +6,7 @@ import {formatCurrency} from '../../lib/utils';
 import type {Product} from '../../types';
 import Modal from '../Modal';
 
-export default function PublicationProductPicker({onClose,onSelect}:{onClose:()=>void;onSelect:(product:Product)=>void}) {
+export default function PublicationProductPicker({onClose,onSelect,purpose='publication'}:{onClose:()=>void;onSelect:(product:Product)=>void;purpose?:'publication'|'rehearsal'}) {
   const {ownerUid,holdingsEnabled,inventoryAccessError}=useAuth();
   const [products,setProducts]=useState<Product[]>([]);
   const [search,setSearch]=useState('');
@@ -26,8 +26,8 @@ export default function PublicationProductPicker({onClose,onSelect}:{onClose:()=
     return()=>{active=false;};
   },[ownerUid,holdingsEnabled,inventoryAccessError,attempt]);
   const visible=products.filter(item=>item.name.toLocaleLowerCase('es').includes(search.trim().toLocaleLowerCase('es')));
-  return <Modal isOpen title="Nueva publicación" onClose={onClose}><div className="space-y-4">
-    <p className="text-sm text-slate-500">Elegí un producto. Antes de enviar podrás revisar sus publicaciones anteriores, contenido y destinos.</p>
+  return <Modal isOpen title={purpose==='rehearsal'?'Ensayar sin publicar':'Nueva publicación'} onClose={onClose}><div className="space-y-4">
+    <p className="text-sm text-slate-500">{purpose==='rehearsal'?'Elegí un producto para preparar y descartar un formulario de Facebook sin publicarlo.':'Elegí un producto. Antes de enviar podrás revisar sus publicaciones anteriores, contenido y destinos.'}</p>
     <input aria-label="Buscar producto del inventario" placeholder="Buscar por nombre…" value={search} onChange={event=>setSearch(event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 dark:border-slate-600 dark:bg-slate-800"/>
     {loading?<p role="status">Cargando inventario…</p>:error?<div role="alert"><p>{error}</p><button className="mt-3 rounded-xl border px-4 py-3" onClick={()=>setAttempt(value=>value+1)}>Reintentar carga</button></div>:<>
       <p className="text-sm text-slate-500">{visible.length} {visible.length===1?'producto encontrado':'productos encontrados'}</p>

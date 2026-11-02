@@ -4,13 +4,45 @@ function persistentWorker(memory:any,request:any) {
   let listener:any;let startup:any;
   const alarms=new Map<string,unknown>();
   vi.stubGlobal('chrome',{
-    storage:{local:{get:async()=>({...memory}),set:async(value:any)=>Object.assign(memory,value),remove:async(key:string)=>{delete memory[key]}}},
+    storage:{local:{get:async()=>({...memory}),set:async(value:any)=>Object.assign(memory,value),remove:async(key:string|string[])=>{for(const item of Array.isArray(key)?key:[key])delete memory[item];}}},
     alarms:{get:async(name:string)=>alarms.get(name),create:async(name:string,options:any)=>{alarms.set(name,options)},onAlarm:{addListener:vi.fn()}},
     runtime:{id:'own',onInstalled:{addListener:vi.fn()},onStartup:{addListener:(callback:any)=>{startup=callback}},onMessage:{addListener:(callback:any)=>{listener=callback}}},
   });
   vi.stubGlobal('fetch',(url:any,options:any)=>(/\/(facebook_group_discovery|request_facebook_groups_if_due)$/).test(String(url))?Promise.resolve({ok:true,json:async()=>null}):request(url,options));
   return {alarms,startup:()=>startup(),poll:()=>new Promise(resolve=>listener({type:'poll'},{id:'own'},resolve))};
 }
+
+it('runs rehearsals through prepare, validation and discard without checkpoint or submit',async()=>{
+  vi.resetModules();
+  const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'pc',deviceId:'pc'};
+  const memory:any={connection,paused:false};
+  const rehearsal={id:'rehearsal-1',product_id:'product-1',content:{title:'[QA] Silla',rehearsal:true},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}};
+  const requests:any[]=[];
+  const worker=persistentWorker(memory,async(url:string,options:any)=>{
+    const args=JSON.parse(options.body);requests.push({url,args});
+    if(url.endsWith('/facebook_worker_v2'))return {ok:true,json:async()=>args.p_operation==='heartbeat'?{worker_protocol:2,features:[]}:null};
+    if(url.endsWith('/facebook_rehearsal_worker'))return {ok:true,json:async()=>args.p_operation==='claim'?rehearsal:{saved:true,status:'rehearsal_ok'}};
+    if(url.endsWith('/functions/v1/automation'))return {ok:true,json:async()=>args.action==='trace_start'?{trace_id:'trace-1'}:{saved:true}};
+    return {ok:true,json:async()=>null};
+  });
+  const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
+  const prepare=vi.spyOn(facebookAdapter,'prepare').mockResolvedValue({job:rehearsal,deviceId:'pc',projectUrl:connection.url,tabId:77,stage:'prepared',baseline:['variant:marketplace']} as any);
+  const action=vi.spyOn(facebookAdapter,'action').mockResolvedValue({ready:true} as any);
+  const discard=vi.spyOn(facebookAdapter,'discardRehearsalDraft').mockResolvedValue({discarded:true,requiresBlankVerification:true} as any);
+  try{
+    await import('../../extensions/facebook/worker.js');
+    await worker.poll();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(action.mock.calls.map(call=>call[1])).toEqual(['validate_submit']);
+    expect(discard).toHaveBeenCalledTimes(1);
+    const rpcOps=requests.map(request=>({path:new URL(request.url).pathname,operation:request.args.p_operation??request.args.action}));
+    expect(rpcOps.some(item=>item.operation==='checkpoint')).toBe(false);
+    expect(rpcOps.some(item=>item.operation==='submit')).toBe(false);
+    expect(rpcOps.filter(item=>item.path.endsWith('/facebook_rehearsal_worker')).map(item=>item.operation)).toEqual(['claim','finish']);
+    expect(memory.activeRehearsal).toBeUndefined();
+    expect(memory.status).toContain('Ensayo terminado sin publicar');
+  }finally{vi.restoreAllMocks();vi.unstubAllGlobals();}
+});
 
 function mockSubmit(adapter:any) {
   const submit=vi.fn().mockResolvedValue({clicked:true});
@@ -61,7 +93,7 @@ it('recovers a network outage on the next poll without needing manual activation
   try {
     await import('../../extensions/facebook/worker.js');
     await worker.poll();expect(memory.paused).toBe(false);
-    offline=false;await worker.poll();expect(operations).toEqual(['heartbeat','claim']);expect(memory.paused).toBe(false);
+    offline=false;await worker.poll();expect(operations).toEqual(['heartbeat','claim','claim']);expect(memory.paused).toBe(false);
   } finally {vi.unstubAllGlobals();}
 });
 

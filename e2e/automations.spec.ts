@@ -30,7 +30,7 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
       products.push({id:'new-product',user_id:owner,name:'Producto nuevo',description:'Descripción nueva',sale_price:2000,purchase_price:1000,stock:2,images:[photo],image_url:photo});
       data=id?products.find(item=>item.id===id):products;
     }
-    if(['cancel_facebook_delivery','retry_facebook_preparation','review_facebook_delivery','set_facebook_queue_enabled','approve_facebook_publication'].includes(name)) {
+    if(['cancel_facebook_delivery','retry_facebook_preparation','review_facebook_delivery','set_facebook_queue_enabled','approve_facebook_publication','request_facebook_rehearsal'].includes(name)) {
       const args=route.request().postDataJSON();calls.push({name,args});
       const delivery=rows.flatMap(p=>p.facebook_deliveries).find(d=>d.id===args.p_delivery);
       if(delivery&&name==='cancel_facebook_delivery')delivery.status='cancelled';
@@ -38,6 +38,7 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
       if(delivery&&name==='review_facebook_delivery'){delivery.status=args.p_decision==='found'?'submitted':'cancelled';delivery.evidence_url=args.p_url;}
       if(name==='set_facebook_queue_enabled')device.queue_enabled=args.p_enabled;
       if(name==='approve_facebook_publication'){data='new-publication';rows.push({id:'new-publication',product_id:args.p_product,approved_at:new Date().toISOString(),content:args.p_content,facebook_deliveries:[{id:'new-delivery',destination_key:'marketplace',status:'pending',submitted_at:null,destination:{name:'Marketplace',mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},evidence_url:null,message:null}]});}
+      else if(name==='request_facebook_rehearsal')data='rehearsal-request';
       else data=null;
     }
     return route.fulfill({json:data});
@@ -83,6 +84,26 @@ for(const mobile of [false,true])test(`centralizes history, safe actions and fut
   await page.locator('.app-content').evaluate(element=>element.scrollTop=0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await testInfo.attach(`automations-${mobile?'mobile':'desktop'}`,{body:await page.screenshot(),contentType:'image/png'});
+});
+
+test('owner can request a rehearsal from Automations without approving a publication',async({page})=>{
+  const {calls}=await fixture(page);await page.goto('/automatizaciones');
+  await page.getByRole('button',{name:'Ensayar sin publicar',exact:true}).click();
+  const picker=page.getByRole('dialog',{name:'Ensayar sin publicar',exact:true});
+  await picker.getByRole('button',{name:/Producto nuevo/}).click();
+  const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
+  await modal.getByLabel('Ubicación',{exact:true}).fill('General Pico');
+  await modal.getByLabel('Categoría de Facebook',{exact:true}).selectOption('Muebles');
+  await modal.getByRole('button',{name:'Ensayar sin publicar',exact:true}).click();
+  await expect.poll(()=>calls.filter(call=>call.name==='request_facebook_rehearsal').length).toBe(1);
+  await expect(modal.getByText(/Ensayo solicitado para Marketplace/)).toBeVisible();
+  const rehearsal=calls.find(call=>call.name==='request_facebook_rehearsal');
+  expect(rehearsal?.args).toMatchObject({
+    p_product:'new-product',
+    p_destination:{mechanism:'marketplace',name:'Marketplace',url:'https://www.facebook.com/marketplace/create/item'},
+    p_content:{title:'Producto nuevo',location:'General Pico',category:'Muebles'},
+  });
+  expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(0);
 });
 
 test('requires a separate decision and approval before publishing again',async({page})=>{

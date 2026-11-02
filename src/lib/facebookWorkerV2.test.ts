@@ -3,14 +3,14 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 async function fixture(handler:(args:any,memory:any)=>any){
  vi.resetModules();
  const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture-secret',deviceId:'pc'};
- const memory:any={connection,paused:false,workerProtocol:2};const operations:any[]=[];
+ const memory:any={connection,paused:false,workerProtocol:2};const operations:any[]=[];const requests:any[]=[];
  vi.stubGlobal('chrome',{
   storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
   runtime:{id:'own',getManifest:()=>({version:'0.5.8'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });
- vi.stubGlobal('fetch',async(_url:any,options:any)=>{
-  const args=JSON.parse(options.body);operations.push(args);
+ vi.stubGlobal('fetch',async(url:any,options:any)=>{
+  const args=JSON.parse(options.body);operations.push(args);requests.push({url:String(url),args});
   if(args.p_data!==undefined)expect(typeof args.p_data).toBe('object');
   return {ok:true,json:async()=>handler(args,memory)};
  });
@@ -23,7 +23,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  const reconcile=vi.spyOn(facebookAdapter,'reconcile').mockResolvedValue({status:'submitted',url:'https://www.facebook.com/marketplace/item/1/',message:'Result'});
  const track=vi.spyOn(facebookAdapter,'track').mockResolvedValue(null);
  const worker=await import('../../extensions/facebook/worker.js');
-  return {memory,job,operations,prepare,action,submit,reconcile,track,worker};
+  return {memory,job,operations,requests,prepare,action,submit,reconcile,track,worker};
 }
 it('persists a claim key before sending and the authorizing journal before checkpoint',async()=>{
  let job:any;const f=await fixture((a,m)=>{
@@ -37,7 +37,7 @@ it('never clicks when checkpoint reports an earlier authorization',async()=>{
 });
 it('retains the same claim key after a lost claim response',async()=>{
  let fail=true;const f=await fixture(a=>{if(a.p_operation==='claim'){if(fail)throw new Error('Offline');return null;}return {connected:true};});
- await f.worker.poll();const key=f.memory.pendingClaim.claimKey;fail=false;await f.worker.poll();expect(f.operations.filter(a=>a.p_operation==='claim').map(a=>a.p_data.claimKey)).toEqual([key,key]);expect(f.prepare).not.toHaveBeenCalled();
+ await f.worker.poll();const key=f.memory.pendingClaim.claimKey;fail=false;await f.worker.poll();expect(f.requests.filter(r=>r.url.endsWith('/facebook_worker_v2')&&r.args.p_operation==='claim').map(r=>r.args.p_data.claimKey)).toEqual([key,key]);expect(f.prepare).not.toHaveBeenCalled();
 });
 it('persists captured evidence before honoring retire and never reconciles it again',async()=>{
  const f=await fixture(a=>a.p_operation==='recover'?{action:'retire'}:{saved:true});f.memory.activeJob={job:f.job,attemptId:'attempt',protocol:2,deviceId:'pc',projectUrl:f.memory.connection.url,stage:'result',result:{status:'submitted',url:'https://www.facebook.com/marketplace/item/1/',message:'Captured'}};
@@ -161,7 +161,7 @@ it('parks a receipt without URL instead of sending a result the server rejects',
  expect(f.memory.activeJob).toBeUndefined();
  expect(f.memory.lastErrorCode).toBe('RESULT_RECEIPT_ONLY');
  job=null;await f.worker.poll();
- expect(f.operations.filter((a:any)=>a.p_operation==='claim').length).toBe(2);
+ expect(f.requests.filter(r=>r.url.endsWith('/facebook_worker_v2')&&r.args.p_operation==='claim').length).toBe(2);
 });
 it('omits the receipt when the server does not announce evidence-receipts',async()=>{
  let job:any;const f=await fixture(a=>{
