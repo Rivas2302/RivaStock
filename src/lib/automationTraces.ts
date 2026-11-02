@@ -22,11 +22,20 @@ export interface AutomationTraceStep {
   screenshot_path: string | null;
   note: string | null;
   created_at: string;
+  supervision_decisions?: AutomationTraceSupervisionDecision[];
 }
 
 export interface AutomationTraceScreenshot {
   seq: number;
   url: string;
+}
+
+export interface AutomationTraceSupervisionDecision {
+  decision: unknown;
+  provider: 'codex' | 'claude';
+  model_id: string;
+  reasoning_effort: string;
+  created_at: string;
 }
 
 const stepStatusLabels: Record<AutomationTraceStep['status'], string> = {

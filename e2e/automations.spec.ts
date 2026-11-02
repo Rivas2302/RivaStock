@@ -116,6 +116,10 @@ test('owner can inspect rehearsal trace steps and enlarge a signed screenshot',a
     id:'step-1',trace_id:'trace-1',seq:1,step:'marketplace.category_selected',status:'supervised',elapsed_ms:1200,
     dom_summary:{ai_decision:{action:'click',index:3}},screenshot_path:'owner/trace-1/1.jpg',note:'Categoría verificada',created_at:'2026-11-02T12:00:02Z',
   }]}));
+  await page.route('**/rest/v1/fb_supervision_requests*',route=>route.fulfill({json:[{
+    step_seq:1,decision:{action:'select_option',element_index:0,text:'Muebles',confidence:0.92,observation:'Selector de categoría visible',reason:'Coincide con la intención'},
+    provider:'codex',model_id:'gpt-6-luna',reasoning_effort:'low',created_at:'2026-11-02T12:00:02Z',
+  }]}));
   await page.route('**/rest/v1/fb_run_traces*',route=>route.fulfill({json:[{
     id:'trace-1',delivery_id:null,attempt_id:null,mode:'rehearsal',mechanism:'marketplace',extension_version:'0.5.17',
     started_at:'2026-11-02T12:00:01Z',finished_at:'2026-11-02T12:00:03Z',outcome:'rehearsal_ok',summary:{draft_discarded:true},
@@ -127,6 +131,8 @@ test('owner can inspect rehearsal trace steps and enlarge a signed screenshot',a
   await rehearsal.getByRole('button',{name:'Ver ejecución'}).click();
   await expect(rehearsal.getByText('Marketplace category selected')).toBeVisible();
   await expect(rehearsal.getByText('Decisión de IA:')).toBeVisible();
+  await expect(rehearsal.getByText(/Codex · gpt-6-luna · low/)).toBeVisible();
+  await expect(rehearsal.getByText(/select_option/)).toBeVisible();
   await rehearsal.getByRole('button',{name:'Ampliar captura del paso 1'}).click();
   await expect(page.getByRole('dialog',{name:'Captura ampliada'})).toBeVisible();
 });

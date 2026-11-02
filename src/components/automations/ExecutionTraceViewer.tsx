@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {supabase} from '../../lib/supabase';
-import {traceOutcomeLabel,traceStepDecision,traceStepLabel,traceStepStatusLabel,type AutomationTrace,type AutomationTraceScreenshot,type AutomationTraceStep} from '../../lib/automationTraces';
+import {traceOutcomeLabel,traceStepDecision,traceStepLabel,traceStepStatusLabel,type AutomationTrace,type AutomationTraceScreenshot,type AutomationTraceStep,type AutomationTraceSupervisionDecision} from '../../lib/automationTraces';
 
 interface Props {
   traceId?:string|null;
@@ -34,13 +34,25 @@ export default function ExecutionTraceViewer({traceId,attemptId,deliveryId}:Prop
         .eq('trace_id',selected.id).order('seq',{ascending:true});
       if(stepError)throw stepError;
       const nextSteps=(stepRows??[]) as AutomationTraceStep[];
+      const {data:decisionRows,error:decisionError}=await supabase.from('fb_supervision_requests')
+        .select('step_seq,decision,provider,model_id,reasoning_effort,created_at')
+        .eq('trace_id',selected.id).eq('status','answered').not('decision','is',null)
+        .order('created_at',{ascending:true});
+      if(decisionError)throw decisionError;
+      const decisionsByStep=new Map<number,AutomationTraceSupervisionDecision[]>();
+      for(const row of decisionRows??[]) {
+        const decisions=decisionsByStep.get(row.step_seq)??[];
+        decisions.push({decision:row.decision,provider:row.provider,model_id:row.model_id,reasoning_effort:row.reasoning_effort,created_at:row.created_at});
+        decisionsByStep.set(row.step_seq,decisions);
+      }
+      const stepsWithDecisions=nextSteps.map(step=>({...step,supervision_decisions:decisionsByStep.get(step.seq)??[]}));
       let nextScreenshots:AutomationTraceScreenshot[]=[];
-      if(nextSteps.some(item=>item.screenshot_path)) {
+      if(stepsWithDecisions.some(item=>item.screenshot_path)) {
         const {data,error:signedError}=await supabase.functions.invoke('automation',{body:{action:'trace_signed_urls',trace_id:selected.id}});
         if(signedError||!Array.isArray(data?.screenshots))throw signedError??new Error('No se pudieron firmar las capturas.');
         nextScreenshots=(data.screenshots as AutomationTraceScreenshot[]).filter(item=>Number.isInteger(item.seq)&&typeof item.url==='string');
       }
-      setTrace(selected);setSteps(nextSteps);setScreenshots(nextScreenshots);
+      setTrace(selected);setSteps(stepsWithDecisions);setScreenshots(nextScreenshots);
     } catch {
       setError('No se pudo cargar la ejecución. Revisá tu conexión y los permisos de Conocimientos.');
     } finally {setLoading(false);}
@@ -69,13 +81,14 @@ export default function ExecutionTraceViewer({traceId,attemptId,deliveryId}:Prop
           {steps.map(step=>{
             const image=screenshots.find(item=>item.seq===step.seq)?.url;
             const decision=traceStepDecision(step);
+            const supervisedDecisions=step.supervision_decisions??[];
             return <li key={step.id} className="space-y-1.5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="font-semibold">{step.seq}. {traceStepLabel(step.step)}</span>
                 <span className="text-slate-500">{traceStepStatusLabel(step.status)} · {(step.elapsed_ms/1000).toLocaleString('es-AR',{maximumFractionDigits:2})} s</span>
               </div>
               {step.note&&<p className="break-words text-slate-600 dark:text-slate-300">{step.note}</p>}
-              {decision!==null&&<p className="break-words rounded-lg bg-indigo-50 p-2 dark:bg-indigo-950/40"><strong>Decisión de IA: </strong>{typeof decision==='string'?decision:JSON.stringify(decision)}</p>}
+              {supervisedDecisions.length>0?supervisedDecisions.map((item,index)=><p key={`${item.created_at}-${index}`} className="break-words rounded-lg bg-indigo-50 p-2 dark:bg-indigo-950/40"><strong>Decisión de IA{supervisedDecisions.length>1?` ${index+1}`:''}: </strong>{item.provider==='codex'?'Codex':'Claude'} · {item.model_id} · {item.reasoning_effort}<br/><span>{JSON.stringify(item.decision)}</span></p>):decision!==null&&<p className="break-words rounded-lg bg-indigo-50 p-2 dark:bg-indigo-950/40"><strong>Decisión de IA: </strong>{typeof decision==='string'?decision:JSON.stringify(decision)}</p>}
               {image&&<button type="button" onClick={()=>setActiveImage(image)} aria-label={`Ampliar captura del paso ${step.seq}`} className="block overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><img src={image} alt={`Captura del paso ${step.seq}: ${traceStepLabel(step.step)}`} className="max-h-44 max-w-full object-contain"/></button>}
             </li>;
           })}
