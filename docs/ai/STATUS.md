@@ -1,10 +1,10 @@
 # Estado de ejecución autónoma
 
-## 2026-11-02 10:44 ART — T1.5 visor y exportación implementados
+## 2026-11-02 10:50 ART — T1.5 desplegada; decisión F2 pendiente
 
 - La UI local muestra trazas por intento, pasos/estado/duración/notas, decisiones si F2 las agrega al resumen, capturas con URL firmada y ampliación; agrega el historial de ensayos solo para el dueño. El exportador descarga trazas JSON y capturas a `%USERPROFILE%\rivastock-traces\` y requiere sesión de dueño o service role más UID explícito para aislar la exportación.
-- Verificación local: lint aprobado; `npm test` **593/593**; Playwright `e2e/automations.spec.ts` **31/31**; build y `perf:check` aprobados; el modo `--help` del exportador funciona. El build mantiene la extensión en **0.5.17** y el AI Bridge en **1.12.0**.
-- No hubo migraciones ni datos QA nuevos. **T1.5 sigue `[ ]`** hasta comprobar decisiones de supervisión reales de F2 en la cronología y validar el despliegue con sesión autenticada. F2 aún no escribe decisiones en los pasos de traza; el visor solo muestra el campo cuando exista.
+- Vercel confirmó `success` para `5e92259`. Playwright con el perfil persistente autenticado abrió `/automatizaciones?view=rehearsals`: mostró la vista “Ensayos” vacía, sin alertas ni carga pendiente. Verificación local: lint aprobado; `npm test` **593/593**; Playwright `e2e/automations.spec.ts` **31/31**; build y `perf:check` aprobados; el modo `--help` del exportador funciona. El build mantiene la extensión en **0.5.17** y el AI Bridge en **1.12.0**.
+- No hubo migraciones ni datos QA nuevos. **T1.5 sigue `[ ]`** hasta comprobar decisiones de supervisión reales de F2 en la cronología. F2 aún no escribe decisiones en los pasos de traza; el visor solo muestra el campo cuando exista.
 - **Siguiente trabajo independiente:** T2.1, esquema de supervisión y pistas aprendidas; la prueba Facebook real de T1.4/T1.6 permanece pendiente de Riva.
 
 ## 2026-11-02 10:38 ART — T1.4 desplegada; validación en vivo pendiente
