@@ -94,7 +94,7 @@ Flujo de un original: el navegador lo sube a `knowledge` → la central lo baja,
   - si `pg_cron` está activo (`cron.job`).
 - **Límites reales del plan Free:** confirmalos en <https://supabase.com/pricing>. Las fuentes no coinciden en el tope de Storage (500 MB o 1 GB). Fijá `storage_budget_bytes` en el 90 % del valor oficial y `db_budget_bytes` en el 90 % de 500 MB. Si no podés confirmarlo, usá 500 MB para ambos.
 - **Dueño de la plataforma:** identificá el UID de Riva como el dueño que tiene una central activa con heartbeat reciente **y** un dispositivo de Facebook activo. Si hay más de un candidato, no sigas con E1.2 y anotalo en `OWNER_ACTIONS.md`.
-- **Cuentas existentes:** si todos los dueños son cuentas de Riva (Abba y cuentas de prueba), quedan en plan `interno` (lo hace la migración de E1). Si aparece un negocio que no es de Riva, cambiá esa parte de la migración para que quede en `base` y anotalo.
+- **Cuentas existentes:** si todos los dueños son cuentas de Riva (su negocio y cuentas de prueba), quedan en plan `interno` (lo hace la migración de E1). Si aparece un negocio que no es de Riva, cambiá esa parte de la migración para que quede en `base` y anotalo.
 - Escribí `docs/ai/MULTI_BUSINESS_BASELINE.md` con números y nombres de negocio, **sin** emails ni UID.
 - **Commit:** `docs(platform): record multi-business baseline`
 
@@ -274,7 +274,7 @@ CREATE TABLE public.knowledge_central_deletions (
 **Tests:** RPC en PGlite (los cuatro modos, reutilización de pedidos, límite de pedidos abiertos), contrato de la Edge Function, Bridge con fixture y la UI con los cuatro estados.
 - **Commit:** `feat(knowledge): open originals on demand from the central`
 
-### [ ] E6 Mover los originales existentes de Abba a su central
+### [ ] E6 Mover los originales existentes del negocio de Riva a su central
 - Requiere E4 y E5 en producción y la central de Riva actualizada.
 - Antes: `npm run backup:storage` (A3) verificado. La purga de cada objeto exige que esté en ese backup **o** en el respaldo de la central con su huella verificada.
 - Activá la transferencia para el negocio de Riva y esperá a que todas sus versiones queden `local`. Comprobá:
@@ -336,9 +336,9 @@ Una tarjeta “Primeros pasos” en el inicio queda visible hasta completar 1 y 
 ### [ ] E9 Certificación con un negocio de prueba
 Requiere la acción del dueño 1 (§6).
 1. **Aislamiento:**
-   - con SQL `BEGIN … ROLLBACK`, el usuario del negocio `[QA]` no lee ninguna fila ni objeto de Abba, en ninguna tabla con `user_id` ni en ningún bucket (generá la lista de tablas con `information_schema`);
+   - con SQL `BEGIN … ROLLBACK`, el usuario del negocio `[QA]` no lee ninguna fila ni objeto del negocio de Riva, en ninguna tabla con `user_id` ni en ningún bucket (generá la lista de tablas con `information_schema`);
    - en la UI, ese negocio ve todo vacío;
-   - el catálogo público de Abba no muestra nada del `[QA]` y al revés.
+   - el catálogo público del negocio de Riva no muestra nada del `[QA]` y al revés.
 2. **Central del negocio de prueba:**
    - segunda instalación en otra carpeta de la misma PC; si el instalador no lo permite, usá una VM de VirtualBox con Windows y anotalo;
    - modo `read-only` visible;

@@ -46,10 +46,11 @@ VALUES (true, 471859200, 471859200);
 --   trace_retention_days   días que se guardan esas capturas
 --   collaborators          colaboradores activos
 --   codex_sandbox          'read-only' | 'workspace-write' | 'danger-full-access'
+--   modules                {ai, knowledge, automation}: módulos incluidos (gestión comercial siempre incluida)
 INSERT INTO public.business_plans (code, name, limits, sort_order) VALUES
-  ('interno', 'Interno', '{"cloud_knowledge_bytes":524288000,"local_knowledge_bytes":53687091200,"trace_bytes":150000000,"trace_retention_days":14,"collaborators":50,"codex_sandbox":"danger-full-access"}', 0),
-  ('base',    'Base',    '{"cloud_knowledge_bytes":52428800,"local_knowledge_bytes":21474836480,"trace_bytes":30000000,"trace_retention_days":7,"collaborators":5,"codex_sandbox":"read-only"}', 10),
-  ('pro',     'Pro',     '{"cloud_knowledge_bytes":157286400,"local_knowledge_bytes":107374182400,"trace_bytes":60000000,"trace_retention_days":14,"collaborators":15,"codex_sandbox":"read-only"}', 20);
+  ('interno', 'Interno', '{"cloud_knowledge_bytes":524288000,"local_knowledge_bytes":53687091200,"trace_bytes":150000000,"trace_retention_days":14,"collaborators":50,"codex_sandbox":"danger-full-access","modules":{"ai":true,"knowledge":true,"automation":true}}', 0),
+  ('base',    'Base',    '{"cloud_knowledge_bytes":52428800,"local_knowledge_bytes":21474836480,"trace_bytes":30000000,"trace_retention_days":7,"collaborators":5,"codex_sandbox":"read-only","modules":{"ai":false,"knowledge":false,"automation":false}}', 10),
+  ('pro',     'Pro',     '{"cloud_knowledge_bytes":157286400,"local_knowledge_bytes":107374182400,"trace_bytes":60000000,"trace_retention_days":14,"collaborators":15,"codex_sandbox":"read-only","modules":{"ai":true,"knowledge":true,"automation":true}}', 20);
 
 ALTER TABLE public.platform_admins        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.business_plans         ENABLE ROW LEVEL SECURITY;

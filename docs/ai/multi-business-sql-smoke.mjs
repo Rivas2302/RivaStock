@@ -54,6 +54,8 @@ r = await db.query(`SELECT business_limit_bigint('${RIVA}','cloud_knowledge_byte
 ok(Number(r.rows[0].v) === 524288000, 'límite del plan interno');
 r = await db.query(`SELECT business_limit_bigint('${NUEVO}','cloud_knowledge_bytes') v`);
 ok(Number(r.rows[0].v) === 52428800, 'un negocio sin suscripción usa el plan base');
+r = await db.query(`SELECT business_limits('${NUEVO}')->'modules' m, business_limits('${RIVA}')->'modules' i`);
+ok(r.rows[0].m.ai === false && r.rows[0].m.automation === false && r.rows[0].i.ai === true, 'plan base sin IA ni automatizaciones; interno con todo');
 await fails(`SELECT business_limit_bigint('${RIVA}','inexistente')`, /Límite no configurado/, 'clave de límite desconocida falla');
 
 await as(COLAB);

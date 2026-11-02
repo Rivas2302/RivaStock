@@ -26,6 +26,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 4. Bloque B — Cierre del módulo IA
 5. Bloque C — Publicador de Facebook supervisado por IA
 5b. Bloque E — RivaStock para cualquier negocio (agregado el 02/11)
+2b. **Bloque F — Entrega del primer cliente el 03/11 (urgente, va primero)**
 6. Bloque D — Mantenimiento cuando no quede otra cosa
 7. Fuera de alcance
 8. Acciones del dueño
@@ -99,6 +100,65 @@ Revisalas al empezar cada sesión y antes de cada tarea que las necesite. Todas 
 
 ---
 
+## 2b. Bloque F — Entrega del primer cliente el 03/11 (urgente, agregado el 02/11 20:45)
+
+Riva tiene un cliente y le entrega el acceso **el martes 03/11**, bien hecho. Recibe **solo la gestión comercial**: stock, ventas, POS, caja, clientes, proveedores, compras, ingresos, presupuestos, pedidos, catálogo, reportes, configuración y colaboradores. **Sin IA, sin Conocimientos y sin Automatizaciones de Facebook.** El alta es por invitación de Riva: el cliente toca el enlace del email, crea su contraseña y entra. Ese flujo ya existe (`/auth/confirm` → `/reset-password`).
+
+**Va antes que todo lo demás**, incluido lo que quede abierto del Bloque A. Cuando termines F4, **avisale a Riva en ese momento** (excepción a §9) con el mensaje de F4.
+
+La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a negocios sin el módulo `ai`: E3 protege la central de IA, que este cliente no tiene.
+
+### [ ] F1 Auditoría de aislamiento (solo lectura, en producción, ~30 min)
+1. Listá las tablas de `public` con RLS desactivado y las políticas que permiten leer o escribir con `true`, `USING (true)` o sin filtro por dueño a `anon` o `authenticated`. Revisá también las políticas de Storage por bucket. Lo público por diseño (fotos de `assets`, catálogo y presupuesto públicos) se documenta como tal.
+2. **Simulación de un dueño nuevo,** en una transacción que termina en `ROLLBACK`:
+   - `SET LOCAL role authenticated` y `SET LOCAL request.jwt.claims` con un `sub` UUID aleatorio que no existe;
+   - `SELECT count(*)` en **cada** tabla y vista de `public`, generando la lista con `information_schema`;
+   - resultado esperado: 0 filas en todas, salvo las globales por diseño (por ejemplo, catálogos de planes), que se listan y justifican.
+3. Repetí la simulación con `anon`.
+4. Revisá las funciones `SECURITY DEFINER` con `EXECUTE` para `authenticated` o `anon` que reciben un `user_id`, `owner_uid` u otro identificador de dueño como parámetro y no lo validan contra `auth.uid()` / `get_owner_uid()`.
+5. **Registro público:** leé con la Management API, solo lectura, si Auth permite registros nuevos (`disable_signup`). Si están permitidos, cualquiera podría crearse una cuenta de dueño por API. Agregalo como acción del dueño en el mensaje de F4: “Supabase → Authentication → Sign In / Providers → desactivar *Allow new users to sign up*”. Las invitaciones siguen funcionando con eso desactivado.
+6. Escribí `docs/ai/ISOLATION_AUDIT.md`. **Si hay una fuga,** corregila con una migración aditiva (después de `npm run backup:db`), repetí la simulación y recién entonces seguí. No se entrega con fugas.
+- **Commit:** `docs(security): tenant isolation audit before first client`
+
+### [ ] F2 Planes y módulos (adelanta E1)
+1. `npm run backup:db`. Aplicá E1 tal como está en `docs/ai/sql/multi-business/E1_platform_plans.sql`: ya incluye `modules` (`base` = sin `ai`, `knowledge` ni `automation`) y su smoke tiene 27 comprobaciones. **Tiene que aplicarse antes de que Riva cree la cuenta del cliente**, para que la siembra deje en `interno` solo las cuentas existentes y el cliente quede en `base` por defecto. Hacé E1.2 (alta del administrador).
+2. Frontend:
+   - `useBusinessPlan()` (E1.3);
+   - `Layout` oculta **IA**, **Conocimientos** y **Automatizaciones** cuando `limits.modules` lo indica, también para los colaboradores del negocio;
+   - las rutas `/ia`, `/ia/conocimientos/*` y `/automatizaciones` redirigen a `/` con el aviso “Este módulo no está incluido en tu plan”;
+   - en Configuración, cualquier acceso a la IA o a la extensión de Facebook queda oculto con el mismo criterio;
+   - mientras se carga el plan, no mostrar esos módulos. Si falla la carga, ocultarlos.
+3. Tests de UI: plan `base` sin los tres ítems, plan `interno` con todo, colaborador de un negocio `base` y la redirección.
+4. Desplegá y verificá en producción con la cuenta de Riva que **no cambió nada** para su propio negocio.
+- **Commit:** `feat(platform): plans with modules; first client without AI`
+- **F2b (puede ir después de la entrega, al día siguiente):** el control del lado del servidor. `pair_ai_bridge_device`, la creación de tareas y chats de IA, Conocimientos y `approve_facebook_publication*` exigen el módulo correspondiente, con `CREATE OR REPLACE` copiando los cuerpos vigentes, y tienen tests. Commit `feat(platform): enforce plan modules server-side`.
+
+### [ ] F3 Primer ingreso y cuenta vacía
+1. **Invitación de dueño:** revisá que el email de invitación que genera el hook `send-email` para `invite` lleve a `/auth/confirm?…type=invite` y de ahí a `/reset-password`.
+   - En `ResetPassword`, si viene de una invitación, título “Creá tu contraseña” y botón “Entrar a RivaStock”;
+   - validación clara (mínimo de caracteres y confirmación);
+   - al terminar, entra directo a la app.
+   - Probalo con Playwright y mocks de Auth. **No crees usuarios reales.**
+2. **Datos del negocio:** si el dueño entra con `business_name` vacío, un modal no descartable pide nombre del negocio, moneda, teléfono y email de contacto. Lo guarda con el mismo método que Configuración (respetando que `business_name_lower` sea único, con un mensaje claro si ya existe) y propone un link de catálogo a partir del nombre.
+3. **Cuenta vacía:** con Playwright y un fixture de dueño sin datos, recorré cada página incluida en el plan `base`. Ninguna página puede romperse ni mostrar errores de consola, y cada una tiene un estado vacío entendible (“Todavía no cargaste productos. Agregá el primero.”). Corregí lo que falle.
+4. `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`. Desplegá y hacé el smoke del negocio de Riva.
+- **Commit:** `feat(onboarding): first login for new business owners`
+
+### [ ] F4 Guía de entrega y aviso a Riva
+- Escribí `docs/clients/ENTREGA_CLIENTE.md`:
+  - **Pasos de Riva:** Supabase → Authentication → Users → **Invite user** → email del cliente. Nada más.
+  - **Verificación tuya después de la invitación** (Riva te avisa o la detectás en la próxima tarea), con una consulta de solo lectura: el usuario nuevo existe, tiene perfil, no tiene fila en `business_subscriptions` (o sea, plan `base`, sin IA ni Automatizaciones) y no es colaborador de nadie.
+  - **Mensaje de WhatsApp para el cliente,** listo para copiar: le va a llegar un email de RivaStock (revisar spam), toca el botón, crea su contraseña y entra. La dirección es la URL de producción. Cómo instalarla como app en el celular y en la PC, cómo invitar a sus empleados desde Configuración → Colaboradores, y que el soporte es con Riva.
+  - **Checklist después del primer ingreso:** completó los datos del negocio, ve todo vacío y puede cargar un producto y hacer una venta de prueba que después borra.
+- **Mandale a Riva un mensaje en ese momento** con: “Listo para invitar a tu cliente”, el enlace a la guía, el resultado de F1 (sin fugas), la acción del registro público si corresponde y lo que quedó para después (F2b, E2 y el panel `/plataforma` de E7).
+- Después seguí con el plan en su orden. **E2 y E7 suben de prioridad:** van inmediatamente después de cerrar A1, antes del Bloque C, porque ahora hay un cliente real.
+- **Commit:** `docs(clients): first client delivery guide`
+
+### F5 Respaldo diario (después de la entrega, autorizado)
+Ahora hay datos de un cliente. Creá en esta PC una tarea programada de Windows que corra `npm run backup:db -- --with-storage` todos los días a las 03:30, conserve los últimos 14 backups verificados y registre el resultado en `%USERPROFILE%\rivastock-backups\backup-log.txt`, sin credenciales. Si un backup falla dos días seguidos, agregalo al mensaje de §9. Commit con el script de instalación de la tarea: `feat(ops): daily verified backups`.
+
+---
+
 ## 3. Bloque A — Seguridad y respaldo (primero)
 
 ### [ ] A1 Rotación de la clave `service_role` expuesta
@@ -115,7 +175,7 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 8. **Credencial temporal de la CLI (`cli_login_postgres`):** buscá en la documentación oficial de Supabase si esas credenciales vencen solas y cuándo. Si vencen, registralo en `KEY_ROTATION.md` y sacá la acción de `OWNER_ACTIONS.md`. Si no vencen o no está claro, verificá en el inventario que ningún consumidor use la contraseña de la base (las Edge Functions y la app usan claves, no la contraseña). Si nadie la usa, restablecé la contraseña de la base con la Management API sin imprimirla y documentá; si algo la usa, dejá en `OWNER_ACTIONS.md` un único paso exacto.
 - **Commit:** `fix(security): migrate backend and clients off legacy Supabase keys`
 
-### [x] A2 Prevención de nuevas exposiciones
+### [ ] A2 Prevención de nuevas exposiciones
 - Agregá a `AGENTS.md` una sección “Secretos” con la regla de §1.2 y la lista de comandos prohibidos.
 - **`scripts/backup-db.mjs` (`npm run backup:db`)**, el único método de backup permitido:
   - obtiene la conexión temporal ejecutando `supabase db dump --linked --dry-run` como proceso hijo y **captura su salida en memoria** (nunca la muestra, ni la escribe en logs o archivos);
@@ -127,14 +187,14 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 - Script `scripts/check-no-secrets.mjs` (en `npm run verify` y en `prebuild`) que falle si el repo o `dist/` contienen patrones `sb_secret_`, JWT con `"role":"service_role"`, `SUPABASE_SERVICE_ROLE_KEY=` con valor o claves privadas. Tests.
 - **Commit:** `chore(security): add secret scanning guard and agent rules`
 
-### [x] A3 Backup de archivos de Storage
+### [ ] A3 Backup de archivos de Storage
 Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye archivos.
 - `scripts/backup-storage.mjs` (`npm run backup:storage`): descarga todos los objetos de los buckets (`assets`, `knowledge`, `automation-traces` opcional) a `<carpeta de backup>\storage\<bucket>\…`, con la clave secreta solo en memoria; genera `storage-manifest.json` con ruta, tamaño y SHA-256; verifica que la cantidad y los tamaños coincidan con el listado remoto. Reanudable (salta lo que ya tiene con el mismo hash).
 - Integrarlo al procedimiento de §1.4 y a `AGENTS.md`.
 - Ejecutarlo una vez y registrar totales en `STATUS.md`.
 - **Commit:** `feat(ops): verified backup of Supabase Storage files`
 
-### [x] A4 Vulnerabilidades de dependencias
+### [ ] A4 Vulnerabilidades de dependencias
 - `npm audit` reporta 1 alta (Vite) y 2 moderadas (Vitest). Actualizar a versiones corregidas dentro de la misma versión mayor si es posible; si exige mayor, evaluar el changelog y actualizar solo si `npm run verify` pasa completo. Lo mismo en `tools/rivastock-ai-bridge`.
 - Criterio: `npm run verify` termina en cero o cada aviso restante queda justificado en `STATUS.md`.
 - **Commit:** `chore(deps): fix audited vulnerabilities`
@@ -143,7 +203,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 
 ## 4. Bloque B — Cierre del módulo IA
 
-### [x] B1 AI Bridge y configuración de extracción de memoria
+### [ ] B1 Instalar AI Bridge 1.12.0
 - Con la autorización 1.1.4. Verificar que el worker lee `ai_function_settings` (`ai_memory_extract = codex / gpt-6-luna / low`) y registrarlo.
 - Quitar de `OWNER_ACTIONS.md` la acción “AI Bridge 1.12.0” si quedó resuelta.
 - **Commit:** `docs(ai): record AI Bridge 1.12.0 rollout`
