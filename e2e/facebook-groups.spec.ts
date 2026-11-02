@@ -96,6 +96,10 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
         dialog.innerHTML='<div data-lexical-editor="true" contenteditable="true" role="textbox" aria-label="Escribe algo..."></div><div><button>Foto/video</button><input type="file" multiple accept="image/*"></div><button disabled id="publish">Publicar</button>';
         dialog.querySelector('[contenteditable]').addEventListener('paste',event=>{
           event.preventDefault();event.target.innerHTML=event.clipboardData.getData('text/html');
+          if(${mutation==='none'} && !sessionStorage.getItem('corruptLexicalOnce')) {
+            event.target.textContent=event.clipboardData.getData('text/plain').replace(/\\n/g,'');
+            sessionStorage.setItem('corruptLexicalOnce','1');
+          }
           if(${mutation==='html-whitespace'}) {
             // Reproduce the HTML import that removed the approved trailing title
             // space in the inspected Facebook composer. NBSP is not collapsed.
@@ -126,9 +130,7 @@ for (const mutation of ['none', 'price', 'missing-line', 'extra-line', 'spacing'
       await page.reload();
     }
     if(mutation==='none') {
-      const previous=facebookFormAction.toString().replace(/!matchesEditor\(editor,\s*approved\)/, 'lines(editor.innerText).trim()!==approved.trim()');
-      expect(previous).not.toBe(facebookFormAction.toString());
-      const rejected=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:previous,content,photos});
+      const rejected=await page.evaluate(({source,content,photos})=>new Function('return ('+source+')')()('group_prepare',content,photos),{source:facebookFormAction.toString(),content,photos});
       expect(rejected.error).toContain('antes de cargar fotos');
       expect(await page.evaluate(()=>window.uploadCount)).toBeUndefined();
       await page.reload();

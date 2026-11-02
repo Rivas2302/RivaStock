@@ -1,4 +1,4 @@
-import { facebookFormAction } from './form-actions.js';
+import { facebookFormAction, validateSupervisorDecision } from './form-actions.js';
 import { openAutomationTab, closeAutomationTab } from './automation-tabs.js';
 export function validateFacebookDestination(destination) {
   if (destination.mechanism === 'marketplace' && destination.url === 'https://www.facebook.com/marketplace/create/item') return;
@@ -102,14 +102,186 @@ export function ownedGroupTrackingResult(job,pendingPostId,snapshots) {
   if(item.state==='not_approved')return {status:'not_approved',url:null,pendingPostId,message:'Facebook movió la publicación a rechazadas o eliminadas.'};
   return null;
 }
+function decisionMatch(descriptor, decision) {
+  const index = Number.isInteger(decision?.element_index) ? decision.element_index : descriptor?.intent?.target?.element_index;
+  const control = descriptor?.domSummary?.controls?.find(item => item.index === index);
+  if (!control?.role) return null;
+  return {
+    role: control.role,
+    ...(control.name ? { accessible_name: control.name } : {}),
+    ...(control.text ? { text: control.text } : {}),
+    ...(control.headingPath?.at(-1) ? { nearby_heading: control.headingPath.at(-1) } : {}),
+  };
+}
+
+function withSupervisionObservation(error, observation, traceId) {
+  const suffix = [
+    observation ? `Observación de IA: ${observation}` : '',
+    traceId ? `Traza: ${traceId}` : '',
+  ].filter(Boolean).join('. ');
+  const wrapped = new Error(`${error.message}${suffix ? ` ${suffix}` : ''}`);
+  wrapped.code = error.code;
+  wrapped.issue = error.issue;
+  wrapped.supervision = error.supervision;
+  return wrapped;
+}
+
+async function reloadTabAndWait(tabId) {
+  const tabs = globalThis.chrome?.tabs;
+  if (!tabs?.reload || !tabs?.onUpdated?.addListener) throw new Error('No se pudo reiniciar la pestaña de preparación de forma segura.');
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => finish(new Error('La pestaña no terminó de recargar a tiempo.')), 60_000);
+    const finish = error => {
+      clearTimeout(timeout);
+      tabs.onUpdated.removeListener(onUpdated);
+      error ? reject(error) : resolve();
+    };
+    const onUpdated = (updatedTabId, changeInfo) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') finish();
+    };
+    tabs.onUpdated.addListener(onUpdated);
+    Promise.resolve(tabs.reload(tabId)).catch(finish);
+  });
+}
+
+export async function prepareWithSupervision(adapter, tabId, action, content, photos, baseline, config) {
+  const stepCounts = new Map();
+  const allHints = [];
+  const hintAttempts = new Set();
+  let decisions = 0;
+  let latestObservation = '';
+  let lastError;
+  const reportOutcome = (...args) => Promise.resolve(config.reportSupervisionOutcome?.(...args)).catch(() => {});
+  const noteHintUse = (...args) => Promise.resolve(config.onLearnedHintUsed?.(...args)).catch(() => {});
+
+  for (let cycle = 0; cycle < 24; cycle++) {
+    try {
+      return await adapter.action(tabId, action, { ...content, ...(allHints.length ? { supervisionHints: allHints } : {}) }, photos, baseline);
+    } catch (error) {
+      lastError = error;
+      let descriptor = error.supervision;
+      if (!descriptor || !config.loadSupervisionHints || !config.requestSupervision
+        || !descriptor.traceId || !descriptor.stepSeq || !descriptor.intent?.target) throw error;
+
+      if (!hintAttempts.has(descriptor.stepName)) {
+        hintAttempts.add(descriptor.stepName);
+        try {
+          const hints = await config.loadSupervisionHints(descriptor.stepName);
+          const usable = (Array.isArray(hints) ? hints : []).filter(hint => hint?.step === descriptor.stepName
+            && hint?.intent_key === descriptor.stepName && hint?.match && typeof hint.match.role === 'string'
+            && (typeof hint.match.accessible_name === 'string' || typeof hint.match.text === 'string'));
+          allHints.push(...usable);
+          if (usable.length) {
+            try {
+              const hintedResult = await adapter.action(tabId, action, { ...content, supervisionHints: allHints }, photos, baseline);
+              await noteHintUse(descriptor.stepName, tabId);
+              return hintedResult;
+            } catch (hintError) {
+              lastError = hintError;
+              if (hintError.supervision?.stepName !== descriptor.stepName) {
+                await noteHintUse(descriptor.stepName, tabId);
+                continue;
+              }
+              descriptor = hintError.supervision;
+            }
+          }
+        } catch {
+          // The regular deterministic path remains available if learned hints cannot be read.
+        }
+      }
+
+      const stepCount = stepCounts.get(descriptor.stepName) ?? 0;
+      if (stepCount >= 3 || decisions >= 8) throw withSupervisionObservation(lastError, latestObservation, descriptor.traceId);
+      let response;
+      try {
+        response = await config.requestSupervision(descriptor);
+      } catch {
+        throw lastError;
+      }
+      if (!response?.id || !response.decision || !validateSupervisorDecision(response.decision, descriptor.domSummary, descriptor.intent)) {
+        throw lastError;
+      }
+      decisions += 1;
+      stepCounts.set(descriptor.stepName, stepCount + 1);
+      latestObservation = String(response.decision.observation ?? '').slice(0, 300);
+      const match = decisionMatch(descriptor, response.decision);
+      if (!match) {
+        await reportOutcome(response.id, false, null, descriptor.stepName, latestObservation, tabId);
+        throw withSupervisionObservation(lastError, latestObservation, descriptor.traceId);
+      }
+
+      let applied;
+      try {
+        applied = await adapter.action(tabId, 'apply_supervisor_decision', {
+          supervision: { decision: response.decision, domSummary: descriptor.domSummary, intent: descriptor.intent },
+        });
+      } catch (applyError) {
+        await reportOutcome(response.id, false, match, descriptor.stepName, latestObservation, tabId);
+        if (applyError.stale) {
+          try {
+            return await adapter.action(tabId, action, { ...content, supervisionHints: allHints }, photos, baseline);
+          } catch (freshError) {
+            lastError = freshError;
+            continue;
+          }
+        }
+        throw withSupervisionObservation(lastError, latestObservation, descriptor.traceId);
+      }
+      if (!applied?.applied) {
+        await reportOutcome(response.id, false, match, descriptor.stepName, latestObservation, tabId);
+        throw withSupervisionObservation(lastError, latestObservation, descriptor.traceId);
+      }
+      if (applied.skipDestination) {
+        await reportOutcome(response.id, false, null, descriptor.stepName, latestObservation, tabId);
+        const skipped = new Error('La IA recomendó omitir este destino. Se dejó la entrega para revisión; no se enviará automáticamente.');
+        skipped.code = 'SUPERVISOR_SKIP_DESTINATION';
+        throw withSupervisionObservation(skipped, latestObservation, descriptor.traceId);
+      }
+
+      const resolvedMatch = applied.reload ? null : applied.match ?? match;
+      const learned = resolvedMatch ? {
+        step: descriptor.stepName,
+        intent_key: descriptor.stepName,
+        match: resolvedMatch,
+      } : null;
+      if (learned?.match?.role && (learned.match.accessible_name || learned.match.text)) allHints.push(learned);
+      try {
+        const result = await adapter.action(tabId, action, { ...content, supervisionHints: allHints }, photos, baseline);
+        await reportOutcome(response.id, true, resolvedMatch, descriptor.stepName, latestObservation, tabId);
+        return result;
+      } catch (retryError) {
+        const retryStep = retryError.supervision?.stepName;
+        const resolvedStep = Boolean(retryStep) && retryStep !== descriptor.stepName;
+        await reportOutcome(response.id, resolvedStep, resolvedMatch, descriptor.stepName, latestObservation, tabId);
+        if (retryStep) {
+          lastError = retryError;
+          continue;
+        }
+        throw withSupervisionObservation(retryError, latestObservation, descriptor.traceId);
+      }
+    }
+  }
+  throw withSupervisionObservation(lastError ?? new Error('La preparación excedió el límite de reintentos supervisados.'), latestObservation, lastError?.supervision?.traceId);
+}
 export const facebookAdapter = {
   ready: true,
   async action(tabId, action, content, photos = [], baseline = []) {
+    if (action === 'apply_supervisor_decision') {
+      const { decision, domSummary, intent } = content?.supervision ?? {};
+      if (!validateSupervisorDecision(decision, domSummary, intent)) throw new Error('La decisión del supervisor no cumple el contrato seguro de la extensión.');
+      if (['click', 'type', 'select_option', 'scroll_container'].includes(decision.action)
+        && (!intent?.target || intent.target.element_index !== decision.element_index)) {
+        throw new Error('La decisión no apunta al único control objetivo del paso supervisado.');
+      }
+    }
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: facebookFormAction, args: [action, content, photos, baseline] });
     if (results.length !== 1 || !results[0].result) throw new Error('No se pudo verificar el formulario de Facebook.');
     if(results[0].result.error) {
       const stage={check_existing:'Revisión de anuncios existentes',marketplace_prepare:'Preparación del formulario de Marketplace',group_prepare:'Preparación del grupo',validate_submit:'Verificación final antes de autorizar el envío',submit:'Envío a Facebook',result:'Comprobación del resultado'}[action]??action;
-      const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;error.code=results[0].result.code??'FORM_VARIANT_UNSUPPORTED';throw error;
+      const error=new Error(`${stage}: ${results[0].result.error}`);error.issue=results[0].result.issue;error.code=results[0].result.code??'FORM_VARIANT_UNSUPPORTED';error.supervision=results[0].result.supervision;error.stale=results[0].result.stale===true;throw error;
+    }
+    if (action === 'apply_supervisor_decision' && results[0].result.reload === true) {
+      await reloadTabAndWait(tabId);
     }
     return results[0].result;
   },
@@ -161,7 +333,8 @@ export const facebookAdapter = {
     }
     config.onTiming?.('navigation_ms',performance.now()-started);
     const preparedContent={...job.content,...(rehearsal?{rehearsal:true,rehearsalId:config.rehearsalId}:{}),targetGroupUrl:marketplace?null:job.destination.url,targetGroupName:marketplace?null:job.destination.name??null};
-    const result = await this.action(tab.id, job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare', preparedContent, photos);
+    const prepareAction = job.destination.mechanism === 'marketplace' ? 'marketplace_prepare' : job.content.deliveryResolution?.action==='group_sale'?'group_sale_prepare':'group_prepare';
+    const result = await prepareWithSupervision(this, tab.id, prepareAction, preparedContent, photos, [], config);
     if (!result.ready) throw new Error('El formulario no está listo.');
     let baseline=result.baseline;
     if(!marketplace) {

@@ -251,7 +251,7 @@ async function recordStep(name, status, options = {}) {
         note: mergeNote(options.note, null),
       },
     });
-    return true;
+    return seq;
   });
   if (!accepted) return false;
 
@@ -276,8 +276,14 @@ async function recordStep(name, status, options = {}) {
 
 export function step(name, status, options = {}) {
   const result = stepSerial.then(() => recordStep(name, status, options));
-  stepSerial = result.catch(() => false);
-  return result;
+  stepSerial = result.then(() => undefined, () => undefined);
+  return result.then(value => value !== false, () => false);
+}
+
+export function stepWithSequence(name, status, options = {}) {
+  const result = stepSerial.then(() => recordStep(name, status, options));
+  stepSerial = result.then(() => undefined, () => undefined);
+  return result.then(value => typeof value === 'number' ? value : null, () => null);
 }
 
 export async function finishTrace(outcome, summary = {}, jobKey = null) {

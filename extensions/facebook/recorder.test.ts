@@ -23,7 +23,7 @@ beforeEach(() => {
     connection: { deviceId, url: 'https://project.supabase.co', key: 'public-key', token: 'device-token' },
   };
   const chromeMock = {
-    runtime: { getManifest: () => ({ version: '0.5.17' }) },
+    runtime: { getManifest: () => ({ version: '0.5.18' }) },
     storage: { local: {
       get: vi.fn(async (keys: string | string[]) => {
         const list = Array.isArray(keys) ? keys : [keys];

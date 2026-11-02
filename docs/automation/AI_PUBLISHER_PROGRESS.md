@@ -1,5 +1,15 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-02 13:01 ART — T2.4 supervisión de formularios implementada; cierre pendiente
+
+- La extensión agrega pistas aprendidas por paso (rol, nombre accesible, texto y encabezado), recuperación con DOM idéntico al persistido, sondeo con traza, límites de 3 decisiones por paso/8 por intento, recarga de la pestaña de preparación y revalidación determinista antes de continuar. La versión de extensión se elevó a **0.5.18**.
+- La reparación nunca obtiene autorización para validar ni pulsar «Publicar». Las decisiones `reload` reinician el mismo flujo con el contenido aprobado. `skip_destination` detiene el flujo sin publicar y deja la entrega en `attention` para revisión del dueño.
+- **Desvío:** el worker actual no ofrece una operación segura para cancelar/omitir una entrega desde su token. Por eso `skip_destination` solicita revisión del dueño en vez de cancelar automáticamente la cola. T2.4 permanece `[ ]` hasta resolver esa semántica; T2.5 queda pendiente.
+- Regresiones T0.2 confirmadas: el baseline tolera marcadores opcionales `null` (`e2e/facebook-own-content.spec.ts`) y una lista de anuncios incompleta bloquea el envío (`e2e/facebook-own-content.spec.ts`).
+- Verificación local final: `npm run lint`; `npm test` **600/600** (con fixture de Supabase limitado al proceso); Playwright `e2e/facebook` **101/101**; `npm run build`; `npm run perf:check`. El build registra JS inicial gzip de **207.692 B** y CSS de **21.795 B**. No hubo migración ni se crearon datos `[QA]`.
+- El Bridge de la PC pasó de **1.11.0 a 1.13.0** desde el paquete generado en el repo, usando el procedimiento del actualizador y sin el `.bat`: se preservaron `.env` y la carpeta de sesiones (0 archivos), quedó un solo proceso y el acceso de Inicio usa `wscript.exe`/`start-background.vbs`. Producción confirmó heartbeat reciente e inactivo; Playwright mostró **Conectada** en IA → Conexión. Vercel había confirmado `success` para `161b9cd`; la extensión 0.5.18 queda pendiente de confirmar tras publicar este commit.
+- No hubo prueba en vivo ni publicación: Chrome tenía procesos abiertos, pero el perfil Default no contiene una extensión identificable de RivaStock/Facebook y no se pudo verificar una sesión Facebook activa. La acción requerida se mantiene en `docs/ai/OWNER_ACTIONS.md`.
+
 ## 2026-11-02 — T2.3 loop supervisor del AI Bridge
 
 - Implementado el loop independiente, sondeo cada 2 s detrás de `AI_BRIDGE_ENABLE_FB_SUPERVISOR`, con parada cooperativa junto al worker. El supervisor descarga capturas firmadas a directorios temporales eliminados en `finally`, usa ajustes por función, aplica timeout de 60 s y reintenta una sola vez una salida JSON inválida.
