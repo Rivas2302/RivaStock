@@ -37,6 +37,22 @@ describe('Facebook supervised result verification', () => {
       .toMatchObject({ result: null, candidateUrl: null, reason: 'candidate_in_baseline' });
   });
 
+  it('keeps a historical match as a candidate until a person confirms it', () => {
+    const reviewed = resolveSupervisedResult(marketplaceJob, [], marketplaceSnapshot, published, { requireHumanConfirmation: true });
+    expect(reviewed).toEqual({ result: null, candidateUrl: 'https://www.facebook.com/marketplace/item/987654321/', reason: 'historical_confirmation_required' });
+  });
+
+  it('does not expose a historical candidate without an exact title or a live approved state', () => {
+    expect(resolveSupervisedResult(marketplaceJob, [], { ...marketplaceSnapshot, items: [{ ...marketplaceSnapshot.items[0], titleMatches: false }] }, published,
+      { requireHumanConfirmation: true })).toMatchObject({ result: null, candidateUrl: null });
+    expect(resolveSupervisedResult(marketplaceJob, [], { ...marketplaceSnapshot, items: [{ ...marketplaceSnapshot.items[0], authorMatches: false }] }, published,
+      { requireHumanConfirmation: true })).toMatchObject({ result: null, candidateUrl: null });
+    expect(resolveSupervisedResult(marketplaceJob, [], { ...marketplaceSnapshot, items: [{ ...marketplaceSnapshot.items[0], state: 'pending_approval' }] }, published,
+      { requireHumanConfirmation: true })).toMatchObject({ result: null, candidateUrl: null });
+    expect(resolveSupervisedResult(marketplaceJob, [], marketplaceSnapshot, { ...published, state: 'not_approved' },
+      { requireHumanConfirmation: true })).toMatchObject({ result: null, candidateUrl: null });
+  });
+
   it('maps pending group evidence and preserves a candidate for human confirmation when confidence is low', () => {
     const groupJob = { ...marketplaceJob, destination: { mechanism: 'group_direct', url: 'https://www.facebook.com/groups/12345' } };
     const groupSnapshot = { ...marketplaceSnapshot, items: [{ ...marketplaceSnapshot.items[0],

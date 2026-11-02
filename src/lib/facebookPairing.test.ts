@@ -53,6 +53,24 @@ it('acknowledges a scoped publication hint immediately without approving or enab
   }finally{vi.unstubAllGlobals();}
 });
 
+it('runs historical review only for the connected device and returns no connection credentials',async()=>{
+ let listener:any;const review=vi.fn(async()=>({candidateFound:true,message:'Requiere confirmación.'}));
+ vi.stubGlobal('chrome',{runtime:{onMessageExternal:{addListener:(fn:any)=>listener=fn}},storage:{local:{get:async()=>({connection:{deviceId:'pc',url:'https://test.supabase.co',token:'secret'}})}}});
+ try{
+  const {registerPairing}=await import('../../extensions/facebook/pairing.js');registerPairing({reviewUnknown:review});
+  const sender={url:'https://rivastock.vercel.app/automatizaciones',tab:{id:1},frameId:0};
+  const send=(message:any,source=sender)=>new Promise<any>(resolve=>listener(message,source,resolve));
+  const payload={type:'rivastock-review-unknown',projectUrl:'https://test.supabase.co',deviceId:'pc',deviceIds:['pc'],review:{attemptId:'attempt'}};
+  expect(await send({...payload,deviceId:'other'})).toHaveProperty('error');
+  expect(await send({...payload,projectUrl:'https://other.supabase.co'})).toHaveProperty('error');
+  expect(review).not.toHaveBeenCalled();
+  const result=await send(payload);expect(result).toEqual({accepted:true,candidateFound:true,message:'Requiere confirmación.'});
+  expect(review).toHaveBeenCalledWith(expect.objectContaining({deviceId:'pc',token:'secret'}),payload.review);
+  const reply=vi.fn();listener(payload,{...sender,url:'https://evil.test/automatizaciones'},reply);
+  expect(reply).not.toHaveBeenCalled();expect(review).toHaveBeenCalledTimes(1);
+ }finally{vi.unstubAllGlobals();}
+});
+
 it('reports connection state without credentials, stored content or another account identity',async()=>{
  let listener:any;vi.stubGlobal('chrome',{runtime:{onMessageExternal:{addListener:(fn:any)=>listener=fn}},storage:{local:{get:async()=>({connection:{deviceId:'pc',url:'https://test.supabase.co',token:'secret'},activeJob:{job:{content:'private'}},paused:true})}}});
  try{const {registerPairing}=await import('../../extensions/facebook/pairing.js');registerPairing();const sender={url:'https://rivastock.vercel.app/automatizaciones',tab:{id:1},frameId:0};

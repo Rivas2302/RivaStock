@@ -23,8 +23,8 @@ export function validateGroupSelection(groups:FacebookGroup[],selected:string[])
   return null;
 }
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
-export interface FacebookAttempt {id:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;pending_post_id?:string|null;tracking_checked_at?:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string;status?:string;message?:string}}[]}
-export const facebookDeliveryFields='*,facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,pending_post_id,tracking_checked_at,events:facebook_delivery_attempt_events(type,created_at,data))';
+export interface FacebookAttempt {id:string;device_id?:string;started_at:string;lease_expires_at:string;authorized_at:string|null;finished_at:string|null;outcome:string|null;last_error_code:string|null;pending_post_id?:string|null;tracking_checked_at?:string|null;events?:{type:string;created_at:string;data:{new_url?:string;new_status?:string;url?:string;decision?:string;status?:string;message?:string;post_submit_observations?:unknown[]}}[]}
+export const facebookDeliveryFields='*,facebook_delivery_attempts!facebook_delivery_attempts_delivery_id_fkey(id,device_id,started_at,lease_expires_at,authorized_at,finished_at,outcome,last_error_code,pending_post_id,tracking_checked_at,events:facebook_delivery_attempt_events(type,created_at,data))';
 export async function refreshFacebookDeliveryStates(){
  const {error}=await supabase.rpc('refresh_facebook_delivery_states');
  if(error&&!['PGRST202','42883'].includes(error.code))throw new Error('No se pudo comprobar si hay ejecuciones interrumpidas.');

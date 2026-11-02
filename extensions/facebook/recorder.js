@@ -181,7 +181,7 @@ export function flushTraceQueue() {
 }
 
 export async function startTrace(mode, job) {
-  const jobKey = mode === 'real' ? job?.attemptId : job?.rehearsalId;
+  const jobKey = job?.traceKey ?? (mode === 'real' ? job?.attemptId : job?.rehearsalId);
   if (!['real', 'rehearsal'].includes(mode) || !jobKey || !job?.destination?.mechanism) return null;
   const { connection } = await chrome.storage.local.get('connection');
   if (!connection) return null;
@@ -208,7 +208,7 @@ export async function startTrace(mode, job) {
           rehearsal_id: mode === 'rehearsal' ? job.rehearsalId : null,
           mechanism: job.destination.mechanism,
           extension_version: extensionVersion(),
-          summary: { source: 'facebook-extension', resumed: false },
+          summary: { source: 'facebook-extension', resumed: false, ...(job?.traceSummary ?? {}) },
         },
       }],
     };

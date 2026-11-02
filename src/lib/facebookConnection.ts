@@ -1,13 +1,13 @@
 import { facebookExtensionId } from './facebookExtensionId';
 import { facebookRpc } from './facebookPublications';
 
-export type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;publicationsWake?:boolean;accepted?:boolean;state?:string;protocol?:number;connectionStatus?:boolean;hasConnection?:boolean;matches?:boolean;hasActiveJob?:boolean;paused?:boolean;errorCode?:string;recoveryPending?:boolean;pairingPending?:boolean};
+export type ExtensionResponse = {installed?:boolean;pending?:boolean;error?:string;version?:string;groupsWake?:boolean;publicationsWake?:boolean;historicalReview?:boolean;candidateFound?:boolean;message?:string;accepted?:boolean;state?:string;protocol?:number;connectionStatus?:boolean;hasConnection?:boolean;matches?:boolean;hasActiveJob?:boolean;paused?:boolean;errorCode?:string;recoveryPending?:boolean;pairingPending?:boolean};
 type Runtime = { lastError?: { message?: string }; sendMessage: (id:string,message:unknown,callback:(response: ExtensionResponse|undefined)=>void)=>void };
-function extensionMessage(message:unknown) {
+function extensionMessage(message:unknown,timeoutMs=10000) {
   const runtime = (window as Window & {chrome?:{runtime?:Runtime}}).chrome?.runtime;
   if (!runtime?.sendMessage) return Promise.reject(new Error('Abrí RivaStock en Chrome de la PC con la extensión instalada.'));
   return new Promise<ExtensionResponse>((resolve,reject) => {
-    const timer=setTimeout(() => reject(new Error('La extensión no respondió. Actualizala y volvé a intentar.')),10000);
+    const timer=setTimeout(() => reject(new Error('La extensión no respondió. Actualizala y volvé a intentar.')),timeoutMs);
     runtime.sendMessage(facebookExtensionId,message,response => {
       clearTimeout(timer);
       if(runtime.lastError || !response) reject(new Error('Instalá o actualizá la extensión RivaStock en Chrome y recargá esta página.'));
@@ -60,4 +60,19 @@ export async function wakeFacebookGroups(deviceId:string):Promise<string|null> {
   if(!result.accepted)throw new Error('La extensión no confirmó el inicio de la lectura. Revisá la PC vinculada.');
   if(result.state==='waiting')return 'La extensión respondió, pero no encontró un pedido nuevo para esta conexión. Revisá qué PC elegiste en RivaStock; otro intento también puede estar en curso.';
   return 'Extensión avisada. Esperando que Facebook responda.';
+}
+
+export interface HistoricalFacebookReview {
+  deliveryId:string;attemptId:string;deviceId:string;authorizedAt:string;
+  destination:{mechanism:string;url:string;name:string};
+  content:{title:string;description:string;price:number;photos:string[];location:string;category:string;condition:string;groupText?:string};
+  postSubmitObservations?:unknown[];
+}
+export async function reviewFacebookUnknownAttempt(review:HistoricalFacebookReview):Promise<ExtensionResponse> {
+  const installed=await extensionMessage({type:'rivastock-installed'});
+  if(!installed.installed||installed.protocol!==2||!installed.historicalReview)
+    throw new Error(`Actualizá y recargá la extensión Facebook${installed.version?` (versión detectada ${installed.version})`:''} para revisar resultados históricos con IA.`);
+  const rawUrl=(import.meta.env.VITE_SUPABASE_URL as string).trim();
+  const projectUrl=new URL(rawUrl.startsWith('https://')?rawUrl:`https://${rawUrl}`).origin;
+  return extensionMessage({type:'rivastock-review-unknown',projectUrl,deviceId:review.deviceId,deviceIds:[review.deviceId],review},240000);
 }

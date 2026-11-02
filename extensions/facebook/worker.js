@@ -5,17 +5,18 @@ import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
 import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
-registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);}});
+registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown});
 void flushTraceQueue();
 
 let polling = false;
 let pendingSignal=null;
 let readingGroups = false;
+let reviewingHistorical = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
 const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
 let flushingPostSubmitObservations=false;
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.20';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.21';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.
@@ -48,6 +49,7 @@ export function evidenceContract(result){
   return result.url||result.status==='pending_approval'?'result':'receipt';
 }
 export async function syncGroups(connection,background=false) {
+  if(reviewingHistorical)return {state:'busy'};
   if(readingGroups)return {state:'reading'};
   readingGroups=true;
   let startedInBackground=false;
@@ -215,12 +217,12 @@ async function requestFacebookSupervision(connection, descriptor) {
 }
 async function requestFacebookResultVerification(connection, active, snapshot) {
   await flushTraceQueue();
-  const traceId=await traceIdForJob(active.attemptId);
+  const traceId=await traceIdForJob(active.traceJobKey??active.attemptId);
   if(!traceId||!Number.isSafeInteger(snapshot?.trace_seq)||!snapshot?.dom_summary)return null;
   const approvedSubmission={
     title:String(active.job.content.title??'').slice(0,240),
     price:active.job.content.price,
-    submitted_at:new Date(active.postSubmitStartedAt??active.startedAt??Date.now()).toISOString(),
+    submitted_at:new Date(active.authorizedAt??active.postSubmitStartedAt??active.startedAt??Date.now()).toISOString(),
     ...(typeof active.job.content.photos?.[0]==='string'?{first_photo_url:active.job.content.photos[0]}:{}),
     post_submit_observations:Array.isArray(active.postSubmitObservations)?active.postSubmitObservations:[],
   };
@@ -252,6 +254,96 @@ async function requestFacebookResultVerification(connection, active, snapshot) {
     await new Promise(resolve=>setTimeout(resolve,SUPERVISION_POLL_MS));
   }
   return null;
+}
+const REVIEW_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function historicalReviewJob(connection,review){
+  if(!review||typeof review!=='object'||Array.isArray(review)||Object.keys(review).some(key=>!['deliveryId','attemptId','deviceId','authorizedAt','destination','content','postSubmitObservations'].includes(key)))
+    throw new Error('La revisión histórica no tiene un formato válido.');
+  if(!REVIEW_UUID.test(review.deliveryId??'')||!REVIEW_UUID.test(review.attemptId??'')||review.deviceId!==connection.deviceId
+    ||typeof review.authorizedAt!=='string'||!Number.isFinite(Date.parse(review.authorizedAt)))
+    throw new Error('El intento no tiene una autorización y una PC verificables.');
+  const destination=review.destination;
+  if(!destination||typeof destination!=='object'||!['marketplace','group_direct'].includes(destination.mechanism))
+    throw new Error('El destino no es compatible con la revisión asistida.');
+  if(destination.mechanism==='marketplace'&&destination.url!=='https://www.facebook.com/marketplace/create/item')
+    throw new Error('El destino Marketplace no coincide con la ruta permitida.');
+  if(destination.mechanism==='group_direct'&&!/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+\/?$/.test(destination.url??''))
+    throw new Error('El destino de grupo no coincide con la ruta permitida.');
+  const content=review.content;
+  if(!content||typeof content!=='object'||typeof content.title!=='string'||!content.title.trim()||content.title.length>100
+    ||!Number.isFinite(content.price)||content.price<=0||typeof content.description!=='string'||content.description.length>5000
+    ||!Array.isArray(content.photos)||content.photos.length<1||content.photos.length>10)
+    throw new Error('Faltan datos aprobados para identificar la publicación.');
+  const photo=new URL(content.photos[0]);
+  if(photo.origin!==connection.url||!photo.pathname.startsWith('/storage/v1/object/public/'))
+    throw new Error('La foto aprobada no pertenece al almacenamiento de esta cuenta.');
+  const observations=Array.isArray(review.postSubmitObservations)?review.postSubmitObservations.slice(0,3):[];
+  return {
+    id:review.deliveryId,attemptId:review.attemptId,
+    destination:{mechanism:destination.mechanism,url:destination.url,name:String(destination.name??'Destino').slice(0,120)},
+    content:{title:content.title,description:content.description,price:content.price,photos:content.photos.slice(0,10),
+      location:String(content.location??'').slice(0,120),category:String(content.category??'').slice(0,120),condition:content.condition,
+      ...(typeof content.groupText==='string'?{groupText:content.groupText.slice(0,6000)}:{})},
+    authorizedAt:review.authorizedAt,postSubmitObservations:observations,
+  };
+}
+async function reviewHistoricalUnknown(connection,review){
+  if(reviewingHistorical||polling||readingGroups)
+    throw new Error('La PC está ocupada con otra ejecución. Esperá a que termine antes de revisar este resultado.');
+  reviewingHistorical=true;
+  let traceJobKey=null;
+  let reviewStored=false;
+  let finalStatus='La revisión histórica no se completó.';
+  try{
+    const state=await chrome.storage.local.get(['connection','activeJob','activeRehearsal','historicalReview','workerProtocol','serverFeatures','paused']);
+    if(state.activeJob||state.activeRehearsal||state.historicalReview)
+      throw new Error('La PC está ocupada con otra ejecución. Esperá a que termine antes de revisar este resultado.');
+    if(state.connection?.token!==connection.token||state.connection?.deviceId!==connection.deviceId||state.connection?.url!==connection.url)
+      throw new Error('La conexión cambió; no se inició la revisión.');
+    if((state.workerProtocol??1)<2)throw new Error('Actualizá la extensión para habilitar la revisión asistida.');
+    const job=historicalReviewJob(connection,review);
+    const heartbeat=await workerRpc(connection,'heartbeat',{protocol:2,status:state.paused===false?'active':'paused'});
+    const features=heartbeat?.features??state.serverFeatures??[];
+    if(!features.includes('result-candidates'))throw new Error('El servidor no admite guardar candidatas para confirmación.');
+    traceJobKey=`historical-review:${crypto.randomUUID()}`;
+    const active={job,attemptId:job.attemptId,deviceId:connection.deviceId,projectUrl:connection.url,stage:'reviewing',protocol:2,
+      traceJobKey,authorizedAt:job.authorizedAt,postSubmitObservations:job.postSubmitObservations,baseline:[],tabId:null};
+    await chrome.storage.local.set({historicalReview:active,status:'Revisando las listas propias de Facebook sin volver a enviar…'});
+    reviewStored=true;
+    await startTrace('real',{...job,traceKey:traceJobKey,traceSummary:{purpose:'historical_unknown_review'}});
+    await flushTraceQueue();
+    if(!await traceIdForJob(traceJobKey))throw new Error('No se pudo iniciar la traza de revisión.');
+    await recordTraceStep('historical_review_started','ok',{capture:false,jobKey:traceJobKey,note:'Lectura de listas propias; no se autoriza ni se ejecuta un envío.'});
+    const outcome=await facebookAdapter.reviewHistoricalResult(active,{
+      requestVerifyResult:snapshot=>requestFacebookResultVerification(connection,active,snapshot),
+      recordTraceStep:(step,status,options)=>recordTraceStep(step,status,{...options,jobKey:traceJobKey}),
+    });
+    if(outcome.candidateUrl){
+      await workerRpc(connection,'attention',{protocol:2,delivery:job.id,attempt:job.attemptId,data:{
+        message:'La IA encontró una candidata en la lista propia. Confirmala en el historial antes de asociarla al intento.',candidateUrl:outcome.candidateUrl,
+      }});
+    }
+    await recordTraceStep('historical_review_completed',outcome.candidateUrl?'supervised':'ok',{
+      capture:false,jobKey:traceJobKey,note:outcome.candidateUrl?'Se guardó una candidata para confirmación humana. El estado del envío no cambió.':'No se encontró una candidata verificable; el intento sigue requiriendo revisión humana.',
+    });
+    await finishTrace('completed',{historical_review:true,candidate_found:Boolean(outcome.candidateUrl)},traceJobKey);
+    await flushTraceQueue();
+    finalStatus=outcome.candidateUrl?'Revisión finalizada. Hay una candidata para confirmar en RivaStock.':'Revisión finalizada. El resultado sigue pendiente de revisión manual.';
+    return outcome.candidateUrl
+      ?{candidateFound:true,message:'La IA encontró una candidata. Confirmala desde el historial; el intento sigue sin cambiar de estado.'}
+      :{candidateFound:false,message:'No se encontró una candidata verificable. El intento sigue disponible para revisión manual.'};
+  }catch(error){
+    if(traceJobKey){
+      await finishTrace('failed',{historical_review:true,reason:String(error?.message??'review_failed').slice(0,160)},traceJobKey).catch(()=>{});
+      await flushTraceQueue().catch(()=>{});
+    }
+    throw error;
+  }finally{
+    if(reviewStored){await chrome.storage.local.remove('historicalReview');await chrome.storage.local.set({status:finalStatus});}
+    reviewingHistorical=false;
+    const next=pendingSignal;pendingSignal=null;
+    if(next)setTimeout(()=>void poll(next,true),0);
+  }
 }
 async function loadFacebookSupervisionHints(connection,step){
   const result=await rpc(connection,'facebook_supervision',{
@@ -396,7 +488,7 @@ async function claimAndProcessRehearsal(connection, saved) {
 }
 
 export async function poll(signal={source:'alarm',received:performance.now(),receivedAt:new Date().toISOString()},chain=false){
-  if(polling){pendingSignal=signal;return;}
+  if(polling||reviewingHistorical){pendingSignal=signal;return;}
   polling=true;const lifetime=globalThis.chrome;let heartbeatTimer;let drain=false;
   try{
     const saved=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','lastIssue','status','queueCommandAt','pendingClaim','pendingRehearsalClaim','workerProtocol','serverFeatures']);
@@ -733,16 +825,20 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     })();return true;
   }
   if(message.type==='trace-step'&&sender.id===chrome.runtime.id&&sender.tab&&typeof message.step==='string'){
-    void chrome.storage.local.get(['activeJob','activeRehearsal','automationTabIds']).then(async({activeJob,activeRehearsal,automationTabIds})=>{
+    void chrome.storage.local.get(['activeJob','activeRehearsal','historicalReview','automationTabIds']).then(async({activeJob,activeRehearsal,historicalReview,automationTabIds})=>{
       const postSubmitStep=['post_click_observation','post_submit_0ms','post_submit_3000ms','post_submit_8000ms'].includes(message.step);
       const supervisedResultStep=message.step==='supervised_result_list'&&activeJob?.stage==='submitting'
         &&Boolean(activeJob.attemptId)&&Number.isSafeInteger(sender.tab.id)
         &&Array.isArray(automationTabIds)&&automationTabIds.includes(sender.tab.id)
         &&isResultListUrl(activeJob.job,sender.tab.url);
+      const supervisedReviewStep=message.step==='supervised_result_list'&&historicalReview?.stage==='reviewing'
+        &&Boolean(historicalReview.attemptId)&&Number.isSafeInteger(sender.tab.id)
+        &&Array.isArray(automationTabIds)&&automationTabIds.includes(sender.tab.id)
+        &&isResultListUrl(historicalReview.job,sender.tab.url);
       const real=(activeJob?.tabId===sender.tab.id&&(activeJob.stage==='preparing'||(activeJob.stage==='submitting'&&postSubmitStep))
-        ||supervisedResultStep)?activeJob:null;
+        ||supervisedResultStep)?activeJob:supervisedReviewStep?historicalReview:null;
       const rehearsal=activeRehearsal?.tabId===sender.tab.id?activeRehearsal:null;
-      const jobKey=real?.attemptId??rehearsal?.rehearsalId;
+      const jobKey=real?.traceJobKey??real?.attemptId??rehearsal?.rehearsalId;
       if(!jobKey){reply({queued:false});return;}
       const seq=await stepWithSequence(message.step,message.status??'ok',{
         capture:message.capture===true,domSummary:message.domSummary,tabId:sender.tab.id,jobKey,

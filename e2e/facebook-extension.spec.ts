@@ -388,5 +388,23 @@ test('uses a fake verify_result assessment only to resolve a new DOM-linked grou
     expect(state.attentionCalls).toHaveLength(0);
     expect(state.resultCalls.some((call:any)=>call.p_data.url==='https://www.facebook.com/groups/78910/posts/987654321')).toBe(false);
     expect(await worker.evaluate(async()=>(await (globalThis as any).chrome.storage.local.get('activeJob')).activeJob)).toBeUndefined();
+
+    const historyListing=`<!doctype html><html><body><main role="main" aria-label="Colección de tus artículos de Marketplace"><h1>Tus publicaciones</h1><input aria-label="Buscar en tus publicaciones"><article><a href="/marketplace/item/999888777/">Ver publicación</a><p>Perfume floral · $43.000 · Publicado en Marketplace</p></article></main><script>document.querySelector('input').value=new URLSearchParams(location.search).get('title_search')||'';</script></body></html>`;
+    await context.route('https://rivastock.vercel.app/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><h1>RivaStock fixture</h1>'}));
+    await context.route('https://www.facebook.com/marketplace/you/selling**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:historyListing}));
+    const historyPage=await context.newPage();await historyPage.goto('https://rivastock.vercel.app/automatizaciones');
+    const historyReview={deliveryId:'70000000-0000-4000-8000-000000000010',attemptId:'70000000-0000-4000-8000-000000000011',deviceId:'fixture-device',
+      authorizedAt:new Date().toISOString(),destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item',name:'Marketplace'},
+      content:{title:'Perfume floral',description:'Descripción aprobada',price:43000,photos:['https://test.supabase.co/storage/v1/object/public/assets/owner/product.jpg'],location:'General Pico',category:'Salud y belleza',condition:'new'}};
+    const beforeReviewResults=state.resultCalls.length;
+    const historyResponse=await historyPage.evaluate(({id,review})=>new Promise<any>(resolve=>(window as any).chrome.runtime.sendMessage(id,
+      {type:'rivastock-review-unknown',projectUrl:'https://test.supabase.co',deviceId:'fixture-device',deviceIds:['fixture-device'],review},resolve)),{id:extensionId,review:historyReview});
+    expect(historyResponse).toMatchObject({accepted:true,candidateFound:true});
+    await expect.poll(()=>worker.evaluate(()=>(globalThis as any).fixtureState.attentionCalls.length),{timeout:15000}).toBe(1);
+    const afterHistory=await worker.evaluate(()=>(globalThis as any).fixtureState);
+    expect(afterHistory.attentionCalls[0].p_data).toMatchObject({candidateUrl:'https://www.facebook.com/marketplace/item/999888777/'});
+    expect(afterHistory.resultCalls).toHaveLength(beforeReviewResults);
+    expect(afterHistory.traceSteps.some((step:any)=>step.step==='historical_review_completed')).toBe(true);
+    expect(await worker.evaluate(async()=>{const local=await (globalThis as any).chrome.storage.local.get(['historicalReview','activeJob']);return [local.historicalReview,local.activeJob];})).toEqual([undefined,undefined]);
   } finally {await context.close();}
 });

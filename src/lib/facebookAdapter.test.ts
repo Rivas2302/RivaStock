@@ -60,6 +60,31 @@ it('does not copy legacy diagnostics into the unknown result',async()=>{
   expect(outcome.error.message).not.toContain('[diag');
 });
 
+it('reviews historical Marketplace results as candidates that never mark success',async()=>{
+  vi.resetModules();
+  const tabs=new Map<number,{id:number,url:string,status:'complete';windowId:number}>();let nextTab=1;
+  const storage:Record<string,unknown>={};
+  vi.stubGlobal('chrome',{runtime:{getURL:(path:string)=>`chrome-extension://test/${path}`},storage:{local:{
+    get:async(keys:string[])=>Object.fromEntries(keys.filter(key=>key in storage).map(key=>[key,storage[key]])),
+    set:async(values:Record<string,unknown>)=>Object.assign(storage,values),
+  }},windows:{create:async()=>({id:99}),get:async(id:number)=>({id})},tabs:{
+    create:async({url,windowId}:{url:string;windowId:number})=>{const id=nextTab++;const tab={id,url,status:'complete' as const,windowId};tabs.set(id,tab);return tab;},
+    get:async(id:number)=>tabs.get(id),remove:async(id:number)=>{tabs.delete(id);},
+  }});
+  const {facebookAdapter}=await import('../../extensions/facebook/adapter.js');
+  const snapshot={complete:true,trace_seq:4,dom_summary:{scope:'page',controls:[{index:0,role:'article',links:['https://www.facebook.com/marketplace/item/987654321/']}]},items:[{
+    id:'987654321',state:'published',authorMatches:true,titleMatches:true,
+    links:['https://www.facebook.com/marketplace/item/987654321/'],
+  }]};
+  const action=vi.spyOn(facebookAdapter,'action').mockResolvedValue(snapshot as any);
+  const requestVerifyResult=vi.fn(async()=>({found:true,element_index:0,state:'published',observation:'La tarjeta coincide.',confidence:0.99}));
+  const outcome=await facebookAdapter.reviewHistoricalResult({baseline:[],job:{content:{title:'Silla',price:100,photos:['https://test.supabase.co/storage/v1/object/public/products/chair.jpg']},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}}},{requestVerifyResult});
+  expect(outcome).toEqual({result:null,candidateUrl:'https://www.facebook.com/marketplace/item/987654321/',reason:'historical_confirmation_required'});
+  expect(action).toHaveBeenCalledWith(expect.any(Number),'own_content_candidates',expect.objectContaining({title:'Silla'}),[],[]);
+  expect(requestVerifyResult).toHaveBeenCalledOnce();
+  expect([...tabs.values()]).toHaveLength(0);
+});
+
 it('rejects photos above 60 MB in total',async()=>{
   vi.resetModules();
   vi.stubGlobal('fetch',async()=>({ok:true,headers:new Headers({'content-type':'image/jpeg'}),arrayBuffer:async()=>new ArrayBuffer(9000000)}));

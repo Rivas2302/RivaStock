@@ -5,17 +5,20 @@ import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft,ArrowLeft} fr
 import {useAuth} from '../../AuthContext';
 import {usePermission} from '../../hooks/usePermission';
 import {deliveryLabel,deliveryState,deliveryCandidate,deliveryReceipt,deliveryRejectedEvidence,facebookRpc,publicationStatus,safeFacebookEvidence,type FacebookDelivery,type FacebookPublication} from '../../lib/facebookPublications';
+import {reviewFacebookUnknownAttempt} from '../../lib/facebookConnection';
+import type {PublicationContent} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
 import ExecutionTraceViewer from './ExecutionTraceViewer';
 
-function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDelivery;onRefresh:()=>Promise<void>;compact?:boolean}) {
+function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:FacebookDelivery;content:PublicationContent;onRefresh:()=>Promise<void>;compact?:boolean}) {
   const {isOwner}=useAuth();
   const canWrite=usePermission('stock','write');
-  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [reviewMessage,setReviewMessage]=useState('');
   const [review,setReview]=useState(false);const [checked,setChecked]=useState(false);const [url,setUrl]=useState('');
   const decision=Boolean(delivery.issue);
   const state=deliveryState(delivery);const evidence=safeFacebookEvidence(delivery);
   const attempts=[...(delivery.facebook_delivery_attempts??[])].sort((a,b)=>b.started_at.localeCompare(a.started_at));
+  const reviewableAttempt=attempts.find(attempt=>attempt.authorized_at&&attempt.finished_at&&attempt.outcome==='unknown'&&attempt.device_id);
   const current=attempts.find(a=>{const events=a.events??[];const lastReview=events.filter(e=>e.type==='review').map(e=>e.created_at).sort().slice(-1)[0]??'';return events.some(e=>e.type==='contradiction'&&e.created_at>lastReview);})??attempts[0];
   const late=current?.events?.filter(e=>e.type==='contradiction'||delivery.recovery_required&&e.type==='result')??[];
   const candidate=deliveryCandidate(delivery);const receipt=deliveryReceipt(delivery);const rejected=deliveryRejectedEvidence(delivery);
@@ -23,6 +26,20 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
     if(busy)return;setBusy(true);setError('');
     try{await facebookRpc(name,name==='review_facebook_attempt'?{p_attempt:current?.id,...args}:{p_delivery:delivery.id,...args});await onRefresh();setReview(false);setChecked(false);}
     catch(error){setError((error as Error).message);}finally{setBusy(false);}
+  }
+  async function reviewUnknownWithAi(){
+    if(busy||!reviewableAttempt?.device_id)return;
+    setBusy(true);setError('');setReviewMessage('La extensión está leyendo las listas propias de Facebook…');
+    const observationEvent=[...(reviewableAttempt.events??[])].reverse().find(event=>Array.isArray(event.data.post_submit_observations));
+    try{
+      const result=await reviewFacebookUnknownAttempt({
+        deliveryId:delivery.id,attemptId:reviewableAttempt.id,deviceId:reviewableAttempt.device_id,authorizedAt:reviewableAttempt.authorized_at!,
+        destination:delivery.destination,content,postSubmitObservations:observationEvent?.data.post_submit_observations,
+      });
+      if(!result.accepted)throw new Error(result.message??'La extensión no confirmó la revisión.');
+      setReviewMessage(result.message??'La revisión terminó.');
+      await onRefresh();
+    }catch(error){setReviewMessage('');setError((error as Error).message);}finally{setBusy(false);}
   }
   const btn='rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50 dark:border-slate-600';
   const stateIsError=state==='failed'||delivery.issue?.kind==='facebook_not_approved';
@@ -80,7 +97,9 @@ function DeliveryCard({delivery,onRefresh,compact=false}:{delivery:FacebookDeliv
       {canWrite&&state==='failed'&&!delivery.evidence_url&&!decision&&<button disabled={busy} className={btn} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
       {canWrite&&state==='failed'&&!delivery.submitted_at&&!delivery.recovery_required&&<button disabled={busy} className={btn} onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar este destino</button>}
       {canWrite&&state==='unknown'&&<button disabled={busy} className={btn} onClick={()=>setReview(!review)}>Registrar revisión</button>}
+      {canWrite&&state==='unknown'&&delivery.status==='attention'&&delivery.submitted_at&&!delivery.recovery_required&&reviewableAttempt&&<button type="button" disabled={busy} className={btn} onClick={()=>void reviewUnknownWithAi()}>{busy?'Revisando con IA…':'Revisar con IA'}</button>}
     </div>
+    {reviewMessage&&<p role="status" className="text-xs text-indigo-700 dark:text-indigo-300">{reviewMessage}</p>}
 
     {/* Review form */}
     {review&&<div className="space-y-2.5 rounded-lg border border-amber-300 p-3 text-xs">
@@ -211,7 +230,7 @@ function PublicationDetailView({publication,onBack,onRefresh,showProductLink,exp
             <h3 className="text-base font-bold">Destinos ({publication.facebook_deliveries.length})</h3>
             {showProductLink&&publication.product_id&&<Link className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50" to={`/automatizaciones?product=${encodeURIComponent(publication.product_id)}`}>Gestionar producto</Link>}
           </div>
-          {publication.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} onRefresh={onRefresh}/>)}
+          {publication.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} content={publication.content} onRefresh={onRefresh}/>)}
         </section>
 
         {activity.length>0&&<details open={expandedDetails} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
@@ -277,7 +296,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
             </details>
             <div className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">Destinos ({pub.facebook_deliveries.length})</h4>
-              {pub.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} onRefresh={onRefresh} compact/>)}
+              {pub.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} content={pub.content} onRefresh={onRefresh} compact/>)}
             </div>
           </div>}
         </div>;
@@ -403,7 +422,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
               {/* Destinations (first — most actionable) */}
               <div className="space-y-2">
                 <h4 className="text-sm font-bold">Destinos ({selected.facebook_deliveries.length})</h4>
-                {selected.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} onRefresh={onRefresh}/>)}
+                {selected.facebook_deliveries.map(delivery=><DeliveryCard key={delivery.id} delivery={delivery} content={selected.content} onRefresh={onRefresh}/>)}
               </div>
 
               {/* Approved content (collapsed by default) */}

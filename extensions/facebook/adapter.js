@@ -431,6 +431,23 @@ export const facebookAdapter = {
     if(assistedCandidateUrl)error.candidateUrl=assistedCandidateUrl;
     throw error;
   },
+  async reviewHistoricalResult(active, options = {}) {
+    if (active.job.destination.mechanism === 'marketplace') {
+      const assisted = await verifyResultWithSupervisor(active, { ...options, requireHumanConfirmation: true },
+        () => readMarketplaceCandidates(active.job, active.baseline ?? []));
+      return assisted ?? { result: null, candidateUrl: null, reason: 'review_unavailable' };
+    }
+    if (active.job.destination.mechanism !== 'group_direct') {
+      return { result: null, candidateUrl: null, reason: 'unsupported_destination' };
+    }
+    for (const state of groupOwnContentPaths) {
+      const assisted = await verifyResultWithSupervisor(active, { ...options, requireHumanConfirmation: true },
+        () => readGroupCandidates(active.job, active.baseline ?? [], state));
+      if (assisted?.candidateUrl) return assisted;
+      if (assisted?.reason === 'review_unavailable') return assisted;
+    }
+    return { result: null, candidateUrl: null, reason: 'not_found' };
+  },
   async track(job,tracker,pendingPostId) {
     if(job.destination.mechanism==='group_direct') {
       if(!/^\d+$/.test(tracker?.authorId??''))return null;
@@ -461,7 +478,9 @@ async function verifyResultWithSupervisor(active,options,loadSnapshot){
     ||!snapshot.dom_summary||!Number.isSafeInteger(snapshot.trace_seq))return null;
   let assessment;
   try{assessment=await options.requestVerifyResult(snapshot);}catch{return null;}
-  const resolved=resolveSupervisedResult(active.job,active.baseline,snapshot,assessment);
+  const resolved=resolveSupervisedResult(active.job,active.baseline,snapshot,assessment,{
+    requireHumanConfirmation:options.requireHumanConfirmation===true,
+  });
   if(resolved.result){
     await options.recordTraceStep?.('supervised_result_verified','supervised',{
       tabId:active.tabId,capture:false,note:resolved.result.message,

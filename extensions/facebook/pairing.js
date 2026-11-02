@@ -19,10 +19,10 @@ export function trustedPairingSender(sender) {
   } catch { return false; }
 }
 
-export function registerPairing({wakeGroups,wakePublications} = {}) {
+export function registerPairing({wakeGroups,wakePublications,reviewUnknown} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
-    if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function'}); return; }
+    if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function',historicalReview:typeof reviewUnknown==='function'}); return; }
     if(['rivastock-connection-status','rivastock-open-connection'].includes(message?.type)){
       void (async()=>{
         try{
@@ -57,6 +57,19 @@ export function registerPairing({wakeGroups,wakePublications} = {}) {
           // Only wake the read-only group request, never the publication queue.
           const result=await wakeGroups(connection);reply({accepted:true,...result});
         }catch(error){reply({error:error.message});}
+      })();
+      return true;
+    }
+    if(message?.type==='rivastock-review-unknown'&&typeof reviewUnknown==='function'){
+      void (async()=>{
+        try{
+          const {connection}=await chrome.storage.local.get('connection');
+          if(!connection||connection.url!==message.projectUrl||connection.deviceId!==message.deviceId
+            ||!Array.isArray(message.deviceIds)||!message.deviceIds.includes(connection.deviceId))
+            throw new Error('La extensión no corresponde a la PC que registró este intento.');
+          const result=await reviewUnknown(connection,message.review);
+          reply({accepted:true,...result});
+        }catch(error){reply({error:error?.message??'No se pudo revisar el resultado histórico.'});}
       })();
       return true;
     }

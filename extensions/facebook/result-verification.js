@@ -31,7 +31,7 @@ export function isSupervisedResultAssessment(value, domSummary) {
   return control?.role === 'article' && Array.isArray(control.links) && control.links.length > 0;
 }
 
-export function resolveSupervisedResult(job, baseline, snapshot, assessment) {
+export function resolveSupervisedResult(job, baseline, snapshot, assessment, { requireHumanConfirmation = false } = {}) {
   const domSummary = snapshot?.dom_summary;
   if (!isSupervisedResultAssessment(assessment, domSummary)) {
     return { result: null, candidateUrl: null, reason: 'assessment_invalid' };
@@ -47,6 +47,13 @@ export function resolveSupervisedResult(job, baseline, snapshot, assessment) {
   }
 
   const candidateUrl = evidence.url;
+  if (requireHumanConfirmation) {
+    if (selected.authorMatches !== true || !selected.titleMatches || selected.state !== assessment.state
+      || !['published', 'pending_approval'].includes(assessment.state)) {
+      return { result: null, candidateUrl: null, reason: 'historical_candidate_unverified' };
+    }
+    return { result: null, candidateUrl, reason: 'historical_confirmation_required' };
+  }
   if (assessment.confidence < 0.8 || assessment.state === 'unknown'
     || assessment.state === 'not_approved' || selected.state !== assessment.state
     || selected.authorMatches !== true || selected.titleMatches !== true) {
