@@ -1,6 +1,14 @@
 export interface HookPayload {
-  user: { email: string };
-  email_data: { token: string; token_hash: string; redirect_to: string; email_action_type: string; site_url: string };
+  user: { email: string; user_metadata?: Record<string, unknown> };
+  email_data: {
+    token: string;
+    token_hash: string;
+    redirect_to: string;
+    email_action_type: string;
+    site_url: string;
+    email?: string;
+    new_email?: string;
+  };
 }
 
 export function buildInviteConfirmationUrl(payload: Pick<HookPayload, 'email_data'>): string {

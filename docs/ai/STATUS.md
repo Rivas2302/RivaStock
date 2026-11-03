@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 19:46 ART — F1 email de invitación: implementación local, envío bloqueado por dominio
+
+- La plantilla que llegó en producción coincide con `send-email` ACTIVE v7; la invitación pasa por el Send Email Hook de Supabase Auth. El hook está configurado para no exigir JWT porque valida la firma Standard Webhooks. La función desplegada usa `onboarding@resend.dev`, y su plantilla desplegada es la que produce el texto de invitación genérico.
+- Preparé cinco diseños reutilizables para dueño invitado, colaborador, recuperación, cambio de email y magic link; HTML UTF-8 más texto plano, wordmark, botón y link alternativo, pie RivaStock · RivaTech, layout móvil y colores oscuros. `invite-collaborator` ahora agrega el nombre del negocio a los metadatos del hook.
+- Tests dirigidos: email templates + seguridad del hook **10/10**. `npm run lint` aprobado; `npm test` aprobado con variables Supabase ficticias y de proceso (**813/813**); build aprobado. AI Bridge typecheck y suite **115/115** aprobados.
+- **Desvío / tarea abierta:** la cuenta sigue usando `onboarding@resend.dev`; no encontré un dominio de envío propio verificado. Resend requiere un dominio propio verificado para enviar a cualquier destinatario. No desplegué ni envié correos a producción, porque hacerlo mantendría el remitente sandbox y no demostraría el criterio pedido.
+- **Pendiente del dueño:** elegir/proveer acceso DNS a un dominio o subdominio propio, agregar los registros exactos que Resend muestre y esperar a que marque el dominio como verificado. El paso a paso está en `MENSAJE_PARA_RIVA.md`.
+- **Siguiente:** al tener el dominio verificado, configurar `RESEND_FROM_EMAIL`, desplegar `invite-collaborator` y `send-email`, enviar las cinco plantillas a `leokevin@gmail.com` y comprobar entrega. Después continuar con F1.2.
+
 ## 2026-11-03 16:01 ART — Revalidación del fallo móvil al compartir fotos
 
 - Diagnóstico de solo lectura en producción, limitado al negocio asociado al producto reportado: **48 productos** tienen más de una foto distinta tras la normalización y deduplicación de la app. Sin nombres, IDs ni valores de URL completos: `image_url` contiene un valor `data:` y un valor `https://nkfqhuqrgrpfufdymkcr.supabase.co`; `images[]` contiene 99 elementos de ese host HTTPS en 46 productos y 4 elementos `data:` en 2 productos. No aparecieron URLs HTTP ni otros hosts. El conteo bruto era 79 productos con más de una URL entre columnas; la diferencia se explica por `image_url` heredados `data:` que se ignoran cuando `images[]` ya tiene fotos y por variantes deduplicadas.

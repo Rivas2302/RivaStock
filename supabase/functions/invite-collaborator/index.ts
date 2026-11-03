@@ -73,6 +73,16 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Solo el propietario puede invitar' }),
       { status: 403, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
+  const { data: ownerProfile, error: ownerProfileError } = await admin
+    .from('profiles')
+    .select('business_name')
+    .eq('id', user.id)
+    .maybeSingle();
+  const businessName = typeof ownerProfile?.business_name === 'string' ? ownerProfile.business_name.trim() : '';
+  if (ownerProfileError || !businessName) {
+    return new Response(JSON.stringify({ error: 'No se pudo obtener el nombre del negocio para la invitación.' }),
+      { status: 503, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
 
   let body: Body;
   try { body = await req.json(); }
@@ -213,7 +223,10 @@ serve(async (req) => {
   if (shouldSendInvite) {
     const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
       normalizedEmail,
-      { redirectTo: `${APP_URL}/reset-password` },
+      {
+        data: { business_name: businessName, signup_kind: 'collaborator' },
+        redirectTo: `${APP_URL}/reset-password`,
+      },
     );
     if (inviteErr) {
       if (inviteErr.message.toLowerCase().includes('already been registered')) {

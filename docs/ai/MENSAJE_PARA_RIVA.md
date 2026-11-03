@@ -1,3 +1,16 @@
+# Email de invitación — falta un dominio propio verificado
+
+La plantilla se puede probar localmente, pero el remitente configurado en producción es `onboarding@resend.dev`, el dominio de pruebas de Resend. Resend exige agregar y verificar un dominio propio para enviar con una dirección del negocio a cualquier destinatario ([guía oficial](https://resend.com/docs/dashboard/domains/introduction)). Todavía no desplegué el cambio ni envié pruebas a Gmail, para no dejar el remitente de pruebas activo como si fuera el de producción.
+
+Cuando estés disponible:
+
+1. Elegí un dominio que controles (si ya tenés uno, conviene usar un subdominio dedicado, por ejemplo `mail.<tu-dominio>`; si no tenés, primero registrá uno). No uses `rivastock.vercel.app` como dominio de correo.
+2. En Resend → **Domains** → **Add Domain**, agregá ese dominio o subdominio y habilitá el envío.
+3. En el proveedor DNS del dominio, cargá los registros de autenticación que Resend muestre para ese subdominio (por ejemplo DKIM y SPF; agregá MX solo si la pantalla lo requiere para la capacidad que habilitaste). Copiá nombre, tipo y valor exactamente. No reemplaces los MX del dominio raíz ni publiques un segundo SPF en el mismo host.
+4. Esperá que Resend muestre el dominio como **Verified** y pasame solo el dominio verificado y la dirección remitente deseada (por ejemplo `no-reply@mail.<tu-dominio>`). No me mandes claves.
+
+Con eso configuro `RESEND_FROM_EMAIL` en Supabase, despliego el hook y mando las cinco pruebas autorizadas a `leokevin@gmail.com`. La verificación local actual está registrada en `STATUS.md`.
+
 # E7 está listo para invitar al primer cliente
 
 La administración de negocios ya está desplegada en producción: [abrir `/plataforma`](https://rivastock.vercel.app/plataforma). Elegí el email, el nombre comercial y el plan (“RivaStock” o “RivaStock IA”); el estado inicial es prueba y la invitación se envía al crear el negocio.
