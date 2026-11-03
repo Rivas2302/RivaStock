@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2.2 aplicada y verificada en producción; E2 sigue abierto
+
+- Antes de E2.2 se creó y verificó `%USERPROFILE%\rivastock-backups\20261103T034825Z`: 87 tablas, 13.828 filas con conteos exactos; schema 822.044 B, data 40.152.299 B; Storage 374 objetos/132.374.670 B y hashes/tamaños coincidentes. `verification: passed`.
+- `supabase db push --linked --dry-run` mostró únicamente `20261103031532_knowledge_plan_limits.sql`; retiré temporalmente E2.3 del directorio de migraciones, apliqué solo E2.2 con `supabase db push` y restauré el archivo. El historial enlazado confirma E2.1 y E2.2 aplicadas, E2.3 pendiente y ninguna fila duplicada remota.
+- En producción están las tres funciones esperadas. `knowledge_add_file_version` y `knowledge_register_asset` incluyen límite por plan, guardia de negocio activo y presupuesto global; `knowledge_stats` devuelve el límite del plan. Las tres conservan ejecución autenticada.
+- **E2.2 desplegada y verificada; E2 sigue abierto.** Próximo: backup completo posterior a E2.2 y aplicar solo E2.3.
+
 ## 2026-11-03 — E2.1 migrada y verificada en producción; E2 sigue abierto
 
 - Antes de aplicar E2.1, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T033913Z`: 86 tablas y 13.823 filas con conteos exactos; schema 813.328 B, data 40.151.373 B; Storage 4 buckets y 374 objetos/132.374.670 B con tamaños y hashes coincidentes. El marcador de backup fallido se retiró al cerrar la verificación.
