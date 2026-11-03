@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — A1 revalidada; rotación legacy sigue abierta por consumidores activos
+
+- Releí `KEY_ROTATION.md` y revisé la API vigente de Supabase. El inventario CLI, filtrado en memoria, confirmó por metadatos la pareja legacy y las claves nuevas `default`; no salió ningún valor. `cli_login_postgres` usa una contraseña temporal que vence en unos cientos de segundos, y no hay consumidor del password de base; no hace falta resetearlo.
+- Supabase ofrece el toggle de Management API para desactivar la pareja legacy `anon`/`service_role`. No lo usé: `automation` y `knowledge` todavía envían el JWT legacy solo a Storage, y la desactivación conjunta rompería esas operaciones. Las credenciales S3 de servidor se generan desde Storage → Configuration; la API publicada no tiene un endpoint para crearlas. El perfil persistente de QA redirigió a inicio de sesión del Dashboard.
+- La consulta de solo lectura a `facebook_devices` confirma heartbeat reciente, pero el dispositivo activo sigue en extensión **0.5.15**; la fuente local ya es **0.5.22** y carece de `self-reload`. ACTION_PLAN todavía dice 0.5.17 para C0; no voy a degradar la extensión. Se documentó este desfase y el bloqueo en `KEY_ROTATION.md`.
+- **A1 permanece `[ ]`**. No se desactivaron claves, no se cambió Storage ni hubo migración o despliegue. Para terminar hacen falta credenciales S3 administradas por el proyecto y una extensión compatible, más su smoke completo; el corte se retoma cuando esas dependencias estén resueltas.
+
 ## 2026-11-03 — A2 revalidada; respaldo completo verificado
 
 - Releí el plan maestro, `STATUS.md`, `OWNER_ACTIONS.md` y `AGENTS.md`; ACTION_PLAN y los archivos multiempresa coinciden por SHA-256 con la copia de Desktop. Frente a `origin/main`, solo ACTION_PLAN tiene cambios de adopción; el smoke multiempresa terminó en **27 comprobaciones / TODO OK**.
