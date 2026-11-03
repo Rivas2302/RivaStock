@@ -1,5 +1,16 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — B2 reconciliada; B4: ruta segura de limpieza en rollout
+
+- Antes de B4 comparé `ACTION_PLAN.md`, el addendum, el plan del publicador y el estado con Desktop y `origin/main`. ACTION_PLAN coincide con Desktop y `origin/main`; el addendum local es más reciente que Desktop. El plan local del publicador es posterior a Desktop (incluye la versión T2.3 1.19.0, mientras Desktop quedó en 1.8.0), así que conservé las copias vigentes. `AGENTS.md` local también conserva las reglas completas de secretos.
+- `ACTION_PLAN.md` tenía B2 `[ ]`, pero la verificación de producción y limpieza QA constan completas en la entrada del 03/11 00:20 y el ajuste del chip se desplegó en `4a0a858`; marqué B2 `[x]`. B3/Claude sigue diferida y opcional, sin acción del dueño.
+- Para cerrar B4 sin borrar por SQL, agregué `knowledge_delete_organize_task`: solo acepta tareas `knowledge_organize` propias, finalizadas, sin chat y sin propuesta pendiente; borrar el job elimina en cascada la propuesta y fuentes, sin revertir documentos aplicados. AI → Tareas ahora muestra un historial separado con confirmación explícita.
+- Backup completo verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261103T061134Z`; 87 tablas, 13.843 filas, schema 830.747 B, datos 40.160.455 B, Storage 374 objetos / 132.374.670 B. Los conteos, tamaños y hashes pasaron.
+- El dry-run de `supabase db push --linked` mostró únicamente `20261103150000_ai_organize_task_cleanup.sql`; se aplicó esa migración y `supabase migration list --linked` la confirma aplicada. La RPC existe en producción, permite `EXECUTE` a `authenticated` y lo niega a `anon`. `ai-bridge` está ACTIVE v14 con `verify_jwt=false`. Falta publicar el frontend y usar la UI para borrar las seis tareas `[QA]` que aún existen; B4 sigue `[ ]` hasta verificar la limpieza completa.
+- Verificación local: prueba dirigida PGlite/contrato **23/23**; suite completa **726/726** en 120 archivos; lint, build y `perf:check` aprobaron. Bundle inicial: 209.024 B JS gzip / 22.138 B CSS; AIHub 238.337 B JS.
+- A1 sigue abierta: `automation` y `knowledge` usan el JWT legacy para Storage y la extensión conectada reporta 0.5.15. No desactivé las claves. `cli_login_postgres` ya está verificada expirada.
+- **Siguiente:** commit/push del frontend con Rivas2302, esperar Vercel `success` y hacer smoke con Playwright; borrar desde IA → Tareas las seis tareas QA, revisar cero tareas/propuestas/fuentes QA, cerrar B4 y continuar con la siguiente tarea habilitada por §5.2b.
+
 ## 2026-11-03 — Plan maestro adoptado; T6.1 publicado, selección pendiente
 
 - Copié de `C:\Users\USER\Desktop\IA\RivaStock\docs` `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke y el SQL multiempresa. Las copias coinciden por SHA-256 con Desktop. El smoke pasó **27 comprobaciones / TODO OK**. Commit `8c31c93` (`docs(ai): adopt master action plan`) está en `main`, pusheado como Rivas2302.

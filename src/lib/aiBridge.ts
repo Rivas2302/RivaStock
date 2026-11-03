@@ -136,9 +136,21 @@ export async function getAIJob(jobId: string): Promise<AIJob> {
   return result.job;
 }
 
-export async function getRecentAIJobs(): Promise<{ jobs: AIJob[]; finishedTaskCount: number }> {
-  const result = await invoke<{ jobs: AIJob[]; finished_task_count: number }>({ action: 'recent' });
-  return { jobs: result.jobs, finishedTaskCount: result.finished_task_count };
+export async function getRecentAIJobs(): Promise<{
+  jobs: AIJob[];
+  knowledgeOrganizeJobs: AIJob[];
+  finishedTaskCount: number;
+}> {
+  const result = await invoke<{
+    jobs: AIJob[];
+    knowledge_organize_jobs?: AIJob[];
+    finished_task_count: number;
+  }>({ action: 'recent' });
+  return {
+    jobs: result.jobs,
+    knowledgeOrganizeJobs: result.knowledge_organize_jobs ?? [],
+    finishedTaskCount: result.finished_task_count,
+  };
 }
 
 export async function getAIChats(): Promise<AIChat[]> {
@@ -156,6 +168,10 @@ export async function deleteAIChat(chatId: string): Promise<void> {
 
 export async function deleteAITask(jobId: string): Promise<void> {
   await invoke({ action: 'task_delete', job_id: jobId });
+}
+
+export async function deleteKnowledgeOrganizeTask(jobId: string): Promise<void> {
+  await invoke({ action: 'knowledge_task_delete', job_id: jobId });
 }
 
 export async function deleteAllAITasks(): Promise<number> {

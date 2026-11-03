@@ -11,6 +11,7 @@ import {
   createAIJob,
   deleteAITask,
   deleteAllAITasks,
+  deleteKnowledgeOrganizeTask,
   getAIBridgeState,
   getAIHistorySettings,
   getAIJob,
@@ -40,6 +41,7 @@ function statusLabel(status: AIJob['status']): string {
 function taskLabel(job: AIJob): string {
   if (job.task_type === 'fb_copywriting') return 'Redacción asistida para Facebook';
   if (job.task_type === 'fb_photo_review') return 'Revisión de fotos para Facebook';
+  if (job.task_type === 'knowledge_organize') return `Organizar con IA · ${job.input}`;
   return job.input;
 }
 
@@ -58,6 +60,7 @@ export default function AIHub() {
   const [activeJob, setActiveJob] = useState<AIJob | null>(null);
   const [activeJobSources, setActiveJobSources] = useState<KnowledgeJobSource[]>([]);
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
+  const [knowledgeOrganizeJobs, setKnowledgeOrganizeJobs] = useState<AIJob[]>([]);
   const [finishedTaskCount, setFinishedTaskCount] = useState(0);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [deletingAllTasks, setDeletingAllTasks] = useState(false);
@@ -85,10 +88,12 @@ export default function AIHub() {
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const refreshRecent = useCallback(async () => {
-    const { jobs, finishedTaskCount: count } = await getRecentAIJobs();
+    const { jobs, knowledgeOrganizeJobs: organizeJobs, finishedTaskCount: count } = await getRecentAIJobs();
     setRecentJobs(jobs);
+    setKnowledgeOrganizeJobs(organizeJobs);
     setFinishedTaskCount(count);
-    setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? jobs[0] ?? null : jobs[0] ?? null);
+    const allJobs = [...jobs, ...organizeJobs].sort((left, right) => right.created_at.localeCompare(left.created_at));
+    setActiveJob((current) => current ? allJobs.find((job) => job.id === current.id) ?? allJobs[0] ?? null : allJobs[0] ?? null);
   }, []);
 
   useEffect(() => {
@@ -98,12 +103,14 @@ export default function AIHub() {
       try {
         const [bridge, history] = await Promise.all([getAIBridgeState(), getRecentAIJobs()]);
         if (!mounted) return;
-        const { jobs } = history;
+        const { jobs, knowledgeOrganizeJobs: organizeJobs } = history;
         setBridgeState(bridge.state);
         setBridgeStatus(bridge);
         setRecentJobs(jobs);
+        setKnowledgeOrganizeJobs(organizeJobs);
         setFinishedTaskCount(history.finishedTaskCount);
-        setActiveJob((current) => current ? jobs.find((job) => job.id === current.id) ?? current : jobs[0] ?? null);
+        const allJobs = [...jobs, ...organizeJobs].sort((left, right) => right.created_at.localeCompare(left.created_at));
+        setActiveJob((current) => current ? allJobs.find((job) => job.id === current.id) ?? current : allJobs[0] ?? null);
         setError('');
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo consultar el servicio de IA.');
@@ -134,7 +141,11 @@ export default function AIHub() {
       void getAIJob(activeJob.id).then((job) => {
         if (!mounted) return;
         setActiveJob(job);
-        setRecentJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 10));
+        if (job.task_type === 'knowledge_organize') {
+          setKnowledgeOrganizeJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 50));
+        } else {
+          setRecentJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 10));
+        }
         if (job.status === 'completed' || job.status === 'failed') void refreshRecent();
       }).catch((err) => {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo actualizar la tarea.');
@@ -201,11 +212,15 @@ export default function AIHub() {
 
   const removeTask = async (job: AIJob) => {
     if (job.status === 'pending' || job.status === 'processing') return;
-    if (!window.confirm('Se eliminará esta tarea y sus datos guardados. No se puede deshacer.')) return;
+    const confirmation = job.task_type === 'knowledge_organize'
+      ? 'Se eliminarán esta tarea y el historial de su propuesta. Si la propuesta ya se aplicó, los cambios del documento quedan intactos. No se puede deshacer.'
+      : 'Se eliminará esta tarea y sus datos guardados. No se puede deshacer.';
+    if (!window.confirm(confirmation)) return;
     setDeletingTaskId(job.id);
     setError('');
     try {
-      await deleteAITask(job.id);
+      if (job.task_type === 'knowledge_organize') await deleteKnowledgeOrganizeTask(job.id);
+      else await deleteAITask(job.id);
       setActiveJob((current) => current?.id === job.id ? null : current);
       await refreshRecent();
     } catch (err) {
@@ -366,6 +381,19 @@ export default function AIHub() {
     }
   };
 
+  const renderTaskRow = (job: AIJob) => <li key={job.id} className="flex items-stretch gap-1.5">
+    <button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}>
+      <span className="block truncate text-xs font-bold">{taskLabel(job)}</span>
+      <span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span>
+      <span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span>
+    </button>
+    {(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${taskLabel(job).slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">
+      {deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}
+    </button>}
+  </li>;
+
+  const regularJobs = recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type));
+
   if (!isOwner) return null;
 
   return (
@@ -410,7 +438,12 @@ export default function AIHub() {
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
-          {recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type)).length ? <ul className="space-y-2">{recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type)).map((job) => <li key={job.id} className="flex items-stretch gap-1.5"><button type="button" onClick={() => setActiveJob(job)} aria-current={activeJob?.id === job.id ? 'true' : undefined} className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${activeJob?.id === job.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]'}`}><span className="block truncate text-xs font-bold">{taskLabel(job)}</span><span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span><span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span></button>{(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${taskLabel(job).slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">{deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}</button>}</li>)}</ul> : <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p>}
+          {regularJobs.length ? <ul className="space-y-2">{regularJobs.map(renderTaskRow)}</ul> : knowledgeOrganizeJobs.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p> : null}
+          {knowledgeOrganizeJobs.length > 0 && <details className="mt-3 rounded-xl border border-[var(--line)] px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold">Historial de Organizar con IA ({knowledgeOrganizeJobs.length})</summary>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--ink-muted)]">Las tareas con propuestas pendientes no se pueden borrar. Eliminar una propuesta aplicada no revierte los cambios del documento.</p>
+            <ul className="mt-2 space-y-2">{knowledgeOrganizeJobs.map(renderTaskRow)}</ul>
+          </details>}
           <button type="button" onClick={() => void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo actualizar el historial.'))} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand)]"><Clock3 size={14}/>Actualizar historial</button>
         </aside>
 

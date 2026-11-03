@@ -61,8 +61,16 @@ beforeAll(async () => {
       job_id uuid NOT NULL,
       FOREIGN KEY (user_id, job_id) REFERENCES public.ai_jobs(user_id, id) ON DELETE CASCADE
     );
+    CREATE TABLE public.knowledge_ai_proposals (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL,
+      job_id uuid NOT NULL UNIQUE,
+      status text NOT NULL CHECK (status IN ('pending', 'applied', 'discarded')),
+      FOREIGN KEY (user_id, job_id) REFERENCES public.ai_jobs(user_id, id) ON DELETE CASCADE
+    );
   `);
   await db.exec(readFileSync(new URL('20261026205303_ai_chat_task_deletion.sql', MIGRATIONS), 'utf8'));
+  await db.exec(readFileSync(new URL('20261103150000_ai_organize_task_cleanup.sql', MIGRATIONS), 'utf8'));
   await db.exec(`
     CREATE TABLE public.products (
       id uuid PRIMARY KEY, user_id uuid NOT NULL, name text NOT NULL, category text,
@@ -205,6 +213,51 @@ describe('AI chat and task deletion migration', () => {
     await expectQueryError('SELECT public.ai_delete_task($1)', [pendingJob], 'Esperá a que termine');
     await expect(db.query('SELECT public.ai_delete_task($1) AS deleted', [deletableJob]))
       .resolves.toMatchObject({ rows: [{ deleted: true }] });
+  });
+
+  it('deletes resolved Organize with AI history only for its owner', async () => {
+    await createChat();
+    const discardedJob = await createJob({ taskType: 'knowledge_organize' });
+    const appliedJob = await createJob({ taskType: 'knowledge_organize' });
+    const pendingProposalJob = await createJob({ taskType: 'knowledge_organize' });
+    const unfinishedJob = await createJob({ taskType: 'knowledge_organize', status: 'processing' });
+    const textJob = await createJob();
+    const chatJob = await createJob({ taskType: 'knowledge_organize', chatId: CHAT });
+    await db.query("UPDATE public.ai_jobs SET user_id = $2 WHERE id = $1", [appliedJob, OTHER]);
+    await db.query("UPDATE public.ai_jobs SET input = '[QA] discarded proposal' WHERE id = $1", [discardedJob]);
+    await db.query("UPDATE public.ai_jobs SET input = '[QA] applied proposal' WHERE id = $1", [appliedJob]);
+    await db.query("UPDATE public.ai_jobs SET input = '[QA] pending proposal' WHERE id = $1", [pendingProposalJob]);
+    await db.query(
+      `INSERT INTO public.knowledge_ai_proposals (user_id, job_id, status) VALUES
+       ($1, $2, 'discarded'), ($3, $4, 'applied'), ($1, $5, 'pending')`,
+      [OWNER, discardedJob, OTHER, appliedJob, pendingProposalJob],
+    );
+    await db.query(
+      'INSERT INTO public.ai_job_knowledge_sources (user_id, job_id) VALUES ($1, $2), ($1, $3)',
+      [OWNER, discardedJob, pendingProposalJob],
+    );
+
+    await asUser(OTHER);
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [discardedJob], 'No se encontró la tarea');
+    await asUser(COLLABORATOR);
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [discardedJob], 'Solo el propietario');
+    await asUser(OWNER);
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [pendingProposalJob], 'Primero resolvé o descartá');
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [unfinishedJob], 'Esperá a que termine');
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [textJob], 'Solo se pueden borrar tareas de Organizar con IA');
+    await expectQueryError('SELECT public.knowledge_delete_organize_task($1)', [chatJob], 'Solo se pueden borrar tareas de Organizar con IA');
+    await expect(db.query('SELECT public.knowledge_delete_organize_task($1) AS deleted', [discardedJob]))
+      .resolves.toMatchObject({ rows: [{ deleted: true }] });
+
+    await asSystem();
+    const counts = await db.query<{ job: number; proposal: number; sources: number; applied_job: number }>(`
+      SELECT
+        (SELECT count(*)::int FROM public.ai_jobs WHERE id = '${discardedJob}') AS job,
+        (SELECT count(*)::int FROM public.knowledge_ai_proposals WHERE job_id = '${discardedJob}') AS proposal,
+        (SELECT count(*)::int FROM public.ai_job_knowledge_sources WHERE job_id = '${discardedJob}') AS sources,
+        (SELECT count(*)::int FROM public.ai_jobs WHERE id = '${appliedJob}') AS applied_job
+    `);
+    expect(counts.rows[0]).toEqual({ job: 0, proposal: 0, sources: 0, applied_job: 1 });
   });
 
   it('deletes only finished standalone jobs in bulk and returns the count', async () => {

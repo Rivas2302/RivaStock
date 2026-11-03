@@ -125,12 +125,14 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   if (message.includes('No se encontró el chat')) return jsonResponse({ error: message }, 404, origin);
   if (message.includes('No se encontró la tarea')) return jsonResponse({ error: message }, 404, origin);
   if (message.includes('Esperá a que termine') || message.includes('Ya hay diez tareas')
+    || message.includes('Primero resolvé o descartá la propuesta')
     || message.includes('no se puede cambiar') || message.includes('actualización segura')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('Computadora desvinculada')) return jsonResponse({ error: message }, 401, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
     || message.includes('mensaje debe') || message.includes('Opciones de contexto')
     || message.includes('Modelo') || message.includes('razonamiento') || message.includes('configuración enviada')
     || message.includes('Nombre de computadora') || message.includes('tareas puntuales')
+    || message.includes('Solo se pueden borrar tareas de Organizar con IA')
     || message.includes('Período de retención') || message.includes('lápida') || message.includes('Worker inválido')) {
     return jsonResponse({ error: message }, status, origin);
   }
@@ -402,6 +404,13 @@ serve(async (req) => {
     return jsonResponse({ deleted: data === true }, 200, origin);
   }
 
+  if (action === 'knowledge_task_delete') {
+    if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
+    const { data, error } = await userClient.rpc('knowledge_delete_organize_task', { p_job_id: body.job_id });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ deleted: data === true }, 200, origin);
+  }
+
   if (action === 'tasks_delete_all') {
     const { data, error } = await userClient.rpc('ai_delete_all_tasks');
     if (error) return safeDbError(error, 400, origin);
@@ -500,12 +509,17 @@ serve(async (req) => {
       .in('task_type', ['text_generation', 'fb_copywriting', 'fb_photo_review']).is('chat_id', null)
       .order('created_at', { ascending: false }).limit(10);
     if (error) return safeDbError(error, 400, origin);
+    const { data: organizeJobs, error: organizeError } = await userClient.from('ai_jobs')
+      .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
+      .eq('task_type', 'knowledge_organize').is('chat_id', null)
+      .order('created_at', { ascending: false }).limit(50);
+    if (organizeError) return safeDbError(organizeError, 400, origin);
     const { count, error: countError } = await serviceClient.from('ai_jobs')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id).in('task_type', ['text_generation', 'fb_copywriting', 'fb_photo_review']).is('chat_id', null)
       .in('status', ['completed', 'failed']);
     if (countError) return safeDbError(countError, 400, origin);
-    return jsonResponse({ jobs: data ?? [], finished_task_count: count ?? 0 }, 200, origin);
+    return jsonResponse({ jobs: data ?? [], knowledge_organize_jobs: organizeJobs ?? [], finished_task_count: count ?? 0 }, 200, origin);
   }
 
   if (action === 'status') {
