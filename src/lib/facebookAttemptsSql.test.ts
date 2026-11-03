@@ -7,18 +7,19 @@ const product='20000000-0000-4000-8000-000000000001';
 const content={title:'Silla',description:'Silla nueva',groupText:'Texto aprobado',price:1000,photos:['https://images.test/silla.jpg'],location:'Buenos Aires',category:'Muebles',condition:'new'};
 beforeAll(async()=>{
   db = new PGlite();
-  await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth;
+  await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('test.uid',true),'')::uuid $$;
-    CREATE TABLE profiles(id uuid PRIMARY KEY);
+    CREATE TABLE profiles(id uuid PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);
     CREATE TABLE collaborators(user_uid uuid,owner_uid uuid,revoked boolean DEFAULT false,can_write boolean DEFAULT true);
     CREATE FUNCTION get_owner_uid(uuid) RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT coalesce((SELECT owner_uid FROM collaborators WHERE user_uid=$1 AND NOT revoked),$1) $$;
     CREATE FUNCTION has_permission(uuid,text,text) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$ SELECT CASE WHEN EXISTS(SELECT 1 FROM collaborators WHERE user_uid=$1 AND NOT revoked) THEN $3='read' OR (SELECT can_write FROM collaborators WHERE user_uid=$1 AND NOT revoked) ELSE true END $$;
+    CREATE FUNCTION knowledge_owner_for(text) RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT auth.uid() $$;
     GRANT USAGE ON SCHEMA public,auth TO anon,authenticated;
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261027020952_fb_run_traces.sql','20261102135148_fb_supervision.sql','20261102190000_fb_supervisor_contract.sql','20261102190001_fb_post_submit_observations.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql','20261103160000_fb_pacing_scheduling.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -28,17 +29,20 @@ const actor=(id=owner)=>db.exec("RESET ROLE;SET ROLE authenticated;SET test.uid=
 let token:string,device:string;
 const CURRENT_CAPABILITIES=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
 beforeEach(async()=>{
- await db.exec('RESET ROLE;TRUNCATE facebook_publications,facebook_devices,facebook_groups,facebook_worker_policy CASCADE');
+ await db.exec('RESET ROLE;TRUNCATE facebook_publications,facebook_devices,facebook_groups,facebook_worker_policy,fb_pacing_alerts,fb_pacing_policy CASCADE');
  await actor();
  const pair=(await db.query<{data:any}>("SELECT pair_facebook_device('Test') AS data")).rows[0].data;device=pair.deviceId;
  await db.exec('SET ROLE anon');token=(await db.query<{data:any}>('SELECT redeem_facebook_device($1) AS data',[pair.code])).rows[0].data.token;
  await worker('heartbeat',null,{version:'0.5.1',capabilities:CURRENT_CAPABILITIES});
+  await db.exec('RESET ROLE');
+  await db.query("INSERT INTO fb_pacing_policy(user_id,quiet_hours_start,quiet_hours_end,warmup_until) VALUES($1,'00:00','00:00',current_date)",[owner]);
+  await actor();
 });
 async function approve(groups:string[]=[],marketplace=true,repeat:string|null=null){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,$3::uuid[],$4,$5) AS id',[product,JSON.stringify(content),groups,marketplace,repeat])).rows[0].id;}
-async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',key=crypto.randomUUID(),repeat:string|null=null,body=content,productId=product){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6,$7) AS id',[productId,key,JSON.stringify(body),groups,true,mode,repeat])).rows[0].id;}
+ async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',key=crypto.randomUUID(),repeat:string|null=null,body:Record<string,unknown>=content,productId=product,marketplaceEnabled=true){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6,$7) AS id',[productId,key,JSON.stringify(body),groups,marketplaceEnabled,mode,repeat])).rows[0].id;}
 async function worker(op:string,attempt:string|null=null,data:any={},delivery:string|null=null){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_worker_v2($1,$2,$3,$4,$5::jsonb) AS data',[token,op,delivery,attempt,JSON.stringify(data)])).rows[0].data;}
 async function inspect(sql:string,args:any[]=[]){await db.exec('RESET ROLE');return db.query<any>(sql,args);}
-async function claim(){return worker('claim',null,{claimKey:crypto.randomUUID()});}
+ async function claim(enforcePacing=false){if(!enforcePacing)await inspect('UPDATE fb_pacing_policy SET next_allowed_at=NULL WHERE user_id=$1',[owner]);return worker('claim',null,{claimKey:crypto.randomUUID()});}
 async function group(url='https://www.facebook.com/groups/123'){await actor();return (await db.query<{id:string}>("INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Group',$2) RETURNING id",[owner,url])).rows[0].id;}
 it('approves one Marketplace delivery with immutable targets and isolated per-group results',async()=>{
  const first=await group('https://www.facebook.com/groups/123');const second=await group('https://www.facebook.com/groups/456');
@@ -85,6 +89,125 @@ it('aggregates group performance and approval time while keeping each business i
  expect((await db.query('SELECT group_id FROM fb_group_performance')).rows.map((entry:any)=>entry.group_id)).toEqual([target]);
  await actor(other);
  expect((await db.query('SELECT group_id FROM fb_group_performance')).rows.map((entry:any)=>entry.group_id)).toEqual([otherGroup]);
+});
+
+it('keeps scheduled deliveries unclaimable until their scheduled time and applies conservative defaults',async()=>{
+ await actor();
+ const policy=(await db.query<{data:any}>('SELECT fb_pacing_policy_get() AS data')).rows[0].data;
+ expect(policy).toMatchObject({min_gap_seconds:720,jitter_pct:30,daily_marketplace_cap:5,daily_group_cap:15,max_groups_per_listing:10,repeat_group_days:14,pause_on_warning_hours:48});
+ const scheduleAt=new Date(Date.now()+2*24*60*60*1000).toISOString();
+ const id=await approveV2([], 'separate', crypto.randomUUID(), null, {...content,schedule_at:scheduleAt});
+ const delivery=(await inspect('SELECT id,status,scheduled_at FROM facebook_deliveries WHERE publication_id=$1',[id])).rows[0];
+ expect(delivery.status).toBe('scheduled');expect(new Date(delivery.scheduled_at).toISOString()).toBe(scheduleAt);
+ expect(await claim()).toBeNull();
+ expect((await inspect('SELECT count(*)::int AS count FROM facebook_delivery_attempts')).rows[0].count).toBe(0);
+ await inspect("UPDATE facebook_deliveries SET scheduled_at=now()-interval '1 second' WHERE id=$1",[delivery.id]);
+ expect(await claim(true)).toMatchObject({id:delivery.id});
+});
+
+it('enforces the claim gap server-side and requires confirmation before raising risk limits',async()=>{
+ await actor();
+ await expect(db.query("SELECT fb_pacing_policy_update('{\"daily_marketplace_cap\":6}'::jsonb,false)")).rejects.toThrow('RISK_CONFIRMATION_REQUIRED');
+ await db.query("SELECT fb_pacing_policy_update('{\"daily_marketplace_cap\":6}'::jsonb,true)");
+ const first=await approveV2([], 'separate');
+ const firstDelivery=(await inspect('SELECT id FROM facebook_deliveries WHERE publication_id=$1',[first])).rows[0].id;
+ const firstAttempt=await claim();expect(firstAttempt).toMatchObject({id:firstDelivery});
+ await worker('attention',firstAttempt.attemptId,{message:'Preparación detenida antes del envío'},firstDelivery);
+ const secondProduct='20000000-0000-4000-8000-000000000099';
+ await inspect('INSERT INTO products(id,user_id,image_url,images) VALUES($1,$2,$3,ARRAY[$3])',[secondProduct,owner,'https://images.test/otra.jpg']);
+ const second=await approveV2([], 'separate',crypto.randomUUID(),null,{...content,photos:['https://images.test/otra.jpg']},secondProduct);
+ expect(await claim(true)).toBeNull();
+ await actor(staff);
+ await expect(db.query('SELECT fb_pacing_policy_update(\'{"min_gap_seconds":60}\'::jsonb,true)')).rejects.toThrow('Solo el dueño');
+});
+
+it('pauses the owner queue on a real trace warning and lets only the owner acknowledge it',async()=>{
+ await actor();
+ await approveV2([], 'separate');
+ const claimed=await claim();
+ const trace=(await inspect("SELECT fb_trace_start($1,$2,$3,$4,'real','marketplace','0.5.1','{}'::jsonb) AS id",[owner,device,claimed.id,claimed.attemptId])).rows[0].id;
+ await inspect("SELECT fb_trace_add_step($1,$2,1,'submit','failed',100,'{\"alerts\":[\"We detected unusual activity\"]}'::jsonb,NULL,NULL)",[owner,trace]);
+ expect((await inspect('SELECT queue_enabled,execution_state FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:false,execution_state:'paused'});
+ const alert=(await inspect('SELECT id FROM fb_pacing_alerts WHERE trace_id=$1',[trace])).rows[0].id;
+ await actor(other);
+ expect((await db.query<{acknowledged:boolean}>('SELECT fb_pacing_alert_acknowledge($1) AS acknowledged',[alert])).rows[0].acknowledged).toBe(false);
+ await actor();
+ expect((await db.query<{fb_pacing_alert_acknowledge:boolean}>('SELECT fb_pacing_alert_acknowledge($1)',[alert])).rows[0].fb_pacing_alert_acknowledge).toBe(true);
+ expect((await inspect('SELECT acknowledged_at FROM fb_pacing_alerts WHERE id=$1',[alert])).rows[0].acknowledged_at).toBeTruthy();
+});
+it('classifies inconclusive screenshots and pauses without automatically resuming',async()=>{
+ await actor();
+ expect((await inspect("SELECT fb_pacing_classification_valid('{\"warning\":true,\"category\":\"restriction\",\"observation\":\"Visible restriction prompt\",\"confidence\":0.99}'::jsonb) AS valid")).rows[0].valid).toBe(true);
+ expect((await inspect("SELECT fb_pacing_classification_valid('[]'::jsonb) AS valid")).rows[0].valid).toBe(false);
+ expect((await inspect("SELECT fb_pacing_classification_valid('{\"warning\":false,\"category\":\"restriction\",\"observation\":\"Inconsistent\",\"confidence\":0.99}'::jsonb) AS valid")).rows[0].valid).toBe(false);
+ await approveV2([], 'separate');
+ const claimed=await claim();
+ await inspect('UPDATE facebook_devices SET queue_enabled=true WHERE id=$1',[device]);
+ const trace=(await inspect("SELECT fb_trace_start($1,$2,$3,$4,'real','marketplace','0.5.1','{}'::jsonb) AS id",[owner,device,claimed.id,claimed.attemptId])).rows[0].id;
+ await inspect("SELECT fb_trace_add_step($1,$2,1,'submit','failed',100,'{\"alerts\":[\"Review needed\"]}'::jsonb,'owner/trace/1.jpg',NULL)",[owner,trace]);
+ let request=(await inspect("SELECT id,kind,status,screenshot_path FROM fb_supervision_requests WHERE trace_id=$1",[trace])).rows[0];
+ expect(request).toMatchObject({kind:'classify_warning',status:'pending',screenshot_path:'owner/trace/1.jpg'});
+ await inspect("UPDATE fb_supervision_requests SET status='answered',decision=' {\"warning\":false,\"category\":\"none\",\"observation\":\"No warning visible\",\"confidence\":0.95}'::jsonb,provider='codex',model_id='gpt-6-luna',reasoning_effort='low',answered_at=now() WHERE id=$1",[request.id]);
+ expect((await inspect('SELECT count(*)::int AS count FROM fb_pacing_alerts WHERE trace_id=$1',[trace])).rows[0].count).toBe(0);
+ expect((await inspect('SELECT queue_enabled,queue_pause_reason FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:true,queue_pause_reason:null});
+
+ await inspect("SELECT fb_trace_add_step($1,$2,2,'navigate','retry',100,'{\"alerts\":[\"Review needed\"]}'::jsonb,'owner/trace/2.jpg',NULL)",[owner,trace]);
+ request=(await inspect("SELECT id FROM fb_supervision_requests WHERE trace_id=$1 AND step_seq=2",[trace])).rows[0];
+ await inspect("UPDATE fb_supervision_requests SET status='answered',decision=' {\"warning\":true,\"category\":\"restriction\",\"observation\":\"Visible restriction prompt\",\"confidence\":0.99}'::jsonb,provider='codex',model_id='gpt-6-luna',reasoning_effort='low',answered_at=now() WHERE id=$1",[request.id]);
+ expect((await inspect('SELECT queue_enabled,queue_pause_reason,queue_pause_until>now() AS paused_for_window FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:false,queue_pause_reason:'facebook_warning',paused_for_window:true});
+ expect((await inspect("SELECT source,category FROM fb_pacing_alerts WHERE trace_id=$1",[trace])).rows).toEqual([{source:'supervisor_vision',category:'restriction'}]);
+ await actor();
+ await expect(db.query('SELECT set_facebook_queue_enabled($1,true)',[device])).rejects.toThrow('FACEBOOK_WARNING_PAUSE_ACTIVE');
+ expect((await inspect('SELECT queue_enabled FROM facebook_devices WHERE id=$1',[device])).rows[0].queue_enabled).toBe(false);
+ await inspect("UPDATE facebook_devices SET queue_pause_until=now()-interval '1 second' WHERE id=$1",[device]);
+ await actor();
+ await db.query('SELECT set_facebook_queue_enabled($1,true)',[device]);
+ expect((await inspect('SELECT queue_enabled,queue_pause_reason,queue_pause_until FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:true,queue_pause_reason:null,queue_pause_until:null});
+});
+it('keeps the same product from repeating in a group during the configured cooldown',async()=>{
+ const target=await group('https://www.facebook.com/groups/321');
+ const first=await approveV2([target],'separate',crypto.randomUUID(),null,content,product,false);
+ const firstDelivery=(await inspect("SELECT id FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='group_direct'",[first])).rows[0].id;
+ const firstAttempt=await claim();
+ await worker('checkpoint',firstAttempt.attemptId);
+ await worker('result',firstAttempt.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/321/posts/987',message:'Submitted'},firstDelivery);
+ const repeated=await approveV2([target],'separate',crypto.randomUUID(),first,content,product,false);
+ const repeatedDelivery=(await inspect("SELECT id,status FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='group_direct'",[repeated])).rows[0];
+ expect(repeatedDelivery.status).toBe('pending');
+ expect(await claim(true)).toBeNull();
+ expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[repeatedDelivery.id])).rows[0].status).toBe('pending');
+});
+it('pauses conservatively when warning classification fails',async()=>{
+ await approveV2([], 'separate');
+ const claimed=await claim();
+ await inspect('UPDATE facebook_devices SET queue_enabled=true WHERE id=$1',[device]);
+ const trace=(await inspect("SELECT fb_trace_start($1,$2,$3,$4,'real','marketplace','0.5.1','{}'::jsonb) AS id",[owner,device,claimed.id,claimed.attemptId])).rows[0].id;
+ await inspect("SELECT fb_trace_add_step($1,$2,1,'submit','failed',100,'{\"alerts\":[\"Review needed\"]}'::jsonb,'owner/trace/3.jpg',NULL)",[owner,trace]);
+ const request=(await inspect("SELECT id FROM fb_supervision_requests WHERE trace_id=$1",[trace])).rows[0];
+ await inspect("UPDATE fb_supervision_requests SET status='failed',error='provider timeout' WHERE id=$1",[request.id]);
+ expect((await inspect('SELECT queue_enabled,queue_pause_reason FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:false,queue_pause_reason:'facebook_warning'});
+ expect((await inspect('SELECT category,warning_text FROM fb_pacing_alerts WHERE trace_id=$1',[trace])).rows[0]).toMatchObject({category:'uncertain',warning_text:'La captura no se pudo clasificar. Revisá Facebook antes de reactivar la cola.'});
+});
+it('enforces the selected per-listing maximum and warmup from signup date',async()=>{
+ const policy=(await inspect('SELECT warmup_until,(SELECT created_at::date+14 FROM profiles WHERE id=$1) AS expected FROM fb_pacing_policy WHERE user_id=$1',[owner])).rows[0];
+ expect(policy.warmup_until.toISOString().slice(0,10)).toBe(policy.expected.toISOString().slice(0,10));
+ const groups=[] as string[];
+ for(let index=0;index<11;index++)groups.push(await group(`https://www.facebook.com/groups/${9000+index}`));
+ await expect(approveV2(groups,'marketplace_groups')).rejects.toThrow('La política permite hasta 10 grupos');
+});
+it('does not exceed the warmup daily group cap with a multi-group claim',async()=>{
+ await inspect('UPDATE fb_pacing_policy SET warmup_until=current_date-1,daily_group_cap=5 WHERE user_id=$1',[owner]);
+ const groups=[] as string[];
+ for(let index=0;index<6;index++)groups.push(await group(`https://www.facebook.com/groups/${8000+index}`));
+ await approveV2(groups,'marketplace_groups');
+ expect(await claim(true)).toBeNull();
+ expect((await inspect('SELECT count(*)::int AS count FROM facebook_delivery_attempts WHERE device_id=$1 AND finished_at IS NULL',[device])).rows[0].count).toBe(0);
+});
+it('requires confirmation when an update reduces quiet hours',async()=>{
+ await db.query("SELECT fb_pacing_policy_update('{\"quiet_hours_start\":\"23:00\",\"quiet_hours_end\":\"08:00\"}'::jsonb,false)");
+ await expect(db.query("SELECT fb_pacing_policy_update('{\"quiet_hours_start\":\"23:00\",\"quiet_hours_end\":\"06:00\"}'::jsonb,false)")).rejects.toThrow('RISK_CONFIRMATION_REQUIRED');
+ await expect(db.query("SELECT fb_pacing_policy_update('{\"timezone_name\":\"America/Santiago\"}'::jsonb,false)")).rejects.toThrow('RISK_CONFIRMATION_REQUIRED');
+ await db.query("SELECT fb_pacing_policy_update('{\"quiet_hours_start\":\"23:00\",\"quiet_hours_end\":\"06:00\"}'::jsonb,true)");
 });
 it('keeps separate approval unchanged',async()=>{
  const target=await group();const key=crypto.randomUUID();const first=await approveV2([target],'separate',key);
@@ -353,6 +476,7 @@ it('a 0.5.6 device without causal-results-v2 cannot claim new work',async()=>{
 it('one post is the evidence of a single delivery per owner, in any URL form',async()=>{
  const g=await group();const first=await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);
  await worker('result',a.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/123/posts/9',message:'Primera'});
+ await inspect("UPDATE facebook_deliveries SET submitted_at=now()-interval '15 days' WHERE id=$1",[a.id]);
  await approve([g],false,first);const b=await claim();await worker('checkpoint',b.attemptId);
  await expect(worker('result',b.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/123/permalink/9/',message:'Segunda'},b.id)).rejects.toThrow('RESULT_EVIDENCE_INVALID');
  expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[b.id])).rows[0].status).toBe('running');
@@ -434,6 +558,7 @@ it('a human review accepts only the destination name or a numeric group id, neve
 it('a human review cannot reuse the evidence of another delivery',async()=>{
  const g=await group();const first=await approve([g],false);const a=await claim();await worker('checkpoint',a.attemptId);
  await worker('result',a.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/123/posts/9'},a.id);
+ await inspect("UPDATE facebook_deliveries SET submitted_at=now()-interval '15 days' WHERE id=$1",[a.id]);
  await approve([g],false,first);const b=await claim();await worker('checkpoint',b.attemptId);await worker('attention',b.attemptId,{message:'Unknown'});
  await actor();await expect(db.query("SELECT review_facebook_attempt($1,'found','https://www.facebook.com/groups/123/permalink/9/')",[b.attemptId])).rejects.toThrow('Decisión inválida');
 });

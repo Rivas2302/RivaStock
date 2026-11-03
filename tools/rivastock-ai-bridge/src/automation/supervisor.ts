@@ -52,8 +52,8 @@ export async function processSupervisorTask(task: SupervisorTask, options: Super
     }
     const provider = (options.createProvider ?? providerFor)(task.settings.provider, options.config);
     const images = supervisorImages(task, options.config.endpoint);
-    if (task.kind === 'verify_result' && !task.screenshot_url) {
-      throw new Error('La verificación requiere la captura de la lista de publicaciones propias.');
+    if ((task.kind === 'verify_result' || task.kind === 'classify_warning') && !task.screenshot_url) {
+      throw new Error('La tarea de supervisión requiere una captura de Facebook.');
     }
     let decision: SupervisorDecisionRecord['decision'];
     if (images.length) {

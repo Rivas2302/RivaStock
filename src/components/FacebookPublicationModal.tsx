@@ -22,6 +22,8 @@ import { deleteFromStorage, supabase, uploadToStorage } from '../lib/db';
 import { supabaseProjectUrl } from '../lib/supabase';
 import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
 
+function localDateTimeInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16);}
+
 export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean }) {
   const { ownerUid, isOwner } = useAuth();
   const canWrite = usePermission('stock', 'write');
@@ -42,6 +44,8 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [rehearsalDestination, setRehearsalDestination] = useState('marketplace');
   const [approved, setApproved] = useState(false);
   const [repeatOf,setRepeatOf]=useState<string|null>(null);
+  const [scheduleMode,setScheduleMode]=useState<'now'|'scheduled'>('now');
+  const [scheduleLocal,setScheduleLocal]=useState(()=>localDateTimeInput(new Date(Date.now()+60*60*1000)));
   const [copywritingProposal,setCopywritingProposal]=useState<FacebookCopywritingProposal|null>(null);
   const [copywritingWarnings,setCopywritingWarnings]=useState<string[]>([]);
   const [copywritingSetting,setCopywritingSetting]=useState<AIFunctionSetting>(()=>defaultAIFunctionSetting(ownerUid??'','fb_copywriting'));
@@ -71,6 +75,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
               // A photo removed from the product since then cannot be approved again.
               const latest=data.publications[0];const current=productPhotos(product);const photos=latest.content.photos.filter(url=>current.includes(url));
               setContent({...latest.content,photos:photos.length?photos:initialPublication(product).photos});
+              if(latest.content.schedule_at){const scheduled=new Date(latest.content.schedule_at);if(Number.isFinite(scheduled.getTime())&&scheduled>new Date()){setScheduleMode('scheduled');setScheduleLocal(localDateTimeInput(scheduled));}}
               if(!savedSelection.current){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
             }
             if(!viewTouched.current)setView(data.publications.length?'manage':'compose');
@@ -143,7 +148,10 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     }
     const problem = validatePublication(preparedContent, marketplace, selectedGroups);
     if (problem) throw new Error(problem);
-    const approvedContent = selectedGroups.length ? { ...preparedContent, groupText: groupPublicationText(preparedContent) } : preparedContent;
+    const scheduledAt=scheduleMode==='scheduled'?new Date(scheduleLocal):null;
+    if(scheduleMode==='scheduled'&&(!scheduledAt||!Number.isFinite(scheduledAt.getTime())||scheduledAt<=new Date()))throw new Error('Elegí una fecha y hora futuras para programar la publicación.');
+    const schedule_at=scheduledAt?.toISOString()??null;
+    const approvedContent = selectedGroups.length ? { ...preparedContent, groupText: groupPublicationText(preparedContent),schedule_at } : {...preparedContent,schedule_at};
     const payload = { p_product: publicationProduct.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
     const serialized = JSON.stringify(payload);
     const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
@@ -155,7 +163,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: 'separate' });
     void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
     onApproved?.();
-    setNotice('Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
+    setNotice(schedule_at?`Publicación programada para ${new Date(schedule_at).toLocaleString('es-AR')}. La computadora la tomará cuando llegue el horario y se respete el intervalo de seguridad.`:'Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
     await refresh();
     setRepeatOf(null);setApproved(false);
     if(!onApproved){viewTouched.current=true;setView('manage');}
@@ -330,6 +338,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
           <span className="text-xs text-slate-500">Los trabajos pendientes se conservan si la PC se desconecta.</span>
         </div>
         <PublicationHistory publications={publications} onRefresh={refresh} layout="full" expandedDetails/>
+        {!startInRehearsal&&<fieldset className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><legend className="px-1 text-sm font-bold">Cuándo entregar a la PC</legend><div className="flex flex-wrap gap-4 text-sm"><label className="inline-flex items-center gap-2"><input type="radio" name="publication-schedule" checked={scheduleMode==='now'} onChange={()=>{setScheduleMode('now');setApproved(false);}}/>Publicar ahora</label><label className="inline-flex items-center gap-2"><input type="radio" name="publication-schedule" checked={scheduleMode==='scheduled'} onChange={()=>{setScheduleMode('scheduled');setApproved(false);}}/>Programar</label></div>{scheduleMode==='scheduled'&&<label className="mt-3 block max-w-sm space-y-1 text-sm"><span>Fecha y hora local</span><input aria-label="Fecha y hora de publicación" type="datetime-local" min={localDateTimeInput(new Date(Date.now()+60_000))} value={scheduleLocal} onChange={event=>{setScheduleLocal(event.target.value);setApproved(false);}} className={inputClass}/><span className="block text-xs text-slate-500">La entrega no se reserva antes de este horario y también respeta las pausas y los topes.</span></label>}</fieldset>}
         {blockReason&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">{blockReason}</p>}
       </>:<>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -459,7 +468,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy||!canWrite} checked={approved} onChange={event=>setApproved(event.target.checked)}/>Revisé el contenido, las fotos y los destinos y autorizo esta publicación.</label>
-            <button type="button" disabled={busy||!ready||!approved||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
+             <button type="button" disabled={busy||!ready||!approved||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':scheduleMode==='scheduled'?'Confirmar y programar':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
           </div>
         </div>
       </>}

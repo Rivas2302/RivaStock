@@ -7,7 +7,7 @@ import type { FacebookGroupPerformance } from './facebookGroupSuggestions';
 export interface PublicationContent {
   title: string; description: string; price: number; photos: string[];
   location: string; category: string; condition: 'new' | 'like_new' | 'good' | 'fair';
-  groupText?: string;
+  groupText?: string; schedule_at?:string|null;
 }
 const GROUP_METADATA_SUFFIX = /\n\nPrecio: [^\n]*\nEstado: [^\n]*\nUbicación: [^\n]*\nCategoría: [^\n]*$/;
 
@@ -56,7 +56,7 @@ export interface FacebookDelivery {
 }
 export interface FacebookPublication { id: string; product_id?: string; repeat_of?: string | null; content: PublicationContent & {selection?:{marketplace:boolean;groups:string[];mode?:'separate'|'marketplace_groups'}}; approved_at: string; facebook_deliveries: FacebookDelivery[] }
 export const publicationStatus: Record<string, string> = {
-  pending: 'Pendiente', running: 'En ejecución', submitted: 'Enviado', published: 'Publicado',
+  pending: 'Pendiente', scheduled:'Programada', running: 'En ejecución', submitted: 'Enviado', published: 'Publicado',
   pending_approval: 'Pendiente de aprobación', attention: 'Requiere atención', cancelled: 'Cancelado',
 };
 export function deliveryState(delivery:FacebookDelivery) {
@@ -79,7 +79,7 @@ export function publicationBlock(publications:FacebookPublication[],marketplace:
   const selected=(d:FacebookDelivery)=>d.destination.mechanism==='marketplace'?marketplace:urls.has(key(d.destination.url??''))||(d.destination_key?groups.includes(d.destination_key):groups.length>0);
   // Older responses without destination keys treat group jobs conservatively.
   const jobs=publications.flatMap(p=>p.facebook_deliveries).filter(selected);
-  if(jobs.some(d=>['pending','running'].includes(d.status)))return 'Ya hay un trabajo pendiente o en ejecución para este destino. Consultá su historial.';
+  if(jobs.some(d=>['pending','scheduled','running'].includes(d.status)))return 'Ya hay un trabajo pendiente, programado o en ejecución para este destino. Consultá su historial.';
   if(jobs.some(d=>deliveryState(d)==='unknown'))return 'Hay un resultado desconocido. Revisá Facebook y registrá la revisión en el historial antes de crear otro envío.';
   return null;
 }

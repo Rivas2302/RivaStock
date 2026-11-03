@@ -43,6 +43,13 @@ export interface SupervisedResultAssessment {
   confidence: number;
 }
 
+export interface WarningClassification {
+  warning:boolean;
+  category:'none'|'checkpoint'|'rate_limit'|'restriction'|'unusual_activity'|'uncertain';
+  observation:string;
+  confidence:number;
+}
+
 const ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container', 'wait', 'reload', 'skip_destination', 'abort']);
 const ELEMENT_ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container']);
 const BLOCKED = /\b(?:publicar(?: ahora)?|compartir ahora|publish(?: now)?|share now|send now|enviar ahora|cerrar sesi[oó]n|log\s*out|sign\s*out|settings|configuraci[oó]n|account settings)\b/i;
@@ -103,8 +110,8 @@ export function parseSupervisorOutput(
   output: string,
   dom: SupervisorDomSummary,
   intent: SupervisorIntent,
-  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' = 'recover_step',
-): { decision: SupervisorDecision | SupervisedResultAssessment } | { error: string } {
+  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning' = 'recover_step',
+): { decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification } | { error: string } {
   const trimmed = output.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const json = fenced?.[1] ?? trimmed;
@@ -113,8 +120,20 @@ export function parseSupervisorOutput(
   catch { return { error: 'La respuesta no era un objeto JSON válido.' }; }
   if (kind === 'verify_result') {
     if (validateSupervisedResultAssessment(parsed, dom)) return { decision: parsed };
+  } else if (kind === 'classify_warning') {
+    if (validateWarningClassification(parsed)) return { decision: parsed };
   } else if (validateSupervisorDecision(parsed, dom, intent)) {
     return { decision: parsed };
   }
   return { error: 'La respuesta no cumple el contrato de decisión supervisada.' };
+}
+
+export function validateWarningClassification(value:unknown):value is WarningClassification{
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const classification=value as Record<string,unknown>;
+  if(Object.keys(classification).length!==4||Object.keys(classification).some(key=>!['warning','category','observation','confidence'].includes(key)))return false;
+  if(typeof classification.warning!=='boolean'||!['none','checkpoint','rate_limit','restriction','unusual_activity','uncertain'].includes(String(classification.category))
+    ||typeof classification.observation!=='string'||!classification.observation.trim()||classification.observation.length>300
+    ||typeof classification.confidence!=='number'||!Number.isFinite(classification.confidence)||classification.confidence<0||classification.confidence>1)return false;
+  return classification.warning?classification.category!=='none':classification.category==='none';
 }

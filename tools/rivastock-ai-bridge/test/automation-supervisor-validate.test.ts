@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSupervisorOutput, validateSupervisedResultAssessment, validateSupervisorDecision, type SupervisorDomSummary, type SupervisorIntent } from '../src/automation/validate.ts';
+import { parseSupervisorOutput, validateSupervisedResultAssessment, validateSupervisorDecision, validateWarningClassification, type SupervisorDomSummary, type SupervisorIntent } from '../src/automation/validate.ts';
 
 const dom: SupervisorDomSummary = {
   scope: 'dialog',
@@ -53,4 +53,17 @@ test('accepts only evidence-linked verify_result assessments and never accepts i
   assert.equal(validateSupervisedResultAssessment({ ...resultAssessment, url: 'https://www.facebook.com/marketplace/item/123' }, resultDom), false);
   assert.equal(validateSupervisedResultAssessment({ found: false, element_index: 0, state: 'unknown', observation: 'No se ve.', confidence: 0.1 }, resultDom), false);
   assert.equal(validateSupervisorDecision(resultAssessment, resultDom, {}), false);
+});
+
+test('accepts only a strict warning classification with consistent category', () => {
+  const safe = { warning: false, category: 'none', observation: 'No visible warning.', confidence: 0.95 };
+  const warning = { warning: true, category: 'restriction', observation: 'Visible restriction notice.', confidence: 0.99 };
+  assert.equal(validateWarningClassification(safe), true);
+  assert.deepEqual(parseSupervisorOutput(JSON.stringify(warning), resultDom, {}, 'classify_warning'), { decision: warning });
+  assert.equal(validateWarningClassification({ ...safe, warning: true }), false);
+  assert.equal(validateWarningClassification({ ...warning, category: 'none' }), false);
+  assert.equal(validateWarningClassification({ ...warning, extra: 'publish now' }), false);
+  assert.equal(validateWarningClassification({ ...warning, confidence: Number.NaN }), false);
+  assert.equal(validateWarningClassification({ ...warning, observation: ' '.repeat(2) }), false);
+  assert.deepEqual(parseSupervisorOutput('not json', resultDom, {}, 'classify_warning'), { error: 'La respuesta no era un objeto JSON válido.' });
 });

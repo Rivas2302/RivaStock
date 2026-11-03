@@ -1,4 +1,4 @@
-import type { SupervisorDecision, SupervisedResultAssessment, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
+import type { SupervisorDecision, SupervisedResultAssessment, WarningClassification, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
 import type { CodexModelId, CodexReasoningEffort } from '../types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -16,7 +16,7 @@ export interface SupervisorTask {
   id: string;
   trace_id: string;
   step_seq: number;
-  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos';
+  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning';
   intent: SupervisorIntent;
   dom_summary: SupervisorDomSummary;
   screenshot_url: string | null;
@@ -25,7 +25,7 @@ export interface SupervisorTask {
 }
 
 export interface SupervisorDecisionRecord {
-  decision: SupervisorDecision | SupervisedResultAssessment;
+  decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification;
   provider: 'codex' | 'claude';
   model_id: string;
   reasoning_effort: CodexReasoningEffort;
@@ -69,7 +69,7 @@ export class SupervisorClient {
 function validateTask(value: unknown): SupervisorTask {
   if (!isRecord(value) || !isUuid(value.id) || !isUuid(value.trace_id)
     || !Number.isSafeInteger(value.step_seq) || (value.step_seq as number) < 1 || (value.step_seq as number) > 10000
-    || !['recover_step', 'verify_result', 'review_content', 'review_photos'].includes(String(value.kind))
+    || !['recover_step', 'verify_result', 'review_content', 'review_photos', 'classify_warning'].includes(String(value.kind))
     || !isRecord(value.intent) || byteLength(value.intent) > 8000
     || !isDomSummary(value.dom_summary) || byteLength(value.dom_summary) > 20480
     || (value.screenshot_url !== null && (typeof value.screenshot_url !== 'string' || !/^https:\/\//i.test(value.screenshot_url)))

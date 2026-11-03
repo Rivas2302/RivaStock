@@ -93,6 +93,7 @@ function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:Faceb
     <div className="flex flex-wrap gap-2">
       {evidence&&<a className={`${btn} inline-flex items-center gap-1.5`} href={evidence} target="_blank" rel="noopener noreferrer"><ExternalLink size={12}/>Ver publicación</a>}
       {!evidence&&<a className={btn} href={fallbackUrl} target="_blank" rel="noopener noreferrer">Revisar en Facebook</a>}
+      {canWrite&&state==='scheduled'&&<button disabled={busy} className={btn} aria-label="Cancelar envío programado" onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar programación</button>}
       {canWrite&&state==='pending'&&<button disabled={busy} className={btn} aria-label="Cancelar envío pendiente" onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar</button>}
       {canWrite&&state==='failed'&&!delivery.evidence_url&&!decision&&<button disabled={busy} className={btn} onClick={()=>void action('retry_facebook_preparation',{})}>Reintentar preparación</button>}
       {canWrite&&state==='failed'&&!delivery.submitted_at&&!delivery.recovery_required&&<button disabled={busy} className={btn} onClick={()=>void action('cancel_facebook_delivery',{})}>Cancelar este destino</button>}
@@ -143,7 +144,7 @@ function summaryVariant(pub:FacebookPublication):'error'|'warning'|'running'|'su
   const states=pub.facebook_deliveries.map(deliveryState);
   if(pub.facebook_deliveries.some(delivery=>deliveryState(delivery)==='failed'||delivery.issue?.kind==='facebook_not_approved'))return 'error';
   if(states.some(s=>s==='unknown'))return 'warning';
-  if(states.some(s=>s==='running'||s==='pending'))return 'running';
+  if(states.some(s=>s==='running'||s==='pending'||s==='scheduled'))return 'running';
   if(states.length>0&&states.every(s=>s==='published'))return 'success';
   return 'neutral';
 }
@@ -154,6 +155,7 @@ function summaryLabel(pub:FacebookPublication):string {
   if(states.some(s=>s==='failed'))return 'Preparación fallida';
   if(pub.facebook_deliveries.some(delivery=>delivery.issue?.kind==='facebook_not_approved'))return 'Con destinos no aprobados';
   if(states.some(s=>s==='running'))return 'En ejecución';
+  if(states.some(s=>s==='scheduled'))return 'Programada';
   if(states.some(s=>s==='pending'))return 'En cola';
   if(states.length>0&&states.every(s=>s==='published'))return 'Publicada';
   if(states.some(s=>s==='pending_approval'))return 'En revisión';
@@ -259,7 +261,7 @@ export default function PublicationHistory({publications,onRefresh,showProductLi
   const selected=publications.find(p=>p.id===effectiveId)??null;
 
   const needsReview=publications.filter(p=>p.facebook_deliveries.some(d=>['failed','unknown'].includes(deliveryState(d)))).length;
-  const inProgress=publications.filter(p=>p.facebook_deliveries.some(d=>['running','pending'].includes(deliveryState(d)))).length;
+  const inProgress=publications.filter(p=>p.facebook_deliveries.some(d=>['running','pending','scheduled'].includes(deliveryState(d)))).length;
   const published=publications.filter(p=>p.facebook_deliveries.length>0&&p.facebook_deliveries.every(d=>deliveryState(d)==='published')).length;
 
   if(!publications.length)return <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No hay publicaciones registradas en esta vista. Los anuncios creados fuera de la integración no se importan automáticamente.</p>;

@@ -19,6 +19,7 @@ const SUPERVISOR_FUNCTION_KEYS: Record<string, string> = {
   verify_result: 'fb_supervisor_verify',
   review_content: 'fb_copywriting',
   review_photos: 'fb_photo_review',
+  classify_warning: 'fb_supervisor_verify',
 };
 const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
