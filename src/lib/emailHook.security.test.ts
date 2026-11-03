@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Webhook } from 'standardwebhooks';
-import { handleEmailHook } from '../../supabase/functions/send-email/handler';
+import { buildInviteConfirmationUrl, handleEmailHook } from '../../supabase/functions/send-email/handler';
 
 const secret = Buffer.from('test-only-webhook-secret-32-bytes!').toString('base64');
 const body = JSON.stringify({user:{email:'owner@example.test'},email_data:{token_hash:'test-token',email_action_type:'recovery',redirect_to:'https://example.test/reset-password'}});
@@ -12,6 +12,15 @@ function request(value = body, signed = body, date = new Date()) {
 }
 const verify = (key:string, text:string, headers:Record<string,string>) => new Webhook(key).verify(text,headers);
 describe('authentication email hook', () => {
+  it('routes invite emails through the app confirmation page', () => {
+    const url = buildInviteConfirmationUrl({ email_data: {
+      token: 'unused-token', token_hash: 'invite-token-hash',
+      redirect_to: 'https://rivastock.vercel.app/reset-password?source=email',
+      site_url: 'https://rivastock.vercel.app', email_action_type: 'invite',
+    } });
+    expect(url).toBe('https://rivastock.vercel.app/auth/confirm?token_hash=invite-token-hash&type=invite');
+  });
+
   it('rejects unsigned, altered and expired requests without sending mail', async () => {
     const send = vi.fn();
     for (const req of [new Request('https://example.test',{method:'POST',body}),request(body.replace('owner','attacker')),request(body,body,new Date(Date.now()-600000))]) {

@@ -1084,7 +1084,9 @@ export default function Sales() {
               {filteredSales.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    No se encontraron ventas
+                    {projectedSales.length === 0
+                      ? 'Todavía no registraste ventas. Creá la primera desde Nueva Venta.'
+                      : 'No hay ventas que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

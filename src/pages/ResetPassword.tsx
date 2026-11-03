@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
 import { Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -17,6 +17,8 @@ export default function ResetPassword() {
 
   const { resetPassword } = useAuth();
   const navigate          = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isInvitation = searchParams.get('type') === 'invite';
 
   useEffect(() => {
     let cancelled = false;
@@ -73,9 +75,9 @@ export default function ResetPassword() {
     setError(null);
     setLoading(true);
     try {
-      await resetPassword('', password);
+      await resetPassword('', password, { keepSession: isInvitation });
       setSuccess(true);
-      setTimeout(() => navigate('/login'), 3000);
+      if (!isInvitation) setTimeout(() => navigate('/login'), 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al actualizar la contraseña.');
     } finally {
@@ -94,8 +96,8 @@ export default function ResetPassword() {
           <div className="auth-brand-mark mx-auto mb-6">
             <Lock className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Nueva Contraseña</h1>
-          <p className="text-slate-500 font-medium">Ingresá tu nueva contraseña de acceso</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{isInvitation ? 'Creá tu contraseña' : 'Nueva Contraseña'}</h1>
+          <p className="text-slate-500 font-medium">{isInvitation ? 'Definí una contraseña para entrar a RivaStock.' : 'Ingresá tu nueva contraseña de acceso'}</p>
         </div>
 
         {!ready && !success && !error && (
@@ -109,6 +111,7 @@ export default function ResetPassword() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
+            role="alert"
             className="auth-alert mb-6 p-4 flex items-center gap-3 text-sm font-semibold"
           >
             <AlertCircle size={18} className="shrink-0" />
@@ -129,18 +132,21 @@ export default function ResetPassword() {
           <div className="text-center space-y-6">
             <div className="auth-success p-6 font-semibold flex flex-col items-center gap-4">
               <CheckCircle2 size={48} className="text-[#365FAD]" />
-              <span>Contraseña actualizada correctamente. Redirigiendo...</span>
+              <span>{isInvitation ? 'Tu contraseña quedó guardada.' : 'Contraseña actualizada correctamente. Redirigiendo...'}</span>
             </div>
+            {isInvitation && <button type="button" onClick={() => navigate('/', { replace: true })} className="auth-primary w-full py-3.5 font-semibold transition-colors">Entrar a RivaStock</button>}
           </div>
         ) : ready ? (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-black text-slate-700 ml-1">Nueva Contraseña</label>
+              <label htmlFor="new-password" className="text-sm font-black text-slate-700 ml-1">Nueva Contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
+                  id="new-password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Mínimo 6 caracteres"
@@ -158,12 +164,14 @@ export default function ResetPassword() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-black text-slate-700 ml-1">Confirmar Contraseña</label>
+              <label htmlFor="confirm-password" className="text-sm font-black text-slate-700 ml-1">Confirmar Contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
+                  id="confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  minLength={6}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repetí la contraseña"
@@ -177,7 +185,7 @@ export default function ResetPassword() {
               disabled={loading}
               className="auth-primary w-full py-3.5 font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Actualizar Contraseña'}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : isInvitation ? 'Entrar a RivaStock' : 'Actualizar Contraseña'}
             </button>
           </form>
         ) : null}

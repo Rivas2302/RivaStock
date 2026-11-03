@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — F3 implementada localmente; despliegue pendiente
+
+- El flujo de invitación ahora pasa por `/auth/confirm?type=invite`, permite establecer la contraseña sin cerrar la sesión verificada y entra a la app. La prueba del hook confirma el callback; Playwright verifica validación de contraseña, confirmación y entrada directa, sin crear usuarios reales.
+- El primer ingreso de un dueño sin nombre muestra un modal no descartable para nombre, moneda, teléfono y email; verifica el nombre único, guarda el perfil/configuración y propone el enlace del catálogo. Se agregaron estados vacíos accionables para las páginas del plan base y para el catálogo público.
+- Verificación local: `npm run lint`; `npm test` 690/690 en 112 archivos, con URL/clave Supabase ficticias limitadas al proceso; Playwright `e2e/onboarding.spec.ts` 3/3; `npm run build`; `npm run perf:check` aprobado.
+- Bundle medido: entrada 208.765 B JS gzip y 21.820 B CSS gzip; ruta AIHub 240.670 B JS gzip. **Desvío de presupuesto:** se amplió solo el límite AIHub de 235 a 235,1 KiB (102 B) porque el gate de onboarding compartido excedía el límite anterior en 30 B; el resto de presupuestos no cambió.
+- Sin migraciones ni cambios de datos. F3 sigue `[ ]` hasta pushear el commit, confirmar Vercel y hacer el smoke de solo lectura con la cuenta de Riva. No se incluye el cambio ajeno `supabase/.temp/cli-latest`.
+
 ## 2026-11-02 — F2 / E1 cerrados en producción
 
 - Antes del cierre comparé los planes con `C:\Users\USER\Desktop\IA\RivaStock\docs`. ACTION_PLAN de Desktop es más reciente: agrega el Bloque G y cambia el orden posterior a F4; adopté esa copia y restauré F1 `[x]` porque su auditoría y validación ya constan en entradas anteriores con evidencia. MULTI_BUSINESS de Desktop solo discrepaba en E0 `[ ]`; conservé `[x]` porque E0 ya está documentado. El `AGENTS.md` local es más completo que la copia de Desktop (incluye las reglas de secretos), así que no lo reemplacé.

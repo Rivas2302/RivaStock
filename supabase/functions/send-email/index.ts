@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { Webhook } from 'https://esm.sh/standardwebhooks@1.0.0';
-import { handleEmailHook, type HookPayload } from './handler.ts';
+import { buildInviteConfirmationUrl, handleEmailHook, type HookPayload } from './handler.ts';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const SUPABASE_URL   = Deno.env.get('SUPABASE_URL')!;
@@ -8,6 +8,7 @@ const FROM_ADDRESS   = 'RivaStock <onboarding@resend.dev>';
 
 function buildConfirmationUrl(payload: HookPayload): string {
   const { token_hash, email_action_type, redirect_to } = payload.email_data;
+  if (email_action_type === 'invite') return buildInviteConfirmationUrl(payload).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
   const url = new URL('/auth/v1/verify', SUPABASE_URL);
   url.search = new URLSearchParams({ token: token_hash, type: email_action_type, redirect_to }).toString();
   return url.toString().replaceAll('&', '&amp;').replaceAll('"', '&quot;');
@@ -26,8 +27,8 @@ function buildEmail(payload: HookPayload): { subject: string; html: string } {
         subject: 'Fuiste invitado a RivaStock',
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-            <h2 style="color:#1e293b">Te invitaron a colaborar en RivaStock</h2>
-            <p style="color:#475569">Alguien te invitó como colaborador en RivaStock. Hacé clic para crear tu contraseña y empezar a usar la app:</p>
+            <h2 style="color:#1e293b">Te invitaron a usar RivaStock</h2>
+            <p style="color:#475569">Hacé clic para crear tu contraseña y entrar a la app:</p>
             <p>${btn('Aceptar invitación', confirmationUrl)}</p>
             <p style="color:#94a3b8;font-size:12px">Si no esperabas este email, podés ignorarlo.</p>
           </div>`,

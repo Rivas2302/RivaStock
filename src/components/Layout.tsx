@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -27,6 +27,7 @@ import { useAuth } from '../AuthContext';
 import type { ModuleKey } from '../types';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
 import type { BusinessModuleKey } from '../lib/businessPlan';
+const BusinessSetupModal = lazy(() => import('./BusinessSetupModal'));
 
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -69,6 +70,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
   const { plan, loading: planLoading, error: planError } = useBusinessPlan();
+  const needsBusinessSetup = !user?.businessName?.trim() && isOwner;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
@@ -192,6 +194,11 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {needsBusinessSetup && (
+          <Suspense fallback={<div className="fixed inset-0 z-[100] bg-black/50" />}>
+            <BusinessSetupModal />
+          </Suspense>
+        )}
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 bg-[#FCFAF5] dark:bg-[#202329] border-b border-[#DDD8CE] dark:border-slate-700 shrink-0">
           <h1 className="brand-mark text-xl font-extrabold text-[#1D2026] dark:text-white">RivaStock</h1>

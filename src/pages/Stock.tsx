@@ -1302,7 +1302,9 @@ export default function Stock() {
               }) : (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    No se encontraron productos
+                    {ownerVisibleProducts.length === 0
+                      ? 'Todavía no cargaste productos. Agregá el primero.'
+                      : 'No hay productos que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

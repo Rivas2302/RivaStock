@@ -254,7 +254,7 @@ export default function Orders() {
         )) : (
           <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
             <ClipboardList size={48} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 font-medium">No hay pedidos para mostrar</p>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Todavía no hay pedidos recibidos desde tu catálogo.</p>
           </div>
         )}
       </div>

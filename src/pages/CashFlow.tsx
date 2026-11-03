@@ -603,7 +603,9 @@ export default function CashFlow() {
               {filteredEntries.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    No hay movimientos registrados
+                    {entries.length === 0
+                      ? 'Todavía no hay movimientos de caja. Registrá un ingreso o gasto para empezar.'
+                      : 'No hay movimientos que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

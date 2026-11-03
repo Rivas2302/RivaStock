@@ -383,7 +383,9 @@ export default function Intake() {
               {filteredIntakes.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    No hay ingresos registrados
+                    {intakes.length === 0
+                      ? 'Todavía no registraste ingresos. Usá Registrar Ingreso para cargar el primero.'
+                      : 'No hay ingresos que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

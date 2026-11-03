@@ -229,7 +229,7 @@ export default function AuditTrail() {
                 <button onClick={() => setSelectedEvent(event)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800 dark:hover:text-indigo-300" title="Ver detalle"><Eye size={18} /></button>
               </div>
             ))}
-            {filteredEvents.length === 0 && <div className="p-10 text-center text-slate-500">No hay eventos para mostrar.</div>}
+            {filteredEvents.length === 0 && <div className="p-10 text-center text-slate-500">{events.length === 0 ? 'Todavía no hay eventos de trazabilidad.' : 'No hay eventos que coincidan con la búsqueda.'}</div>}
           </div>
         )}
       </div>

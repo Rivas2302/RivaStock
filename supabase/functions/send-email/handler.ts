@@ -3,6 +3,18 @@ export interface HookPayload {
   email_data: { token: string; token_hash: string; redirect_to: string; email_action_type: string; site_url: string };
 }
 
+export function buildInviteConfirmationUrl(payload: Pick<HookPayload, 'email_data'>): string {
+  const { token_hash, email_action_type, redirect_to, site_url } = payload.email_data;
+  const destination = new URL(redirect_to || site_url);
+  if (!['https:', 'http:'].includes(destination.protocol)) {
+    throw new Error('Invalid invitation redirect URL');
+  }
+  const callback = new URL('/auth/confirm', destination.origin);
+  callback.searchParams.set('token_hash', token_hash);
+  callback.searchParams.set('type', email_action_type);
+  return callback.toString();
+}
+
 interface Dependencies {
   secret?: string;
   verify: (secret: string, body: string, headers: Record<string, string>) => unknown;

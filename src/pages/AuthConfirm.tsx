@@ -40,7 +40,7 @@ export default function AuthConfirm() {
       }
       // Session established. Both invite and recovery flows continue at
       // /reset-password to set/update the password.
-      navigate('/reset-password', { replace: true });
+      navigate(typeParam === 'invite' ? '/reset-password?type=invite' : '/reset-password', { replace: true });
     });
   }, [searchParams, navigate]);
 

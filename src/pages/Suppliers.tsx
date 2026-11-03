@@ -300,7 +300,9 @@ export default function Suppliers() {
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                     <Package size={32} className="mx-auto mb-2 opacity-30" />
-                    No se encontraron proveedores
+                    {suppliers.length === 0
+                      ? 'Todavía no cargaste proveedores. Agregá el primero desde Nuevo Proveedor.'
+                      : 'No hay proveedores que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

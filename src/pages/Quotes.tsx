@@ -574,7 +574,9 @@ export default function Quotes() {
               {filteredQuotes.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                    No se encontraron presupuestos
+                    {quotes.length === 0
+                      ? 'Todavía no creaste presupuestos. Creá el primero desde Nuevo Presupuesto.'
+                      : 'No hay presupuestos que coincidan con los filtros aplicados.'}
                   </td>
                 </tr>
               )}

@@ -41,7 +41,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (user: UserProfile) => void;
   sendResetEmail: (email: string) => Promise<void>;
-  resetPassword: (code: string, newPassword: string) => Promise<void>;
+  resetPassword: (code: string, newPassword: string, options?: { keepSession?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -417,19 +417,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error('Error al enviar el email de recuperación.');
   };
 
-  const resetPassword = async (_code: string, newPassword: string) => {
+  const resetPassword = async (_code: string, newPassword: string, options: { keepSession?: boolean } = {}) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       throw new Error('Link inválido o vencido. Solicitá un nuevo email de recuperación.');
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message);
-    // Fire-and-forget local signOut: clears localStorage instantly without a
-    // network round-trip. Awaiting a global signOut() here can hang because
-    // AuthContext may still be mid-loadProfile from the SIGNED_IN fired by
-    // verifyOtp moments before. The user logs in fresh next, which replaces
-    // any lingering session.
-    supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
+    if (!options.keepSession) {
+      // Fire-and-forget local signOut: clears localStorage instantly without a
+      // network round-trip. Awaiting a global signOut() here can hang because
+      // AuthContext may still be mid-loadProfile from the SIGNED_IN fired by
+      // verifyOtp moments before. Recovery users log in fresh; invitees keep
+      // their verified session so they can enter the app directly.
+      supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
+    }
   };
 
   const updateUser = (updatedUser: UserProfile) => {
