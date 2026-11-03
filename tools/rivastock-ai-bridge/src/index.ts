@@ -7,6 +7,8 @@ import { BridgeClient } from './client.ts';
 import { configureModelCache } from './knowledge/embed.ts';
 import { KnowledgeClient } from './knowledge/client.ts';
 import { runKnowledgeLoop } from './knowledge/loop.ts';
+import { runKnowledgeCentralLoop } from './central/loop.ts';
+import { CentralStore } from './central/store.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
 import { executeTextGeneration } from './executeTextGeneration.ts';
@@ -345,8 +347,21 @@ async function runWithInstanceLock(): Promise<void> {
     } else {
       const activeKnowledgeClient = knowledgeClient;
       if (!activeKnowledgeClient) throw new Error('Conocimientos requiere un endpoint de worker válido.');
+      const centralStore = new CentralStore({
+        storeDirectory: config.centralStoreDirectory,
+        mirrorDirectory: config.centralMirrorDirectory,
+      });
+      await centralStore.initialize();
       process.stdout.write('[AI Bridge] Conocimientos activo; la primera indexación descargará aproximadamente 120 MB del modelo.\n');
       loops.push(runKnowledgeLoop({
+        client: activeKnowledgeClient,
+        workerId: config.workerId,
+        config,
+        centralStore,
+        isStopping: () => stopping,
+        log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+      }));
+      loops.push(runKnowledgeCentralLoop({
         client: activeKnowledgeClient,
         workerId: config.workerId,
         config,

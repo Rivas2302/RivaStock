@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getLatestKnowledgeOcrStats, getStats } from './api';
+import { getCentralStatus, getLatestKnowledgeOcrStats, getStats } from './api';
 import { supabase } from '../supabase';
 
 describe('knowledge RPC wrapper', () => {
@@ -33,5 +33,12 @@ describe('knowledge RPC wrapper', () => {
     expect(query.eq).toHaveBeenCalledWith('document_id', 'document-1');
     expect(query.eq).toHaveBeenCalledWith('status', 'completed');
     expect(query.order).toHaveBeenCalledWith('completed_at', { ascending: false });
+  });
+
+  it('reads the central-store status through the owner-only RPC', async () => {
+    const status = { store_bytes: 100, mirror_status: 'ok' };
+    const rpc = vi.spyOn(supabase, 'rpc').mockResolvedValue({ data: status, error: null } as never);
+    await expect(getCentralStatus()).resolves.toEqual(status);
+    expect(rpc).toHaveBeenCalledWith('my_central_status', {});
   });
 });

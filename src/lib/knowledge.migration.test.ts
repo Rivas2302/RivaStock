@@ -23,6 +23,7 @@ const migrationFiles = [
   '20261103005337_platform_plans.sql',
   '20261103031528_platform_usage.sql',
   '20261103031532_knowledge_plan_limits.sql',
+  '20261103080455_knowledge_central_store.sql',
 ];
 
 let db: PGlite;
@@ -553,6 +554,168 @@ describe('E2.2 knowledge plan limits', () => {
       'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
       [documentId, `${OWNER}/${documentId}/v11/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'd'.repeat(64)],
       'La cuenta del negocio está suspendida. Comunicate con RivaTech.',
+    );
+  });
+});
+
+describe('E4 knowledge central store', () => {
+  const DEVICE = '20000000-0000-4000-8000-000000000001';
+
+  async function addDevice(owner = OWNER): Promise<void> {
+    await asSystem();
+    await db.query('INSERT INTO ai_bridge_devices (id, user_id, name) VALUES ($1, $2, $3)', [DEVICE, owner, 'Central test']);
+  }
+
+  it('enforces the local quota separately from cloud quota', async () => {
+    const documentId = await createDocument('Central quota');
+    await asSystem();
+    await db.query(`INSERT INTO business_subscriptions (owner_uid, plan_code, limit_overrides)
+      VALUES ($1, 'interno', '{"local_knowledge_bytes":100}'::jsonb)
+      ON CONFLICT (owner_uid) DO UPDATE SET plan_code = 'interno', limit_overrides = EXCLUDED.limit_overrides`, [OWNER]);
+    await addFileVersion(documentId, `${OWNER}/${documentId}/v1/manual.pdf`, 'manual.pdf', 'application/pdf', 100, 'a'.repeat(64));
+    await asSystem();
+    await db.exec(`UPDATE knowledge_document_versions SET storage_location = 'local' WHERE document_id = '${documentId}';`);
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
+      [documentId, `${OWNER}/${documentId}/v2/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'b'.repeat(64)],
+      'Se llenó el espacio de la central de este negocio',
+    );
+  });
+
+  it('claims one owner’s originals, verifies hashes, applies the grace period and purges only after fresh inventory', async () => {
+    const documentId = await createDocument('Central lifecycle');
+    const path = `${OWNER}/${documentId}/v1/manual.pdf`;
+    const version = await addFileVersion(documentId, path, 'manual.pdf', 'application/pdf', 100, 'a'.repeat(64));
+    await addDevice();
+
+    await asSystem();
+    const firstClaim = await db.query<{ items: Array<{ version_id: string; relative_path: string }> }>(
+      'SELECT knowledge_central_next_transfer($1, $2) AS items', [OWNER, DEVICE],
+    );
+    expect(firstClaim.rows[0].items).toMatchObject([{ version_id: version.id, relative_path: path }]);
+    const mismatch = await db.query<{ result: { stored: boolean; reason: string } }>(
+      'SELECT knowledge_central_stored($1, $2, $3, $4) AS result', [OWNER, DEVICE, version.id, 'b'.repeat(64)],
+    );
+    expect(mismatch.rows[0].result).toEqual({ stored: false, reason: 'hash_mismatch' });
+
+    const secondClaim = await db.query<{ knowledge_central_next_transfer: Array<{ version_id: string }> }>(
+      'SELECT knowledge_central_next_transfer($1, $2)', [OWNER, DEVICE],
+    );
+    expect(secondClaim.rows[0].knowledge_central_next_transfer).toHaveLength(1);
+    const stored = await db.query<{ result: { stored: boolean } }>(
+      'SELECT knowledge_central_stored($1, $2, $3, $4) AS result', [OWNER, DEVICE, version.id, 'a'.repeat(64)],
+    );
+    expect(stored.rows[0].result.stored).toBe(true);
+    await db.exec(`UPDATE knowledge_document_versions SET cloud_purge_after = now() - interval '1 second',
+      local_verified_at = now() - interval '25 hours' WHERE id = '${version.id}';`);
+    const staleInventoryPurge = await db.query<{ knowledge_central_purge_ready: unknown[] }>(
+      'SELECT knowledge_central_purge_ready($1)', [OWNER],
+    );
+    expect(staleInventoryPurge.rows[0].knowledge_central_purge_ready).toEqual([]);
+
+    await db.query('SELECT knowledge_central_inventory($1, $2, $3::jsonb)', [OWNER, DEVICE,
+      JSON.stringify([{ version_id: version.id, sha256: 'a'.repeat(64), present: true }])]);
+    const purge = await db.query<{ ready: Array<{ version_id: string }> }>(
+      'SELECT knowledge_central_purge_ready($1) AS ready', [OWNER],
+    );
+    expect(purge.rows[0].ready).toMatchObject([{ version_ids: [version.id] }]);
+    const purged = await db.query<{ count: number }>(
+      'SELECT knowledge_central_purged($1, $2, $3::uuid[]) AS count', [OWNER, DEVICE, [version.id]],
+    );
+    expect(Number(purged.rows[0].count)).toBe(1);
+    const usage = await db.query<{ cloud: number; local: number }>(
+      'SELECT knowledge_storage_used($1) AS cloud, knowledge_local_used($1) AS local', [OWNER],
+    );
+    expect(usage.rows[0]).toEqual({ cloud: 0, local: 100 });
+  });
+
+  it('queues local deletion and preserves it until the worker acknowledges cleanup', async () => {
+    const documentId = await createDocument('Central deletion');
+    const path = `${OWNER}/${documentId}/v1/manual.pdf`;
+    const version = await addFileVersion(documentId, path, 'manual.pdf', 'application/pdf', 100, 'c'.repeat(64));
+    await addDevice();
+    await asSystem();
+    await db.query('SELECT knowledge_central_next_transfer($1, $2)', [OWNER, DEVICE]);
+    await db.query('SELECT knowledge_central_stored($1, $2, $3, $4)', [OWNER, DEVICE, version.id, 'c'.repeat(64)]);
+
+    await asUser(OWNER);
+    const cloudPaths = await db.query<{ paths: string[] }>('SELECT knowledge_prepare_delete($1) AS paths', [documentId]);
+    expect(cloudPaths.rows[0].paths).toEqual([path]);
+    await asSystem();
+    const pending = await db.query<{ items: Array<{ id: string; relative_path: string }> }>(
+      'SELECT knowledge_central_deletions($1, $2) AS items', [OWNER, DEVICE],
+    );
+    expect(pending.rows[0].items).toHaveLength(1);
+    expect(pending.rows[0].items[0].relative_path).toBe(path);
+    await db.query('SELECT knowledge_central_deletions_done($1, $2, $3::uuid[])',
+      [OWNER, DEVICE, [pending.rows[0].items[0].id]]);
+    expect((await db.query<{ knowledge_central_deletions: unknown[] }>(
+      'SELECT knowledge_central_deletions($1, $2)', [OWNER, DEVICE],
+    ))
+      .rows[0].knowledge_central_deletions).toEqual([]);
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_finalize_delete($1)', [documentId]);
+    expect((await db.query('SELECT id FROM knowledge_document_versions WHERE id = $1', [version.id])).rows).toHaveLength(0);
+  });
+
+  it('exposes central status only through the owner RPC', async () => {
+    await addDevice();
+    await asSystem();
+    await db.query('SELECT knowledge_central_report_status($1,$2,100,1000,$3,now(),1,0)',
+      [OWNER, DEVICE, 'ok']);
+    await asUser(OWNER);
+    const status = await db.query<{ data: { store_bytes: number; mirror_status: string } }>(
+      'SELECT my_central_status() AS data',
+    );
+    expect(status.rows[0].data).toMatchObject({ store_bytes: 100, mirror_status: 'ok' });
+    await expectQueryError('SELECT * FROM ai_central_status', [], 'permission denied');
+  });
+
+  it('preserves local and purged storage state when restoring an older version that shares its original path', async () => {
+    const documentId = await createDocument('Central restore');
+    const path = `${OWNER}/${documentId}/v1/manual.pdf`;
+    const oldVersion = await addFileVersion(documentId, path, 'manual.pdf', 'application/pdf', 100, 'd'.repeat(64));
+    await addFileVersion(documentId, `${OWNER}/${documentId}/v2/manual.pdf`, 'manual.pdf', 'application/pdf', 120, 'e'.repeat(64));
+    await asSystem();
+    await db.query(`UPDATE knowledge_document_versions SET storage_location = 'local',
+      cloud_purge_after = now() - interval '1 day', cloud_purged_at = now()
+      WHERE id = $1`, [oldVersion.id]);
+    await asUser(OWNER);
+    const restored = await db.query<{ id: string; storage_location: string; storage_path: string; cloud_purged_at: string | null }>(
+      'SELECT id, storage_location, storage_path, cloud_purged_at FROM knowledge_restore_version($1, $2)', [documentId, oldVersion.id],
+    );
+    expect(restored.rows[0]).toMatchObject({ storage_location: 'local', storage_path: path });
+    expect(restored.rows[0].cloud_purged_at).not.toBeNull();
+    await asSystem();
+    const usage = await db.query<{ used: number }>('SELECT knowledge_local_used($1)::integer AS used', [OWNER]);
+    expect(usage.rows[0].used).toBe(100);
+  });
+
+  it('serves local paths and the expected inventory only to the paired worker', async () => {
+    const documentId = await createDocument('Central path lookup');
+    const path = `${OWNER}/${documentId}/v1/manual.pdf`;
+    const version = await addFileVersion(documentId, path);
+    await addDevice();
+    await asSystem();
+    await db.query("UPDATE knowledge_document_versions SET storage_location = 'local' WHERE id = $1", [version.id]);
+    const local = await db.query<{ file: Record<string, unknown> }>(
+      'SELECT knowledge_central_local_file($1,$2,$3) AS file', [OWNER, DEVICE, version.id],
+    );
+    expect(local.rows[0].file).toMatchObject({ relative_path: path, sha256: 'a'.repeat(64), file_size: 100 });
+    const expected = await db.query<{ files: Array<Record<string, unknown>> }>(
+      'SELECT knowledge_central_list_expected($1,$2,0,100) AS files', [OWNER, DEVICE],
+    );
+    expect(expected.rows[0].files).toMatchObject([{ version_id: version.id, storage_location: 'local' }]);
+    await expectQueryError(
+      'SELECT knowledge_central_local_file($1,$2,$3)',
+      [OWNER, OTHER, version.id],
+      'Computadora desvinculada',
+    );
+    await expectQueryError(
+      'SELECT knowledge_central_inventory($1,$2,$3::jsonb)',
+      [OWNER, DEVICE, JSON.stringify([{ version_id: version.id }])],
+      'Elemento de inventario inválido',
     );
   });
 });

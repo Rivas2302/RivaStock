@@ -13,6 +13,7 @@ import type {
 } from './client.ts';
 import { reportError } from '../safeError.ts';
 import type { BridgeConfig } from '../types.ts';
+import type { CentralStore } from '../central/store.ts';
 
 const POLL_INTERVAL_MS = 2_000;
 const ERROR_INTERVAL_MS = 5_000;
@@ -22,12 +23,15 @@ const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 const MAX_SUBMIT_BATCH = 32;
 
 export interface KnowledgeLoopClient extends Pick<KnowledgeClient,
-  'next' | 'jobHeartbeat' | 'fileUrl' | 'extractedText' | 'submitChunks' | 'complete' | 'fail' | 'searchResult' | 'searchFail'> {}
+  'next' | 'jobHeartbeat' | 'fileUrl' | 'extractedText' | 'submitChunks' | 'complete' | 'fail' | 'searchResult' | 'searchFail'> {
+  centralLocalFile?: KnowledgeClient['centralLocalFile'];
+}
 
 export interface KnowledgeLoopOptions {
   client: KnowledgeLoopClient;
   workerId: string;
   config: Pick<BridgeConfig, 'ocrEnabled' | 'modelsDirectory'>;
+  centralStore?: CentralStore;
   isStopping: () => boolean;
   log: (message: string) => void;
   embedTexts?: (texts: string[], batchSize?: number) => Promise<number[][]>;
@@ -153,11 +157,26 @@ async function getExtraction(task: KnowledgeIndexTask, options: KnowledgeLoopOpt
   }
   if (!task.has_file) throw new NonRetryableError('El documento no tiene contenido disponible para indexar.');
 
-  const file = await options.client.fileUrl(options.workerId, task.job_id);
-  if (typeof file.file_size === 'number' && file.file_size > MAX_DOWNLOAD_BYTES) {
+  let bytes: Uint8Array | null = null;
+  try {
+    const local = await options.client.centralLocalFile?.(options.workerId, task.version_id);
+    if (local && options.centralStore) {
+      bytes = await options.centralStore.readVerified(local.relative_path, local.sha256);
+      if (!bytes) options.log(`El original ${task.version_id} no está disponible en la central ni en su respaldo; se intentará la nube.`);
+    }
+  } catch (error) {
+    options.log(`No se pudo leer ${task.version_id} desde la central; se intentará la nube: ${reportError(errorMessage(error, 'error local'))}`);
+  }
+  if (bytes && bytes.byteLength > MAX_DOWNLOAD_BYTES) {
     throw new NonRetryableError('El archivo supera el límite de descarga de 50 MB.');
   }
-  const bytes = await downloadFile(file.url);
+  if (!bytes) {
+    const file = await options.client.fileUrl(options.workerId, task.job_id);
+    if (typeof file.file_size === 'number' && file.file_size > MAX_DOWNLOAD_BYTES) {
+      throw new NonRetryableError('El archivo supera el límite de descarga de 50 MB.');
+    }
+    bytes = await downloadFile(file.url);
+  }
   switch (task.format) {
     case 'pdf': return extractPdf(bytes, {
       ocrEnabled: options.config.ocrEnabled,

@@ -21,6 +21,61 @@ export function validateWorkerRetrieveRequest(body: WorkerRetrieveRequest): stri
   return null;
 }
 
+export type CentralWorkerAction =
+  | 'worker_central_next'
+  | 'worker_central_stored'
+  | 'worker_central_inventory'
+  | 'worker_central_inventory_list'
+  | 'worker_central_purge'
+  | 'worker_central_deletions'
+  | 'worker_central_deletions_done'
+  | 'worker_central_status'
+  | 'worker_central_local_file';
+
+const CENTRAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CENTRAL_HASH = /^[0-9a-f]{64}$/i;
+
+export function validateCentralWorkerAction(action: CentralWorkerAction, body: Record<string, unknown>): string | null {
+  switch (action) {
+    case 'worker_central_next':
+    case 'worker_central_purge':
+    case 'worker_central_deletions':
+      return null;
+    case 'worker_central_stored':
+      return isUuid(body.version_id) && typeof body.sha256 === 'string' && CENTRAL_HASH.test(body.sha256)
+        ? null : 'Transferencia de la central inválida.';
+    case 'worker_central_local_file':
+      return isUuid(body.version_id) ? null : 'Versión de archivo inválida.';
+    case 'worker_central_inventory_list':
+      return Number.isSafeInteger(body.offset) && Number(body.offset) >= 0
+        && Number.isSafeInteger(body.limit) && Number(body.limit) >= 1 && Number(body.limit) <= 1000
+        ? null : 'Paginación de inventario inválida.';
+    case 'worker_central_inventory':
+      if (!Array.isArray(body.inventory) || body.inventory.length > 500) return 'Inventario de la central inválido.';
+      if (!body.inventory.every((item) => isRecord(item) && isUuid(item.version_id)
+        && typeof item.present === 'boolean'
+        && (item.sha256 === null || item.sha256 === undefined
+          || (typeof item.sha256 === 'string' && CENTRAL_HASH.test(item.sha256))))) {
+        return 'Elemento de inventario inválido.';
+      }
+      return null;
+    case 'worker_central_deletions_done':
+      return Array.isArray(body.ids) && body.ids.length <= 100
+        && body.ids.every((id) => isUuid(id)) ? null : 'Confirmación de eliminación inválida.';
+    case 'worker_central_status':
+      return Number.isSafeInteger(body.store_bytes) && Number(body.store_bytes) >= 0
+        && (body.store_free_bytes === null || body.store_free_bytes === undefined
+          || (Number.isSafeInteger(body.store_free_bytes) && Number(body.store_free_bytes) >= 0))
+        && ['none', 'ok', 'error'].includes(String(body.mirror_status))
+        && (body.mirror_last_ok_at === null || body.mirror_last_ok_at === undefined
+          || (typeof body.mirror_last_ok_at === 'string' && !Number.isNaN(Date.parse(body.mirror_last_ok_at))))
+        && Number.isSafeInteger(body.files_total) && Number(body.files_total) >= 0
+        && Number.isSafeInteger(body.files_missing) && Number(body.files_missing) >= 0
+        && Number(body.files_missing) <= Number(body.files_total)
+        ? null : 'Estado de la central inválido.';
+  }
+}
+
 type MemoryWorkerAction =
   | 'worker_memory_retrieve'
   | 'worker_memory_similar'

@@ -70,6 +70,8 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
 
   const storagePercent = stats && stats.storage_limit_bytes > 0
     ? Math.min(100, Math.round(stats.storage_bytes / stats.storage_limit_bytes * 100)) : 0;
+  const centralStoragePercent = stats && stats.local_storage_limit_bytes > 0
+    ? Math.min(100, Math.round(stats.local_storage_bytes / stats.local_storage_limit_bytes * 100)) : 0;
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Resumen</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Estado de la biblioteca y de la PC vinculada.</p></div><div className="flex items-center gap-2"><ConnectionBadge state={bridgeState}/><button type="button" disabled={loading} onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><RefreshCw size={14}/>Actualizar</button></div></div>
@@ -91,8 +93,11 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
         <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={savingSettings || loading} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{savingSettings ? <Loader2 size={14} className="animate-spin"/> : null}Guardar configuración</button>{settingsNotice && <span role="status" className="text-xs text-emerald-700 dark:text-emerald-300">{settingsNotice}</span>}</div>
       </form>
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
-        <div className="flex items-center justify-between gap-3 text-sm"><span className="font-bold">Almacenamiento</span><span>{formatBytes(stats.storage_bytes)} de {formatBytes(stats.storage_limit_bytes)} · {storagePercent}%</span></div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]"><div className="h-full rounded-full bg-[var(--brand)]" style={{ width: `${storagePercent}%` }}/></div>
+        <h3 className="text-sm font-bold">Almacenamiento</h3>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <StorageMeter label="En la nube" used={stats.storage_bytes} limit={stats.storage_limit_bytes} percent={storagePercent}/>
+          <StorageMeter label="En la central" used={stats.local_storage_bytes} limit={stats.local_storage_limit_bytes} percent={centralStoragePercent}/>
+        </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-muted)]"><span>{stats.draft} borradores</span><span>{stats.archived} archivados</span><span>{stats.deleting} en eliminación</span></div>
       </section>
     </>}
@@ -101,4 +106,8 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
 
 function MetricCard({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }) {
   return <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">{icon}{label}</div><p className="mt-2 break-words text-lg font-bold">{value}</p><p className="mt-1 text-xs text-[var(--ink-muted)]">{detail}</p></section>;
+}
+
+function StorageMeter({ label, used, limit, percent }: { label: string; used: number; limit: number; percent: number }) {
+  return <div><div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold">{label}</span><span>{formatBytes(used)} de {formatBytes(limit)} · {percent}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]"><div className="h-full rounded-full bg-[var(--brand)]" style={{ width: `${percent}%` }}/></div></div>;
 }

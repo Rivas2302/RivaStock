@@ -83,6 +83,8 @@ export interface BridgeConfig {
   fbSupervisorEnabled: boolean;
   knowledgeEnabled: boolean;
   modelsDirectory: string;
+  centralStoreDirectory: string;
+  centralMirrorDirectory: string | null;
   ocrEnabled: boolean;
   codexEnabled: boolean;
   claudeEnabled: boolean;
@@ -124,6 +126,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
     knowledgeEnabled: env.AI_BRIDGE_ENABLE_KNOWLEDGE !== 'false',
     modelsDirectory: resolve(env.AI_BRIDGE_MODELS_DIR?.trim()
       || join(userDirectory, '.rivastock-ai-bridge', 'models')),
+    centralStoreDirectory: resolve(env.AI_BRIDGE_STORE_DIR?.trim()
+      || join(userDirectory, 'RivaStock Central', 'Conocimientos')),
+    centralMirrorDirectory: env.AI_BRIDGE_MIRROR_DIR?.trim()
+      ? resolve(env.AI_BRIDGE_MIRROR_DIR.trim()) : null,
     ocrEnabled: env.AI_BRIDGE_ENABLE_OCR !== 'false',
     codexEnabled: env.AI_BRIDGE_ENABLE_CODEX === 'true',
     claudeEnabled: env.AI_BRIDGE_ENABLE_CLAUDE === 'true',

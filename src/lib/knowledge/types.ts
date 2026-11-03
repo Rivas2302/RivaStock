@@ -55,6 +55,7 @@ export interface KnowledgeVersion {
   original_filename: string | null;
   mime_type: string | null;
   file_size: number | null;
+  storage_location: 'cloud' | 'transferring' | 'local' | 'missing';
   content_json: Record<string, unknown> | null;
   content_markdown: string | null;
   extracted_text: string | null;
@@ -118,6 +119,19 @@ export interface KnowledgeStats {
   last_indexed_at: string | null;
   storage_bytes: number;
   storage_limit_bytes: number;
+  local_storage_bytes: number;
+  local_storage_limit_bytes: number;
+}
+
+export interface KnowledgeCentralStatus {
+  device_id: string;
+  store_bytes: number;
+  store_free_bytes: number | null;
+  mirror_status: 'none' | 'ok' | 'error';
+  mirror_last_ok_at: string | null;
+  files_total: number;
+  files_missing: number;
+  reported_at: string;
 }
 
 export interface KnowledgeAdminDocument {

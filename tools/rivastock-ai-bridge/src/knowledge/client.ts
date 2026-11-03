@@ -38,6 +38,42 @@ export interface KnowledgeOrganizeImage {
   mime_type: string;
 }
 
+export interface CentralTransferFile {
+  version_id: string;
+  relative_path: string;
+  sha256: string;
+  file_size: number;
+  mime_type: string | null;
+  url: string;
+}
+
+export interface CentralExpectedFile {
+  version_id: string;
+  relative_path: string;
+  sha256: string;
+  file_size: number;
+  cloud_purged: boolean;
+  storage_location: 'cloud' | 'transferring' | 'local' | 'missing';
+}
+
+export interface CentralDeletion {
+  id: string;
+  relative_path: string;
+}
+
+export interface CentralLocalFile {
+  relative_path: string;
+  sha256: string;
+  file_size: number;
+  mime_type: string | null;
+}
+
+export interface CentralInventoryEntry {
+  version_id: string;
+  sha256: string | null;
+  present: boolean;
+}
+
 export interface KnowledgeRetrievedSource {
   label: string;
   document_id: string;
@@ -127,6 +163,103 @@ export class KnowledgeClient {
       throw new Error('El backend devolvió una URL de archivo inválida.');
     }
     return response;
+  }
+
+  async centralNext(workerId: string): Promise<CentralTransferFile[]> {
+    const response = await this.post<{ files: unknown }>('worker_central_next', { worker_id: workerId });
+    if (!Array.isArray(response.files) || response.files.length > 5) throw new Error('La lista de transferencias de la central es inválida.');
+    return response.files.map((value) => {
+      if (!isRecord(value) || typeof value.version_id !== 'string' || !UUID_PATTERN.test(value.version_id)
+        || typeof value.relative_path !== 'string' || !isCentralPath(value.relative_path)
+        || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
+        || typeof value.file_size !== 'number' || !Number.isSafeInteger(value.file_size) || value.file_size < 1 || value.file_size > 52_428_800
+        || (value.mime_type !== null && typeof value.mime_type !== 'string')
+        || typeof value.url !== 'string' || !/^https:\/\//i.test(value.url)) {
+        throw new Error('Una transferencia de la central tiene datos inválidos.');
+      }
+      return value as unknown as CentralTransferFile;
+    });
+  }
+
+  async centralStored(workerId: string, versionId: string, sha256: string): Promise<{ stored: boolean; reason?: string }> {
+    const response = await this.post<{ result: unknown }>('worker_central_stored', {
+      worker_id: workerId, version_id: versionId, sha256,
+    });
+    if (!isRecord(response.result) || typeof response.result.stored !== 'boolean') {
+      throw new Error('El backend devolvió una confirmación inválida de la central.');
+    }
+    return response.result as { stored: boolean; reason?: string };
+  }
+
+  async centralExpected(workerId: string, offset: number, limit = 1000): Promise<CentralExpectedFile[]> {
+    const response = await this.post<{ files: unknown }>('worker_central_inventory_list', {
+      worker_id: workerId, offset, limit,
+    });
+    if (!Array.isArray(response.files) || response.files.length > limit) throw new Error('El inventario esperado de la central es inválido.');
+    return response.files.map((value) => {
+      if (!isRecord(value) || typeof value.version_id !== 'string' || !UUID_PATTERN.test(value.version_id)
+        || typeof value.relative_path !== 'string' || !isCentralPath(value.relative_path)
+        || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
+        || typeof value.file_size !== 'number' || !Number.isSafeInteger(value.file_size) || value.file_size < 0
+        || typeof value.cloud_purged !== 'boolean'
+        || !['cloud', 'transferring', 'local', 'missing'].includes(String(value.storage_location))) {
+        throw new Error('El backend devolvió una entrada de inventario inválida.');
+      }
+      return value as unknown as CentralExpectedFile;
+    });
+  }
+
+  async centralInventory(workerId: string, inventory: CentralInventoryEntry[]): Promise<void> {
+    await this.post('worker_central_inventory', { worker_id: workerId, inventory });
+  }
+
+  async centralPurge(workerId: string): Promise<number> {
+    const response = await this.post<{ purged: unknown }>('worker_central_purge', { worker_id: workerId });
+    const count = Number(response.purged);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error('El backend devolvió un resultado de purga inválido.');
+    return count;
+  }
+
+  async centralDeletions(workerId: string): Promise<CentralDeletion[]> {
+    const response = await this.post<{ items: unknown }>('worker_central_deletions', { worker_id: workerId });
+    if (!Array.isArray(response.items) || response.items.length > 100) throw new Error('La lista de borrados de la central es inválida.');
+    return response.items.map((value) => {
+      if (!isRecord(value) || typeof value.id !== 'string' || !UUID_PATTERN.test(value.id)
+        || typeof value.relative_path !== 'string' || !isCentralPath(value.relative_path)) {
+        throw new Error('Una solicitud de borrado de la central es inválida.');
+      }
+      return value as unknown as CentralDeletion;
+    });
+  }
+
+  async centralDeletionsDone(workerId: string, ids: string[]): Promise<void> {
+    await this.post('worker_central_deletions_done', { worker_id: workerId, ids });
+  }
+
+  async centralStatus(workerId: string, status: {
+    store_bytes: number;
+    store_free_bytes: number | null;
+    mirror_status: 'none' | 'ok' | 'error';
+    mirror_last_ok_at: string | null;
+    files_total: number;
+    files_missing: number;
+  }): Promise<void> {
+    await this.post('worker_central_status', { worker_id: workerId, ...status });
+  }
+
+  async centralLocalFile(workerId: string, versionId: string): Promise<CentralLocalFile | null> {
+    const response = await this.post<{ file: unknown }>('worker_central_local_file', {
+      worker_id: workerId, version_id: versionId,
+    });
+    if (response.file === null) return null;
+    if (!isRecord(response.file) || typeof response.file.relative_path !== 'string'
+      || !isCentralPath(response.file.relative_path) || typeof response.file.sha256 !== 'string'
+      || !/^[0-9a-f]{64}$/i.test(response.file.sha256)
+      || typeof response.file.file_size !== 'number' || !Number.isSafeInteger(response.file.file_size)
+      || (response.file.mime_type !== null && typeof response.file.mime_type !== 'string')) {
+      throw new Error('La referencia local de Conocimientos es inválida.');
+    }
+    return response.file as unknown as CentralLocalFile;
   }
 
   async organizeImages(workerId: string, jobId: string): Promise<KnowledgeOrganizeImage[]> {
@@ -335,6 +468,15 @@ export class KnowledgeClient {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isCentralPath(path: string): boolean {
+  return /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/v[0-9]{1,5}\/[A-Za-z0-9._-]{1,120}$/i.test(path)
+    && !path.split('/').some((part) => part === '.' || part === '..');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 function validateMemoryCandidate(value: unknown): MemoryCandidate {
   if (!value || typeof value !== 'object') throw new Error('El backend devolvió un recuerdo inválido.');

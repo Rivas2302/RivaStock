@@ -56,6 +56,23 @@ describe('Knowledge Edge Function contract', () => {
     expect(functionSource).toContain("rpc('ai_memory_store_embeddings'");
   });
 
+  it('routes central worker actions through the paired-device boundary and uses Storage API for cloud purges', () => {
+    for (const action of [
+      'worker_central_next',
+      'worker_central_stored',
+      'worker_central_inventory',
+      'worker_central_purge',
+      'worker_central_deletions',
+      'worker_central_deletions_done',
+      'worker_central_status',
+      'worker_central_inventory_list',
+      'worker_central_local_file',
+    ]) expect(functionSource).toContain(action);
+    expect(functionSource).toContain("storage.from('knowledge')");
+    expect(functionSource).toContain('.remove([...new Set(valid.map((value) => value.storage_path as string))])');
+    expect(functionSource).not.toContain('DELETE FROM storage.objects');
+  });
+
   it('limits organize image access to a reserved owned job and registered document assets', () => {
     expect(functionSource).toContain(".eq('task_type', 'knowledge_organize')");
     expect(functionSource).toContain(".eq('worker_id', workerId)");

@@ -96,6 +96,15 @@ function sourceLabel(source: KnowledgeVersion['source']): string {
   return ({ upload: 'Carga', editor: 'Editor', import: 'Importación', restore: 'Restauración' })[source];
 }
 
+function storageLocationLabel(location: KnowledgeVersion['storage_location']): { label: string; className: string } {
+  return ({
+    cloud: { label: 'En la nube', className: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200' },
+    transferring: { label: 'Pasando a la central', className: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200' },
+    local: { label: 'En la central', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' },
+    missing: { label: 'Falta el original', className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200' },
+  })[location ?? 'cloud'];
+}
+
 function extractionMessage(status: KnowledgeExtractionStatus): string {
   return ({
     pending: 'El texto se extraerá cuando tu PC vinculada procese el documento.',
@@ -472,7 +481,7 @@ export default function KnowledgeDocumentDetail() {
         <div className="min-w-0 flex-1">
           <h1 className="break-words text-xl font-bold md:text-2xl">{document.title}</h1>
           {document.description && <p className="mt-1 max-w-3xl text-sm text-[var(--ink-muted)]">{document.description}</p>}
-          <div className="mt-3 flex flex-wrap gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_STATUS_CLASSES[document.status]}`}>{KNOWLEDGE_STATUS_LABELS[document.status]}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_INDEX_STATUS_CLASSES[visibleIndexStatus]}`}>{KNOWLEDGE_INDEX_STATUS_LABELS[visibleIndexStatus]}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_FORMAT_CLASSES[document.format]}`}>{KNOWLEDGE_FORMAT_LABELS[document.format]}</span></div>
+          <div className="mt-3 flex flex-wrap gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_STATUS_CLASSES[document.status]}`}>{KNOWLEDGE_STATUS_LABELS[document.status]}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_INDEX_STATUS_CLASSES[visibleIndexStatus]}`}>{KNOWLEDGE_INDEX_STATUS_LABELS[visibleIndexStatus]}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${KNOWLEDGE_FORMAT_CLASSES[document.format]}`}>{KNOWLEDGE_FORMAT_LABELS[document.format]}</span>{currentVersion?.storage_path && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${storageLocationLabel(currentVersion.storage_location).className}`}>{storageLocationLabel(currentVersion.storage_location).label}</span>}</div>
           {hasUnpublishedChanges && <p role="status" className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100"><AlertCircle size={15}/>Hay una versión nueva sin publicar</p>}
         </div>
         <div className="flex max-w-xl flex-wrap gap-2">
@@ -552,7 +561,7 @@ export default function KnowledgeDocumentDetail() {
         onToggleComparison={() => setCompareVersionId((id) => id === reviewVersion.id ? null : reviewVersion.id)}
       />}
       {versions.length ? <ul className="divide-y divide-[var(--line)]">{versions.map((version) => <li key={version.id} className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">v{version.version_number}</h3>{document.current_version_id === version.id && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-1 text-[10px] font-bold text-[var(--brand)]">Actual</span>}{document.published_version_id === version.id && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Publicada</span>}</div><p className="mt-1 text-xs text-[var(--ink-muted)]">{formatDate(version.created_at)} · {sourceLabel(version.source)} · {version.file_size == null ? 'Contenido de texto' : formatBytes(version.file_size)}</p>{version.change_note && <p className="mt-1 text-xs">{version.change_note}</p>}</div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">v{version.version_number}</h3>{document.current_version_id === version.id && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-1 text-[10px] font-bold text-[var(--brand)]">Actual</span>}{document.published_version_id === version.id && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Publicada</span>}{version.storage_path && <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${storageLocationLabel(version.storage_location).className}`}>{storageLocationLabel(version.storage_location).label}</span>}</div><p className="mt-1 text-xs text-[var(--ink-muted)]">{formatDate(version.created_at)} · {sourceLabel(version.source)} · {version.file_size == null ? 'Contenido de texto' : formatBytes(version.file_size)}</p>{version.change_note && <p className="mt-1 text-xs">{version.change_note}</p>}</div>
         <div className="flex flex-wrap gap-2">
           {version.storage_path && <button type="button" onClick={() => void downloadVersion(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Descargar</button>}
           {document.kind === 'editor' ? <>

@@ -85,9 +85,18 @@ test('bridge config derives the Knowledge endpoint and local model settings', ()
   assert.equal(config.knowledgeEndpoint, 'https://demo.supabase.co/functions/v1/knowledge');
   assert.equal(config.knowledgeEnabled, true);
   assert.equal(config.modelsDirectory, 'C:\\Users\\Riva\\.rivastock-ai-bridge\\models');
+  assert.equal(config.centralStoreDirectory, 'C:\\Users\\Riva\\RivaStock Central\\Conocimientos');
+  assert.equal(config.centralMirrorDirectory, null);
   assert.equal(config.ocrEnabled, true);
   assert.equal(config.localLlmUrl, 'http://127.0.0.1:1234/v1');
   assert.equal(config.localLlmModel, 'qwen-test');
+  assert.equal(loadConfig({
+    AI_BRIDGE_ENDPOINT: 'https://demo.supabase.co/functions/v1/ai-bridge',
+    AI_BRIDGE_TOKEN: 'x'.repeat(40),
+    USERPROFILE: 'C:\\Users\\Riva',
+    AI_BRIDGE_STORE_DIR: 'D:\\Central',
+    AI_BRIDGE_MIRROR_DIR: 'E:\\RivaStock Backup',
+  }).centralMirrorDirectory, 'E:\\RivaStock Backup');
 
   const unsupportedEndpoint = loadConfig({
     AI_BRIDGE_ENDPOINT: 'https://demo.supabase.co/custom/ai-bridge',

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
+import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Database, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
@@ -27,7 +27,9 @@ import {
   type CodexReasoningEffort,
   type AIProviderId,
 } from '../lib/aiBridge';
-import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+import { getCentralStatus, listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+import type { KnowledgeCentralStatus } from '../lib/knowledge/types';
+import { formatBytes } from '../lib/knowledge/format';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
 const AIActionInbox = lazy(() => import('../components/ai/AIActionInbox'));
@@ -73,6 +75,7 @@ export default function AIHub() {
   const [historySettingsError, setHistorySettingsError] = useState('');
   const [bridgeState, setBridgeState] = useState<AIBridgeState | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<AIBridgeStatus | null>(null);
+  const [centralStatus, setCentralStatus] = useState<KnowledgeCentralStatus | null>(null);
   const [pairing, setPairing] = useState<AIBridgePairing | null>(null);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [installerBusy, setInstallerBusy] = useState(false);
@@ -124,6 +127,7 @@ export default function AIHub() {
         const allJobs = [...jobs, ...organizeJobs].sort((left, right) => right.created_at.localeCompare(left.created_at));
         setActiveJob((current) => current ? allJobs.find((job) => job.id === current.id) ?? current : allJobs[0] ?? null);
         setError('');
+        void getCentralStatus().then(setCentralStatus).catch(() => setCentralStatus(null));
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo consultar el servicio de IA.');
       } finally {
@@ -142,6 +146,7 @@ export default function AIHub() {
           setBridgeState('offline');
         }
       });
+      void getCentralStatus().then(setCentralStatus).catch(() => setCentralStatus(null));
     }, 10_000);
     return () => { mounted = false; window.clearInterval(timer); };
   }, [isOwner]);
@@ -554,7 +559,30 @@ export default function AIHub() {
           </aside>
         </div>
         {isOwner && ownerUid && <Suspense fallback={<p role="status" className="text-sm text-[var(--ink-muted)]">Cargando modelos…</p>}><AIFunctionSettings ownerUid={ownerUid}/></Suspense>}
+        <CentralStatusCard status={centralStatus}/>
       </section>}
     </div>
   );
+}
+
+function CentralStatusCard({ status }: { status: KnowledgeCentralStatus | null }) {
+  const mirror = status?.mirror_status ?? 'none';
+  const mirrorLabel = mirror === 'ok' ? 'Copia de respaldo verificada'
+    : mirror === 'error' ? 'La copia de respaldo necesita atención' : 'Sin copia de respaldo';
+  const mirrorClass = mirror === 'ok' ? 'text-emerald-700 dark:text-emerald-300'
+    : 'text-amber-800 dark:text-amber-200';
+
+  return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
+    <div className="flex items-center gap-3"><span className="rounded-xl bg-[var(--brand-soft)] p-3 text-[var(--brand)]"><Database size={20}/></span><div><h4 className="font-bold">Almacén de la central</h4><p className="mt-1 text-xs text-[var(--ink-muted)]">Originales verificados y su copia de respaldo local.</p></div></div>
+    {status ? <>
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <div><dt className="text-xs text-[var(--ink-muted)]">Espacio usado</dt><dd className="mt-1 font-bold">{formatBytes(status.store_bytes)}</dd></div>
+        <div><dt className="text-xs text-[var(--ink-muted)]">Espacio libre</dt><dd className="mt-1 font-bold">{status.store_free_bytes === null ? 'No disponible' : formatBytes(status.store_free_bytes)}</dd></div>
+        <div><dt className="text-xs text-[var(--ink-muted)]">Archivos en la central</dt><dd className="mt-1 font-bold">{status.files_total.toLocaleString('es-AR')}</dd></div>
+        <div><dt className="text-xs text-[var(--ink-muted)]">Último informe</dt><dd className="mt-1 font-bold">{formatDate(status.reported_at)}</dd></div>
+      </dl>
+      <p className={`mt-3 text-sm font-semibold ${mirrorClass}`}>{mirrorLabel}{status.mirror_last_ok_at ? ` · ${formatDate(status.mirror_last_ok_at)}` : ''}</p>
+      {status.files_missing > 0 && <p role="alert" className="mt-2 rounded-lg bg-rose-50 p-3 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">Faltan {status.files_missing} originales en la central y su respaldo.</p>}
+    </> : <p className="mt-4 text-sm text-[var(--ink-muted)]">La PC todavía no informó el estado del almacén central.</p>}
+  </section>;
 }

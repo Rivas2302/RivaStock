@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { CentralStore, hashBytes } from '../src/central/store.ts';
 import { runKnowledgeLoop, type KnowledgeLoopClient } from '../src/knowledge/loop.ts';
 import type { KnowledgeIndexTask, KnowledgeTask } from '../src/knowledge/client.ts';
 
@@ -42,11 +46,22 @@ function fakeClient(tasks: KnowledgeTask[], calls: Array<{ method: string; args:
 async function runOne(
   tasks: KnowledgeTask[],
   calls: Array<{ method: string; args: unknown[] }>,
-  options: { embedTexts?: (texts: string[], batchSize?: number) => Promise<number[][]>; embedQuery?: (query: string) => Promise<number[]> } = {},
+  options: {
+    embedTexts?: (texts: string[], batchSize?: number) => Promise<number[][]>;
+    embedQuery?: (query: string) => Promise<number[]>;
+    centralStore?: CentralStore;
+    centralFile?: { relative_path: string; sha256: string; file_size: number; mime_type: string | null };
+  } = {},
 ): Promise<void> {
   let stopping = false;
   let nextCalls = 0;
   const client = fakeClient(tasks, calls);
+  if (options.centralFile) {
+    client.centralLocalFile = async (...args) => {
+      calls.push({ method: 'centralLocalFile', args });
+      return options.centralFile ?? null;
+    };
+  }
   const next = client.next.bind(client);
   client.next = async (workerId) => {
     nextCalls += 1;
@@ -57,6 +72,7 @@ async function runOne(
     client,
     workerId: 'worker-1',
     config: { ocrEnabled: false, modelsDirectory: 'models' },
+    centralStore: options.centralStore,
     isStopping: () => stopping,
     log: (message) => calls.push({ method: 'log', args: [message] }),
     sleep: async () => undefined,
@@ -98,4 +114,31 @@ test('knowledge loop sends a 384-dimensional embedding for search requests', asy
   assert.ok(result);
   assert.equal((result.args[2] as number[]).length, 384);
   assert.equal(result.args[3], 'Xenova/multilingual-e5-small');
+});
+
+test('knowledge indexing reads a verified local original before requesting a cloud URL', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'rivastock-central-index-'));
+  const store = new CentralStore({ storeDirectory: join(directory, 'store'), mirrorDirectory: null });
+  await store.initialize();
+  const relativePath = '10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000002/v1/manual.md';
+  const content = Buffer.from('# Router\n\nConectá el DVR al router principal.');
+  const sha256 = hashBytes(content);
+  try {
+    await store.write(relativePath, content, sha256);
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    await runOne([indexTask({
+      format: 'md',
+      version_id: '30000000-0000-4000-8000-000000000001',
+      has_file: true,
+      inline_text: null,
+    })], calls, {
+      centralStore: store,
+      centralFile: { relative_path: relativePath, sha256, file_size: content.byteLength, mime_type: 'text/markdown' },
+    });
+    assert.equal(calls.some((call) => call.method === 'centralLocalFile'), true);
+    assert.equal(calls.some((call) => call.method === 'fileUrl'), false);
+    assert.equal(calls.some((call) => call.method === 'complete'), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

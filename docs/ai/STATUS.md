@@ -4,15 +4,15 @@
 
 - Copié `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, `multi-business-sql-smoke.mjs` y los dos SQL multiempresa de Desktop. Los cinco archivos coinciden por SHA-256 con la fuente; el smoke terminó en **27 comprobaciones / TODO OK**.
 - La copia de Desktop tenía F1–F4 y B2/B4 sin marcar, aunque sus entradas de producción y cierre exacto ya están en este registro. Restauré esas seis marcas `[x]` usando la evidencia existente; F5 sigue condicionada a que el cliente tenga datos.
-- El commit local `763aced` conserva la implementación E4 probada, pero expresamente abierta. La migración no está aplicada, la Edge Function no está desplegada y no se instaló el Bridge. No se publica este corte incompleto.
+- La implementación E4 probada permanece expresamente abierta. La migración no está aplicada, la Edge Function no está desplegada y no se instaló el Bridge. No se publica este corte incompleto.
 - **Siguiente:** respetar el orden del pedido vigente, resolver lo posible de A1; luego retomar los bloques permitidos por las puertas y el ACTION_PLAN recién copiado.
 
 ## 2026-11-03 — E4 pausada en un punto seguro
 
 - La implementación local del almacén central pasó `npm run lint`, la suite del frontend (**759 pruebas**), `npm run build`, `npm run perf:check` y el typecheck y las pruebas del Bridge (**107 pruebas**).
 - El cambio incluye la migración `20261103080455_knowledge_central_store.sql`, su Edge Function, el worker y la UI; queda **sin aplicar y sin desplegar**. No se instaló el Bridge 1.21.0 ni se inició una purga de Storage.
-- Durante la comparación obligatoria antes del próximo trabajo, encontré que Desktop tiene versiones más recientes de `ACTION_PLAN.md` y `MULTI_BUSINESS_EXECUTION_PLAN.md` que las copias de este worktree. Detengo el avance de E4 hasta copiar, releer y seguir esas versiones; no marco E4 como completada.
-- **Siguiente:** guardar este corte probado con la tarea marcada abierta; luego adoptar los planes y archivos SQL actuales de Desktop, correr el smoke multiempresa y continuar según el plan maestro vigente.
+- El ACTION_PLAN y el plan multiempresa de Desktop ya se copiaron, revisaron y adoptaron. E4 sigue abierta para ejecutarse junto con E5; el plan intenta agrupar sus cambios en una sola versión nueva del Bridge.
+- **Siguiente:** continuar primero las tareas de seguridad pendientes del plan; después completar E5 antes de migrar/desplegar E4 y E5 en un corte coherente.
 
 ## 2026-11-03 — B2 revalidada contra la copia vigente del plan
 

@@ -6,6 +6,7 @@ import { knowledgeContentTypeFor, removePaths, uploadVersionFile } from './stora
 import type { KnowledgeImageMap } from './organize';
 import type {
   KnowledgeCategory,
+  KnowledgeCentralStatus,
   KnowledgeAdminDocument,
   KnowledgeDocument,
   KnowledgeEvent,
@@ -202,6 +203,10 @@ export async function searchDocuments(filters: KnowledgeSearchFilters = {}): Pro
 
 export async function getStats(): Promise<KnowledgeStats> {
   return rpc<KnowledgeStats>('knowledge_stats');
+}
+
+export async function getCentralStatus(): Promise<KnowledgeCentralStatus | null> {
+  return rpc<KnowledgeCentralStatus | null>('my_central_status');
 }
 
 export async function getDocument(documentId: string): Promise<KnowledgeDocument> {

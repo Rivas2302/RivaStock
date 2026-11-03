@@ -1,7 +1,13 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorker, isUuid, jsonResponse, readJsonLimited } from '../_shared/workerAuth.ts';
-import { memoryWorkerPayload, validateMemoryWorkerAction, validateWorkerRetrieveRequest } from './contract.ts';
+import {
+  memoryWorkerPayload,
+  validateCentralWorkerAction,
+  validateMemoryWorkerAction,
+  validateWorkerRetrieveRequest,
+  type CentralWorkerAction,
+} from './contract.ts';
 import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -11,6 +17,11 @@ const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupaba
 );
 logSupabaseAdminKeyMode('knowledge', SUPABASE_ADMIN_KEY_MODE);
 const MAX_BODY_BYTES = 1_048_576;
+const CENTRAL_ACTIONS = new Set<CentralWorkerAction>([
+  'worker_central_next', 'worker_central_stored', 'worker_central_inventory', 'worker_central_inventory_list',
+  'worker_central_purge', 'worker_central_deletions', 'worker_central_deletions_done',
+  'worker_central_status', 'worker_central_local_file',
+]);
 
 const ACTIONS = {
   worker_next: 'next',
@@ -32,7 +43,9 @@ const ACTIONS = {
 } as const;
 
 type WorkerAction = keyof typeof ACTIONS | 'worker_file_url' | 'worker_organize_images' | 'worker_retrieve' | 'worker_memory_touch_similar';
+type KnowledgeAction = WorkerAction | CentralWorkerAction;
 type Body = Record<string, unknown>;
+const CENTRAL_PATH_PATTERN = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/v[0-9]{1,5}\/[A-Za-z0-9._-]{1,120}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -51,10 +64,11 @@ function isModel(value: unknown): value is string {
   return typeof value === 'string' && value.length >= 1 && value.length <= 120;
 }
 
-function validateAction(action: WorkerAction, body: Body): string | null {
+function validateAction(action: KnowledgeAction, body: Body): string | null {
   if (action.startsWith('worker_memory_')) {
     return validateMemoryWorkerAction(action as Parameters<typeof validateMemoryWorkerAction>[0], body);
   }
+  if (action.startsWith('worker_central_')) return validateCentralWorkerAction(action as CentralWorkerAction, body);
   switch (action) {
     case 'worker_next':
       return null;
@@ -113,6 +127,130 @@ function validateAction(action: WorkerAction, body: Body): string | null {
       return isUuid(body.request_id) && typeof body.error === 'string' && body.error.length <= 500
         ? null : 'Error de búsqueda inválido.';
   }
+  return 'Acción de worker no permitida.';
+}
+
+function isCentralPath(path: unknown, ownerUid: string): path is string {
+  return typeof path === 'string' && CENTRAL_PATH_PATTERN.test(path) && path.startsWith(`${ownerUid}/`)
+    && !path.split('/').some((part) => part === '.' || part === '..');
+}
+
+async function centralAction(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerUid: string,
+  body: Body,
+  action: CentralWorkerAction,
+): Promise<Response> {
+  const workerId = body.worker_id as string;
+  const rpc = async (name: string, args: Record<string, unknown>) => serviceClient.rpc(name, args);
+  if (action === 'worker_central_next') {
+    const { data, error } = await rpc('knowledge_central_next_transfer', { p_owner: ownerUid, p_worker: workerId });
+    if (error) return rpcErrorResponse(error);
+    const files = Array.isArray(data) ? data : [];
+    const ready = [];
+    for (const value of files.slice(0, 5)) {
+      if (!isRecord(value) || !isUuid(value.version_id) || !isCentralPath(value.relative_path, ownerUid)
+        || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
+        || !isInteger(value.file_size, 1, 52_428_800)) continue;
+      const { data: signed, error: signError } = await serviceClient.storage.from('knowledge')
+        .createSignedUrl(value.relative_path, 120);
+      if (signError || !signed?.signedUrl) return jsonResponse({ error: 'No se pudo preparar el original para la central.' }, 500);
+      ready.push({ ...value, url: signed.signedUrl });
+    }
+    return jsonResponse({ files: ready });
+  }
+
+  if (action === 'worker_central_stored') {
+    const { data, error } = await rpc('knowledge_central_stored', {
+      p_owner: ownerUid, p_worker: workerId, p_version_id: body.version_id, p_sha256: body.sha256,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ result: data });
+  }
+
+  if (action === 'worker_central_inventory') {
+    const { data, error } = await rpc('knowledge_central_inventory', {
+      p_owner: ownerUid, p_worker: workerId, p_inventory: body.inventory,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ result: data });
+  }
+
+  if (action === 'worker_central_inventory_list') {
+    const { data, error } = await rpc('knowledge_central_list_expected', {
+      p_owner: ownerUid, p_worker: workerId, p_offset: body.offset, p_limit: body.limit,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ files: Array.isArray(data) ? data : [] });
+  }
+
+  if (action === 'worker_central_purge') {
+    const { data: readyData, error: readyError } = await rpc('knowledge_central_purge_ready', { p_owner: ownerUid });
+    if (readyError) return rpcErrorResponse(readyError);
+    const ready = Array.isArray(readyData) ? readyData : [];
+    const removedIds: string[] = [];
+    for (let offset = 0; offset < ready.length; offset += 100) {
+      const batch = ready.slice(offset, offset + 100);
+      const valid = batch.filter((value): value is Record<string, unknown> => isRecord(value)
+        && Array.isArray(value.version_ids) && value.version_ids.length > 0 && value.version_ids.length <= 1000
+        && value.version_ids.every((id) => isUuid(id)) && isCentralPath(value.storage_path, ownerUid));
+      if (!valid.length) continue;
+      const { error: removeError } = await serviceClient.storage.from('knowledge')
+        .remove([...new Set(valid.map((value) => value.storage_path as string))]);
+      if (removeError) {
+        console.error('[knowledge] Central storage purge failed.');
+        return jsonResponse({ error: 'No se pudo purgar el original de la nube.' }, 500);
+      }
+      removedIds.push(...valid.flatMap((value) => value.version_ids as string[]));
+    }
+    if (!removedIds.length) return jsonResponse({ purged: 0 });
+    const { data, error } = await rpc('knowledge_central_purged', {
+      p_owner: ownerUid, p_worker: workerId, p_version_ids: removedIds,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ purged: data });
+  }
+
+  if (action === 'worker_central_deletions') {
+    const { data, error } = await rpc('knowledge_central_deletions', { p_owner: ownerUid, p_worker: workerId });
+    if (error) return rpcErrorResponse(error);
+    const items = Array.isArray(data) ? data.filter((value) => isRecord(value)
+      && isUuid(value.id) && isCentralPath(value.relative_path, ownerUid)) : [];
+    return jsonResponse({ items });
+  }
+
+  if (action === 'worker_central_deletions_done') {
+    const { data, error } = await rpc('knowledge_central_deletions_done', {
+      p_owner: ownerUid, p_worker: workerId, p_ids: body.ids,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ completed: data });
+  }
+
+  if (action === 'worker_central_status') {
+    const { error } = await rpc('knowledge_central_report_status', {
+      p_owner: ownerUid,
+      p_device: workerId,
+      p_store_bytes: body.store_bytes,
+      p_store_free_bytes: body.store_free_bytes ?? null,
+      p_mirror_status: body.mirror_status,
+      p_mirror_last_ok_at: body.mirror_last_ok_at ?? null,
+      p_files_total: body.files_total,
+      p_files_missing: body.files_missing,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ ok: true });
+  }
+
+  const { data, error } = await rpc('knowledge_central_local_file', {
+    p_owner: ownerUid, p_worker: workerId, p_version_id: body.version_id,
+  });
+  if (error) return rpcErrorResponse(error);
+  if (!isRecord(data) || !isCentralPath(data.relative_path, ownerUid)
+    || typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) {
+    return jsonResponse({ file: null });
+  }
+  return jsonResponse({ file: data });
 }
 
 function payloadFor(action: keyof typeof ACTIONS, body: Body): Body {
@@ -286,10 +424,11 @@ serve(async (req: Request) => {
   if (!body) return jsonResponse({ error: 'Solicitud inválida o demasiado grande.' }, 413);
   if (typeof body.action !== 'string' || (!Object.hasOwn(ACTIONS, body.action)
     && body.action !== 'worker_file_url' && body.action !== 'worker_organize_images'
-    && body.action !== 'worker_retrieve' && body.action !== 'worker_memory_touch_similar')) {
+    && body.action !== 'worker_retrieve' && body.action !== 'worker_memory_touch_similar'
+    && !CENTRAL_ACTIONS.has(body.action as CentralWorkerAction))) {
     return jsonResponse({ error: 'Acción de worker no permitida.' }, 400);
   }
-  const action = body.action as WorkerAction;
+  const action = body.action as KnowledgeAction;
   if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400);
   if (!SUPABASE_URL || !SUPABASE_ADMIN_KEY) {
     return jsonResponse({ error: 'La función de Conocimientos no está configurada.' }, 503);
@@ -309,6 +448,9 @@ serve(async (req: Request) => {
   if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401);
 
   try {
+    if (action.startsWith('worker_central_')) {
+      return await centralAction(serviceClient, ownerUid, body, action as CentralWorkerAction);
+    }
     if (action === 'worker_file_url') {
       return await fileUrl(serviceClient, ownerUid, body.worker_id, body.job_id as string);
     }
@@ -405,12 +547,12 @@ serve(async (req: Request) => {
     }
 
     const { data, error } = await serviceClient.rpc('knowledge_worker', {
-      p_action: ACTIONS[action],
+      p_action: ACTIONS[action as keyof typeof ACTIONS],
       p_owner_uid: ownerUid,
       p_worker_id: body.worker_id,
       p_job_id: action === 'worker_next' || action === 'worker_search_result' || action === 'worker_search_fail'
         ? null : body.job_id as string,
-      p_payload: payloadFor(action as keyof typeof ACTIONS, body),
+        p_payload: payloadFor(action as keyof typeof ACTIONS, body),
     });
     if (error) return rpcErrorResponse(error);
     return jsonResponse({ data });
