@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:43 ART — Buscar y enviar: corrección lista; validación de producción pendiente
+
+- Antes de esta tarea comparé `ACTION_PLAN.md` con Desktop: SHA-256 idéntico. El diagnóstico SQL de solo lectura devolvió solo esquema de URL/host para productos con varias entradas; no exporté URLs ni IDs. `Cable iPhone C` tiene `image_url` con esquema `data` y sin host, y `images[1]` con `https` en `nkfqhuqrgrpfufdymkcr.supabase.co`. La CSP vigente permite `https:` para imágenes, pero `connect-src` no incluye `data:`; el `fetch(data:)` anterior probablemente causaba `Failed to fetch`. Falta confirmarlo con la traza Playwright de producción.
+- En las entradas múltiples consultadas, `image_url` fue `data` en 32 productos y HTTPS de Supabase en 1; los slots de `images[]` fueron: 1: 77 HTTPS de Supabase / 2 `data`; 2: 45 HTTPS / 2 `data`; 3: 7 HTTPS; 4: 1 HTTPS. Los conteos por slot pueden solaparse entre productos. En el inventario total de arrays: 40 productos con dos fotos, 6 con tres y 1 con cuatro. No se amplió la CSP ni se modificó la base.
+- El código de `Buscar y enviar` normaliza HTTP a HTTPS solo para Storage del proyecto, deduplica esquema, query y `.thumb` antes de descargar y contar, lee imágenes inline localmente sin `fetch`, conserva fotos exitosas ante fallas individuales y localiza los mensajes de error. La CSP quedó intacta.
+- Verificación local final: `npm run lint`; `npm test` **788/788** con variables Supabase ficticias solo de proceso; `npx vitest run src/lib/productPhotos.test.ts src/lib/productPhotoSharing.test.ts` **14/14**; `npx playwright test e2e/product-photos.spec.ts` **4/4**; `npm run build` y `npm run perf:check` aprobados.
+- La validación de producción aún no está completa: Chrome mantiene ocupado el perfil Playwright `rivastock-qa-profile` (14 procesos asociados). Ya pedí cerrar Chrome por completo para poder capturar la consola/red sobre el producto real. No se desplegó todavía; el registro queda abierto hasta confirmar la traza, publicar y validar el arreglo con el perfil autenticado.
+- **Siguiente:** reproducir con Playwright y guardar la evidencia sin URLs completas; luego desplegar y validar el envío de las fotos disponibles en producción. Recién entonces continuar Bloque E.
+
 ## 2026-11-03 11:24 ART — D2 auditada; limpieza de QA pendiente por acceso a la app
 
 - Antes de D2 comparé `ACTION_PLAN.md` con Desktop y `origin/main`; las tres copias coinciden en el criterio. Consulté en solo lectura las 94 tablas `public` y los objetos Storage, devolviendo solo conteos. No hice cambios en la base.

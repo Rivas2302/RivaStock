@@ -20,6 +20,11 @@ export interface TextClipboard {
   writeText: (text: string) => Promise<void>;
 }
 
+export interface ProductPhotoFilesResult {
+  files: File[];
+  failedCount: number;
+}
+
 export type FileShareResult = 'shared' | 'unsupported' | 'clipboard-failed' | 'cancelled' | 'failed';
 
 export function createProductPhotoShareText(entries: ShareTextEntry[]): string {
@@ -56,6 +61,20 @@ function imageMimeFromUrl(url: string): string | null {
   return null;
 }
 
+function blobFromDataUrl(value: string): Blob {
+  const separator = value.indexOf(',');
+  if (separator < 0) throw new Error('Invalid data URL');
+  const metadata = value.slice(5, separator);
+  const mediaType = metadata.split(';', 1)[0] || 'text/plain';
+  const payload = value.slice(separator + 1);
+  if (/;base64(?:;|$)/i.test(metadata)) {
+    const binary = atob(payload);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new Blob([bytes], { type: mediaType });
+  }
+  return new Blob([new TextEncoder().encode(decodeURIComponent(payload))], { type: mediaType });
+}
+
 async function normalizeShareImage(blob: Blob, url: string): Promise<{ blob: Blob; extension: 'webp' | 'jpg' }> {
   const contentType = blob.type || imageMimeFromUrl(url) || '';
   if (contentType === 'image/webp') return { blob, extension: 'webp' };
@@ -72,21 +91,31 @@ async function normalizeShareImage(blob: Blob, url: string): Promise<{ blob: Blo
 export async function fetchProductPhotoFiles(
   entries: SharePhotoEntry[],
   fetchImage: typeof fetch = fetch,
-): Promise<File[]> {
+): Promise<ProductPhotoFilesResult> {
   const files: File[] = [];
+  let failedCount = 0;
   for (const entry of entries) {
     for (const [imageIndex, imageUrl] of entry.imageUrls.entries()) {
-      const response = await fetchImage(imageUrl);
-      if (!response.ok) throw new Error('No se pudo descargar una foto del producto.');
-      const normalized = await normalizeShareImage(await response.blob(), imageUrl);
-      files.push(new File(
-        [normalized.blob],
-        `${safeFilenameStem(entry.productName)}-${imageIndex + 1}.${normalized.extension}`,
-        { type: normalized.blob.type },
-      ));
+      try {
+        const blob = imageUrl.trim().toLowerCase().startsWith('data:')
+          ? blobFromDataUrl(imageUrl)
+          : await (async () => {
+            const response = await fetchImage(imageUrl);
+            if (!response.ok) throw new Error('Photo request failed');
+            return response.blob();
+          })();
+        const normalized = await normalizeShareImage(await blob, imageUrl);
+        files.push(new File(
+          [normalized.blob],
+          `${safeFilenameStem(entry.productName)}-${imageIndex + 1}.${normalized.extension}`,
+          { type: normalized.blob.type },
+        ));
+      } catch {
+        failedCount += 1;
+      }
     }
   }
-  return files;
+  return { files, failedCount };
 }
 
 export async function copyThenShareProductPhotos(

@@ -19,16 +19,44 @@ describe('product photo sharing', () => {
       .mockResolvedValueOnce(new Response(new Blob(['webp'], { type: 'image/webp' })))
       .mockResolvedValueOnce(new Response(new Blob(['jpeg'], { type: 'image/jpeg' })));
 
-    const files = await fetchProductPhotoFiles([
+    const result = await fetchProductPhotoFiles([
       { productName: 'Cámara WiFi 360', imageUrls: ['https://cdn.test/camera.webp'] },
       { productName: 'Auriculares', imageUrls: ['https://cdn.test/headphones.jpg'] },
     ], fetchImage);
 
     expect(fetchImage).toHaveBeenCalledTimes(2);
-    expect(files.map((file) => [file.name, file.type])).toEqual([
+    expect(result.failedCount).toBe(0);
+    expect(result.files.map((file) => [file.name, file.type])).toEqual([
       ['camara-wifi-360-1.webp', 'image/webp'],
       ['auriculares-1.jpg', 'image/jpeg'],
     ]);
+  });
+
+  it('keeps downloadable photos when another photo request fails', async () => {
+    const fetchImage = vi.fn()
+      .mockResolvedValueOnce(new Response(new Blob(['webp'], { type: 'image/webp' })))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    const result = await fetchProductPhotoFiles([
+      { productName: 'Cable', imageUrls: ['https://cdn.test/cable.webp', 'https://cdn.test/cable-2.webp'] },
+    ], fetchImage);
+
+    expect(fetchImage).toHaveBeenCalledTimes(2);
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0].name).toBe('cable-1.webp');
+    expect(result.failedCount).toBe(1);
+  });
+
+  it('reads inline image data without issuing a network request', async () => {
+    const fetchImage = vi.fn();
+    const result = await fetchProductPhotoFiles([
+      { productName: 'Inline', imageUrls: ['data:image/webp;base64,UklGRg=='] },
+    ], fetchImage);
+
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(result.failedCount).toBe(0);
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0].type).toBe('image/webp');
   });
 
   it('checks file sharing support and copies text before opening the share sheet', async () => {

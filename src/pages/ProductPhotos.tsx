@@ -7,17 +7,19 @@ import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHo
 import { findProductByBarcode, getProductImage, getVisibleQuickPriceProducts, searchProducts } from '../lib/quickPriceLookup';
 import { resolvePriceListPrice } from '../lib/priceListPricing';
 import {
-  getProductPhotoUrls,
+  getProductPhotoUrlsForSharing,
   getProductThumbnailUrl,
   readStoredIds,
   readStoredString,
   writeStoredIds,
 } from '../lib/productPhotos';
+import { supabaseProjectUrl } from '../lib/supabase';
 import {
   copyThenShareProductPhotos,
   createProductPhotoShareText,
   fetchProductPhotoFiles,
   type FileShareNavigator,
+  type ProductPhotoFilesResult,
 } from '../lib/productPhotoSharing';
 import { showToast } from '../lib/toast';
 import type { InventoryHolding, PriceList, PriceListItem, Product } from '../types';
@@ -28,6 +30,11 @@ type CollectionFilter = 'all' | 'recent' | 'favorite';
 
 const MAX_SELECTED_PRODUCTS = 10;
 const MAX_SELECTED_PHOTOS = 10;
+const PHOTO_DOWNLOAD_ERROR = 'No se pudo descargar una foto. Revisá tu conexión e intentá de nuevo.';
+
+function photoDownloadWarning(failedCount: number): string {
+  return `No pudimos incluir ${failedCount} foto${failedCount === 1 ? '' : 's'}.`;
+}
 
 type ProductPhotoIconName = 'arrow-left' | 'check' | 'chevron-left' | 'chevron-right' | 'copy' | 'heart' | 'image-off' | 'loader' | 'search' | 'scan' | 'share' | 'shopping-bag' | 'star' | 'x';
 
@@ -140,10 +147,11 @@ export default function ProductPhotos() {
   const [preparedPhotoIds, setPreparedPhotoIds] = useState<string[]>([]);
   const [preparingPhotoIds, setPreparingPhotoIds] = useState<string[]>([]);
   const [preparationErrors, setPreparationErrors] = useState<Record<string, string>>({});
+  const [preparationWarnings, setPreparationWarnings] = useState<Record<string, string>>({});
   const [failedThumbnails, setFailedThumbnails] = useState<string[]>([]);
   const userUidRef = useRef<string | null>(null);
-  const preparedFilesRef = useRef(new Map<string, File[]>());
-  const preparingFilesRef = useRef(new Map<string, Promise<File[]>>());
+  const preparedFilesRef = useRef(new Map<string, ProductPhotoFilesResult>());
+  const preparingFilesRef = useRef(new Map<string, Promise<ProductPhotoFilesResult>>());
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 100);
@@ -169,6 +177,7 @@ export default function ProductPhotos() {
       setPreparedPhotoIds([]);
       setPreparingPhotoIds([]);
       setPreparationErrors({});
+      setPreparationWarnings({});
     }
     const storedPriceChoice = readStoredString(`rivastock:product-photos:price:${ownerUid}`, 'public');
     setPriceChoice(storedPriceChoice || 'public');
@@ -227,14 +236,16 @@ export default function ProductPhotos() {
     visibleProducts.find((product) => product.id === selectedProductId) ?? null
   ), [selectedProductId, visibleProducts]);
   const selectedPhotos = useMemo(
-    () => selectedProduct ? getProductPhotoUrls(selectedProduct) : [],
+    () => selectedProduct ? getProductPhotoUrlsForSharing(selectedProduct, supabaseProjectUrl) : [],
     [selectedProduct],
   );
   const selectedProducts = useMemo(() => selectedIds.flatMap((id) => {
     const product = visibleProducts.find((item) => item.id === id);
     return product ? [product] : [];
   }), [selectedIds, visibleProducts]);
-  const selectedPhotoCount = selectedProducts.reduce((total, product) => total + getProductPhotoUrls(product).length, 0);
+  const selectedPhotoCount = selectedProducts.reduce((total, product) => (
+    total + getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length
+  ), 0);
 
   const getPrice = useCallback((product: Product): number | null => {
     if (priceChoice === 'public') return product.salePrice;
@@ -295,7 +306,7 @@ export default function ProductPhotos() {
     setCollectionFilter('all');
   };
 
-  const prepareProductFiles = async (product: Product): Promise<File[]> => {
+  const prepareProductFiles = async (product: Product): Promise<ProductPhotoFilesResult> => {
     const scopeKey = `${ownerUid ?? 'anonymous'}:${product.id}`;
     const cached = preparedFilesRef.current.get(scopeKey);
     if (cached) return cached;
@@ -308,22 +319,29 @@ export default function ProductPhotos() {
       delete next[product.id];
       return next;
     });
+    setPreparationWarnings((current) => {
+      const next = { ...current };
+      delete next[product.id];
+      return next;
+    });
     const task = fetchProductPhotoFiles([{
       productName: product.name,
-      imageUrls: getProductPhotoUrls(product),
+      imageUrls: getProductPhotoUrlsForSharing(product, supabaseProjectUrl),
     }])
-      .then((files) => {
-        if (userUidRef.current !== ownerUid) return [];
-        preparedFilesRef.current.set(scopeKey, files);
+      .then((result) => {
+        if (userUidRef.current !== ownerUid) return { files: [], failedCount: 0 };
+        preparedFilesRef.current.set(scopeKey, result);
         setPreparedPhotoIds((current) => current.includes(product.id) ? current : [...current, product.id]);
-        return files;
-      })
-      .catch((cause: unknown) => {
-        if (userUidRef.current === ownerUid) {
-          const message = cause instanceof Error ? cause.message : 'No se pudieron preparar las fotos.';
-          setPreparationErrors((current) => ({ ...current, [product.id]: message }));
+        if (result.failedCount > 0) {
+          setPreparationWarnings((current) => ({ ...current, [product.id]: photoDownloadWarning(result.failedCount) }));
         }
-        throw cause;
+        return result;
+      })
+      .catch(() => {
+        if (userUidRef.current === ownerUid) {
+          setPreparationErrors((current) => ({ ...current, [product.id]: PHOTO_DOWNLOAD_ERROR }));
+        }
+        throw new Error(PHOTO_DOWNLOAD_ERROR);
       })
       .finally(() => {
         if (preparingFilesRef.current.get(scopeKey) === task) preparingFilesRef.current.delete(scopeKey);
@@ -343,7 +361,9 @@ export default function ProductPhotos() {
     const nextRecent = [product.id, ...recentIds.filter((id) => id !== product.id)].slice(0, 20);
     setRecentIds(nextRecent);
     if (ownerUid) writeStoredIds(`rivastock:product-photos:recent:${ownerUid}`, nextRecent);
-    if (getProductPhotoUrls(product).length > 0) void prepareProductFiles(product).catch(() => undefined);
+    if (getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length > 0) {
+      void prepareProductFiles(product).catch(() => undefined);
+    }
   };
 
   const toggleFavorite = (productId: string) => {
@@ -359,7 +379,7 @@ export default function ProductPhotos() {
       setSelectedIds((current) => current.filter((id) => id !== product.id));
       return;
     }
-    const photoCount = getProductPhotoUrls(product).length;
+    const photoCount = getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length;
     if (photoCount === 0) {
       showToast('Este producto todavía no tiene fotos para enviar.', 'info');
       return;
@@ -399,14 +419,16 @@ export default function ProductPhotos() {
   };
 
   const shareProducts = async (items: Product[]) => {
-    const validItems = items.filter((product) => getProductPhotoUrls(product).length > 0);
+    const validItems = items.filter((product) => getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length > 0);
     if (validItems.length === 0) {
       showToast('No hay fotos de producto para compartir.', 'info');
       return;
     }
     const text = createTextFor(validItems);
     if (!text) return;
-    const imageCount = validItems.reduce((total, product) => total + getProductPhotoUrls(product).length, 0);
+    const imageCount = validItems.reduce((total, product) => (
+      total + getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length
+    ), 0);
     if (imageCount > MAX_SELECTED_PHOTOS) {
       showToast('La selección puede incluir hasta 10 fotos en total.', 'error');
       return;
@@ -419,13 +441,27 @@ export default function ProductPhotos() {
         !preparedFilesRef.current.has(`${ownerUid ?? 'anonymous'}:${product.id}`)
       ));
       if (missingFiles.length > 0) {
-        await Promise.all(missingFiles.map(prepareProductFiles));
-        showToast('Las fotos están listas. Tocá Enviar otra vez para abrir el menú.', 'info');
+        const outcomes = await Promise.allSettled(missingFiles.map(prepareProductFiles));
+        const failedCount = outcomes.reduce((total, outcome) => (
+          total + (outcome.status === 'fulfilled' ? outcome.value.failedCount : 1)
+        ), 0);
+        const readyMessage = 'Las fotos disponibles están listas. Tocá Enviar otra vez para abrir el menú.';
+        showToast(failedCount > 0 ? `${photoDownloadWarning(failedCount)} ${readyMessage}` : readyMessage,
+          failedCount > 0 ? 'error' : 'info');
         return;
       }
-      const files = validItems.flatMap((product) => (
-        preparedFilesRef.current.get(`${ownerUid ?? 'anonymous'}:${product.id}`) ?? []
-      ));
+      const prepared = validItems.map((product) => preparedFilesRef.current.get(`${ownerUid ?? 'anonymous'}:${product.id}`))
+        .filter((result): result is ProductPhotoFilesResult => result !== undefined);
+      const files = prepared.flatMap((result) => result.files);
+      const failedCount = prepared.reduce((total, result) => total + result.failedCount, 0);
+      const warning = failedCount > 0 ? `${photoDownloadWarning(failedCount)} ` : '';
+      if (files.length === 0) {
+        setSelectedProductId(null);
+        setFallbackFiles([]);
+        setFallbackText(text);
+        showToast(`${warning || PHOTO_DOWNLOAD_ERROR} El texto queda listo para copiar.`, 'error');
+        return;
+      }
       const result = await copyThenShareProductPhotos(
         text,
         files,
@@ -437,20 +473,28 @@ export default function ProductPhotos() {
         setSelectedProductId(null);
         setFallbackFiles(files);
         setFallbackText(text);
-        showToast('Este navegador no permite compartir archivos. Podés guardar las fotos y copiar el texto.', 'info');
+        showToast(`${warning}Este navegador no permite compartir archivos. Podés guardar las fotos y copiar el texto.`, 'info');
       } else if (result === 'clipboard-failed') {
         setSelectedProductId(null);
         setFallbackFiles(files);
         setFallbackText(text);
-        showToast('No se pudo copiar el texto. Podés guardarlo y copiarlo manualmente.', 'error');
+        showToast(`${warning}No se pudo copiar el texto. Podés guardarlo y copiarlo manualmente.`, 'error');
       } else if (result === 'failed') {
         setSelectedProductId(null);
         setFallbackFiles(files);
         setFallbackText(text);
-        showToast('No se pudo abrir el menú para compartir. Podés guardar las fotos y copiar el texto.', 'error');
+        showToast(`${warning}No se pudo abrir el menú para compartir. Podés guardar las fotos y copiar el texto.`, 'error');
+      } else if (result === 'shared' && failedCount > 0) {
+        showToast(photoDownloadWarning(failedCount), 'error');
+        validItems.forEach((product, index) => {
+          if (prepared[index]?.failedCount > 0) {
+            preparedFilesRef.current.delete(`${ownerUid ?? 'anonymous'}:${product.id}`);
+            setPreparedPhotoIds((current) => current.filter((id) => id !== product.id));
+          }
+        });
       }
-    } catch (cause) {
-      showToast(cause instanceof Error ? cause.message : 'No se pudieron preparar las fotos para compartir.', 'error');
+    } catch {
+      showToast(PHOTO_DOWNLOAD_ERROR, 'error');
     }
   };
 
@@ -828,6 +872,7 @@ export default function ProductPhotos() {
                 )}
               </div>
               {preparationErrors[selectedProduct.id] && <p role="alert" className="mt-3 text-sm text-rose-600">{preparationErrors[selectedProduct.id]} Al tocar Enviar se vuelve a intentar.</p>}
+              {preparationWarnings[selectedProduct.id] && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">{preparationWarnings[selectedProduct.id]}</p>}
               {selectedPhotos.length > 1 && <p className="mt-3 text-center text-xs text-slate-500">Deslizá las fotos con las flechas; se envían todas juntas.</p>}
             </div>
           </section>

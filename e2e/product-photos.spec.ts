@@ -44,7 +44,7 @@ function session() {
   };
 }
 
-async function mountFixture(page: Page, options: { empty?: boolean; canShare?: boolean } = {}) {
+async function mountFixture(page: Page, options: { empty?: boolean; canShare?: boolean; failSecondPhoto?: boolean } = {}) {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.addInitScript((canShare) => {
@@ -104,6 +104,7 @@ async function mountFixture(page: Page, options: { empty?: boolean; canShare?: b
       },
     ];
     else if (path.includes('/storage/v1/object/public/assets/')) {
+      if (options.failSecondPhoto && path.endsWith('/photo-2.webp')) return route.abort('failed');
       const tinyWebp = Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAUAmJaQAA3AA/v89WAAAAA==', 'base64');
       return route.fulfill({ status: 200, contentType: 'image/webp', body: tinyWebp });
     }
@@ -176,6 +177,20 @@ test.describe('Android product photo flow', () => {
     await expect(page.getByRole('button', { name: 'Ver Cámara WiFi 360' })).toBeVisible();
     const multiShareCalls = await page.evaluate(() => (window as unknown as { __productPhotoCalls: { kind: string; value?: string; fileCount?: number }[] }).__productPhotoCalls);
     expect(multiShareCalls.at(-1)?.fileCount).toBe(3);
+    expect(fixture.pageErrors).toEqual([]);
+  });
+
+  test('shares the downloaded photo when the second photo fails', async ({ page }) => {
+    const fixture = await mountFixture(page, { failSecondPhoto: true });
+    await page.getByRole('button', { name: 'Ver Cámara WiFi 360' }).click();
+    await expect(page.getByText('No pudimos incluir 1 foto.').first()).toBeVisible();
+    const sendButton = page.getByRole('button', { name: 'Enviar', exact: true });
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
+
+    await expect(page.getByText('No pudimos incluir 1 foto.').first()).toBeVisible();
+    const calls = await page.evaluate(() => (window as unknown as { __productPhotoCalls: { kind: string; fileCount?: number }[] }).__productPhotoCalls);
+    expect(calls.at(-1)).toMatchObject({ kind: 'share', fileCount: 1 });
     expect(fixture.pageErrors).toEqual([]);
   });
 });
