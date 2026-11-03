@@ -98,7 +98,7 @@ Flujo de un original: el navegador lo sube a `knowledge` → la central lo baja,
 - Escribí `docs/ai/MULTI_BUSINESS_BASELINE.md` con números y nombres de negocio, **sin** emails ni UID.
 - **Commit:** `docs(platform): record multi-business baseline`
 
-### [ ] E1 Planes por negocio y administración de plataforma
+### [x] E1 Planes por negocio y administración de plataforma
 **E1.1 Migración** `supabase/migrations/<ts>_platform_plans.sql` = Anexo A.1, con los presupuestos de E0. Contiene:
 - `platform_admins`, `business_plans` (planes `interno`, `base` y `pro`), `business_subscriptions` y `platform_settings`;
 - helpers internos `business_owner_ids()`, `business_limits(owner)`, `business_limit_bigint(owner, key)`, `business_status(owner)` y `business_require_active(owner)`, sin `EXECUTE` para clientes;

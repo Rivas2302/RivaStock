@@ -27,6 +27,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 5. Bloque C — Publicador de Facebook supervisado por IA
 5b. Bloque E — RivaStock para cualquier negocio (agregado el 02/11)
 2b. **Bloque F — Entrega del primer cliente el 03/11 (urgente, va primero)**
+2c. Bloque G — Buscar y enviar fotos de productos (después de F)
 6. Bloque D — Mantenimiento cuando no quede otra cosa
 7. Fuera de alcance
 8. Acciones del dueño
@@ -104,7 +105,7 @@ Revisalas al empezar cada sesión y antes de cada tarea que las necesite. Todas 
 
 Riva tiene un cliente y le entrega el acceso **el martes 03/11**, bien hecho. Recibe **solo la gestión comercial**: stock, ventas, POS, caja, clientes, proveedores, compras, ingresos, presupuestos, pedidos, catálogo, reportes, configuración y colaboradores. **Sin IA, sin Conocimientos y sin Automatizaciones de Facebook.** El alta es por invitación de Riva: el cliente toca el enlace del email, crea su contraseña y entra. Ese flujo ya existe (`/auth/confirm` → `/reset-password`).
 
-**Va antes que todo lo demás**, incluido lo que quede abierto del Bloque A. Cuando termines F4, **avisale a Riva en ese momento** (excepción a §9) con el mensaje de F4.
+**Va antes que todo lo demás**, incluido lo que quede abierto del Bloque A. Cuando termines F4, dejá el aviso por escrito en `docs/ai/MENSAJE_PARA_RIVA.md` y **seguí trabajando**: no termines la sesión para avisar.
 
 La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a negocios sin el módulo `ai`: E3 protege la central de IA, que este cliente no tiene.
 
@@ -120,7 +121,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 6. Escribí `docs/ai/ISOLATION_AUDIT.md`. **Si hay una fuga,** corregila con una migración aditiva (después de `npm run backup:db`), repetí la simulación y recién entonces seguí. No se entrega con fugas.
 - **Commit:** `docs(security): tenant isolation audit before first client`
 
-### [ ] F2 Planes y módulos (adelanta E1)
+### [x] F2 Planes y módulos (adelanta E1)
 1. `npm run backup:db`. Aplicá E1 tal como está en `docs/ai/sql/multi-business/E1_platform_plans.sql`: ya incluye `modules` (`base` = sin `ai`, `knowledge` ni `automation`) y su smoke tiene 27 comprobaciones. **Tiene que aplicarse antes de que Riva cree la cuenta del cliente**, para que la siembra deje en `interno` solo las cuentas existentes y el cliente quede en `base` por defecto. Hacé E1.2 (alta del administrador).
 2. Frontend:
    - `useBusinessPlan()` (E1.3);
@@ -150,12 +151,64 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
   - **Verificación tuya después de la invitación** (Riva te avisa o la detectás en la próxima tarea), con una consulta de solo lectura: el usuario nuevo existe, tiene perfil, no tiene fila en `business_subscriptions` (o sea, plan `base`, sin IA ni Automatizaciones) y no es colaborador de nadie.
   - **Mensaje de WhatsApp para el cliente,** listo para copiar: le va a llegar un email de RivaStock (revisar spam), toca el botón, crea su contraseña y entra. La dirección es la URL de producción. Cómo instalarla como app en el celular y en la PC, cómo invitar a sus empleados desde Configuración → Colaboradores, y que el soporte es con Riva.
   - **Checklist después del primer ingreso:** completó los datos del negocio, ve todo vacío y puede cargar un producto y hacer una venta de prueba que después borra.
-- **Mandale a Riva un mensaje en ese momento** con: “Listo para invitar a tu cliente”, el enlace a la guía, el resultado de F1 (sin fugas), la acción del registro público si corresponde y lo que quedó para después (F2b, E2 y el panel `/plataforma` de E7).
-- Después seguí con el plan en su orden. **E2 y E7 suben de prioridad:** van inmediatamente después de cerrar A1, antes del Bloque C, porque ahora hay un cliente real.
+- **Escribí en `docs/ai/MENSAJE_PARA_RIVA.md`** (no lo commitees si contiene datos personales; si no los tiene, commitealo) un aviso con: “Listo para invitar a tu cliente”, el enlace a la guía, el resultado de F1 (sin fugas), la acción del registro público si corresponde y lo que quedó para después (F2b, E2 y el panel `/plataforma` de E7).
+- Después seguí con el **Bloque G** (§2c), luego con lo que quede de A1 y después con **E2 y E7**, que suben de prioridad antes del Bloque C porque ahora hay un cliente real.
 - **Commit:** `docs(clients): first client delivery guide`
 
 ### F5 Respaldo diario (después de la entrega, autorizado)
 Ahora hay datos de un cliente. Creá en esta PC una tarea programada de Windows que corra `npm run backup:db -- --with-storage` todos los días a las 03:30, conserve los últimos 14 backups verificados y registre el resultado en `%USERPROFILE%\rivastock-backups\backup-log.txt`, sin credenciales. Si un backup falla dos días seguidos, agregalo al mensaje de §9. Commit con el script de instalación de la tarea: `feat(ops): daily verified backups`.
+
+---
+
+## 2c. Bloque G — Buscar y enviar fotos de productos (agregado el 02/11 22:15)
+
+Pedido de Riva: hoy se pierde mucho tiempo buscando la foto de un producto para mandársela a un cliente, porque hay que desplazarse por toda la lista. Se usa **desde el celular**. Es parte de la gestión comercial: lo reciben **todos los planes**, incluido `base`. Va **inmediatamente después del Bloque F**.
+
+### [ ] G1 Pantalla “Buscar y enviar”
+- **Acceso:** ruta `/fotos` (“Buscar y enviar”), con permiso `stock.read`, como acceso directo en el inicio y en la navegación móvil. Consulta rápida sigue igual.
+- **Búsqueda instantánea** sobre los productos ya cargados en el cliente:
+  - normalizar acentos y mayúsculas;
+  - **todas las palabras en cualquier orden**, en nombre, categoría, código de barras y campos propios (“wifi cámara” encuentra “Cámara WiFi 360”);
+  - orden de resultados: el nombre empieza con la búsqueda > el nombre la contiene > coincide en otro campo;
+  - espera de 100 ms entre teclas;
+  - botón de escáner reutilizando `BarcodeScannerOverlay`.
+
+  Mejorá también `searchProducts` de Consulta rápida con la misma lógica y sus tests.
+- **Grilla de fotos:** miniaturas con carga diferida, nombre, precio y stock. Filtros de un toque: categoría, “Solo con stock” y rango de precio. Estado vacío y “sin resultados” claros.
+- **Ficha del producto:** todas sus fotos para deslizar, y estos botones:
+  - **Enviar** (principal):
+    - Web Share API con archivos: bajar cada foto como `Blob`/`File` y comprobar `navigator.canShare({ files })`. El menú del celular ofrece WhatsApp, Messenger, Instagram, TikTok, Telegram, mail, etc.
+    - El texto incluye nombre, precio elegido y el link del producto en el catálogo si `show_in_catalog`.
+    - Como algunas apps descartan el texto cuando se comparten archivos, **antes de abrir el menú se copia el texto al portapapeles**, con el aviso “Texto copiado: pegalo como pie de foto si no aparece”.
+    - Si el navegador no permite compartir archivos, ofrecé Guardar y Copiar texto.
+  - **Guardar:** descarga con URL `blob:` y nombre `<producto>-<n>.webp|jpg`. En iPhone, abrir la imagen para “Guardar imagen”.
+  - **Copiar link** del producto en el catálogo (solo si está publicado).
+- **Selección múltiple:** hasta 10 productos y 10 fotos en total, compartidos juntos, con el texto en forma de lista (nombre y precio por línea, más el link del catálogo).
+- **Precio del texto:** selector entre precio de público y las listas de precios existentes (`price_lists`). Se recuerda la última elección.
+- **Recientes y favoritos:** en `localStorage`, envuelto en `try/catch` (v1, por dispositivo).
+- **Miniaturas:**
+  - al subir una foto de producto, además de la WebP de hasta 1600 px, generar y subir una miniatura WebP de 480 px en una ruta derivada (`…/x.webp` → `…/x.thumb.webp`) con `optimizeUploadImage`;
+  - la grilla usa la miniatura y, si falta, cae a la original (`onError`);
+  - script `scripts/backfill-product-thumbnails.mjs` para las fotos existentes: solo **agrega** objetos y nunca modifica ni borra originales. Antes, `npm run backup:db -- --with-storage`, y comprobá con `platform_storage_total_bytes()` (o, si E2 no está, con el total de `storage.objects`) que entra en el presupuesto. Registrá los bytes agregados.
+- **Tests:**
+  - unitarios de búsqueda (orden de palabras, acentos, código de barras, ranking);
+  - lógica de compartir con `navigator.share` y `canShare` simulados, más los respaldos;
+  - generación de miniaturas;
+  - Playwright con viewport de celular (Android y iPhone emulados): buscar, filtrar, abrir la ficha, compartir con mocks, selección múltiple y cuenta vacía.
+- **Prueba real opcional:** desde el celular de Riva, en un momento en que esté disponible, sin pedírselo especialmente.
+- **Commit:** `feat(stock): search and share product photos from the phone`
+
+### [ ] G2 Vista previa de los links del catálogo en WhatsApp y redes
+Hoy la app es una SPA sin metadatos Open Graph: un link del catálogo enviado por WhatsApp no muestra foto ni datos.
+- Función de Vercel (o middleware) para `/catalogo/:slug` y `/catalogo/:slug/:productId`:
+  - lee los datos públicos con las mismas RPC del catálogo público (solo productos con `show_in_catalog`);
+  - devuelve el `index.html` de la app con `og:title`, `og:description` (precio y nombre del negocio), `og:image`, `og:url` y `twitter:card` inyectados, de modo que la SPA sigue funcionando igual;
+  - con caché corta (`s-maxage=300`).
+- Verificá el formato de imagen que aceptan los rastreadores de WhatsApp y Facebook. Si WebP no se previsualiza bien, servir una versión JPEG de 1200 px generada y cacheada.
+- Respetá la CSP y los encabezados actuales de `vercel.json`.
+- **Tests:** HTML con y sin producto, producto oculto (sin datos), negocio inexistente (404) y `curl` con los user-agents `facebookexternalhit` y `WhatsApp`.
+- Verificá en producción con el link de un producto real del catálogo de Riva.
+- **Commit:** `feat(catalog): rich link previews for WhatsApp and social networks`
 
 ---
 
@@ -331,6 +384,16 @@ Solo si todas las tareas anteriores están hechas o bloqueadas por una puerta.
 ---
 
 ## 7. Fuera de alcance (no hacer sin pedido explícito de Riva)
+
+**Próximo, se planifica aparte (no ejecutar todavía):**
+- **Rediseño visual, temas de temporada del catálogo y marca por negocio:** primero Riva elige la dirección de diseño.
+- **Centro de ayuda** para clientes.
+- **Módulo Diseñador (IA):** un **Kit de marca** del negocio guardado en Conocimientos (ejemplos aprobados y reglas). Toma fotos “peladas” y datos de productos y arma imágenes con un estilo único para el catálogo y las redes, en dos capas:
+  1. **Producto intacto:** recorte, luz, fondo y marco, sin redibujar el producto, local y gratis. Sirve para rediseñar las fotos existentes.
+  2. **Creativa:** composición con `gpt-image-2` del plan de Codex, con el texto y el precio puestos por la app, no por la IA.
+
+  Se conecta con Productos, Conocimientos, Memoria y Skills (por ejemplo, “Armar combo”: dos productos → precio sugerido con el margen → imagen en 1:1, 4:5 y 9:16 → aprobación → compartir o publicar). Siempre con aprobación de Riva y conservando la original.
+
 - Conocimientos Fase 6 (acceso de colaboradores).
 - Rediseño visual de la app.
 - API oficial de Meta (WhatsApp, Instagram, Messenger, Páginas).
