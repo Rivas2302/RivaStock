@@ -30,6 +30,8 @@ beforeAll(async () => {
   for (const file of readdirSync(migrations).sort()) {
     // Knowledge and AI memory migrations have dedicated PGlite fixtures and extensions.
     if (file.includes('_knowledge_') || file.includes('_ai_memory_')) continue;
+    // D1 spans production tables that this focused financial fixture does not create.
+    if (file === '20261103170000_index_used_foreign_keys.sql') continue;
     if (file === '20261027020952_fb_run_traces.sql') {
       // The trace migration reuses Conocimientos' owner-only helper; this suite skips its vector-backed migration.
       await sql.exec(`CREATE OR REPLACE FUNCTION public.knowledge_owner_for(p_action text) RETURNS uuid

@@ -8,6 +8,11 @@
 - A1 permanece abierta: no hay `.env` de Supabase para el Bridge; la extensión productiva sigue en 0.5.15 y Storage aún depende del JWT legacy. C0 y las pruebas Facebook siguen cerradas por §5.2b/G2. E5 conserva su original QA hasta la purga natural del **2026-11-06 10:06:19 UTC**.
 - No hubo cambios de frontend, Edge Function, Bridge ni extensión. **Siguiente:** hacer la auditoría de solo lectura D2; preservar el dato QA reservado de E5 hasta completar su prueba.
 
+## 2026-11-03 08:08 ART — D1 verificada localmente
+
+- `npm run lint` pasó; `npm test` pasó **772/772** con URL y publishable key ficticias solo en el proceso de pruebas. El primer intento no tuvo esas variables y además el fixture financiero intentó ejecutar la migración D1 sin crear las tablas de IA/Conocimientos.
+- Ajusté ese fixture acotado para omitir la migración de índices transversal, que no altera el contrato financiero; la aplicación y verificación de producción confirmó los 49 índices válidos. No cambié la migración ya aplicada.
+
 ## 2026-11-03 07:36 ART — E4 verificada en producción; E5 espera la purga programada
 
 - Antes de E4 comparé ACTION_PLAN, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke y el plan del publicador con Desktop y `origin/main`. MULTI_BUSINESS y el smoke coinciden; ACTION_PLAN conserva las marcas de tareas verificadas; la copia Desktop del plan del publicador es anterior a la de `main`.
