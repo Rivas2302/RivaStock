@@ -10,6 +10,13 @@
 - **Desvío/bloqueo:** la copia registrada de A1 confirma que no se pueden usar las claves legacy expuestas para el backfill ni desactivarlas hasta resolver la autenticación de Storage. No se leyó ni modificó Storage de producción en esta tarea.
 - **Siguiente:** cerrar la rotación de A1 y su sustitución de autenticación para Storage; volver a G1 para backup, backfill y verificación en producción, y luego continuar con G2.
 
+## 2026-11-02 23:27 ART — G1 frontend desplegado; backfill sigue pendiente
+
+- `4f891a5` se pusheó directo a `main`; GitHub reportó Vercel `success`. El HTML público referencia el chunk del despliegue y sus chunks incluyen la ruta `/fotos` y la pantalla nueva.
+- Smoke de solo lectura con Playwright y el perfil persistente autenticado: `/fotos` respondió HTTP 200, cargó el título y el estado “sin resultados” para una búsqueda sintética, sin errores de página. No se abrió el menú de compartir, no se escribieron registros ni objetos y no se expusieron nombres o precios reales.
+- G1 permanece `[ ]` hasta verificar el backup de base y Storage, calcular el crecimiento exacto y completar el backfill sin tocar originales. No hay migración.
+- **Siguiente:** rotar las credenciales de A1 y resolver autenticación de Storage; después volver al backfill de G1.
+
 ## 2026-11-02 — F4 guía de entrega preparada
 
 - Se agregó `docs/clients/ENTREGA_CLIENTE.md` con el único paso de invitación para Riva, consulta SQL de solo lectura con los nombres confirmados (`profiles`, `business_subscriptions`, `collaborators`), mensaje de WhatsApp, instalación de la PWA y checklist del primer ingreso.
