@@ -100,6 +100,7 @@ export default function AIChats({
   const hasPendingJob = jobs.some((job) => job.status === 'pending' || job.status === 'processing');
   const latestCompletedJob = jobs.filter((job) => job.status === 'completed').at(-1);
   const latestJobMemoryActivity = latestCompletedJob ? jobMemoryActivity[latestCompletedJob.id] : undefined;
+  const latestMemoryChangeCount = latestJobMemoryActivity?.changes.length ?? 0;
   useEffect(() => {
     if (!selectedChatId) {
       setSelectedChat(null);
@@ -176,7 +177,7 @@ export default function AIChats({
   }, [selectedChatId, hasPendingJob, chatRefreshKey]);
 
   useEffect(() => {
-    if (!selectedChatId || loadingMessages || hasPendingJob || !latestCompletedJob || latestJobMemoryActivity) return;
+    if (!selectedChatId || loadingMessages || hasPendingJob || !latestCompletedJob || latestMemoryChangeCount > 0) return;
     if (Date.now() - Date.parse(latestCompletedJob.created_at) > 10 * 60_000) return;
 
     let mounted = true;
@@ -188,8 +189,18 @@ export default function AIChats({
       if (!mounted) return;
       const next = activity[latestCompletedJob.id];
       if (next && (next.changes.length > 0 || next.used.length > 0)) {
-        setJobMemoryActivity((current) => ({ ...current, [latestCompletedJob.id]: next }));
-        return;
+        setJobMemoryActivity((current) => {
+          const existing = current[latestCompletedJob.id];
+          if (next.changes.length === 0 && existing?.used.length) return current;
+          return {
+            ...current,
+            [latestCompletedJob.id]: {
+              used: next.used.length > 0 ? next.used : existing?.used ?? [],
+              changes: next.changes.length > 0 ? next.changes : existing?.changes ?? [],
+            },
+          };
+        });
+        if (next.changes.length > 0) return;
       }
       if (Date.now() < deadline) {
         timer = window.setTimeout(() => void poll(), 3000);
@@ -201,7 +212,7 @@ export default function AIChats({
       mounted = false;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [selectedChatId, loadingMessages, hasPendingJob, latestCompletedJob?.id, latestCompletedJob?.created_at, latestJobMemoryActivity]);
+  }, [selectedChatId, loadingMessages, hasPendingJob, latestCompletedJob?.id, latestCompletedJob?.created_at, latestMemoryChangeCount]);
 
   useEffect(() => {
     if (!selectedChat) return;

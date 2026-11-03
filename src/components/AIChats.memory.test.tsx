@@ -93,10 +93,15 @@ describe('AIChats memory activity', () => {
       jobs: [{ id: JOB_ID, status: 'completed', error: null, created_at: '2026-11-02T23:00:00Z' }],
     });
     mocks.listAIMemoryJobActivity.mockReset()
-      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        [JOB_ID]: {
+          used: [{ id: MEMORY_ID, kind: 'fact', content: 'Los envíos salen los martes.' }],
+          changes: [],
+        },
+      })
       .mockResolvedValue({
         [JOB_ID]: {
-          used: [],
+          used: [{ id: MEMORY_ID, kind: 'fact', content: 'Los envíos salen los martes.' }],
           changes: [{ id: EVENT_ID, memoryId: MEMORY_ID, action: 'created', content: 'Los envíos salen los martes.', canUndo: true }],
         },
       });
@@ -106,6 +111,7 @@ describe('AIChats memory activity', () => {
 
     expect(mocks.listAIMemoryJobActivity).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Memoria actualizada: «Los envíos salen los martes.»');
+    expect(host.textContent).toContain('Recordé: M1 «Los envíos salen los martes.»');
     vi.useRealTimers();
   });
 });

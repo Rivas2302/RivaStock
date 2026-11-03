@@ -1,5 +1,16 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 00:05 ART — B2: checklist de producción completada; ajuste del chip pendiente de desplegar
+
+- Comparé los planes antes de continuar: las copias locales de ACTION_PLAN, el addendum y el plan del publicador siguen siendo más recientes que las de Desktop; `origin/main` estaba en `2276dbc`.
+- En producción, con Codex y AI Bridge 1.18.0, completé la secuencia `[QA]` de C5.4: A guardó el hecho de martes y respondió “Lo recordaré”; B, en un chat nuevo, respondió martes y mostró el recuerdo usado; C actualizó el único recuerdo a jueves; D aceptó la frase exacta “Olvidá lo de los envíos a Santa Rosa”, respondió de forma coherente, archivó el recuerdo y mostró `Deshacer`; E no recuperó el recuerdo archivado. `Deshacer` restauró jueves.
+- El filtro sensible no guardó la frase de prueba. En modo `confirm` se creó una propuesta, que se descartó y se borró desde la UI. Restauré `auto`, `top_k=5` e inclusión de conversaciones anteriores.
+- Limpié desde la app los 7 chats `[QA]`, el recuerdo de Santa Rosa y la propuesta `[QA]`. Tras la limpieza, las vistas Activos/Archivados/Propuestas no encontraron los tres términos de control y no quedó ningún chat `[QA]`.
+- El smoke encontró un defecto de interfaz: al cargar actividad `used` antes que la extracción asíncrona, el efecto de polling asumía que ya había terminado y no detectaba el evento `updated` hasta reabrir el chat. Lo reproduje en C: la pestaña Memoria mostraba jueves, pero el chat no mostraba el chip hasta navegar y volver. El código local ahora sigue consultando hasta que aparece un cambio; su prueba dirigida pasó 2/2.
+- Verificación local del ajuste: `npm run lint`; `npm test -- --maxWorkers=1` **700/700** en 114 archivos (URL y clave publicable ficticias solo en el proceso); `npm run build`; `npm run perf:check` aprobado (209.005 B JS inicial gzip, 22.045 B CSS; AIHub 241.062 B JS). Una primera suite con clave ficticia sin el prefijo requerido `sb_publishable_` falló 1 test preexistente; repetida con el formato ficticio correcto, pasó completa.
+- **B2 permanece `[ ]`** hasta desplegar este ajuste de chip y repetir en producción la actualización asíncrona con limpieza desde la app. No hubo migraciones ni se cambiaron datos fuera del flujo QA y su limpieza.
+- **Siguiente:** commit directo a `main` con B2 abierto, esperar Vercel `success`, verificar el chip sin reabrir el chat y volver a limpiar el único chat y recuerdo `[QA]` de la regresión.
+
 ## 2026-11-02 23:25 ART — G1 implementación local; prueba de producción y backfill pendientes
 
 - Implementé `/fotos` detrás de `stock.read`, accesos en inicio y navegación móvil, búsqueda normalizada con debounce de 100 ms, filtros, selector de precios, favoritos/recientes, ficha con galería táctil, compartir archivos y alternativas de guardado/copia. Consulta rápida usa la misma búsqueda y conserva su flujo.
