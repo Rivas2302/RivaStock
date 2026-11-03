@@ -84,6 +84,5 @@ export async function handleCatalogPreviewImageRequest(request: Request): Promis
   }
 }
 
-export default {
-  fetch: handleCatalogPreviewImageRequest,
-};
+export const GET = handleCatalogPreviewImageRequest;
+export const HEAD = handleCatalogPreviewImageRequest;

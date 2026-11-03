@@ -42,6 +42,5 @@ export async function handleCatalogPreviewRequest(request: Request, indexHtmlOve
   }
 }
 
-export default {
-  fetch: handleCatalogPreviewRequest,
-};
+export const GET = handleCatalogPreviewRequest;
+export const HEAD = handleCatalogPreviewRequest;
