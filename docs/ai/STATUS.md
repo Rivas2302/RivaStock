@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2 preparado parcialmente; tarea sigue abierta
+
+- Preparé las migraciones E2.1–E2.3 con `supabase migration new`: medición/presupuesto de Storage, límites de Conocimientos por plan y cuotas/retención de trazas. No apliqué ninguna migración ni hice despliegues.
+- Verificación local: `npm run lint` aprobado; `npm test -- --maxWorkers=1` aprobado (**707/707**, 114 archivos) con URL y clave publicable ficticias limitadas al proceso. Pruebas dirigidas: plataforma 8/8, Conocimientos 17/17, trazas Facebook 11/11. El primer test global sin variables de Supabase falló por configuración ausente; al repetir con valores ficticios, pasó. `financialSql.test.ts` ahora declara `storage.objects.metadata`, como requiere el esquema real.
+- **E2 permanece abierto:** faltan E2.4 (guardas frontend), ampliar el smoke SQL, revisión/advisors y el ciclo autorizado de backup verificado, migraciones, deploy y smoke de producción. No se cambió la base.
+- **Siguiente:** completar A1 según la secuencia indicada por Riva; retomar E2 solo en el orden habilitado por ACTION_PLAN. El archivo ajeno `supabase/.temp/cli-latest` sigue excluido.
+
 ## 2026-11-03 — Revisión de puertas y acciones del dueño
 
 - Los documentos del Bloque E ya están en `main` desde `fcbdb36`; volví a ejecutar `node docs/ai/multi-business-sql-smoke.mjs`: 27 comprobaciones, `TODO OK`. La copia de trabajo sigue siendo más reciente que Desktop, así que no la reemplacé por una versión anterior.

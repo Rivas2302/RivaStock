@@ -20,11 +20,21 @@ beforeAll(async()=>{
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
     CREATE SCHEMA auth;
+    CREATE TABLE auth.users(id uuid PRIMARY KEY, email text);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT nullif(current_setting('test.uid',true),'')::uuid
     $$;
-    CREATE TABLE public.profiles(id uuid PRIMARY KEY);
-    CREATE TABLE public.collaborators(user_uid uuid, revoked_at timestamptz);
+    CREATE TABLE public.profiles(
+      id uuid PRIMARY KEY REFERENCES auth.users(id),
+      email text,
+      business_name text NOT NULL DEFAULT '',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE public.collaborators(user_uid uuid, owner_uid uuid, revoked_at timestamptz);
+    CREATE FUNCTION public.get_owner_uid(v_uid uuid) RETURNS uuid
+      LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+        SELECT coalesce((SELECT owner_uid FROM public.collaborators WHERE user_uid = v_uid AND revoked_at IS NULL), v_uid)
+      $$;
     CREATE FUNCTION public.knowledge_owner_for(p_action text) RETURNS uuid
       LANGUAGE sql STABLE SECURITY DEFINER AS $$
         SELECT CASE WHEN EXISTS (
@@ -33,7 +43,10 @@ beforeAll(async()=>{
         ) THEN NULL ELSE auth.uid() END
       $$;
     CREATE TABLE public.facebook_devices(
-      id uuid PRIMARY KEY, user_id uuid NOT NULL, revoked_at timestamptz
+      id uuid PRIMARY KEY, user_id uuid NOT NULL, last_seen_at timestamptz NOT NULL DEFAULT now(), revoked_at timestamptz
+    );
+    CREATE TABLE public.ai_bridge_devices(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, last_seen_at timestamptz, revoked_at timestamptz
     );
     CREATE TABLE public.facebook_publications(
       id uuid PRIMARY KEY, user_id uuid NOT NULL
@@ -74,10 +87,15 @@ beforeAll(async()=>{
     GRANT USAGE ON SCHEMA public,auth TO anon,authenticated,service_role;
     GRANT USAGE ON SCHEMA storage TO service_role;
     GRANT SELECT,INSERT ON storage.objects TO service_role;
-    INSERT INTO public.profiles VALUES ('${owner}'),('${other}'),('${collaborator}');
-    INSERT INTO public.collaborators(user_uid,revoked_at) VALUES ('${collaborator}',NULL);
-    INSERT INTO public.facebook_devices VALUES
-      ('${device}','${owner}',NULL),('${otherDevice}','${other}',NULL);
+    INSERT INTO auth.users (id, email) VALUES
+      ('${owner}', 'owner@test.invalid'), ('${other}', 'other@test.invalid'), ('${collaborator}', 'staff@test.invalid');
+    INSERT INTO public.profiles (id, email, business_name) VALUES
+      ('${owner}', 'owner@test.invalid', 'RivaTech'),
+      ('${other}', 'other@test.invalid', 'Other Shop'),
+      ('${collaborator}', 'staff@test.invalid', '');
+    INSERT INTO public.collaborators(user_uid,owner_uid,revoked_at) VALUES ('${collaborator}','${owner}',NULL);
+    INSERT INTO public.facebook_devices(id,user_id,last_seen_at,revoked_at) VALUES
+      ('${device}','${owner}',now(),NULL),('${otherDevice}','${other}',now(),NULL);
     INSERT INTO public.facebook_publications VALUES ('${publication}','${owner}');
     INSERT INTO public.facebook_deliveries VALUES
       ('${delivery}','${publication}','{"mechanism":"marketplace"}'::jsonb);
@@ -87,13 +105,19 @@ beforeAll(async()=>{
   await db.exec(readFileSync('supabase/migrations/20261027021953_fb_run_trace_fk_indexes.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261027022939_fb_traces_storage.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261027025301_fb_trace_storage_fk_indexes.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261103005337_platform_plans.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261103031528_platform_usage.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261103031535_fb_trace_plan_limits.sql','utf8'));
 });
 
 beforeEach(async()=>{
   await db.exec(`RESET ROLE;
     TRUNCATE public.fb_trace_steps, public.fb_run_traces CASCADE;
+    TRUNCATE storage.objects;
     UPDATE public.fb_trace_cleanup_state SET last_cleanup_at=NULL;
     UPDATE public.facebook_devices SET revoked_at=NULL;
+    UPDATE public.business_subscriptions SET status='active', limit_overrides='{}'::jsonb;
+    UPDATE public.platform_settings SET storage_budget_bytes=900000000 WHERE id;
   `);
 });
 
@@ -218,6 +242,31 @@ describe('Facebook run trace SQL contract',()=>{
       .rejects.toThrow('permission denied');
   });
 
+  it('uses plan limits and the project budget when reserving screenshots', async () => {
+    await asServiceRole();
+    const baseTraceId = (await db.query<{ id: string }>(
+      "SELECT public.fb_trace_start($1,$2,NULL,NULL,'rehearsal','marketplace','0.5.15') AS id",
+      [other, otherDevice],
+    )).rows[0].id;
+    await db.query(
+      `INSERT INTO storage.objects(bucket_id,name,metadata) VALUES ('automation-traces',$1,'{"size":"30000000"}'::jsonb)`,
+      [`${other}/${baseTraceId}/1.jpg`],
+    );
+    expect((await db.query<{ reserved: boolean }>(
+      'SELECT public.fb_trace_storage_reserve($1,$2,$3,1) AS reserved',
+      [other, baseTraceId, `${other}/${baseTraceId}/2.jpg`],
+    )).rows[0].reserved).toBe(false);
+
+    const internalTraceId = await startReal();
+    await db.exec('SET ROLE postgres');
+    await db.query('UPDATE public.platform_settings SET storage_budget_bytes = 30000000 WHERE id');
+    await db.exec('SET ROLE service_role');
+    expect((await db.query<{ reserved: boolean }>(
+      'SELECT public.fb_trace_storage_reserve($1,$2,$3,1) AS reserved',
+      [owner, internalTraceId, `${owner}/${internalTraceId}/1.jpg`],
+    )).rows[0].reserved).toBe(false);
+  });
+
   it('enforces unique sequence numbers and payload bounds',async()=>{
     const traceId=await startReal();
     await db.exec('SET ROLE service_role');
@@ -248,7 +297,7 @@ describe('Facebook run trace SQL contract',()=>{
     await db.query(`SELECT public.fb_trace_add_step($1,$2,1,'marketplace.category','ok',20,'{}'::jsonb,$3,NULL)`,[
       owner,traceId,`${owner}/${traceId}/1.jpg`
     ]);
-    await db.exec('RESET ROLE');
+    await db.exec('SET ROLE postgres');
     await db.exec(`UPDATE public.fb_run_traces SET started_at=now()-interval '15 days' WHERE id='${traceId}'`);
     await db.exec('SET ROLE service_role');
     const cleanup=(await db.query<{result:any}>(`SELECT public.fb_traces_cleanup() AS result`)).rows[0].result;
@@ -260,5 +309,27 @@ describe('Facebook run trace SQL contract',()=>{
     expect((await db.query('SELECT id FROM public.fb_run_traces')).rows).toHaveLength(0);
     const throttled=(await db.query<{result:any}>(`SELECT public.fb_traces_cleanup() AS result`)).rows[0].result;
     expect(throttled).toEqual({due:false,traces:[]});
+  });
+
+  it('cleans traces by each owner’s plan retention and finalizes only those traces', async () => {
+    const internalTraceId = await startReal();
+    await asServiceRole();
+    const baseTraceId = (await db.query<{ id: string }>(
+      "SELECT public.fb_trace_start($1,$2,NULL,NULL,'rehearsal','marketplace','0.5.15') AS id",
+      [other, otherDevice],
+    )).rows[0].id;
+    await db.exec('SET ROLE postgres');
+    await db.query("UPDATE public.fb_run_traces SET started_at = now() - interval '8 days' WHERE id = ANY($1::uuid[])", [[internalTraceId, baseTraceId]]);
+    await asServiceRole();
+
+    const cleanup = (await db.query<{ result: { traces: Array<{ trace_id: string; screenshot_paths: string[] }> } }>(
+      'SELECT public.fb_traces_cleanup() AS result',
+    )).rows[0].result;
+    expect(cleanup.traces).toEqual([{ trace_id: baseTraceId, screenshot_paths: [] }]);
+    expect((await db.query<{ deleted: number }>(
+      'SELECT public.fb_traces_cleanup_finalize(ARRAY[$1::uuid]) AS deleted', [baseTraceId],
+    )).rows[0].deleted).toBe(1);
+    await db.exec('SET ROLE postgres');
+    expect((await db.query('SELECT id FROM public.fb_run_traces WHERE id=$1', [internalTraceId])).rows).toHaveLength(1);
   });
 });

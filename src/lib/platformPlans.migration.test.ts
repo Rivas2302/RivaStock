@@ -11,6 +11,8 @@ const MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261103005337_platform_plans.sql', import.meta.url),
   'utf8',
 );
+const USAGE_MIGRATION_PATH = '../../supabase/migrations/20261103031528_platform_usage.sql';
+const USAGE_MIGRATION = readFileSync(new URL(USAGE_MIGRATION_PATH, import.meta.url), 'utf8');
 
 let db: PGlite;
 
@@ -46,6 +48,10 @@ beforeAll(async () => {
       last_seen_at timestamptz,
       revoked_at timestamptz
     );
+    CREATE SCHEMA storage;
+    CREATE TABLE storage.objects (bucket_id text NOT NULL, name text NOT NULL, metadata jsonb NOT NULL DEFAULT '{}'::jsonb);
+    CREATE TABLE storage.buckets (id text PRIMARY KEY, file_size_limit bigint);
+    INSERT INTO storage.buckets (id, file_size_limit) VALUES ('assets', NULL), ('supplier-order-documents', NULL);
     CREATE FUNCTION public.get_owner_uid(v_uid uuid)
     RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
       SELECT coalesce(
@@ -75,6 +81,7 @@ beforeAll(async () => {
   `);
 
   await db.exec(MIGRATION);
+  await db.exec(USAGE_MIGRATION);
 }, 60_000);
 
 beforeEach(async () => {
@@ -152,5 +159,52 @@ describe('E1 platform plans migration', () => {
         has_function_privilege('authenticated', 'public.my_business_plan()', 'EXECUTE') AS rpc_access
     `);
     expect(result.rows[0]).toEqual({ table_access: false, helper_access: false, rpc_access: true });
+  });
+});
+
+describe('E2.1 platform usage migration', () => {
+  it('checks project-wide storage before direct uploads and returns clear denial reasons', async () => {
+    await asUser(EXTERNAL);
+    const allowed = await db.query<{ result: { allowed: boolean } }>(
+      "SELECT public.storage_upload_check('assets', 100) AS result",
+    );
+    expect(allowed.rows[0].result).toEqual({ allowed: true });
+
+    await db.exec("RESET ROLE; UPDATE public.platform_settings SET storage_budget_bytes = 10 WHERE id;");
+    await db.exec("INSERT INTO storage.objects (bucket_id, name, metadata) VALUES ('assets', 'existing/object.webp', '{\"size\":10}');");
+    await asUser(EXTERNAL);
+    const full = await db.query<{ result: { allowed: boolean; reason: string } }>(
+      "SELECT public.storage_upload_check('supplier-order-documents', 1) AS result",
+    );
+    expect(full.rows[0].result).toEqual({ allowed: false, reason: 'project_storage_full' });
+
+    await db.exec(`RESET ROLE; UPDATE public.platform_settings SET storage_budget_bytes = 900000000 WHERE id;
+      INSERT INTO public.business_subscriptions (owner_uid, plan_code, status)
+      VALUES ('${EXTERNAL}', 'base', 'suspended');`);
+    await asUser(EXTERNAL);
+    const suspended = await db.query<{ result: { allowed: boolean; reason: string } }>(
+      "SELECT public.storage_upload_check('assets', 1) AS result",
+    );
+    expect(suspended.rows[0].result).toEqual({ allowed: false, reason: 'suspended' });
+  });
+
+  it('collects per-business snapshots and caps product uploads at 2 MB', async () => {
+    const buckets = await db.query<{ limit: number | null }>(
+      "SELECT file_size_limit AS limit FROM storage.buckets WHERE id = 'assets'",
+    );
+    expect(Number(buckets.rows[0].limit)).toBe(2_097_152);
+
+    const collected = await db.query<{ count: number }>('SELECT public.platform_collect_usage() AS count');
+    expect(Number(collected.rows[0].count)).toBe(2);
+    const snapshots = await db.query<{ owner_uid: string | null; storage_bytes: object }>(
+      'SELECT owner_uid::text, storage_bytes FROM public.platform_usage_snapshots ORDER BY owner_uid NULLS LAST',
+    );
+    expect(snapshots.rows).toHaveLength(3);
+    expect(snapshots.rows.filter((row) => row.owner_uid === null)).toHaveLength(1);
+  });
+
+  it('runs the daily collection job after the schema transaction', () => {
+    expect(USAGE_MIGRATION).toContain("cron.schedule('platform-usage-daily', '17 6 * * *'");
+    expect(USAGE_MIGRATION.indexOf('COMMIT;')).toBeLessThan(USAGE_MIGRATION.indexOf('DO $$'));
   });
 });

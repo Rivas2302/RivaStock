@@ -20,6 +20,9 @@ const migrationFiles = [
   '20261025152219_knowledge_extensions.sql',
   '20261025152408_knowledge_core.sql',
   '20261026010929_knowledge_storage_limit.sql',
+  '20261103005337_platform_plans.sql',
+  '20261103031528_platform_usage.sql',
+  '20261103031532_knowledge_plan_limits.sql',
 ];
 
 let db: PGlite;
@@ -37,6 +40,20 @@ beforeAll(async () => {
       raw_user_meta_data jsonb,
       raw_app_meta_data jsonb
     );
+    CREATE TABLE public.profiles (
+      id uuid PRIMARY KEY REFERENCES auth.users(id),
+      business_name text NOT NULL DEFAULT '',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE SCHEMA storage;
+    CREATE TABLE storage.objects (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      bucket_id text NOT NULL,
+      name text NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    );
+    CREATE TABLE storage.buckets (id text PRIMARY KEY, file_size_limit bigint);
+    INSERT INTO storage.buckets (id, file_size_limit) VALUES ('assets', NULL), ('supplier-order-documents', NULL);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT nullif(current_setting('test.uid', true), '')::uuid
     $$;
@@ -58,6 +75,11 @@ beforeAll(async () => {
       ('${OTHER}', 'other@test.invalid'),
       ('${STAFF_NO_PERMISSION}', 'staff@test.invalid'),
       ('${STAFF_READ}', 'read@test.invalid');
+    INSERT INTO public.profiles (id, business_name) VALUES
+      ('${OWNER}', 'RivaTech'),
+      ('${OTHER}', 'External Shop'),
+      ('${STAFF_NO_PERMISSION}', ''),
+      ('${STAFF_READ}', '');
     INSERT INTO public.collaborators (owner_uid, user_uid, email, permissions) VALUES
       ('${OWNER}', '${STAFF_NO_PERMISSION}', 'staff@test.invalid', '{}'::jsonb),
       ('${OWNER}', '${STAFF_READ}', 'read@test.invalid',
@@ -463,6 +485,74 @@ describe('Knowledge core migration', () => {
     );
     await expectQueryError(
       'SELECT knowledge_log($1, NULL, $2, $3::jsonb)', [OWNER, 'bypass', '{}'], 'permission denied',
+    );
+  });
+});
+
+describe('E2.2 knowledge plan limits', () => {
+  it('reports each owner’s cloud limit and enforces the plan quota on file versions', async () => {
+    await asUser(OWNER);
+    const internal = await db.query<{ storage_limit_bytes: number }>(
+      "SELECT (knowledge_stats()->>'storage_limit_bytes')::bigint AS storage_limit_bytes",
+    );
+    expect(Number(internal.rows[0].storage_limit_bytes)).toBe(524_288_000);
+
+    await asUser(OTHER);
+    const base = await db.query<{ storage_limit_bytes: number }>(
+      "SELECT (knowledge_stats()->>'storage_limit_bytes')::bigint AS storage_limit_bytes",
+    );
+    expect(Number(base.rows[0].storage_limit_bytes)).toBe(52_428_800);
+    const document = await db.query<{ id: string }>(
+      "SELECT id FROM knowledge_create_document('file', 'pdf', 'Base plan limit')",
+    );
+    const path = `${OTHER}/${document.rows[0].id}/v1/manual.pdf`;
+    await db.query(
+      'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
+      [document.rows[0].id, path, 'manual.pdf', 'application/pdf', 52_428_800, 'a'.repeat(64)],
+    );
+    await expectQueryError(
+      'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
+      [document.rows[0].id, `${OTHER}/${document.rows[0].id}/v2/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'b'.repeat(64)],
+      'Se alcanzó el límite de almacenamiento de Conocimientos',
+    );
+  });
+
+  it('checks the project budget and suspension for versions and editor assets', async () => {
+    const documentId = await createDocument('Project budget');
+    await db.exec("RESET ROLE; UPDATE public.platform_settings SET storage_budget_bytes = 1 WHERE id;");
+    const versionPath = `${OWNER}/${documentId}/v1/manual.pdf`;
+    await expectQueryError(
+      'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
+      [documentId, versionPath, 'manual.pdf', 'application/pdf', 100, 'c'.repeat(64)],
+      'El espacio en la nube de RivaStock está lleno. Avisá a RivaTech.',
+    );
+
+    await db.exec("UPDATE public.platform_settings SET storage_budget_bytes = 900000000 WHERE id;");
+    await addFileVersion(documentId, versionPath, 'manual.pdf', 'application/pdf', 52_428_800, 'a'.repeat(64));
+    for (let version = 2; version <= 10; version++) {
+      await addFileVersion(
+        documentId,
+        `${OWNER}/${documentId}/v${version}/manual.pdf`,
+        'manual.pdf',
+        'application/pdf',
+        52_428_800,
+        version.toString(16).padStart(64, '0'),
+      );
+    }
+    const assetPath = `${OWNER}/${documentId}/assets/11111111-1111-4111-8111-111111111111.png`;
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT knowledge_register_asset($1,$2,$3,$4)',
+      [documentId, assetPath, 'image/png', 1],
+      'Se alcanzó el límite de almacenamiento de Conocimientos',
+    );
+
+    await db.exec(`RESET ROLE; UPDATE public.business_subscriptions SET status = 'suspended' WHERE owner_uid = '${OWNER}';`);
+    await asUser(OWNER);
+    await expectQueryError(
+      'SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)',
+      [documentId, `${OWNER}/${documentId}/v11/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'd'.repeat(64)],
+      'La cuenta del negocio está suspendida. Comunicate con RivaTech.',
     );
   });
 });
