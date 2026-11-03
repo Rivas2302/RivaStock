@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 10:24 ART — T6.1 desplegada; selección del dueño pendiente
+
+- Comparé la copia vigente de `AI_PUBLISHER_EXECUTION_PLAN.md` con Desktop y `origin/main`: la copia del worktree es posterior; la de Desktop es del 25/10. El plan maestro `ACTION_PLAN.md` del worktree también es posterior a Desktop. No reemplacé las versiones vigentes.
+- El código y las migraciones de T6.1 ya están en `main` desde `6b86b06`; Vercel reporta `success` para el `main` actual (`7a2e2b6`). La raíz de producción respondió HTTP 200 y el rastreo de 102 módulos JavaScript servidos encontró los controles de la allowlist.
+- SQL de solo lectura en producción: **440 productos y 69 grupos**, todos con `qa_publish_allowed=false`. No cambié datos ni generé ensayos. T6.1 sigue `[ ]`: la selección de 3–5 productos y 5–10 grupos requiere la decisión del dueño.
+- **Desvío de verificación:** no pude completar el smoke visual autenticado. Playwright no inició el perfil persistente (Chrome ya está en ejecución y no ofrece CDP); la comprobación de acceso al Dashboard redirigió a `/dashboard/sign-in`. El bundle desplegado y la verificación SQL confirman entrega y estado, pero falta ver el control dentro de la sesión del dueño.
+- No hubo migración, cambio de Bridge/extensión ni publicación. **Siguiente:** continuar E5 cuando venza su período de gracia el 2026-11-06 10:06:19 UTC; mantener A1 y C0/C en “Pendiente por puerta” hasta disponer de las acciones de Chrome y Dashboard indicadas en `OWNER_ACTIONS.md`.
+
 ## 2026-11-03 10:13 ART — G2 abierta; rutas de catálogo restauradas
 
 - Los deploys 7899a25, 1c4ead4 y a46ed12 terminaron en Vercel success, pero las funciones de vista previa respondieron FUNCTION_INVOCATION_FAILED también tras cambiar entre las firmas Node y Web y los exports GET/HEAD. Las rutas públicas /catalogo/:slug y /catalogo/:slug/:productId devolvían 500.

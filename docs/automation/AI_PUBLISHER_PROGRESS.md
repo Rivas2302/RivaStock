@@ -1,5 +1,13 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-03 — T6.1 desplegada; queda la selección de productos y grupos
+
+- Comparé los planes vigentes de Desktop y `origin/main`: `ACTION_PLAN.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` del worktree son posteriores; el plan del publicador de Desktop es del 25/10. Seguí los archivos vigentes del worktree.
+- `6b86b06` y sus migraciones ya están incluidos en `main`. Vercel informa `success` para el `main` actual (`7a2e2b6`). La raíz de producción respondió HTTP 200; el rastreo de los módulos JavaScript servidos encontró los textos de los controles de T6.1.
+- SQL de solo lectura confirmó **440 productos, 69 grupos y cero elementos habilitados**. No modifiqué datos ni ejecuté ensayos/publicaciones. El código muestra los controles solo al dueño y el cambio no inicia ni aprueba publicaciones.
+- El smoke visual con la sesión autenticada queda pendiente: Playwright no pudo abrir el perfil persistente porque Chrome ya está corriendo sin CDP. T6.1 permanece `[ ]` hasta validar el control en la app y que Riva elija 3–5 productos y 5–10 grupos.
+- No hubo cambios de código, Bridge ni extensión en esta verificación.
+
 ## 2026-11-03 — T4.5 UI implementada; bandera apagada hasta T4.3
 
 - Antes de empezar comparé los planes con Desktop y `origin/main`. `ACTION_PLAN.md` en Desktop sigue siendo más antiguo y reinicia checks verificados; mantuve las marcas respaldadas por `STATUS.md`. El plan del publicador de Desktop es del 25/10, mientras que el de `main` contiene la especificación vigente de T4.5; seguí `main`.
