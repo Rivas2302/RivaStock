@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 20:20 ART — F3 suspensión en solo lectura (despliegue web pendiente)
+
+- Antes de la migración, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T231015Z`: **94 tablas / 14.075 filas**, `schema.sql` **945.385 B**, `data.sql` **40.775.743 B**, **733 objetos / 143.061.033 B** de Storage; inventario, conteos y hashes aprobados. El primer intento se detuvo porque esta copia no tenía configuración local de Supabase; inicialicé y vinculé la CLI y repetí el backup completo. No usé el volcado incompleto.
+- La migración `20261103225950_platform_suspension_write_guards` instala guards de `INSERT`, `UPDATE` y `DELETE` en cada tabla base `public` con `user_id`/`owner_uid`, en `profiles` y en `storage.objects`. Conserva acceso de lectura, service role, procesos sin JWT y administración de plataforma.
+- Producción confirma la migración aplicada, **81/81** tablas de negocio protegidas, **0** sin guard y los tres eventos de Storage cubiertos. Pruebas PGlite generadas desde `information_schema` ejercitan inserts, modificaciones y borrados, colaborador, Storage, `profiles`, service role y administrador. Prueba dirigida **7/7**; suite completa **824/824**; `npm run lint`, build y `npm run perf:check` aprobados. Bundle inicial: **209.299 bytes gzip JS / 22.228 bytes CSS**.
+- La interfaz ahora espera el estado del plan y niega mutaciones si está suspendido o no puede verificarse; conserva las acciones de lectura/exportación. El aviso fijo de suspensión ya estaba en el layout.
+- **Despliegue web y smoke de producción pendientes** del commit de esta tarea.
+- **Siguiente:** desplegar/verificar F3; luego ajustar `/plataforma` (F4).
+
 ## 2026-11-03 19:56 ART — Primeros pasos de onboarding según el plan (despliegue pendiente)
 
 - Ajusté `/bienvenida` y el aviso del inicio para mostrar en ambos planes los datos del negocio, cargar el primer producto, configurar el catálogo e invitar empleados de forma opcional. Solo `RivaStock IA` suma instalar/vincular la central. Quité el bloque de Facebook del onboarding y no aparece central para `RivaStock`.

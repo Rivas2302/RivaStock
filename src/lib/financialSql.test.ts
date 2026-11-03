@@ -28,8 +28,9 @@ beforeAll(async () => {
   `);
   const migrations = new URL('../../supabase/migrations/', import.meta.url);
   for (const file of readdirSync(migrations).sort()) {
-    // Knowledge and AI memory migrations have dedicated PGlite fixtures and extensions.
-    if (file.includes('_knowledge_') || file.includes('_ai_memory_')) continue;
+    // Knowledge, AI memory, and suspension guards have dedicated PGlite fixtures.
+    if (file.includes('_knowledge_') || file.includes('_ai_memory_')
+      || file === '20261103225950_platform_suspension_write_guards.sql') continue;
     // D1 spans production tables that this focused financial fixture does not create.
     if (file === '20261103170000_index_used_foreign_keys.sql') continue;
     if (file === '20261027020952_fb_run_traces.sql') {
