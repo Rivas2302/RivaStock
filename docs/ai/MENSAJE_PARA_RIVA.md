@@ -1,11 +1,7 @@
-# Listo para invitar a tu cliente
+# E7 está listo para invitar al primer cliente
 
-La [guía de entrega](../clients/ENTREGA_CLIENTE.md) tiene los pasos de invitación, la comprobación de solo lectura en Supabase y el mensaje de WhatsApp listo para copiar.
+La administración de negocios ya está desplegada en producción: [abrir `/plataforma`](https://rivastock.vercel.app/plataforma). Elegí el email, el nombre comercial y el plan (“RivaStock” o “RivaStock IA”); el estado inicial es prueba y la invitación se envía al crear el negocio.
 
-**F1:** la auditoría y la simulación con un usuario inexistente y `anon` no encontraron lecturas de datos de negocio ajenos. Los presupuestos se consultan por un endpoint público de proyección mínima; solo quedan públicas las configuraciones y categorías de catálogo habilitadas.
+No creé ninguna cuenta ni envié invitaciones durante la implementación. E3 ya estaba validada en producción, así que se puede dar de alta al primer negocio cuando tengas sus datos.
 
-**Registro público:** `disable_signup` está en `true`, así que nadie puede crear una cuenta de dueño desde el registro público. No hace falta cambiar esa opción para invitar al cliente.
-
-**F2b:** el servidor ya bloquea por plan las funciones de IA, Conocimientos y Automatizaciones; el smoke productivo con plan base pasó y el negocio de Riva conserva sus tres módulos.
-
-**Pendiente para después:** E2 (certificación multi-negocio) y el panel `/plataforma` de E7. El Bloque G se atiende según el orden vigente.
+Después de G2, A1 requiere que el Dashboard de Supabase de `RivaStock_Oficial` quede abierto en Chrome con tu sesión iniciada. La acción de Facebook sigue en `OWNER_ACTIONS.md` y se realizará solo en modo ensayo.

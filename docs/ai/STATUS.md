@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 14:50 ART — E7 alta de negocios y onboarding desplegados
+
+- Antes de E7 comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop y `origin/main`; el worktree es la copia vigente. E3 ya estaba validada en producción. No creé ninguna cuenta ni envié invitaciones reales.
+- Backup previo verificado en `%USERPROFILE%\rivastock-backups\20261103T173921Z`: **94 tablas / 14.067 filas**, conteos exactos coincidentes, `schema.sql` **943.496 B**, `data.sql` **40.774.133 B**; Storage **733 objetos / 143.061.033 B**, inventario y hashes aprobados.
+- La única migración pendiente del `dry-run`, `20261103200000_platform_business_onboarding_and_suspension`, se aplicó con `supabase db push --linked --yes`. Producción confirma la columna `profiles.onboarding_completed_at`, el trigger activo de chats y los guards de suspensión en tareas IA y solicitudes de acciones Facebook. `platform-admin` quedó ACTIVE v1 con `verify_jwt=true`.
+- El commit `05e5660` está en `main` con Rivas2302; Vercel informó `success`. La ruta `/plataforma` y el chunk servido de administración respondieron HTTP 200 y contienen las etiquetas públicas “RivaStock” y “RivaStock IA”. Playwright E2E con mocks cubrió la página, el permiso administrador demorado y el onboarding.
+- Verificación local: lint; **806/806** tests; E2E **3/3**; build y `perf:check` aprobados. La carga administrativa de producción no ejecutó invitaciones; no se crearon usuarios reales.
+- **Desvío:** ninguno. **Siguiente:** convertir las 32 fotos `data:` a WebP y miniaturas preservando dimensiones y hash de píxeles; después G2 y A1, según la lista prioritaria del dueño.
+
 ## 2026-11-03 14:16 ART — F2b: módulos protegidos también en el servidor
 
 - Antes de F2b comparé el `ACTION_PLAN.md` local con Desktop y `origin/main`: el del worktree es más reciente que Desktop y coincide con `origin/main`. La diferencia queda en la copia local más nueva; no reemplacé el plan.

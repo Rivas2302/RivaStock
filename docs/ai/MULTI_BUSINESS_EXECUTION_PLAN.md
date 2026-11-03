@@ -284,7 +284,7 @@ CREATE TABLE public.knowledge_central_deletions (
 - Registrá en `STATUS.md`: cantidad de archivos, bytes movidos y liberados, tiempos de apertura (promedio y máximo).
 - **Commit:** `docs(knowledge): record migration of originals to the central`
 
-### [ ] E7 Alta de negocios y primera configuración
+### [x] E7 Alta de negocios y primera configuración
 **E7.1 Edge Function `platform-admin`** (con verificación de JWT; usa el helper de claves de A1):
 - primero comprueba `is_platform_admin()` con el JWT del usuario;
 - `create_business {email, business_name, plan_code, status}`:
