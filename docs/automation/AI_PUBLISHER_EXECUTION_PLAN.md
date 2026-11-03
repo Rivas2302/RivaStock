@@ -488,7 +488,7 @@ Las publicaciones reales respetan el perfil de bajo riesgo (T5.7), incluidos el 
 
 ## 12. Fase 7 — Acción reutilizable para Skills
 
-### [ ] T7.1 Catálogo de acciones
+### [x] T7.1 Catálogo de acciones
 - Tabla `ai_actions_catalog` (estática, sembrada por migración) con la acción `facebook.publish_product`:
   - parámetros JSON Schema: `product_id`, `marketplace` (bool), `groups` (ids, opcional), `group_mode` (`marketplace_groups`|`separate`), `use_ai_copy` (bool), `schedule_at` (opcional);
   - `requires_confirmation: true`.

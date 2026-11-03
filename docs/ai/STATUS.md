@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — T7.1 desplegada y smoke de producción completo
+
+- Después del backup verificado `%USERPROFILE%\rivastock-backups\20261103T074408Z`, el dry-run enumeró solo `20261103071448_ai_action_catalog.sql`; la apliqué y confirmé RLS/permisos, una acción estática con confirmación y cero solicitudes iniciales.
+- `main` se publicó en `c5f0619`; Vercel terminó en `success`. La pantalla de producción `/ia?view=actions` mostró la bandeja del dueño, el estado vacío esperado y cero alertas.
+- Smoke SQL con el propietario actual, dentro de `BEGIN … ROLLBACK`: creó una solicitud de prueba pendiente, verificó su lectura por ese dueño, la descartó por RPC y revirtió todo. La consulta posterior encontró **0** solicitudes con fuente `QA:T7.1`; no se llamó a `confirm_ai_action`, no se creó una publicación y no se tocó la cola de Facebook.
+- **T7.1 `[x]`**. No hubo cambios de extensión ni Bridge. La casilla quedó sincronizada en `AI_PUBLISHER_EXECUTION_PLAN.md`.
+- **Siguiente:** el C0 que requiere nueva versión de extensión sigue sujeto a §5.2b: hay varias pruebas en vivo pendientes y el dispositivo productivo reporta 0.5.15. Continúo con las tareas de Bloque E permitidas mientras esa puerta siga cerrada.
+
 ## 2026-11-03 — T7.1: migración aplicada; rollout de la UI pendiente
 
 - Antes de migrar verifiqué `%USERPROFILE%\rivastock-backups\20261103T074408Z`: **89 tablas / 13.842 filas**, schema 869.804 B y data 40.151.883 B; Storage **374 objetos / 132.374.670 B**; conteos exactos y hashes verificados.
