@@ -7,6 +7,14 @@
 - La implementación E4 probada permanece expresamente abierta. La migración no está aplicada, la Edge Function no está desplegada y no se instaló el Bridge. No se publica este corte incompleto.
 - **Siguiente:** respetar el orden del pedido vigente, resolver lo posible de A1; luego retomar los bloques permitidos por las puertas y el ACTION_PLAN recién copiado.
 
+## 2026-11-03 — A1 revalidada; corte de claves legacy sigue bloqueado
+
+- El inventario de Supabase filtrado en memoria confirma las claves legacy `anon`/`service_role` y el par nuevo `default` publishable/secret; solo se mostraron nombre, tipo e ID. No se imprimieron valores.
+- El dispositivo Facebook tiene heartbeat reciente (2026-11-03 08:34:17 UTC), pero sigue en extensión **0.5.15** y no reporta capturas. Los cuatro cierres de pruebas en vivo continúan pendientes; §5.2b impide cambiar la extensión mientras haya tres o más.
+- La documentación oficial de Supabase mantiene la generación de credenciales S3 en el Dashboard y no documenta una operación de Management API. La prueba previa del perfil persistente redirigió al login de Supabase. No usé un endpoint no documentado, no desactivé las claves y no toqué producción. El JWT legacy sigue requerido por `automation` y `knowledge` para Storage.
+- `cli_login_postgres` está vencida y sin consumidores, por lo que no hace falta restablecer esa contraseña. **A1 sigue abierta**; no agregué una rotación a `OWNER_ACTIONS.md`.
+- **Siguiente:** mantener la puerta de C0 cerrada por §5.2b y avanzar el trabajo independiente del Bloque E según ACTION_PLAN.
+
 ## 2026-11-03 — E4 pausada en un punto seguro
 
 - La implementación local del almacén central pasó `npm run lint`, la suite del frontend (**759 pruebas**), `npm run build`, `npm run perf:check` y el typecheck y las pruebas del Bridge (**107 pruebas**).
