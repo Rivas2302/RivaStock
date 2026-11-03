@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 08:31 ART — Pausa segura antes de T4.5
+
+- Detuve el trabajo en un punto seguro: no hay migración, despliegue ni instalación del Bridge en curso. T4.2 está desplegada y verificada; T4.5 sigue abierta y no tiene cambios de producto sin commitear.
+- El único cambio local previo es `supabase/.temp/cli-latest`; se conserva fuera de los commits. No se creó una rama WIP porque no hay cambios de la tarea que guardar.
+- Comparé ACTION_PLAN, MULTI_BUSINESS_EXECUTION_PLAN y AI_PUBLISHER_EXECUTION_PLAN del worktree con Desktop y `origin/main`. La copia de Desktop de ACTION_PLAN tiene checks reiniciados para F1–F4, B2/B4 y D1, pero el worktree conserva su evidencia verificada en este STATUS; no reabrí esos ítems. MULTI_BUSINESS de Desktop también reinicia E0–E4 ya verificados; se conserva el estado respaldado por STATUS. La copia Desktop del plan del publicador es anterior a la de `main`.
+- **Siguiente:** retomar T4.5 detrás de la bandera apagada si el orden maestro y §5.2b siguen habilitándola; no tocar la extensión mientras siga cerrada la puerta correspondiente.
+
 ## 2026-11-03 08:25 ART — T4.2 RPC alineada con el contrato del plan
 
 - T4.2 queda `[x]`: la migración `20261103180000_fb_marketplace_groups_six_arg_rpc.sql` está aplicada en `RivaStock_Oficial`. El historial remoto la registra y la consulta SQL confirma la firma exacta de seis argumentos de `approve_facebook_publication_v2`, además de la sobrecarga explícita de siete argumentos para repeticiones.
