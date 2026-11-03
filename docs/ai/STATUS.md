@@ -1,5 +1,11 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — Bloque B reconciliado con evidencia de producción
+
+- ACTION_PLAN, el addendum de Conocimientos y el registro de progreso confirman B2: evaluación real Codex Luna Bajo con 100 % en retención importante, recuperación, precisión, actualizaciones, sensibles y olvido nuevo; la checklist C5.4 pasó en producción y la limpieza `[QA]` se completó desde la app. Marqué B2 `[x]`.
+- B4 también cumple su criterio: el addendum registra C1/C2.1/C3/C4/C5.4/C5.5 y cierre; las tareas históricas `knowledge_organize` se borraron por el flujo normal de la app. El plan del publicador fija T2.3 en 1.19.0 y 1.20.0 como siguiente menor. Marqué B4 `[x]`.
+- B3/Claude sigue **Diferida (opcional)** conforme a la instrucción previa: no corrí otro probe ni agregué una acción del dueño. B1 ya estaba `[x]`.
+
 ## 2026-11-03 — A4 revalidada; auditorías sin vulnerabilidades
 
 - `npm audit --json` terminó con **0 vulnerabilidades** en el frontend (424 dependencias) y en `tools/rivastock-ai-bridge` (196 dependencias).
