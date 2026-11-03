@@ -43,6 +43,9 @@ beforeAll(async () => {
     try { await sql.exec(readFileSync(new URL(file, migrations), 'utf8')); }
     catch (error) { throw new Error(`Migration ${file}: ${(error as Error).message}`); }
   }
+  // Supabase grants public table access by default; model that default for the
+  // authenticated quote-owner check in this standalone PGlite database.
+  await sql.exec('GRANT SELECT ON public.quotes, public.collaborators TO authenticated');
   await sql.query("SELECT set_config('request.jwt.claim.sub', $1, false)", [owner]);
   await sql.query('INSERT INTO auth.users(id,email) VALUES($1, $2)', [owner, 'owner@test.invalid']);
 }, 60000);
@@ -197,5 +200,41 @@ describe('customer payment SQL integration', () => {
     await expect(sql.exec('DELETE FROM cash_flow')).rejects.toThrow('no desde Caja');
     await sql.exec('ROLLBACK TO SAVEPOINT protected_cash');
     expect(await totals()).toEqual({balance:140,cash:10,ledger:140});
+  });
+
+  it('blocks anonymous quote enumeration while preserving UUID share links through a narrow RPC', async () => {
+    const quoteId = '40000000-0000-4000-8000-000000000001';
+    await sql.query(`INSERT INTO public.quotes
+      (id, user_id, number, client_name, client_phone, client_email, items, subtotal, discount, total, notes)
+      VALUES ($1, $2, 'Q-1', 'Recipient', '555-0100', 'recipient@test.invalid',
+        '[{"productName":"Item","quantity":1,"unitPrice":10,"subtotal":10}]'::jsonb,
+        10, 0, 10, 'Shared note')`, [quoteId, owner]);
+
+    await sql.exec('SAVEPOINT quote_access; SET LOCAL ROLE anon');
+    await expect(sql.query('SELECT count(*) FROM public.quotes')).rejects.toThrow(/permission denied/i);
+    await sql.exec('ROLLBACK TO SAVEPOINT quote_access; SET LOCAL ROLE anon');
+
+    await sql.exec('SAVEPOINT public_profile_access');
+    await expect(sql.query('SELECT count(*) FROM public.public_profiles')).rejects.toThrow(/permission denied/i);
+    await sql.exec('ROLLBACK TO SAVEPOINT public_profile_access');
+
+    const result = await sql.query<Record<string, unknown>>(
+      'SELECT * FROM public.get_public_quote($1)', [quoteId],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ id: quoteId, number: 'Q-1', client_name: 'Recipient' });
+    expect(Object.keys(result.rows[0]).sort()).toEqual([
+      'business_name', 'business_phone', 'client_email', 'client_name', 'client_phone',
+      'created_at', 'currency_symbol', 'discount', 'email_contact', 'expires_at',
+      'id', 'items', 'notes', 'number', 'subtotal', 'total',
+    ]);
+    expect((await sql.query('SELECT * FROM public.get_public_quote($1)', ['50000000-0000-4000-8000-000000000001'])).rows)
+      .toHaveLength(0);
+
+    await sql.exec('ROLLBACK TO SAVEPOINT quote_access; SET LOCAL ROLE authenticated');
+    expect(Number((await sql.query<{ count: string | number }>('SELECT count(*) FROM public.quotes')).rows[0].count)).toBe(1);
+    await sql.exec('SAVEPOINT quote_view_access');
+    await expect(sql.query('SELECT count(*) FROM public.quotes_with_status')).rejects.toThrow(/permission denied/i);
+    await sql.exec('ROLLBACK TO SAVEPOINT quote_view_access');
   });
 });

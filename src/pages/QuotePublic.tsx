@@ -1,22 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, supabase } from '../lib/db';
+import { fromDb, supabase } from '../lib/db';
 import { Quote } from '../types';
 
 interface PublicOwner {
-  id: string;
   businessName: string;
   phone?: string;
   email_contact?: string;
   currencySymbol?: string;
 }
+
+type PublicQuote = Pick<Quote,
+  'id' | 'number' | 'clientName' | 'clientPhone' | 'clientEmail' | 'items'
+  | 'subtotal' | 'discount' | 'total' | 'expiresAt' | 'notes' | 'createdAt'
+>;
 import { formatCurrency } from '../lib/utils';
 import { AlertTriangle, Clock, CheckCircle2, FileText } from 'lucide-react';
 
 export default function QuotePublic() {
   const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   const { id } = useParams<{ id: string }>();
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quote, setQuote] = useState<PublicQuote | null>(null);
   const [owner, setOwner] = useState<PublicOwner | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -31,21 +35,17 @@ export default function QuotePublic() {
     if (!id) { setNotFound(true); setLoading(false); return; }
     (async () => {
       try {
-        const q = await db.get<Quote>('quotes', id);
-        if (!q) { setNotFound(true); setLoading(false); return; }
-        setQuote(q);
-        const { data: ownerRow } = await supabase
-          .from('public_profiles')
-          .select('id, business_name, phone, email_contact, currency_symbol')
-          .eq('id', q.ownerUid)
-          .single();
-        if (ownerRow) {
+        const { data, error } = await supabase.rpc('get_public_quote', { p_quote_id: id }).maybeSingle();
+        if (error) throw error;
+        if (!data) { setNotFound(true); setLoading(false); return; }
+        const row = data as Record<string, unknown>;
+        setQuote(fromDb<PublicQuote>(row));
+        if (row.business_name) {
           setOwner({
-            id: ownerRow.id,
-            businessName: ownerRow.business_name,
-            phone: ownerRow.phone ?? undefined,
-            email_contact: ownerRow.email_contact ?? undefined,
-            currencySymbol: ownerRow.currency_symbol ?? undefined,
+            businessName: String(row.business_name),
+            phone: row.business_phone ? String(row.business_phone) : undefined,
+            email_contact: row.email_contact ? String(row.email_contact) : undefined,
+            currencySymbol: row.currency_symbol ? String(row.currency_symbol) : undefined,
           });
         }
       } catch {

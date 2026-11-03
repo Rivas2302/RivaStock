@@ -1,5 +1,19 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — F1 corregida en producción; frontend y deploy pendientes
+
+- Antes de F1 se comparó el plan local con `C:\Users\USER\Desktop\IA\RivaStock\docs\ai\ACTION_PLAN.md`; SHA-256 idéntico (`CF9B117CA5C62C3DEFB43DAAD774422784DABD45539F1FCD0A4AB2D21FEEBEB8`). Se conservó la copia más reciente, incluida la actualización de estado A2/A3/A4/B1.
+- La auditoría detectó en producción que `quotes_public_read_by_id` permitía enumeración anónima y que `quotes_with_status` evitaba RLS por privilegios de dueño. `public_profiles` también exponía perfiles de contacto sin uso actual de la app. Se notificó el hallazgo en el momento.
+- Antes de cada migración se ejecutó `npm run backup:db -- --with-storage` y se verificaron esquema, datos, conteos exactos de las 82 tablas, 374 objetos de Storage, tamaños e inventario:
+  - `%USERPROFILE%\rivastock-backups\20261103T001144Z`: 13.774 filas; schema 802.172 B; data 40.121.361 B; Storage 132.374.670 B.
+  - `%USERPROFILE%\rivastock-backups\20261103T002252Z`: 13.774 filas; schema 803.000 B; data 40.121.361 B; Storage 132.374.670 B.
+- Se aplicaron únicamente las migraciones F1: `20261102210803_quotes_public_access_rpc` y `20261102212233_revoke_unused_public_profiles`. La primera cierra la lectura directa y la vista amplia, y crea `get_public_quote(uuid)` con proyección mínima por UUID de enlace. La segunda revoca el acceso a la vista de perfiles sin uso. Ningún dato de negocio fue modificado.
+- Simulación posterior en producción, con transacciones `BEGIN … ROLLBACK`: se recorrieron las 85 relaciones (82 tablas y 3 vistas) con un UUID aleatorio comprobado inexistente y con `anon`. El dueño nuevo tuvo SELECT en 71 y cero filas en 69; `anon` tuvo SELECT en 27 y cero filas en 25. En ambos casos solo se leyeron las 4 configuraciones de catálogo y 14 categorías públicas habilitadas. Sin grant en las otras 14 y 58 relaciones, respectivamente. RLS desactivado: 0.
+- Se revisaron 144 políticas de public, 10 de Storage y las funciones `SECURITY DEFINER` invocables que reciben identificadores de dueño; no quedó acceso sin ámbito. Se documentó la matriz y el análisis en `docs/ai/ISOLATION_AUDIT.md`.
+- Auth indica `disable_signup = true`. **Desvío:** se leyó el endpoint público de configuración Auth porque no hay token de Management API configurado; no se modificó Auth ni se expuso una clave.
+- Verificación local ya pasada tras los cambios: lint; **668/668** pruebas en 108 archivos; prueba SQL dirigida **18/18**; build; `perf:check` (207.869 B gzip JS, 21.807 B CSS). La suite no se volvió a correr porque desde esa verificación solo se agregó documentación.
+- **F1 sigue [ ]** hasta commitear y desplegar el cambio de `QuotePublic.tsx` en Vercel y comprobar el deploy. Los dos cambios de base ya están aplicados y verificados; el siguiente paso es el push de este commit y el smoke del frontend.
+
 ## 2026-11-02 — B2 desplegada; checklist de producción en curso
 
 - Antes de continuar se comparó `docs/ai/ACTION_PLAN.md` con Desktop: el plan local es más reciente por timestamp (23:02Z frente a 21:23Z) y contiene los cierres de A3/A4 y B1. Se conserva ese estado; la sección B2 coincide con la copia maestra.

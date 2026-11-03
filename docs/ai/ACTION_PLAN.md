@@ -175,7 +175,7 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 8. **Credencial temporal de la CLI (`cli_login_postgres`):** buscá en la documentación oficial de Supabase si esas credenciales vencen solas y cuándo. Si vencen, registralo en `KEY_ROTATION.md` y sacá la acción de `OWNER_ACTIONS.md`. Si no vencen o no está claro, verificá en el inventario que ningún consumidor use la contraseña de la base (las Edge Functions y la app usan claves, no la contraseña). Si nadie la usa, restablecé la contraseña de la base con la Management API sin imprimirla y documentá; si algo la usa, dejá en `OWNER_ACTIONS.md` un único paso exacto.
 - **Commit:** `fix(security): migrate backend and clients off legacy Supabase keys`
 
-### [ ] A2 Prevención de nuevas exposiciones
+### [x] A2 Prevención de nuevas exposiciones
 - Agregá a `AGENTS.md` una sección “Secretos” con la regla de §1.2 y la lista de comandos prohibidos.
 - **`scripts/backup-db.mjs` (`npm run backup:db`)**, el único método de backup permitido:
   - obtiene la conexión temporal ejecutando `supabase db dump --linked --dry-run` como proceso hijo y **captura su salida en memoria** (nunca la muestra, ni la escribe en logs o archivos);
@@ -187,14 +187,14 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 - Script `scripts/check-no-secrets.mjs` (en `npm run verify` y en `prebuild`) que falle si el repo o `dist/` contienen patrones `sb_secret_`, JWT con `"role":"service_role"`, `SUPABASE_SERVICE_ROLE_KEY=` con valor o claves privadas. Tests.
 - **Commit:** `chore(security): add secret scanning guard and agent rules`
 
-### [ ] A3 Backup de archivos de Storage
+### [x] A3 Backup de archivos de Storage
 Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye archivos.
 - `scripts/backup-storage.mjs` (`npm run backup:storage`): descarga todos los objetos de los buckets (`assets`, `knowledge`, `automation-traces` opcional) a `<carpeta de backup>\storage\<bucket>\…`, con la clave secreta solo en memoria; genera `storage-manifest.json` con ruta, tamaño y SHA-256; verifica que la cantidad y los tamaños coincidan con el listado remoto. Reanudable (salta lo que ya tiene con el mismo hash).
 - Integrarlo al procedimiento de §1.4 y a `AGENTS.md`.
 - Ejecutarlo una vez y registrar totales en `STATUS.md`.
 - **Commit:** `feat(ops): verified backup of Supabase Storage files`
 
-### [ ] A4 Vulnerabilidades de dependencias
+### [x] A4 Vulnerabilidades de dependencias
 - `npm audit` reporta 1 alta (Vite) y 2 moderadas (Vitest). Actualizar a versiones corregidas dentro de la misma versión mayor si es posible; si exige mayor, evaluar el changelog y actualizar solo si `npm run verify` pasa completo. Lo mismo en `tools/rivastock-ai-bridge`.
 - Criterio: `npm run verify` termina en cero o cada aviso restante queda justificado en `STATUS.md`.
 - **Commit:** `chore(deps): fix audited vulnerabilities`
@@ -203,7 +203,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 
 ## 4. Bloque B — Cierre del módulo IA
 
-### [ ] B1 Instalar AI Bridge 1.12.0
+### [x] B1 Instalar AI Bridge 1.12.0
 - Con la autorización 1.1.4. Verificar que el worker lee `ai_function_settings` (`ai_memory_extract = codex / gpt-6-luna / low`) y registrarlo.
 - Quitar de `OWNER_ACTIONS.md` la acción “AI Bridge 1.12.0” si quedó resuelta.
 - **Commit:** `docs(ai): record AI Bridge 1.12.0 rollout`
