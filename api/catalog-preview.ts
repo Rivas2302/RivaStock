@@ -1,57 +1,47 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCatalogPreviewResponse } from '../src/lib/catalogPreview';
 import { SUPABASE_PUBLISHABLE_KEY } from '../src/lib/supabasePublicConfig';
-
-interface VercelRequest extends IncomingMessage {
-  query: Record<string, string | string[] | undefined>;
-}
 
 const SUPABASE_URL = 'https://nkfqhuqrgrpfufdymkcr.supabase.co';
 const PRODUCTION_ORIGIN = 'https://rivastock.vercel.app';
 
-function queryString(value: string | string[] | undefined): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function getOrigin(req: VercelRequest): string {
+function getOrigin(request: Request): string {
   if (process.env.VERCEL_ENV === 'production') return PRODUCTION_ORIGIN;
   if (process.env.VERCEL_URL) return 'https://' + process.env.VERCEL_URL;
-  const host = req.headers.host || 'localhost:3000';
-  const protocol = req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-  return protocol + '://' + host;
+  return new URL(request.url).origin;
 }
 
-export default async function handler(req: VercelRequest, res: ServerResponse): Promise<void> {
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.statusCode = 405;
-    res.setHeader('Allow', 'GET, HEAD');
-    res.end('Method not allowed');
-    return;
+export async function handleCatalogPreviewRequest(request: Request, indexHtmlOverride?: string): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method not allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    });
   }
 
   try {
-    const indexHtml = await readFile(resolve(process.cwd(), 'dist', 'index.html'), 'utf8');
+    const requestUrl = new URL(request.url);
+    const indexHtml = indexHtmlOverride ?? await readFile(resolve(process.cwd(), 'dist', 'index.html'), 'utf8');
     const response = await createCatalogPreviewResponse({
-      slug: queryString(req.query.slug) ?? '',
-      productId: queryString(req.query.productId),
-      origin: getOrigin(req),
+      slug: requestUrl.searchParams.get('slug') ?? '',
+      productId: requestUrl.searchParams.get('productId') ?? undefined,
+      origin: getOrigin(request),
       supabaseUrl: SUPABASE_URL,
       publishableKey: SUPABASE_PUBLISHABLE_KEY,
       indexHtml,
     });
-    res.statusCode = response.status;
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-    if (req.method === 'HEAD') {
-      res.end();
-      return;
-    }
-    res.end(await response.text());
+    return request.method === 'HEAD'
+      ? new Response(null, { status: response.status, headers: response.headers })
+      : response;
   } catch {
-    res.statusCode = 500;
-    res.setHeader('cache-control', 'no-store');
-    res.setHeader('content-type', 'text/plain; charset=utf-8');
-    res.end('Preview unavailable');
+    return new Response('Preview unavailable', {
+      status: 500,
+      headers: { 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' },
+    });
   }
 }
+
+export default {
+  fetch: handleCatalogPreviewRequest,
+};

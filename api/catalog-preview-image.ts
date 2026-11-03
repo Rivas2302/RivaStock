@@ -1,25 +1,16 @@
 import { createHash } from 'node:crypto';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import sharp from 'sharp';
 import { isPublicCatalogAssetUrl } from '../src/lib/catalogPreview';
-
-interface VercelRequest extends IncomingMessage {
-  query: Record<string, string | string[] | undefined>;
-}
 
 const SUPABASE_URL = 'https://nkfqhuqrgrpfufdymkcr.supabase.co';
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_PIXELS = 25_000_000;
 
-function queryString(value: string | string[] | undefined): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function sendError(res: ServerResponse, status: number, message: string): void {
-  res.statusCode = status;
-  res.setHeader('cache-control', 'no-store');
-  res.setHeader('content-type', 'text/plain; charset=utf-8');
-  res.end(message);
+function sendError(status: number, message: string): Response {
+  return new Response(message, {
+    status,
+    headers: { 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' },
+  });
 }
 
 async function readLimitedBody(response: Response): Promise<Buffer> {
@@ -48,16 +39,16 @@ export async function transformCatalogPreviewImage(input: Buffer): Promise<Buffe
     .toBuffer();
 }
 
-export default async function handler(req: VercelRequest, res: ServerResponse): Promise<void> {
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.setHeader('Allow', 'GET, HEAD');
-    sendError(res, 405, 'Method not allowed');
-    return;
+export async function handleCatalogPreviewImageRequest(request: Request): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method not allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    });
   }
-  const sourceUrl = queryString(req.query.source);
+  const sourceUrl = new URL(request.url).searchParams.get('source') ?? '';
   if (!sourceUrl || !isPublicCatalogAssetUrl(sourceUrl, SUPABASE_URL)) {
-    sendError(res, 400, 'Invalid image source');
-    return;
+    return sendError(400, 'Invalid image source');
   }
 
   try {
@@ -66,34 +57,33 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
       signal: AbortSignal.timeout(8000),
       headers: { accept: 'image/jpeg,image/png,image/webp,image/avif' },
     });
-    if (!sourceResponse.ok) {
-      sendError(res, 404, 'Image not found');
-      return;
-    }
+    if (!sourceResponse.ok) return sendError(404, 'Image not found');
     const contentType = sourceResponse.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(contentType ?? '')) {
-      sendError(res, 415, 'Unsupported image format');
-      return;
+      return sendError(415, 'Unsupported image format');
     }
     const declaredSize = Number(sourceResponse.headers.get('content-length'));
     if (Number.isFinite(declaredSize) && declaredSize > MAX_SOURCE_BYTES) {
-      sendError(res, 413, 'Image exceeds the source size limit');
-      return;
+      return sendError(413, 'Image exceeds the source size limit');
     }
     const source = await readLimitedBody(sourceResponse);
     const jpeg = await transformCatalogPreviewImage(source);
     const digest = createHash('sha256').update(jpeg).digest('hex');
-    res.statusCode = 200;
-    res.setHeader('content-type', 'image/jpeg');
-    res.setHeader('content-length', String(jpeg.byteLength));
-    res.setHeader('cache-control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
-    res.setHeader('etag', '"' + digest + '"');
-    if (req.method === 'HEAD') {
-      res.end();
-      return;
-    }
-    res.end(jpeg);
+    const headers = new Headers({
+      'content-type': 'image/jpeg',
+      'content-length': String(jpeg.byteLength),
+      'cache-control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
+      etag: '"' + digest + '"',
+    });
+    return new Response(request.method === 'HEAD' ? null : new Uint8Array(jpeg), {
+      status: 200,
+      headers,
+    });
   } catch {
-    sendError(res, 415, 'Image could not be converted');
+    return sendError(415, 'Image could not be converted');
   }
 }
+
+export default {
+  fetch: handleCatalogPreviewImageRequest,
+};

@@ -1,5 +1,11 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 10:04 ART — G2 en corrección tras el primer deploy
+
+- El commit 7899a25 se publicó en main con Vercel en success, pero las primeras solicitudes de producción a /api/catalog-preview y /catalogo/... devolvieron FUNCTION_INVOCATION_FAILED; la ruta de imagen también falló. G2 permanece [ ].
+- **Desvío:** se desplegó una primera forma de handler Node que Vercel no pudo ejecutar. No se escribieron datos en Supabase y no se ejecutó ninguna migración.
+- Reemplacé ambos handlers por la interfaz Web Request/Response documentada por Vercel, agregué parseo de URL y pruebas de los handlers reales; lint y las 10 pruebas focales pasan. El siguiente commit corrige el despliegue; G2 solo se marcará completa tras repetir el smoke en producción con facebookexternalhit y WhatsApp.
+
 ## 2026-11-03 09:46 ART — G1 completada; miniaturas existentes verificadas
 
 - Comparé la sección G1 de ACTION_PLAN.md de Desktop con el worktree: SHA-256 idéntico; `HEAD` y `origin/main` estaban en `bfa0cc1`. No hubo cambios de especificación.
