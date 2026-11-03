@@ -7,6 +7,12 @@
 - **A1 permanece abierto:** `automation` y `knowledge` conservan el JWT legacy solo para Storage. La documentación oficial dirige a crear las claves S3 desde el Dashboard y no encontré una operación de Management API documentada. Playwright con el perfil persistente de QA redirigió a Supabase sign-in; no se generó ninguna clave S3. La extensión activa sigue en 0.5.15, por lo que tampoco es seguro desactivar `anon`. No desactivé ninguna clave y no cambié producción.
 - No agregué una acción de rotación a `OWNER_ACTIONS.md`, conforme a la instrucción de resolverla desde el agente; el perfil sin sesión y la dependencia JWT quedan como bloqueo registrado. **Siguiente:** B4, porque A1 necesita una sesión de Dashboard y una sustitución de Storage antes de poder cerrar.
 
+## 2026-11-03 — C0 diferida por §5.2b; B4 sigue abierta
+
+- Reconfirmé B4 sin borrar por SQL las seis tareas históricas `knowledge_organize` con QA. C2.2/Claude sigue opcional y diferida; el cierre del addendum permanece abierto hasta contar con un flujo de app para esas filas.
+- C0 requiere cambiar la extensión. Con cuatro cierres de pruebas en vivo pendientes, §5.2b prohíbe empezar código nuevo de extensión hasta abrir la puerta; no cambié ni publiqué archivos de extensión. La instalación inicial 0.5.17 también requiere Chrome del dueño, que sigue en 0.5.15.
+- **Siguiente:** continuar E2 en orden, como permite §5.2b mientras C0 y las pruebas en vivo esperan su puerta.
+
 ## 2026-11-03 — E2.4 y smoke ampliado listos localmente; despliegue sigue abierto
 
 - Implementé `storage_upload_check` antes de subir fotos (sumando original + miniatura) y comprobantes PDF. Las respuestas de presupuesto agotado y negocio suspendido se muestran con los textos exactos del plan; si la RPC falla o devuelve algo desconocido, la subida se bloquea.
