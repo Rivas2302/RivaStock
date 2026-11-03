@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 19:56 ART — Primeros pasos de onboarding según el plan (despliegue pendiente)
+
+- Ajusté `/bienvenida` y el aviso del inicio para mostrar en ambos planes los datos del negocio, cargar el primer producto, configurar el catálogo e invitar empleados de forma opcional. Solo `RivaStock IA` suma instalar/vincular la central. Quité el bloque de Facebook del onboarding y no aparece central para `RivaStock`.
+- Tests nuevos de interfaz cubren ambas pantallas y ambos planes: **4/4**. Suite completa **817/817**, `npm run lint`, `npm run build` y `npm run perf:check` aprobados. El bundle inicial quedó en **209.365 bytes gzip JS / 22.228 bytes CSS**.
+- **Despliegue y verificación productiva pendientes** del commit de esta tarea.
+- **Siguiente:** desplegar y comprobar el inicio de producción; después F3, control de escrituras para cuentas suspendidas.
+
 ## 2026-11-03 19:46 ART — F1 email de invitación: implementación local, envío bloqueado por dominio
 
 - La plantilla que llegó en producción coincide con `send-email` ACTIVE v7; la invitación pasa por el Send Email Hook de Supabase Auth. El hook está configurado para no exigir JWT porque valida la firma Standard Webhooks. La función desplegada usa `onboarding@resend.dev`, y su plantilla desplegada es la que produce el texto de invitación genérico.

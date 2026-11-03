@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Circle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { useBusinessPlan } from '../hooks/useBusinessPlan';
 import { supabase } from '../lib/supabase';
 
 interface ProjectUsage {
@@ -48,16 +49,20 @@ function ProjectBudgetNotice() {
   );
 }
 
-function GettingStartedCard() {
+function GettingStartedCard({ hasProducts }: { hasProducts: boolean }) {
   const { user, ownerUid, isOwner } = useAuth();
+  const { plan, loading: planLoading } = useBusinessPlan();
+  const hasAiModule = plan?.limits.modules.ai === true;
   const [hasCentral, setHasCentral] = useState(false);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!isOwner || !ownerUid) {
+    if (!isOwner || !ownerUid || !hasAiModule) {
+      setHasCentral(false);
       setChecked(true);
       return;
     }
+    setChecked(false);
     let active = true;
     void supabase.from('ai_bridge_devices').select('id').is('revoked_at', null)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -67,31 +72,49 @@ function GettingStartedCard() {
         setChecked(true);
       });
     return () => { active = false; };
-  }, [isOwner, ownerUid]);
+  }, [hasAiModule, isOwner, ownerUid]);
 
-  if (!isOwner || !checked || (user?.onboardingCompletedAt && hasCentral)) return null;
+  if (!isOwner || planLoading || !checked) return null;
   const profileComplete = Boolean(user?.onboardingCompletedAt);
+  const catalogConfigured = Boolean(user?.catalogSlug);
+  const commonStepsComplete = profileComplete && hasProducts && catalogConfigured;
+  if (commonStepsComplete && (!hasAiModule || hasCentral)) return null;
   return (
     <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900 dark:bg-indigo-950/30">
       <h3 className="text-lg font-bold text-slate-900 dark:text-white">Primeros pasos</h3>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Terminá la configuración para dejar listo el negocio.</p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-8">
-        <span className="inline-flex items-center gap-2 text-sm font-medium">
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Completá estos pasos para empezar a trabajar.</p>
+      <ol className="mt-4 grid gap-3 sm:grid-cols-2">
+        <li className="inline-flex items-center gap-2 text-sm font-medium">
           {profileComplete ? <CheckCircle2 className="text-emerald-600" size={18} /> : <Circle className="text-slate-400" size={18} />}
           Datos del negocio
-        </span>
-        <span className="inline-flex items-center gap-2 text-sm font-medium">
+        </li>
+        <li className="inline-flex items-center gap-2 text-sm font-medium">
+          {hasProducts ? <CheckCircle2 className="text-emerald-600" size={18} /> : <Circle className="text-slate-400" size={18} />}
+          Cargar el primer producto
+          {!hasProducts && <Link to="/stock" className="ml-auto inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline dark:text-indigo-300">Abrir <ExternalLink size={14} /></Link>}
+        </li>
+        <li className="inline-flex items-center gap-2 text-sm font-medium">
+          {catalogConfigured ? <CheckCircle2 className="text-emerald-600" size={18} /> : <Circle className="text-slate-400" size={18} />}
+          Configurar el catálogo
+          <Link to="/config?tab=catalog" className="ml-auto inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline dark:text-indigo-300">Abrir <ExternalLink size={14} /></Link>
+        </li>
+        <li className="inline-flex items-center gap-2 text-sm font-medium">
+          Invitar empleados (opcional)
+          <Link to="/config?tab=equipo" className="ml-auto inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline dark:text-indigo-300">Abrir equipo <ExternalLink size={14} /></Link>
+        </li>
+        {hasAiModule && <li className="inline-flex items-center gap-2 text-sm font-medium sm:col-span-2">
           {hasCentral ? <CheckCircle2 className="text-emerald-600" size={18} /> : <Circle className="text-slate-400" size={18} />}
-          Central instalada
-        </span>
-      </div>
-      <Link to={profileComplete ? '/bienvenida' : '/bienvenida'} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-        {profileComplete ? 'Vincular la central' : 'Completar configuración'} <ExternalLink size={15} />
-      </Link>
+          Instalar y vincular la central
+          {!hasCentral && <Link to="/ia" className="ml-auto inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline dark:text-indigo-300">Ir a IA <ExternalLink size={14} /></Link>}
+        </li>}
+      </ol>
+      {!profileComplete && <Link to="/bienvenida" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        Completar datos del negocio <ExternalLink size={15} />
+      </Link>}
     </section>
   );
 }
 
-export default function PlatformDashboardNotices() {
-  return <><ProjectBudgetNotice /><GettingStartedCard /></>;
+export default function PlatformDashboardNotices({ hasProducts }: { hasProducts: boolean }) {
+  return <><ProjectBudgetNotice /><GettingStartedCard hasProducts={hasProducts} /></>;
 }

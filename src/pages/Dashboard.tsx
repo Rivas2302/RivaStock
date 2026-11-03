@@ -335,7 +335,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <PlatformDashboardNotices />
+      <PlatformDashboardNotices hasProducts={products.length > 0} />
 
       <div className="dashboard-panel p-4 space-y-2">
         <label htmlFor="stock-valuation-owner" className="block text-sm font-semibold text-slate-900 dark:text-white">
