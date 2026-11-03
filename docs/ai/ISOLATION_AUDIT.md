@@ -62,7 +62,7 @@ En ambos respaldos la exportación incluyó esquema, datos, conteos exactos por 
 - Repetición en producción después de ambas migraciones: 85 relaciones por rol; sin filas visibles para un UID nuevo fuera de los dos catálogos globales. `quotes`, `quotes_with_status` y `public_profiles` ya no son seleccionables por `anon`; las vistas sensibles también están denegadas a `authenticated`.
 - No se crearon datos QA. No hubo cambios de Auth ni escrituras de negocio.
 
-**Pendiente de despliegue al redactar:** publicar `QuotePublic.tsx` en Vercel y confirmar el deploy antes de cerrar F1 en `ACTION_PLAN.md`.
+El commit `d864a22` está desplegado en Vercel (`success`). Playwright abrió la ruta pública de presupuesto con un UUID inexistente: `get_public_quote` respondió HTTP 200, la UI mostró “Presupuesto no encontrado” y no hubo solicitudes directas a `quotes` ni `public_profiles`. F1 queda cerrada.
 
 ## Matriz de conteos por relación
 

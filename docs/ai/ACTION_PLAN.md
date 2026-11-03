@@ -108,7 +108,7 @@ Riva tiene un cliente y le entrega el acceso **el martes 03/11**, bien hecho. Re
 
 La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a negocios sin el módulo `ai`: E3 protege la central de IA, que este cliente no tiene.
 
-### [ ] F1 Auditoría de aislamiento (solo lectura, en producción, ~30 min)
+### [x] F1 Auditoría de aislamiento (solo lectura, en producción, ~30 min)
 1. Listá las tablas de `public` con RLS desactivado y las políticas que permiten leer o escribir con `true`, `USING (true)` o sin filtro por dueño a `anon` o `authenticated`. Revisá también las políticas de Storage por bucket. Lo público por diseño (fotos de `assets`, catálogo y presupuesto públicos) se documenta como tal.
 2. **Simulación de un dueño nuevo,** en una transacción que termina en `ROLLBACK`:
    - `SET LOCAL role authenticated` y `SET LOCAL request.jwt.claims` con un `sub` UUID aleatorio que no existe;

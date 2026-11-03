@@ -1,6 +1,6 @@
 # Estado de ejecución autónoma
 
-## 2026-11-02 — F1 corregida en producción; frontend y deploy pendientes
+## 2026-11-02 — F1 completada; F2 siguiente
 
 - Antes de F1 se comparó el plan local con `C:\Users\USER\Desktop\IA\RivaStock\docs\ai\ACTION_PLAN.md`; SHA-256 idéntico (`CF9B117CA5C62C3DEFB43DAAD774422784DABD45539F1FCD0A4AB2D21FEEBEB8`). Se conservó la copia más reciente, incluida la actualización de estado A2/A3/A4/B1.
 - La auditoría detectó en producción que `quotes_public_read_by_id` permitía enumeración anónima y que `quotes_with_status` evitaba RLS por privilegios de dueño. `public_profiles` también exponía perfiles de contacto sin uso actual de la app. Se notificó el hallazgo en el momento.
@@ -12,7 +12,8 @@
 - Se revisaron 144 políticas de public, 10 de Storage y las funciones `SECURITY DEFINER` invocables que reciben identificadores de dueño; no quedó acceso sin ámbito. Se documentó la matriz y el análisis en `docs/ai/ISOLATION_AUDIT.md`.
 - Auth indica `disable_signup = true`. **Desvío:** se leyó el endpoint público de configuración Auth porque no hay token de Management API configurado; no se modificó Auth ni se expuso una clave.
 - Verificación local ya pasada tras los cambios: lint; **668/668** pruebas en 108 archivos; prueba SQL dirigida **18/18**; build; `perf:check` (207.869 B gzip JS, 21.807 B CSS). La suite no se volvió a correr porque desde esa verificación solo se agregó documentación.
-- **F1 sigue [ ]** hasta commitear y desplegar el cambio de `QuotePublic.tsx` en Vercel y comprobar el deploy. Los dos cambios de base ya están aplicados y verificados; el siguiente paso es el push de este commit y el smoke del frontend.
+- Commit `d864a22` (`docs(security): tenant isolation audit before first client`) está en `main` con Rivas2302. GitHub/Vercel confirmó `success`; el smoke Playwright en la ruta pública de presupuesto recibió HTTP 200 de `get_public_quote`, mostró “Presupuesto no encontrado” para un UUID inexistente y no hizo lecturas directas de `quotes` ni `public_profiles`.
+- **F1 [x]**: auditoría, correcciones, simulaciones, documentación, frontend y producción completos. Sin datos QA creados. **Siguiente:** F2 (planes y módulos); hacer un backup fresco antes de su migración.
 
 ## 2026-11-02 — B2 desplegada; checklist de producción en curso
 
