@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — T5.5 desplegada; T7.1 siguiente
+
+- Antes de migrar, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T065427Z`: 87 tablas y 13.841 filas; `schema.sql` 832.386 B, `data.sql` 40.150.510 B. Los conteos previos, bloques `COPY` exportados y conteos posteriores coincidieron tabla por tabla; `table-counts.csv` contiene 87 filas. Storage: 4 buckets, 374 objetos, 132.374.670 B; inventario, tamaños y SHA-256 verificados. El marcador de backup incompleto no existe.
+- El dry-run listó solo `20261103160000_fb_pacing_scheduling.sql`; se aplicó esa migración y `supabase migration list --linked` confirma su estado aplicado. Catálogo de producción: ambas tablas tienen RLS; `facebook_deliveries.scheduled_at`, las RPC y la lectura de alertas del dueño existen. `automation` está ACTIVE v11 con `verify_jwt=false`.
+- Vercel terminó en `success` para `0af2d0d`; GitHub autenticó la cuenta `Rivas2302`. Playwright con perfil persistente confirmó en producción los valores conservadores en Automatizaciones → Configuración: 720 s, 30 %, topes 5/15, máximo 10 grupos, repetición 14 días, quiet hours 23:00–08:00, zona Buenos Aires y pausa de 48 h. IA → Conexión mostró “Conectada”. El GET de la política inicializó la fila con defaults del dueño. No hubo publicaciones ni datos `[QA]`.
+- AI Bridge 1.20.0 se instaló desde el paquete generado en este repo por el actualizador oficial, servido por loopback; SHA-256 local y servido coincidente. Se preservaron `.env` y sesiones; rollback 1.19.0 quedó bajo `%LOCALAPPDATA%\RivaStock\BridgeRollback\20261103T070700Z-1.19.0`. Verificado un solo proceso worker, manifest 1.20.0, heartbeat reciente, estado `idle`, sin tarea y acceso de Inicio vía `wscript.exe`.
+- Verificación local ya aprobada: lint; **746/746** pruebas frontend en 121 archivos; Bridge typecheck y **100/100**; pruebas dirigidas de pacing/SQL **74/74**; concurrencia PostgreSQL Facebook **20/20** iteraciones; build y `perf:check`. El paquete mide 81.766 B (SHA-256 `a3e62abb9092182a47667e74a75f7b8193c6a60f692aef88266efd80fd86c6c2`).
+- **T5.5 [x]**. No se tocó la extensión ni se hizo una publicación de Facebook. **Siguiente:** T7.1, independiente de G2; T5.6 y T6.2–T6.4 siguen pendientes de la sesión/extensión y las puertas del plan.
+
 ## 2026-11-03 — B4 cerrado; trazas QA eliminadas desde la app
 
 - La RPC y la UI de limpieza se desplegaron en producción. `b213b82` está en `main`, autor `Rivas2302`; Vercel reportó `success`. La migración única `20261103150000_ai_organize_task_cleanup` está aplicada. `ai-bridge` ACTIVE v14 con `verify_jwt=false`.
@@ -41,7 +50,7 @@
 ### Pendiente por puerta
 
 - T1.6, T2.5, T4.1/T4.3/T4.4/T4.6, T5.6 y T6.2–T6.4 esperan la puerta G2/G4 y/o la selección del dueño. La extensión reporta 0.5.15, sin capacidad de capturas; §5.2b impide empezar otro cambio de extensión mientras haya al menos tres pruebas en vivo pendientes.
-- T5.5 queda abierta: la programación y el ritmo requieren cerrar el gate del worker de la extensión; no se desplegó una política parcial que el worker actual no respeta.
+- T5.5 quedó cerrada con Bridge 1.20.0 y los controles del servidor/UI desplegados. T5.6 sigue pendiente de ensayos en vivo; no se empieza otro cambio de extensión mientras haya al menos tres pruebas en vivo pendientes.
 
 ## 2026-11-03 — T5.4 desplegada
 

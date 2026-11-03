@@ -417,7 +417,7 @@ Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave
 - Panel “Rendimiento de grupos” en Automatizaciones, con los grupos que conviene dejar de usar (rechazos repetidos).
 - **Commit:** `feat(automation): suggest groups from historical performance`
 
-### [ ] T5.5 Ritmo y programación
+### [x] T5.5 Ritmo y programación
 - `fb_pacing_policy` por dueño, con los valores del perfil de bajo riesgo (T5.7):
   - columnas: `min_gap_seconds` (720), `jitter_pct` (30), `daily_marketplace_cap` (5), `daily_group_cap` (15), `max_groups_per_listing` (10), `repeat_group_days` (14), `quiet_hours` (23:00–08:00), `warmup_until` (fecha de alta + 14 días; mientras rige, los topes son la mitad), `pause_on_warning_hours` (48);
   - la edita solo el dueño, desde Automatizaciones. Subir un valor por encima del perfil muestra una advertencia de riesgo y pide confirmación.
