@@ -86,7 +86,7 @@ Flujo de un original: el navegador lo sube a `knowledge` → la central lo baja,
 
 ## 5. Tareas
 
-### [ ] E0 Diagnóstico de solo lectura
+### [x] E0 Diagnóstico de solo lectura
 - Medí en producción, solo con consultas de lectura:
   - `pg_database_size(current_database())` y las 15 tablas más pesadas (`pg_total_relation_size`);
   - bytes por bucket y por dueño en `storage.objects`;
