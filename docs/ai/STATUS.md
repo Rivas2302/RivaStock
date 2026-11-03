@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 13:57 ART — Memoria entre chats verificada en producción
+
+- Producción sirve `817ae33`; Vercel confirmó `success`, la migración `20261103163908_ai_memory_chat_history_and_idle_summaries` está aplicada, `knowledge` ACTIVE v10 y AI Bridge 1.23.0 conectado.
+- La evaluación real con Codex GPT-6 Luna Bajo pasó **2/2 casos nuevos (100%)**; el SHA-256 del dataset no cambió y los casos no se editaron. Resultado: `tools/rivastock-ai-bridge/test/memory-eval/results/20261103T162211853Z-history-low.json`.
+- En producción probé desde Chats las preguntas exactas «¿Cuáles fueron mis últimas preguntas?» y «¿Y en los otros chats?». Ambas tuvieron respuesta; la segunda hizo referencia a contexto de otros chats y ninguna respuesta afirmó que el asistente no tiene acceso. La implementación limita el índice al dueño y negocio autenticados; los tests de aislamiento están incluidos en la tarea.
+- Borré el chat temporal `[QA]` desde la interfaz habitual. El conteo de producción confirmó cero chats con ese prefijo después del borrado. No hice escrituras SQL.
+- Verificación local de la entrega: lint, build y `perf:check` aprobados; pruebas raíz previas **793/793**, suite dirigida de Edge/SQL **37/37**, y Bridge **115/115** más typecheck aprobados.
+- **Desvío:** ninguno. **Siguiente:** F2b, controles de módulos del lado del servidor, antes de E7.
+
 ## 2026-11-03 13:37 ART — Revalidación móvil de Buscar y enviar
 
 - Playwright visible con el perfil persistente autenticado abrió producción en viewport móvil 390×844 y encontró `Cable iPhone C`. La UI mostró 1/1 foto canónica; la imagen cargó desde `nkfqhuqrgrpfufdymkcr.supabase.co` por HTTPS. Las tres respuestas Storage observadas fueron 200; no hubo solicitudes fallidas, errores de página, mixed content ni violaciones CSP.

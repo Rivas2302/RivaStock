@@ -1256,3 +1256,10 @@ Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado 
 - El RPC/report de producción indicó 166 B, un archivo, 0 faltantes; la versión está en `local`, y el archivo local de 166 B coincide con `content_hash` `92c3d59515efb6fe18c2da81c4edf0ab70d9c2d73411fbe56b0b3ba0415bba8f`. Hay 3 archivos locales de metadatos/almacén que ocupan 428 B en total.
 - El objeto original de nube sigue intacto y no se forzó su purga. Su retención vence automáticamente el **2026-11-06 10:06:19 UTC**; no se detecta `cloud_purged_at`. E4 cumple y queda `[x]`. E5 sigue abierta: mientras la copia en nube exista, la app aún usa el camino `cloud`, por lo que la prueba real de apertura bajo demanda todavía no es válida.
 - Los datos `[QA]` usados para E5 se conservan hasta validar la apertura después de la purga natural; luego se eliminan desde la app. No se borró contenido con SQL.
+
+## 2026-11-03 13:57 ART — Índice de conversaciones anteriores
+
+- Producción: `817ae33` en Vercel `success`; `20261103163908_ai_memory_chat_history_and_idle_summaries` aplicada; `knowledge` ACTIVE v10. AI Bridge 1.23.0 estaba conectado durante la prueba.
+- Eval real con Codex GPT-6 Luna Bajo: los **2/2 casos nuevos** sobre memoria entre chats pasaron. Dataset SHA-256 `ef94f5e0…6a8d97e7`; no se editaron los casos. Resultado completo en `tools/rivastock-ai-bridge/test/memory-eval/results/20261103T162211853Z-history-low.json`.
+- En Chats de producción se enviaron literalmente «¿Cuáles fueron mis últimas preguntas?» y «¿Y en los otros chats?». Las dos tuvieron respuesta; la segunda usó contexto de chats existentes y no apareció una negativa de acceso. La lista temporal de prueba se eliminó desde la UI y el conteo posterior confirmó cero chats `[QA]` con ese prefijo.
+- Evidencia local: lint, build y `perf:check`; suite raíz 793/793, tests dirigidos de Edge/SQL 37/37, Bridge 115/115 y typecheck aprobados. No se cambió producción fuera del despliegue de la tarea; no hubo datos QA persistentes.
