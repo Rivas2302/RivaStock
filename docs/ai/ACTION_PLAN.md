@@ -276,7 +276,7 @@ Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archiv
 - Si sigue colgado: no reintentes, **no lo pongas en `OWNER_ACTIONS.md`**, marcá C2.2 como “Diferida (opcional)” en `STATUS.md` y en el addendum, y seguí.
 - **Commit:** `docs(ai): record Claude Code production validation`
 
-### [ ] B4 Cierre del addendum
+### [x] B4 Cierre del addendum
 - La sección “Cierre” de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md`. Si B3 sigue bloqueada, cerrar todo lo demás y dejar C2.2 como único pendiente por puerta.
 - En `AI_PUBLISHER_EXECUTION_PLAN.md`, fijar la versión del Bridge del supervisor (T2.3) en **la siguiente menor a la instalada** (1.13.0 si B2 terminó en 1.12.x).
 - **Commit:** `docs(ai): close knowledge and AI module pending items`

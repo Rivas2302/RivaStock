@@ -1,6 +1,16 @@
 # Progreso del módulo Conocimientos
 
-Actualizado: 2026-10-26
+Actualizado: 2026-11-03
+
+## B4 — Cierre seguro de tareas de Organizar con IA — 2026-11-03
+
+- **Planes comparados antes del cambio:** `ACTION_PLAN.md` coincidía con Desktop y `origin/main`; el addendum y el plan del publicador locales eran más recientes que sus copias en Desktop. Conservé las versiones locales. El plan del publicador registra T2.3 desplegada en AI Bridge 1.19.0, que fue la siguiente menor a la 1.18.0 instalada al cerrar B2; la próxima menor para un cambio futuro del worker es 1.20.0.
+- **Backup verificado antes de la migración:** `%USERPROFILE%\rivastock-backups\20261103T061134Z`; 87 tablas / 13.843 filas, schema 830.747 B, datos 40.160.455 B, Storage 374 objetos / 132.374.670 B. Los conteos, tamaños y hashes coincidieron.
+- Se agregó `knowledge_delete_organize_task`, limitado al dueño, a tareas `knowledge_organize` terminales sin chat y sin propuesta pendiente; borrar una propuesta aplicada no revierte el documento. AI → Tareas lista por separado hasta 50 tareas de organización y presenta una confirmación que explica el efecto.
+- La única migración del cambio fue `20261103150000_ai_organize_task_cleanup.sql`. Se verificó aplicada; la función existe, `authenticated` puede ejecutarla y `anon` no. `ai-bridge` quedó ACTIVE v14 con `verify_jwt=false`.
+- Vercel reportó `success` para `b213b82`. Con Playwright y el perfil autenticado se borraron desde la UI seis tareas históricas con `[QA]` en la instrucción y una tarea adicional, completada el 26/10, cuyo resultado conservaba `[QA]`. La confirmación de la app se aceptó para cada tarea; no se modificaron documentos aplicados.
+- Verificación posterior read-only: cero marcadores `[QA]` en ai_jobs, chats, mensajes, recuerdos, propuestas, fuentes, documentos, carpetas, categorías, etiquetas y Storage. Se conservaron los eventos de auditoría.
+- Pruebas: lint; frontend **726/726**; build; `perf:check`; Bridge typecheck y **96/96**. No se actualizó el Bridge porque el worker no cambió; producción ya tenía AI Bridge 1.19.0 y heartbeat reciente.
 
 ## Fase 0 — Preparación
 

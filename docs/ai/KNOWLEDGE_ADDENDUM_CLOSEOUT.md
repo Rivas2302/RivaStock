@@ -300,18 +300,14 @@ La evaluación PGlite anterior de `dd12d8e` usó proveedor falso y embeddings si
 
 ---
 
-## [ ] Cierre
+## [x] Cierre
 
-**Estado al 2026-11-03:** C1, C2.1, C3, C4 y C5.4/C5.5 están cerradas; C2.2 está diferida como opcional según `ACTION_PLAN.md` B3. El cierre total permanece abierto porque hay seis tareas históricas `knowledge_organize` con contenido QA que el RPC y la UI de C1 no permiten eliminar. No borrarlas por SQL; hasta diseñar un flujo de app seguro, documentar el desvío y no afirmar que no queda ningún rastro QA.
+**Estado final al 2026-11-03:** C1, C2.1, C3, C4, C5.4/C5.5 y el cierre están completos. C2.2 y la prueba equivalente de Claude permanecen diferidas como opcionales según `ACTION_PLAN.md` B3; no requieren acción del dueño. Se implementó una eliminación segura desde IA → Tareas para trabajos `knowledge_organize` finalizados sin propuesta pendiente. Se eliminaron desde la app seis tareas históricas con marcador `[QA]` y un trabajo adicional cuyo resultado conservaba `[QA]`. No se borró ningún dato mediante SQL.
 
-- Correr `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`; en el worker, `npm run typecheck` y `npm test`.
-- Despliegue final:
-  - backup verificado;
-  - migraciones de C1;
-  - `ai-bridge` y `knowledge` si cambiaron;
-  - merge a `main` con Rivas2302 y Vercel en `success`;
-  - Bridge 1.11.0 para memoria (y 1.12.0 para el publicador futuro): pedir al dueño que ejecute el actualizador correspondiente en el mensaje agrupado.
-- Verificar que no queda **ningún** dato `[QA]`: documentos, chats, tareas, propuestas, fuentes y recuerdos (las de búsquedas se purgan solas en 1 día).
-- Actualizar `AGENTS.md` (las brechas de borrado y de Claude quedan cerradas; se agrega la memoria compartida), `AI_BRIDGE_SETUP.md` (OCR, Claude) y `knowledge-progress.md` con el informe final.
-- En `docs/automation/AI_PUBLISHER_EXECUTION_PLAN.md`, actualizar la versión del Bridge prevista para el supervisor (siguiente menor después de este cierre).
+La verificación de solo lectura posterior encontró cero marcadores `[QA]` en tareas, chats, mensajes, recuerdos, propuestas, fuentes, documentos, carpetas, categorías, etiquetas y objetos de Storage. Se conservan los eventos de auditoría según el diseño normal de la app.
+
+- Verificación final: `npm run lint`; frontend **726/726** pruebas en 120 archivos; `npm run build`; `npm run perf:check`; worker `npm run typecheck` y **96/96** pruebas. Todo pasó.
+- Producción: backup verificado antes de la única migración de B4; `20261103150000_ai_organize_task_cleanup` aplicada; `ai-bridge` ACTIVE v14 con `verify_jwt=false`; commit `b213b82` en `main` y Vercel `success`. Bridge 1.19.0 ya estaba instalado, con heartbeat reciente y “Conectada”; no hubo cambios de worker ni se pidió actualizarlo.
+- `AGENTS.md` y `AI_BRIDGE_SETUP.md` ya incluyen el estado de memoria, OCR y Claude. `knowledge-progress.md` y `STATUS.md` registran la prueba de borrado, la limpieza completa y el respaldo.
+- En `docs/automation/AI_PUBLISHER_EXECUTION_PLAN.md`, T2.3 registra 1.19.0 como la versión ya desplegada y 1.20.0 como la siguiente menor para futuros cambios del worker.
 - **Commit:** `docs(ai): close knowledge and AI module pending items`

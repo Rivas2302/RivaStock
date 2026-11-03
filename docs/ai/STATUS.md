@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — B4 cerrado; trazas QA eliminadas desde la app
+
+- La RPC y la UI de limpieza se desplegaron en producción. `b213b82` está en `main`, autor `Rivas2302`; Vercel reportó `success`. La migración única `20261103150000_ai_organize_task_cleanup` está aplicada. `ai-bridge` ACTIVE v14 con `verify_jwt=false`.
+- Con Playwright y la sesión persistente se borraron desde IA → Tareas seis trabajos históricos `knowledge_organize` marcados `[QA]` y un trabajo adicional cuyo resultado conservaba `[QA]`. La app pidió confirmación para cada eliminación. No se cambió ningún documento aplicado.
+- La verificación read-only posterior encontró cero `[QA]` en tareas, chats/mensajes, recuerdos, propuestas, fuentes, documentos, carpetas, categorías, etiquetas y objetos de Storage. Se conservan eventos de auditoría. **B4 [x]** y el cierre del addendum quedó completo; **C2.2/Claude sigue diferida y opcional**.
+- Antes de migrar se verificó `%USERPROFILE%\rivastock-backups\20261103T061134Z`: 87 tablas / 13.843 filas; schema 830.747 B; datos 40.160.455 B; Storage 374 objetos / 132.374.670 B; verificación aprobada.
+- Verificación: lint; frontend **726/726** pruebas en 120 archivos; build; `perf:check`; Bridge typecheck y **96/96**. AI Bridge 1.19.0 ya estaba conectado; sin cambios de worker, instalación ni Bridge nuevo.
+- La copia local más reciente del plan del publicador registra T2.3 como desplegada en 1.19.0 (siguiente menor a 1.18.0 al cerrar B2); la próxima menor para futuros cambios del worker es 1.20.0.
+- **Siguiente:** revisar T5.5 y T7.1 según el plan local vigente; C0 y las pruebas que cambian la extensión siguen detrás de §5.2b/G2. A1 sigue abierta hasta eliminar el uso de la clave legacy en Storage y actualizar la extensión compatible.
+
 ## 2026-11-03 — B2 reconciliada; B4: ruta segura de limpieza en rollout
 
 - Antes de B4 comparé `ACTION_PLAN.md`, el addendum, el plan del publicador y el estado con Desktop y `origin/main`. ACTION_PLAN coincide con Desktop y `origin/main`; el addendum local es más reciente que Desktop. El plan local del publicador es posterior a Desktop (incluye la versión T2.3 1.19.0, mientras Desktop quedó en 1.8.0), así que conservé las copias vigentes. `AGENTS.md` local también conserva las reglas completas de secretos.
