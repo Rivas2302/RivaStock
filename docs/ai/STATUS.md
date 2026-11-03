@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — T7.1: migración aplicada; rollout de la UI pendiente
+
+- Antes de migrar verifiqué `%USERPROFILE%\rivastock-backups\20261103T074408Z`: **89 tablas / 13.842 filas**, schema 869.804 B y data 40.151.883 B; Storage **374 objetos / 132.374.670 B**; conteos exactos y hashes verificados.
+- `supabase db push --linked --include-all --dry-run` listó únicamente `20261103071448_ai_action_catalog.sql`; apliqué esa migración. La verificación remota confirma la migración, una acción estática que exige confirmación, cero solicitudes, RLS activo, lectura de solicitudes solo para `authenticated`, escrituras directas denegadas y RPC de solicitud no disponible para `anon`.
+- No hubo despliegue, Bridge, ensayo ni actividad de Facebook. T7.1 sigue abierta hasta publicar el frontend, esperar Vercel `success` y crear/descartar una solicitud `[QA]` desde la app.
+- **Siguiente:** publicar `main` con la historia coherente ya migrada y verificar el flujo de borrador sin confirmar ninguna publicación.
+
 ## 2026-11-03 — Bloque B reconciliado con evidencia de producción
 
 - ACTION_PLAN, el addendum de Conocimientos y el registro de progreso confirman B2: evaluación real Codex Luna Bajo con 100 % en retención importante, recuperación, precisión, actualizaciones, sensibles y olvido nuevo; la checklist C5.4 pasó en producción y la limpieza `[QA]` se completó desde la app. Marqué B2 `[x]`.
