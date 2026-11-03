@@ -296,7 +296,7 @@ Objetivo: que Riva instale la extensión **una sola vez más** y las versiones s
 - Agregar a la extensión la capacidad `self-reload`: cuando el servidor indica en el heartbeat que hay una versión más nueva **y** no hay intento ni ensayo en curso, la extensión llama a `chrome.runtime.reload()`. En una extensión instalada “sin empaquetar”, esto relee los archivos de su carpeta.
 - Script `scripts/update-installed-facebook-extension.mjs`: ubica la carpeta de la extensión sin empaquetar del perfil de Chrome del dueño (leyendo la configuración del perfil, solo lectura), verifica que el ID y el `manifest.name` coinciden, reemplaza los archivos por los del ZIP publicado (verificando el SHA-256 de `rivastock-facebook-version.json`) conservando una copia de la versión anterior fuera del repo, y marca en el servidor que hay versión nueva para que la extensión se recargue.
 - Verificar en vivo (G2): la extensión pasa de la versión instalada a la nueva sin tocar Chrome. Si `chrome.runtime.reload()` no relee los archivos, documentarlo como desvío y mantener la actualización manual.
-- Versión 0.5.17. Esta versión sí la tiene que instalar Riva a mano (acción del dueño agrupada).
+- Versión: la siguiente menor después de la publicada (al 03/11 la publicada es **0.5.22**, así que C0 va en **0.5.23**; nunca degradar). Esta versión sí la tiene que instalar Riva a mano (acción del dueño agrupada). Hasta que C0 exista, a Riva se le pide instalar **la versión publicada vigente** (hoy 0.5.22), no 0.5.17: corregí `OWNER_ACTIONS.md`.
 - **Commit:** `feat(facebook): hands-free extension updates for the owner's PC`
 
 ### 5.1 Orden principal
@@ -373,7 +373,7 @@ Decisión de Riva: modelo **híbrido**. La app y los datos livianos siguen en el
 
 Solo si todas las tareas anteriores están hechas o bloqueadas por una puerta.
 
-### [ ] D1 Índices faltantes en claves foráneas
+### [x] D1 Índices faltantes en claves foráneas
 - El advisor de Supabase reporta 53 FK sin índice preexistentes. Crear índices en una migración aditiva (`CREATE INDEX IF NOT EXISTS`) solo para tablas con uso real (ventas, productos, movimientos, Facebook, IA). Verificar el advisor antes y después.
 - **Commit:** `perf(db): index foreign keys flagged by the advisor`
 

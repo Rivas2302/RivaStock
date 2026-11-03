@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:59 ART — D1 aplicada; E5 sigue esperando la retención
+
+- Comparé el plan maestro de Desktop, `origin/main` y el worktree. Desktop, actualizado el 03/11 a las 07:38, solo cambia materialmente C0: el siguiente destino es extensión **0.5.23**, con **0.5.22** como versión publicada vigente. Adopté esa corrección; mantuve los checks de F1–F4 y B2/B4 que tienen evidencia de cumplimiento en STATUS. `OWNER_ACTIONS.md` pide la 0.5.22 al abrir G2/A1 y prevé agrupar la 0.5.23 si la recarga automática no la instala.
+- D1: el advisor reportó **58** FKs sin índice. El inventario y uso de producción justificaron **49** índices aditivos en tablas activas de negocio, Facebook, IA y Conocimientos. El backup completo `%USERPROFILE%\rivastock-backups\20261103T105311Z` verificó **94 tablas / 13.895 filas**, `schema.sql` 921.624 B, `data.sql` 40.191.243 B y **377 objetos / 132.538.148 B** en 5 buckets. El dry-run listó solo `20261103170000_index_used_foreign_keys.sql`; quedó aplicada y verificada: **49/49 índices válidos**. El advisor ahora informa 9 FKs restantes y ninguno dentro del alcance seleccionado.
+- **Desvío:** las 9 restantes corresponden a 4 tablas de módulo vacías y de actividad baja (`ai_action_requests`, `fb_pacing_alerts`, `knowledge_document_tags`, `knowledge_folders`) y 5 auxiliares fuera del alcance de D1 (`audit_events`, `collaborators`, `customer_financial_commands`, `reseller_supplier_list_items`, `reseller_supplier_lists`). No agregué índices sin uso demostrado. Un intento de backup previo quedó con `BACKUP-UNVERIFIED.txt` y no se usó; el segundo backup completo terminó verificado antes de migrar.
+- A1 permanece abierta: no hay `.env` de Supabase para el Bridge; la extensión productiva sigue en 0.5.15 y Storage aún depende del JWT legacy. C0 y las pruebas Facebook siguen cerradas por §5.2b/G2. E5 conserva su original QA hasta la purga natural del **2026-11-06 10:06:19 UTC**.
+- No hubo cambios de frontend, Edge Function, Bridge ni extensión. **Siguiente:** hacer la auditoría de solo lectura D2; preservar el dato QA reservado de E5 hasta completar su prueba.
+
 ## 2026-11-03 07:36 ART — E4 verificada en producción; E5 espera la purga programada
 
 - Antes de E4 comparé ACTION_PLAN, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke y el plan del publicador con Desktop y `origin/main`. MULTI_BUSINESS y el smoke coinciden; ACTION_PLAN conserva las marcas de tareas verificadas; la copia Desktop del plan del publicador es anterior a la de `main`.
