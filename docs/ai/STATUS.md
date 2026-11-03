@@ -6,7 +6,7 @@
 - E0 [x]: la base tiene **75.779.219 B**; los 15 cuadros mayores están en docs/ai/MULTI_BUSINESS_BASELINE.md. Storage tiene **132.374.670 B** en 374 objetos: 373 assets y 1 documento de órdenes. pg_cron está activo con facebook-watchdog cada 2 minutos.
 - Hay 4 perfiles dueños: RivaTech (13.317 filas vinculadas), leokevinr23 (19), y dos perfiles sin nombre (16 y 10). Solo RivaTech tiene central y dispositivo Facebook con heartbeat menor a 3 minutos; es el candidato único a administrador de plataforma.
 - Supabase Free publica 500 MB de base y 1 GB de Storage. Los umbrales al 90 % son 471.859.200 B y 900.000.000 B. **Desvío preventivo:** la identidad de los otros tres perfiles no se pudo acreditar como cuentas de prueba; E1 los dejará en base por defecto y conservará interno solo para RivaTech, sin UID ni emails en artefactos.
-- Diagnóstico de solo lectura; sin backup porque aún no hay migración, sin cambios productivos y sin datos QA. **Siguiente:** E1/F2, después de preparar backup verificado nuevo.
+- El smoke SQL de E1/E2 terminó en `TODO OK`, con **27 comprobaciones**. Diagnóstico de solo lectura; sin backup porque aún no hay migración, sin cambios productivos y sin datos QA. **Siguiente:** E1/F2, después de preparar backup verificado nuevo.
 
 ## 2026-11-02 — F1 completada; F2 siguiente
 

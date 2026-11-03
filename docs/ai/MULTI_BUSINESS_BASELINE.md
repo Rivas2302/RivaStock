@@ -1,7 +1,7 @@
 # Línea base multi-negocio — E0
 
-**Fecha:** 2 de noviembre de 2026 (ART)  
-**Entorno:** producción `RivaStock_Oficial`  
+**Fecha:** 2 de noviembre de 2026 (ART)
+**Entorno:** producción `RivaStock_Oficial`
 **Método:** consultas SQL de solo lectura. No hubo cambios en datos ni esquema.
 
 ## Uso del proyecto
