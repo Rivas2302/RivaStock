@@ -1,14 +1,15 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 20:24 ART — F3 suspensión en solo lectura desplegada
+## 2026-11-03 20:52 ART — F3 suspensión en solo lectura desplegada
 
 - Antes de la migración, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T231015Z`: **94 tablas / 14.075 filas**, `schema.sql` **945.385 B**, `data.sql` **40.775.743 B**, **733 objetos / 143.061.033 B** de Storage; inventario, conteos y hashes aprobados. El primer intento se detuvo porque esta copia no tenía configuración local de Supabase; inicialicé y vinculé la CLI y repetí el backup completo. No usé el volcado incompleto.
 - La migración `20261103225950_platform_suspension_write_guards` instala guards de `INSERT`, `UPDATE` y `DELETE` en cada tabla base `public` con `user_id`/`owner_uid`, en `profiles` y en `storage.objects`. Conserva acceso de lectura, service role, procesos sin JWT y administración de plataforma.
 - Producción confirma la migración aplicada, **81/81** tablas de negocio protegidas, **0** sin guard y los tres eventos de Storage cubiertos. Pruebas PGlite generadas desde `information_schema` ejercitan inserts, modificaciones y borrados, colaborador, Storage, `profiles`, service role y administrador. Prueba dirigida **7/7**; suite completa **824/824**; `npm run lint`, build y `npm run perf:check` aprobados. Bundle inicial: **209.299 bytes gzip JS / 22.228 bytes CSS**.
 - La interfaz ahora espera la verificación del plan y bloquea mutaciones si la cuenta está suspendida o no puede confirmarse el permiso. El alcance incluye Stock y módulos cubiertos por `usePermission`, Ajustes, Business Setup, tareas y chats IA, memoria, Skills y Conocimientos; las acciones de consulta y exportación siguen disponibles. El aviso fijo de suspensión se conserva en el layout.
-- El commit `fc866f9` dejó desplegados los guards SQL y la primera barrera de interfaz. El seguimiento actual extiende los controles secundarios de IA y Conocimientos. Pruebas PGlite generadas desde el esquema: **7/7**; permiso/read-only y UI de memoria: **14/14**; suite completa **825/825**; `npm run lint`, build y `npm run perf:check` aprobados.
-- La prueba inicial en producción con Playwright simuló únicamente `my_business_plan.status = suspended`, confirmó el aviso fijo y que **Agregar Producto** está deshabilitado; no hizo escrituras ni cambió el estado real de una cuenta. Falta desplegar el seguimiento de controles secundarios y repetir el smoke en producción para IA y Conocimientos antes de cerrar F3.
-- **Desvío:** ninguno conocido. **Siguiente:** desplegar/verificar el seguimiento de F3 y luego ajustar `/plataforma` (F4).
+- `fc866f9` desplegó los guards SQL y la primera barrera de interfaz. El seguimiento `5587a23` completó los controles secundarios de IA y Conocimientos y quedó en `main`; Vercel confirmó **success**.
+- Producción se probó con Playwright y el perfil persistente, interceptando solo la respuesta de `my_business_plan` para simular `status = suspended`: aviso fijo visible, **Agregar Producto**, alta/carga de documentos, **Nuevo chat** y envío de tarea deshabilitados. Las rutas `/stock`, `/ia/conocimientos` y `/ia` respondieron; no hubo errores de página. No se hicieron escrituras ni se suspendió ninguna cuenta real.
+- Pruebas PGlite generadas desde el esquema: **7/7**; permiso/read-only y UI de memoria: **14/14**; suite completa **825/825**; `npm run lint`, build y `npm run perf:check` aprobados. Producción confirma la migración aplicada, **81/81** tablas de negocio protegidas, **0** sin guard y los tres eventos de Storage cubiertos.
+- **Desvío:** ninguno. **Siguiente:** ajustar `/plataforma` (F4).
 
 ## 2026-11-03 19:56 ART — Primeros pasos de onboarding según el plan desplegados
 
