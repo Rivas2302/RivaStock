@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:09 ART — Plan maestro adoptado; Bloque A revalidado en corte seguro
+
+- Copié desde Desktop `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, `multi-business-sql-smoke.mjs` y los dos SQL multiempresa. El smoke terminó con **27 comprobaciones / TODO OK**. `5bf4f6a` (`docs(ai): adopt master action plan`) está en `main` y fue pusheado a `origin/main`.
+- Leí completos `ACTION_PLAN.md`, `STATUS.md`, `OWNER_ACTIONS.md` y `AGENTS.md`. La copia adoptada reinicia algunas marcas que el STATUS histórico daba por completadas; voy a revalidar cada criterio antes de restaurar cualquier `[x]`.
+- El worktree quedó seguro: no hay migración, despliegue ni instalación del Bridge en curso; no hay cambios de código sin commitear. El único cambio local preexistente es `supabase/.temp/cli-latest`, que sigue excluido.
+- **A2 [x]** revalidada: `scripts/backup-db.test.ts` pasó **2/2**, `npm run check:no-secrets` no encontró patrones y el último backup diario informa `verification=passed`, **94 tablas / 13.901 filas**, Storage **739 objetos / 143.590.308 B**. No mostré ni guardé credenciales.
+- **A1 sigue [ ]**: `supabase migration list --linked` respondió correctamente y no hay drift. La inspección filtrada confirma las claves legacy aún activas y las claves nuevas presentes. Las funciones de producción siguen ACTIVE (`ai-bridge` v14, `automation` v11, `knowledge` v9, `invite-collaborator` v19, `delete-collaborator` v5). El dispositivo Facebook está en 0.5.15, sin captura ni `self-reload`; §5.2b bloquea cambios de extensión con cuatro ensayos esperando G2. Además de `automation` y `knowledge`, `scripts/backup-storage.mjs` todavía usa el JWT legacy solo en Storage. `cli_login_postgres` venció automáticamente y no tiene consumidores de contraseña; no restablecí nada.
+- **A3 [x]**: el último backup verificado incluye los objetos de Storage y el manifiesto con tamaños/hashes. **A4 [x]**: `npm run verify` pasó (782 pruebas, build, secret scan, perf y auditoría frontend en cero); auditoría del Bridge también en cero.
+- **Siguiente:** seguir Bloque B; reconciliar B2/B4 con los criterios actuales y dejar B3/Claude opcional y diferida. A1 permanece sin cierre seguro hasta eliminar los consumidores legacy de Storage y refrescar la extensión; no desactivaré las claves mientras esos consumidores estén activos.
+
 ## 2026-11-03 10:53 ART — F5 respaldo diario instalado
 
 - Comparé `ACTION_PLAN.md` con Desktop y `origin/main`: la copia del worktree es posterior a Desktop y conserva la revisión más reciente. F5 queda `[x]`.
