@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:36 ART — E4 verificada en producción; E5 espera la purga programada
+
+- Antes de E4 comparé ACTION_PLAN, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke y el plan del publicador con Desktop y `origin/main`. MULTI_BUSINESS y el smoke coinciden; ACTION_PLAN conserva las marcas de tareas verificadas; la copia Desktop del plan del publicador es anterior a la de `main`.
+- E0–E3 y E4 quedan `[x]`: las migraciones de central local y apertura bajo demanda aparecen aplicadas; `knowledge` está ACTIVE v9. En producción, `ai_central_status` informó **166 B**, 1 archivo, 0 faltantes y `mirror_status=none`. La tarjeta en IA → Conexión mostró 166 B, un archivo y el aviso esperado “Sin copia de respaldo”.
+- La copia local de 166 B coincide con `content_hash` de la versión marcada `local`. No se purgó el objeto de nube: el vencimiento normal es **2026-11-06 10:06:19 UTC** y `cloud_purged_at` sigue nulo. El QA de E5 permanece reservado hasta probar abrir bajo demanda y limpiarlo después desde la app.
+- No hubo migración, despliegue ni instalación en este cierre. El backup de hoy sigue fuera del repo; antes de cualquier migración futura se hará uno nuevo con Storage.
+- **Siguiente:** E5 queda esperando su plazo de retención. Mientras tanto, seguir con las tareas de Bloque C que no cambian la extensión según §5.2b; T1.6/T2.5/T4.1/T4.3/T4.4/T4.6/T5.6/T6.2–T6.4 y C0 siguen detrás de G2/§5.2b.
+
 ## 2026-11-03 07:36 ART — B4 cerrado; el límite §5.2b bloquea C0
 
 - B4 cumple el cierre: C1, C2.1, C3, C4 y C5.4/C5.5 están documentados; C2.2/Claude queda como único pendiente opcional, sin acción del dueño. T2.3 conserva 1.19.0 como despliegue y fija **1.23.0** como siguiente minor después del Bridge 1.22.0. `OWNER_ACTIONS.md` se ajustó a §8: Chrome con la sesión y extensión activa para los ensayos por RPC, más la selección posterior de T6.1; no lista rotaciones ni Claude.
