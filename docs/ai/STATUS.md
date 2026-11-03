@@ -1,5 +1,11 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:13 ART — B2 reconciliada con la evaluación real y checklist documentada
+
+- Comparé `ACTION_PLAN.md` con Desktop y `origin/main`; para B2 el criterio coincide. Releí la evidencia de producción registrada y el resultado real `20261103T100607625Z-low.json`: 41 casos, Codex local GPT-6 Luna Bajo, `passed=true`; 20/20 retención importante, 20/20 recuperación, 32/32 precisión, 10/10 actualizaciones, 3/3 sensibles, 12/12 archivo, 11/11 olvidos y 4/4 recuerdos archivados ausentes. Los casos A→E y la limpieza desde la app están documentados.
+- B2 cumple los cinco criterios y queda `[x]`. No repetí tareas productivas ni alteré datos; el resultado ya satisface las métricas. Claude permanece opcional y diferida bajo B3.
+- **Siguiente:** cerrar B4 documentalmente; después evaluar C0 con la puerta §5.2b y seguir E mientras C esté bloqueado.
+
 ## 2026-11-03 11:09 ART — Plan maestro adoptado; Bloque A revalidado en corte seguro
 
 - Copié desde Desktop `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, `multi-business-sql-smoke.mjs` y los dos SQL multiempresa. El smoke terminó con **27 comprobaciones / TODO OK**. `5bf4f6a` (`docs(ai): adopt master action plan`) está en `main` y fue pusheado a `origin/main`.

@@ -261,7 +261,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 - Quitar de `OWNER_ACTIONS.md` la acción “AI Bridge 1.12.0” si quedó resuelta.
 - **Commit:** `docs(ai): record AI Bridge 1.12.0 rollout`
 
-### [ ] B2 Corregir “olvidar” en la memoria compartida (C5.4)
+### [x] B2 Corregir “olvidar” en la memoria compartida (C5.4)
 Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archivó; una orden más explícita archivó, pero el asistente respondió que no podía borrar el recuerdo.
 1. **Reproducir** con un test que use la frase exacta y localizar la causa en la cadena completa: prefiltro y detección de orden explícita (`tools/rivastock-ai-bridge/src/memory/filters.ts`), selección de recuerdos candidatos para archivar (¿llega el recuerdo relacionado al prompt?), prompt y validación de operaciones (`memory/extract.ts`) y aplicación en la Edge Function `knowledge`.
 2. **Corregir** para que “olvidá / olvidate / borrá / sacá de la memoria / ya no recuerdes … lo de X” archive el recuerdo relacionado aunque la frase sea corta o coloquial, y no archive nada si no hay uno claramente relacionado.
