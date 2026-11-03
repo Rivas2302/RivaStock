@@ -1,5 +1,10 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — A3 revalidada con backup de Storage
+
+- La ejecución integrada `npm run backup:db -- --with-storage` descargó y verificó los 4 buckets fuera del repo: **374 objetos / 132.374.670 B**; `storage-manifest.json` registró tamaños y SHA-256 coincidentes. El backup completo está en `%USERPROFILE%\rivastock-backups\20261103T072850Z`, con `verification: "passed"` y sin marcador de backup incompleto.
+- A3 continúa `[x]`. No se aplicó una migración ni se alteraron objetos; la dependencia de Storage con JWT legacy queda documentada por A1.
+
 ## 2026-11-03 — A1 revalidada; rotación legacy sigue abierta por consumidores activos
 
 - Releí `KEY_ROTATION.md` y revisé la API vigente de Supabase. El inventario CLI, filtrado en memoria, confirmó por metadatos la pareja legacy y las claves nuevas `default`; no salió ningún valor. `cli_login_postgres` usa una contraseña temporal que vence en unos cientos de segundos, y no hay consumidor del password de base; no hace falta resetearlo.
