@@ -10,7 +10,8 @@ import {
   getAssignableInventoryOwners,
   getInventoryOwnerName,
 } from '../lib/inventoryOwners';
-import { db, deleteFromStorage } from '../lib/db';
+import { db, deleteFromStorage, invalidateDbCache } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import {
   buildHoldingDrafts,
   filterProductsByHoldingOwner,
@@ -73,7 +74,7 @@ import { motion } from 'motion/react';
 
 export default function Stock() {
   const {
-    user, refetchToken, holdingsEnabled, inventoryAccessError,
+    user, isOwner, refetchToken, holdingsEnabled, inventoryAccessError,
     allowedInventoryOwnerIds, operableInventoryOwnerIds,
   } = useAuth();
   const canWrite = usePermission('stock', 'write');
@@ -103,6 +104,8 @@ export default function Stock() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [qaPublishAllowedSaving, setQaPublishAllowedSaving] = useState(false);
+  const [qaPublishAllowedError, setQaPublishAllowedError] = useState('');
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
     categoryId: '',
@@ -130,6 +133,30 @@ export default function Stock() {
     () => getAssignableInventoryOwners(inventoryOwners, editingProduct?.inventoryOwnerId),
     [editingProduct?.inventoryOwnerId, inventoryOwners],
   );
+
+  async function setProductQaPublishAllowed(allowed: boolean) {
+    if (!isOwner || !editingProduct || qaPublishAllowedSaving) return;
+    setQaPublishAllowedSaving(true);
+    setQaPublishAllowedError('');
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('Necesitás conexión para cambiar el permiso de pruebas.');
+      }
+      const { error } = await supabase.from('products')
+        .update({ qa_publish_allowed: allowed })
+        .eq('id', editingProduct.id)
+        .eq('user_id', user?.uid ?? '');
+      if (error) throw error;
+      const updated = { ...editingProduct, qaPublishAllowed: allowed };
+      setEditingProduct(updated);
+      setProducts(current => current.map(product => product.id === updated.id ? updated : product));
+      invalidateDbCache('products');
+    } catch (error) {
+      setQaPublishAllowedError((error as Error).message || 'No se pudo actualizar el permiso de pruebas.');
+    } finally {
+      setQaPublishAllowedSaving(false);
+    }
+  }
 
   const fetchData = async () => {
     if (!user || inventoryAccessError) return;
@@ -352,6 +379,7 @@ export default function Stock() {
     setSupplierProductCreationContext(options?.supplierContext ?? null);
     setReturnToResellerList(Boolean(options?.returnToResellerList || forReseller || promoteToStock));
     setEditingProduct(product ?? null);
+    setQaPublishAllowedError('');
     productIntentRef.current = null;
     setIsUploadingImage(false);
     setFormData(next);
@@ -1637,6 +1665,28 @@ export default function Stock() {
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white h-24 resize-none"
               />
             </div>
+
+            {isOwner && editingProduct && !editingProduct.catalogOnly && !promotingCatalogProduct && (
+              <fieldset className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+                <label className="flex items-start gap-3 text-sm font-medium text-slate-800 dark:text-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={editingProduct.qaPublishAllowed === true}
+                    disabled={qaPublishAllowedSaving}
+                    onChange={event => void setProductQaPublishAllowed(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600"
+                  />
+                  <span>
+                    <span className="block">Permitir en pruebas automáticas</span>
+                    <span className="mt-1 block text-xs font-normal text-slate-600 dark:text-slate-300">
+                      Habilita este producto para la certificación real del publicador. No inicia ni aprueba publicaciones.
+                    </span>
+                  </span>
+                </label>
+                {qaPublishAllowedSaving && <p role="status" className="mt-2 text-xs text-slate-500">Guardando permiso…</p>}
+                {qaPublishAllowedError && <p role="alert" className="mt-2 text-xs text-rose-700 dark:text-rose-300">{qaPublishAllowedError}</p>}
+              </fieldset>
+            )}
           </div>
 
           <div className="flex gap-3 pt-4">

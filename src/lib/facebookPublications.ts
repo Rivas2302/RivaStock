@@ -23,7 +23,7 @@ export function composeGroupPublicationText(content: PublicationContent, copy: s
   const narrative = stripGroupMetadata(copy) || `${content.title}\n\n${content.description}`;
   return `${narrative}\n\nPrecio: ${formatCurrency(content.price).replace(/\s/g,'')}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
-export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null }
+export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null; qa_publish_allowed?: boolean }
 export function groupCompatibility(group:FacebookGroup):string|null {
   if(group.mechanism!=='group_direct')return 'Este flujo de grupo no está implementado.';
   try{normalizeGroupUrl(group.url);return null;}catch{return 'Falta una URL válida del grupo. No se puede identificar el destino por su nombre.';}

@@ -1,11 +1,24 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 — T5.4 desplegada; T5.5 es el próximo trabajo independiente
+## 2026-11-03 — T6.1 preparada; selección del dueño pendiente
+
+- Implementé los indicadores y controles visibles solo para el dueño en Stock y Automatizaciones. Las migraciones `20261103130000_facebook_qa_allowlist` y `20261103140000_facebook_qa_allowlist_policy_perf` ya están aplicadas en producción; la segunda optimiza la política RLS detectada por el advisor. El commit y el despliegue del frontend todavía están pendientes.
+- Producción conserva los valores predeterminados `false`: 439 productos habilitables y 69 grupos; cero están permitidos. No cambié filas, no creé ensayos y no hubo publicaciones.
+- Pruebas locales: lint; **723/723** en 119 archivos; concurrencia PostgreSQL Facebook **20/20**; build y `perf:check` aprobados. La migración PGlite comprueba valores predeterminados y que un colaborador no pueda habilitar productos o grupos.
+- **T6.1 sigue `[ ]`** hasta que Riva marque 3–5 productos y 5–10 grupos desde la app. Sin esa selección, la certificación real sigue cerrada; no se publicará fuera de ensayo. La extensión no cambió.
+- **Siguiente:** publicar este corte y verificar en producción; después, T7.1 puede avanzar sin esperar la puerta de Facebook.
+
+### Pendiente por puerta
+
+- T1.6, T2.5, T4.1/T4.3/T4.4/T4.6, T5.6 y T6.2–T6.4 esperan la puerta G2/G4 y/o la selección del dueño. La extensión reporta 0.5.15, sin capacidad de capturas; §5.2b impide empezar otro cambio de extensión mientras haya al menos tres pruebas en vivo pendientes.
+- T5.5 queda abierta: la programación y el ritmo requieren cerrar el gate del worker de la extensión; no se desplegó una política parcial que el worker actual no respeta.
+
+## 2026-11-03 — T5.4 desplegada
 
 - T5.4 está completa y desplegada en `main` (`f6fc429`); Vercel `success`. La migración `20261103120000_fb_group_performance` se aplicó después del backup verificado `%USERPROFILE%\rivastock-backups\20261103T051319Z`; `supabase migration list --linked` confirma que está aplicada.
 - El view por negocio es `security_invoker`, solo lectura para `authenticated`, sin permiso de lectura para `anon`. La UI de producción cargó los 69 grupos sin alertas ni errores. No se crearon datos ni hubo interacción con Facebook.
 - Pruebas: lint; 719/719; PGlite 57/57; concurrencia 20/20; build y `perf:check` aprobados. El panel nuevo es `lazy` para quedar bajo el presupuesto de Automatizaciones.
-- **Siguiente:** T5.5 únicamente en SQL/UI/Bridge hasta que §5.2b permita tocar la extensión; no publicar fuera de ensayo.
+- **Siguiente en ese momento:** resolver T5.5 solo si puede hacerse sin un cambio de extensión; después avanzar con T6.1 en código. No publicar fuera de ensayo.
 
 ## 2026-11-03 — E3 desplegada y validada en producción
 

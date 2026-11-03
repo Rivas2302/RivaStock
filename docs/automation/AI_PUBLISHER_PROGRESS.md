@@ -1,5 +1,17 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-03 — T6.1 código y base aplicados; despliegue de UI pendiente
+
+- Antes de empezar comparé `ACTION_PLAN.md`, `AI_PUBLISHER_EXECUTION_PLAN.md` y `MULTI_BUSINESS_EXECUTION_PLAN.md` con `C:\Users\USER\Desktop\IA\RivaStock\docs\`: la copia del worktree es más reciente en los tres casos; no copié la versión anterior del Desktop.
+- Backups verificados con `npm run backup:db -- --with-storage` antes de cada migración:
+  - `%USERPROFILE%\rivastock-backups\20261103T053250Z`: 87 tablas, 13.843 filas exactas; schema 828.112 B, datos 40.159.400 B; 4 buckets, 374 objetos y 132.374.670 B; `verification: passed`.
+  - `%USERPROFILE%\rivastock-backups\20261103T053938Z`: 87 tablas, 13.843 filas exactas; schema 830.623 B, datos 40.160.456 B; 4 buckets, 374 objetos y 132.374.670 B; `verification: passed`.
+- Se aplicaron solo `20261103130000_facebook_qa_allowlist.sql` y su ajuste RLS de rendimiento `20261103140000_facebook_qa_allowlist_policy_perf.sql`, cada una después de su backup; ambas figuran aplicadas en `supabase migration list --linked`. El rol autenticado actualiza únicamente la columna del grupo; anon no puede hacerlo. Los triggers rechazan que un colaborador habilite productos o grupos.
+- Producción tiene **439 productos y 69 grupos**, todos con `qa_publish_allowed=false`. No actualicé datos de negocio, no generé ensayos ni se publicó contenido.
+- Stock agrega el interruptor del producto en su editor; Automatizaciones → Configuración agrega los interruptores de grupos. Ambos controles solo se renderizan para el dueño y su cambio es inmediato; no inicia ni aprueba publicaciones. **T6.1 permanece `[ ]`** hasta que Riva elija 3–5 productos y 5–10 grupos.
+- Verificación local: lint; `npm test -- --maxWorkers=1` **723/723** en 119 archivos; suite PGlite focal **4/4**; `npm run test:facebook:concurrency` **20/20**; build y `perf:check` aprobados. Sin cambios a la extensión.
+- **Estado:** la migración está aplicada, pero el código de UI aún requiere commit, despliegue exitoso y smoke de lectura. Después sigue T7.1, que no necesita la puerta G2/G4.
+
 ## 2026-11-03 — T5.4 sugerencias y rendimiento de grupos desplegados
 
 - Antes de empezar, comparé los planes de trabajo con Desktop y `origin/main`: la copia local de `AI_PUBLISHER_EXECUTION_PLAN.md` es más reciente que Desktop; el `ACTION_PLAN.md` local también es posterior. Seguí la copia local. No cambié la extensión.

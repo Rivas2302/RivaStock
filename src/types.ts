@@ -119,6 +119,7 @@ export interface Product {
   images?: string[];
   showInCatalog: boolean;
   catalogOnly?: boolean;
+  qaPublishAllowed?: boolean;
   catalogCost?: number | null;
   notes?: string;
   description?: string;
