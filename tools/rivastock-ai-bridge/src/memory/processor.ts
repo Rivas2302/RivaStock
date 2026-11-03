@@ -1,6 +1,6 @@
 import { embedQuery, embedTexts, EMBEDDING_MODEL, PASSAGE_PREFIX } from '../knowledge/embed.ts';
 import type { KnowledgeClient } from '../knowledge/client.ts';
-import type { AIProvider } from '../types.ts';
+import { DEFAULT_CODEX_SECURITY, type AIProvider, type CodexSecuritySettings } from '../types.ts';
 import { memorySimilarityQuery, normalizedEditDistance } from './filters.ts';
 import {
   extractMemoryOperations, isNearDuplicate, makeApplyPayload,
@@ -18,6 +18,7 @@ interface MemoryProcessorOptions {
   entries: MemoryQueueEntry[];
   codexProvider: AIProvider;
   codexEnabled: boolean;
+  codexSecurity?: CodexSecuritySettings;
   localLlmUrl: string | null;
   localLlmModel: string | null;
   log: (message: string) => void;
@@ -84,10 +85,13 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
       exchanges: remaining,
       similar: extractionContext,
       summaryDue,
-      ...(similar.extraction_settings ? { providerOptions: {
+      providerOptions: {
+        ...(similar.extraction_settings ? {
         model_id: similar.extraction_settings.model_id,
         reasoning_effort: similar.extraction_settings.reasoning_effort,
-      } } : {}),
+        } : {}),
+        codex_security: options.codexSecurity ?? DEFAULT_CODEX_SECURITY,
+      },
       localUrl: options.localLlmUrl ?? undefined,
       localModel: options.localLlmModel ?? undefined,
       dependencies: options.embedTexts ? { embed: options.embedTexts } : undefined,

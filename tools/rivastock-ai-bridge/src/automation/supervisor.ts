@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import type { AIProvider, BridgeConfig } from '../types.ts';
+import type { AIProvider, BridgeConfig, CodexSecuritySettings } from '../types.ts';
 import { providerFor } from '../providers.ts';
 import { reportError } from '../safeError.ts';
 import { withDownloadedOrganizeImages } from '../knowledge/organizeImages.ts';
@@ -20,6 +20,7 @@ export interface SupervisorLoopOptions {
   log: (message: string) => void;
   sleep?: (milliseconds: number) => Promise<void>;
   createProvider?: (provider: 'codex' | 'claude', config: BridgeConfig) => AIProvider;
+  getCodexSecurity?: () => CodexSecuritySettings;
   temporaryRoot?: string;
   fetchImage?: typeof fetch;
   onControllerStart?: (controller: AbortController) => void;
@@ -108,6 +109,7 @@ async function generateDecision(
     reasoning_effort: task.settings.reasoning_effort,
     chat_id: null,
     session_id: null,
+    codex_security: options.getCodexSecurity?.(),
     ...(images.length ? { images } : {}),
   };
   const first = await provider.execute(buildSupervisorPrompt(task), controller.signal, '', providerOptions);

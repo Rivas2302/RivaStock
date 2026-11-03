@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BridgeClient } from '../src/client.ts';
+import { BridgeClient, parseCodexSecurity } from '../src/client.ts';
+import { DEFAULT_CODEX_SECURITY } from '../src/types.ts';
 import { KnowledgeClient } from '../src/knowledge/client.ts';
 
 test('BridgeClient claims with update-signal support and reports shutdown requests', async () => {
@@ -32,6 +33,25 @@ test('BridgeClient clears the update pause when a worker starts', async () => {
     const client = new BridgeClient('https://demo.supabase.co/functions/v1/ai-bridge', 'x'.repeat(40));
     await client.start('123e4567-e89b-42d3-a456-426614174000');
     assert.deepEqual(request, { action: 'worker_start', worker_id: '123e4567-e89b-42d3-a456-426614174000' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('BridgeClient adopts valid heartbeat security and defaults unknown modes to read-only', async () => {
+  const originalFetch = globalThis.fetch;
+  const responses = [
+    { security: { codex_sandbox: 'workspace-write', allow_project_root: true } },
+    { security: { codex_sandbox: 'unknown', allow_project_root: true } },
+  ];
+  globalThis.fetch = async () => new Response(JSON.stringify(responses.shift()), { status: 200 });
+  try {
+    const client = new BridgeClient('https://demo.supabase.co/functions/v1/ai-bridge', 'x'.repeat(40));
+    assert.deepEqual(await client.heartbeat('123e4567-e89b-42d3-a456-426614174000', 'idle'), {
+      codex_sandbox: 'workspace-write', allow_project_root: false,
+    });
+    assert.deepEqual(await client.heartbeat('123e4567-e89b-42d3-a456-426614174000', 'idle'), DEFAULT_CODEX_SECURITY);
+    assert.deepEqual(parseCodexSecurity(null), DEFAULT_CODEX_SECURITY);
   } finally {
     globalThis.fetch = originalFetch;
   }

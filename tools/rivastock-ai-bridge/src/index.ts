@@ -19,7 +19,7 @@ import { SupervisorClient } from './automation/client.ts';
 import { runFacebookSupervisorLoop } from './automation/supervisor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
-import { loadConfig, type AIProviderId } from './types.ts';
+import { DEFAULT_CODEX_SECURITY, loadConfig, type AIProviderId, type CodexSecuritySettings } from './types.ts';
 
 const POLL_INTERVAL_MS = 3000;
 const EXECUTION_TIMEOUT_MS = 120_000;
@@ -39,6 +39,19 @@ let lastWorkspaceSyncAt = 0;
 let lastChatTombstoneSyncAt = 0;
 let lastMemoryEmbeddingSyncAt = 0;
 const memoryQueue = new MemoryTurnQueue(20, 6);
+let codexSecurity: CodexSecuritySettings = DEFAULT_CODEX_SECURITY;
+let heartbeatSequence = 0;
+
+async function heartbeat(state: 'idle' | 'busy', jobId: string | null = null): Promise<void> {
+  const sequence = ++heartbeatSequence;
+  try {
+    const next = await client.heartbeat(workerId, state, jobId);
+    if (sequence === heartbeatSequence) codexSecurity = next;
+  } catch (error) {
+    if (sequence === heartbeatSequence) codexSecurity = DEFAULT_CODEX_SECURITY;
+    throw error;
+  }
+}
 
 function stopBridge(): void {
   stopping = true;
@@ -50,11 +63,12 @@ process.on('SIGINT', stopBridge);
 process.on('SIGTERM', stopBridge);
 
 async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string }): Promise<void> {
+  const taskSecurity = { ...codexSecurity };
   const controller = new AbortController();
   activeController = controller;
   const timeout = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
-  const heartbeat = setInterval(() => {
-    void client.heartbeat(workerId, 'busy', job.id).catch(() => {
+  const heartbeatTimer = setInterval(() => {
+    void heartbeat('busy', job.id).catch(() => {
       process.stderr.write('[AI Bridge] No se pudo renovar el lease de la tarea.\n');
     });
   }, HEARTBEAT_INTERVAL_MS);
@@ -76,6 +90,7 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
             chat_id: null,
             session_id: null,
             images,
+            codex_security: taskSecurity,
           });
           if (result.imageInputUnavailable) {
             missingInformation.push('Claude Code no recibió las capturas; usá Codex para que la IA las vea.');
@@ -100,8 +115,9 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
           chat_id: null,
           session_id: null,
           safe_text_only: true,
+          codex_security: taskSecurity,
         }
-        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true };
+        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true, codex_security: taskSecurity };
       const result = await provider.execute(buildFacebookCopywritingPrompt(context), controller.signal, '', providerOptions);
       const output = parseFacebookCopywritingOutput(result.output, context);
       if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
@@ -130,8 +146,9 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
           chat_id: null,
           session_id: null,
           safe_text_only: true,
+          codex_security: taskSecurity,
         }
-        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true };
+        : { model_id: context.provider_model_id, chat_id: null, session_id: null, safe_text_only: true, codex_security: taskSecurity };
       await withDownloadedOrganizeImages(remoteImages, async (images, missingInformation) => {
         if (images.length !== remoteImages.length || missingInformation.length) {
           throw new Error('No se pudieron cargar todas las fotos para revisarlas.');
@@ -158,7 +175,7 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     await syncWorkspaceFiles(config.workspaceDirectory, workspaceFiles);
     lastWorkspaceSyncAt = Date.now();
     const jobContext = await client.jobContext(workerId, job.id);
-    const projectFiles = jobContext.include_project_context
+    const projectFiles = jobContext.include_project_context && taskSecurity.allow_project_root
       ? await collectProjectContext(config.projectRootDirectory) : [];
     const provider = providerFor(job.provider, config);
     await executeTextGeneration({
@@ -183,6 +200,7 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
         reasoning_effort: jobContext.reasoning_effort ?? 'low',
         chat_id: jobContext.chat_id,
         session_id: jobContext.provider_session_id,
+        codex_security: taskSecurity,
       },
       complete: (output, sessionId) => client.complete(workerId, job.id, output, sessionId),
       log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
@@ -196,9 +214,9 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     process.stderr.write(`[AI Bridge] Tarea ${job.id} falló: ${safeMessage}\n`);
   } finally {
     clearTimeout(timeout);
-    clearInterval(heartbeat);
+    clearInterval(heartbeatTimer);
     activeController = null;
-    await client.heartbeat(workerId, 'idle').catch(() => undefined);
+    await heartbeat('idle').catch(() => undefined);
   }
 }
 
@@ -210,6 +228,9 @@ async function syncDeletedChatSessions(): Promise<void> {
   for (const tombstone of tombstones) {
     try {
       await cleanChatSessionDirectory(config.sessionDirectory, tombstone.provider, tombstone.chat_id);
+      if (tombstone.provider === 'codex') {
+        await cleanChatSessionDirectory(config.workspaceDirectory, tombstone.provider, tombstone.chat_id);
+      }
       cleanedChatIds.push(tombstone.chat_id);
     } catch (error) {
       process.stderr.write(`[AI Bridge] No se pudo limpiar la sesión del chat ${tombstone.chat_id}: ${reportError(error instanceof Error ? error.message : 'Error local de archivos.')}\n`);
@@ -223,7 +244,7 @@ async function run(): Promise<void> {
   process.stdout.write('[AI Bridge] Conectando a RivaStock por HTTPS.\n');
   while (!stopping) {
     try {
-      await client.heartbeat(workerId, 'idle');
+      await heartbeat('idle');
       await syncDeletedChatSessions();
       if (Date.now() - lastWorkspaceSyncAt >= WORKSPACE_SYNC_INTERVAL_MS) {
         const files = await client.workspaceFiles(workerId);
@@ -240,7 +261,7 @@ async function run(): Promise<void> {
         const memoryController = new AbortController();
         activeController = memoryController;
         const keepAlive = setInterval(() => {
-          void client.heartbeat(workerId, 'idle').catch(() => undefined);
+          void heartbeat('idle').catch(() => undefined);
         }, HEARTBEAT_INTERVAL_MS);
         try {
           await processMemoryBatch({
@@ -251,6 +272,7 @@ async function run(): Promise<void> {
               ? providerFor('codex', config)
               : { async execute() { throw new Error('Codex está deshabilitado.'); } },
             codexEnabled: config.codexEnabled,
+            codexSecurity,
             localLlmUrl: config.localLlmUrl,
             localLlmModel: config.localLlmModel,
             signal: memoryController.signal,
@@ -265,7 +287,7 @@ async function run(): Promise<void> {
         const memoryController = new AbortController();
         activeController = memoryController;
         const keepAlive = setInterval(() => {
-          void client.heartbeat(workerId, 'idle').catch(() => undefined);
+          void heartbeat('idle').catch(() => undefined);
         }, HEARTBEAT_INTERVAL_MS);
         try {
           const count = await processPendingMemoryEmbeddings(knowledgeClient, config.workerId,
@@ -340,6 +362,7 @@ async function runWithInstanceLock(): Promise<void> {
         config,
         isStopping: () => stopping,
         log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+        getCodexSecurity: () => codexSecurity,
         onControllerStart: (controller) => { supervisorController = controller; },
         onControllerFinish: (controller) => {
           if (supervisorController === controller) supervisorController = null;

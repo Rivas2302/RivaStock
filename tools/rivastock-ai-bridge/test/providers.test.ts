@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { codexExecutionPolicy, MockProvider, providerFor } from '../src/providers.ts';
-import { loadConfig } from '../src/types.ts';
+import { buildProviderPrompt, codexExecutionPolicy, MockProvider, providerFor } from '../src/providers.ts';
+import type { AIProvider, AIProviderOptions, CodexSecuritySettings } from '../src/types.ts';
+import { DEFAULT_CODEX_SECURITY, loadConfig } from '../src/types.ts';
 
 test('MockProvider returns generated text without an external process', async () => {
   const provider = new MockProvider();
@@ -25,7 +26,45 @@ test('text-only Codex jobs disable shell, image, sleep, network, and web search'
     features: { shell_tool: false, view_image: false, sleep_tool: false },
     thread: { sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false, webSearchMode: 'disabled' },
   });
-  assert.equal(codexExecutionPolicy(false).thread.sandboxMode, 'danger-full-access');
+  assert.equal(codexExecutionPolicy(false).thread.sandboxMode, 'read-only');
+});
+
+test('Codex security is read-only by default and respects each server mode', () => {
+  assert.deepEqual(codexExecutionPolicy(false), {
+    features: { shell_tool: true, view_image: true, sleep_tool: true },
+    thread: { sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false, webSearchMode: 'disabled' },
+  });
+  assert.equal(codexExecutionPolicy(false, { codex_sandbox: 'workspace-write', allow_project_root: false }).thread.sandboxMode, 'workspace-write');
+  assert.deepEqual(codexExecutionPolicy(false, { codex_sandbox: 'danger-full-access', allow_project_root: true }).thread, {
+    sandboxMode: 'danger-full-access', approvalPolicy: 'never', networkAccessEnabled: true, webSearchMode: 'live',
+  });
+});
+
+test('a fake provider receives enforced read-only settings for a filesystem/network side-effect request', async () => {
+  const readOnly: CodexSecuritySettings = { codex_sandbox: 'read-only', allow_project_root: false };
+  let received: AIProviderOptions | undefined;
+  const fakeProvider: AIProvider = {
+    async execute(_input, _signal, _workspace, options) {
+      received = options;
+      return { output: 'Refused by the configured read-only policy.' };
+    },
+  };
+  await fakeProvider.execute('Create a marker on the desktop and send a network request.', new AbortController().signal, '', {
+    codex_security: readOnly,
+  });
+  assert.deepEqual(codexExecutionPolicy(false, received?.codex_security), {
+    features: { shell_tool: true, view_image: true, sleep_tool: true },
+    thread: { sandboxMode: 'read-only', approvalPolicy: 'never', networkAccessEnabled: false, webSearchMode: 'disabled' },
+  });
+  assert.match(buildProviderPrompt('Read these supplied notes.', '', { codex_security: readOnly }), /read-only environment/);
+});
+
+test('allow_project_root cannot expand beyond internal full-access mode', () => {
+  assert.deepEqual(codexExecutionPolicy(false, {
+    codex_sandbox: 'danger-full-access', allow_project_root: false,
+  }).thread, {
+    sandboxMode: 'danger-full-access', approvalPolicy: 'never', networkAccessEnabled: true, webSearchMode: 'live',
+  });
 });
 
 test('bridge config requires HTTPS and a long token', () => {

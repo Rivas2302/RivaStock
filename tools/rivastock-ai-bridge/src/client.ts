@@ -1,4 +1,4 @@
-import type { AIJob, AIJobContext, AIProviderId, AIWorkspaceFile } from './types.ts';
+import { DEFAULT_CODEX_SECURITY, type AIJob, type AIJobContext, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const CHAT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -12,8 +12,9 @@ export interface AIChatTombstone {
 export class BridgeClient {
   constructor(private readonly endpoint: string, private readonly token: string) {}
 
-  async heartbeat(workerId: string, state: 'idle' | 'busy', jobId: string | null = null): Promise<void> {
-    await this.post('worker_heartbeat', { worker_id: workerId, state, job_id: jobId });
+  async heartbeat(workerId: string, state: 'idle' | 'busy', jobId: string | null = null): Promise<CodexSecuritySettings> {
+    const response = await this.post<{ security?: unknown }>('worker_heartbeat', { worker_id: workerId, state, job_id: jobId });
+    return parseCodexSecurity(response.security);
   }
 
   async claim(workerId: string): Promise<{ job: AIJob | null; shouldStop: boolean }> {
@@ -86,6 +87,16 @@ export class BridgeClient {
     if (!payload || typeof payload !== 'object') throw new Error('El backend devolvió una respuesta inválida.');
     return payload as T;
   }
+}
+
+export function parseCodexSecurity(value: unknown): CodexSecuritySettings {
+  if (typeof value !== 'object' || value === null || !('codex_sandbox' in value)) return DEFAULT_CODEX_SECURITY;
+  const mode = value.codex_sandbox;
+  if (mode !== 'read-only' && mode !== 'workspace-write' && mode !== 'danger-full-access') return DEFAULT_CODEX_SECURITY;
+  return {
+    codex_sandbox: mode,
+    allow_project_root: mode === 'danger-full-access' && 'allow_project_root' in value && value.allow_project_root === true,
+  };
 }
 
 export function isAIProviderId(value: string): value is AIProviderId {

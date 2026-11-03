@@ -421,7 +421,10 @@ test('uses the saved ai_memory_extract Codex model and effort for extraction', a
     codexEnabled: true, localLlmUrl: null, localLlmModel: null, log() {},
     embedQuery: async () => Array(384).fill(0),
   });
-  assert.deepEqual(receivedOptions, { model_id: 'gpt-6-luna', reasoning_effort: 'low' });
+  assert.deepEqual(receivedOptions, {
+    model_id: 'gpt-6-luna', reasoning_effort: 'low',
+    codex_security: { codex_sandbox: 'read-only', allow_project_root: false },
+  });
 });
 
 test('exact Santa Rosa forget request searches by its topic and applies only the matching archive', async () => {
@@ -447,7 +450,10 @@ test('exact Santa Rosa forget request searches by its topic and applies only the
     workerId: 'worker', entries: [forgetEntry], codexEnabled: true,
     codexProvider: { async execute(prompt, _signal, _context, options) {
       extractionPrompt = prompt;
-      assert.deepEqual(options, { model_id: 'gpt-6-luna', reasoning_effort: 'low' });
+      assert.deepEqual(options, {
+        model_id: 'gpt-6-luna', reasoning_effort: 'low',
+        codex_security: { codex_sandbox: 'read-only', allow_project_root: false },
+      });
       return { output: JSON.stringify({ operations: [
         { op: 'archive', id: memoryId, reason: 'El usuario pidió olvidarlo.' },
         { op: 'add', kind: 'fact', content: 'No debo agregar un recuerdo al procesar un olvido.' },

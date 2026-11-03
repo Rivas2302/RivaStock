@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEven
 import { Link } from 'react-router-dom';
 import { Bot, Brain, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import AIWorkspace from '../components/AIWorkspace';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
 import KnowledgeSources from '../components/ai/KnowledgeSources';
@@ -31,6 +30,8 @@ import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
 const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
+const BridgeSecurityMode = lazy(() => import('../components/ai/BridgeSecurityMode'));
+const AIWorkspace = lazy(() => import('../components/AIWorkspace'));
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -399,7 +400,7 @@ export default function AIHub() {
         onOpenMemory={(memoryId) => { setSelectedMemoryId(memoryId); setView('memory'); }}
       />}
 
-      {view === 'library' && <AIWorkspace/>}
+      {view === 'library' && <Suspense fallback={null}><AIWorkspace/></Suspense>}
 
       {view === 'memory' && <Suspense fallback={<div className="flex items-center gap-2 py-8 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando memoria…</div>}><AIMemory
         initialSelectedId={selectedMemoryId}
@@ -468,7 +469,7 @@ export default function AIHub() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
           <section className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-4"><span className="rounded-2xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Monitor size={28}/></span><div><h4 className="text-lg font-bold">{bridgeStatus?.device?.name ?? 'No hay una PC vinculada'}</h4><div className="mt-2"><ConnectionBadge state={bridgeState}/></div><p className="mt-2 text-xs text-[var(--ink-muted)]">{bridgeStatus?.last_seen_at ? `Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : bridgeStatus?.device ? 'Esperando el primer inicio del Bridge.' : 'Vinculá una computadora para empezar a usar el agente.'}</p></div></div>
+              <div className="flex items-center gap-4"><span className="rounded-2xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Monitor size={28}/></span><div><h4 className="text-lg font-bold">{bridgeStatus?.device?.name ?? 'No hay una PC vinculada'}</h4><div className="mt-2"><ConnectionBadge state={bridgeState}/></div><p className="mt-2 text-xs text-[var(--ink-muted)]">{bridgeStatus?.last_seen_at ? `Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : bridgeStatus?.device ? 'Esperando el primer inicio del Bridge.' : 'Vinculá una computadora para empezar a usar el agente.'}</p><Suspense fallback={null}><BridgeSecurityMode mode={bridgeStatus?.security?.codex_sandbox ?? 'read-only'}/></Suspense></div></div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Reemplazar PC' : 'Vincular esta PC'}</button>
                 {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{updaterBusy ? 'Preparando…' : 'Actualizar Bridge'}</button>}

@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -35,6 +35,28 @@ function jsonResponse(body: unknown, status = 200, origin?: string | null): Resp
     headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
   }
   return new Response(status === 204 ? null : JSON.stringify(body), { status, headers });
+}
+
+type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+type CodexSecuritySettings = { codex_sandbox: CodexSandboxMode; allow_project_root: boolean };
+const DEFAULT_CODEX_SECURITY: CodexSecuritySettings = { codex_sandbox: 'read-only', allow_project_root: false };
+
+async function codexSecurityForOwner(client: SupabaseClient, ownerUid: string): Promise<CodexSecuritySettings> {
+  const [limitsResult, subscriptionResult] = await Promise.all([
+    client.rpc('business_limits', { p_owner: ownerUid }),
+    client.from('business_subscriptions').select('plan_code').eq('owner_uid', ownerUid).maybeSingle(),
+  ]);
+  if (limitsResult.error || subscriptionResult.error || !limitsResult.data || typeof limitsResult.data !== 'object') {
+    return DEFAULT_CODEX_SECURITY;
+  }
+  const mode = (limitsResult.data as Record<string, unknown>).codex_sandbox;
+  if (mode !== 'read-only' && mode !== 'workspace-write' && mode !== 'danger-full-access') return DEFAULT_CODEX_SECURITY;
+  const planCode = subscriptionResult.data?.plan_code ?? 'base';
+  const effectiveMode = mode === 'danger-full-access' && planCode !== 'interno' ? 'read-only' : mode;
+  return {
+    codex_sandbox: effectiveMode,
+    allow_project_root: effectiveMode === 'danger-full-access' && planCode === 'interno',
+  };
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown> | null> {
@@ -284,7 +306,10 @@ serve(async (req) => {
         ? { data: null, should_stop: true }
         : { data: null }, 200, origin);
     }
-    return jsonResponse({ data }, 200, origin);
+    const security = action === 'worker_heartbeat'
+      ? await codexSecurityForOwner(serviceClient, ownerUid)
+      : undefined;
+    return jsonResponse({ data, ...(security ? { security } : {}) }, 200, origin);
   }
 
   const authorization = req.headers.get('authorization');
@@ -302,7 +327,12 @@ serve(async (req) => {
     if (name.trim().length < 1 || name.length > 80) return jsonResponse({ error: 'El nombre de la PC debe tener entre 1 y 80 caracteres.' }, 400, origin);
     const { data, error } = await userClient.rpc('pair_ai_bridge_device', { p_name: name });
     if (error) return safeDbError(error, 400, origin);
-    return jsonResponse({ pairing: data, endpoint: `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/ai-bridge` }, 200, origin);
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
+    });
+    const security = await codexSecurityForOwner(adminClient, user.id);
+    return jsonResponse({ pairing: data, endpoint: `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/ai-bridge`, security }, 200, origin);
   }
 
   if (action === 'revoke_device') {
@@ -479,6 +509,11 @@ serve(async (req) => {
   }
 
   if (action === 'status') {
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
+    });
+    const security = await codexSecurityForOwner(adminClient, user.id);
     const { data: device, error: deviceError } = await userClient.from('ai_bridge_devices')
       .select('id, name, state, last_seen_at, created_at')
       .is('revoked_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -492,6 +527,7 @@ serve(async (req) => {
         device: { id: device.id, name: device.name },
         paired: true,
         legacy: false,
+        security,
       }, 200, origin);
     }
 
@@ -511,10 +547,11 @@ serve(async (req) => {
         device: null,
         paired: false,
         legacy: true,
+        security,
       }, 200, origin);
     }
 
-    return jsonResponse({ state: 'offline', last_seen_at: null, device: null, paired: false, legacy: false }, 200, origin);
+    return jsonResponse({ state: 'offline', last_seen_at: null, device: null, paired: false, legacy: false, security }, 200, origin);
   }
 
   return jsonResponse({ error: 'Operación no permitida.' }, 400, origin);

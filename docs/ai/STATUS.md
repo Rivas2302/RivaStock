@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E3 implementada localmente; despliegue y validación pendientes
+
+- El Bridge 1.19.0 ahora interpreta el modo de seguridad enviado por cada heartbeat; ante un modo ausente, inválido o un heartbeat fallido, vuelve a `read-only`. Codex usa red desactivada en `read-only` y `workspace-write`; las escrituras de este último quedan dentro de `.rivastock-ai/workspace`. Solo permite contexto del proyecto con `allow_project_root`.
+- La Edge Function incluye `security` en heartbeat, vinculación y estado; el valor se calcula desde `business_limits(owner)` y solo habilita `danger-full-access`/raíz de proyecto para el plan `interno`. IA → Conexión muestra el modo; el texto se carga en un chunk diferido.
+- Verificación local: lint; **715/715** pruebas del frontend; typecheck y **96/96** pruebas del Bridge; build, `perf:check` (AIHub **237.989 B gzip JS**, inicio **209.101 B**) y smoke multiempresa (**38 comprobaciones, TODO OK**) aprobados. Codex SDK v0.163.0 expone los modos de sandbox usados por el Bridge.
+- Paquete local generado: AI Bridge **1.19.0**. No se aplicó migración ni se desplegó la Edge Function o el frontend; no se instaló el paquete. Falta la prueba real del plan en `read-only` y la prueba negativa en producción. **E3 sigue `[ ]`** hasta cerrar esas verificaciones.
+
 ## 2026-11-03 — E2 completo en producción
 
 - El corte E2.4 de frontend se publicó en `main` con `4ea5e64` mediante push autenticado como Rivas2302; Vercel reportó `success`. Las migraciones E2.1–E2.3 ya estaban aplicadas y verificadas antes del push.

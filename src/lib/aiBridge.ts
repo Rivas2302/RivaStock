@@ -5,6 +5,11 @@ export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 export type AIJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AIBridgeState = 'offline' | 'idle' | 'busy';
+export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export interface AIBridgeSecurity {
+  codex_sandbox: CodexSandboxMode;
+  allow_project_root: boolean;
+}
 
 export interface AIBridgeStatus {
   state: AIBridgeState;
@@ -12,10 +17,12 @@ export interface AIBridgeStatus {
   paired: boolean;
   legacy: boolean;
   device: { id: string; name: string } | null;
+  security?: AIBridgeSecurity;
 }
 
 export interface AIBridgePairing {
   endpoint: string;
+  security?: AIBridgeSecurity;
   pairing: {
     device_id: string;
     name: string;

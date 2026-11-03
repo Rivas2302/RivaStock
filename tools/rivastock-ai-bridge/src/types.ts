@@ -4,6 +4,15 @@ import { fileURLToPath } from 'node:url';
 export type AIProviderId = 'mock' | 'codex' | 'claude';
 export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export interface CodexSecuritySettings {
+  codex_sandbox: CodexSandboxMode;
+  allow_project_root: boolean;
+}
+export const DEFAULT_CODEX_SECURITY: CodexSecuritySettings = {
+  codex_sandbox: 'read-only',
+  allow_project_root: false,
+};
 
 export interface AIProviderOptions {
   model_id?: string;
@@ -12,6 +21,7 @@ export interface AIProviderOptions {
   session_id?: string | null;
   images?: Array<{ id: string; path: string }>;
   safe_text_only?: boolean;
+  codex_security?: CodexSecuritySettings;
   memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
 }
 
