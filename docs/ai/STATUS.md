@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:24 ART — D2 auditada; limpieza de QA pendiente por acceso a la app
+
+- Antes de D2 comparé `ACTION_PLAN.md` con Desktop y `origin/main`; las tres copias coinciden en el criterio. Consulté en solo lectura las 94 tablas `public` y los objetos Storage, devolviendo solo conteos. No hice cambios en la base.
+- Coincidencias `[QA]` en tablas: `knowledge_documents` 2; `knowledge_document_versions` 1; `knowledge_chunks` 1; `ai_job_knowledge_sources` 4; `knowledge_search_requests` 1; `products` 1; `inventory_product_commands` 3; `knowledge_events` 75; `audit_events` 13. No hubo objetos Storage cuyo nombre o metadatos contengan `[QA]`; tampoco matches en chats, tareas, memorias, ensayos ni trazas de Facebook.
+- Una versión central QA está verificada localmente y su objeto de nube aún no se purgó; se conserva para E5 hasta **2026-11-06 10:06:19 UTC**. El producto QA tiene activada la visibilidad de catálogo; lo notifiqué de inmediato y no alteré su estado fuera de la app. `knowledge_events`, `audit_events` y el historial de comandos son registros de auditoría/operación; no los borraré por SQL.
+- La limpieza normal requiere la UI. El perfil persistente que pidió el dueño está en uso por Chrome y no expone CDP; no inicié otra instancia sobre el perfil bloqueado ni usé computer-use. D2 queda `[ ]` hasta abrirlo con Playwright y eliminar desde la app los registros QA elegibles, conservando el documento de E5 hasta su prueba.
+- Actualicé `OWNER_ACTIONS.md` con una sola acción inmediata para liberar el perfil, más los pasos futuros de Facebook/T6.1. No se requiere que el dueño elimine datos manualmente.
+- **Siguiente:** con el perfil libre, limpiar por la app; después de E5, repetir el conteo y cerrar D2 si no quedan datos activos fuera de retención.
+
 ## 2026-11-03 11:22 ART — E0–E4 reconciliadas; E5 espera la purga natural
 
 - Antes de retomar Bloque E comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop y `origin/main`. La copia de Desktop conserva el contenido vigente; el worktree solo suma las marcas de avance que estoy reconciliando. El historial de `STATUS.md` y `MULTI_BUSINESS_BASELINE.md` respalda cada criterio de E0–E4; restauré esas cinco marcas `[x]`.
