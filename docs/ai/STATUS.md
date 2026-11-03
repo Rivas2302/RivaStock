@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — A1 revisado; corte de claves legacy sigue abierto
+
+- Revalidé en producción `key_mode: "secret"` para las cinco Edge Functions. Los GET sin efectos de `invite-collaborator` y `delete-collaborator` devolvieron 405; el log de inicialización de ambas confirmó `secret`. `ai-bridge`, `automation` y `knowledge` también registraron `secret`. La CLI se filtró en memoria a nombre/tipo/ID; hay claves legacy anon/service_role y claves nuevas publishable/secret, sin mostrar valores.
+- Revisé A1.8 con la guía oficial: la contraseña de `cli_login_postgres` es temporal y vence en pocos cientos de segundos. La comprobación registrada el 02/11 ya la encontraba vencida; el inventario no muestra consumidores de la contraseña. No hace falta restablecerla ni borrarla por SQL.
+- **A1 permanece abierto:** `automation` y `knowledge` conservan el JWT legacy solo para Storage. La documentación oficial dirige a crear las claves S3 desde el Dashboard y no encontré una operación de Management API documentada. Playwright con el perfil persistente de QA redirigió a Supabase sign-in; no se generó ninguna clave S3. La extensión activa sigue en 0.5.15, por lo que tampoco es seguro desactivar `anon`. No desactivé ninguna clave y no cambié producción.
+- No agregué una acción de rotación a `OWNER_ACTIONS.md`, conforme a la instrucción de resolverla desde el agente; el perfil sin sesión y la dependencia JWT quedan como bloqueo registrado. **Siguiente:** B4, porque A1 necesita una sesión de Dashboard y una sustitución de Storage antes de poder cerrar.
+
 ## 2026-11-03 — E2.4 y smoke ampliado listos localmente; despliegue sigue abierto
 
 - Implementé `storage_upload_check` antes de subir fotos (sumando original + miniatura) y comprobantes PDF. Las respuestas de presupuesto agotado y negocio suspendido se muestran con los textos exactos del plan; si la RPC falla o devuelve algo desconocido, la subida se bloquea.
