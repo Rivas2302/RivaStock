@@ -1199,3 +1199,9 @@ Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado 
 - En producción, `[QA]` A guardó lunes y mostró `Memoria actualizada` con `Deshacer`; `[QA]` C cambió el mismo recuerdo a miércoles y el chip de `updated` apareció en el mismo chat, sin navegar ni reabrir. La pestaña Memoria mostró un solo hecho activo con miércoles.
 - Limpieza normal de app: se borró el recuerdo y ambos chats. No quedaron chats `[QA]` ni recuerdos que coincidieran con Caballito en Activos, Archivados o Propuestas.
 - B2 quedó cerrada. La prueba de Claude en C5.4/C2.2 se difiere como opcional por el probe G3 previo que no completó; no se reintentó.
+
+#### B2 — Revalidación real de la evaluación — 2026-11-03
+
+- Al comparar con Desktop, la copia vigente de `ACTION_PLAN.md` tenía B2/B4 desmarcadas. Revalidé B2 sin cambiar el prompt ni los casos y corrí `npm run eval:memory` con Codex local real, GPT-6 Luna Bajo.
+- Los 41 casos pasaron: retención importante 20/20 (100%), recuperación top-5 20/20 (100%), precisión 32/32 (100%), actualizaciones 10/10 (100%), bloqueo sensible 3/3 (100%), archivo 12/12 (100%) y olvidos coloquiales/sin candidato 11/11 (100%). Resultado íntegro: `tools/rivastock-ai-bridge/test/memory-eval/results/20261103T080053334Z-low.json`.
+- La verificación de producción y limpieza `[QA]` ya constan en la sección B2 anterior y en `STATUS.md`; se restauró la marca `[x]` por cumplir los criterios vigentes. No se aplicó migración ni se instaló el Bridge.

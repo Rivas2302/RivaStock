@@ -1,5 +1,18 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — B2 revalidada contra la copia vigente del plan
+
+- La copia de `ACTION_PLAN.md` del Desktop había reabierto las marcas B2 y B4; su contenido técnico no difiere del plan adoptado. Releí los criterios y repetí la evaluación con Codex real, GPT-6 Luna Bajo, usando los 41 casos fijos.
+- Resultado guardado en `tools/rivastock-ai-bridge/test/memory-eval/results/20261103T080053334Z-low.json`: retención importante 20/20, recuperación top-5 20/20, precisión 32/32, actualizaciones 10/10, datos sensibles bloqueados 3/3, archivo 12/12 y olvidos 11/11. Todos los objetivos se cumplieron; no se modificaron casos ni prompt en esta revalidación.
+- La prueba de producción C5.4, corrección del chip, limpieza de datos `[QA]` y cierre restante constan en `knowledge-progress.md` y el addendum. B2 y B4 vuelven a `[x]`; C2.2/Claude permanece diferida y opcional, sin acción del dueño.
+- Sin migraciones, cambios de aplicación ni instalación del Bridge en esta revalidación.
+
+## 2026-11-03 — B4 reconciliada con la copia vigente del plan
+
+- Verifiqué el criterio de cierre: C1, C2.1, C3, C4 y C5.4/C5.5 están completados y registrados; C2.2 es el único pendiente opcional conforme a B3. La limpieza de tareas históricas `[QA]` se hizo desde la app; no queda contenido QA visible pendiente según el cierre registrado.
+- El plan del publicador conserva T2.3 desplegada en Bridge 1.19.0 y Bridge 1.20.0 como siguiente menor de esa fecha; 1.20.0 está instalada y conectada según la verificación de T5.5.
+- B4 permanece `[x]`. No ejecuté Claude ni agregué una acción del dueño.
+
 ## 2026-11-03 — T7.1 desplegada y smoke de producción completo
 
 - Después del backup verificado `%USERPROFILE%\rivastock-backups\20261103T074408Z`, el dry-run enumeró solo `20261103071448_ai_action_catalog.sql`; la apliqué y confirmé RLS/permisos, una acción estática con confirmación y cero solicitudes iniciales.
