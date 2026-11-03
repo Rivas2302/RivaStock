@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 12:37 ART — Corrección de fotos desplegada; limpieza D2 por la app
+
+- El arreglo de `Buscar y enviar` está en producción desde `c124f71`; Vercel confirmó `success`. El detalle de Conocimientos tenía además un acceso nulo durante la carga; `1aeafd4` agregó un guard y sus pruebas. Vercel confirmó `success` para ese commit.
+- Repetí la validación con Playwright y el perfil persistente: eliminé desde la Biblioteca `[QA] E5 producción y RAG` y desde Stock `[QA] Smoke foto de producto`. Se aceptaron únicamente los diálogos exactos; hubo cero errores de página. La verificación de solo lectura confirma que esos registros ya no están, que queda solo `[QA] central-smoke` y que el objeto `assets` único del producto eliminado ya no existe. No hice escrituras SQL.
+- El dato `[QA] central-smoke` y su objeto `knowledge` permanecen reservados para completar E5. **D2 sigue `[ ]`** hasta verificar la purga natural de E5 después del 06/11 10:06:19 UTC y repetir el inventario; no se borraron eventos, auditoría ni comandos históricos.
+- Antes de continuar comparé los planes: `ACTION_PLAN.md` coincide con Desktop (SHA-256 `9E985A88…D3FC2622`); la copia Desktop de `MULTI_BUSINESS_EXECUTION_PLAN.md` era más reciente, así que la adopté y restauré E0–E4 `[x]` según la evidencia ya registrada. El smoke SQL acabó en **27 comprobaciones / TODO OK**; los SQL y el script del smoke coinciden con Desktop.
+- No hay migración pendiente ni operación a medias. **Siguiente:** E5 queda limitada por su ventana de 72 horas hasta el 06/11 10:06:19 UTC; verificar transferencia, purga y apertura bajo demanda antes de E6. A1/C0 y la certificación de Facebook permanecen condicionadas por sus puertas.
+
 ## 2026-11-03 12:33 ART — D2 por la app pausada por un error de render
 
 - Con el perfil persistente, la Biblioteca encontró `[QA] E5 producción y RAG` y abrió su ruta, pero `KnowledgeDocumentDetail` cayó en el ErrorBoundary con `Cannot read properties of null (reading 'value')`; el botón Eliminar nunca apareció. No se borró ningún documento. El producto `[QA] Smoke foto de producto` tampoco se tocó.
