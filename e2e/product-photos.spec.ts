@@ -75,6 +75,7 @@ async function mountFixture(page: Page, options: { empty?: boolean; canShare?: b
     else if (path.endsWith('/rpc/get_owner_profile')) data = [{
       id: userId, email: user.email, display_name: 'Photo Owner', business_name: 'Photo Shop',
       currency_symbol: '$', role: 'admin', dark_mode: false, catalog_slug: 'photo-shop',
+      onboarding_completed_at: '2026-01-01T00:00:00Z',
     }];
     else if (path.endsWith('/rpc/is_platform_admin')) data = false;
     else if (path.endsWith('/rpc/my_business_plan')) data = {

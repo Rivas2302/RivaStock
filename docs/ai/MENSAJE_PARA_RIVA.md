@@ -13,3 +13,7 @@ El commit `1002e0c` ya tiene deployment Preview `success`, pero Vercel exige aut
 La solicitud menciona 32 productos, pero la consulta de solo lectura en producción encontró 84 con `image_url` `data:` y otros 18 con valores `data:` en `images[]`: **102 productos distintos**. El backup previo verificado conserva los valores originales. No modifiqué ningún producto ni subí archivos porque no hay un criterio seguro para elegir solo 32; confirmá los IDs o el subconjunto previsto cuando puedas.
 
 Después de G2, A1 requiere que el Dashboard de Supabase de `RivaStock_Oficial` quede abierto en Chrome con tu sesión iniciada. La acción de Facebook sigue en `OWNER_ACTIONS.md` y se realizará solo en modo ensayo.
+
+## Buscar y enviar — el error no se reproduce con el estado actual
+
+Playwright móvil encontró que `Cable iPhone C` ahora tiene stock 0 y una sola foto canónica; Storage responde 200 por HTTPS. También probé productos reales de 3 fotos Storage y 2 fotos `data:`: ambos se preparan y comparten sin fallos de red ni CSP. Si el error sigue ocurriendo, indicame el producto que hoy muestra dos fotos y si aparece al abrirlo o al tocar Enviar; no hice envíos reales.

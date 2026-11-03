@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 16:01 ART — Revalidación del fallo móvil al compartir fotos
+
+- Diagnóstico de solo lectura en producción, limitado al negocio asociado al producto reportado: **48 productos** tienen más de una foto distinta tras la normalización y deduplicación de la app. Sin nombres, IDs ni valores de URL completos: `image_url` contiene un valor `data:` y un valor `https://nkfqhuqrgrpfufdymkcr.supabase.co`; `images[]` contiene 99 elementos de ese host HTTPS en 46 productos y 4 elementos `data:` en 2 productos. No aparecieron URLs HTTP ni otros hosts. El conteo bruto era 79 productos con más de una URL entre columnas; la diferencia se explica por `image_url` heredados `data:` que se ignoran cuando `images[]` ya tiene fotos y por variantes deduplicadas.
+- `Cable iPhone C` hoy figura con categoría Cargadores, stock **0**, `image_url` `data:` y un único elemento `images[]` HTTPS; la UI muestra 1/1. El objeto canónico respondió HTTP 200 por HTTPS. En producción, viewport móvil Playwright mostró cero fallas de red, errores de consola, mixed content o violaciones CSP.
+- Reproduje el envío móvil con otros datos reales del mismo negocio sin publicar nada: tres fotos Storage HTTPS respondieron HTTP 200 y el Web Share simulado recibió 3 archivos; otro producto con dos fotos `data:` entregó 2 archivos sin solicitudes de red ni errores CSP/consola.
+- La corrección de normalización HTTPS para Storage propio, deduplicación de variantes http/https y `.thumb`, tolerancia a fallos parciales y mensajes en español ya está en `c124f71`, ancestro de `main` y presente en producción. No amplié CSP y no hace falta otro despliegue por este código. El caso puntual no se reprodujo con los datos actuales; `Cable iPhone C` ya no tiene dos fotos canónicas.
+- Verificación local: unitarias `productPhotos`/`productPhotoSharing` **14/14**; `npm run lint` aprobado; Playwright de fotos **4/4**. El primer E2E quedó interceptado por el onboarding de E7 porque su perfil fixture no marcaba `onboarding_completed_at`; completé ese campo en el fixture y repetí la suite, que pasó. El E2E incluye fallo de segunda foto y confirma que se comparte la primera con el aviso «No pudimos incluir 1 foto».
+- **Desvío:** no reproducible el error reportado en producción al momento de esta verificación. La app y el estado actual del producto reportado no coinciden con el ejemplo de stock 2 / dos fotos.
+
 ## 2026-11-03 15:21 ART — G2 listo en rama; preview de Vercel protegido
 
 - Comparé `ACTION_PLAN.md` y `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop: las copias del worktree son las más recientes. El plan maestro del worktree también coincide con `origin/main`.
