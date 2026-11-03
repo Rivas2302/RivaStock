@@ -3,7 +3,7 @@
 ## 2026-11-03 10:13 ART — G2 abierta; rutas de catálogo restauradas
 
 - Los deploys 7899a25, 1c4ead4 y a46ed12 terminaron en Vercel success, pero las funciones de vista previa respondieron FUNCTION_INVOCATION_FAILED también tras cambiar entre las firmas Node y Web y los exports GET/HEAD. Las rutas públicas /catalogo/:slug y /catalogo/:slug/:productId devolvían 500.
-- **Desvío de producción:** revertí esos tres commits juntos con Git, sin force, para restaurar el rewrite SPA del catálogo. No hubo migraciones ni escrituras en Supabase. El commit de reversión aún debe desplegarse y verificarse.
+- **Desvío de producción:** revertí esos tres commits juntos con Git, sin force, para restaurar el rewrite SPA del catálogo. Vercel dio success para 7ef1d63 y verifiqué HTTP 200 más el shell SPA en /, /catalogo/rivatech-2 y un producto público. No hubo migraciones ni escrituras en Supabase. La vista previa Open Graph queda temporalmente ausente.
 - G2 queda [ ]. Lint, build, perf:check, escaneo de secretos y la suite completa (792 pruebas) habían pasado antes del rollback.
 - Para reabrir G2 hay que inspeccionar los logs de runtime de Vercel, que no están disponibles con la sesión actual; no seguiré desplegando cambios a ciegas. La SPA se validará tras el deploy de reversión.
 
