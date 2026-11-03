@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2 completo en producción
+
+- El corte E2.4 de frontend se publicó en `main` con `4ea5e64` mediante push autenticado como Rivas2302; Vercel reportó `success`. Las migraciones E2.1–E2.3 ya estaban aplicadas y verificadas antes del push.
+- Verificación local final: `npm run lint`; `npm test -- --maxWorkers=1` **715/715** en 117 archivos; `npm run build`; `npm run perf:check` (209.095 B JS gzip inicial, 22.045 B CSS); smoke SQL multiempresa **38 comprobaciones / TODO OK**; `npm run test:facebook:concurrency` **20/20 iteraciones PostgreSQL**.
+- Smoke de producción con Playwright visible y el perfil persistente QA, en sesión ya iniciada: IA → Conocimientos → Administración → Resumen cargó `0 B de 500 MB`, sin errores de consola ni de página. Los tests de UI verifican ambos mensajes de bloqueo y que no se sube si la RPC deniega; no creé datos de prueba en producción.
+- **E2 [x]**, incluidas migraciones, guardas de subida, límites por plan y retención. El siguiente paso por §5b es E3; C0 sigue bloqueada por §5.2b y B4 por las trazas QA que el flujo actual no elimina.
+
 ## 2026-11-03 — E2.3 migrada; rollout completo de E2 sigue abierto
 
 - Antes de E2.3 se verificó `%USERPROFILE%\rivastock-backups\20261103T035422Z`: 87 tablas, 13.828 filas con conteos exactos; schema 822.518 B, data 40.152.301 B; Storage 374 objetos/132.374.670 B y verificación de hashes/tamaños aprobada.
