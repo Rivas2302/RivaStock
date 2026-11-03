@@ -21,6 +21,7 @@ import {
   updateMetadata,
   uploadNewFileVersion,
 } from '../../lib/knowledge/api';
+import { getPreviewVersionAccess } from '../../lib/knowledge/previewVersionAccess';
 import {
   formatBytes,
   formatDate,
@@ -246,7 +247,7 @@ export default function KnowledgeDocumentDetail() {
     () => versions.find((version) => version.id === previewVersionId) ?? currentVersion,
     [versions, previewVersionId, currentVersion],
   );
-  const previewAccess = originalAccess?.versionId === previewVersion?.id ? originalAccess.value : null;
+  const previewAccess = getPreviewVersionAccess(originalAccess, previewVersion?.id);
   const hasUnpublishedChanges = Boolean(document?.published_version_id && document.current_version_id !== document.published_version_id);
   const publishedEvent = events.find((event) => event.action === 'status_changed'
     && event.details.to === 'published'

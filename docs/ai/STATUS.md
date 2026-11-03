@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 12:33 ART — D2 por la app pausada por un error de render
+
+- Con el perfil persistente, la Biblioteca encontró `[QA] E5 producción y RAG` y abrió su ruta, pero `KnowledgeDocumentDetail` cayó en el ErrorBoundary con `Cannot read properties of null (reading 'value')`; el botón Eliminar nunca apareció. No se borró ningún documento. El producto `[QA] Smoke foto de producto` tampoco se tocó.
+- La consulta de solo lectura confirma que `[QA] central-smoke` tiene el único objeto original que se debe conservar para E5 hasta la purga natural del 06/11; `[QA] E5 producción y RAG` es un editor publicado sin objeto de Storage y se puede limpiar por la app. El producto QA tiene una imagen propia (no compartida) y puede eliminarse por Stock. No borrar por SQL los eventos, auditoría ni comandos históricos.
+- **Desvío:** la limpieza normal de D2 destapó un bug del detalle: comparar `originalAccess?.versionId` con `previewVersion?.id` permite que dos valores ausentes coincidan y luego desreferencia `originalAccess.value`. Agregué un guard puro `getPreviewVersionAccess` y pruebas para el estado inicial nulo y versiones coincidentes.
+- Verificación local del guard: lint aprobado; suite **790/790**; prueba focalizada **2/2**; build y `perf:check` aprobados. El guard aún no está desplegado. **D2 sigue `[ ]`** hasta publicar la corrección, borrar solo los dos elementos elegibles desde la app y repetir el conteo.
+- **Siguiente:** commit/push directo a `main` con Rivas2302, esperar Vercel `success`, reintentar el detalle QA con Playwright y completar la limpieza normal. Preservar `[QA] central-smoke` para E5.
+
 ## 2026-11-03 11:43 ART — Buscar y enviar: corrección validada en producción
 
 - Antes de esta tarea comparé `ACTION_PLAN.md` con Desktop: SHA-256 idéntico. El diagnóstico SQL de solo lectura devolvió solo esquema de URL/host para productos con varias entradas; no exporté URLs ni IDs. `Cable iPhone C` tiene `image_url` con esquema `data` y sin host, y `images[0]` con `https` en `nkfqhuqrgrpfufdymkcr.supabase.co`. La CSP permite `https:` para imágenes, pero `connect-src` no incluye `data:`; la traza Playwright confirmó que el antiguo `fetch(data:)` termina en `TypeError` por esa política.
