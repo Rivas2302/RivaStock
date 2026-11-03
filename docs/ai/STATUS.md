@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — T5.4 desplegada; T5.5 es el próximo trabajo independiente
+
+- T5.4 está completa y desplegada en `main` (`f6fc429`); Vercel `success`. La migración `20261103120000_fb_group_performance` se aplicó después del backup verificado `%USERPROFILE%\rivastock-backups\20261103T051319Z`; `supabase migration list --linked` confirma que está aplicada.
+- El view por negocio es `security_invoker`, solo lectura para `authenticated`, sin permiso de lectura para `anon`. La UI de producción cargó los 69 grupos sin alertas ni errores. No se crearon datos ni hubo interacción con Facebook.
+- Pruebas: lint; 719/719; PGlite 57/57; concurrencia 20/20; build y `perf:check` aprobados. El panel nuevo es `lazy` para quedar bajo el presupuesto de Automatizaciones.
+- **Siguiente:** T5.5 únicamente en SQL/UI/Bridge hasta que §5.2b permita tocar la extensión; no publicar fuera de ensayo.
+
 ## 2026-11-03 — E3 desplegada y validada en producción
 
 - **E3 [x]**. El commit `a939aaf` está en `main`; Vercel reportó `success`. `ai-bridge` está ACTIVE v13 con `verify_jwt=false`. AI Bridge **1.19.0** quedó instalado desde el paquete del repo: un proceso worker, dispositivo `idle`, cero tareas activas y heartbeat reciente.

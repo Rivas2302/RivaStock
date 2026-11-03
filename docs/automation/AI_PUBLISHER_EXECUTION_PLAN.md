@@ -411,7 +411,7 @@ Ver §13. `ai_function_settings` fue creada y sembrada durante C5.5 con la clave
 - **Quitar fondo:** fuera de alcance en este plan. Si se agrega, debe usar un modelo local con **licencia de uso comercial** verificada.
 - **Commit:** `feat(automation): AI photo review and local photo enhancements`
 
-### [ ] T5.4 Grupos sugeridos y rendimiento
+### [x] T5.4 Grupos sugeridos y rendimiento
 - Vista `fb_group_performance`, calculada con `facebook_delivery_attempts`, `fb_delivery_group_results` y `facebook_groups`: por grupo, publicaciones, publicadas, pendientes, rechazadas o eliminadas, tasa de aprobación, tiempo medio de aprobación, último uso y miembros.
 - En el modal, orden y sugerencia de grupos por **puntaje determinista** (sin IA): tasa de aprobación, miembros, ausencia de rechazos recientes, días desde el último uso del mismo producto en ese grupo (evitar repetir antes de N días, por defecto 7) y coincidencia de palabras clave del nombre del grupo con la categoría.
 - Panel “Rendimiento de grupos” en Automatizaciones, con los grupos que conviene dejar de usar (rechazos repetidos).

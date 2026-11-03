@@ -1,5 +1,16 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-03 — T5.4 sugerencias y rendimiento de grupos desplegados
+
+- Antes de empezar, comparé los planes de trabajo con Desktop y `origin/main`: la copia local de `AI_PUBLISHER_EXECUTION_PLAN.md` es más reciente que Desktop; el `ACTION_PLAN.md` local también es posterior. Seguí la copia local. No cambié la extensión.
+- Backup verificado antes de migrar: `%USERPROFILE%\rivastock-backups\20261103T051319Z`. **87 tablas, 13.843 filas** con conteos exactos; schema **822.559 B**, datos **40.159.400 B**. Storage: **4 buckets, 374 objetos, 132.374.670 B**; inventario, tamaños y SHA-256 verificados. Resultado `verification: passed`.
+- `supabase db push --linked --dry-run` mostró solo `20261103120000_fb_group_performance.sql`; se aplicó únicamente esa migración y `supabase migration list --linked` la confirma aplicada. El view usa `security_invoker`, filtra por negocio/permiso; en producción authenticated tiene solo lectura, anon no tiene acceso y no devuelve filas sin claims.
+- `fb_group_performance` combina los resultados de Marketplace nativo y las entregas directas antiguas. Expone publicaciones, resultados publicados/pendientes/rechazados, aprobación, tiempo observado hasta publicación, último uso, miembros y rechazos de 30 días. No publica ni modifica historial.
+- En el modal, grupos sugeridos usan un puntaje determinista con tasa de aprobación, tamaño de audiencia, rechazos recientes, reutilización del mismo producto (bloqueo durante 7 días) y coincidencias de categoría. El panel de Automatizaciones avisa cuando hay 2 o más rechazos en 30 días. El panel se carga de forma diferida para respetar el presupuesto de `perf:check`.
+- Commit `f6fc429` (`feat(automation): suggest groups from historical performance`) publicado directamente en `main` con Rivas2302. Vercel terminó en `success`. Playwright con el perfil QA autenticado abrió Automatizaciones → Rendimiento de grupos: **69 grupos**, encabezado visible, cero alertas y cero errores de página. No se crearon datos ni se aprobó o publicó contenido.
+- Verificación local: lint; `npm test -- --maxWorkers=1` **719/719**, 118 archivos; suite PGlite focal **57/57**; concurrencia Facebook **20/20** iteraciones; build y `perf:check` aprobados. Bundle inicial: **209.031 B gzip JS**, **22.138 B CSS**; Automatizaciones **239.846 B gzip JS** frente al máximo de **240.640 B**.
+- **T5.4 [x].** Siguiente: T5.5 en sus partes de SQL, UI y Bridge permitidas por §5.2b; no tocar la extensión hasta que se abra la puerta de pruebas en vivo. No hubo publicaciones en Facebook.
+
 ## 2026-11-02 — T5.3 desplegada; sigue T5.4
 
 - T5.3 `[x]`: el modal permite pedir una revisión visual de las fotos actuales, muestra por foto utilidad/problemas/orden y recomienda portada; el usuario conserva la decisión. El editor también permite recortar 1:1 o 4:3, limitar a 2048 px, ajustar brillo/contraste y componer PNG transparente sobre blanco. Cada mejora se sube como foto nueva y la RPC la añade al producto sin quitar el original; no se implementó quitar fondo.
