@@ -1,4 +1,5 @@
 const EXPLICIT_MEMORY_COMMAND = /\b(recorda|acordate|anota|guarda en memoria|no te olvides)\b/;
+const EXPLICIT_MEMORY_UPDATE_COMMAND = /\b(?:actualiza(?:me|lo|la)?|actualizar|modifica(?:me|lo|la)?|modificar|reemplaza(?:me|lo|la)?|reemplazar|cambia(?:me|lo|la)?|cambiar|corrige(?:me|lo|la)?|corregir)\b.{0,120}\b(?:memoria|recuerdos?|datos?)\b|\b(?:memoria|recuerdos?|datos?)\b.{0,80}\b(?:actualiza|actualizar|modifica|modificar|reemplaza|reemplazar|cambia|cambiar|corrige|corregir)\b/;
 const EXPLICIT_FORGET_COMMAND = /^\s*(?:(?:por favor|porfa|che)[,!.:\s]+)*(?:(?:quiero|necesito)\s+que\s+)?(olvida(?:te)?|borra(?:me)?|saca(?:me)?|quita(?:me)?|elimina(?:me)?|ya\s+no\s+recuerdes|no\s+recuerdes)(?:\s+mas)?\b/;
 const DECLARATIVE_VERB = /\b(es|son|sale|salen|tenemos|usamos|preferimos|cambio|cambian|trabajamos|atendemos|abrimos|cerramos|envia|enviamos|vende|vendemos|compra|compramos|queda|quedan|paga|pagamos|usa|usamos)\b/;
 const GREETING_OR_THANKS = /^(hola|buen dia|buenas tardes|buenas noches|gracias|muchas gracias|ok|dale|perfecto|listo)[.!\s]*$/;
@@ -16,7 +17,13 @@ export function normalizeMemoryText(value: string): string {
 
 export function hasExplicitMemoryCommand(value: string): boolean {
   const normalized = normalizeMemoryText(value);
-  return EXPLICIT_MEMORY_COMMAND.test(normalized) || isMemoryForgetCommand(normalized);
+  return EXPLICIT_MEMORY_COMMAND.test(normalized)
+    || EXPLICIT_MEMORY_UPDATE_COMMAND.test(normalized)
+    || isMemoryForgetCommand(normalized);
+}
+
+export function isMemoryUpdateCommand(value: string): boolean {
+  return EXPLICIT_MEMORY_UPDATE_COMMAND.test(normalizeMemoryText(value));
 }
 
 export function isMemoryForgetCommand(value: string): boolean {

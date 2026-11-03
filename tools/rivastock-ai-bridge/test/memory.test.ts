@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { containsSensitiveMemoryData, hasExplicitMemoryCommand, isMemoryForgetCommand, memorySimilarityQuery, normalizedEditDistance, shouldSkipMemoryPrefilter } from '../src/memory/filters.ts';
+import { containsSensitiveMemoryData, hasExplicitMemoryCommand, isMemoryForgetCommand, isMemoryUpdateCommand, memorySimilarityQuery, normalizedEditDistance, shouldSkipMemoryPrefilter } from '../src/memory/filters.ts';
 import { buildExtractionPrompt, extractMemoryOperations, validateMemoryOperations } from '../src/memory/extract.ts';
 import { MemoryTurnQueue } from '../src/memory/queue.ts';
 import { buildMemoryContext, retrieveMemory, type MemoryItem } from '../src/memory/retrieve.ts';
@@ -21,6 +21,10 @@ function memory(overrides: Partial<MemoryItem> = {}): Required<MemoryItem> {
 test('detects explicit memory commands without case or accent sensitivity', () => {
   assert.equal(hasExplicitMemoryCommand('RECORDÁ que los envíos salen los martes'), true);
   assert.equal(hasExplicitMemoryCommand('No te olvides de responder en español'), true);
+  assert.equal(hasExplicitMemoryCommand('Ahora los envíos salen los jueves. Actualizá el recuerdo de la memoria.'), true);
+  assert.equal(isMemoryUpdateCommand('Ahora los envíos salen los jueves. Actualizá el recuerdo de la memoria.'), true);
+  assert.equal(hasExplicitMemoryCommand('Actualizá el inventario de productos.'), false);
+  assert.equal(isMemoryUpdateCommand('Actualizá el inventario de productos.'), false);
   assert.equal(hasExplicitMemoryCommand('El local abre a las nueve'), false);
 });
 
@@ -60,6 +64,14 @@ test('response prompt gives a direct, accurate acknowledgment for memory command
   assert.match(buildProviderPrompt('Recordá que abrimos los sábados.', '', {
     memory_response_guidance: 'remember-auto',
   }), /vas a recordar/);
+  const update = buildProviderPrompt('Actualizá el recuerdo de los envíos.', '', {
+    memory_response_guidance: 'update-auto',
+  });
+  assert.match(update, /vas a actualizarlo/);
+  assert.match(update, /No digas que no tenés acceso a recuerdos editables/);
+  assert.match(buildProviderPrompt('Actualizá el recuerdo.', '', {
+    memory_response_guidance: 'update-confirm',
+  }), /proponer la actualización para revisión/);
   assert.match(buildProviderPrompt('Olvidá eso.', '', {
     memory_response_guidance: 'forget-confirm',
   }), /proponer el olvido para revisión/);
@@ -513,6 +525,27 @@ test('explicit forget response is instructed without claiming an archive before 
     providerOptions: {}, complete: async () => undefined, log() {},
   });
   assert.deepEqual(optionsSeen, { memory_response_guidance: 'forget-auto' });
+  assert.equal(queued[0]?.shouldExtract, true);
+});
+
+test('explicit memory update is extracted between cadence turns and gets coherent response guidance', async () => {
+  let optionsSeen: unknown;
+  const queued: MemoryQueueEntry[] = [];
+  const input = 'Ahora los envíos a Santa Rosa salen los jueves. Actualizá el recuerdo de memoria [QA].';
+  await executeTextGeneration({
+    job: { id: jobId, input },
+    provider: { async execute(_input, _signal, _context, options) { optionsSeen = options; return { output: 'Voy a actualizar ese recuerdo.' }; } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: chatId, provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [], knowledgeClient: null, workerId: null, knowledgeEnabled: false,
+    memoryClient: { async memoryRetrieve() { return { enabled: true, mode: 'auto', top_k: 5,
+      include_summaries: true, user_turn_count: 2, message_count: 1, memories: [] }; } },
+    memoryWorkerId: 'worker', onMemoryTurn(entry) { queued.push(entry); },
+    memoryRetrievalDependencies: { embed: async () => Array(384).fill(0.25) },
+    providerOptions: {}, complete: async () => undefined, log() {},
+  });
+  assert.deepEqual(optionsSeen, { memory_response_guidance: 'update-auto' });
   assert.equal(queued[0]?.shouldExtract, true);
 });
 

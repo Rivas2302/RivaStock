@@ -1,7 +1,7 @@
 import type { KnowledgeClient, KnowledgeRetrievedSource } from './knowledge/client.ts';
 import { buildKnowledgeContext, retrieveForJob, type RetrievalDependencies } from './knowledge/retrieval.ts';
 import { buildMemoryContext, retrieveMemory, type MemoryRetrievalDependencies } from './memory/retrieve.ts';
-import { hasExplicitMemoryCommand, isMemoryForgetCommand, shouldSkipMemoryPrefilter } from './memory/filters.ts';
+import { hasExplicitMemoryCommand, isMemoryForgetCommand, isMemoryUpdateCommand, shouldSkipMemoryPrefilter } from './memory/filters.ts';
 import type { MemoryQueueEntry } from './memory/queue.ts';
 import { embedQuery } from './knowledge/embed.ts';
 import type { AIJobContext, AIProjectContext, AIProvider, AIProviderOptions, AIWorkspaceFile } from './types.ts';
@@ -50,6 +50,8 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
         if (!memories.enabled || memories.mode === 'off') memoryResponseGuidance = 'disabled';
         else if (isMemoryForgetCommand(input.job.input)) {
           memoryResponseGuidance = memories.mode === 'confirm' ? 'forget-confirm' : 'forget-auto';
+        } else if (isMemoryUpdateCommand(input.job.input)) {
+          memoryResponseGuidance = memories.mode === 'confirm' ? 'update-confirm' : 'update-auto';
         } else {
           memoryResponseGuidance = memories.mode === 'confirm' ? 'remember-confirm' : 'remember-auto';
         }

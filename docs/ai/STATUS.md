@@ -1,5 +1,23 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:09 ART — B2 revalidada; corrección del diálogo pendiente de publicar
+
+- Con Bridge 1.21.1, la transferencia de `[QA] central-smoke.txt` quedó en `local` a las 10:06 UTC. Los **166 B** guardados en la central coinciden con el SHA-256 de la versión en producción; no se purgó la copia de nube. La UI todavía muestra el informe anterior de las 07:02 ART; espero su siguiente reporte periódico antes de declarar actualizado el contador.
+- La comprobación B2 en producción confirmó que `[QA]` recuerda los martes, otro chat recupera martes con chip `M1`, y el cambio posterior actualizó el mismo recuerdo a jueves. **Falla observada:** el asistente dijo que no podía editar recuerdos aunque la extracción actualizó la fila y conservó una sola memoria. Por eso B2 sigue abierta.
+- Corrección local: reconocer órdenes explícitas de actualización de memoria fuera del ritmo periódico y dar al proveedor una respuesta breve y coherente en modo automático/confirmación. Bridge 1.22.0 quedó generado, aún sin publicar ni instalar. Codex real Luna Bajo: evaluación de 41 casos aprobada; 20/20 retención importante, 20/20 recuperación top-5, 32/32 precisión, 10/10 actualizaciones, 3/3 sensibles bloqueados, 12/12 archivo general y 11/11 olvidos nuevos, incluidos 3 casos sin candidato.
+- Verificación: Bridge typecheck y **111/111** pruebas; lint; frontend **772/772** pruebas (el primer intento tuvo timeout aislado de PGlite; la suite aislada y la repetición completa pasaron); build y `perf:check` aprobados sin las variables ficticias de pruebas.
+- Quedan chats/memoria `[QA]` de esta prueba en producción para repetir C/D tras Bridge 1.22.0 y retirarlos desde la app. E5 on-demand también espera la purga automática 72 h después de la transferencia, el 06/11 10:06 UTC. No hay migración nueva ni despliegue a medias.
+- **Siguiente:** commit y push de B2 como tarea abierta; tras Vercel `success`, actualizar Bridge 1.22.0, repetir B2 A→D y limpiar QA. Cerrar luego E4 cuando el informe de la central refleje el archivo; E5 queda pendiente hasta el ciclo de purga y apertura bajo demanda.
+
+## 2026-11-03 06:54 ART — AI Bridge 1.21.1 instalado; E4/E5 siguen abiertas
+
+- El primer intento del actualizador seleccionó una copia de rollback que estaba dentro de `%LOCALAPPDATA%\RivaStock`, porque esa carpeta forma parte de su búsqueda automática. El worker anterior se detuvo con `worker_update_prepare` cuando estaba inactivo; no había tareas en curso ni pérdida de datos. **Desvío:** el acceso de Inicio apuntó brevemente a esa copia, que moví fuera de las carpetas que inspecciona el actualizador.
+- Preservé la versión anterior real en `%USERPROFILE%\rivastock-backups\bridge-rollbacks\20261103T095000Z-1.21.0` y confirmé que la configuración `.env` de respaldo y la instalada tienen el mismo SHA-256, sin mostrar su contenido. El estado persistente de Codex permaneció en `%USERPROFILE%\.rivastock-ai-bridge\codex`.
+- Reejecuté el actualizador del repo; seleccionó la instalación de `Downloads`, instaló **1.21.1**, conservó `.env`, rehízo el acceso `wscript.exe` al lanzador habitual y dejó un único worker (PID 17828). Producción confirma `idle`, sin tarea activa, `update_requested=false` y heartbeat reciente. Playwright con el perfil persistente mostró **Conectada**.
+- El claim de `[QA] central-smoke.txt` vence a las 10:06 UTC. No lo reinicié por SQL; espero el ciclo normal del Bridge y verificaré almacenamiento, SHA-256 y apertura bajo demanda antes de borrar los datos `[QA]` desde la app.
+- **E4/E5 siguen `[ ]`** hasta que el smoke real de transferencia y apertura bajo demanda complete y se retiren todos los datos de prueba. No hay migración, despliegue ni instalación pendiente a medias.
+- **Siguiente:** confirmar transferencia real tras expirar el claim y completar la limpieza QA. A1 sigue bloqueada por la credencial S3 de Storage que solo se genera desde el Dashboard y por la extensión de Facebook productiva 0.5.15; no desactivé las claves legacy.
+
 ## 2026-11-03 06:40 ART — E4/E5 smoke de producción detectó una falla de transferencia
 
 - El commit `5053d06` está en `main`; el check de Vercel está en `success`. Playwright, con el perfil persistente autenticado, abrió IA → Conexión y confirmó la tarjeta **Almacén de la central** y estado **Conectada**.

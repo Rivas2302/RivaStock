@@ -1,5 +1,19 @@
 # Progreso del módulo Conocimientos
 
+## E4/E5 — transferencia verificada; apertura bajo demanda espera la purga — 2026-11-03
+
+- El claim venció por su ciclo normal. A las **10:06 UTC**, `knowledge_document_versions` pasó a `storage_location = local`; el original conserva 166 B y su SHA-256 coincide exactamente con el archivo almacenado en `%USERPROFILE%\RivaStock Central\Conocimientos`. La nube sigue presente y `cloud_purge_after` quedó fijado para **2026-11-06 10:06 UTC**; no forcé purga.
+- La tarjeta de IA → Conexión todavía mostraba `0 B / 0 archivos` con último informe a las **07:02 ART**, anterior a la transferencia. El Bridge reporta inventario cada 24 h y estado cada 10 min; esperar el próximo reporte antes de cerrar E4. El almacenaje local sí contiene el archivo y su hash coincide.
+- E5 todavía no puede probar la subida bajo demanda mientras el original conserve la copia de nube: el RPC elige `mode=cloud` hasta que la purga autorizada ocurra. La limpieza de los datos `[QA]` debe esperar a probar E5 y luego ejecutarse por la app. E4/E5 continúan `[ ]`.
+
+## E4/E5 — AI Bridge 1.21.1 activo; verificación de transferencia pendiente — 2026-11-03
+
+- El actualizador seleccionó primero una copia de rollback alojada dentro de `%LOCALAPPDATA%\RivaStock`; el worker se detuvo cooperativamente al estar sin tareas. Moví esa copia fuera de sus rutas de búsqueda y guardé la instalación 1.21.0 en `%USERPROFILE%\rivastock-backups\bridge-rollbacks\20261103T095000Z-1.21.0`.
+- El actualizador volvió a detectar la instalación real de `Downloads` y terminó 1.21.1. La configuración `.env` coincide con el respaldo por SHA-256, el estado de Codex sigue en su carpeta persistente y el lanzador habitual de Inicio apunta a la instalación correcta. Verificado un solo worker, heartbeat reciente, `idle`, `update_requested=false` y **Conectada** en la app mediante Playwright.
+- **Desvío corregido:** el enlace de Inicio había quedado apuntando brevemente a la copia de rollback movida. La instalación correcta lo reemplazó antes de finalizar; no hubo tareas activas, pérdida de datos ni purga.
+- El claim de `central-smoke.txt` queda en espera de expiración automática (30 minutos desde 09:36 UTC). Confirmaré que la versión llega a la central con el SHA-256 esperado y probaré apertura bajo demanda; después eliminaré por la app el producto, dos documentos y chat `[QA]` y comprobaré cero filas/objetos QA.
+- **E4/E5 siguen `[ ]`**. Versión publicada del paquete y activa en esta PC: **1.21.1**.
+
 ## E4/E5 — Validación de producción y corrección pendiente — 2026-11-03
 
 - El commit `5053d06` quedó desplegado en Vercel (`success`); `knowledge` está ACTIVE v9 con `verify_jwt=false`. Playwright autenticado mostró IA → Conexión, **Conectada** y la tarjeta **Almacén de la central**.
@@ -7,7 +21,7 @@
 - Se cargó `[QA] central-smoke.txt` (166 B), indexó y generó un fragmento, pero el worker 1.21.0 dejó su versión en `transferring`. El log indicó discrepancia de tamaño en la descarga firmada: el servidor omite `Content-Length` y el código convertía `null` a `0` con `Number(null)`. La copia en la nube sigue intacta; no se ejecutó purga.
 - Fix local: solo validar `Content-Length` si el servidor lo envía; en todos los casos validar tamaño límite, tamaño total transmitido y SHA-256 antes de guardar. Regresión dirigida y suite Bridge 110/110, typecheck, lint frontend, 772/772 pruebas frontend, build y `perf:check` pasan. Paquete local: Bridge 1.21.1.
 - El claim inicial se creó a las 09:36 UTC y vence después de 30 minutos; no lo liberé con SQL. La migración automática podrá volver a tomar el original al vencer.
-- **Pendiente:** push/deploy e instalación 1.21.1; comprobar que el original QA llega a la central con la huella correcta; después borrar por la app el producto, los dos documentos y el chat `[QA]`, y verificar cero filas/objetos QA. E4/E5 siguen `[ ]`.
+- **Actualización posterior:** el commit 2e3dce6 está en `main` y Vercel está en `success`; paquete 1.21.1 instalado correctamente. Queda comprobar que el original QA llega a la central con la huella correcta y abrirlo bajo demanda; después borrar por la app el producto, los dos documentos y el chat `[QA]`, y verificar cero filas/objetos QA. E4/E5 siguen `[ ]`.
 
 Actualizado: 2026-11-03
 

@@ -22,7 +22,7 @@ export interface AIProviderOptions {
   images?: Array<{ id: string; path: string }>;
   safe_text_only?: boolean;
   codex_security?: CodexSecuritySettings;
-  memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
+  memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'update-auto' | 'update-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
 }
 
 export interface AIWorkspaceFile {
