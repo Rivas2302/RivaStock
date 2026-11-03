@@ -208,9 +208,7 @@ GRANT EXECUTE ON FUNCTION public.storage_upload_check(text, bigint) TO authentic
 GRANT EXECUTE ON FUNCTION public.platform_usage_overview() TO authenticated;
 
 -- Fotos de productos: ya se suben como WebP de hasta 1600 px; el bucket no tenía tope por archivo.
-UPDATE storage.buckets
-SET file_size_limit = LEAST(COALESCE(file_size_limit, 2097152), 2097152)
-WHERE id = 'assets';
+UPDATE storage.buckets SET file_size_limit = 2097152 WHERE id = 'assets' AND file_size_limit IS NULL;
 
 COMMIT;
 
