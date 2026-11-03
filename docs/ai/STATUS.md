@@ -1,5 +1,10 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — A4 revalidada; auditorías sin vulnerabilidades
+
+- `npm audit --json` terminó con **0 vulnerabilidades** en el frontend (424 dependencias) y en `tools/rivastock-ai-bridge` (196 dependencias).
+- A4 continúa `[x]`; no hubo cambios de dependencias ni del worker.
+
 ## 2026-11-03 — A3 revalidada con backup de Storage
 
 - La ejecución integrada `npm run backup:db -- --with-storage` descargó y verificó los 4 buckets fuera del repo: **374 objetos / 132.374.670 B**; `storage-manifest.json` registró tamaños y SHA-256 coincidentes. El backup completo está en `%USERPROFILE%\rivastock-backups\20261103T072850Z`, con `verification: "passed"` y sin marcador de backup incompleto.
