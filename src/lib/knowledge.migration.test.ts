@@ -24,6 +24,7 @@ const migrationFiles = [
   '20261103031528_platform_usage.sql',
   '20261103031532_knowledge_plan_limits.sql',
   '20261103080455_knowledge_central_store.sql',
+  '20261103084124_knowledge_on_demand.sql',
 ];
 
 let db: PGlite;
@@ -53,7 +54,15 @@ beforeAll(async () => {
       name text NOT NULL,
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb
     );
-    CREATE TABLE storage.buckets (id text PRIMARY KEY, file_size_limit bigint);
+    CREATE FUNCTION storage.foldername(p_name text) RETURNS text[]
+      LANGUAGE sql IMMUTABLE AS $$ SELECT string_to_array(p_name, '/') $$;
+    CREATE TABLE storage.buckets (
+      id text PRIMARY KEY,
+      name text NOT NULL DEFAULT '',
+      public boolean NOT NULL DEFAULT false,
+      file_size_limit bigint,
+      allowed_mime_types text[]
+    );
     INSERT INTO storage.buckets (id, file_size_limit) VALUES ('assets', NULL), ('supplier-order-documents', NULL);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT nullif(current_setting('test.uid', true), '')::uuid
@@ -716,6 +725,165 @@ describe('E4 knowledge central store', () => {
       'SELECT knowledge_central_inventory($1,$2,$3::jsonb)',
       [OWNER, DEVICE, JSON.stringify([{ version_id: version.id }])],
       'Elemento de inventario inválido',
+    );
+  });
+});
+
+describe('E5 knowledge originals on demand', () => {
+  const DEVICE = '20000000-0000-4000-8000-000000000001';
+  const filePath = (documentId: string, version: number, filename: string) =>
+    OWNER + '/' + documentId + '/v' + version + '/' + filename;
+
+  async function addOnlineDevice(): Promise<void> {
+    await asSystem();
+    await db.query(
+      'INSERT INTO ai_bridge_devices (id, user_id, name, last_seen_at) VALUES ($1, $2, $3, now())',
+      [DEVICE, OWNER, 'On-demand test central'],
+    );
+  }
+
+  async function markPurged(versionId: string, location: 'local' | 'missing' = 'local'): Promise<void> {
+    await asSystem();
+    await db.query(
+      'UPDATE knowledge_document_versions SET storage_location = $2, cloud_purged_at = now() WHERE id = $1',
+      [versionId, location],
+    );
+  }
+
+  it('creates a private cache bucket with only owner-scoped reads and no client writes', async () => {
+    const bucket = await db.query<{ public: boolean; file_size_limit: number; allowed_mime_types: string[] }>(
+      "SELECT public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id = 'knowledge-cache'",
+    );
+    expect(bucket.rows[0]).toMatchObject({
+      public: false,
+      file_size_limit: 52_428_800,
+      allowed_mime_types: expect.arrayContaining(['application/pdf', 'image/webp', 'text/x-markdown']),
+    });
+    const policies = await db.query<{ policyname: string; cmd: string }>(
+      "SELECT policyname, cmd FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'knowledge_cache_objects_read'",
+    );
+    expect(policies.rows).toEqual([{ policyname: 'knowledge_cache_objects_read', cmd: 'SELECT' }]);
+
+    await asUser(OWNER);
+    await expectQueryError(
+      'INSERT INTO knowledge_file_requests(user_id, version_id, requested_by) VALUES($1, gen_random_uuid(), $1)',
+      [OWNER],
+      'permission denied',
+    );
+  });
+
+  it('returns cloud, offline, and missing modes from the original state', async () => {
+    const cloudDocument = await createDocument('Original remains in cloud');
+    const cloudVersion = await addFileVersion(cloudDocument, filePath(cloudDocument, 1, 'cloud.pdf'), 'cloud.pdf');
+    await asUser(OWNER);
+    const cloud = await db.query<{ result: Record<string, unknown> }>(
+      'SELECT knowledge_open_original($1) AS result', [cloudVersion.id],
+    );
+    expect(cloud.rows[0].result).toEqual({ mode: 'cloud', path: filePath(cloudDocument, 1, 'cloud.pdf') });
+
+    const offlineDocument = await createDocument('Original central offline');
+    const offlineVersion = await addFileVersion(offlineDocument, filePath(offlineDocument, 1, 'offline.pdf'), 'offline.pdf');
+    await markPurged(offlineVersion.id);
+    await asUser(OWNER);
+    const offline = await db.query<{ result: Record<string, unknown> }>(
+      'SELECT knowledge_open_original($1) AS result', [offlineVersion.id],
+    );
+    expect(offline.rows[0].result).toMatchObject({ mode: 'offline', last_seen_at: null });
+
+    const missingDocument = await createDocument('Original missing');
+    const missingVersion = await addFileVersion(missingDocument, filePath(missingDocument, 1, 'missing.pdf'), 'missing.pdf');
+    await markPurged(missingVersion.id, 'missing');
+    await asUser(OWNER);
+    const missing = await db.query<{ result: Record<string, unknown> }>(
+      'SELECT knowledge_open_original($1) AS result', [missingVersion.id],
+    );
+    expect(missing.rows[0].result).toEqual({ mode: 'missing' });
+  });
+
+  it('reuses a pending or ready request and exposes its cache path through the owner RPC', async () => {
+    const documentId = await createDocument('On-demand flow');
+    const version = await addFileVersion(documentId, filePath(documentId, 1, 'manual.pdf'), 'manual.pdf');
+    await markPurged(version.id);
+    await addOnlineDevice();
+    await asUser(OWNER);
+    const first = await db.query<{ result: { mode: string; request_id: string } }>(
+      'SELECT knowledge_open_original($1) AS result', [version.id],
+    );
+    expect(first.rows[0].result.mode).toBe('requested');
+    const reused = await db.query<{ result: { mode: string; request_id: string } }>(
+      'SELECT knowledge_open_original($1) AS result', [version.id],
+    );
+    expect(reused.rows[0].result).toEqual(first.rows[0].result);
+    await asSystem();
+    const claimed = await db.query<{ items: Array<{ request_id: string }> }>(
+      'SELECT knowledge_central_next_requests($1, $2, 1) AS items', [OWNER, DEVICE],
+    );
+    const cachePath = OWNER + '/' + first.rows[0].result.request_id + '/manual.pdf';
+    await db.query(
+      'SELECT knowledge_central_request_ready($1, $2, $3, $4)',
+      [OWNER, DEVICE, first.rows[0].result.request_id, cachePath],
+    );
+    await asUser(OWNER);
+    const readyReuse = await db.query<{ result: { mode: string; request_id: string } }>(
+      'SELECT knowledge_open_original($1) AS result', [version.id],
+    );
+    expect(readyReuse.rows[0].result).toEqual(first.rows[0].result);
+    const status = await db.query<{ result: Record<string, unknown> }>(
+      'SELECT knowledge_file_request_status($1) AS result', [first.rows[0].result.request_id],
+    );
+    expect(status.rows[0].result).toMatchObject({ status: 'ready', cache_path: cachePath });
+    expect(claimed.rows[0].items).toMatchObject([{ request_id: first.rows[0].result.request_id }]);
+    await asSystem();
+    await db.query('UPDATE knowledge_file_requests SET expires_at = now() - interval \'1 second\' WHERE id = $1',
+      [first.rows[0].result.request_id]);
+    const expired = await db.query<{ items: Array<{ id: string; cache_path: string }> }>(
+      'SELECT knowledge_central_expired_requests($1, $2) AS items', [OWNER, DEVICE],
+    );
+    expect(expired.rows[0].items).toEqual([{ id: first.rows[0].result.request_id, cache_path: cachePath }]);
+    await db.query('SELECT knowledge_central_cache_cleanup_done($1, $2, $3::uuid[])',
+      [OWNER, DEVICE, [first.rows[0].result.request_id]]);
+    await asUser(OWNER);
+    const cleanedStatus = await db.query<{ result: Record<string, unknown> }>(
+      'SELECT knowledge_file_request_status($1) AS result', [first.rows[0].result.request_id],
+    );
+    expect(cleanedStatus.rows[0].result).toMatchObject({ status: 'expired', cache_path: null });
+  });
+
+  it('caps each owner at ten open requests and enforces collaborator read permission', async () => {
+    const documentId = await createDocument('Request limit');
+    const versions = [];
+    for (let number = 1; number <= 11; number += 1) {
+      const version = await addFileVersion(
+        documentId, filePath(documentId, number, 'manual.pdf'), 'manual.pdf',
+        'application/pdf', 100, number.toString(16).padStart(64, '0'),
+      );
+      versions.push(version);
+    }
+    for (const version of versions) await markPurged(version.id);
+    await addOnlineDevice();
+    await asUser(OWNER);
+    for (const version of versions.slice(0, 10)) {
+      const result = await db.query<{ result: { mode: string } }>(
+        'SELECT knowledge_open_original($1) AS result', [version.id],
+      );
+      expect(result.rows[0].result.mode).toBe('requested');
+    }
+    await expectQueryError(
+      'SELECT knowledge_open_original($1)', [versions[10].id], 'Ya hay demasiados originales pendientes',
+    );
+
+    await asUser(STAFF_READ);
+    const staffVisible = await db.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM knowledge_file_requests',
+    );
+    expect(Number(staffVisible.rows[0].count)).toBe(10);
+    await asUser(STAFF_NO_PERMISSION);
+    const denied = await db.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM knowledge_file_requests',
+    );
+    expect(Number(denied.rows[0].count)).toBe(0);
+    await expectQueryError(
+      'SELECT knowledge_open_original($1)', [versions[0].id], 'Sin acceso a Conocimientos',
     );
   });
 });

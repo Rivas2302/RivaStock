@@ -30,7 +30,11 @@ export type CentralWorkerAction =
   | 'worker_central_deletions'
   | 'worker_central_deletions_done'
   | 'worker_central_status'
-  | 'worker_central_local_file';
+  | 'worker_central_local_file'
+  | 'worker_central_requests'
+  | 'worker_central_request_ready'
+  | 'worker_central_request_failed'
+  | 'worker_central_cache_cleanup';
 
 const CENTRAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CENTRAL_HASH = /^[0-9a-f]{64}$/i;
@@ -40,12 +44,23 @@ export function validateCentralWorkerAction(action: CentralWorkerAction, body: R
     case 'worker_central_next':
     case 'worker_central_purge':
     case 'worker_central_deletions':
+    case 'worker_central_requests':
+    case 'worker_central_cache_cleanup':
       return null;
     case 'worker_central_stored':
       return isUuid(body.version_id) && typeof body.sha256 === 'string' && CENTRAL_HASH.test(body.sha256)
         ? null : 'Transferencia de la central inválida.';
     case 'worker_central_local_file':
       return isUuid(body.version_id) ? null : 'Versión de archivo inválida.';
+    case 'worker_central_request_ready':
+      return isUuid(body.request_id) && typeof body.cache_path === 'string'
+        && body.cache_path.length <= 400 ? null : 'Confirmación del original inválida.';
+    case 'worker_central_request_failed':
+      return isUuid(body.request_id) && typeof body.error === 'string'
+        && body.error.length <= 500
+        && (body.cache_path === undefined || body.cache_path === null
+          || (typeof body.cache_path === 'string' && body.cache_path.length <= 400))
+        ? null : 'Error de solicitud del original inválido.';
     case 'worker_central_inventory_list':
       return Number.isSafeInteger(body.offset) && Number(body.offset) >= 0
         && Number.isSafeInteger(body.limit) && Number(body.limit) >= 1 && Number(body.limit) <= 1000

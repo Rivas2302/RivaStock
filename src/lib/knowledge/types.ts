@@ -67,6 +67,20 @@ export interface KnowledgeVersion {
   created_at: string;
 }
 
+export type KnowledgeOriginalOpenResult =
+  | { mode: 'cloud'; path: string }
+  | { mode: 'requested'; request_id: string }
+  | { mode: 'offline'; last_seen_at: string | null }
+  | { mode: 'missing' };
+
+export interface KnowledgeOriginalRequestStatus {
+  status: 'pending' | 'uploading' | 'ready' | 'failed' | 'expired' | 'missing';
+  cache_path: string | null;
+  error: string | null;
+  ready_at: string | null;
+  expires_at: string | null;
+}
+
 export interface KnowledgeFolder {
   id: string;
   user_id: string;

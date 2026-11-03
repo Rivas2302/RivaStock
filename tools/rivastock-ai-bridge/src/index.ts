@@ -8,6 +8,7 @@ import { configureModelCache } from './knowledge/embed.ts';
 import { KnowledgeClient } from './knowledge/client.ts';
 import { runKnowledgeLoop } from './knowledge/loop.ts';
 import { runKnowledgeCentralLoop } from './central/loop.ts';
+import { runKnowledgeOnDemandLoop } from './central/on-demand.ts';
 import { CentralStore } from './central/store.ts';
 import { buildOrganizePrompt, mockOrganize, parseOrganizeOutput } from './knowledge/organize.ts';
 import { withDownloadedOrganizeImages } from './knowledge/organizeImages.ts';
@@ -367,6 +368,13 @@ async function runWithInstanceLock(): Promise<void> {
         config,
         isStopping: () => stopping,
         log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+      }));
+      loops.push(runKnowledgeOnDemandLoop({
+        client: activeKnowledgeClient,
+        workerId: config.workerId,
+        store: centralStore,
+        isStopping: () => stopping,
+        log: (message) => process.stderr.write('[AI Bridge] ' + message + '\n'),
       }));
     }
     if (config.fbSupervisorEnabled && config.workerId && supervisorClient) {

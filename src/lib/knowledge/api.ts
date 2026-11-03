@@ -12,6 +12,8 @@ import type {
   KnowledgeEvent,
   KnowledgeFolder,
   KnowledgeIndexJob,
+  KnowledgeOriginalOpenResult,
+  KnowledgeOriginalRequestStatus,
   KnowledgeFormat,
   KnowledgeSearchFilters,
   KnowledgeSearchResult,
@@ -102,6 +104,14 @@ export async function listJobSources(jobIds: string[]): Promise<Record<string, K
     (byJob[row.job_id] ??= []).push({ ...row, deleted: !existingIds.has(row.document_id) });
   }
   return byJob;
+}
+
+export async function openKnowledgeOriginal(versionId: string): Promise<KnowledgeOriginalOpenResult> {
+  return rpc<KnowledgeOriginalOpenResult>('knowledge_open_original', { p_version_id: versionId });
+}
+
+export async function getKnowledgeOriginalRequestStatus(requestId: string): Promise<KnowledgeOriginalRequestStatus> {
+  return rpc<KnowledgeOriginalRequestStatus>('knowledge_file_request_status', { p_id: requestId });
 }
 
 function throwQueryError(error: RpcError | null): void {

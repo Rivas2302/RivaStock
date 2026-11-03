@@ -68,6 +68,18 @@ export interface CentralLocalFile {
   mime_type: string | null;
 }
 
+export interface CentralOriginalRequest {
+  request_id: string;
+  version_id: string;
+  relative_path: string;
+  sha256: string;
+  file_size: number;
+  mime_type: string;
+  original_filename: string;
+  cache_path: string;
+  upload_url: string;
+}
+
 export interface CentralInventoryEntry {
   version_id: string;
   sha256: string | null;
@@ -260,6 +272,51 @@ export class KnowledgeClient {
       throw new Error('La referencia local de Conocimientos es inválida.');
     }
     return response.file as unknown as CentralLocalFile;
+  }
+
+  async centralRequests(workerId: string): Promise<CentralOriginalRequest[]> {
+    const response = await this.post<{ requests: unknown }>('worker_central_requests', { worker_id: workerId });
+    if (!Array.isArray(response.requests) || response.requests.length > 1) {
+      throw new Error('La lista de originales pendientes de la central es inválida.');
+    }
+    return response.requests.map((value) => {
+      if (!isRecord(value) || typeof value.request_id !== 'string' || !UUID_PATTERN.test(value.request_id)
+        || typeof value.version_id !== 'string' || !UUID_PATTERN.test(value.version_id)
+        || typeof value.relative_path !== 'string' || !isCentralPath(value.relative_path)
+        || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
+        || typeof value.file_size !== 'number' || !Number.isSafeInteger(value.file_size)
+        || value.file_size < 1 || value.file_size > 52_428_800
+        || typeof value.mime_type !== 'string'
+        || !['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain', 'text/markdown', 'text/x-markdown', 'image/png', 'image/jpeg', 'image/webp'].includes(value.mime_type)
+        || typeof value.original_filename !== 'string' || value.original_filename.length > 255
+        || typeof value.cache_path !== 'string' || !isCachePath(value.cache_path, value.relative_path, value.request_id)
+        || typeof value.upload_url !== 'string' || !isSignedStorageUploadUrl(value.upload_url, this.endpoint)) {
+        throw new Error('Una solicitud de original de la central tiene datos inválidos.');
+      }
+      return value as unknown as CentralOriginalRequest;
+    });
+  }
+
+  async centralRequestReady(workerId: string, requestId: string, cachePath: string): Promise<boolean> {
+    const response = await this.post<{ ready: unknown }>('worker_central_request_ready', {
+      worker_id: workerId, request_id: requestId, cache_path: cachePath,
+    });
+    if (typeof response.ready !== 'boolean') throw new Error('La confirmación del original es inválida.');
+    return response.ready;
+  }
+
+  async centralRequestFailed(workerId: string, requestId: string, error: string, cachePath?: string): Promise<void> {
+    await this.post('worker_central_request_failed', {
+      worker_id: workerId, request_id: requestId, error, ...(cachePath ? { cache_path: cachePath } : {}),
+    });
+  }
+
+  async centralCacheCleanup(workerId: string): Promise<number> {
+    const response = await this.post<{ cleaned: unknown }>('worker_central_cache_cleanup', { worker_id: workerId });
+    const count = Number(response.cleaned);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error('El resultado de la limpieza de originales es inválido.');
+    return count;
   }
 
   async organizeImages(workerId: string, jobId: string): Promise<KnowledgeOrganizeImage[]> {
@@ -472,6 +529,26 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 function isCentralPath(path: string): boolean {
   return /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/v[0-9]{1,5}\/[A-Za-z0-9._-]{1,120}$/i.test(path)
     && !path.split('/').some((part) => part === '.' || part === '..');
+}
+
+function isCachePath(path: string, relativePath: string, requestId: string): boolean {
+  const ownerId = relativePath.split('/')[0];
+  return path.startsWith(ownerId + '/' + requestId + '/')
+    && new RegExp('^' + ownerId + '/' + requestId + '/[A-Za-z0-9._-]{1,120}$', 'i').test(path);
+}
+
+function isSignedStorageUploadUrl(value: string, endpoint: string): boolean {
+  try {
+    const uploadUrl = new URL(value);
+    const functionUrl = new URL(endpoint);
+    return functionUrl.protocol === 'https:'
+      && uploadUrl.protocol === 'https:'
+      && uploadUrl.origin === functionUrl.origin
+      && uploadUrl.pathname.startsWith('/storage/v1/object/upload/sign/')
+      && Boolean(uploadUrl.searchParams.get('token'));
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

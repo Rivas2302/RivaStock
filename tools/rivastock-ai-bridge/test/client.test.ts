@@ -102,3 +102,29 @@ test('KnowledgeClient routes and validates memory retrieval and queued embedding
     globalThis.fetch = originalFetch;
   }
 });
+
+test('KnowledgeClient only accepts signed original uploads from its own Supabase Storage endpoint', async () => {
+  const originalFetch = globalThis.fetch;
+  const cachePath = '10000000-0000-4000-8000-000000000001/40000000-0000-4000-8000-000000000004/manual.pdf';
+  const request = {
+    request_id: '40000000-0000-4000-8000-000000000004',
+    version_id: '30000000-0000-4000-8000-000000000003',
+    relative_path: '10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000002/v1/manual.pdf',
+    sha256: 'a'.repeat(64), file_size: 100, mime_type: 'application/pdf',
+    original_filename: 'manual.pdf', cache_path: cachePath,
+    upload_url: 'https://demo.supabase.co/storage/v1/object/upload/sign/' + cachePath + '?token=temporary',
+  };
+  let payload: { requests: unknown[] } = { requests: [request] };
+  globalThis.fetch = async () => new Response(JSON.stringify(payload), { status: 200 });
+  try {
+    const client = new KnowledgeClient('https://demo.supabase.co/functions/v1/knowledge', 'x'.repeat(40));
+    assert.equal((await client.centralRequests('20000000-0000-4000-8000-000000000001')).length, 1);
+    payload = { requests: [{ ...request, upload_url: 'https://evil.example/upload' }] };
+    await assert.rejects(
+      () => client.centralRequests('20000000-0000-4000-8000-000000000001'),
+      /solicitud de original de la central tiene datos inválidos/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

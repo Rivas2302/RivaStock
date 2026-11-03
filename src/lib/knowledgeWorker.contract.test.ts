@@ -77,6 +77,16 @@ describe('knowledge central worker contract', () => {
     expect(validateCentralWorkerAction('worker_central_inventory_list', { offset: 0, limit: 1000 })).toBeNull();
     expect(validateCentralWorkerAction('worker_central_inventory_list', { offset: -1, limit: 1001 })).toMatch(/inválida/);
     expect(validateCentralWorkerAction('worker_central_deletions_done', { ids: [versionId] })).toBeNull();
+    expect(validateCentralWorkerAction('worker_central_requests', {})).toBeNull();
+    expect(validateCentralWorkerAction('worker_central_request_ready', {
+      request_id: versionId, cache_path: '10000000-0000-4000-8000-000000000001/30000000-0000-4000-8000-000000000001/manual.pdf',
+    })).toBeNull();
+    expect(validateCentralWorkerAction('worker_central_request_ready', {
+      request_id: 'bad', cache_path: 'bad',
+    })).toMatch(/inválida/);
+    expect(validateCentralWorkerAction('worker_central_request_failed', {
+      request_id: versionId, error: 'No se pudo preparar el original.',
+    })).toBeNull();
     expect(validateCentralWorkerAction('worker_central_status', {
       store_bytes: 100, store_free_bytes: 500, mirror_status: 'ok', mirror_last_ok_at: null,
       files_total: 1, files_missing: 0,

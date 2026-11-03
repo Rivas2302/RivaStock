@@ -31,7 +31,8 @@ import {
   KNOWLEDGE_STATUS_CLASSES,
   KNOWLEDGE_STATUS_LABELS,
 } from '../../lib/knowledge/format';
-import { signedUrl } from '../../lib/knowledge/storage';
+import { resolveKnowledgeOriginal } from '../../lib/knowledge/originals';
+import OriginalAccessNotice, { type OriginalAccessViewState } from './OriginalAccessNotice';
 import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
 import { diffLines, type LineDiffCell, type LineDiffRow } from '../../lib/knowledge/lineDiff';
 import { toPlainText } from '../../lib/knowledge/editorContent';
@@ -144,7 +145,10 @@ export default function KnowledgeDocumentDetail() {
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewUrlPath, setPreviewUrlPath] = useState('');
-  const [previewError, setPreviewError] = useState('');
+  const [originalAccess, setOriginalAccess] = useState<{ versionId: string; value: OriginalAccessViewState } | null>(null);
+  const [showExtractedText, setShowExtractedText] = useState(false);
+  const [downloadPendingId, setDownloadPendingId] = useState<string | null>(null);
+  const originalResolutionIdRef = useRef(0);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [folderId, setFolderId] = useState('');
@@ -242,37 +246,55 @@ export default function KnowledgeDocumentDetail() {
     () => versions.find((version) => version.id === previewVersionId) ?? currentVersion,
     [versions, previewVersionId, currentVersion],
   );
+  const previewAccess = originalAccess?.versionId === previewVersion?.id ? originalAccess.value : null;
   const hasUnpublishedChanges = Boolean(document?.published_version_id && document.current_version_id !== document.published_version_id);
   const publishedEvent = events.find((event) => event.action === 'status_changed'
     && event.details.to === 'published'
     && (!document?.published_version_id || event.details.version_id === document.published_version_id));
   const displayedEditorVersion = activeTab === 'versions' && reviewVersion ? reviewVersion : previewVersion;
 
-  const refreshPreviewUrl = useCallback(async (path?: string) => {
-    const targetPath = path ?? previewVersion?.storage_path ?? '';
-    if (!targetPath) return;
-    setPreviewError('');
+  const refreshPreviewUrl = useCallback(async (version: KnowledgeVersion) => {
+    if (!version.storage_path) return;
+    const requestId = ++originalResolutionIdRef.current;
+    setOriginalAccess({ versionId: version.id, value: { state: 'loading' } });
+    setPreviewUrl('');
+    setPreviewUrlPath('');
+    setShowExtractedText(false);
     try {
-      const url = await signedUrl(targetPath, 300);
-      setPreviewUrl(url);
-      setPreviewUrlPath(targetPath);
-      signedAtRef.current = Date.now();
+      const result = await resolveKnowledgeOriginal(version.id);
+      if (requestId !== originalResolutionIdRef.current) return;
+      setOriginalAccess({ versionId: version.id, value: result });
+      if (result.state === 'ready') {
+        setPreviewUrl(result.url);
+        setPreviewUrlPath(version.storage_path);
+      }
     } catch (cause) {
-      setPreviewError(cause instanceof Error ? cause.message : 'No se pudo abrir el archivo.');
+      if (requestId === originalResolutionIdRef.current) {
+        setOriginalAccess({
+          versionId: version.id,
+          value: { state: 'failed', message: cause instanceof Error ? cause.message : 'No se pudo abrir el archivo.' },
+        });
+      }
+    } finally {
+      if (requestId === originalResolutionIdRef.current) signedAtRef.current = Date.now();
     }
-  }, [previewVersion?.storage_path]);
+  }, []);
 
   useEffect(() => {
     const needsSignedUrl = document?.format === 'pdf' || document?.format === 'image' || document?.format === 'docx';
-    const path = activeTab === 'preview' && needsSignedUrl ? previewVersion?.storage_path : null;
-    if (path && (path !== previewUrlPath || Date.now() - signedAtRef.current > 240_000)) void refreshPreviewUrl(path);
-  }, [activeTab, document?.format, previewVersion?.storage_path, previewUrlPath, refreshPreviewUrl]);
+    if (activeTab !== 'preview' || !needsSignedUrl || !previewVersion?.storage_path) return;
+    if (previewAccess?.state === 'loading') return;
+    if (previewAccess?.state === 'ready' && Date.now() - signedAtRef.current <= 90_000) return;
+    if (previewAccess && previewAccess.state !== 'ready' && Date.now() - signedAtRef.current <= 90_000) return;
+    void refreshPreviewUrl(previewVersion);
+  }, [activeTab, document?.format, previewVersion, previewAccess, refreshPreviewUrl]);
 
   useEffect(() => {
     const refreshWhenVisible = () => {
       const needsSignedUrl = document?.format === 'pdf' || document?.format === 'image' || document?.format === 'docx';
-      if (window.document.visibilityState === 'visible' && activeTab === 'preview' && needsSignedUrl && Date.now() - signedAtRef.current > 240_000) {
-        void refreshPreviewUrl();
+      if (window.document.visibilityState === 'visible' && activeTab === 'preview' && needsSignedUrl
+        && previewVersion?.storage_path && Date.now() - signedAtRef.current > 90_000) {
+        void refreshPreviewUrl(previewVersion);
       }
     };
     window.addEventListener('focus', refreshWhenVisible);
@@ -281,20 +303,42 @@ export default function KnowledgeDocumentDetail() {
       window.removeEventListener('focus', refreshWhenVisible);
       window.document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [activeTab, document?.format, refreshPreviewUrl]);
+  }, [activeTab, document?.format, previewVersion, refreshPreviewUrl]);
+
+  const openOriginalInPreview = (version: KnowledgeVersion) => {
+    if (!version.storage_path) return;
+    setPreviewVersionId(version.id);
+    setActiveTab('preview');
+    setShowExtractedText(false);
+    void refreshPreviewUrl(version);
+  };
 
   const downloadVersion = async (version: KnowledgeVersion) => {
     if (!version.storage_path) return;
+    setDownloadPendingId(version.id);
+    setActionError('');
     try {
-      const url = await signedUrl(version.storage_path, 300, version.original_filename ?? true);
+      const result = await resolveKnowledgeOriginal(version.id, { download: version.original_filename ?? true });
+      if (result.state !== 'ready') {
+        const message = result.state === 'offline'
+          ? 'La central de este negocio está apagada. Podés leer el texto del documento ahora; el original se abre cuando la PC esté prendida.'
+          : result.state === 'missing'
+            ? 'No encontramos el original en la central ni en su copia de respaldo. El texto y la búsqueda siguen funcionando.'
+            : result.state === 'timeout'
+              ? 'La central tardó demasiado en preparar el original.'
+              : result.message;
+        throw new Error(message);
+      }
       const anchor = window.document.createElement('a');
-      anchor.href = url;
+      anchor.href = result.url;
       anchor.download = version.original_filename ?? `version-${version.version_number}`;
       anchor.rel = 'noreferrer';
       anchor.target = '_blank';
       anchor.click();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'No se pudo descargar el archivo.');
+    } finally {
+      setDownloadPendingId(null);
     }
   };
 
@@ -490,7 +534,8 @@ export default function KnowledgeDocumentDetail() {
           {['in_review', 'published'].includes(document.status) && <button type="button" disabled={busy} onClick={() => void changeStatus('draft', 'El documento volvió a borrador.')} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Volver a borrador</button>}
           {['draft', 'in_review', 'published'].includes(document.status) && <button type="button" disabled={busy} onClick={() => void changeStatus('archived', 'Se archivó el documento.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Archive size={14}/>Archivar</button>}
           {document.status === 'archived' && <button type="button" disabled={busy} onClick={() => void changeStatus('draft', 'Se restauró el documento como borrador.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><RotateCcw size={14}/>Restaurar</button>}
-          {currentVersion?.storage_path && <button type="button" onClick={() => void downloadVersion(currentVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold"><Download size={14}/>Descargar</button>}
+          {currentVersion?.storage_path && <button type="button" onClick={() => openOriginalInPreview(currentVersion)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver original</button>}
+          {currentVersion?.storage_path && <button type="button" disabled={downloadPendingId === currentVersion.id} onClick={() => void downloadVersion(currentVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Download size={14}/>{downloadPendingId === currentVersion.id ? 'Solicitando…' : 'Descargar'}</button>}
           {document.kind === 'editor' && displayedEditorVersion?.content_json && <button type="button" disabled={pdfBusy} onClick={() => void exportPdf(displayedEditorVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Download size={14}/>{pdfBusy ? 'Generando PDF…' : `Exportar PDF · v${displayedEditorVersion.version_number}`}</button>}
           {document.kind === 'file' && document.status !== 'archived' && document.status !== 'deleting' && <><input ref={fileInputRef} type="file" accept={fileAccept(document.format)} onChange={(event) => void handleVersionUpload(event)} className="sr-only"/><button type="button" disabled={uploadBusy || busy} onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{uploadBusy ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}Subir nueva versión</button></>}
           {document.status !== 'deleting' && <button type="button" disabled={busy} onClick={() => void removeCurrentDocument()} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Eliminar</button>}
@@ -499,6 +544,7 @@ export default function KnowledgeDocumentDetail() {
     </header>
 
     {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">{actionError}</p>}
+    {downloadPendingId && <OriginalAccessNotice access={{ state: 'loading' }} onViewText={() => undefined} onRetry={() => undefined}/>}
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{notice}</p>}
     {visibleIndexStatus === 'error' && <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"><div><h2 className="text-sm font-bold">No se pudo indexar este documento</h2><p className="mt-1 text-sm">{document.index_error || 'La última indexación terminó con un error.'}</p></div>{document.status === 'published' && document.rag_enabled && <button type="button" disabled={busy} onClick={() => void retryIndexing()} className="inline-flex items-center gap-2 rounded-lg border border-current px-3 py-2 text-sm font-bold disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <RotateCcw size={14}/>}Reintentar indexación</button>}</section>}
     {(visibleIndexStatus === 'queued' || visibleIndexStatus === 'processing') && <p role="status" className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand-soft)] px-4 py-3 text-sm font-semibold text-[var(--brand)]"><Loader2 size={16} className="animate-spin"/>La PC vinculada está procesando este documento.</p>}
@@ -509,7 +555,16 @@ export default function KnowledgeDocumentDetail() {
 
     {activeTab === 'preview' && <>
       {ocrStats?.ocr && <p role="note" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Texto obtenido por OCR, puede contener errores.{ocrStats.ocr_notice ? ` ${ocrStats.ocr_notice}.` : ''}</p>}
-      <PreviewPane document={document} version={previewVersion} signedUrl={previewUrlPath === previewVersion?.storage_path ? previewUrl : ''} signedError={previewError} onOpenPdf={() => previewUrl && window.open(previewUrl, '_blank', 'noopener,noreferrer')}/>
+      <PreviewPane
+        document={document}
+        version={previewVersion}
+        access={previewAccess}
+        showText={showExtractedText}
+        signedUrl={previewUrlPath === previewVersion?.storage_path ? previewUrl : ''}
+        onViewText={() => setShowExtractedText(true)}
+        onRetry={() => previewVersion && void refreshPreviewUrl(previewVersion)}
+        onOpenPdf={() => previewUrl && window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+      />
     </>}
 
     {activeTab === 'info' && <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
@@ -563,7 +618,8 @@ export default function KnowledgeDocumentDetail() {
       {versions.length ? <ul className="divide-y divide-[var(--line)]">{versions.map((version) => <li key={version.id} className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
         <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">v{version.version_number}</h3>{document.current_version_id === version.id && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-1 text-[10px] font-bold text-[var(--brand)]">Actual</span>}{document.published_version_id === version.id && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">Publicada</span>}{version.storage_path && <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${storageLocationLabel(version.storage_location).className}`}>{storageLocationLabel(version.storage_location).label}</span>}</div><p className="mt-1 text-xs text-[var(--ink-muted)]">{formatDate(version.created_at)} · {sourceLabel(version.source)} · {version.file_size == null ? 'Contenido de texto' : formatBytes(version.file_size)}</p>{version.change_note && <p className="mt-1 text-xs">{version.change_note}</p>}</div>
         <div className="flex flex-wrap gap-2">
-          {version.storage_path && <button type="button" onClick={() => void downloadVersion(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Descargar</button>}
+          {version.storage_path && <button type="button" onClick={() => openOriginalInPreview(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver original</button>}
+          {version.storage_path && <button type="button" disabled={downloadPendingId === version.id} onClick={() => void downloadVersion(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{downloadPendingId === version.id ? 'Solicitando…' : 'Descargar'}</button>}
           {document.kind === 'editor' ? <>
             <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(null); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>
             {version.id !== currentVersion?.id && version.content_json && currentVersion?.content_json && <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(version.id); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Comparar con la actual</button>}
@@ -650,11 +706,14 @@ function DiffColumn({ title, rows, side }: { title: string; rows: LineDiffRow[];
   </section>;
 }
 
-function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
+function PreviewPane({ document, version, access, showText, signedUrl, onViewText, onRetry, onOpenPdf }: {
   document: KnowledgeDocument;
   version: KnowledgeVersion | null;
+  access: OriginalAccessViewState;
+  showText: boolean;
   signedUrl: string;
-  signedError: string;
+  onViewText: () => void;
+  onRetry: () => void;
   onOpenPdf: () => void;
 }) {
   const markdown = version?.content_markdown ?? version?.extracted_text ?? '';
@@ -680,18 +739,24 @@ function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
   }, [markdown, markdownCanRender]);
 
   if (!version) return <section className="rounded-2xl border border-dashed border-[var(--line-strong)] p-10 text-center"><FileText className="mx-auto text-[var(--ink-muted)]" size={28}/><h2 className="mt-3 font-bold">No hay una versión para mostrar</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Guardá una versión del documento para ver su contenido.</p></section>;
+  if (showText) return <section className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
+    <h2 className="font-bold">Texto del documento</h2>
+    <pre className="whitespace-pre-wrap break-words text-sm leading-6">{version.content_markdown ?? version.extracted_text ?? 'No hay texto extraído para esta versión.'}</pre>
+  </section>;
+  if (access && access.state !== 'idle' && access.state !== 'ready') {
+    return <OriginalAccessNotice access={access} onViewText={onViewText} onRetry={onRetry}/>;
+  }
   if (document.format === 'pdf') return <PdfPreview
     title={document.title}
     versionNumber={version.version_number}
     extractionMessage={version.extraction_status !== 'done' ? extractionMessage(version.extraction_status) : null}
     signedUrl={signedUrl}
-    signedError={signedError}
+    signedError=""
     onOpenPdf={onOpenPdf}
   />;
 
   if (document.format === 'image') return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">
-    {signedError && <p role="alert" className="p-4 text-sm text-rose-700 dark:text-rose-300">{signedError}</p>}
-    {signedUrl ? <img src={signedUrl} alt={document.title} className="mx-auto max-h-[70dvh] max-w-full object-contain"/> : !signedError && <div className="grid h-60 place-items-center"><Loader2 className="animate-spin text-[var(--brand)]"/></div>}
+    {signedUrl ? <img src={signedUrl} alt={document.title} className="mx-auto max-h-[70dvh] max-w-full object-contain"/> : <div className="grid h-60 place-items-center"><Loader2 className="animate-spin text-[var(--brand)]"/></div>}
   </section>;
 
   if (document.format === 'docx') return <section className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm"><div><h2 className="font-bold">Vista previa no disponible para Word.</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Descargá el archivo para abrirlo en una aplicación compatible.</p></div>{signedUrl && version.storage_path && <a href={signedUrl} download={version.original_filename ?? undefined} target="_blank" rel="noreferrer" className="inline-flex rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold">Descargar</a>}{version.extraction_status === 'done' && version.extracted_text && <pre className="max-h-[60dvh] overflow-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-muted)] p-4 text-sm">{version.extracted_text}</pre>}{extractionMessage(version.extraction_status) && <p className="text-sm text-[var(--ink-muted)]">{extractionMessage(version.extraction_status)}</p>}</section>;
@@ -702,9 +767,15 @@ function PreviewPane({ document, version, signedUrl, signedError, onOpenPdf }: {
   if (supportsMarkdown) {
     if (markdownFailure?.source === markdown) return <PreviewMessage title="No se pudo mostrar el contenido" message={markdownFailure.message}/>;
     if (renderedMarkdown?.source !== markdown) return <div role="status" className="flex min-h-40 items-center justify-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-sm text-[var(--ink-muted)]"><Loader2 className="animate-spin text-[var(--brand)]" size={18}/>Cargando vista previa…</div>;
-    return <article className="kb-prose rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-8" dangerouslySetInnerHTML={{ __html: renderedMarkdown.html }}/>;
+    return <section className="space-y-3">
+      {signedUrl && <a href={signedUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold">Abrir original</a>}
+      <article className="kb-prose rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm md:p-8" dangerouslySetInnerHTML={{ __html: renderedMarkdown.html }}/>
+    </section>;
   }
-  return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm"><pre className="whitespace-pre-wrap break-words text-sm leading-6">{version.extracted_text ?? 'No hay texto extraído para esta versión.'}</pre></section>;
+  return <section className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
+    {signedUrl && <a href={signedUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold">Abrir original</a>}
+    <pre className="whitespace-pre-wrap break-words text-sm leading-6">{version.extracted_text ?? 'No hay texto extraído para esta versión.'}</pre>
+  </section>;
 }
 
 function PreviewMessage({ title, message }: { title: string; message: string }) {

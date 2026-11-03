@@ -76,6 +76,17 @@ export async function signedUrl(path: string, seconds = 300, download?: string |
   return data.signedUrl;
 }
 
+export async function signedCacheUrl(path: string, seconds = 120, download?: string | boolean): Promise<string> {
+  const { data, error } = await supabase.storage.from('knowledge-cache').createSignedUrl(
+    path,
+    seconds,
+    download === undefined ? undefined : { download },
+  );
+  if (error) throwStorageError(error);
+  if (!data?.signedUrl) throw new Error('No se pudo generar el enlace del original.');
+  return data.signedUrl;
+}
+
 export async function signedUrls(paths: string[], seconds = 3600): Promise<Record<string, string>> {
   const uniquePaths = [...new Set(paths.filter(Boolean))];
   if (uniquePaths.length === 0) return {};

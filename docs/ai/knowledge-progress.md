@@ -2,6 +2,16 @@
 
 Actualizado: 2026-11-03
 
+## E5 — Apertura de originales bajo demanda — implementación local, 2026-11-03
+
+- Comparé el plan multiempresa con Desktop y coincide. ACTION_PLAN solo difiere en las marcas F1–F4/B2/B4; el `origin/main` vigente y las verificaciones registradas respaldan que esas tareas ya están cerradas.
+- La migración local `20261103084124_knowledge_on_demand.sql` crea la caché privada `knowledge-cache` (50 MB por objeto) y solicitudes de archivo por dueño con estados, RLS de lectura, máximo de 10 solicitudes abiertas, heartbeat máximo de 90 s y vencimiento a 30 min. Los RPC de worker solo se conceden a `service_role`; los clientes no pueden escribir.
+- La Edge Function entrega URL firmada de subida, aplica un máximo de 100 MB por dueño y limpia objetos vencidos/antiguos. El Bridge 1.21.0 verifica SHA-256 de la copia central o espejo, sube por HTTPS y confirma el estado; los enlaces de descarga duran 120 s. El worker rechaza URLs de subida que no pertenezcan al origen HTTPS del mismo Supabase.
+- La UI permite ver/descargar el original y explica espera, central apagada, timeout o original faltante; cuando no se puede abrir, ofrece el texto extraído. Para descargas se fija el nombre de archivo en la URL firmada.
+- Pruebas: contrato de migración PGlite, flujo de resolución de URL y cuatro estados de UI; lint; frontend **772/772**; build y `perf:check`; Bridge typecheck y **110/110**.
+- **Estado seguro:** E4 y E5 todavía no están aplicadas/desplegadas. E4 depende de `20261103080455_knowledge_central_store.sql`; E5 depende de E4. No se publicaron datos de prueba. Se generó el paquete local AI Bridge 1.21.0, sin instalarlo.
+- **Backup requerido:** antes de E4 y nuevamente antes de E5, ejecutar `npm run backup:db -- --with-storage` y validar el resumen en `%USERPROFILE%\rivastock-backups\<UTC>\`. No usar backups anteriores para estas migraciones.
+
 ## B4 — Cierre seguro de tareas de Organizar con IA — 2026-11-03
 
 - **Planes comparados antes del cambio:** `ACTION_PLAN.md` coincidía con Desktop y `origin/main`; el addendum y el plan del publicador locales eran más recientes que sus copias en Desktop. Conservé las versiones locales. El plan del publicador registra T2.3 desplegada en AI Bridge 1.19.0, que fue la siguiente menor a la 1.18.0 instalada al cerrar B2; la próxima menor para un cambio futuro del worker es 1.20.0.

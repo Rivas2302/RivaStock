@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E5 implementada localmente; despliegue pendiente
+
+- Comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop: coincide. `ACTION_PLAN.md` difiere solo en seis marcas F1–F4/B2/B4; `origin/main` y el estado documentado las respaldan como `[x]`, así que conservé la versión reconciliada. No hubo cambios técnicos del plan.
+- E5 agrega solicitudes de originales bajo demanda, caché privada temporal con lectura aislada por negocio, expiración/limpieza, carga desde la central o su espejo, URLs firmadas y estados UI de espera, central apagada y original faltante. El worker valida que la URL de carga pertenezca al mismo origen Supabase antes de enviar bytes.
+- Verificación local final: `npm run lint`; frontend **772 pruebas**; `npm run build`; `npm run perf:check`; Bridge `npm run typecheck` y **110 pruebas**. Se generó el paquete Bridge **1.21.0**. Ajusté la tolerancia temporal de una aserción del agregado de Facebook: su `now()` variaba 22 ms bajo carga aunque el promedio esperado era 450 s; el test pasa sin cambiar la consulta.
+- **No se migró ni desplegó E4/E5**, no se pusheó esta versión y no se instaló Bridge 1.21.0. Las migraciones `20261103080455_knowledge_central_store.sql` y `20261103084124_knowledge_on_demand.sql` siguen pendientes; antes de cada una falta un backup nuevo verificado con `npm run backup:db -- --with-storage`.
+- E5 queda abierta hasta backup, migraciones en orden, Edge Function, push a `main`, Vercel `success`, Bridge 1.21.0 y smoke real. **Siguiente:** guardar este corte local como tarea abierta y preparar el backup previo a E4.
+
 ## 2026-11-03 — Plan maestro actualizado desde Desktop
 
 - Copié `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, `multi-business-sql-smoke.mjs` y los dos SQL multiempresa de Desktop. Los cinco archivos coinciden por SHA-256 con la fuente; el smoke terminó en **27 comprobaciones / TODO OK**.

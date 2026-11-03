@@ -85,7 +85,7 @@ it('aggregates group performance and approval time while keeping each business i
  const row=(await db.query<any>('SELECT * FROM fb_group_performance WHERE group_id=$1',[target])).rows[0];
  expect(row).toMatchObject({publication_count:4,published_count:2,pending_count:1,rejected_count:1,rejected_last_30d_count:1});
  expect(Number(row.approval_rate_pct)).toBeCloseTo(66.7,1);
- expect(Number(row.avg_approval_seconds)).toBeCloseTo(450,2);
+ expect(Number(row.avg_approval_seconds)).toBeCloseTo(450,0);
  expect((await db.query('SELECT group_id FROM fb_group_performance')).rows.map((entry:any)=>entry.group_id)).toEqual([target]);
  await actor(other);
  expect((await db.query('SELECT group_id FROM fb_group_performance')).rows.map((entry:any)=>entry.group_id)).toEqual([otherGroup]);

@@ -20,7 +20,8 @@ const MAX_BODY_BYTES = 1_048_576;
 const CENTRAL_ACTIONS = new Set<CentralWorkerAction>([
   'worker_central_next', 'worker_central_stored', 'worker_central_inventory', 'worker_central_inventory_list',
   'worker_central_purge', 'worker_central_deletions', 'worker_central_deletions_done',
-  'worker_central_status', 'worker_central_local_file',
+  'worker_central_status', 'worker_central_local_file', 'worker_central_requests',
+  'worker_central_request_ready', 'worker_central_request_failed', 'worker_central_cache_cleanup',
 ]);
 
 const ACTIONS = {
@@ -242,6 +243,104 @@ async function centralAction(
     return jsonResponse({ ok: true });
   }
 
+  if (action === 'worker_central_requests') {
+    const { data, error } = await rpc('knowledge_central_next_requests', {
+      p_owner: ownerUid, p_worker: workerId, p_limit: 1,
+    });
+    if (error) return rpcErrorResponse(error);
+    const requests = Array.isArray(data) ? data : [];
+    const ready = [];
+    for (const value of requests.slice(0, 1)) {
+      if (!isRecord(value) || !isUuid(value.request_id) || !isUuid(value.version_id)
+        || !isCentralPath(value.relative_path, ownerUid)
+        || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
+        || !isInteger(value.file_size, 1, 52_428_800)
+        || typeof value.mime_type !== 'string'
+        || !['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain', 'text/markdown', 'text/x-markdown', 'image/png', 'image/jpeg', 'image/webp'].includes(value.mime_type)
+        || typeof value.original_filename !== 'string') continue;
+
+      const filename = safeCacheFilename(value.original_filename);
+      const cachePath = ownerUid + '/' + value.request_id + '/' + filename;
+      const capacity = await ensureKnowledgeCacheCapacity(serviceClient, ownerUid, value.request_id, value.file_size);
+      if (!capacity) {
+        await rpc('knowledge_central_request_failed', {
+          p_owner: ownerUid, p_worker: workerId, p_request_id: value.request_id,
+          p_error: 'La caché temporal de originales está llena.',
+        });
+        continue;
+      }
+      const { data: prepared, error: prepareError } = await serviceClient.from('knowledge_file_requests')
+        .update({ cache_path: cachePath })
+        .eq('user_id', ownerUid)
+        .eq('id', value.request_id)
+        .eq('status', 'uploading')
+        .select('id')
+        .maybeSingle();
+      if (prepareError || !prepared) {
+        await rpc('knowledge_central_request_failed', {
+          p_owner: ownerUid, p_worker: workerId, p_request_id: value.request_id,
+          p_error: 'No se pudo preparar la solicitud del original.',
+        });
+        continue;
+      }
+      const { data: signed, error: signedError } = await serviceClient.storage
+        .from('knowledge-cache').createSignedUploadUrl(cachePath, { upsert: false });
+      if (signedError || !signed?.signedUrl) {
+        await rpc('knowledge_central_request_failed', {
+          p_owner: ownerUid, p_worker: workerId, p_request_id: value.request_id,
+          p_error: 'No se pudo preparar la carga temporal del original.',
+        });
+        continue;
+      }
+      ready.push({ ...value, cache_path: cachePath, upload_url: signed.signedUrl });
+    }
+    return jsonResponse({ requests: ready });
+  }
+
+  if (action === 'worker_central_request_ready') {
+    const { data, error } = await rpc('knowledge_central_request_ready', {
+      p_owner: ownerUid, p_worker: workerId, p_request_id: body.request_id, p_cache_path: body.cache_path,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ ready: data === true });
+  }
+
+  if (action === 'worker_central_request_failed') {
+    const { data, error } = await rpc('knowledge_central_request_failed', {
+      p_owner: ownerUid, p_worker: workerId, p_request_id: body.request_id,
+      p_error: body.error, p_cache_path: body.cache_path ?? null,
+    });
+    if (error) return rpcErrorResponse(error);
+    return jsonResponse({ failed: data === true });
+  }
+
+  if (action === 'worker_central_cache_cleanup') {
+    const { data, error } = await rpc('knowledge_central_expired_requests', {
+      p_owner: ownerUid, p_worker: workerId,
+    });
+    if (error) return rpcErrorResponse(error);
+    const items = Array.isArray(data) ? data.filter((value) => isRecord(value)
+      && isUuid(value.id)
+      && (value.cache_path === null || value.cache_path === undefined
+        || (typeof value.cache_path === 'string' && isCachePath(value.cache_path, ownerUid, value.id as string)))) : [];
+    const cachePaths = items.flatMap((item) => typeof item.cache_path === 'string' ? [item.cache_path] : []);
+    if (cachePaths.length) {
+      const { error: removeError } = await serviceClient.storage.from('knowledge-cache').remove(cachePaths);
+      if (removeError) {
+        console.error('[knowledge] On-demand cache cleanup failed.');
+        return jsonResponse({ error: 'No se pudo limpiar la caché de originales.' }, 500);
+      }
+    }
+    const ids = items.map((item) => item.id as string);
+    if (!ids.length) return jsonResponse({ cleaned: 0 });
+    const { data: cleaned, error: doneError } = await rpc('knowledge_central_cache_cleanup_done', {
+      p_owner: ownerUid, p_worker: workerId, p_request_ids: ids,
+    });
+    if (doneError) return rpcErrorResponse(doneError);
+    return jsonResponse({ cleaned: cleaned });
+  }
+
   const { data, error } = await rpc('knowledge_central_local_file', {
     p_owner: ownerUid, p_worker: workerId, p_version_id: body.version_id,
   });
@@ -253,6 +352,70 @@ async function centralAction(
   return jsonResponse({ file: data });
 }
 
+function safeCacheFilename(filename: string): string {
+  const base = filename.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) ?? '';
+  return base && base !== '.' && base !== '..' ? base : 'original';
+}
+
+function isCachePath(path: string, ownerUid: string, requestId: string): boolean {
+  return path.startsWith(ownerUid + '/' + requestId + '/')
+    && new RegExp('^' + ownerUid + '/' + requestId + '/[A-Za-z0-9._-]{1,120}$', 'i').test(path);
+}
+
+async function ensureKnowledgeCacheCapacity(
+  serviceClient: ReturnType<typeof createClient>,
+  ownerUid: string,
+  currentRequestId: string,
+  requiredBytes: number,
+): Promise<boolean> {
+  const maximumBytes = 100 * 1024 * 1024;
+  if (!isInteger(requiredBytes, 1, 52_428_800)) return false;
+  const bucket = serviceClient.storage.from('knowledge-cache');
+  const { data: folders, error: folderError } = await bucket.list(ownerUid, {
+    limit: 1000, sortBy: { column: 'created_at', order: 'asc' },
+  });
+  if (folderError) throw folderError;
+  const files: Array<{ path: string; requestId: string; bytes: number; createdAt: string }> = [];
+  for (const folder of folders ?? []) {
+    if (folder.id !== null || !isUuid(folder.name)) continue;
+    const { data: entries, error: listError } = await bucket.list(ownerUid + '/' + folder.name, {
+      limit: 10, sortBy: { column: 'created_at', order: 'asc' },
+    });
+    if (listError) throw listError;
+    for (const entry of entries ?? []) {
+      if (entry.id === null
+        || !isCachePath(ownerUid + '/' + folder.name + '/' + entry.name, ownerUid, folder.name)) continue;
+      const bytes = Number(entry.metadata?.size);
+      if (!Number.isSafeInteger(bytes) || bytes < 0) return false;
+      files.push({
+        path: ownerUid + '/' + folder.name + '/' + entry.name,
+        requestId: folder.name,
+        bytes,
+        createdAt: entry.created_at ?? '',
+      });
+    }
+  }
+  let usedBytes = files.reduce((total, file) => total + file.bytes, 0);
+  if (usedBytes + requiredBytes <= maximumBytes) return true;
+  const oldestFirst = files
+    .filter((file) => file.requestId !== currentRequestId)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  for (const file of oldestFirst) {
+    const { error: expireError } = await serviceClient.from('knowledge_file_requests')
+      .update({ status: 'expired', expires_at: new Date().toISOString(), error: 'La copia temporal se reemplazó por un archivo más reciente.' })
+      .eq('user_id', ownerUid).eq('id', file.requestId);
+    if (expireError) throw expireError;
+    const { error: removeError } = await bucket.remove([file.path]);
+    if (removeError) throw removeError;
+    const { error: clearPathError } = await serviceClient.from('knowledge_file_requests')
+      .update({ cache_path: null })
+      .eq('user_id', ownerUid).eq('id', file.requestId).eq('status', 'expired');
+    if (clearPathError) throw clearPathError;
+    usedBytes -= file.bytes;
+    if (usedBytes + requiredBytes <= maximumBytes) return true;
+  }
+  return false;
+}
 function payloadFor(action: keyof typeof ACTIONS, body: Body): Body {
   if (action.startsWith('worker_memory_')) {
     return memoryWorkerPayload(action as Parameters<typeof memoryWorkerPayload>[0], body);
