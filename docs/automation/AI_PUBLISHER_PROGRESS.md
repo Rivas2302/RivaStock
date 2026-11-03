@@ -7,7 +7,8 @@
 - En `approve_facebook_publication_v2` se envía el modo elegido; las solicitudes de acciones de IA reciben el mismo `group_mode`. El historial presenta el anuncio compartido y una fila por grupo con estado, enlace seguro a la publicación observada y acceso validado al grupo. Las URLs que no pertenecen a Facebook o no cumplen el formato permitido no se convierten en enlaces.
 - Para respetar el presupuesto de la ruta Automatizaciones, `PublicationHistory` y los resultados por grupo se cargan de forma diferida. La primera corrida de `perf:check` superó el límite de esa ruta por 203 B; tras el ajuste final `perf:check` pasó: entrada **209.019 B gzip JS / 22.208 B CSS**; Automatizaciones **232.178 B gzip JS**, bajo el máximo de 240.640 B.
 - Verificación local: lint; `npm test -- --maxWorkers=1` **779/779**; pruebas focales de modo, enlaces e RPC **70/70**; build; `perf:check`. El valor de la bandera estuvo sin definir localmente y por eso se resolvió como apagada. No hubo migraciones, actividad de Bridge/extensión ni publicaciones o datos `[QA]`.
-- **T4.5 [x]** como tarea de UI. No se habilitó ni se probó el envío `marketplace_groups` en producción: sigue detrás de la bandera hasta T4.3 y el ensayo de la extensión continúa bloqueado por §5.2b/G2. Vercel se comprobará después del commit.
+- Commit `e9bb79c` publicado directamente en `main` con Rivas2302; Vercel terminó `success`. La app de producción respondió HTTP 200 y sirvió los chunks de `PublicationHistory` y `FacebookGroupResults` con el nuevo encabezado y los estados por grupo. En el chunk de `FacebookPublicationModal` no está el texto del selector, coherente con la bandera compilada apagada.
+- **T4.5 [x]** como tarea de UI. No se habilitó ni se probó el envío `marketplace_groups` en producción: sigue detrás de la bandera hasta T4.3 y el ensayo de la extensión continúa bloqueado por §5.2b/G2.
 
 ## 2026-11-03 — T4.2 contrato RPC completado
 
