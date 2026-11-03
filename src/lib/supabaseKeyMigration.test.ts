@@ -86,7 +86,7 @@ describe('Supabase key migration', () => {
     expect(new Headers(seen[2].init?.headers).has('Authorization')).toBe(false);
   });
 
-  it.each(['ai-bridge', 'automation', 'knowledge', 'invite-collaborator', 'delete-collaborator'])(
+  it.each(['ai-bridge', 'automation', 'knowledge', 'invite-collaborator', 'delete-collaborator', 'platform-admin'])(
     '%s uses the shared secret selector and logs only key_mode',
     (functionName) => {
       const source = readFileSync(resolve(process.cwd(), `supabase/functions/${functionName}/index.ts`), 'utf8');

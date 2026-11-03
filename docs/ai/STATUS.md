@@ -1,5 +1,29 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 15:21 ART — G2 listo en rama; preview de Vercel protegido
+
+- Comparé `ACTION_PLAN.md` y `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop: las copias del worktree son las más recientes. El plan maestro del worktree también coincide con `origin/main`.
+- Implementé `share` como Edge Function pública de solo lectura; quedó ACTIVE v2, `verify_jwt=false`. La función obtiene configuración y productos únicamente de las consultas públicas existentes, valida catálogo/producto, limita imágenes al bucket público `assets` del proyecto, detecta MIME real y emite Open Graph/Twitter con caché corta. Los links de copiar/enviar, QR y producto ahora usan `/p/:slug[/productId]`.
+- El gateway del dominio compartido de Supabase entrega el HTML como `text/plain` y agrega CSP `sandbox`. El rewrite externo de Vercel transforma solo `/p/*` a HTML y reemplaza esa CSP por una política restrictiva sin scripts; no se amplió la lista global de hosts.
+- Commit `1002e0c` está en `origin/codex/g2-share-preview`; Vercel reportó `success`. `curl`/HTTP con user-agents `WhatsApp/2.23.20.0 A` y `facebookexternalhit/1.1` recibió HTTP 200, pero el body de ambos fue **“Protected Deployment – Vercel”**, sin Open Graph del catálogo. No pude probar la ruta de la app; G2 sigue sin merge a `main` hasta que el preview permita el acceso de automatización.
+- Verificación local: lint; **816/816 tests** en 130 archivos; build; `perf:check` (209.318 bytes JS gzip y 22.231 bytes CSS gzip). La prueba dirigida de metadatos/handler fue **10/10**.
+- Estado del otro gate G2: una consulta de solo lectura encontró un dispositivo Facebook activo, heartbeat reciente, extensión **0.5.15** y sin `self-reload`/capturas; por lo tanto, la puerta para los ensayos pendientes con extensión 0.5.22 está cerrada. No inicié ensayos ni acciones en Facebook.
+- **Pendiente del dueño:** habilitar el bypass de automatización de Vercel para el preview y dejar el secreto en `VERCEL_AUTOMATION_BYPASS_SECRET` como variable de usuario de Windows; no compartirlo por chat ni guardarlo en el repo. Lo consumiré solo en memoria durante `curl`. Cuando el preview sea legible, correr ambos user-agents y recién entonces integrar G2 en `main`.
+- La conversión de fotos sigue intacta y bloqueada: producción tiene 102 productos distintos con datos `data:` frente a los 32 indicados; ver la solicitud de alcance en `MENSAJE_PARA_RIVA.md`.
+
+## 2026-11-03 15:26 ART — A1: inventario ampliado sin rotar claves
+
+- La revisión de consumidores encontró `platform-admin`, agregado después del inventario original de cinco funciones; ya usaba el selector compartido de clave secreta con fallback legacy, pero no registraba el modo. Añadí el evento de inicio `key_mode` (sin valor de clave), extendí el test contractual y actualicé `KEY_ROTATION.md`.
+- `npm run lint` y `npx vitest run src/lib/supabaseKeyMigration.test.ts` pasaron (**14/14**). `platform-admin` se desplegó como ACTIVE v2 con `verify_jwt=true`. No hubo migración ni cambios de credenciales. Todavía no observé el log porque la función requiere una llamada autenticada; no hice una llamada administrativa ni cambié datos.
+- `share` usa solo la clave publicable para consultas públicas; no es consumidor de `service_role`.
+- **A1 sigue abierto:** Storage y `scripts/backup-storage.mjs` todavía dependen del JWT legacy; falta reemplazarlos con S3 tras abrir el Dashboard, verificar todos los consumidores y ejecutar el cutover/smoke con reversión disponible.
+
+## 2026-11-03 14:55 ART — Diagnóstico de fotos data: detenido antes de escritura
+
+- Comparé `ACTION_PLAN.md` con Desktop y `origin/main`: el worktree coincide con `origin/main`; la copia de Desktop es anterior. El backup previo `20261103T173921Z` está verificado y contiene las filas originales con `data:image/...`.
+- La lectura de producción del negocio del dueño encontró **84** filas con `image_url` `data:` y **18** filas con elementos `images[]` `data:`; son **102 productos distintos**, mientras que la solicitud indica 32. Dentro de los 84, 32 tienen `images[]` no vacío, pero otras 18 filas tienen datos solo en `images[]`; todavía no hay un criterio seguro para elegir los 32 autorizados.
+- No cambié productos ni subí objetos. No voy a escoger 32 por nombre, estado de catálogo u otra heurística. Dejé el conteo y la decisión requerida en `MENSAJE_PARA_RIVA.md`; continúo con G2, que es independiente.
+
 ## 2026-11-03 14:50 ART — E7 alta de negocios y onboarding desplegados
 
 - Antes de E7 comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop y `origin/main`; el worktree es la copia vigente. E3 ya estaba validada en producción. No creé ninguna cuenta ni envié invitaciones reales.

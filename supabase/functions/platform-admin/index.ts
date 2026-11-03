@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   createSupabaseApiKeyFetch,
+  logSupabaseAdminKeyMode,
   resolveSupabaseAdminKey,
   SUPABASE_PUBLISHABLE_KEY,
 } from '../_shared/supabaseAdminKey.ts';
@@ -10,10 +11,11 @@ import type { BusinessLimitOverrides, BusinessPlanCode, BusinessStatus } from '.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
-const { key: SUPABASE_ADMIN_KEY } = resolveSupabaseAdminKey(
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
+logSupabaseAdminKeyMode('platform-admin', SUPABASE_ADMIN_KEY_MODE);
 
 function createBackend(req: Request): PlatformAdminBackend {
   const authorization = req.headers.get('Authorization') ?? '';
