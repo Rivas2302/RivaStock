@@ -29,6 +29,7 @@ import { adjustProductStock, type AdjustProductStockInput } from '../lib/stockAd
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
 import { getRecentRestockSales } from '../lib/recentSales';
@@ -1169,7 +1170,7 @@ export default function Stock() {
                         <button
                           onClick={async () => {
                             try {
-                              const url = window.location.origin + '/catalogo/' + user.catalogSlug + '/' + p.id;
+                              const url = getCatalogShareUrl(window.location.origin, user.catalogSlug, p.id);
                               await navigator.clipboard.writeText(url);
                               showToast('Enlace copiado', 'success');
                             } catch {

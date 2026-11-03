@@ -6,6 +6,7 @@ import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, Pub
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import { createPublicCatalogOrder, getPublicCatalogProducts, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import {
   matchesResellerAvailabilityFilter,
   type ResellerAvailabilityFilter,
@@ -96,7 +97,7 @@ export default function PublicCatalog() {
   const [shareCopied, setShareCopied] = useState(false);
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
-    const url = `${window.location.origin}/catalogo/${slug}/${product.id}`;
+    const url = getCatalogShareUrl(window.location.origin, slug ?? '', product.id);
     if (action === 'copy') {
       await navigator.clipboard.writeText(url);
       setShareCopied(true);

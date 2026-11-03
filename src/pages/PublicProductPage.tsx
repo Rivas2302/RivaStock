@@ -6,6 +6,7 @@ import type { CatalogConfig, PublicCatalogProduct } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import { getPublicCatalogProduct } from '../lib/publicCatalog';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import {
   ArrowLeft,
   Copy,
@@ -73,7 +74,9 @@ export default function PublicProductPage() {
     return () => { cancelled = true; };
   }, [slug, productId]);
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareUrl = typeof window !== 'undefined' && slug && productId
+    ? getCatalogShareUrl(window.location.origin, slug, productId)
+    : typeof window !== 'undefined' ? window.location.href : '';
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);
