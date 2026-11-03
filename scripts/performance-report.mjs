@@ -10,7 +10,9 @@ const entryKey = Object.keys(manifest).find(key => manifest[key].isEntry);
 const report = {};
 // Rollup can rename a route entry to a shared chunk when optional dialogs use
 // the same helpers. Resolve every source page so budgets cannot silently skip it.
-const routes = [[entryKey, entryKey], ...readdirSync('src/pages').filter(file => file.endsWith('.tsx')).map(file => {
+const routes = [[entryKey, entryKey], ...readdirSync('src/pages')
+  .filter(file => file.endsWith('.tsx') && !/\.(?:test|spec)\.tsx$/.test(file))
+  .map(file => {
   const source = `src/pages/${file}`;
   const key = manifest[source] ? source : Object.keys(manifest).find(key => manifest[key].isDynamicEntry && manifest[key].name === file.replace(/\.tsx$/, ''));
   if (!key) throw new Error(`Missing route in build manifest: ${source}`);

@@ -8,11 +8,14 @@ import { todayString, formatDate } from '../lib/utils';
 import { showToast } from '../lib/toast';
 import Modal from '../components/Modal';
 import { SUPPLIER_ORDER_STATUSES, isPendingOrder, sortSupplierOrders, trackingUrl, validateOrderPdf, type SupplierOrder, type SupplierOrderStatus } from '../lib/supplierOrders';
+import { assertStorageUploadAllowed, storageUploadDenialMessage } from '../lib/platformStorage';
 
 const BUCKET = 'supplier-order-documents';
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700';
 const errorMessage = (error: unknown) => {
+  const denialMessage = storageUploadDenialMessage(error);
+  if (denialMessage) return denialMessage;
   const e = error as { code?: string; message?: string };
   if (e?.code === '23505') return 'Este pedido o número de guía ya está registrado. Actualiza el listado antes de volver a guardar.';
   return e?.message || 'No se pudo completar la operación. Intenta nuevamente.';
@@ -92,6 +95,7 @@ export default function SupplierOrders() {
       let name = editing?.document_name ?? null;
       if (file) {
         await validateOrderPdf(file);
+        await assertStorageUploadAllowed(BUCKET, file.size);
         uploadedPath = `${user.uid}/${draftId.current}/${crypto.randomUUID()}.pdf`;
         const { error } = await supabase.storage.from(BUCKET).upload(uploadedPath, file, { contentType: 'application/pdf', upsert: false });
         if (error) throw error;

@@ -9,20 +9,20 @@ const SQL_DIR = join(dirname(fileURLToPath(import.meta.url)), 'sql', 'multi-busi
 const db = new PGlite();
 const ok = (c, m) => { if (!c) throw new Error('FAIL: ' + m); console.log('ok -', m); };
 const as = async (uid) => db.exec(`SET app.uid = '${uid ?? ''}'`);
-const fails = async (sql, re, m) => {
-  try { await db.query(sql); } catch (e) { ok(re.test(e.message), `${m} (${e.message})`); return; }
+const fails = async (sql, re, m, params = []) => {
+  try { await db.query(sql, params); } catch (e) { ok(re.test(e.message), `${m} (${e.message})`); return; }
   throw new Error('FAIL (no error): ' + m);
 };
 
 // ---- stubs del entorno Supabase y del esquema existente ----
 await db.exec(`
-CREATE ROLE anon; CREATE ROLE authenticated;
+CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
 CREATE SCHEMA auth; CREATE SCHEMA storage;
 CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('app.uid', true), '')::uuid $$;
 CREATE TABLE storage.buckets (id text PRIMARY KEY, file_size_limit bigint);
 CREATE TABLE storage.objects (bucket_id text, name text, metadata jsonb);
-INSERT INTO storage.buckets VALUES ('assets', NULL), ('knowledge', 52428800);
+INSERT INTO storage.buckets VALUES ('assets', 5242880), ('knowledge', 52428800);
 CREATE TABLE profiles (id uuid PRIMARY KEY REFERENCES auth.users(id), email text NOT NULL DEFAULT '', business_name text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE collaborators (owner_uid uuid, user_uid uuid, revoked_at timestamptz);
 CREATE FUNCTION get_owner_uid(v_uid uuid) RETURNS uuid LANGUAGE sql STABLE AS $$
@@ -115,6 +115,130 @@ ok(o.businesses.length === 3 && o.businesses.some(business => business.central_l
   && o.businesses.some(business => business.status === 'suspended'), 'panel con negocios, central y estado');
 r = await db.query(`SELECT file_size_limit FROM storage.buckets WHERE id='assets'`);
 ok(Number(r.rows[0].file_size_limit) === 2097152, 'tope por archivo en assets');
+
+// ---- E2.2: cargar la migración real con un esquema mínimo para las tablas de Conocimientos ----
+await db.exec(`
+  CREATE TABLE knowledge_documents (
+    id uuid PRIMARY KEY, user_id uuid NOT NULL, kind text NOT NULL, format text NOT NULL,
+    status text NOT NULL DEFAULT 'draft', current_version_id uuid, search_text text NOT NULL DEFAULT '',
+    index_status text NOT NULL DEFAULT 'queued', rag_enabled boolean NOT NULL DEFAULT false, chunk_count integer NOT NULL DEFAULT 0,
+    updated_at timestamptz NOT NULL DEFAULT now(), updated_by uuid, last_indexed_at timestamptz
+  );
+  CREATE TABLE knowledge_document_versions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, document_id uuid NOT NULL REFERENCES knowledge_documents(id),
+    version_number integer NOT NULL, source text NOT NULL, storage_path text NOT NULL, original_filename text NOT NULL,
+    mime_type text NOT NULL, file_size bigint NOT NULL, extracted_text text, extraction_status text NOT NULL,
+    content_hash text NOT NULL, change_note text NOT NULL, created_by uuid, created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE TABLE knowledge_assets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, document_id uuid NOT NULL REFERENCES knowledge_documents(id),
+    storage_path text NOT NULL, mime_type text NOT NULL, file_size bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE FUNCTION knowledge_require_owner(p_action text) RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT auth.uid() $$;
+  CREATE FUNCTION knowledge_mime_allowed(p_format text, p_mime text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+  CREATE FUNCTION knowledge_storage_used(p_owner uuid) RETURNS bigint LANGUAGE sql STABLE AS $$
+    SELECT COALESCE((SELECT sum(file_size) FROM knowledge_document_versions WHERE user_id=p_owner),0)
+      + COALESCE((SELECT sum(file_size) FROM knowledge_assets WHERE user_id=p_owner),0)
+  $$;
+  CREATE FUNCTION knowledge_storage_limit_bytes() RETURNS bigint LANGUAGE sql IMMUTABLE AS $$ SELECT 52428800::bigint $$;
+  CREATE FUNCTION knowledge_log(p_owner uuid, p_document uuid, p_action text, p_payload jsonb) RETURNS void
+    LANGUAGE sql AS $$ SELECT NULL::void $$;
+`);
+const migrationDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'supabase', 'migrations');
+await db.exec(readFileSync(join(migrationDirectory, '20261103031532_knowledge_plan_limits.sql'), 'utf8'));
+
+await as(RIVA);
+r = await db.query(`SELECT (knowledge_stats()->>'storage_limit_bytes')::bigint AS limit`);
+ok(Number(r.rows[0].limit) === 524288000, 'E2.2 knowledge_stats informa el límite interno del plan');
+await as(EXTERNAL);
+r = await db.query(`SELECT (knowledge_stats()->>'storage_limit_bytes')::bigint AS limit`);
+ok(Number(r.rows[0].limit) === 52428800, 'E2.2 knowledge_stats informa el límite base');
+const baseDocument = '60000000-0000-4000-8000-000000000001';
+await db.exec(`INSERT INTO knowledge_documents(id,user_id,kind,format) VALUES ('${baseDocument}','${EXTERNAL}','file','pdf')`);
+await db.query(
+  `SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)`,
+  [baseDocument, `${EXTERNAL}/${baseDocument}/v1/manual.pdf`, 'manual.pdf', 'application/pdf', 52428800, 'a'.repeat(64)],
+);
+await fails(
+  `SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)`,
+  /Se alcanzó el límite de almacenamiento de Conocimientos/,
+  'E2.2 knowledge_add_file_version aplica el límite base',
+  [baseDocument, `${EXTERNAL}/${baseDocument}/v2/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'b'.repeat(64)],
+);
+const assetPath = `${EXTERNAL}/${baseDocument}/assets/11111111-1111-4111-8111-111111111111.png`;
+await fails(
+  `SELECT knowledge_register_asset($1,$2,$3,$4)`,
+  /Se alcanzó el límite de almacenamiento de Conocimientos/,
+  'E2.2 knowledge_register_asset aplica el límite base',
+  [baseDocument, assetPath, 'image/png', 1],
+);
+await db.exec(`UPDATE platform_settings SET storage_budget_bytes=1 WHERE id`);
+const budgetDocument = '60000000-0000-4000-8000-000000000002';
+await as(RIVA);
+await db.exec(`INSERT INTO knowledge_documents(id,user_id,kind,format) VALUES ('${budgetDocument}','${RIVA}','file','pdf')`);
+await fails(
+  `SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)`,
+  /El espacio en la nube de RivaStock está lleno/,
+  'E2.2 file version respeta el presupuesto del proyecto',
+  [budgetDocument, `${RIVA}/${budgetDocument}/v1/manual.pdf`, 'manual.pdf', 'application/pdf', 100, 'c'.repeat(64)],
+);
+await fails(
+  `SELECT knowledge_register_asset($1,$2,$3,$4)`,
+  /El espacio en la nube de RivaStock está lleno/,
+  'E2.2 editor asset respeta el presupuesto del proyecto',
+  [budgetDocument, `${RIVA}/${budgetDocument}/assets/22222222-2222-4222-8222-222222222222.png`, 'image/png', 1],
+);
+await db.exec(`UPDATE platform_settings SET storage_budget_bytes=900000000 WHERE id`);
+await db.query(`SELECT platform_set_business_plan('${EXTERNAL}','base','suspended')`);
+const suspendedDocument = '60000000-0000-4000-8000-000000000003';
+await db.exec(`INSERT INTO knowledge_documents(id,user_id,kind,format) VALUES ('${suspendedDocument}','${EXTERNAL}','file','pdf')`);
+await as(EXTERNAL);
+await fails(
+  `SELECT knowledge_add_file_version($1,$2,$3,$4,$5,$6)`,
+  /La cuenta del negocio está suspendida/,
+  'E2.2 bloquea versiones del negocio suspendido',
+  [suspendedDocument, `${EXTERNAL}/${suspendedDocument}/v1/manual.pdf`, 'manual.pdf', 'application/pdf', 1, 'd'.repeat(64)],
+);
+
+// ---- E2.3: reserva y retención por plan sobre las funciones de producción ----
+await db.exec(`
+  CREATE TABLE fb_run_traces (
+    id uuid PRIMARY KEY, user_id uuid NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
+  );
+  CREATE TABLE fb_trace_steps (
+    trace_id uuid NOT NULL REFERENCES fb_run_traces(id) ON DELETE CASCADE, seq integer NOT NULL, screenshot_path text
+  );
+  CREATE TABLE fb_trace_cleanup_state (singleton boolean PRIMARY KEY, last_cleanup_at timestamptz);
+  INSERT INTO fb_trace_cleanup_state VALUES (true, NULL);
+  CREATE TABLE fb_trace_storage_reservations (
+    storage_path text PRIMARY KEY, trace_id uuid NOT NULL, user_id uuid NOT NULL, file_size integer NOT NULL
+  );
+`);
+await db.exec(readFileSync(join(migrationDirectory, '20261103031535_fb_trace_plan_limits.sql'), 'utf8'));
+const internalTrace = '70000000-0000-4000-8000-000000000001';
+const baseTrace = '70000000-0000-4000-8000-000000000002';
+await db.exec(`INSERT INTO fb_run_traces(id,user_id) VALUES ('${internalTrace}','${RIVA}'),('${baseTrace}','${EXTERNAL}')`);
+await db.exec(`INSERT INTO storage.objects VALUES ('automation-traces','${EXTERNAL}/${baseTrace}/1.jpg','{"size":"60000000"}')`);
+await as('');
+r = await db.query(
+  `SELECT fb_trace_storage_reserve($1,$2,$3,1) AS reserved`,
+  [EXTERNAL, baseTrace, `${EXTERNAL}/${baseTrace}/2.jpg`],
+);
+ok(r.rows[0].reserved === false, 'E2.3 reserva capturas bajo el límite por plan');
+await db.exec(`UPDATE platform_settings SET storage_budget_bytes=platform_storage_total_bytes() WHERE id`);
+r = await db.query(
+  `SELECT fb_trace_storage_reserve($1,$2,$3,1) AS reserved`,
+  [RIVA, internalTrace, `${RIVA}/${internalTrace}/1.jpg`],
+);
+ok(r.rows[0].reserved === false, 'E2.3 reserva capturas bajo el presupuesto del proyecto');
+await db.exec(`UPDATE platform_settings SET storage_budget_bytes=900000000 WHERE id`);
+await db.exec(`UPDATE fb_run_traces SET started_at=now()-interval '8 days'`);
+r = await db.query(`SELECT fb_traces_cleanup() AS cleanup`);
+ok(r.rows[0].cleanup.traces.length === 1 && r.rows[0].cleanup.traces[0].trace_id === baseTrace,
+  'E2.3 retención por plan elimina candidato base a 7 días y conserva interno a 14');
+await db.query(`SELECT fb_traces_cleanup_finalize(ARRAY[$1::uuid])`, [baseTrace]);
+r = await db.query(`SELECT count(*)::int AS n FROM fb_run_traces WHERE id=$1`, [internalTrace]);
+ok(r.rows[0].n === 1, 'E2.3 finalización conserva la traza interna dentro de su retención');
 
 // permisos: anon/authenticated no tocan tablas internas
 r = await db.query(`SELECT has_table_privilege('authenticated','public.business_subscriptions','SELECT') a,

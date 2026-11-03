@@ -51,7 +51,7 @@ beforeAll(async () => {
     CREATE SCHEMA storage;
     CREATE TABLE storage.objects (bucket_id text NOT NULL, name text NOT NULL, metadata jsonb NOT NULL DEFAULT '{}'::jsonb);
     CREATE TABLE storage.buckets (id text PRIMARY KEY, file_size_limit bigint);
-    INSERT INTO storage.buckets (id, file_size_limit) VALUES ('assets', NULL), ('supplier-order-documents', NULL);
+    INSERT INTO storage.buckets (id, file_size_limit) VALUES ('assets', 5242880), ('supplier-order-documents', NULL);
     CREATE FUNCTION public.get_owner_uid(v_uid uuid)
     RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
       SELECT coalesce(

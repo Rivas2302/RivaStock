@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2.4 y smoke ampliado listos localmente; despliegue sigue abierto
+
+- Implementé `storage_upload_check` antes de subir fotos (sumando original + miniatura) y comprobantes PDF. Las respuestas de presupuesto agotado y negocio suspendido se muestran con los textos exactos del plan; si la RPC falla o devuelve algo desconocido, la subida se bloquea.
+- E2.1 ahora fija el límite del bucket `assets` en 2 MiB incluso si ya tuviera un límite superior. Extendí su fixture para comprobar esa reducción y el smoke multi-negocio carga las migraciones reales E2.2/E2.3: cuota Knowledge, presupuesto, suspensión, tope por plan de trazas y retención. `node docs/ai/multi-business-sql-smoke.mjs`: 38 comprobaciones, `TODO OK`.
+- Verificación local: `npm run lint`; `npm test -- --maxWorkers=1` **715/715** en 117 archivos; `npm run build`; `npm run perf:check`; `npm run test:facebook:concurrency` (20 iteraciones PostgreSQL) aprobados. Bundle inicial: 209.017 B JS gzip y 22.045 B CSS. El perf checker ahora ignora archivos `.test.tsx`/`.spec.tsx`, que no son rutas compiladas.
+- **E2 sigue abierto:** no se aplicó ninguna migración ni se desplegó. Faltan backup completo y verificado, revisión/advisors y las verificaciones de producción descritas por el plan.
+- **Desvío de orden:** completé este tramo local de E2 antes de terminar el Bloque A, a partir del punto de continuación anterior. No hubo cambios productivos; vuelvo ahora a A2 según el orden maestro.
+- El archivo ajeno `supabase/.temp/cli-latest` sigue modificado y excluido.
+
 ## 2026-11-03 — E2 preparado parcialmente; tarea sigue abierta
 
 - Preparé las migraciones E2.1–E2.3 con `supabase migration new`: medición/presupuesto de Storage, límites de Conocimientos por plan y cuotas/retención de trazas. No apliqué ninguna migración ni hice despliegues.

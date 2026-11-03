@@ -3,6 +3,7 @@ import { Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
 import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
 import { getProductThumbnailPath, getProductThumbnailUrl } from '../lib/productPhotos';
+import { assertStorageUploadAllowed, storageUploadDenialMessage } from '../lib/platformStorage';
 
 const MAX_IMAGES = 4;
 
@@ -71,6 +72,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         if (thumbnail.type !== 'image/webp') {
           throw new Error('Este navegador no pudo preparar la miniatura WebP.');
         }
+        await assertStorageUploadAllowed('assets', original.size + thumbnail.size);
         const path = `${ownerUid}/products/${productId}/${Date.now()}_${crypto.randomUUID()}_${index}.${imageFileExtension(original)}`;
         const originalUrl = await uploadToStorage(path, original, original.type);
         uploadedUrls.push(originalUrl);
@@ -81,7 +83,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       onChange(updated);
     } catch (err: unknown) {
       await Promise.allSettled(uploadedUrls.flatMap((url) => [url, getProductThumbnailUrl(url)]).map(deleteFromStorage));
-      setError(`Error al subir imagen: ${err instanceof Error ? err.message : 'desconocido'}`);
+      const denialMessage = storageUploadDenialMessage(err);
+      setError(denialMessage ?? `Error al subir imagen: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setProcessing(false);
       onUploadEnd?.();
