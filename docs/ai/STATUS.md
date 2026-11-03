@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — A2 revalidada; respaldo completo verificado
+
+- Releí el plan maestro, `STATUS.md`, `OWNER_ACTIONS.md` y `AGENTS.md`; ACTION_PLAN y los archivos multiempresa coinciden por SHA-256 con la copia de Desktop. Frente a `origin/main`, solo ACTION_PLAN tiene cambios de adopción; el smoke multiempresa terminó en **27 comprobaciones / TODO OK**.
+- A2: `npx vitest run scripts/backup-db.test.ts` pasó **2/2**; `npm run check:no-secrets` pasó sin patrones de secreto. Ejecuté `npm run backup:db -- --with-storage` y verifiqué `%USERPROFILE%\rivastock-backups\20261103T072850Z`: **89 tablas, 13.842 filas**, `schema.sql` 869.804 B, `data.sql` 40.151.885 B; **89 conteos exactos**. Storage: 4 buckets, **374 objetos / 132.374.670 B**; `storage-manifest.json` verificó inventario, tamaños y hashes. No queda el marcador `BACKUP-UNVERIFIED.txt`.
+- No se inició ninguna migración, despliegue ni instalación del Bridge. El commit T7.1 `2cb658c` sigue local y abierto; el commit de adopción `781a8d6` está en `main` local. Ambos aún no se pushean porque la historia local contiene T7.1 sin su migración y publicar ese estado expondría código incompleto.
+- **Siguiente:** A1, conservando activa la compatibilidad legacy hasta retirar de forma segura los consumidores de Storage y la extensión; `cli_login_postgres` está documentada como temporal y expirada, sin consumidores que requieran resetear la contraseña.
+
 ## 2026-11-03 — T7.1 pausada de forma segura; implementación local preservada
 
 - Se implementó localmente el catálogo y la bandeja confirmable para `facebook.publish_product`, con borrador pendiente, validaciones de propietario, revisión en IA/Automatizaciones y confirmación explícita. No hubo migración aplicada, despliegue ni cambio del Bridge.
