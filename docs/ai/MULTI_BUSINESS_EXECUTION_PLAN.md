@@ -86,7 +86,7 @@ Flujo de un original: el navegador lo sube a `knowledge` → la central lo baja,
 
 ## 5. Tareas
 
-### [x] E0 Diagnóstico de solo lectura
+### [ ] E0 Diagnóstico de solo lectura
 - Medí en producción, solo con consultas de lectura:
   - `pg_database_size(current_database())` y las 15 tablas más pesadas (`pg_total_relation_size`);
   - bytes por bucket y por dueño en `storage.objects`;
@@ -98,7 +98,7 @@ Flujo de un original: el navegador lo sube a `knowledge` → la central lo baja,
 - Escribí `docs/ai/MULTI_BUSINESS_BASELINE.md` con números y nombres de negocio, **sin** emails ni UID.
 - **Commit:** `docs(platform): record multi-business baseline`
 
-### [x] E1 Planes por negocio y administración de plataforma
+### [ ] E1 Planes por negocio y administración de plataforma
 **E1.1 Migración** `supabase/migrations/<ts>_platform_plans.sql` = Anexo A.1, con los presupuestos de E0. Contiene:
 - `platform_admins`, `business_plans` (planes `interno`, `base` y `pro`), `business_subscriptions` y `platform_settings`;
 - helpers internos `business_owner_ids()`, `business_limits(owner)`, `business_limit_bigint(owner, key)`, `business_status(owner)` y `business_require_active(owner)`, sin `EXECUTE` para clientes;
@@ -119,7 +119,7 @@ Un negocio sin fila en `business_subscriptions` usa el plan `base`. Un colaborad
 
 - **Commit:** `feat(platform): business plans, limits and platform admin`
 
-### [x] E2 Medición de uso y protección del proyecto
+### [ ] E2 Medición de uso y protección del proyecto
 **E2.1 Migración** `<ts>_platform_usage.sql` = Anexo A.2:
 - `platform_usage_snapshots`;
 - `platform_owner_db_bytes(owner)`: estimación sin índices, sumando las tablas públicas con `user_id` u `owner_uid`;
@@ -153,7 +153,7 @@ Programá `platform-usage-daily` (`17 6 * * *`) con `cron.schedule` siguiendo el
 
 - **Commit:** `feat(platform): usage metering, project storage guard and per-plan limits`
 
-### [x] E3 Central segura en PCs de terceros
+### [ ] E3 Central segura en PCs de terceros
 1. **El servidor indica el modo.** La respuesta de vinculación y la del heartbeat del Bridge (Edge Function `ai-bridge`) agregan `security: { codex_sandbox, allow_project_root }`, calculados con `business_limits(owner)`. `allow_project_root` es `true` solo para el plan `interno`.
 2. **El Bridge lo aplica** en `providers.ts`:
    - `read-only` → `sandboxMode: 'read-only'`, `networkAccessEnabled: false`, `approvalPolicy: 'never'`;
@@ -173,7 +173,7 @@ Programá `platform-usage-daily` (`17 6 * * *`) con `cron.schedule` siguiendo el
 5. En **IA → Conexión** se muestra “Modo de seguridad de la IA: protegido (solo lectura)” o “completo”. Actualizá `AI_BRIDGE_SETUP.md`.
 - **Commit:** `feat(ai-bridge): per-plan Codex sandbox, read-only by default`
 
-### [x] E4 Almacén local de la central
+### [ ] E4 Almacén local de la central
 **E4.1 Migración aditiva** `<ts>_knowledge_central_store.sql`:
 ```sql
 ALTER TABLE public.knowledge_document_versions
