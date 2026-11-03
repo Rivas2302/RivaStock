@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2.1 migrada y verificada en producción; E2 sigue abierto
+
+- Antes de aplicar E2.1, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T033913Z`: 86 tablas y 13.823 filas con conteos exactos; schema 813.328 B, data 40.151.373 B; Storage 4 buckets y 374 objetos/132.374.670 B con tamaños y hashes coincidentes. El marcador de backup fallido se retiró al cerrar la verificación.
+- Apliqué solo `20261103031528_platform_usage.sql`. Supabase MCP dejó además una entrada remota con sello `20261103034439`; confirmé que su SQL equivale al archivo local ignorando comentarios, espacios y separadores. Reconcilié el historial con `supabase migration repair`: `20261103031528` queda `applied` y la entrada duplicada `20261103034439` queda `reverted`, sin revertir DDL. `supabase migration list --linked` confirmó la versión canónica.
+- Ejecuté `platform_collect_usage()` una vez: creó snapshots para 4 negocios y el proyecto. Lectura posterior: proyecto 76.188.819 B de DB y 132.374.670 B de Storage; `assets.file_size_limit` quedó en 2.097.152 B. La tabla, `storage_upload_check` y la fila canónica están presentes.
+- **E2.1 desplegada y verificada; E2 sigue abierto.** E2.2 (`20261103031532_knowledge_plan_limits`) y E2.3 (`20261103031535_fb_trace_plan_limits`) siguen pendientes. E2.4 permanece solo local para desplegar el frontend en el mismo corte coherente.
+- **Siguiente:** backup completo nuevo después de E2.1 y aplicar solo E2.2; repetir backup antes de E2.3. No pushear frontend hasta que las RPC de producción estén listas.
+
 ## 2026-11-03 — A1 revisado; corte de claves legacy sigue abierto
 
 - Revalidé en producción `key_mode: "secret"` para las cinco Edge Functions. Los GET sin efectos de `invite-collaborator` y `delete-collaborator` devolvieron 405; el log de inicialización de ambas confirmó `secret`. `ai-bridge`, `automation` y `knowledge` también registraron `secret`. La CLI se filtró en memoria a nombre/tipo/ID; hay claves legacy anon/service_role y claves nuevas publishable/secret, sin mostrar valores.
