@@ -134,7 +134,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 - **Commit:** `feat(platform): plans with modules; first client without AI`
 - **F2b (puede ir después de la entrega, al día siguiente):** el control del lado del servidor. `pair_ai_bridge_device`, la creación de tareas y chats de IA, Conocimientos y `approve_facebook_publication*` exigen el módulo correspondiente, con `CREATE OR REPLACE` copiando los cuerpos vigentes, y tienen tests. Commit `feat(platform): enforce plan modules server-side`.
 
-### [ ] F3 Primer ingreso y cuenta vacía
+### [x] F3 Primer ingreso y cuenta vacía
 1. **Invitación de dueño:** revisá que el email de invitación que genera el hook `send-email` para `invite` lleve a `/auth/confirm?…type=invite` y de ahí a `/reset-password`.
    - En `ResetPassword`, si viene de una invitación, título “Creá tu contraseña” y botón “Entrar a RivaStock”;
    - validación clara (mínimo de caracteres y confirmación);
