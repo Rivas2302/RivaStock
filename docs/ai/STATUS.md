@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:14 ART — B4 cerrado contra las copias vigentes
+
+- Antes de B4 comparé el plan maestro con Desktop y `origin/main`; la versión vigente de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` es la de `main`/worktree, más reciente que la copia de Desktop. El addendum registra cierre final de C1, C2.1, C3, C4, C5.4/C5.5 y limpieza desde la app; C2.2 permanece diferida y opcional. `OWNER_ACTIONS.md` no solicita Claude ni rotaciones.
+- AI Bridge instalado: 1.22.0; el plan vigente de T2.3 conserva 1.19.0 desplegado y fija 1.23.0 como siguiente versión menor. Coincide con el criterio de B4.
+- B4 cumple su criterio y queda `[x]`. No cambié el contenido operativo de los planes porque sus copias vigentes ya contienen el cierre requerido.
+- **Siguiente:** evaluar C0; el estado vigente de cuatro pruebas Facebook en espera activa el límite §5.2b, por lo que no se tocará la extensión. Continuaré Bloque E y las tareas independientes que permita ese límite.
+
 ## 2026-11-03 11:13 ART — B2 reconciliada con la evaluación real y checklist documentada
 
 - Comparé `ACTION_PLAN.md` con Desktop y `origin/main`; para B2 el criterio coincide. Releí la evidencia de producción registrada y el resultado real `20261103T100607625Z-low.json`: 41 casos, Codex local GPT-6 Luna Bajo, `passed=true`; 20/20 retención importante, 20/20 recuperación, 32/32 precisión, 10/10 actualizaciones, 3/3 sensibles, 12/12 archivo, 11/11 olvidos y 4/4 recuerdos archivados ausentes. Los casos A→E y la limpieza desde la app están documentados.
