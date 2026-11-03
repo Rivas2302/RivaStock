@@ -1,5 +1,11 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:18 ART — C0 bloqueada por §5.2b; ningún cambio de extensión
+
+- Antes de evaluar C0 comparé `ACTION_PLAN.md` con Desktop y `origin/main`; el plan maestro no tuvo cambios desde la copia vigente y `origin/main` coincide con el worktree. El estado local solo agrega las marcas verificadas de B2/B4.
+- La consulta de solo lectura a producción encontró el dispositivo activo en extensión **0.5.15**, heartbeat de **47 segundos** y `self-reload=false`. Siguen **cuatro pruebas en vivo** en espera; §5.2b prohíbe iniciar otro cambio de extensión. C0 queda pendiente por puerta.
+- No inicié actualización, publicación ni ensayo Facebook. **Siguiente:** avanzar con Bloque E; en el publicador solo quedan las tareas no extensibles ya cerradas o las que necesitan decisión/puerta.
+
 ## 2026-11-03 11:14 ART — B4 cerrado contra las copias vigentes
 
 - Antes de B4 comparé el plan maestro con Desktop y `origin/main`; la versión vigente de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` es la de `main`/worktree, más reciente que la copia de Desktop. El addendum registra cierre final de C1, C2.1, C3, C4, C5.4/C5.5 y limpieza desde la app; C2.2 permanece diferida y opcional. `OWNER_ACTIONS.md` no solicita Claude ni rotaciones.
