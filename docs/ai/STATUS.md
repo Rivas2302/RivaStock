@@ -1,5 +1,10 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 13:37 ART — Revalidación móvil de Buscar y enviar
+
+- Playwright visible con el perfil persistente autenticado abrió producción en viewport móvil 390×844 y encontró `Cable iPhone C`. La UI mostró 1/1 foto canónica; la imagen cargó desde `nkfqhuqrgrpfufdymkcr.supabase.co` por HTTPS. Las tres respuestas Storage observadas fueron 200; no hubo solicitudes fallidas, errores de página, mixed content ni violaciones CSP.
+- Enviar quedó habilitado y la hoja se interceptó en Playwright: el navegador entregó un archivo al método share simulado. No se compartió ni publicó contenido real. La captura redacted de red y consola confirma el estado posterior al arreglo; el diagnóstico original de `data:` bloqueado por `connect-src` permanece en la entrada de 11:43.
+
 ## 2026-11-03 12:37 ART — Corrección de fotos desplegada; limpieza D2 por la app
 
 - El arreglo de `Buscar y enviar` está en producción desde `c124f71`; Vercel confirmó `success`. El detalle de Conocimientos tenía además un acceso nulo durante la carga; `1aeafd4` agregó un guard y sus pruebas. Vercel confirmó `success` para ese commit.
