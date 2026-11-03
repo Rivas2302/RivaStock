@@ -13,6 +13,10 @@ const MIGRATION = readFileSync(
 );
 const USAGE_MIGRATION_PATH = '../../supabase/migrations/20261103031528_platform_usage.sql';
 const USAGE_MIGRATION = readFileSync(new URL(USAGE_MIGRATION_PATH, import.meta.url), 'utf8');
+const MODULE_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261103190000_platform_module_server_guards.sql', import.meta.url),
+  'utf8',
+);
 
 let db: PGlite;
 
@@ -82,6 +86,50 @@ beforeAll(async () => {
 
   await db.exec(MIGRATION);
   await db.exec(USAGE_MIGRATION);
+  await db.exec(`
+    ALTER TABLE public.ai_bridge_devices ADD COLUMN name text, ADD COLUMN state text, ADD COLUMN current_job_id uuid;
+    CREATE TABLE public.ai_bridge_device_secrets (
+      device_id uuid, pairing_hash text, pairing_expires_at timestamptz, token_hash text
+    );
+    CREATE TABLE public.ai_jobs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, idempotency_key uuid,
+      provider text, task_type text NOT NULL DEFAULT 'text_generation', input text,
+      include_business_context boolean, include_project_context boolean, model_id text,
+      reasoning_effort text, status text NOT NULL DEFAULT 'pending', chat_id uuid
+    );
+    CREATE TABLE public.ai_chats (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, provider text,
+      title text, model_id text, reasoning_effort text, created_at timestamptz DEFAULT now(),
+      updated_at timestamptz DEFAULT now(), last_message_at timestamptz DEFAULT now()
+    );
+    CREATE TABLE public.ai_chat_messages (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, chat_id uuid, job_id uuid,
+      role text, content text, created_at timestamptz DEFAULT now()
+    );
+    CREATE TABLE public.ai_action_requests (user_id uuid NOT NULL, action_key text NOT NULL);
+    CREATE FUNCTION public.has_permission(v_uid uuid, v_module text, v_action text)
+    RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+    CREATE FUNCTION public.approve_facebook_publication_v2_with_repeat(
+      uuid, uuid, jsonb, uuid[], boolean, text, uuid
+    ) RETURNS uuid LANGUAGE sql AS $$ SELECT gen_random_uuid() $$;
+    REVOKE ALL ON FUNCTION public.approve_facebook_publication_v2_with_repeat(uuid, uuid, jsonb, uuid[], boolean, text, uuid)
+      FROM PUBLIC, anon, authenticated;
+    CREATE FUNCTION public.approve_facebook_publication_before_attempts(
+      uuid, uuid, jsonb, uuid[], boolean, uuid
+    ) RETURNS uuid LANGUAGE sql AS $$ SELECT gen_random_uuid() $$;
+    REVOKE ALL ON FUNCTION public.approve_facebook_publication_before_attempts(uuid, uuid, jsonb, uuid[], boolean, uuid)
+      FROM PUBLIC, anon, authenticated;
+    CREATE FUNCTION public.facebook_product_allowed(uuid, uuid, boolean)
+    RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+    CREATE FUNCTION public.facebook_group_key(text)
+    RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$;
+    CREATE TABLE public.facebook_publications (id uuid, user_id uuid, intent_key uuid, product_id uuid);
+    CREATE TABLE public.facebook_groups (id uuid, user_id uuid, url text);
+    CREATE TABLE public.facebook_deliveries (
+      publication_id uuid, destination jsonb, status text, submitted_at timestamptz, recovery_required boolean
+    );
+  `);
+  await db.exec(MODULE_MIGRATION);
 }, 60_000);
 
 beforeEach(async () => {
@@ -206,5 +254,69 @@ describe('E2.1 platform usage migration', () => {
   it('runs the daily collection job after the schema transaction', () => {
     expect(USAGE_MIGRATION).toContain("cron.schedule('platform-usage-daily', '17 6 * * *'");
     expect(USAGE_MIGRATION.indexOf('COMMIT;')).toBeLessThan(USAGE_MIGRATION.indexOf('DO $$'));
+  });
+});
+
+describe('F2b server-side business module guards', () => {
+  it('blocks base-plan access to AI, chat, Knowledge, pairing, and Facebook RPCs', async () => {
+    await asUser(EXTERNAL);
+    const expectModuleFailure = async (sql: string) => {
+      await db.exec('SAVEPOINT module_guard');
+      try {
+        await expect(db.query(sql)).rejects.toThrow('El módulo no está incluido');
+      } finally {
+        await db.exec('ROLLBACK TO SAVEPOINT module_guard; RELEASE SAVEPOINT module_guard');
+      }
+    };
+    await expectModuleFailure("SELECT public.pair_ai_bridge_device('QA')");
+    await expectModuleFailure(`SELECT public.ai_create_job_with_model(
+      '50000000-0000-4000-8000-000000000001', 'codex', 'test', false, false, 'gpt-6-luna', 'low'
+    )`);
+    await expectModuleFailure(`SELECT public.ai_send_chat_message(
+      '50000000-0000-4000-8000-000000000002', 'codex', 'test', false, false, 'gpt-6-luna', 'low', NULL
+    )`);
+
+    const knowledge = await db.query<{ owner: string | null }>(
+      "SELECT public.knowledge_owner_for('read')::text AS owner",
+    );
+    expect(knowledge.rows[0].owner).toBeNull();
+
+    await expectModuleFailure(`SELECT public.approve_facebook_publication(
+      NULL, NULL, '{}'::jsonb, ARRAY[]::uuid[], false, NULL
+    )`);
+    await expectModuleFailure(`SELECT public.approve_facebook_publication_v2(
+      NULL, NULL, '{}'::jsonb, ARRAY[]::uuid[], false, 'separate'
+    )`);
+    await expectModuleFailure(`SELECT public.approve_facebook_publication_v2(
+      NULL, NULL, '{}'::jsonb, ARRAY[]::uuid[], false, 'separate', NULL
+    )`);
+
+    await db.exec('RESET ROLE');
+    await expectModuleFailure(`INSERT INTO public.ai_jobs (user_id, task_type) VALUES ('${EXTERNAL}', 'text_generation')`);
+    await expectModuleFailure(`INSERT INTO public.ai_jobs (user_id, task_type) VALUES ('${EXTERNAL}', 'knowledge_organize')`);
+    await expectModuleFailure(`INSERT INTO public.ai_jobs (user_id, task_type) VALUES ('${EXTERNAL}', 'fb_copywriting')`);
+    await expectModuleFailure(`INSERT INTO public.ai_action_requests (user_id, action_key)
+      VALUES ('${EXTERNAL}', 'facebook.publish_product')`);
+  });
+
+  it('keeps the internal plan enabled and applies the owner module to collaborators', async () => {
+    await asUser(RIVA);
+    const ownPlan = await db.query<{ modules: { ai: boolean; knowledge: boolean; automation: boolean } }>(
+      "SELECT public.my_business_plan()->'limits'->'modules' AS modules",
+    );
+    expect(ownPlan.rows[0].modules).toEqual({ ai: true, knowledge: true, automation: true });
+    const ownKnowledge = await db.query<{ owner: string }>(
+      "SELECT public.knowledge_owner_for('read')::text AS owner",
+    );
+    expect(ownKnowledge.rows[0].owner).toBe(RIVA);
+
+    await db.exec(`RESET ROLE; INSERT INTO auth.users (id, email)
+      VALUES ('${NEW_OWNER}', 'new-owner@test.invalid');
+      INSERT INTO public.collaborators (owner_uid, user_uid, revoked_at) VALUES ('${EXTERNAL}', '${NEW_OWNER}', NULL);`);
+    await asUser(NEW_OWNER);
+    const collaboratorKnowledge = await db.query<{ owner: string | null }>(
+      "SELECT public.knowledge_owner_for('read')::text AS owner",
+    );
+    expect(collaboratorKnowledge.rows[0].owner).toBeNull();
   });
 });

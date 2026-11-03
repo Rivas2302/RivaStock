@@ -132,7 +132,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 3. Tests de UI: plan `base` sin los tres ítems, plan `interno` con todo, colaborador de un negocio `base` y la redirección.
 4. Desplegá y verificá en producción con la cuenta de Riva que **no cambió nada** para su propio negocio.
 - **Commit:** `feat(platform): plans with modules; first client without AI`
-- **F2b (puede ir después de la entrega, al día siguiente):** el control del lado del servidor. `pair_ai_bridge_device`, la creación de tareas y chats de IA, Conocimientos y `approve_facebook_publication*` exigen el módulo correspondiente, con `CREATE OR REPLACE` copiando los cuerpos vigentes, y tienen tests. Commit `feat(platform): enforce plan modules server-side`.
+- **[x] F2b (2026-11-03):** el control del lado del servidor está aplicado y probado en producción. `pair_ai_bridge_device`, tareas y chats de IA, Conocimientos, creación de tareas de Facebook y `approve_facebook_publication*` exigen el módulo correspondiente. La migración copia las implementaciones vigentes con `CREATE OR REPLACE`; tests y smoke transaccional con `ROLLBACK` aprobados. El detalle y backup están en `STATUS.md`. Commit: `feat(platform): enforce plan modules server-side`.
 
 ### [x] F3 Primer ingreso y cuenta vacía
 1. **Invitación de dueño:** revisá que el email de invitación que genera el hook `send-email` para `invite` lleve a `/auth/confirm?…type=invite` y de ahí a `/reset-password`.

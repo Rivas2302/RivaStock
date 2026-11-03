@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 14:16 ART — F2b: módulos protegidos también en el servidor
+
+- Antes de F2b comparé el `ACTION_PLAN.md` local con Desktop y `origin/main`: el del worktree es más reciente que Desktop y coincide con `origin/main`. La diferencia queda en la copia local más nueva; no reemplacé el plan.
+- La nueva migración `20261103190000_platform_module_server_guards` se aplicó sola con `supabase db push --linked --yes`. Backup previo verificado en `%USERPROFILE%\rivastock-backups\20261103T170803Z`: 94 tablas / 14.067 filas con conteos exactos; `schema.sql` 940.671 B, `data.sql` 40.774.133 B; Storage 733 objetos / 143.061.033 B, inventario y hashes verificados.
+- El servidor ahora valida módulos en vinculación del AI Bridge, creación de tareas y chats, RLS/RPC/Storage de Conocimientos, tipos de tareas de IA/Facebook y aprobación de publicaciones. La verificación productiva por transacción con `ROLLBACK` obtuvo **8 denegaciones** bajo plan base y **5** más en los triggers; no creó usuarios ni dejó filas. Tras el rollback, la cuenta del dueño siguió en `interno` con `ai`, `knowledge` y `automation` activos. La migración figura aplicada y están activos los dos triggers.
+- Verificación local: lint; **795/795** tests; smoke multiempresa **27 comprobaciones / TODO OK**; build y `perf:check` aprobados. El test dirigido de plataforma pasó **10/10**.
+- **Desvío:** ninguno. **Siguiente:** E7, según el orden de esta lista. El commit y la comprobación de Vercel quedan pendientes.
+
 ## 2026-11-03 13:57 ART — Memoria entre chats verificada en producción
 
 - Producción sirve `817ae33`; Vercel confirmó `success`, la migración `20261103163908_ai_memory_chat_history_and_idle_summaries` está aplicada, `knowledge` ACTIVE v10 y AI Bridge 1.23.0 conectado.
