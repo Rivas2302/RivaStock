@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 08:25 ART — T4.2 RPC alineada con el contrato del plan
+
+- T4.2 queda `[x]`: la migración `20261103180000_fb_marketplace_groups_six_arg_rpc.sql` está aplicada en `RivaStock_Oficial`. El historial remoto la registra y la consulta SQL confirma la firma exacta de seis argumentos de `approve_facebook_publication_v2`, además de la sobrecarga explícita de siete argumentos para repeticiones.
+- Backup previo verificado: `%USERPROFILE%\rivastock-backups\20261103T111845Z` (94 tablas / 13.898 filas exactas; schema 932.324 B; data 40.182.235 B) y Storage en `%USERPROFILE%\rivastock-backups\20261103T112042Z` (5 buckets; 377 objetos / 132.538.148 B). El directorio manual `20261103T111830Z` no fue resumible y no se usó.
+- Producción: las dos RPC públicas fijan `search_path=public, pg_temp`, permiten ejecución a `authenticated` y niegan a `anon`; el helper con repetición no es ejecutable por roles cliente. Los advisors muestran el aviso esperado de RPC `SECURITY DEFINER` ejecutables por `authenticated`; las validaciones de dueño y negocio ya existen en el cuerpo protegido. Sin alerta de rendimiento nueva atribuible a esta migración.
+- Verificación: lint aprobado; **773/773** pruebas; PGlite de Facebook **64/64**; concurrencia PostgreSQL **20/20** iteraciones. El deploy web de este commit queda por verificar tras el push; no hubo Bridge, Edge Function, extensión ni publicaciones Facebook.
+- **Desvío:** se conserva una sobrecarga de 7 argumentos, sin default, para la confirmación explícita de repetición; la firma de 6 argumentos exigida por el plan está publicada y es la ruta normal.
+- **Siguiente:** implementar T4.5 detrás de su bandera, que no toca la extensión. T3.3 y T4.3 permanecen bloqueadas por §5.2b/G2 y las tareas de prueba en vivo pendientes.
+
 ## 2026-11-03 07:59 ART — D1 aplicada; E5 sigue esperando la retención
 
 - Comparé el plan maestro de Desktop, `origin/main` y el worktree. Desktop, actualizado el 03/11 a las 07:38, solo cambia materialmente C0: el siguiente destino es extensión **0.5.23**, con **0.5.22** como versión publicada vigente. Adopté esa corrección; mantuve los checks de F1–F4 y B2/B4 que tienen evidencia de cumplimiento en STATUS. `OWNER_ACTIONS.md` pide la 0.5.22 al abrir G2/A1 y prevé agrupar la 0.5.23 si la recarga automática no la instala.

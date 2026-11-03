@@ -332,7 +332,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - Documentar el contrato en `extensions/facebook/marketplace-contract.js` (nueva función `inspectMarketplaceMorePlaces()`, de solo lectura, como `inspectMarketplaceForm`) y en `docs/automation/MARKETPLACE_GROUPS_CONTRACT.md`, con capturas de referencia de la traza.
 - **Commit:** `docs(facebook): document Marketplace "more places" groups step`
 
-### [ ] T4.2 Modelo de datos
+### [x] T4.2 Modelo de datos
 **Archivo:** `supabase/migrations/<ts>_fb_marketplace_groups.sql`
 - Nuevo mecanismo de entrega `marketplace_groups`: una sola entrega con `destination.url = 'https://www.facebook.com/marketplace/create/item'` y la lista de grupos elegidos en `facebook_deliveries.target_groups jsonb` (array de `{group_id, name, url, canonical_id?}`, ≤ 20 técnicamente; el perfil de bajo riesgo limita a `max_groups_per_listing`).
 - Nueva tabla `fb_delivery_group_results`:

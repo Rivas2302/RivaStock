@@ -19,7 +19,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261027020952_fb_run_traces.sql','20261102135148_fb_supervision.sql','20261102190000_fb_supervisor_contract.sql','20261102190001_fb_post_submit_observations.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql','20261103160000_fb_pacing_scheduling.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261027020952_fb_run_traces.sql','20261102135148_fb_supervision.sql','20261102190000_fb_supervisor_contract.sql','20261102190001_fb_post_submit_observations.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql','20261103160000_fb_pacing_scheduling.sql','20261103180000_fb_marketplace_groups_six_arg_rpc.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -39,7 +39,7 @@ beforeEach(async()=>{
   await actor();
 });
 async function approve(groups:string[]=[],marketplace=true,repeat:string|null=null){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication($1,gen_random_uuid(),$2::jsonb,$3::uuid[],$4,$5) AS id',[product,JSON.stringify(content),groups,marketplace,repeat])).rows[0].id;}
- async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',key=crypto.randomUUID(),repeat:string|null=null,body:Record<string,unknown>=content,productId=product,marketplaceEnabled=true){await actor();return (await db.query<{id:string}>('SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6,$7) AS id',[productId,key,JSON.stringify(body),groups,marketplaceEnabled,mode,repeat])).rows[0].id;}
+async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',key=crypto.randomUUID(),repeat:string|null=null,body:Record<string,unknown>=content,productId=product,marketplaceEnabled=true){await actor();const args=[productId,key,JSON.stringify(body),groups,marketplaceEnabled,mode];return (await db.query<{id:string}>(repeat===null?'SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6) AS id':'SELECT approve_facebook_publication_v2($1,$2,$3::jsonb,$4::uuid[],$5,$6,$7) AS id',repeat===null?args:[...args,repeat])).rows[0].id;}
 async function worker(op:string,attempt:string|null=null,data:any={},delivery:string|null=null){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_worker_v2($1,$2,$3,$4,$5::jsonb) AS data',[token,op,delivery,attempt,JSON.stringify(data)])).rows[0].data;}
 async function inspect(sql:string,args:any[]=[]){await db.exec('RESET ROLE');return db.query<any>(sql,args);}
  async function claim(enforcePacing=false){if(!enforcePacing)await inspect('UPDATE fb_pacing_policy SET next_allowed_at=NULL WHERE user_id=$1',[owner]);return worker('claim',null,{claimKey:crypto.randomUUID()});}
@@ -59,6 +59,15 @@ it('approves one Marketplace delivery with immutable targets and isolated per-gr
  await actor(other);
  expect((await db.query('SELECT * FROM fb_delivery_group_results')).rows).toHaveLength(0);
  await expect(db.query("INSERT INTO fb_delivery_group_results(delivery_id,group_id) VALUES($1,$2)",[deliveries[0].id,first])).rejects.toThrow();
+});
+it('exposes the planned six-argument RPC and keeps repeat handling behind a separate overload',async()=>{
+ const signatures=(await inspect(`SELECT
+  to_regprocedure('public.approve_facebook_publication_v2(uuid,uuid,jsonb,uuid[],boolean,text)') IS NOT NULL AS planned_signature,
+  to_regprocedure('public.approve_facebook_publication_v2(uuid,uuid,jsonb,uuid[],boolean,text,uuid)') IS NOT NULL AS repeat_signature,
+  has_function_privilege('authenticated','public.approve_facebook_publication_v2(uuid,uuid,jsonb,uuid[],boolean,text)','EXECUTE') AS authenticated_execute,
+  has_function_privilege('anon','public.approve_facebook_publication_v2(uuid,uuid,jsonb,uuid[],boolean,text)','EXECUTE') AS anon_execute,
+  has_function_privilege('authenticated','public.approve_facebook_publication_v2_with_repeat(uuid,uuid,jsonb,uuid[],boolean,text,uuid)','EXECUTE') AS helper_execute`)).rows[0];
+ expect(signatures).toEqual({planned_signature:true,repeat_signature:true,authenticated_execute:true,anon_execute:false,helper_execute:false});
 });
 it('aggregates group performance and approval time while keeping each business isolated',async()=>{
  const target=await group('https://www.facebook.com/groups/performance');

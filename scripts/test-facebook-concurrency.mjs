@@ -19,6 +19,7 @@ try{
  const membership=await readFile('supabase/migrations/0019_collaborators_schema.sql','utf8');await admin.query(membership.slice(0,membership.indexOf('-- ─────────── handle_new_user')));
  for(const file of (await readdir('supabase/migrations')).filter(f=>/^00(49|5[0-9]|6[0-9]|7[0-9])_/.test(f)).sort())await admin.query(await readFile('supabase/migrations/'+file,'utf8'));
  await admin.query(await readFile('supabase/migrations/20261102200000_fb_marketplace_groups.sql','utf8'));
+ await admin.query(await readFile('supabase/migrations/20261103180000_fb_marketplace_groups_six_arg_rpc.sql','utf8'));
  const owner=crypto.randomUUID(),other=crypto.randomUUID(),staff=crypto.randomUUID();
  await admin.query('INSERT INTO auth.users SELECT unnest($1::uuid[])',[[owner,other,staff]]);await admin.query('INSERT INTO profiles SELECT id FROM auth.users');
  await admin.query('INSERT INTO collaborators(owner_uid,user_uid,email,permissions) VALUES($1,$2,$3,$4::jsonb)',[owner,staff,'staff@test.invalid',JSON.stringify({stock:{read:true,write:true},config:{write:false}})]);
