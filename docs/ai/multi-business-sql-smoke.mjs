@@ -29,17 +29,21 @@ CREATE FUNCTION get_owner_uid(v_uid uuid) RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT COALESCE((SELECT owner_uid FROM collaborators WHERE user_uid = v_uid AND revoked_at IS NULL LIMIT 1), v_uid) $$;
 CREATE TABLE products (id serial, user_id uuid, name text);
 CREATE TABLE ai_bridge_devices (id serial, user_id uuid, last_seen_at timestamptz, revoked_at timestamptz);
+CREATE TABLE facebook_devices (id serial, user_id uuid, last_seen_at timestamptz, revoked_at timestamptz);
 `);
 const RIVA = '11111111-1111-1111-1111-111111111111';
 const COLAB = '22222222-2222-2222-2222-222222222222';
 const NUEVO = '33333333-3333-3333-3333-333333333333';
+const EXTERNAL = '55555555-5555-4555-8555-555555555555';
 await db.exec(`
-INSERT INTO auth.users VALUES ('${RIVA}','riva@x'),('${COLAB}','colab@x');
-INSERT INTO profiles (id,email,business_name) VALUES ('${RIVA}','riva@x','Abba'),('${COLAB}','colab@x','');
+INSERT INTO auth.users VALUES ('${RIVA}','riva@x'),('${COLAB}','colab@x'),('${EXTERNAL}','external@x');
+INSERT INTO profiles (id,email,business_name) VALUES ('${RIVA}','riva@x','RivaTech'),('${COLAB}','colab@x',''),('${EXTERNAL}','external@x','External Shop');
 INSERT INTO collaborators VALUES ('${RIVA}','${COLAB}',NULL),('${RIVA}','44444444-4444-4444-4444-444444444444',now());
 INSERT INTO auth.users VALUES ('44444444-4444-4444-4444-444444444444','ex@x'); INSERT INTO profiles (id,email) VALUES ('44444444-4444-4444-4444-444444444444','ex@x');
 INSERT INTO products (user_id,name) SELECT '${RIVA}', repeat('x',500) FROM generate_series(1,20);
 INSERT INTO ai_bridge_devices (user_id,last_seen_at) VALUES ('${RIVA}', now());
+INSERT INTO facebook_devices (user_id,last_seen_at) VALUES ('${RIVA}', now());
+INSERT INTO products (user_id,name) VALUES ('${EXTERNAL}','Existing external product');
 INSERT INTO storage.objects VALUES ('assets','${RIVA}/p1.webp','{"size":"300000"}'),('knowledge','${RIVA}/d/v1/a.pdf','{"size":"1000000"}');
 `);
 
@@ -48,14 +52,17 @@ await db.exec(readFileSync(join(SQL_DIR, 'E2_platform_usage.sql'), 'utf8'));
 
 // ---- E1 ----
 let r = await db.query(`SELECT owner_uid, plan_code FROM business_subscriptions`);
-ok(r.rows.length === 1 && r.rows[0].owner_uid === RIVA && r.rows[0].plan_code === 'interno', 'solo el dueño existente queda en plan interno (el colaborador no es negocio)');
+ok(r.rows.length === 1 && r.rows[0].owner_uid === RIVA && r.rows[0].plan_code === 'interno'
+  && !r.rows.some(row => row.owner_uid === EXTERNAL), 'solo el dueño de plataforma confirmado conserva plan interno');
 
 r = await db.query(`SELECT business_limit_bigint('${RIVA}','cloud_knowledge_bytes') v`);
 ok(Number(r.rows[0].v) === 524288000, 'límite del plan interno');
 r = await db.query(`SELECT business_limit_bigint('${NUEVO}','cloud_knowledge_bytes') v`);
 ok(Number(r.rows[0].v) === 52428800, 'un negocio sin suscripción usa el plan base');
-r = await db.query(`SELECT business_limits('${NUEVO}')->'modules' m, business_limits('${RIVA}')->'modules' i`);
-ok(r.rows[0].m.ai === false && r.rows[0].m.automation === false && r.rows[0].i.ai === true, 'plan base sin IA ni automatizaciones; interno con todo');
+r = await db.query(`SELECT business_limits('${NUEVO}')->'modules' m, business_limits('${EXTERNAL}')->'modules' e, business_limits('${RIVA}')->'modules' i`);
+ok(r.rows[0].m.ai === false && r.rows[0].m.automation === false
+  && r.rows[0].e.ai === false && r.rows[0].e.automation === false && r.rows[0].i.ai === true,
+  'plan base sin IA ni automatizaciones para negocio nuevo y externo; interno con todo');
 await fails(`SELECT business_limit_bigint('${RIVA}','inexistente')`, /Límite no configurado/, 'clave de límite desconocida falla');
 
 await as(COLAB);
@@ -87,10 +94,10 @@ r = await db.query(`SELECT platform_owner_db_bytes('${RIVA}') b`);
 ok(Number(r.rows[0].b) > 10000, 'estimación de base por negocio > 0 (' + r.rows[0].b + ' bytes)');
 r = await db.query(`SELECT platform_storage_by_bucket('${RIVA}') s, platform_storage_total_bytes() t`);
 ok(Number(r.rows[0].s.assets) === 300000 && Number(r.rows[0].t) === 1300000, 'storage por bucket y total');
-r = await db.query(`SELECT platform_cloud_upload_allowed(1000) a, platform_cloud_upload_allowed(471859200) b`);
+r = await db.query(`SELECT platform_cloud_upload_allowed(1000) a, platform_cloud_upload_allowed(900000000) b`);
 ok(r.rows[0].a === true && r.rows[0].b === false, 'guardia del presupuesto del proyecto');
 r = await db.query(`SELECT platform_collect_usage() n`);
-ok(r.rows[0].n === 2, 'snapshot de 2 negocios');
+ok(r.rows[0].n === 3, 'snapshot de los 3 negocios existentes');
 r = await db.query(`SELECT count(*)::int n FROM platform_usage_snapshots WHERE owner_uid IS NULL`);
 ok(r.rows[0].n === 1, 'snapshot del proyecto');
 await as(NUEVO);
@@ -104,7 +111,8 @@ await fails(`SELECT platform_usage_overview()`, /Solo para administración/, 'co
 await as(RIVA);
 r = await db.query(`SELECT platform_usage_overview() o`);
 const o = r.rows[0].o;
-ok(o.businesses.length === 2 && o.businesses[0].central_last_seen_at && o.businesses[1].status === 'suspended', 'panel con negocios, central y estado');
+ok(o.businesses.length === 3 && o.businesses.some(business => business.central_last_seen_at)
+  && o.businesses.some(business => business.status === 'suspended'), 'panel con negocios, central y estado');
 r = await db.query(`SELECT file_size_limit FROM storage.buckets WHERE id='assets'`);
 ok(Number(r.rows[0].file_size_limit) === 2097152, 'tope por archivo en assets');
 

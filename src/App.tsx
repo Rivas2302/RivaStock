@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import RequirePermission from './components/RequirePermission';
+import RequireBusinessModule from './components/RequireBusinessModule';
 import ToastContainer from './components/ToastContainer';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
@@ -106,9 +107,9 @@ function AppRoutes() {
           <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
           <Route path="calculadora" element={withSuspense(<Calculator />)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
-          <Route path="automatizaciones" element={withSuspense(<RequirePermission module="stock"><Automations /></RequirePermission>)} />
-          <Route path="ia/conocimientos/*" element={withSuspense(<OwnerRoute><Knowledge /></OwnerRoute>)} />
-          <Route path="ia" element={withSuspense(<OwnerRoute><AIHub /></OwnerRoute>)} />
+          <Route path="automatizaciones" element={withSuspense(<RequireBusinessModule module="automation"><RequirePermission module="stock"><Automations /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="ia/conocimientos/*" element={withSuspense(<RequireBusinessModule module="knowledge"><OwnerRoute><Knowledge /></OwnerRoute></RequireBusinessModule>)} />
+          <Route path="ia" element={withSuspense(<RequireBusinessModule module="ai"><OwnerRoute><AIHub /></OwnerRoute></RequireBusinessModule>)} />
           <Route path="trazabilidad" element={withSuspense(<RequirePermission module="config"><AuditTrail /></RequirePermission>)} />
         </Route>
 

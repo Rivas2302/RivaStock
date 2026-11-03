@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useBusinessPlan } from '../hooks/useBusinessPlan';
+import { showToast } from '../lib/toast';
 import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
@@ -49,6 +51,7 @@ function isTab(value: string): value is Tab {
 
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
+  const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,6 +60,18 @@ export default function Settings() {
     if (tabFromQuery && isTab(tabFromQuery)) return tabFromQuery;
     return 'general';
   });
+  const automationAvailable = !businessPlanLoading && !businessPlanError
+    && businessPlan?.limits.modules.automation === true;
+
+  useEffect(() => {
+    if (activeTab !== 'facebook' || businessPlanLoading || automationAvailable) return;
+    showToast(
+      businessPlanError ? 'No se pudo verificar tu plan; el módulo quedó oculto.' : 'Este módulo no está incluido en tu plan.',
+      'error',
+    );
+    navigate('/', { replace: true });
+  }, [activeTab, automationAvailable, businessPlanError, businessPlanLoading, navigate]);
+
   const [loading, setLoading] = useState(true);
   
   // Data states
@@ -338,7 +353,7 @@ export default function Settings() {
     { id: 'prices', label: 'Rangos de Precio', icon: DollarSign },
     { id: 'catalog', label: 'Catálogo Público', icon: Globe },
     { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
-    { id: 'facebook', label: 'Facebook', icon: Globe },
+    ...(automationAvailable ? [{ id: 'facebook' as Tab, label: 'Facebook', icon: Globe }] : []),
     ...(isOwner ? [{ id: 'equipo' as Tab, label: 'Equipo', icon: Users }] : []),
   ];
 
@@ -390,7 +405,7 @@ export default function Settings() {
               )}
             </AnimatePresence>
             <AnimatePresence mode="wait">
-              {activeTab === 'facebook' && <Navigate to="/automatizaciones?view=configuration" replace/>}
+              {activeTab === 'facebook' && automationAvailable && <Navigate to="/automatizaciones?view=configuration" replace/>}
               {activeTab === 'general' && (
                 <motion.div
                   key="general"

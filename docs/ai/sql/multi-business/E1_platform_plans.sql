@@ -37,7 +37,7 @@ CREATE TABLE public.platform_settings (
 
 -- Presupuestos = 90 % del plan Free. E0 confirma el tope real de Storage y ajusta storage_budget_bytes.
 INSERT INTO public.platform_settings (id, db_budget_bytes, storage_budget_bytes)
-VALUES (true, 471859200, 471859200);
+VALUES (true, 471859200, 900000000);
 
 -- Claves de límites (todas obligatorias en 'base', que es el valor por defecto):
 --   cloud_knowledge_bytes  archivos de Conocimientos en la nube (imágenes del editor, miniaturas y archivos en espera de pasar a la central)
@@ -241,11 +241,14 @@ GRANT EXECUTE ON FUNCTION public.my_business_plan() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.platform_list_plans() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.platform_set_business_plan(uuid, text, text, jsonb, text) TO authenticated;
 
--- Negocios existentes: plan 'interno' (son cuentas del dueño de la plataforma; E0 lo confirma antes de aplicar).
+-- Solo el dueño de plataforma único confirmado en E0 conserva 'interno'.
+-- Perfiles no verificados quedan sin suscripción y, por defecto, en 'base'.
 INSERT INTO public.business_subscriptions (owner_uid, plan_code, notes)
-SELECT o, 'interno', 'Cuenta existente al activar los planes'
-FROM public.business_owner_ids() o
-WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = o)
+SELECT p.id, 'interno', 'Dueño de plataforma confirmado en E0'
+FROM public.profiles p
+WHERE lower(btrim(p.business_name)) = 'rivatech'
+  AND NOT EXISTS (SELECT 1 FROM public.collaborators c WHERE c.user_uid = p.id)
+  AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.id)
 ON CONFLICT (owner_uid) DO NOTHING;
 
 COMMIT;

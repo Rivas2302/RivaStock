@@ -1,5 +1,18 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — E1/F2 en curso; base desplegada, frontend pendiente
+
+- Antes de E1 se compararon ACTION_PLAN, MULTI_BUSINESS_EXECUTION_PLAN y la SQL de referencia con Desktop. La única diferencia de progreso en ACTION_PLAN es F1, ya validada; E0 está marcado localmente como completado. La SQL E1 local se ajustó según el resultado seguro de E0: solo RivaTech queda en `interno`; tres dueños no identificados quedan en `base` por defecto.
+- Backup nuevo verificado antes de la migración en `%USERPROFILE%\rivastock-backups\20261103T005428Z`: `schema.sql` 803.000 B, `data.sql` 40.121.360 B, 82 tablas y 13.774 filas; todos los conteos exactos pre/post coincidieron. Storage: 374/374 objetos, 132.374.670 B; tamaño y SHA-256 verificados archivo por archivo. `table-counts.csv` tiene 82 tablas. La primera carpeta `%USERPROFILE%\rivastock-backups\20261103T005400Z` falló antes de exportar y conserva el marcador `BACKUP-UNVERIFIED.txt`; no se usó.
+- E1.1 aplicada en producción como única migración pendiente: `20261103005337_platform_plans`. E1.2: una fila de administrador agregada fuera de migración; `platform_admins` quedó en 1. No se imprimieron UID ni emails.
+- Verificación productiva: RivaTech obtiene plan `interno`, los tres módulos habilitados y `is_platform_admin=true`; un UUID sintético inexistente obtiene plan `base`, los tres módulos deshabilitados y no es administrador, sin crear usuario. Hay 4 negocios, 1 suscripción interna y 3 negocios por defecto en base. Las cuatro tablas nuevas tienen RLS y ninguna concede lectura directa a `anon` o `authenticated`. Los límites quedaron en 471.859.200 B de DB y 900.000.000 B de Storage.
+- Advisors de Supabase: sin hallazgos de rendimiento para E1. Las notas INFO de RLS sin políticas corresponden al diseño RPC-only; los WARN de las cuatro RPC `SECURITY DEFINER` son esperados: requieren autenticación y los endpoints de administración comprueban `is_platform_admin()`. Los helpers no se exponen a clientes.
+- Implementación F2 local lista: caché `useBusinessPlan` de cinco minutos, consulta de `isPlatformAdmin` una vez por sesión, navegación y rutas restringidas por módulos, y pestaña de Facebook oculta para planes base, también al abrir la URL directa. El acceso queda oculto durante carga o error. Se agregó protección contra respuestas de caché invalidadas que llegan tarde.
+- Verificación local final tras el cambio: lint aprobado; **689/689** pruebas en 112 archivos; build aprobado; `perf:check` aprobado (208.626 B gzip JS inicial y 21.807 B CSS); smoke SQL E1/E2, 27 comprobaciones, terminó en `TODO OK`; `git diff --check` pendiente al preparar el commit.
+- Un intento de lectura posterior con `supabase db query --linked` falló por la contraseña temporal vencida de `cli_login_postgres`; se cancelaron los reintentos y se usó Supabase MCP para la verificación de solo lectura. La migración, inserción y conteo de administrador ya estaban confirmados.
+- OWNER_ACTIONS quedó reducido a la disponibilidad de Chrome con la sesión de Facebook y la extensión para los ensayos. No se pidió acción de Claude ni de productos/grupos.
+- **E1/F2 siguen `[ ]`** hasta desplegar el frontend y validar en producción el negocio de Riva, incluida foto de producto, documento de Conocimientos y Chat con fuentes. No hay datos QA creados. **Siguiente:** commit/push directo de E1/F2, esperar Vercel y completar el smoke de producción.
+
 ## 2026-11-02 — E0 completado; E1 sigue
 
 - Antes de E0 se compararon ACTION_PLAN, MULTI_BUSINESS_EXECUTION_PLAN, la SQL E1 y el smoke con Desktop. Los documentos E0/E1 coinciden; el plan local conserva solo el cierre verificado de F1 respecto de la copia maestra.

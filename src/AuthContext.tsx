@@ -25,6 +25,7 @@ interface AuthContextType {
   authUser: { uid: string; email: string } | null;
   ownerUid: string | null;
   isOwner: boolean;
+  isPlatformAdmin: boolean;
   collaboratorId: string | null;
   permissions: PermissionMatrix;
   allowedInventoryOwnerIds: string[];
@@ -141,6 +142,7 @@ async function loadProfile(session: Session, signal: AbortSignal): Promise<Loade
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth]                 = useState<LoadedAuth | null>(null);
   const [authUser, setAuthUser]         = useState<{ uid: string; email: string } | null>(null);
+  const [platformAdmin, setPlatformAdmin] = useState<{ uid: string; isAdmin: boolean } | null>(null);
   const [loading, setLoading]           = useState(true);
   const [authError, setAuthError]       = useState<string | null>(null);
   const [isReady, setIsReady]           = useState(false);
@@ -149,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const authVersionRef = useRef(0);
   const mountedRef = useRef(false);
   const authRef = useRef<LoadedAuth | null>(null);
+  const checkedPlatformAdminUidRef = useRef<string | null>(null);
   const profileJobRef = useRef<{
     actorUid: string; version: number; controller: AbortController;
     refreshData: boolean; promise: Promise<boolean>;
@@ -191,6 +194,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
   }, []);
+
+  useEffect(() => {
+    const uid = authUser?.uid;
+    if (!uid) {
+      checkedPlatformAdminUidRef.current = null;
+      setPlatformAdmin(null);
+      return;
+    }
+    if (checkedPlatformAdminUidRef.current === uid) return;
+
+    checkedPlatformAdminUidRef.current = uid;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc('is_platform_admin').abortSignal(controller.signal);
+        if (controller.signal.aborted || currentUserIdRef.current !== uid) return;
+        if (error) {
+          console.error('[Auth] platform admin check failed:', error);
+          setPlatformAdmin({ uid, isAdmin: false });
+          return;
+        }
+        setPlatformAdmin({ uid, isAdmin: data === true });
+      } catch (error: unknown) {
+        if (controller.signal.aborted || currentUserIdRef.current !== uid) return;
+        console.error('[Auth] platform admin check failed:', error);
+        setPlatformAdmin({ uid, isAdmin: false });
+      }
+    })();
+
+    return () => controller.abort();
+  }, [authUser?.uid]);
 
   const requestProfile = useCallback((session: Session, refreshData = false): Promise<boolean> => {
     if (!mountedRef.current) return Promise.resolve(false);
@@ -412,6 +446,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authUser,
         ownerUid:       auth?.ownerUid ?? null,
         isOwner:        auth?.isOwner ?? false,
+        isPlatformAdmin: Boolean(authUser && platformAdmin?.uid === authUser.uid && platformAdmin.isAdmin),
         collaboratorId: auth?.collaboratorId ?? null,
         permissions:    auth?.permissions ?? ALL_TRUE_PERMISSIONS,
         allowedInventoryOwnerIds: auth?.allowedInventoryOwnerIds ?? [],

@@ -25,6 +25,8 @@ import {
 import { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import type { ModuleKey } from '../types';
+import { useBusinessPlan } from '../hooks/useBusinessPlan';
+import type { BusinessModuleKey } from '../lib/businessPlan';
 
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -34,6 +36,7 @@ interface NavItem {
   path: string;
   icon: typeof LayoutDashboard;
   module: ModuleKey | null;
+  businessModule?: BusinessModuleKey;
   ownerOnly?: boolean;
 }
 
@@ -57,20 +60,24 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Calculadora', path: '/calculadora', icon: Calculator, module: null },
   { name: 'Trazabilidad', path: '/trazabilidad', icon: History, module: 'config' },
   { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
-  { name: 'Automatizaciones', path: '/automatizaciones', icon: Zap, module: 'stock' },
-  { name: 'IA', path: '/ia', icon: Sparkles, module: null, ownerOnly: true },
+  { name: 'Automatizaciones', path: '/automatizaciones', icon: Zap, module: 'stock', businessModule: 'automation' },
+  { name: 'IA', path: '/ia', icon: Sparkles, module: null, businessModule: 'ai', ownerOnly: true },
 ];
 
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
+  const { plan, loading: planLoading, error: planError } = useBusinessPlan();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
 
+  const includedModules = !planLoading && !planError ? plan?.limits.modules : null;
   const navItems = NAV_ITEMS.filter(it =>
-    (!it.ownerOnly || isOwner) && (it.module === null || permissions[it.module]?.read === true)
+    (!it.ownerOnly || isOwner)
+    && (it.module === null || permissions[it.module]?.read === true)
+    && (!it.businessModule || includedModules?.[it.businessModule] === true)
   );
   const navGroups = [
     { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
