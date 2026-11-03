@@ -13,6 +13,12 @@
 - El plan del publicador conserva T2.3 desplegada en Bridge 1.19.0 y Bridge 1.20.0 como siguiente menor de esa fecha; 1.20.0 está instalada y conectada según la verificación de T5.5.
 - B4 permanece `[x]`. No ejecuté Claude ni agregué una acción del dueño.
 
+## 2026-11-03 — Bloque E0–E3 reconciliado; C0 sigue detrás de §5.2b
+
+- Antes de continuar, comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop y `origin/main`; su contenido coincide. El historial de producción de `MULTI_BUSINESS_BASELINE.md` y `STATUS.md` respalda E0, E1, E2 y E3, así que restauré sus cuatro marcas `[x]`.
+- La consulta de solo lectura a `facebook_devices` mostró heartbeat reciente (2026-11-03 08:02:47 UTC), pero la versión sigue en **0.5.15** y sus capacidades no incluyen capturas. Hay más de tres pruebas en vivo pendientes; §5.2b impide cambiar la extensión y mantiene C0 bloqueado.
+- No se aplicaron migraciones ni se alteraron datos. El siguiente trabajo habilitado es E4, almacén local de originales en la central.
+
 ## 2026-11-03 — T7.1 desplegada y smoke de producción completo
 
 - Después del backup verificado `%USERPROFILE%\rivastock-backups\20261103T074408Z`, el dry-run enumeró solo `20261103071448_ai_action_catalog.sql`; la apliqué y confirmé RLS/permisos, una acción estática con confirmación y cero solicitudes iniciales.
