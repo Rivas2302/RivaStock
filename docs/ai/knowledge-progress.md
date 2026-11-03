@@ -1,5 +1,14 @@
 # Progreso del módulo Conocimientos
 
+## E4/E5 — Validación de producción y corrección pendiente — 2026-11-03
+
+- El commit `5053d06` quedó desplegado en Vercel (`success`); `knowledge` está ACTIVE v9 con `verify_jwt=false`. Playwright autenticado mostró IA → Conexión, **Conectada** y la tarjeta **Almacén de la central**.
+- Smoke positivo: se subió un producto `[QA]` con una foto real existente del catálogo; Chat respondió `17 [K1]` para el documento publicado `[QA] E5 producción y RAG`.
+- Se cargó `[QA] central-smoke.txt` (166 B), indexó y generó un fragmento, pero el worker 1.21.0 dejó su versión en `transferring`. El log indicó discrepancia de tamaño en la descarga firmada: el servidor omite `Content-Length` y el código convertía `null` a `0` con `Number(null)`. La copia en la nube sigue intacta; no se ejecutó purga.
+- Fix local: solo validar `Content-Length` si el servidor lo envía; en todos los casos validar tamaño límite, tamaño total transmitido y SHA-256 antes de guardar. Regresión dirigida y suite Bridge 110/110, typecheck, lint frontend, 772/772 pruebas frontend, build y `perf:check` pasan. Paquete local: Bridge 1.21.1.
+- El claim inicial se creó a las 09:36 UTC y vence después de 30 minutos; no lo liberé con SQL. La migración automática podrá volver a tomar el original al vencer.
+- **Pendiente:** push/deploy e instalación 1.21.1; comprobar que el original QA llega a la central con la huella correcta; después borrar por la app el producto, los dos documentos y el chat `[QA]`, y verificar cero filas/objetos QA. E4/E5 siguen `[ ]`.
+
 Actualizado: 2026-11-03
 
 ## E5 — Apertura de originales bajo demanda — implementación local, 2026-11-03

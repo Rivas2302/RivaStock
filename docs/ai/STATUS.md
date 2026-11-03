@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 06:40 ART — E4/E5 smoke de producción detectó una falla de transferencia
+
+- El commit `5053d06` está en `main`; el check de Vercel está en `success`. Playwright, con el perfil persistente autenticado, abrió IA → Conexión y confirmó la tarjeta **Almacén de la central** y estado **Conectada**.
+- El smoke real pasó la carga de una foto de producto `[QA]` y la pregunta de Chat con fuentes (`17 [K1]`). Al subir `[QA] central-smoke.txt`, la indexación terminó, pero la central no lo guardó: Supabase entrega la descarga firmada sin `Content-Length` y el Bridge 1.21.0 interpreta el header ausente como tamaño cero. El objeto sigue en la nube y no hay pérdida de datos ni purga.
+- Corrección local en `tools/rivastock-ai-bridge/src/central/transfer.ts`: tratar el header como opcional y validar el tamaño transmitido, además de rechazar un tamaño declarado inválido. La regresión prueba el caso sin header. Bridge 1.21.1 pasó typecheck y **110 pruebas**; frontend: lint, **772 pruebas** con credenciales Supabase ficticias solo en el proceso, build y `perf:check` aprobados.
+- **E4/E5 siguen abiertas** hasta publicar la corrección, instalar Bridge 1.21.1, verificar transferencia real y retirar todos los datos `[QA]` desde la app. No se habilitó purga de Storage.
+- Reconcilié `ACTION_PLAN.md` con Desktop (la única diferencia frente a la copia previa son las marcas F1–F4/B2/B4); el smoke SQL multiempresa volvió a terminar en **27 comprobaciones / TODO OK**. Mantengo esas seis tareas sin marcar hasta revalidar sus criterios vigentes.
+- **Siguiente:** commitear la corrección como tarea abierta, publicarla e instalarla; dejar que venza el claim anterior de 30 minutos y comprobar que el original se guarda con su SHA-256.
+
 ## 2026-11-03 — E5 implementada localmente; despliegue pendiente
 
 - Comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop: coincide. `ACTION_PLAN.md` difiere solo en seis marcas F1–F4/B2/B4; `origin/main` y el estado documentado las respaldan como `[x]`, así que conservé la versión reconciliada. No hubo cambios técnicos del plan.

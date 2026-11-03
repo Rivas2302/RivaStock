@@ -45,10 +45,13 @@ export async function transferCentralBatch(options: {
 async function download(url: string, expectedSize: number): Promise<Uint8Array> {
   const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS), redirect: 'follow' });
   if (!response.ok) throw new Error('No se pudo descargar el original desde la nube.');
-  const length = Number(response.headers.get('content-length'));
-  if ((Number.isFinite(length) && length > MAX_FILE_BYTES) || (Number.isFinite(length) && length !== expectedSize)) {
-    await response.body?.cancel();
-    throw new Error('El tamaño del original descargado no coincide con el registrado.');
+  const contentLength = response.headers.get('content-length');
+  if (contentLength !== null) {
+    const length = Number(contentLength);
+    if (!Number.isSafeInteger(length) || length < 0 || length > MAX_FILE_BYTES || length !== expectedSize) {
+      await response.body?.cancel();
+      throw new Error('El tamaño del original descargado no coincide con el registrado.');
+    }
   }
   if (!response.body) throw new Error('La respuesta de Storage no tiene contenido.');
   const reader = response.body.getReader();

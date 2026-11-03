@@ -11,7 +11,7 @@ const RELATIVE_PATH = '10000000-0000-4000-8000-000000000001/20000000-0000-4000-8
 const VERSION_ID = '30000000-0000-4000-8000-000000000003';
 const WORKER_ID = '40000000-0000-4000-8000-000000000004';
 
-test('central transfer verifies the download and acknowledges only after the local write', async () => {
+test('central transfer verifies a signed download without Content-Length before acknowledging the local write', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'rivastock-central-transfer-'));
   const store = new CentralStore({ storeDirectory: join(directory, 'store'), mirrorDirectory: null });
   await store.initialize();
@@ -19,7 +19,8 @@ test('central transfer verifies the download and acknowledges only after the loc
   const sha256 = hashBytes(bytes);
   const originalFetch = globalThis.fetch;
   const order: string[] = [];
-  globalThis.fetch = async () => new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } });
+  // Storage may omit Content-Length for signed downloads; the streamed size is still verified below.
+  globalThis.fetch = async () => new Response(bytes, { status: 200 });
   const client = {
     centralNext: async () => [{ version_id: VERSION_ID, relative_path: RELATIVE_PATH, sha256,
       file_size: bytes.byteLength, mime_type: 'application/pdf', url: 'https://storage.example/signed' }],
