@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 00:20 ART — B2 cerrada en producción; B3 diferida como opcional
+
+- `4a0a858` se publicó en `main`; Vercel reportó `success`. La corrección permite que el chat siga consultando la actividad después de un evento de uso y muestre el chip cuando termina la extracción asíncrona.
+- Smoke de producción con Playwright y perfil persistente: el Bridge figuró “Conectada”. Un chat `[QA]` guardó el recuerdo de lunes y mostró el chip con `Deshacer`. Un chat nuevo lo recuperó; otro chat actualizó el mismo recuerdo a miércoles y el chip de actualización apareció en la misma conversación, sin reabrirla. Memoria mostró exactamente un registro activo con el valor nuevo.
+- Limpieza por la app: se borró el recuerdo `[QA]` y los 2 chats; las vistas de memoria Activos/Archivados/Propuestas quedaron sin coincidencias Caballito y la lista no mostró chats `[QA]`.
+- **B2 `[x]`**. C5.4 queda cerrada para Codex. La prueba equivalente de memoria con Claude y C2.2 están **Diferidas (opcionales)** porque el último probe de G3 registrado no completó; no se reintentó ni se agregó acción a `OWNER_ACTIONS.md`.
+- **Siguiente:** B4, sincronizar el cierre del addendum y fijar Bridge 1.19.0 como siguiente menor para el publicador; después C0. No hubo cambios de base ni de Edge Function.
+
 ## 2026-11-03 00:05 ART — B2: checklist de producción completada; ajuste del chip pendiente de desplegar
 
 - Comparé los planes antes de continuar: las copias locales de ACTION_PLAN, el addendum y el plan del publicador siguen siendo más recientes que las de Desktop; `origin/main` estaba en `2276dbc`.

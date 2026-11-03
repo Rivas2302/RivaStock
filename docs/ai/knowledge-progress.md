@@ -1182,3 +1182,10 @@ Los respaldos quedaron fuera del repositorio. Docker Desktop no está instalado 
 - Corrección local: el efecto de `AIChats` continúa consultando cuando hay actividad `used` pero todavía no existe un evento de cambio, y se detiene al encontrar el cambio. Prueba dirigida `AIChats.memory.test.tsx`: 2/2; `npm run lint`; suite completa 700/700 en 114 archivos; `npm run build`; `npm run perf:check` aprobados. Resultado de bundle: 209.005 B JS inicial gzip, 22.045 B CSS y 241.062 B JS para AIHub.
 - El primer intento de suite completa usó una clave ficticia con formato inválido y falló un test de formato de `sb_publishable_`; repetida con una clave ficticia `sb_publishable_…`, pasó 700/700. Ninguna credencial real fue usada por las pruebas.
 - **B2 continúa abierta:** el ajuste frontend no está desplegado ni vuelto a validar. No hubo migración ni cambios de Edge Function.
+
+#### B2 — Verificación tras desplegar la corrección del chip — 2026-11-03
+
+- El commit `4a0a858` se pusheó directo a `main` y Vercel reportó `success`.
+- En producción, `[QA]` A guardó lunes y mostró `Memoria actualizada` con `Deshacer`; `[QA]` C cambió el mismo recuerdo a miércoles y el chip de `updated` apareció en el mismo chat, sin navegar ni reabrir. La pestaña Memoria mostró un solo hecho activo con miércoles.
+- Limpieza normal de app: se borró el recuerdo y ambos chats. No quedaron chats `[QA]` ni recuerdos que coincidieran con Caballito en Activos, Archivados o Propuestas.
+- B2 quedó cerrada. La prueba de Claude en C5.4/C2.2 se difiere como opcional por el probe G3 previo que no completó; no se reintentó.

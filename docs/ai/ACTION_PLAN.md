@@ -261,7 +261,7 @@ Hoy el backup solo **inventaría** los objetos de Storage; `db dump` no incluye 
 - Quitar de `OWNER_ACTIONS.md` la acción “AI Bridge 1.12.0” si quedó resuelta.
 - **Commit:** `docs(ai): record AI Bridge 1.12.0 rollout`
 
-### [ ] B2 Corregir “olvidar” en la memoria compartida (C5.4)
+### [x] B2 Corregir “olvidar” en la memoria compartida (C5.4)
 Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archivó; una orden más explícita archivó, pero el asistente respondió que no podía borrar el recuerdo.
 1. **Reproducir** con un test que use la frase exacta y localizar la causa en la cadena completa: prefiltro y detección de orden explícita (`tools/rivastock-ai-bridge/src/memory/filters.ts`), selección de recuerdos candidatos para archivar (¿llega el recuerdo relacionado al prompt?), prompt y validación de operaciones (`memory/extract.ts`) y aplicación en la Edge Function `knowledge`.
 2. **Corregir** para que “olvidá / olvidate / borrá / sacá de la memoria / ya no recuerdes … lo de X” archive el recuerdo relacionado aunque la frase sea corta o coloquial, y no archive nada si no hay uno claramente relacionado.
@@ -271,6 +271,7 @@ Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archiv
 - **Commit:** `fix(ai): reliable forget commands and consistent memory replies`
 
 ### [ ] B3 Claude Code real (C2.2 y la parte Claude de C5.4) — **opcional, requiere G3**
+- **Estado:** Diferida (opcional). El probe registrado el 02/11 no completó; no se repitió y no se agregó una acción para el dueño. C2.2 y la prueba de memoria compartida con Claude quedan como la única validación opcional pendiente del addendum.
 - El 02/11 el probe de G3 volvió a quedar colgado sin respuesta. Codex es el proveedor principal; Claude **no bloquea** nada de este plan.
 - Diagnóstico sin Riva, una sola vez: `claude --version`, `claude doctor` (si existe) y el probe con timeout de 60 s; anotá el resultado. Si se destraba, ejecutá C2.2 completa y la prueba “Claude recupera la misma memoria” de C5.4, y cerrá ambas.
 - Si sigue colgado: no reintentes, **no lo pongas en `OWNER_ACTIONS.md`**, marcá C2.2 como “Diferida (opcional)” en `STATUS.md` y en el addendum, y seguí.

@@ -90,7 +90,8 @@ Excepción explícita a la regla “no modificar `ai-bridge`”: esta tarea **s�
 - Si requiere iniciar sesión o confirmar algo, pedírselo al dueño en el mensaje agrupado. Nunca leer ni copiar credenciales.
 - Habilitar el proveedor en el `.env` del Bridge (`AI_BRIDGE_ENABLE_CLAUDE=true`) solo si el dueño no lo tenía deshabilitado a propósito. Si estaba en `false`, preguntarlo en el mensaje agrupado. Reiniciar el Bridge.
 
-### [ ] C2.2 Pruebas reales con Claude
+### [ ] C2.2 Pruebas reales con Claude — Diferida (opcional)
+- La validación se difiere de acuerdo con `ACTION_PLAN.md` §4, B3: el último probe registrado no completó y no se reintentó. Claude no bloquea el uso de Codex ni el cierre del resto del addendum. No pedir una acción al dueño.
 - **Tarea puntual con Claude:** respuesta correcta.
 - **Chat de 3 turnos con Claude:** reanuda la sesión (`--resume`); el tercer turno recuerda un dato del primero.
 - **Chat con recuperación de Conocimientos:** con un documento `[QA]` publicado e indexado, responde citando `[K1]` y la UI muestra la fuente.
@@ -270,7 +271,7 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
 - Verificación local: lint aprobado; pruebas dirigidas de migración, Edge Function, UI y chips: 16 aprobadas; Bridge typecheck y 67 pruebas aprobados; suite completa: 565 pruebas en 93 archivos aprobadas con URL/key ficticios de proceso; build y perf aprobados. Cierre repetirá la verificación al terminar C5.5.
 - Producción: sin aplicar migraciones ni desplegar funciones, frontend o Bridge. Hace falta un backup lógico nuevo, verificado tabla por tabla.
 
-### [ ] C5.4 Prueba en producción
+### [x] C5.4 Prueba en producción
 - Chat A: “Recordá que los envíos a Santa Rosa salen los martes y los hace Correo Argentino.” Debe aparecer el chip con el recuerdo guardado.
 - Chat **nuevo** B: “¿Qué día salen los envíos a Santa Rosa?” Debe responder “martes” y mostrar el recuerdo usado.
 - Chat C: “Ahora los envíos a Santa Rosa salen los jueves.” El recuerdo debe **actualizarse**, no duplicarse; verificarlo en la pestaña Memoria.
@@ -282,7 +283,9 @@ La memoria vive en RivaStock (Supabase), no dentro del modelo. Por eso es la mis
 - Limpiar: borrar los recuerdos y chats `[QA]` desde la UI.
 - **Commit:** `docs(ai): record shared memory production validation`
 
-**Resultado de la validación del 2026-10-26:** Bridge 1.11.0 quedó instalado y conectado. A→B recuperó martes; C actualizó a jueves y Deshacer restauró martes. La frase exacta “Olvidá lo de los envíos a Santa Rosa” no archivó; una orden más explícita sí archivó, pero el asistente respondió que no podía borrar el recuerdo. La protección sensible y el modo “Con mi confirmación” pasaron. Desvío: Claude no se probó por instrucción del dueño; la limpieza de chats y recuerdos QA desde la app terminó. La tarea permanece abierta hasta resolver la frase de olvido y la prueba real de Claude.
+**Resultado histórico del 2026-10-26:** Bridge 1.11.0 quedó instalado y conectado. A→B recuperó martes; C actualizó a jueves y Deshacer restauró martes. La frase exacta de olvido no archivó y la respuesta del asistente fue contradictoria. B2 corrigió ambos comportamientos.
+
+**Resultado de la validación del 2026-11-03:** con Bridge 1.18.0, A guardó martes y mostró el chip; B, en un chat nuevo, recuperó martes y mostró el recuerdo usado; C actualizó el único recuerdo a jueves; D archivó con “Olvidá lo de los envíos a Santa Rosa”, respondió coherentemente y mostró `Deshacer`; E ya no recuperó el recuerdo. `Deshacer` restauró jueves. El chip de actualización de C se confirmó en producción después del ajuste frontend `4a0a858` sin reabrir el chat. La protección de datos sensibles y el modo `confirm` pasaron; la propuesta se descartó y eliminó desde la app. Se restauró `auto`, `top_k=5` e inclusión de resúmenes. Se eliminaron desde la app los 2 chats y el recuerdo `[QA]` de la regresión; no quedaron coincidencias Caballito en memoria ni chats `[QA]`. La prueba de Claude queda diferida como opcional en C2.2/B3.
 
 ### [x] C5.5 Evaluación real de extracción y recuperación
 - Guardar 30 conversaciones reales de evaluación sintética en `tools/rivastock-ai-bridge/test/memory-eval/`, con ejemplos positivos y negativos de qué recordar, actualizar, archivar o bloquear; no usar datos de clientes.
