@@ -6,6 +6,7 @@ import { usePermission } from '../hooks/usePermission';
 import type { Product } from '../types';
 import Modal from './Modal';
 import { composeGroupPublicationText, deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication } from '../lib/facebookPublications';
+import { lastProductGroupUse, rankFacebookGroups, type FacebookGroupPerformance } from '../lib/facebookGroupSuggestions';
 import { formatCurrency } from '../lib/utils';
 import { marketplaceCategories } from '../../extensions/facebook/marketplace-contract.js';
 import FacebookGroupPicker from './automations/FacebookGroupPicker';
@@ -31,6 +32,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [marketplace, setMarketplace] = useState(savedSelection.current?.marketplace??true);
   const [selectedGroups, setSelectedGroups] = useState<string[]>(savedSelection.current?.groups??[]);
   const [groups, setGroups] = useState<FacebookGroup[]>([]);
+  const [groupPerformance, setGroupPerformance] = useState<FacebookGroupPerformance[]>([]);
   const [devices, setDevices] = useState<FacebookDevice[]>([]);
   const [publications, setPublications] = useState<FacebookPublication[]>([]);
   const [error, setError] = useState('');
@@ -63,7 +65,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       try {
         const data = await loadFacebookPublicationData(product.id);
         if (active) {
-          setGroups(data.groups); setDevices(data.devices); setPublications(data.publications); setReady(true);
+          setGroups(data.groups); setGroupPerformance(data.groupPerformance); setDevices(data.devices); setPublications(data.publications); setReady(true);
           if(!hydrated.current) {
             if(data.publications.length) {
               // A photo removed from the product since then cannot be approved again.
@@ -129,7 +131,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     const block=publicationBlock(publications,marketplace,selectedGroups,groups);
     if(block)throw new Error(block);
     if(publications.length&&!repeatOf)throw new Error('Elegí Preparar otra publicación para aprobar un nuevo envío.');
-    const groupProblem=validateGroupSelection(groups,selectedGroups);if(groupProblem)throw new Error(groupProblem);
+    const groupProblem=validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds);if(groupProblem)throw new Error(groupProblem);
     const contentProblem = validatePublication(content, marketplace, selectedGroups, false);
     if (contentProblem) throw new Error(contentProblem);
     const prepared = await preparePublicationPhotos(publicationProduct, ownerUid ?? '');
@@ -282,6 +284,9 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     setApproved(false);
   };
   const blockReason=publicationBlock(publications,marketplace,selectedGroups,groups);
+  const productGroupUse=lastProductGroupUse(publications);
+  const groupRanking=rankFacebookGroups(groups,groupPerformance,publicationProduct.category,productGroupUse);
+  const recentlyUsedGroupIds=startInRehearsal?[]:groupRanking.filter(item=>item.blockedUntil).map(item=>item.group.id);
   const productImage=productPhotos(publicationProduct)[0];
   const connected=devices.some(device=>deviceConnected(device));
   const prepareAnother=()=>{
@@ -414,8 +419,8 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
               <fieldset className="space-y-2">
                 <legend className="text-sm font-bold">Destinos</legend>
                 <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800"><input type="checkbox" checked={marketplace} onChange={event=>{setMarketplace(event.target.checked);setApproved(false);}}/>Marketplace</label>
-                <FacebookGroupPicker groups={groups} devices={devices} selected={selectedGroups} onChange={ids=>{setSelectedGroups(ids);setApproved(false);}} onRefresh={refresh}/>
-                {validateGroupSelection(groups,selectedGroups)&&<p role="alert" className="text-sm text-rose-600">{validateGroupSelection(groups,selectedGroups)}</p>}
+                <FacebookGroupPicker groups={groups} devices={devices} selected={selectedGroups} onChange={ids=>{setSelectedGroups(ids);setApproved(false);}} onRefresh={refresh} groupPerformance={groupPerformance} category={publicationProduct.category} lastProductUse={productGroupUse} allowRecentRepeat={startInRehearsal}/>
+                {validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)&&<p role="alert" className="text-sm text-rose-600">{validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)}</p>}
               </fieldset>
               <Link onClick={onClose} to="/automatizaciones?view=configuration" className="inline-block text-sm font-semibold text-indigo-600 dark:text-indigo-300">Gestionar grupos y conexión</Link>
             </section>
@@ -454,7 +459,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy||!canWrite} checked={approved} onChange={event=>setApproved(event.target.checked)}/>Revisé el contenido, las fotos y los destinos y autorizo esta publicación.</label>
-            <button type="button" disabled={busy||!ready||!approved||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
+            <button type="button" disabled={busy||!ready||!approved||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
           </div>
         </div>
       </>}

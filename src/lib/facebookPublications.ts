@@ -2,6 +2,7 @@ import type { Product } from '../types';
 import { supabase, supabaseProjectUrl } from './supabase';
 import { formatCurrency } from './utils';
 import { marketplaceConditions } from '../../extensions/facebook/marketplace-contract.js';
+import type { FacebookGroupPerformance } from './facebookGroupSuggestions';
 
 export interface PublicationContent {
   title: string; description: string; price: number; photos: string[];
@@ -27,10 +28,10 @@ export function groupCompatibility(group:FacebookGroup):string|null {
   if(group.mechanism!=='group_direct')return 'Este flujo de grupo no está implementado.';
   try{normalizeGroupUrl(group.url);return null;}catch{return 'Falta una URL válida del grupo. No se puede identificar el destino por su nombre.';}
 }
-export function validateGroupSelection(groups:FacebookGroup[],selected:string[]):string|null {
+export function validateGroupSelection(groups:FacebookGroup[],selected:string[],recentlyUsedGroupIds:string[]=[]):string|null {
   if(selected.length>20)return 'Podés elegir hasta 20 grupos.';
   const urls=new Set<string>();
-  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;const url=normalizeGroupUrl(group.url);if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
+  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;if(recentlyUsedGroupIds.includes(id))return 'Este producto ya se usó en ese grupo durante los últimos 7 días. Elegí otro destino o esperá antes de repetir.';const url=normalizeGroupUrl(group.url);if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
   return null;
 }
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
@@ -174,7 +175,8 @@ export async function loadFacebookPublicationData(productId: string) {
     supabase.from('facebook_groups').select('id,name,url,mechanism,member_count_text,member_count_updated_at').order('name'),
     supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at', null),
     supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries('+facebookDeliveryFields+')').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
+    supabase.from('fb_group_performance').select('*').order('group_name'),
   ]);
   for (const result of results) if (result.error) throw new Error('No se pudo cargar Publicaciones. Verificá la conexión y las migraciones de Automatizaciones.');
-  return { groups: results[0].data as FacebookGroup[], devices: results[1].data as FacebookDevice[], publications: results[2].data as unknown as FacebookPublication[] };
+  return { groups: results[0].data as FacebookGroup[], devices: results[1].data as FacebookDevice[], publications: results[2].data as unknown as FacebookPublication[], groupPerformance: results[3].data as FacebookGroupPerformance[] };
 }
