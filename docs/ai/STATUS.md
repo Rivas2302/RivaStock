@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:36 ART — B4 cerrado; el límite §5.2b bloquea C0
+
+- B4 cumple el cierre: C1, C2.1, C3, C4 y C5.4/C5.5 están documentados; C2.2/Claude queda como único pendiente opcional, sin acción del dueño. T2.3 conserva 1.19.0 como despliegue y fija **1.23.0** como siguiente minor después del Bridge 1.22.0. `OWNER_ACTIONS.md` se ajustó a §8: Chrome con la sesión y extensión activa para los ensayos por RPC, más la selección posterior de T6.1; no lista rotaciones ni Claude.
+- La comparación confirmó que el plan maestro de Desktop y el de `origin/main` coincidían antes de restaurar las marcas verificadas. El addendum y el plan del publicador de Desktop son más antiguos que los archivos vigentes de `main`; conservé estos últimos. Restauré `[x]` para F1–F4 y B4 con la evidencia de producción existente.
+- El último heartbeat Facebook leído fue 10:27:47 UTC; a las 10:35 UTC ya supera la ventana de 3 minutos. La extensión además sigue en 0.5.15 y no reporta `self-reload`; cuatro pruebas en vivo esperan G2. C0 y cualquier cambio de extensión siguen bloqueados por §5.2b.
+- No hay migración, despliegue ni instalación en curso. **Siguiente:** continuar el Bloque E según §5.2b; E4/E5 mantienen los datos `[QA]` reservados hasta probar la apertura bajo demanda y limpiarlos desde la app.
+
 ## 2026-11-03 07:30 ART — B2 revalidada y cerrada
 
 - Antes de B2 comparé ACTION_PLAN y el addendum con Desktop y `origin/main`; la copia Desktop del plan maestro tiene marca de modificación 02/11 22:18 ART y coincide con la vigente. No apareció una copia posterior.

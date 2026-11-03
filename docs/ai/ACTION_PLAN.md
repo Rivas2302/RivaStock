@@ -109,7 +109,7 @@ Riva tiene un cliente y le entrega el acceso **el martes 03/11**, bien hecho. Re
 
 La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a negocios sin el módulo `ai`: E3 protege la central de IA, que este cliente no tiene.
 
-### [ ] F1 Auditoría de aislamiento (solo lectura, en producción, ~30 min)
+### [x] F1 Auditoría de aislamiento (solo lectura, en producción, ~30 min)
 1. Listá las tablas de `public` con RLS desactivado y las políticas que permiten leer o escribir con `true`, `USING (true)` o sin filtro por dueño a `anon` o `authenticated`. Revisá también las políticas de Storage por bucket. Lo público por diseño (fotos de `assets`, catálogo y presupuesto públicos) se documenta como tal.
 2. **Simulación de un dueño nuevo,** en una transacción que termina en `ROLLBACK`:
    - `SET LOCAL role authenticated` y `SET LOCAL request.jwt.claims` con un `sub` UUID aleatorio que no existe;
@@ -121,7 +121,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 6. Escribí `docs/ai/ISOLATION_AUDIT.md`. **Si hay una fuga,** corregila con una migración aditiva (después de `npm run backup:db`), repetí la simulación y recién entonces seguí. No se entrega con fugas.
 - **Commit:** `docs(security): tenant isolation audit before first client`
 
-### [ ] F2 Planes y módulos (adelanta E1)
+### [x] F2 Planes y módulos (adelanta E1)
 1. `npm run backup:db`. Aplicá E1 tal como está en `docs/ai/sql/multi-business/E1_platform_plans.sql`: ya incluye `modules` (`base` = sin `ai`, `knowledge` ni `automation`) y su smoke tiene 27 comprobaciones. **Tiene que aplicarse antes de que Riva cree la cuenta del cliente**, para que la siembra deje en `interno` solo las cuentas existentes y el cliente quede en `base` por defecto. Hacé E1.2 (alta del administrador).
 2. Frontend:
    - `useBusinessPlan()` (E1.3);
@@ -134,7 +134,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 - **Commit:** `feat(platform): plans with modules; first client without AI`
 - **F2b (puede ir después de la entrega, al día siguiente):** el control del lado del servidor. `pair_ai_bridge_device`, la creación de tareas y chats de IA, Conocimientos y `approve_facebook_publication*` exigen el módulo correspondiente, con `CREATE OR REPLACE` copiando los cuerpos vigentes, y tienen tests. Commit `feat(platform): enforce plan modules server-side`.
 
-### [ ] F3 Primer ingreso y cuenta vacía
+### [x] F3 Primer ingreso y cuenta vacía
 1. **Invitación de dueño:** revisá que el email de invitación que genera el hook `send-email` para `invite` lleve a `/auth/confirm?…type=invite` y de ahí a `/reset-password`.
    - En `ResetPassword`, si viene de una invitación, título “Creá tu contraseña” y botón “Entrar a RivaStock”;
    - validación clara (mínimo de caracteres y confirmación);
@@ -145,7 +145,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 4. `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`. Desplegá y hacé el smoke del negocio de Riva.
 - **Commit:** `feat(onboarding): first login for new business owners`
 
-### [ ] F4 Guía de entrega y aviso a Riva
+### [x] F4 Guía de entrega y aviso a Riva
 - Escribí `docs/clients/ENTREGA_CLIENTE.md`:
   - **Pasos de Riva:** Supabase → Authentication → Users → **Invite user** → email del cliente. Nada más.
   - **Verificación tuya después de la invitación** (Riva te avisa o la detectás en la próxima tarea), con una consulta de solo lectura: el usuario nuevo existe, tiene perfil, no tiene fila en `business_subscriptions` (o sea, plan `base`, sin IA ni Automatizaciones) y no es colaborador de nadie.
@@ -276,7 +276,7 @@ Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archiv
 - Si sigue colgado: no reintentes, **no lo pongas en `OWNER_ACTIONS.md`**, marcá C2.2 como “Diferida (opcional)” en `STATUS.md` y en el addendum, y seguí.
 - **Commit:** `docs(ai): record Claude Code production validation`
 
-### [ ] B4 Cierre del addendum
+### [x] B4 Cierre del addendum
 - La sección “Cierre” de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md`. Si B3 sigue bloqueada, cerrar todo lo demás y dejar C2.2 como único pendiente por puerta.
 - En `AI_PUBLISHER_EXECUTION_PLAN.md`, fijar la versión del Bridge del supervisor (T2.3) en **la siguiente menor a la instalada** (1.13.0 si B2 terminó en 1.12.x).
 - **Commit:** `docs(ai): close knowledge and AI module pending items`
