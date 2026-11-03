@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useAuth } from '../AuthContext';
+import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import { db } from '../lib/db';
 import { showToast } from '../lib/toast';
 import { slugify, uuid } from '../lib/utils';
@@ -44,6 +45,7 @@ function defaultCatalogConfig(ownerUid: string, businessName: string, slug: stri
 
 export default function BusinessSetupModal() {
   const { user, isOwner, updateUser } = useAuth();
+  const { canWrite, isSuspended } = useBusinessWriteAccess();
   const [businessName, setBusinessName] = useState(user?.businessName ?? '');
   const [currencySymbol, setCurrencySymbol] = useState<string>(user?.currencySymbol || CURRENCIES[0].symbol);
   const [phone, setPhone] = useState('');
@@ -66,7 +68,7 @@ export default function BusinessSetupModal() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (saving) return;
+    if (!canWrite || saving) return;
 
     const trimmedName = businessName.trim();
     if (!trimmedName) {
@@ -159,8 +161,10 @@ export default function BusinessSetupModal() {
       >
         <h2 id="business-setup-title" className="text-2xl font-black text-slate-900 dark:text-white">Completá los datos de tu negocio</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Necesitamos esta información para preparar tu cuenta y el enlace de tu catálogo.</p>
+        {isSuspended && <p role="status" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">La cuenta está suspendida. Podés consultar la información, pero no modificarla.</p>}
 
         <form onSubmit={(event) => void handleSubmit(event)} className="mt-6 space-y-4">
+          <fieldset disabled={!canWrite} className="min-w-0 space-y-4 border-0 p-0 disabled:opacity-70">
           <div>
             <label htmlFor="business-setup-name" className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-100">Nombre del negocio</label>
             <input
@@ -221,11 +225,12 @@ export default function BusinessSetupModal() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={!canWrite || saving}
             className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"
           >
             {saving ? 'Guardando…' : 'Guardar y continuar'}
           </button>
+          </fieldset>
         </form>
       </section>
     </div>

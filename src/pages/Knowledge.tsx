@@ -1,6 +1,7 @@
 import { Loader2, Sparkles, Upload } from 'lucide-react';
 import { Suspense, lazy, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
+import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import '../styles/knowledge.css';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
 
@@ -15,6 +16,7 @@ function KnowledgeLoader() {
 }
 
 export default function Knowledge() {
+  const { canWrite } = useBusinessWriteAccess();
   const [searchParams, setSearchParams] = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
   const uploadOpen = searchParams.get('upload') === '1';
@@ -41,8 +43,8 @@ export default function Knowledge() {
           <Link to="/ia" className="mt-3 inline-flex text-sm font-semibold text-[var(--brand)] hover:underline">← IA</Link>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3.5 py-2.5 text-sm font-bold text-[var(--action-ink)] shadow-sm"><Sparkles size={16}/>Nuevo documento</Link>
-          <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold shadow-sm"><Upload size={16}/>Subir archivos</button>
+          <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/nuevo" className={`inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3.5 py-2.5 text-sm font-bold text-[var(--action-ink)] shadow-sm ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><Sparkles size={16}/>Nuevo documento</Link>
+          <button type="button" disabled={!canWrite} onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3.5 py-2.5 text-sm font-bold shadow-sm disabled:opacity-50"><Upload size={16}/>Subir archivos</button>
         </div>
       </header>
 
@@ -67,7 +69,7 @@ export default function Knowledge() {
         <Route path="admin" element={<Suspense fallback={<KnowledgeLoader/>}><KnowledgeAdmin/></Suspense>}/>
         <Route path="*" element={<Navigate to="/ia/conocimientos" replace/>}/>
       </Routes>
-      {uploadOpen && <Suspense fallback={<KnowledgeLoader/>}><UploadDialog isOpen onClose={closeUpload} initialFolderId={searchParams.get('folder')} onUploaded={() => setRefreshKey((value) => value + 1)}/></Suspense>}
+      {uploadOpen && canWrite && <Suspense fallback={<KnowledgeLoader/>}><UploadDialog isOpen onClose={closeUpload} initialFolderId={searchParams.get('folder')} onUploaded={() => setRefreshKey((value) => value + 1)}/></Suspense>}
     </div>
   );
 }

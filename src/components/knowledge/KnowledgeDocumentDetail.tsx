@@ -3,6 +3,7 @@ import { AlertCircle, Archive, ArrowLeft, Check, Download, Eye, FileClock, FileT
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { JSONContent } from '@tiptap/core';
 import { useAuth } from '../../AuthContext';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 import {
   createTag,
   deleteDocument,
@@ -121,6 +122,7 @@ function fileAccept(format: KnowledgeDocument['format']): string {
 }
 
 export default function KnowledgeDocumentDetail() {
+  const { canWrite } = useBusinessWriteAccess();
   const { documentId = '' } = useParams();
   const navigate = useNavigate();
   const { authUser, user } = useAuth();
@@ -367,7 +369,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const changeStatus = async (status: KnowledgeStatus, successMessage: string) => {
-    if (!document || busy) return;
+    if (!canWrite || !document || busy) return;
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -384,7 +386,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const removeCurrentDocument = async () => {
-    if (!document || busy) return;
+    if (!canWrite || !document || busy) return;
     if (document.status === 'published') {
       const typedTitle = window.prompt(`Para eliminar el documento publicado, escribí su título exacto:\n${document.title}`);
       if (typedTitle !== document.title) return;
@@ -404,7 +406,7 @@ export default function KnowledgeDocumentDetail() {
   const handleVersionUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file || !document) return;
+    if (!canWrite || !file || !document) return;
     setUploadBusy(true);
     setActionError('');
     setNotice('');
@@ -422,7 +424,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const restore = async (version: KnowledgeVersion) => {
-    if (!document || busy || !window.confirm(`¿Restaurar v${version.version_number} como la versión actual? Se creará una versión nueva.`)) return;
+    if (!canWrite || !document || busy || !window.confirm(`¿Restaurar v${version.version_number} como la versión actual? Se creará una versión nueva.`)) return;
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -444,7 +446,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const saveMetadata = async () => {
-    if (!document || busy) return;
+    if (!canWrite || !document || busy) return;
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -460,7 +462,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const toggleAI = async (enabled: boolean) => {
-    if (!document || busy) return;
+    if (!canWrite || !document || busy) return;
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -477,7 +479,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const retryIndexing = async () => {
-    if (!document || busy) return;
+    if (!canWrite || !document || busy) return;
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -493,7 +495,7 @@ export default function KnowledgeDocumentDetail() {
   };
 
   const addTagInline = async () => {
-    if (!newTagName.trim() || creatingTag) return;
+    if (!canWrite || !newTagName.trim() || creatingTag) return;
     setCreatingTag(true);
     setActionError('');
     try {
@@ -530,16 +532,16 @@ export default function KnowledgeDocumentDetail() {
           {hasUnpublishedChanges && <p role="status" className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100"><AlertCircle size={15}/>Hay una versión nueva sin publicar</p>}
         </div>
         <div className="flex max-w-xl flex-wrap gap-2">
-          {document.status === 'draft' && <button type="button" disabled={busy} onClick={() => void changeStatus('in_review', 'Se envió el documento a revisión.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Send size={14}/>Enviar a revisión</button>}
-          {(['draft', 'in_review'].includes(document.status) || (document.status === 'published' && hasUnpublishedChanges)) && <button type="button" disabled={busy} onClick={() => void changeStatus('published', 'Se publicó la versión actual.')} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Check size={14}/>{hasUnpublishedChanges ? `Publicar versión ${versions.find((version) => version.id === document.current_version_id)?.version_number ?? ''}` : 'Publicar'}</button>}
-          {['in_review', 'published'].includes(document.status) && <button type="button" disabled={busy} onClick={() => void changeStatus('draft', 'El documento volvió a borrador.')} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Volver a borrador</button>}
-          {['draft', 'in_review', 'published'].includes(document.status) && <button type="button" disabled={busy} onClick={() => void changeStatus('archived', 'Se archivó el documento.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Archive size={14}/>Archivar</button>}
-          {document.status === 'archived' && <button type="button" disabled={busy} onClick={() => void changeStatus('draft', 'Se restauró el documento como borrador.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><RotateCcw size={14}/>Restaurar</button>}
+          {document.status === 'draft' && <button type="button" disabled={!canWrite || busy} onClick={() => void changeStatus('in_review', 'Se envió el documento a revisión.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Send size={14}/>Enviar a revisión</button>}
+          {(['draft', 'in_review'].includes(document.status) || (document.status === 'published' && hasUnpublishedChanges)) && <button type="button" disabled={!canWrite || busy} onClick={() => void changeStatus('published', 'Se publicó la versión actual.')} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Check size={14}/>{hasUnpublishedChanges ? `Publicar versión ${versions.find((version) => version.id === document.current_version_id)?.version_number ?? ''}` : 'Publicar'}</button>}
+          {['in_review', 'published'].includes(document.status) && <button type="button" disabled={!canWrite || busy} onClick={() => void changeStatus('draft', 'El documento volvió a borrador.')} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Volver a borrador</button>}
+          {['draft', 'in_review', 'published'].includes(document.status) && <button type="button" disabled={!canWrite || busy} onClick={() => void changeStatus('archived', 'Se archivó el documento.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Archive size={14}/>Archivar</button>}
+          {document.status === 'archived' && <button type="button" disabled={!canWrite || busy} onClick={() => void changeStatus('draft', 'Se restauró el documento como borrador.')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><RotateCcw size={14}/>Restaurar</button>}
           {currentVersion?.storage_path && <button type="button" onClick={() => openOriginalInPreview(currentVersion)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver original</button>}
           {currentVersion?.storage_path && <button type="button" disabled={downloadPendingId === currentVersion.id} onClick={() => void downloadVersion(currentVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Download size={14}/>{downloadPendingId === currentVersion.id ? 'Solicitando…' : 'Descargar'}</button>}
           {document.kind === 'editor' && displayedEditorVersion?.content_json && <button type="button" disabled={pdfBusy} onClick={() => void exportPdf(displayedEditorVersion)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50"><Download size={14}/>{pdfBusy ? 'Generando PDF…' : `Exportar PDF · v${displayedEditorVersion.version_number}`}</button>}
-          {document.kind === 'file' && document.status !== 'archived' && document.status !== 'deleting' && <><input ref={fileInputRef} type="file" accept={fileAccept(document.format)} onChange={(event) => void handleVersionUpload(event)} className="sr-only"/><button type="button" disabled={uploadBusy || busy} onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{uploadBusy ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}Subir nueva versión</button></>}
-          {document.status !== 'deleting' && <button type="button" disabled={busy} onClick={() => void removeCurrentDocument()} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Eliminar</button>}
+          {document.kind === 'file' && document.status !== 'archived' && document.status !== 'deleting' && <><input ref={fileInputRef} type="file" accept={fileAccept(document.format)} disabled={!canWrite} onChange={(event) => void handleVersionUpload(event)} className="sr-only"/><button type="button" disabled={!canWrite || uploadBusy || busy} onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{uploadBusy ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}Subir nueva versión</button></>}
+          {document.status !== 'deleting' && <button type="button" disabled={!canWrite || busy} onClick={() => void removeCurrentDocument()} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Eliminar</button>}
         </div>
       </div>
     </header>
@@ -547,7 +549,7 @@ export default function KnowledgeDocumentDetail() {
     {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">{actionError}</p>}
     {downloadPendingId && <OriginalAccessNotice access={{ state: 'loading' }} onViewText={() => undefined} onRetry={() => undefined}/>}
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{notice}</p>}
-    {visibleIndexStatus === 'error' && <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"><div><h2 className="text-sm font-bold">No se pudo indexar este documento</h2><p className="mt-1 text-sm">{document.index_error || 'La última indexación terminó con un error.'}</p></div>{document.status === 'published' && document.rag_enabled && <button type="button" disabled={busy} onClick={() => void retryIndexing()} className="inline-flex items-center gap-2 rounded-lg border border-current px-3 py-2 text-sm font-bold disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <RotateCcw size={14}/>}Reintentar indexación</button>}</section>}
+    {visibleIndexStatus === 'error' && <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"><div><h2 className="text-sm font-bold">No se pudo indexar este documento</h2><p className="mt-1 text-sm">{document.index_error || 'La última indexación terminó con un error.'}</p></div>{document.status === 'published' && document.rag_enabled && <button type="button" disabled={!canWrite || busy} onClick={() => void retryIndexing()} className="inline-flex items-center gap-2 rounded-lg border border-current px-3 py-2 text-sm font-bold disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <RotateCcw size={14}/>}Reintentar indexación</button>}</section>}
     {(visibleIndexStatus === 'queued' || visibleIndexStatus === 'processing') && <p role="status" className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand-soft)] px-4 py-3 text-sm font-semibold text-[var(--brand)]"><Loader2 size={16} className="animate-spin"/>La PC vinculada está procesando este documento.</p>}
 
     <nav className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="Secciones del documento">
@@ -572,14 +574,14 @@ export default function KnowledgeDocumentDetail() {
       <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
         <h2 className="text-lg font-bold">Metadatos</h2>
         <div className="mt-4 space-y-4">
-          <label className="block text-sm font-semibold">Título<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal"/></label>
-          <label className="block text-sm font-semibold">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={3} className="mt-1 w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal"/></label>
-          <label className="block text-sm font-semibold">Carpeta<select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal"><option value="">Sin carpeta</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folderLabel(folder, folders)}</option>)}</select></label>
-          <label className="block text-sm font-semibold">Categoría<select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal"><option value="">Sin categoría</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          <fieldset><legend className="text-sm font-semibold">Etiquetas</legend><div className="mt-2 flex flex-wrap gap-2">{tags.map((tag) => <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold ${selectedTagIds.includes(tag.id) ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand)]' : 'border-[var(--line)]'}`}><input type="checkbox" checked={selectedTagIds.includes(tag.id)} onChange={() => setSelectedTagIds((current) => current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id])} className="sr-only"/>{tag.name}</label>)}</div>
+          <label className="block text-sm font-semibold">Título<input disabled={!canWrite} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal disabled:opacity-50"/></label>
+          <label className="block text-sm font-semibold">Descripción<textarea disabled={!canWrite} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={3} className="mt-1 w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal disabled:opacity-50"/></label>
+          <label className="block text-sm font-semibold">Carpeta<select disabled={!canWrite} value={folderId} onChange={(event) => setFolderId(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal disabled:opacity-50"><option value="">Sin carpeta</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folderLabel(folder, folders)}</option>)}</select></label>
+          <label className="block text-sm font-semibold">Categoría<select disabled={!canWrite} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal disabled:opacity-50"><option value="">Sin categoría</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <fieldset disabled={!canWrite}><legend className="text-sm font-semibold">Etiquetas</legend><div className="mt-2 flex flex-wrap gap-2">{tags.map((tag) => <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold ${selectedTagIds.includes(tag.id) ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand)]' : 'border-[var(--line)]'}`}><input type="checkbox" checked={selectedTagIds.includes(tag.id)} onChange={() => setSelectedTagIds((current) => current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id])} className="sr-only"/>{tag.name}</label>)}</div>
             <div className="mt-3 flex gap-2"><input value={newTagName} onChange={(event) => setNewTagName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addTagInline(); } }} maxLength={40} placeholder="Nueva etiqueta" className="min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm"/><button type="button" disabled={!newTagName.trim() || creatingTag} onClick={() => void addTagInline()} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{creatingTag ? 'Creando…' : 'Crear etiqueta'}</button></div>
           </fieldset>
-          <button type="button" disabled={busy || !title.trim()} onClick={() => void saveMetadata()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50"><Save size={15}/>Guardar cambios</button>
+          <button type="button" disabled={!canWrite || busy || !title.trim()} onClick={() => void saveMetadata()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50"><Save size={15}/>Guardar cambios</button>
         </div>
       </section>
 
@@ -600,7 +602,7 @@ export default function KnowledgeDocumentDetail() {
         </section>
         <section className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
           <span><h2 className="font-bold">Usar en la IA</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">Los documentos excluidos no se recuperan como contexto.</p></span>
-          <button type="button" role="switch" aria-checked={document.rag_enabled} aria-label="Usar documento en la IA" disabled={busy || document.status === 'deleting'} onClick={() => void toggleAI(!document.rag_enabled)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${document.rag_enabled ? 'bg-[var(--brand)]' : 'bg-slate-300 dark:bg-slate-700'}`}><span className={`absolute top-1 size-4 rounded-full bg-white transition-transform ${document.rag_enabled ? 'translate-x-6' : 'translate-x-1'}`}/></button>
+          <button type="button" role="switch" aria-checked={document.rag_enabled} aria-label="Usar documento en la IA" disabled={!canWrite || busy || document.status === 'deleting'} onClick={() => void toggleAI(!document.rag_enabled)} className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${document.rag_enabled ? 'bg-[var(--brand)]' : 'bg-slate-300 dark:bg-slate-700'}`}><span className={`absolute top-1 size-4 rounded-full bg-white transition-transform ${document.rag_enabled ? 'translate-x-6' : 'translate-x-1'}`}/></button>
         </section>
       </aside>
     </div>}
@@ -625,7 +627,7 @@ export default function KnowledgeDocumentDetail() {
             <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(null); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>
             {version.id !== currentVersion?.id && version.content_json && currentVersion?.content_json && <button type="button" onClick={() => { setReviewVersionId(version.id); setCompareVersionId(version.id); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Comparar con la actual</button>}
           </> : <button type="button" onClick={() => { setPreviewVersionId(version.id); setActiveTab('preview'); }} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold">Ver</button>}
-          {document.status !== 'archived' && document.status !== 'deleting' && document.current_version_id !== version.id && <button type="button" disabled={busy} onClick={() => void restore(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Restaurar como actual</button>}
+          {document.status !== 'archived' && document.status !== 'deleting' && document.current_version_id !== version.id && <button type="button" disabled={!canWrite || busy} onClick={() => void restore(version)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">Restaurar como actual</button>}
         </div>
       </li>)}</ul> : <p className="p-5 text-sm text-[var(--ink-muted)]">Todavía no hay versiones guardadas.</p>}
     </section>}

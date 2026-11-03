@@ -1,20 +1,21 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 20:20 ART — F3 suspensión en solo lectura (despliegue web pendiente)
+## 2026-11-03 20:24 ART — F3 suspensión en solo lectura desplegada
 
 - Antes de la migración, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T231015Z`: **94 tablas / 14.075 filas**, `schema.sql` **945.385 B**, `data.sql` **40.775.743 B**, **733 objetos / 143.061.033 B** de Storage; inventario, conteos y hashes aprobados. El primer intento se detuvo porque esta copia no tenía configuración local de Supabase; inicialicé y vinculé la CLI y repetí el backup completo. No usé el volcado incompleto.
 - La migración `20261103225950_platform_suspension_write_guards` instala guards de `INSERT`, `UPDATE` y `DELETE` en cada tabla base `public` con `user_id`/`owner_uid`, en `profiles` y en `storage.objects`. Conserva acceso de lectura, service role, procesos sin JWT y administración de plataforma.
 - Producción confirma la migración aplicada, **81/81** tablas de negocio protegidas, **0** sin guard y los tres eventos de Storage cubiertos. Pruebas PGlite generadas desde `information_schema` ejercitan inserts, modificaciones y borrados, colaborador, Storage, `profiles`, service role y administrador. Prueba dirigida **7/7**; suite completa **824/824**; `npm run lint`, build y `npm run perf:check` aprobados. Bundle inicial: **209.299 bytes gzip JS / 22.228 bytes CSS**.
-- La interfaz ahora espera el estado del plan y niega mutaciones si está suspendido o no puede verificarse; conserva las acciones de lectura/exportación. El aviso fijo de suspensión ya estaba en el layout.
-- **Despliegue web y smoke de producción pendientes** del commit de esta tarea.
-- **Siguiente:** desplegar/verificar F3; luego ajustar `/plataforma` (F4).
+- La interfaz ahora espera la verificación del plan y bloquea mutaciones si la cuenta está suspendida o no puede confirmarse el permiso. El alcance incluye Stock y módulos cubiertos por `usePermission`, Ajustes, Business Setup, tareas y chats IA, memoria, Skills y Conocimientos; las acciones de consulta y exportación siguen disponibles. El aviso fijo de suspensión se conserva en el layout.
+- El commit `fc866f9` dejó desplegados los guards SQL y la primera barrera de interfaz. El seguimiento actual extiende los controles secundarios de IA y Conocimientos. Pruebas PGlite generadas desde el esquema: **7/7**; permiso/read-only y UI de memoria: **14/14**; suite completa **825/825**; `npm run lint`, build y `npm run perf:check` aprobados.
+- La prueba inicial en producción con Playwright simuló únicamente `my_business_plan.status = suspended`, confirmó el aviso fijo y que **Agregar Producto** está deshabilitado; no hizo escrituras ni cambió el estado real de una cuenta. Falta desplegar el seguimiento de controles secundarios y repetir el smoke en producción para IA y Conocimientos antes de cerrar F3.
+- **Desvío:** ninguno conocido. **Siguiente:** desplegar/verificar el seguimiento de F3 y luego ajustar `/plataforma` (F4).
 
-## 2026-11-03 19:56 ART — Primeros pasos de onboarding según el plan (despliegue pendiente)
+## 2026-11-03 19:56 ART — Primeros pasos de onboarding según el plan desplegados
 
 - Ajusté `/bienvenida` y el aviso del inicio para mostrar en ambos planes los datos del negocio, cargar el primer producto, configurar el catálogo e invitar empleados de forma opcional. Solo `RivaStock IA` suma instalar/vincular la central. Quité el bloque de Facebook del onboarding y no aparece central para `RivaStock`.
 - Tests nuevos de interfaz cubren ambas pantallas y ambos planes: **4/4**. Suite completa **817/817**, `npm run lint`, `npm run build` y `npm run perf:check` aprobados. El bundle inicial quedó en **209.365 bytes gzip JS / 22.228 bytes CSS**.
-- **Despliegue y verificación productiva pendientes** del commit de esta tarea.
-- **Siguiente:** desplegar y comprobar el inicio de producción; después F3, control de escrituras para cuentas suspendidas.
+- El commit `4b1a925` está en `main` y Vercel informó **success**. Playwright comprobó `/bienvenida` en producción (HTTP 200): datos del negocio, primer producto, catálogo e invitaciones opcionales aparecen. La suite local cubre también la diferencia entre RivaStock y RivaStock IA.
+- **Desvío:** ninguno. **Siguiente:** F3, control de escrituras para cuentas suspendidas.
 
 ## 2026-11-03 19:46 ART — F1 email de invitación: implementación local, envío bloqueado por dominio
 

@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEven
 import { Link, useSearchParams } from 'react-router-dom';
 import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Database, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
 import KnowledgeSources from '../components/ai/KnowledgeSources';
@@ -54,6 +55,7 @@ function formatDate(value: string): string {
 
 export default function AIHub() {
   const { isOwner, ownerUid } = useAuth();
+  const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [searchParams, setSearchParams] = useSearchParams();
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
@@ -187,7 +189,7 @@ export default function AIHub() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!input.trim() || submitting) return;
+    if (!canWriteBusiness || !input.trim() || submitting) return;
     setSubmitting(true);
     setError('');
     try {
@@ -228,7 +230,7 @@ export default function AIHub() {
   };
 
   const removeTask = async (job: AIJob) => {
-    if (job.status === 'pending' || job.status === 'processing') return;
+    if (!canWriteBusiness || job.status === 'pending' || job.status === 'processing') return;
     const confirmation = job.task_type === 'knowledge_organize'
       ? 'Se eliminarán esta tarea y el historial de su propuesta. Si la propuesta ya se aplicó, los cambios del documento quedan intactos. No se puede deshacer.'
       : 'Se eliminará esta tarea y sus datos guardados. No se puede deshacer.';
@@ -248,7 +250,7 @@ export default function AIHub() {
   };
 
   const removeFinishedTasks = async () => {
-    if (finishedTaskCount < 1 || deletingAllTasks) return;
+    if (!canWriteBusiness || finishedTaskCount < 1 || deletingAllTasks) return;
     const confirmed = window.confirm(
       `Se eliminarán ${finishedTaskCount} tareas finalizadas de texto, redacción y revisión de fotos. Las tareas activas y los chats se conservarán. No se puede deshacer.`,
     );
@@ -282,6 +284,7 @@ export default function AIHub() {
   }, [view]);
 
   const saveHistoryRetention = async () => {
+    if (!canWriteBusiness) return;
     setHistorySettingsSaving(true);
     setHistorySettingsNotice('');
     setHistorySettingsError('');
@@ -297,6 +300,7 @@ export default function AIHub() {
   };
 
   const pairDevice = async () => {
+    if (!canWriteBusiness) return;
     const replacing = Boolean(bridgeStatus?.paired || bridgeStatus?.legacy);
     if (replacing && !window.confirm('La conexión anterior dejará de funcionar. ¿Querés vincular esta PC y reemplazarla?')) return;
     setConnectionBusy(true);
@@ -318,6 +322,7 @@ export default function AIHub() {
   };
 
   const revokeDevice = async () => {
+    if (!canWriteBusiness) return;
     if (!bridgeStatus?.device || !window.confirm('Esta PC dejará de recibir tareas. ¿Querés desvincularla?')) return;
     setConnectionBusy(true);
     setConnectionError('');
@@ -404,7 +409,7 @@ export default function AIHub() {
       <span className="mt-2 block text-[11px] text-[var(--ink-muted)]">{providerLabel(job.provider)}</span>
       <span className="mt-1 block text-[11px] text-[var(--ink-muted)]">{statusLabel(job.status)} · {formatDate(job.created_at)}</span>
     </button>
-    {(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${taskLabel(job).slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">
+    {(job.status === 'completed' || job.status === 'failed') && <button type="button" onClick={() => void removeTask(job)} disabled={!canWriteBusiness || deletingTaskId !== null || deletingAllTasks} aria-label={`Eliminar tarea: ${taskLabel(job).slice(0, 60)}`} className="shrink-0 rounded-xl border border-[var(--line)] px-2 text-[var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300">
       {deletingTaskId === job.id ? <Loader2 size={15} className="animate-spin"/> : <Trash2 size={15}/>}
     </button>}
   </li>;
@@ -457,7 +462,7 @@ export default function AIHub() {
 
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={!canWriteBusiness || deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
           {regularJobs.length ? <ul className="space-y-2">{regularJobs.map(renderTaskRow)}</ul> : knowledgeOrganizeJobs.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p> : null}
           {knowledgeOrganizeJobs.length > 0 && <details className="mt-3 rounded-xl border border-[var(--line)] px-3 py-2">
             <summary className="cursor-pointer text-xs font-semibold">Historial de Organizar con IA ({knowledgeOrganizeJobs.length})</summary>
@@ -495,20 +500,20 @@ export default function AIHub() {
           </article>
 
           <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm md:p-5">
-            <label className="block space-y-2"><span className="text-sm font-bold">Nueva tarea</span><textarea value={input} onChange={(event) => setInput(event.target.value)} maxLength={8000} required rows={4} placeholder="¿Qué necesitás resolver?" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)]"/><span className="block text-right text-xs text-[var(--ink-muted)]">{input.length}/8000</span></label>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Si la PC está desconectada, la tarea queda pendiente.</p><button type="submit" disabled={!input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] transition hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin"/> : <Zap size={16}/>}Ejecutar tarea</button></div>
+            <label className="block space-y-2"><span className="text-sm font-bold">Nueva tarea</span><textarea value={input} onChange={(event) => setInput(event.target.value)} disabled={!canWriteBusiness} maxLength={8000} required rows={4} placeholder="¿Qué necesitás resolver?" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)] disabled:opacity-60"/><span className="block text-right text-xs text-[var(--ink-muted)]">{input.length}/8000</span></label>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Si la PC está desconectada, la tarea queda pendiente.</p><button type="submit" disabled={!canWriteBusiness || !input.trim() || submitting} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] transition hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin"/> : <Zap size={16}/>}Ejecutar tarea</button></div>
           </section>
         </div>
 
         <aside className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm">
           <div><h3 className="font-bold">Configuración de la tarea</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">Se guarda junto con esta ejecución.</p></div>
-          <label className="block space-y-1.5"><span className="text-xs font-semibold">Agente</span><select value={provider} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]">{PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold">Agente</span><select value={provider} disabled={!canWriteBusiness} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60">{PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           {provider === 'codex' && <>
-            <label className="block space-y-1.5"><span className="text-xs font-semibold">Modelo</span><select value={modelId} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]">{CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-            <label className="block space-y-1.5"><span className="text-xs font-semibold">Razonamiento</span><select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option><option value="xhigh">Muy alto</option></select></label>
+            <label className="block space-y-1.5"><span className="text-xs font-semibold">Modelo</span><select value={modelId} disabled={!canWriteBusiness} onChange={(event) => setModelId(event.target.value as CodexModelId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60">{CODEX_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label className="block space-y-1.5"><span className="text-xs font-semibold">Razonamiento</span><select value={reasoningEffort} disabled={!canWriteBusiness} onChange={(event) => setReasoningEffort(event.target.value as CodexReasoningEffort)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60"><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option><option value="xhigh">Muy alto</option></select></label>
             <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Muy alto puede aumentar el consumo; reservalo para tareas exigentes.</p>
           </>}
-          <fieldset className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-2 text-xs font-bold">Contexto opcional</legend>
+          <fieldset disabled={!canWriteBusiness} className="space-y-3 border-t border-[var(--line)] pt-4"><legend className="mb-2 text-xs font-bold">Contexto opcional</legend>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeProjectContext} disabled={provider === 'mock'} onChange={(event) => setIncludeProjectContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Proyecto RivaStock</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Documentación y archivos seleccionados.</span></span></label>
             <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={includeBusinessContext} disabled={provider === 'mock'} onChange={(event) => setIncludeBusinessContext(event.target.checked)} className="mt-0.5 accent-[#365fad] disabled:opacity-50"/><span><strong>Catálogo e inventario</strong><span className="mt-0.5 block text-[var(--ink-muted)]">Hasta 100 productos de esta cuenta.</span></span></label>
             <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente. El Mock no usa contexto.</p>
@@ -524,9 +529,9 @@ export default function AIHub() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4"><span className="rounded-2xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Monitor size={28}/></span><div><h4 className="text-lg font-bold">{bridgeStatus?.device?.name ?? 'No hay una PC vinculada'}</h4><div className="mt-2"><ConnectionBadge state={bridgeState}/></div><p className="mt-2 text-xs text-[var(--ink-muted)]">{bridgeStatus?.last_seen_at ? `Última conexión ${formatDate(bridgeStatus.last_seen_at)}` : bridgeStatus?.device ? 'Esperando el primer inicio del Bridge.' : 'Vinculá una computadora para empezar a usar el agente.'}</p><Suspense fallback={null}><BridgeSecurityMode mode={bridgeStatus?.security?.codex_sandbox ?? 'read-only'}/></Suspense></div></div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => void pairDevice()} disabled={connectionBusy} className="rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Reemplazar PC' : 'Vincular esta PC'}</button>
+                <button type="button" onClick={() => void pairDevice()} disabled={!canWriteBusiness || connectionBusy} className="rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{connectionBusy ? 'Procesando…' : bridgeStatus?.paired || bridgeStatus?.legacy ? 'Reemplazar PC' : 'Vincular esta PC'}</button>
                 {(bridgeStatus?.paired || bridgeStatus?.legacy) && <button type="button" onClick={downloadBridgeUpdater} disabled={updaterBusy} className="rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{updaterBusy ? 'Preparando…' : 'Actualizar Bridge'}</button>}
-                {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={connectionBusy} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Desvincular</button>}
+                {bridgeStatus?.device && <button type="button" onClick={() => void revokeDevice()} disabled={!canWriteBusiness || connectionBusy} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">Desvincular</button>}
               </div>
             </div>
             {bridgeStatus?.legacy && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Esta cuenta todavía usa la conexión anterior. Al vincular una PC, la credencial anterior se deshabilita.</p>}
@@ -546,8 +551,8 @@ export default function AIHub() {
           <aside className="space-y-4">
             <section className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
               <div><h4 className="font-bold">Historial</h4><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Los chats sin actividad y las tareas más antiguas se borran automáticamente cuando activás una retención.</p></div>
-              <label className="block space-y-1.5"><span className="text-xs font-semibold">Retención</span><select value={historyRetention === null ? 'none' : String(historyRetention)} onChange={(event) => setHistoryRetention(event.target.value === 'none' ? null : Number(event.target.value))} disabled={historySettingsLoading || historySettingsSaving} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60"><option value="none">Sin borrado automático</option><option value="30">30 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365">365 días</option></select></label>
-              <button type="button" onClick={() => void saveHistoryRetention()} disabled={historySettingsLoading || historySettingsSaving} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{historySettingsSaving ? 'Guardando…' : 'Guardar retención'}</button>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold">Retención</span><select value={historyRetention === null ? 'none' : String(historyRetention)} onChange={(event) => setHistoryRetention(event.target.value === 'none' ? null : Number(event.target.value))} disabled={!canWriteBusiness || historySettingsLoading || historySettingsSaving} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-60"><option value="none">Sin borrado automático</option><option value="30">30 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365">365 días</option></select></label>
+              <button type="button" onClick={() => void saveHistoryRetention()} disabled={!canWriteBusiness || historySettingsLoading || historySettingsSaving} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{historySettingsSaving ? 'Guardando…' : 'Guardar retención'}</button>
               {historySettingsNotice && <p role="status" className="text-xs text-emerald-800 dark:text-emerald-300">{historySettingsNotice}</p>}
               {historySettingsError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{historySettingsError}</p>}
             </section>

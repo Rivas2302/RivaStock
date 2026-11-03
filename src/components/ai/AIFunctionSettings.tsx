@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AI_FUNCTIONS, CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSettings, saveAIFunctionSetting, type AIFunctionKey, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../../lib/aiFunctionSettings';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 
 const REASONING_OPTIONS: Array<{ value: AIFunctionReasoningEffort; label: string }> = [
   { value: 'low', label: 'Bajo' },
@@ -11,6 +12,7 @@ const REASONING_OPTIONS: Array<{ value: AIFunctionReasoningEffort; label: string
 const fieldClass = 'w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]';
 
 export default function AIFunctionSettings({ ownerUid }: { ownerUid: string }) {
+  const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [settings, setSettings] = useState<AIFunctionSetting[]>(() => AI_FUNCTIONS.map(({ key }) => defaultAIFunctionSetting(ownerUid, key)));
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<AIFunctionKey | null>(null);
@@ -49,6 +51,7 @@ export default function AIFunctionSettings({ ownerUid }: { ownerUid: string }) {
   };
 
   const save = async (setting: AIFunctionSetting) => {
+    if (!canWriteBusiness) return;
     setSavingKey(setting.function_key);
     setNotice('');
     setError('');
@@ -69,7 +72,7 @@ export default function AIFunctionSettings({ ownerUid }: { ownerUid: string }) {
       <p className="mt-1 max-w-3xl text-xs leading-5 text-[var(--ink-muted)]">Elegí el proveedor, modelo y razonamiento predeterminados de cada función. Cuando el flujo lo permite, también podés cambiar el modelo para una ejecución. Bajo consume menos uso de tu plan.</p>
     </header>
     {loading && <p role="status" className="text-sm text-[var(--ink-muted)]">Cargando configuración…</p>}
-    {!loading && <div className="grid gap-3 xl:grid-cols-2">
+    {!loading && <fieldset disabled={!canWriteBusiness} className="min-w-0 space-y-3 border-0 p-0 disabled:opacity-70"><legend className="sr-only">Configuración editable de modelos</legend><div className="grid gap-3 xl:grid-cols-2">
       {AI_FUNCTIONS.map((item) => {
         const setting = settings.find((entry) => entry.function_key === item.key) ?? defaultAIFunctionSetting(ownerUid, item.key);
         return <article key={item.key} className="space-y-3 rounded-xl border border-[var(--line)] p-4">
@@ -88,7 +91,7 @@ export default function AIFunctionSettings({ ownerUid }: { ownerUid: string }) {
           <button type="button" disabled={savingKey !== null} onClick={() => void save(setting)} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{savingKey === item.key ? 'Guardando…' : 'Guardar configuración'}</button>
         </article>;
       })}
-    </div>}
+    </div></fieldset>}
     {notice && <p role="status" className="text-xs text-emerald-800 dark:text-emerald-300">{notice}</p>}
     {error && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{error}</p>}
   </section>;

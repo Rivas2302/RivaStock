@@ -14,6 +14,7 @@ import {
 } from '../lib/aiBridge';
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 import { listAIMemoryJobActivity, undoAIMemoryEvent, type AIMemoryJobActivity } from '../lib/aiMemory';
+import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import KnowledgeSources from './ai/KnowledgeSources';
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
@@ -51,6 +52,7 @@ export default function AIChats({
   initialChatId: string | null;
   onOpenMemory: (memoryId: string) => void;
 }) {
+  const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [chats, setChats] = useState<AIChat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
@@ -222,6 +224,7 @@ export default function AIChats({
   }, [selectedChat?.id]);
 
   const startNewChat = () => {
+    if (!canWriteBusiness) return;
     submissionRef.current = null;
     setSelectedChatId(null);
     setSelectedChat(null);
@@ -239,7 +242,7 @@ export default function AIChats({
   };
 
   const removeChat = async (chat: AIChat) => {
-    if (chat.has_pending_job || (chat.id === selectedChatId && hasPendingJob)) return;
+    if (!canWriteBusiness || chat.has_pending_job || (chat.id === selectedChatId && hasPendingJob)) return;
     if (!window.confirm('Se borran los mensajes y las fuentes de este chat. No se puede deshacer.')) return;
     setDeletingChatId(chat.id);
     setError('');
@@ -254,6 +257,7 @@ export default function AIChats({
   };
 
   const undoMemoryChange = async (eventId: string) => {
+    if (!canWriteBusiness) return;
     setUndoingMemoryEventId(eventId);
     setError('');
     try {
@@ -268,7 +272,7 @@ export default function AIChats({
 
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft.trim() || sending || hasPendingJob) return;
+    if (!canWriteBusiness || !draft.trim() || sending || hasPendingJob) return;
     const requestText = draft;
     const signature = JSON.stringify([
       selectedChatId, requestText, provider, modelId, reasoningEffort,
@@ -306,7 +310,7 @@ export default function AIChats({
 
       <div className="grid min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
         <aside className="flex min-h-72 flex-col border-b border-[var(--line)] p-3 lg:min-h-0 lg:border-b-0 lg:border-r">
-          <button type="button" onClick={startNewChat} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-3 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)]"><Plus size={16}/>Nuevo chat</button>
+          <button type="button" onClick={startNewChat} disabled={!canWriteBusiness} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-3 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={16}/>Nuevo chat</button>
           <div className="mb-2 mt-5 flex items-center justify-between gap-2 px-1"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Tus chats</h3>{loadingChats && <Loader2 size={14} className="animate-spin text-[var(--ink-muted)]"/>}</div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loadingChats ? <p className="flex items-center gap-2 py-3 text-sm text-[var(--ink-muted)]"><Loader2 size={15} className="animate-spin"/>Cargando chats…</p>
@@ -317,7 +321,7 @@ export default function AIChats({
                   <details className="relative shrink-0">
                     <summary aria-label={`Opciones de ${chat.title}`} className="list-none cursor-pointer rounded-lg p-2 text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] [&::-webkit-details-marker]:hidden"><MoreHorizontal size={17}/></summary>
                     <div className="absolute right-0 top-full z-20 mt-1 min-w-40 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-1 shadow-lg">
-                      <button type="button" onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); void removeChat(chat); }} disabled={chatBusy || deletingChatId !== null} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40"><Trash2 size={14}/>{deletingChatId === chat.id ? 'Eliminando…' : 'Eliminar chat'}</button>
+                      <button type="button" onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); void removeChat(chat); }} disabled={!canWriteBusiness || chatBusy || deletingChatId !== null} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40"><Trash2 size={14}/>{deletingChatId === chat.id ? 'Eliminando…' : 'Eliminar chat'}</button>
                     </div>
                   </details>
                 </li>;
@@ -343,15 +347,15 @@ export default function AIChats({
               const memoryActivity = message.role === 'assistant' ? jobMemoryActivity[message.job_id] : undefined;
               return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p><p className="whitespace-pre-wrap break-words">{message.content}</p>{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}{message.role === 'assistant' && <>
                 <KnowledgeSources sources={jobSources[message.job_id] ?? []}/>
-                {memoryActivity?.changes.map((change) => <div key={change.id} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100"><span className="min-w-0 flex-1">Memoria actualizada: «{change.content}»</span>{change.canUndo && <button type="button" onClick={() => void undoMemoryChange(change.id)} disabled={undoingMemoryEventId !== null} className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 font-semibold disabled:opacity-50"><Undo2 size={12}/>{undoingMemoryEventId === change.id ? 'Deshaciendo…' : 'Deshacer'}</button>}<button type="button" onClick={() => onOpenMemory(change.memoryId)} className="rounded-md px-2 py-1 font-semibold underline underline-offset-2">Ver</button></div>)}
+                {memoryActivity?.changes.map((change) => <div key={change.id} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100"><span className="min-w-0 flex-1">Memoria actualizada: «{change.content}»</span>{change.canUndo && <button type="button" onClick={() => void undoMemoryChange(change.id)} disabled={!canWriteBusiness || undoingMemoryEventId !== null} className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 font-semibold disabled:opacity-50"><Undo2 size={12}/>{undoingMemoryEventId === change.id ? 'Deshaciendo…' : 'Deshacer'}</button>}<button type="button" onClick={() => onOpenMemory(change.memoryId)} className="rounded-md px-2 py-1 font-semibold underline underline-offset-2">Ver</button></div>)}
                 {memoryActivity?.used.length ? <div className="mt-3 rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="font-bold">Recordé: </span>{memoryActivity.used.map((memory, index) => <button key={memory.id} type="button" onClick={() => onOpenMemory(memory.id)} className="mr-1 inline underline underline-offset-2">{`M${index + 1}`}{memory.content ? ` «${memory.content}»` : ''}</button>)}</div> : null}
               </>}</article>;
             })}
           </div>
 
           <form onSubmit={(event) => void send(event)} className="space-y-3 border-t border-[var(--line)] p-3 md:p-4">
-            <label className="block"><span className="sr-only">Mensaje</span><textarea value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={8000} rows={3} placeholder="Escribí tu mensaje…" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)]"/><span className="mt-1 block text-right text-[11px] text-[var(--ink-muted)]">{draft.length}/8000</span></label>
-            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Un chat procesa un mensaje por vez.</p><button type="submit" disabled={!draft.trim() || sending || hasPendingJob} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{sending || hasPendingJob ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}Enviar</button></div>
+            <label className="block"><span className="sr-only">Mensaje</span><textarea value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!canWriteBusiness} maxLength={8000} rows={3} placeholder="Escribí tu mensaje…" className="w-full resize-y rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)] disabled:opacity-60"/><span className="mt-1 block text-right text-[11px] text-[var(--ink-muted)]">{draft.length}/8000</span></label>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--ink-muted)]">Un chat procesa un mensaje por vez.</p><button type="submit" disabled={!canWriteBusiness || !draft.trim() || sending || hasPendingJob} className="inline-flex items-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50">{sending || hasPendingJob ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}Enviar</button></div>
           </form>
         </div>
 

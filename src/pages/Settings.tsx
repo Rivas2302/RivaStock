@@ -53,6 +53,7 @@ function isTab(value: string): value is Tab {
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
+  const canWriteBusiness = !businessPlanLoading && !businessPlanError && businessPlan !== null && businessPlan.status !== 'suspended';
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -120,8 +121,8 @@ export default function Settings() {
 
       let cc = ccList[0] || null;
 
-    // Ensure CatalogConfig exists
-    if (!cc) {
+    // Keep settings reads side-effect free for suspended accounts.
+    if (!cc && canWriteBusiness) {
       const baseSlug = slugify(user.businessName || 'tienda');
       const uniqueSlug = await db.getUniqueSlug(baseSlug, 'catalog_configs');
       
@@ -145,7 +146,7 @@ export default function Settings() {
     }
 
     // Ensure UserProfile has catalogSlug
-    if (!user.catalogSlug || user.catalogSlug !== cc.slug) {
+    if (cc && canWriteBusiness && (!user.catalogSlug || user.catalogSlug !== cc.slug)) {
       try {
         const updatedUser = await db.update<UserProfile>('users', user.uid, { catalogSlug: cc.slug });
         updateUser(updatedUser);
@@ -173,7 +174,7 @@ export default function Settings() {
 
   useEffect(() => {
     fetchData();
-  }, [user, refetchToken]);
+  }, [user, refetchToken, canWriteBusiness]);
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
     setMessage({ text, type });
@@ -181,7 +182,7 @@ export default function Settings() {
   };
 
   const handleDeleteCategory = async (reassign: boolean) => {
-    if (!categoryToDelete || !user) return;
+    if (!canWriteBusiness || !categoryToDelete || !user) return;
     
     // Find products using this category
     const products = await db.find<Product>('products', 'categoryId', categoryToDelete.id);
@@ -207,7 +208,7 @@ export default function Settings() {
   };
 
   const handleUpdateProfile = async () => {
-    if (!user) return;
+    if (!canWriteBusiness || !user) return;
 
     const trimmedName = businessName.trim();
     const normalizedName = trimmedName.toLowerCase();
@@ -247,7 +248,7 @@ export default function Settings() {
   };
 
   const handleAddCategory = async () => {
-    if (!user || !newCategory) return;
+    if (!canWriteBusiness || !user || !newCategory) return;
     await db.create('categories', {
       id: crypto.randomUUID(),
       name: newCategory,
@@ -258,7 +259,7 @@ export default function Settings() {
   };
 
   const handleAddPriceRange = async () => {
-    if (!user) return;
+    if (!canWriteBusiness || !user) return;
     await db.create('price_ranges', {
       ...newPriceRange,
       id: crypto.randomUUID(),
@@ -269,12 +270,13 @@ export default function Settings() {
   };
 
   const handleDeletePriceRange = async (id: string) => {
+    if (!canWriteBusiness) return;
     await db.delete('price_ranges', id);
     fetchData();
   };
 
   const handleUpdateCatalog = async (updates: Partial<CatalogConfig>) => {
-    if (!user || !catalogConfig) return;
+    if (!canWriteBusiness || !user || !catalogConfig) return;
     try {
       await db.update('catalog_configs', catalogConfig.id, updates);
       fetchData();
@@ -304,7 +306,7 @@ export default function Settings() {
   };
 
   const handleDeleteSelectedData = async () => {
-    if (!user) return;
+    if (!canWriteBusiness || !user) return;
     setIsDeletingData(true);
     try {
       const moduleMap: Record<string, string[]> = {
@@ -399,7 +401,7 @@ export default function Settings() {
 
         {/* Content Area */}
         <div className="settings-panel flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
-          <div className="p-8">
+          <fieldset disabled={!canWriteBusiness} className="min-w-0 border-0 p-8 disabled:opacity-80">
             <AnimatePresence>
               {message && (
                 <motion.div
@@ -1226,7 +1228,7 @@ export default function Settings() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </fieldset>
         </div>
       </div>
 
@@ -1243,12 +1245,14 @@ export default function Settings() {
           <div className="flex gap-3">
             <button 
               onClick={() => handleDeleteCategory(true)}
+              disabled={!canWriteBusiness}
               className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-all"
             >
               Eliminar y reasignar productos
             </button>
             <button 
               onClick={() => handleDeleteCategory(false)}
+              disabled={!canWriteBusiness}
               className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 transition-all"
             >
               Eliminar todo
@@ -1286,7 +1290,7 @@ export default function Settings() {
             </div>
             <div className="flex gap-3 pt-4">
               <button onClick={() => setIsDeleteDataModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
-              <button onClick={() => setDeleteStep('confirmation')} disabled={!Object.values(selectedModules).some(Boolean)} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50">Continuar</button>
+              <button onClick={() => setDeleteStep('confirmation')} disabled={!canWriteBusiness || !Object.values(selectedModules).some(Boolean)} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50">Continuar</button>
             </div>
           </div>
         ) : (
@@ -1296,7 +1300,7 @@ export default function Settings() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setDeleteStep('selection')} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Volver</button>
-              <button onClick={handleDeleteSelectedData} disabled={isDeletingData} className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+              <button onClick={handleDeleteSelectedData} disabled={!canWriteBusiness || isDeletingData} className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {isDeletingData ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Eliminando...</> : 'Borrar seleccionado'}
               </button>
             </div>

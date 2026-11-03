@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FolderPlus, Loader2, Pencil, Plus, Tag, Trash2 } from 'lucide-react';
 import Modal from '../Modal';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 import {
   createCategory,
   createTag,
@@ -43,6 +44,7 @@ function errorMessage(cause: unknown, kind: 'category' | 'tag'): string {
 }
 
 export default function TaxonomyManager() {
+  const { canWrite } = useBusinessWriteAccess();
   const [categories, setCategories] = useState<KnowledgeCategory[]>([]);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +87,7 @@ export default function TaxonomyManager() {
   };
 
   const save = async () => {
+    if (!canWrite) return;
     if (!form || !name.trim() || busy) return;
     setBusy(true);
     setError('');
@@ -107,6 +110,7 @@ export default function TaxonomyManager() {
   };
 
   const removeCategory = async (category: KnowledgeCategory) => {
+    if (!canWrite) return;
     setError('');
     setNotice('');
     try {
@@ -122,6 +126,7 @@ export default function TaxonomyManager() {
   };
 
   const removeTag = async (tag: KnowledgeTag) => {
+    if (!canWrite) return;
     setError('');
     setNotice('');
     try {
@@ -136,7 +141,7 @@ export default function TaxonomyManager() {
     }
   };
 
-  return <div className="space-y-5">
+  return <fieldset disabled={!canWrite} className="min-w-0 space-y-5 border-0 p-0">
     {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">{error}</p>}
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{notice}</p>}
     {loading ? <div aria-label="Cargando organización" className="grid gap-4 animate-pulse md:grid-cols-2"><div className="h-56 rounded-2xl bg-[var(--surface-muted)]"/><div className="h-56 rounded-2xl bg-[var(--surface-muted)]"/></div> : <div className="grid gap-4 xl:grid-cols-2">
@@ -155,8 +160,8 @@ export default function TaxonomyManager() {
         <label className="block text-sm font-semibold">Nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={form?.kind === 'category' ? 60 : 40} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal"/></label>
         {form?.kind === 'category' && <label className="block text-sm font-semibold">Color<select value={color} onChange={(event) => setColor(event.target.value as KnowledgeCategory['color'])} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-normal">{COLORS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
         {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
-        <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setForm(null)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{busy && <Loader2 size={14} className="animate-spin"/>}Guardar</button></div>
+        <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setForm(null)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!canWrite || busy || !name.trim()} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{busy && <Loader2 size={14} className="animate-spin"/>}Guardar</button></div>
       </div>
     </Modal>
-  </div>;
+  </fieldset>;
 }

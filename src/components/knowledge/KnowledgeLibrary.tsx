@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, Check, ChevronDown, FileText, Filter, FolderTree as FolderTreeIcon, Loader2, RefreshCw, Search, Upload, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 import FolderTree from './library/FolderTree';
 import KnowledgeChunkSearch from './KnowledgeChunkSearch';
 import Pagination from '../Pagination';
@@ -82,6 +83,7 @@ function StatusBadge({ label, className }: { label: string; className: string })
 }
 
 export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: number }) {
+  const { canWrite } = useBusinessWriteAccess();
   const [searchParams, setSearchParams] = useSearchParams();
   const paramsKey = searchParams.toString();
   const searchQuery = searchParams.get('q') ?? '';
@@ -202,6 +204,7 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
   const tagNames = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.name])), [tags]);
 
   const applyBulkAction = async (action: 'move' | 'category' | 'archive', target: string | null) => {
+    if (!canWrite) return;
     const items = [...selected.values()];
     if (!items.length || bulkBusy) return;
     setBulkBusy(true);
@@ -268,6 +271,7 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
     onSelectCategory={(categoryId) => updateParams({ category: categoryId })}
     onToggleTag={(tagId) => toggleParam('tag', tagId, !selectedTagIds.includes(tagId))}
     onRefresh={loadTaxonomy}
+    canWrite={canWrite}
   />;
 
   const openUpload = () => setSearchParams((current) => {
@@ -283,8 +287,8 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
         <span className="text-sm text-[var(--ink-muted)]">{results.total.toLocaleString('es-AR')} documentos</span>
       </div>
       <div className="flex items-center gap-2">
-        <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold"><FileText size={15}/>Nuevo documento</Link>
-        <button type="button" onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)]"><Upload size={15}/>Subir archivos</button>
+        <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/nuevo" className={`inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><FileText size={15}/>Nuevo documento</Link>
+        <button type="button" disabled={!canWrite} onClick={openUpload} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50"><Upload size={15}/>Subir archivos</button>
         <button type="button" onClick={() => setMobileFiltersOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold md:hidden"><FolderTreeIcon size={16}/>Carpetas y filtros</button>
       </div>
     </div>
@@ -329,17 +333,17 @@ export default function KnowledgeLibrary({ refreshKey = 0 }: { refreshKey?: numb
 
         {selected.size > 0 && <section className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-soft)] p-3">
           <span className="mr-1 text-sm font-bold">{selected.size} seleccionados</span>
-          <button type="button" disabled={bulkBusy} onClick={() => { setBulkAction('move'); setBulkTarget(''); setBulkNotice(''); }} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Mover a carpeta</button>
-          <button type="button" disabled={bulkBusy} onClick={() => { setBulkAction('category'); setBulkTarget(''); setBulkNotice(''); }} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Cambiar categoría</button>
-          <button type="button" disabled={bulkBusy} onClick={() => void applyBulkAction('archive', null)} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Archivar</button>
+          <button type="button" disabled={!canWrite || bulkBusy} onClick={() => { setBulkAction('move'); setBulkTarget(''); setBulkNotice(''); }} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Mover a carpeta</button>
+          <button type="button" disabled={!canWrite || bulkBusy} onClick={() => { setBulkAction('category'); setBulkTarget(''); setBulkNotice(''); }} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Cambiar categoría</button>
+          <button type="button" disabled={!canWrite || bulkBusy} onClick={() => void applyBulkAction('archive', null)} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold disabled:opacity-50">Archivar</button>
           <button type="button" onClick={() => setSelected(new Map())} disabled={bulkBusy} className="ml-auto rounded-lg px-2 py-2 text-xs font-semibold">Cancelar</button>
           {bulkAction && <div className="flex w-full flex-wrap items-center gap-2 pt-2">
             <label className="sr-only" htmlFor="knowledge-bulk-target">Destino de la acción</label>
-            <select id="knowledge-bulk-target" value={bulkTarget} onChange={(event) => setBulkTarget(event.target.value)} className="min-w-52 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm">
+            <select id="knowledge-bulk-target" value={bulkTarget} onChange={(event) => setBulkTarget(event.target.value)} disabled={!canWrite} className="min-w-52 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm">
               <option value="">{bulkAction === 'move' ? 'Nivel principal' : 'Sin categoría'}</option>
               {bulkAction === 'move' ? folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>) : categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
-            <button type="button" disabled={bulkBusy} onClick={() => void applyBulkAction(bulkAction, bulkTarget || null)} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)]">Aplicar</button>
+            <button type="button" disabled={!canWrite || bulkBusy} onClick={() => void applyBulkAction(bulkAction, bulkTarget || null)} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">Aplicar</button>
           </div>}
           {bulkBusy && <p role="status" className="flex w-full items-center gap-2 pt-2 text-xs"><Loader2 size={14} className="animate-spin"/>Procesando {bulkProgress + 1} de {selected.size}…</p>}
         </section>}

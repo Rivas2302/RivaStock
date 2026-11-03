@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  canWrite: true,
   listAIMemories: vi.fn(),
   listAIMemoryOriginChats: vi.fn(),
   getAIMemorySettings: vi.fn(),
@@ -16,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   undoAIMemoryEvent: vi.fn(),
   reviewAIMemoryProposal: vi.fn(),
   updateAIMemorySettings: vi.fn(),
+}));
+
+vi.mock('../hooks/useBusinessWriteAccess', () => ({
+  useBusinessWriteAccess: () => ({ canWrite: mocks.canWrite, isSuspended: !mocks.canWrite, loading: false, error: null }),
 }));
 
 vi.mock('../lib/aiMemory', () => ({
@@ -74,6 +79,7 @@ describe('AIMemory', () => {
   };
 
   beforeEach(() => {
+    mocks.canWrite = true;
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
@@ -116,5 +122,18 @@ describe('AIMemory', () => {
     expect(host.textContent).toContain('La sucursal abre a las nueve');
     await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Aceptar')) as HTMLButtonElement);
     expect(mocks.reviewAIMemoryProposal).toHaveBeenCalledWith(PROPOSED_ID, true);
+  });
+
+  it('keeps memory controls read-only for a suspended account', async () => {
+    mocks.canWrite = false;
+    await render(<AIMemory initialSelectedId={null} onOpenChat={vi.fn()}/>);
+
+    const mutatingButtons = [...host.querySelectorAll('button')].filter((button) =>
+      ['Agregar recuerdo', 'Guardar ajustes', 'Editar', 'Archivar', 'Borrar'].some((label) => button.textContent?.includes(label)),
+    );
+    expect(mutatingButtons.length).toBeGreaterThan(0);
+    expect(mutatingButtons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(host.textContent).toContain('Responder con claridad');
+    expect(host.textContent).toContain('Memoria compartida');
   });
 });

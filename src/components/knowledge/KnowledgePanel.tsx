@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, FolderCog, HardDrive, Library, RefreshCw, Sparkles, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 import { formatBytes, formatDate, KNOWLEDGE_FORMAT_LABELS, KNOWLEDGE_STATUS_LABELS } from '../../lib/knowledge/format';
 import { getStats, searchDocuments } from '../../lib/knowledge/api';
 import type { KnowledgeListItem, KnowledgeStats } from '../../lib/knowledge/types';
@@ -47,6 +48,7 @@ function DashboardSkeleton() {
 }
 
 export default function KnowledgePanel({ refreshKey = 0 }: { refreshKey?: number }) {
+  const { canWrite } = useBusinessWriteAccess();
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
   const [recent, setRecent] = useState<KnowledgeListItem[]>([]);
   const [review, setReview] = useState<KnowledgeListItem[]>([]);
@@ -110,11 +112,11 @@ export default function KnowledgePanel({ refreshKey = 0 }: { refreshKey?: number
         <h3 className="mt-3 text-lg font-bold">Todavía no hay documentos</h3>
         <p className="mx-auto mt-1 max-w-md text-sm text-[var(--ink-muted)]">Subí archivos o creá documentos para organizar el conocimiento de tu negocio.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)]"><FileText size={16}/>Crear documento</Link>
-            <Link to="/ia/conocimientos/biblioteca?upload=1" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-bold"><Upload size={16}/>Subir archivos</Link>
+            <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/nuevo" className={`inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><FileText size={16}/>Crear documento</Link>
+            <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/biblioteca?upload=1" className={`inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-4 py-2.5 text-sm font-bold ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><Upload size={16}/>Subir archivos</Link>
           </div>
       </section>
-      <QuickLinks/>
+      <QuickLinks canWrite={canWrite}/>
     </div>
   );
 
@@ -131,7 +133,7 @@ export default function KnowledgePanel({ refreshKey = 0 }: { refreshKey?: number
         </div>
         <div className="space-y-4">
           <SectionDocuments title="Requieren atención" icon={AlertCircle} documents={indexErrors} empty="No hay errores de indexación."/>
-          <QuickLinks/>
+          <QuickLinks canWrite={canWrite}/>
         </div>
       </div>
       <p className="text-xs text-[var(--ink-muted)]">Última actualización: {currentStats.last_updated_at ? formatDate(currentStats.last_updated_at) : 'Sin actividad'}.</p>
@@ -158,12 +160,12 @@ function StorageCard({ used, limit, percent }: { used: number; limit: number; pe
   </article>;
 }
 
-function QuickLinks() {
+function QuickLinks({ canWrite }: { canWrite: boolean }) {
   return <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
     <h3 className="font-bold">Accesos rápidos</h3>
     <div className="mt-3 flex flex-col gap-2">
-      <Link to="/ia/conocimientos/nuevo" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)]"><FileText size={16}/>Nuevo documento</Link>
-      <Link to="/ia/conocimientos/biblioteca?upload=1" className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)]"><Upload size={16}/>Subir archivos</Link>
+      <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/nuevo" className={`inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)] ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><FileText size={16}/>Nuevo documento</Link>
+      <Link aria-disabled={!canWrite} tabIndex={canWrite ? undefined : -1} onClick={(event) => { if (!canWrite) event.preventDefault(); }} to="/ia/conocimientos/biblioteca?upload=1" className={`inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2.5 text-sm font-bold text-[var(--action-ink)] ${!canWrite ? 'pointer-events-none opacity-50' : ''}`}><Upload size={16}/>Subir archivos</Link>
       <Link to="/ia/conocimientos/biblioteca" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2.5 text-sm font-semibold"><Library size={16}/>Ir a la Biblioteca</Link>
       <Link to="/ia/conocimientos/admin" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2.5 text-sm font-semibold"><FolderCog size={16}/>Administración</Link>
     </div>

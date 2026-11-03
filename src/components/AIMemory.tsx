@@ -19,6 +19,7 @@ import {
   type AIMemoryOriginChat,
   type AIMemorySettings,
 } from '../lib/aiMemory';
+import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 
 type MemoryView = 'active' | 'archived' | 'proposed';
 type KindFilter = 'all' | AIMemoryKind;
@@ -52,6 +53,7 @@ export default function AIMemory({
   initialSelectedId: string | null;
   onOpenChat: (chatId: string) => void;
 }) {
+  const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [memories, setMemories] = useState<AIMemory[]>([]);
   const [metrics, setMetrics] = useState<AIMemoryMetric[]>([]);
   const [settings, setSettings] = useState<AIMemorySettings>(DEFAULT_SETTINGS);
@@ -119,6 +121,7 @@ export default function AIMemory({
 
   const saveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canWriteBusiness) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -138,6 +141,7 @@ export default function AIMemory({
 
   const addMemory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canWriteBusiness) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -165,6 +169,7 @@ export default function AIMemory({
 
   const saveEdit = async (event: FormEvent<HTMLFormElement>, memory: AIMemory) => {
     event.preventDefault();
+    if (!canWriteBusiness) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -181,6 +186,7 @@ export default function AIMemory({
   };
 
   const runMemoryAction = async (action: () => Promise<unknown>, successMessage: string) => {
+    if (!canWriteBusiness) return;
     setSaving(true);
     setError('');
     setNotice('');
@@ -197,6 +203,7 @@ export default function AIMemory({
   };
 
   const confirmDelete = (memory: AIMemory) => {
+    if (!canWriteBusiness) return;
     if (!window.confirm('Este recuerdo se borrará definitivamente. No se puede deshacer.')) return;
     void runMemoryAction(() => deleteAIMemory(memory.id), 'Recuerdo borrado.');
   };
@@ -212,7 +219,7 @@ export default function AIMemory({
   return <section className="space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 className="flex items-center gap-2 text-xl font-bold"><Brain size={21} className="text-[var(--brand)]"/>Memoria compartida</h3><p className="mt-1 max-w-3xl text-sm text-[var(--ink-muted)]">La memoria es compartida por todos tus chats y tareas, con Codex y con Claude. Nunca guarda contraseñas, tarjetas ni datos bancarios.</p></div>
-      <div className="flex gap-2"><button type="button" onClick={() => { setAdding((current) => !current); setError(''); }} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)]"><Plus size={15}/>Agregar recuerdo</button><button type="button" onClick={() => void refresh()} disabled={loading} aria-label="Actualizar memoria" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''}/>Actualizar</button></div>
+      <div className="flex gap-2"><button type="button" onClick={() => { setAdding((current) => !current); setError(''); }} disabled={!canWriteBusiness} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50"><Plus size={15}/>Agregar recuerdo</button><button type="button" onClick={() => void refresh()} disabled={loading} aria-label="Actualizar memoria" className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''}/>Actualizar</button></div>
     </header>
 
     {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">No se pudo cargar o guardar la memoria. {error}</p>}
@@ -221,7 +228,7 @@ export default function AIMemory({
     {adding && <form onSubmit={(event) => void addMemory(event)} className="grid gap-3 rounded-2xl border border-[var(--brand)] bg-[var(--surface)] p-4 md:grid-cols-[12rem_minmax(0,1fr)_auto] md:items-end">
       <label className="block space-y-1.5"><span className="text-xs font-semibold">Tipo</span><select value={newKind} onChange={(event) => { setNewKind(event.target.value as AIMemoryKind); if (event.target.value !== 'preference') setNewPinned(false); }} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"><option value="fact">Hecho</option><option value="preference">Preferencia</option><option value="summary">Resumen</option></select></label>
       <label className="block space-y-1.5"><span className="text-xs font-semibold">Recuerdo</span><textarea required maxLength={newKind === 'summary' ? 2000 : 500} rows={2} value={newContent} onChange={(event) => setNewContent(event.target.value)} className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
-      <div className="flex items-center gap-2 md:pb-1">{newKind === 'preference' && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={newPinned} onChange={(event) => setNewPinned(event.target.checked)} className="accent-[#365fad]"/>Fijar</label>}<button type="submit" disabled={saving || !newContent.trim()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Save size={14}/>{saving ? 'Guardando…' : 'Guardar'}</button><button type="button" onClick={() => setAdding(false)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-semibold">Cancelar</button></div>
+      <div className="flex items-center gap-2 md:pb-1">{newKind === 'preference' && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={newPinned} onChange={(event) => setNewPinned(event.target.checked)} className="accent-[#365fad]"/>Fijar</label>}<button type="submit" disabled={!canWriteBusiness || saving || !newContent.trim()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Save size={14}/>{saving ? 'Guardando…' : 'Guardar'}</button><button type="button" onClick={() => setAdding(false)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-semibold">Cancelar</button></div>
     </form>}
 
     <form onSubmit={(event) => void saveSettings(event)} className="grid gap-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-end">
@@ -230,7 +237,7 @@ export default function AIMemory({
         <label className="block space-y-1.5"><span className="text-xs font-semibold">Recuerdos por respuesta</span><input type="number" min={1} max={10} step={1} required value={settings.top_k} onChange={(event) => setSettings((current) => ({ ...current, top_k: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
         <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={settings.include_summaries} onChange={(event) => setSettings((current) => ({ ...current, include_summaries: event.target.checked }))} className="accent-[#365fad]"/>Incluir conversaciones anteriores</label>
       </div>
-      <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={saving || loading} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}Guardar ajustes</button><span className="text-[11px] text-[var(--ink-muted)]">Automática guarda recuerdos útiles después de responder.</span></div>
+      <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={!canWriteBusiness || saving || loading} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}Guardar ajustes</button><span className="text-[11px] text-[var(--ink-muted)]">Automática guarda recuerdos útiles después de responder.</span></div>
     </form>
 
     <section className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
@@ -265,15 +272,15 @@ export default function AIMemory({
                 {editingId === memory.id ? <form onSubmit={(event) => void saveEdit(event, memory)} className="mt-3 space-y-3">
                   <label className="block"><span className="sr-only">Editar recuerdo</span><textarea required maxLength={maxLength} rows={3} value={editContent} onChange={(event) => setEditContent(event.target.value)} className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink)]"/></label>
                   {memory.kind === 'preference' && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={editPinned} onChange={(event) => setEditPinned(event.target.checked)} className="accent-[#365fad]"/>Fijar esta preferencia</label>}
-                  <div className="flex gap-2"><button type="submit" disabled={saving || !editContent.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Check size={14}/>Guardar</button><button type="button" onClick={() => setEditingId(null)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-semibold"><X size={14}/>Cancelar</button></div>
+                  <div className="flex gap-2"><button type="submit" disabled={!canWriteBusiness || saving || !editContent.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50"><Check size={14}/>Guardar</button><button type="button" onClick={() => setEditingId(null)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-semibold"><X size={14}/>Cancelar</button></div>
                 </form> : <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6">{memory.content}</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--ink-muted)]"><span className="inline-flex items-center gap-1"><Clock3 size={12}/>Creado {formatDate(memory.created_at)}</span><span>Usado {memory.use_count} {memory.use_count === 1 ? 'vez' : 'veces'}</span>{memory.last_used_at && <span>Último uso {formatDate(memory.last_used_at)}</span>}{memory.source_chat_id && (sourceChat ? <button type="button" onClick={() => onOpenChat(memory.source_chat_id!)} className="font-semibold text-[var(--brand)] hover:underline">Chat: {sourceChat.title}</button> : <span>Chat de origen eliminado</span>)}{!memory.source_chat_id && <span>Agregado manualmente</span>}</div>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {memory.status === 'active' && <><button type="button" onClick={() => startEdit(memory)} className="rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold">Editar</button><button type="button" onClick={() => void runMemoryAction(() => archiveAIMemory(memory.id), 'Recuerdo archivado.')} disabled={saving} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><Archive size={13}/>Archivar</button></>}
-                {memory.status === 'archived' && <button type="button" onClick={() => { const eventId = archiveEvents[memory.id]; if (eventId) void runMemoryAction(() => undoAIMemoryEvent(eventId), 'Recuerdo restaurado.'); }} disabled={saving || !archiveEvents[memory.id]} title={archiveEvents[memory.id] ? undefined : 'No hay un evento de archivado que se pueda deshacer'} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><RotateCcw size={13}/>Restaurar</button>}
-                {memory.status === 'proposed' && <><button type="button" onClick={() => void runMemoryAction(() => reviewAIMemoryProposal(memory.id, true), 'Propuesta aceptada.')} disabled={saving} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-2 text-[11px] font-bold text-white disabled:opacity-50"><Check size={13}/>Aceptar</button><button type="button" onClick={() => void runMemoryAction(() => reviewAIMemoryProposal(memory.id, false), 'Propuesta descartada.')} disabled={saving} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><X size={13}/>Descartar</button></>}
-                {memory.status !== 'proposed' && <button type="button" onClick={() => confirmDelete(memory)} disabled={saving} aria-label={`Borrar definitivamente ${memory.content.slice(0, 40)}`} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={13}/>Borrar</button>}
+                {memory.status === 'active' && <><button type="button" disabled={!canWriteBusiness} onClick={() => startEdit(memory)} className="rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50">Editar</button><button type="button" onClick={() => void runMemoryAction(() => archiveAIMemory(memory.id), 'Recuerdo archivado.')} disabled={!canWriteBusiness || saving} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><Archive size={13}/>Archivar</button></>}
+                {memory.status === 'archived' && <button type="button" onClick={() => { const eventId = archiveEvents[memory.id]; if (eventId) void runMemoryAction(() => undoAIMemoryEvent(eventId), 'Recuerdo restaurado.'); }} disabled={!canWriteBusiness || saving || !archiveEvents[memory.id]} title={archiveEvents[memory.id] ? undefined : 'No hay un evento de archivado que se pueda deshacer'} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><RotateCcw size={13}/>Restaurar</button>}
+                {memory.status === 'proposed' && <><button type="button" onClick={() => void runMemoryAction(() => reviewAIMemoryProposal(memory.id, true), 'Propuesta aceptada.')} disabled={!canWriteBusiness || saving} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-2 text-[11px] font-bold text-white disabled:opacity-50"><Check size={13}/>Aceptar</button><button type="button" onClick={() => void runMemoryAction(() => reviewAIMemoryProposal(memory.id, false), 'Propuesta descartada.')} disabled={!canWriteBusiness || saving} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"><X size={13}/>Descartar</button></>}
+                {memory.status !== 'proposed' && <button type="button" onClick={() => confirmDelete(memory)} disabled={!canWriteBusiness || saving} aria-label={`Borrar definitivamente ${memory.content.slice(0, 40)}`} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-2 text-[11px] font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300"><Trash2 size={13}/>Borrar</button>}
               </div>
             </div>
           </li>;

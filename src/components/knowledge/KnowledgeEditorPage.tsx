@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Loader2, Save, Send, Sparkles } from 'lucide-react';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { useAuth } from '../../AuthContext';
+import { useBusinessWriteAccess } from '../../hooks/useBusinessWriteAccess';
 import Modal from '../Modal';
 import type { PendingKnowledgeProposal } from '../../lib/knowledge/api';
 import {
@@ -125,6 +126,7 @@ function useUnsavedNavigationBlocker(shouldBlock: boolean) {
 }
 
 function CreateEditorDocument({ onCreated }: { onCreated(document: KnowledgeDocument): void }) {
+  const { canWrite } = useBusinessWriteAccess();
   const [title, setTitle] = useState('');
   const [folderId, setFolderId] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -149,6 +151,7 @@ function CreateEditorDocument({ onCreated }: { onCreated(document: KnowledgeDocu
 
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canWrite) return;
     const cleanTitle = title.trim();
     if (!cleanTitle) {
       setError('Ingresá un título para el documento.');
@@ -194,7 +197,7 @@ function CreateEditorDocument({ onCreated }: { onCreated(document: KnowledgeDocu
       </div>
       {error && <p role="alert" className="rounded-lg border border-[var(--danger-line)] bg-[var(--danger-surface)] p-3 text-sm text-[var(--danger-ink)]">{error}</p>}
       <div className="flex justify-end">
-        <button type="submit" disabled={busy || !title.trim()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">
+        <button type="submit" disabled={!canWrite || busy || !title.trim()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">
           {busy ? <Loader2 size={16} className="animate-spin"/> : <Sparkles size={16}/>}Crear documento
         </button>
       </div>
@@ -204,6 +207,7 @@ function CreateEditorDocument({ onCreated }: { onCreated(document: KnowledgeDocu
 }
 
 export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' }) {
+  const { canWrite, isSuspended } = useBusinessWriteAccess();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { documentId } = useParams<{ documentId: string }>();
@@ -294,7 +298,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
     return () => window.clearInterval(interval);
   }, [documentId, mode, refreshPendingProposals]);
 
-  const isReadOnly = document?.status === 'archived' || document?.status === 'deleting';
+  const isReadOnly = !canWrite || document?.status === 'archived' || document?.status === 'deleting';
 
   const saveLatestDraft = useCallback(async () => {
     const currentDocument = documentRef.current;
@@ -477,7 +481,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
 
   const applyOrganizeProposal = async (applyMode: 'replace' | 'append', proposalContent: JSONContent) => {
     const editor = editorRef.current;
-    if (!editor || isReadOnly || conflictRef.current) throw new Error('El editor no está disponible para aplicar la propuesta.');
+    if (!canWrite || !editor || isReadOnly || conflictRef.current) throw new Error('El editor no está disponible para aplicar la propuesta.');
     if (applyMode === 'replace') {
       editor.commands.setContent(proposalContent);
     } else {
@@ -487,7 +491,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   };
 
   const saveVersion = async (note = ''): Promise<KnowledgeVersion | null> => {
-    if (!document || isReadOnly || conflictRef.current) return null;
+    if (!canWrite || !document || isReadOnly || conflictRef.current) return null;
     const flushed = await flushDraft();
     if (!flushed) return null;
     const snapshot = latestContentRef.current;
@@ -543,7 +547,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   };
 
   const changeStatus = async (nextStatus: 'in_review' | 'published') => {
-    if (!document || isReadOnly || statusBusy) return;
+    if (!canWrite || !document || isReadOnly || statusBusy) return;
     if (nextStatus === 'published') {
       const hash = await contentHash(latestContentRef.current);
       const currentHash = versions.find((version) => version.id === document.current_version_id)?.content_hash;
@@ -639,7 +643,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
           <span className={`inline-flex items-center gap-1.5 text-xs ${saveState === 'error' || saveState === 'offline' ? 'text-[var(--danger-ink)]' : 'text-[var(--ink-muted)]'}`} role="status">
             {saveState === 'saving' ? <Loader2 size={13} className="animate-spin"/> : saveState === 'saved' ? <Check size={13}/> : <span className="size-1.5 rounded-full bg-current"/>}{saveLabel}
           </span>
-          {saveState === 'error' && <button type="button" onClick={() => void saveNow()} className="text-xs font-bold text-[var(--brand)] underline">Reintentar</button>}
+          {saveState === 'error' && <button type="button" disabled={!canWrite} onClick={() => void saveNow()} className="text-xs font-bold text-[var(--brand)] underline disabled:opacity-50">Reintentar</button>}
         </div>
       </div>
 
@@ -654,13 +658,13 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
 
       {pendingProposals.length > 0 && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
         <p><strong>Tenés una propuesta de la IA lista para revisar.</strong> Todavía no se aplicó al documento.</p>
-        <button type="button" onClick={() => setOrganizeOpen(true)} className="rounded-lg border border-current px-3 py-2 text-xs font-bold">Revisar propuesta</button>
+        <button type="button" disabled={!canWrite} onClick={() => setOrganizeOpen(true)} className="rounded-lg border border-current px-3 py-2 text-xs font-bold disabled:opacity-50">Revisar propuesta</button>
       </section>}
 
-      {(isReadOnly || conflict) && <section role="alert" className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${conflict ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100' : 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}>
+      {(isReadOnly || conflict) && <section role="alert" className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${conflict && canWrite ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100' : 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}>
         <AlertTriangle size={18} className="mt-0.5 shrink-0"/>
-        {conflict ? <div className="min-w-0 flex-1"><p className="font-bold">El borrador cambió en otra pestaña.</p><p className="mt-1">Recargá la última versión o guardá tus cambios sobre la versión más reciente.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void reloadRemoteDraft()} className="rounded-lg border border-current px-3 py-2 text-xs font-bold">Recargar la última versión</button><button type="button" onClick={() => void saveDespiteConflict()} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)]">Guardar mis cambios igual</button></div></div>
-          : <div><p className="font-bold">Restaurá el documento para editarlo.</p><Link to={`/ia/conocimientos/doc/${document.id}`} className="mt-1 inline-block font-semibold underline">Ir al detalle del documento</Link></div>}
+        {conflict && canWrite ? <div className="min-w-0 flex-1"><p className="font-bold">El borrador cambió en otra pestaña.</p><p className="mt-1">Recargá la última versión o guardá tus cambios sobre la versión más reciente.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void reloadRemoteDraft()} className="rounded-lg border border-current px-3 py-2 text-xs font-bold">Recargar la última versión</button><button type="button" onClick={() => void saveDespiteConflict()} className="rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)]">Guardar mis cambios igual</button></div></div>
+          : <div><p className="font-bold">{isSuspended ? 'La cuenta está suspendida y el documento es de solo lectura.' : document.status === 'archived' || document.status === 'deleting' ? 'Restaurá el documento para editarlo.' : 'No se pudo confirmar el permiso para editar.'}</p><Link to={`/ia/conocimientos/doc/${document.id}`} className="mt-1 inline-block font-semibold underline">Ir al detalle del documento</Link></div>}
       </section>}
 
       {saveError && saveState === 'error' && <p role="alert" className="rounded-lg border border-[var(--danger-line)] bg-[var(--danger-surface)] p-3 text-sm text-[var(--danger-ink)]">{saveError}</p>}

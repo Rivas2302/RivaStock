@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  canWrite: true,
   deleteAIChat: vi.fn(),
   getAIChat: vi.fn(),
   getAIChats: vi.fn(),
@@ -11,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   listJobSources: vi.fn(),
   listAIMemoryJobActivity: vi.fn(),
   undoAIMemoryEvent: vi.fn(),
+}));
+
+vi.mock('../hooks/useBusinessWriteAccess', () => ({
+  useBusinessWriteAccess: () => ({ canWrite: mocks.canWrite, isSuspended: !mocks.canWrite, loading: false, error: null }),
 }));
 
 vi.mock('../lib/aiBridge', () => ({
@@ -46,6 +51,7 @@ describe('AIChats memory activity', () => {
   };
 
   beforeEach(() => {
+    mocks.canWrite = true;
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);

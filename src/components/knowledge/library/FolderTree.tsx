@@ -17,6 +17,7 @@ interface FolderTreeProps {
   onSelectCategory: (categoryId: string | null) => void;
   onToggleTag: (tagId: string) => void;
   onRefresh: () => Promise<void>;
+  canWrite: boolean;
 }
 
 type FolderDialogMode = 'create' | 'edit' | 'move';
@@ -77,7 +78,7 @@ export default function FolderTree(props: FolderTreeProps) {
   };
 
   const saveFolder = async () => {
-    if (!dialogMode || busy) return;
+    if (!props.canWrite || !dialogMode || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -98,6 +99,7 @@ export default function FolderTree(props: FolderTreeProps) {
   };
 
   const removeFolder = async (folder: KnowledgeFolder) => {
+    if (!props.canWrite) return;
     if (!window.confirm(`¿Borrar la carpeta “${folder.name}”? También se borrarán sus subcarpetas y los documentos quedarán sin carpeta.`)) return;
     setError('');
     try {
@@ -143,10 +145,10 @@ export default function FolderTree(props: FolderTreeProps) {
         <details className="relative shrink-0">
           <summary aria-label={`Acciones para ${folder.name}`} className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--ink-muted)] hover:bg-[var(--surface-muted)]"><MoreHorizontal size={16}/></summary>
           <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1 shadow-xl">
-            <button type="button" onClick={() => { openCreate(folder); setExpanded((current) => new Set(current).add(folder.id)); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)]"><Plus size={14}/>Nueva subcarpeta</button>
-            <button type="button" onClick={() => openEdit(folder, 'edit')} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)]"><Pencil size={14}/>Renombrar</button>
-            <button type="button" onClick={() => openEdit(folder, 'move')} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)]"><Folder size={14}/>Mover a…</button>
-            <button type="button" onClick={() => void removeFolder(folder)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950"><Trash2 size={14}/>Borrar</button>
+            <button type="button" disabled={!props.canWrite} onClick={() => { openCreate(folder); setExpanded((current) => new Set(current).add(folder.id)); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)] disabled:opacity-50"><Plus size={14}/>Nueva subcarpeta</button>
+            <button type="button" disabled={!props.canWrite} onClick={() => openEdit(folder, 'edit')} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)] disabled:opacity-50"><Pencil size={14}/>Renombrar</button>
+            <button type="button" disabled={!props.canWrite} onClick={() => openEdit(folder, 'move')} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-[var(--surface-muted)] disabled:opacity-50"><Folder size={14}/>Mover a…</button>
+            <button type="button" disabled={!props.canWrite} onClick={() => void removeFolder(folder)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950"><Trash2 size={14}/>Borrar</button>
           </div>
         </details>
       </div>
@@ -161,7 +163,7 @@ export default function FolderTree(props: FolderTreeProps) {
     <section aria-label="Carpetas">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Carpetas</h3>
-        <button type="button" onClick={() => openCreate(null)} aria-label="Crear carpeta" className="grid size-8 place-items-center rounded-lg border border-[var(--line)] text-[var(--ink-muted)] hover:bg-[var(--surface-muted)]"><Plus size={15}/></button>
+        <button type="button" disabled={!props.canWrite} onClick={() => openCreate(null)} aria-label="Crear carpeta" className="grid size-8 place-items-center rounded-lg border border-[var(--line)] text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50"><Plus size={15}/></button>
       </div>
       <button type="button" onClick={() => props.onSelectFolder(null)} aria-current={props.selectedFolderId === null ? 'page' : undefined} className={`mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold ${props.selectedFolderId === null ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'hover:bg-[var(--surface-muted)]'}`}><Folder size={15}/>Todos los documentos</button>
       <ul className="space-y-1">{renderBranch(null)}</ul>
@@ -188,7 +190,7 @@ export default function FolderTree(props: FolderTreeProps) {
           {props.folders.filter((folder) => !excludedParentIds.has(folder.id)).map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
         </select></label>
         {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
-        <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setDialogMode(null)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={busy || (dialogMode !== 'move' && !name.trim())} onClick={() => void saveFolder()} className="rounded-lg bg-[var(--action-bg)] px-4 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{busy ? 'Guardando…' : dialogMode === 'move' ? 'Mover' : 'Guardar'}</button></div>
+        <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setDialogMode(null)} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!props.canWrite || busy || (dialogMode !== 'move' && !name.trim())} onClick={() => void saveFolder()} className="rounded-lg bg-[var(--action-bg)] px-4 py-2 text-sm font-bold text-[var(--action-ink)] disabled:opacity-50">{busy ? 'Guardando…' : dialogMode === 'move' ? 'Mover' : 'Guardar'}</button></div>
       </div>
     </Modal>, document.body)}
   </>;
