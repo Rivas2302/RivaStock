@@ -155,7 +155,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 - Después seguí con el **Bloque G** (§2c), luego con lo que quede de A1 y después con **E2 y E7**, que suben de prioridad antes del Bloque C porque ahora hay un cliente real.
 - **Commit:** `docs(clients): first client delivery guide`
 
-### F5 Respaldo diario (después de la entrega, autorizado)
+### [x] F5 Respaldo diario (después de la entrega, autorizado)
 Ahora hay datos de un cliente. Creá en esta PC una tarea programada de Windows que corra `npm run backup:db -- --with-storage` todos los días a las 03:30, conserve los últimos 14 backups verificados y registre el resultado en `%USERPROFILE%\rivastock-backups\backup-log.txt`, sin credenciales. Si un backup falla dos días seguidos, agregalo al mensaje de §9. Commit con el script de instalación de la tarea: `feat(ops): daily verified backups`.
 
 ---

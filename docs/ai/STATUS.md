@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 10:53 ART — F5 respaldo diario instalado
+
+- Comparé `ACTION_PLAN.md` con Desktop y `origin/main`: la copia del worktree es posterior a Desktop y conserva la revisión más reciente. F5 queda `[x]`.
+- Agregué `scripts/run-daily-backup.ps1` y `scripts/install-daily-backup-task.ps1`. La ejecución real terminó con `verification: passed`: `%USERPROFILE%\rivastock-backups\20261103T133829Z`, **94 tablas / 13.901 filas**, schema **933.447 B**, datos **40.182.784 B**, Storage **739 objetos / 143.590.308 B**. La verificación exacta por tabla, inventario, tamaños y hashes pasó. Se retiraron 6 respaldos verificados antiguos y quedaron los 14 más recientes.
+- Instalé y verifiqué la tarea `RivaStock Daily Verified Backup`: corre todos los días a las **03:30 hora local**, con el usuario actual, sin guardar contraseña; `StartWhenAvailable` recupera una ejecución omitida al volver a iniciar sesión. Su próxima ejecución es el 04/11 a las 03:30. `backup-log.txt` y su estado guardan solo resumen y fallos consecutivos, nunca credenciales; el contador actual es cero.
+- Verificación local: parser PowerShell **0 errores**, `npm run lint` aprobado y `npm test -- --maxWorkers=1` **782/782**. El runner ejecutado a mano completó el backup y la poda de retención.
+- **Incidente de privacidad:** una inspección de solo lectura mostró accidentalmente metadatos y rutas de objetos del manifiesto en la salida de herramienta. No aparecieron contenidos ni credenciales; la salida no se guardó en archivos versionados. Se notificó de inmediato y se detuvo esa inspección.
+- **Siguiente:** seguir con las tareas independientes permitidas; si el contador diario llega a 2 fallos seguidos, incluirlo en el mensaje final. A1 sigue condicionada por Storage/clave legacy y la extensión; E5 espera la expiración del plazo del 06/11 10:06:19 UTC.
+
 ## 2026-11-03 10:24 ART — T6.1 desplegada; selección del dueño pendiente
 
 - Comparé la copia vigente de `AI_PUBLISHER_EXECUTION_PLAN.md` con Desktop y `origin/main`: la copia del worktree es posterior; la de Desktop es del 25/10. El plan maestro `ACTION_PLAN.md` del worktree también es posterior a Desktop. No reemplacé las versiones vigentes.
