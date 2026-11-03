@@ -1,5 +1,11 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 11:22 ART — E0–E4 reconciliadas; E5 espera la purga natural
+
+- Antes de retomar Bloque E comparé `MULTI_BUSINESS_EXECUTION_PLAN.md` con Desktop y `origin/main`. La copia de Desktop conserva el contenido vigente; el worktree solo suma las marcas de avance que estoy reconciliando. El historial de `STATUS.md` y `MULTI_BUSINESS_BASELINE.md` respalda cada criterio de E0–E4; restauré esas cinco marcas `[x]`.
+- E5 ya está desplegada, pero falta validar el modo de apertura bajo demanda después de la ventana de 72 h. La consulta de solo lectura encontró una versión QA local verificada y su objeto de nube aún presente; la purga está programada para **2026-11-06 10:06:19 UTC**. No inicié E6 antes de completar E5.
+- **Siguiente:** al vencer el plazo, validar apertura bajo demanda y limpiar el documento QA desde la app; después continuar E6 en orden. No hay migración, despliegue ni instalación en curso.
+
 ## 2026-11-03 11:18 ART — C0 bloqueada por §5.2b; ningún cambio de extensión
 
 - Antes de evaluar C0 comparé `ACTION_PLAN.md` con Desktop y `origin/main`; el plan maestro no tuvo cambios desde la copia vigente y `origin/main` coincide con el worktree. El estado local solo agrega las marcas verificadas de B2/B4.
