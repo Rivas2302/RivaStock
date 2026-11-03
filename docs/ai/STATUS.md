@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 00:30 ART — B4 documentado; cierre final sigue abierto por trazas históricas
+
+- Comparé `ACTION_PLAN.md`, `KNOWLEDGE_ADDENDUM_CLOSEOUT.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` con Desktop: las copias locales son más recientes; conservé las locales. El plan del publicador fija T2.3 en AI Bridge 1.19.0, siguiente menor después del 1.18.0 instalado.
+- B2/C5.4 está cerrada. C2.2 y la validación Claude de C5.4 se marcaron diferidas/opcionales conforme a B3; `OWNER_ACTIONS.md` no pide acciones para Claude.
+- Actualicé `AGENTS.md` y `AI_BRIDGE_SETUP.md` para reflejar AI Bridge 1.18.0, memoria compartida y el estado no certificado de Claude.
+- **B4 permanece `[ ]`:** `STATUS.md` ya registra seis tareas históricas `knowledge_organize` con contenido `[QA]`. El flujo de C1 y la lista normal de tareas no permiten borrarlas. No se hizo borrado por SQL. El cierre del addendum exige resolver la limpieza segura antes de afirmar que no queda ningún rastro QA.
+- **Siguiente:** avanzar con C0 y demás tareas independientes; mantener B4 abierto hasta tener un flujo normal de app seguro para esas seis trazas. No hay una acción manual nueva para Riva.
+
 ## 2026-11-03 00:20 ART — B2 cerrada en producción; B3 diferida como opcional
 
 - `4a0a858` se publicó en `main`; Vercel reportó `success`. La corrección permite que el chat siga consultando la actividad después de un evento de uso y muestre el chip cuando termina la extracción asíncrona.

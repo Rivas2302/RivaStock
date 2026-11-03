@@ -302,6 +302,8 @@ La evaluación PGlite anterior de `dd12d8e` usó proveedor falso y embeddings si
 
 ## [ ] Cierre
 
+**Estado al 2026-11-03:** C1, C2.1, C3, C4 y C5.4/C5.5 están cerradas; C2.2 está diferida como opcional según `ACTION_PLAN.md` B3. El cierre total permanece abierto porque hay seis tareas históricas `knowledge_organize` con contenido QA que el RPC y la UI de C1 no permiten eliminar. No borrarlas por SQL; hasta diseñar un flujo de app seguro, documentar el desvío y no afirmar que no queda ningún rastro QA.
+
 - Correr `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`; en el worker, `npm run typecheck` y `npm test`.
 - Despliegue final:
   - backup verificado;

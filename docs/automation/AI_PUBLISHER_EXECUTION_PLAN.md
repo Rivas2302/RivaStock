@@ -254,7 +254,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - **Commit:** `docs(automation): define supervisor decision contract`
 
 ### [x] T2.3 AI Bridge: loop D supervisor
-**Archivos:** `tools/rivastock-ai-bridge/src/automation/{client,supervisor,prompts,validate}.ts`, cambios en `src/index.ts` y `src/types.ts`. Versión **1.12.0** (o la siguiente menor disponible al iniciar la tarea).
+**Archivos:** `tools/rivastock-ai-bridge/src/automation/{client,supervisor,prompts,validate}.ts`, cambios en `src/index.ts` y `src/types.ts`. Versión prevista **1.19.0**, siguiente menor después de AI Bridge 1.18.0 (instalado el 02/11/2026); volver a calcular si el Bridge se actualiza antes de T2.3.
 - Loop independiente (como el de Conocimientos) que sondea `fb_supervisor_worker('next')` cada 2 s solo si `AI_BRIDGE_ENABLE_FB_SUPERVISOR !== 'false'`.
 - Para cada pedido:
   1. Descargar la captura (URL firmada de la Edge Function) a una carpeta temporal y borrarla en `finally`.

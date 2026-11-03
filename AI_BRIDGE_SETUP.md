@@ -200,6 +200,7 @@ Estas verificaciones locales no aplican la migración, publican la Edge Function
 - **La conexión aparece desconectada**: confirmá que el proceso siga abierto, que la URL del endpoint sea correcta y que la red permita HTTPS hacia Supabase.
 - **`permission denied` al reservar**: el RPC `ai_bridge_worker` debe ejecutarse desde la Edge Function con su clave de servidor; nunca lo llames desde el navegador.
 - **Claude requiere una versión posterior**: actualizá el CLI a 2.1.248 o posterior antes de habilitarlo.
+- **Estado de validación:** Claude Code está habilitado en el entorno del propietario, pero sus pruebas de tarea, chat y memoria no completaron. La integración queda opcional y no debe presentarse como validada hasta que un probe y una tarea real respondan correctamente. No subir el presupuesto configurado para forzar la prueba.
 - **Codex no autenticado**: iniciá sesión en el `CODEX_HOME` aislado del puente y reiniciá el worker.
 
 ## Fuentes oficiales consultadas

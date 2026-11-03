@@ -25,9 +25,10 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Estado actual del AI Bridge
 
-- **Verificado el 26/10/2026:** AI Bridge 1.9.0 está instalado en la PC vinculada; el dueño confirmó “Conectado” y el worker envió heartbeat reciente a producción. `ai-bridge` está ACTIVE v10 con `verify_jwt=false`.
+- **Histórico, 26/10/2026:** AI Bridge 1.9.0 estaba instalado en la PC vinculada; el dueño confirmó “Conectado” y el worker envió heartbeat reciente a producción. `ai-bridge` estaba ACTIVE v10 con `verify_jwt=false`.
+- **Verificado el 02/11/2026:** AI Bridge 1.18.0 se instaló en la PC vinculada con el actualizador estándar. Se comprobó un único worker, heartbeat reciente y estado “Conectada”. Las pruebas B2 de memoria se completaron en producción el 03/11.
 - C1 agregó borrado de chats y tareas de texto desde la UI, retención configurable y limpieza de sesiones locales por lápida. Se verificó el borrado de chats/tareas de prueba y la limpieza local de una sesión. La retención de producción sigue en “Sin borrado automático”. El borrado solo permite `text_generation`; la app rechaza `knowledge_organize`.
-- Claude Code 2.1.310 cumple el mínimo aplicado por el worker (2.1.248). El dueño autorizó habilitarlo; `AI_BRIDGE_ENABLE_CLAUDE=true` y `CLAUDE_CODE_GIT_BASH_PATH` están configurados en el `.env` local y el worker se reinició. La tarea real de Claude terminó interrumpida y un probe restringido de 30 s no produjo salida; no afirmar que Claude funciona hasta completar una prueba real de tarea y chat.
+- Claude Code 2.1.310 cumple el mínimo aplicado por el worker (2.1.248). El dueño autorizó habilitarlo; `AI_BRIDGE_ENABLE_CLAUDE=true` y `CLAUDE_CODE_GIT_BASH_PATH` están configurados en el `.env` local y el worker se reinició. La tarea real de Claude terminó interrumpida y el probe restringido no produjo salida. C2.2 y la parte Claude de C5.4 están diferidas como opcionales; no afirmar que Claude funciona ni reintentar hasta que cambie esa decisión.
 - El usuario confirmó que el instalador de Windows funciona después de corregir el error que ocurría cuando no existía la carpeta CODEX_HOME.
 - El selector de Codex ofrece GPT-6 Luna, GPT-6.1 Sol y GPT-6 Astra, además de esfuerzo Bajo, Medio, Alto y Muy alto. Muy alto se envía como xhigh. El modelo y el esfuerzo quedan guardados y se muestran en la tarea.
 - La integración usa el inicio de sesión local del proveedor en el CODEX_HOME aislado del Bridge; no configura una API key de OpenAI Platform por cliente dentro de RivaStock. Esto sigue usando el servicio de Codex/OpenAI.
@@ -42,6 +43,7 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 - Las tareas puntuales de Codex siguen iniciando hilos nuevos; los chats de RivaStock conservan y reanudan su hilo por chat. No aparecen como chats nuevos en Codex Desktop.
 - Las tareas puntuales de Claude Code siguen sin persistencia; los chats de RivaStock conservan y reanudan su sesión por chat en la PC vinculada.
+- La memoria compartida de IA se recupera antes de responder y se extrae después de los turnos de chat con Codex usando `ai_function_settings` (Codex · GPT-6 Luna · Bajo). Se validaron recordar, recuperar, actualizar, archivar, deshacer, bloqueo sensible y modo de confirmación en producción. Los chips de cambios asíncronos se actualizan en el chat sin reabrirlo. La prueba de memoria con Claude no está certificada.
 - La pantalla de Chats muestra hasta 100 mensajes por chat y hasta 50 chats recientes. Hay borrado de chats y tareas de texto, más retención configurable; no hay compactación de contexto. Los trabajos internos `knowledge_organize` no se borran desde C1.
 - Skills y documentos de conocimiento de la cuenta se adjuntan automáticamente a tareas de Codex y Claude. El contexto del proyecto es opcional y usa una lista acotada de archivos; el catálogo e inventario también son opcionales y limitados.
 - La biblioteca heredada `ai_workspace_files` pasa Skills como texto de contexto. Conocimientos es un módulo separado con embeddings, búsqueda semántica e híbrida.
@@ -72,7 +74,7 @@ Cada negocio debe mantener aislados su vínculo, sus datos y su biblioteca. El o
 
 ## Próximas brechas confirmadas
 
-1. C2 de Claude sigue abierto: CLI 2.1.310 y configuración habilitada, pero el probe de 30 s no respondió y la tarea de producción fue interrumpida. Revalidar con el proveedor sin subir el presupuesto configurado.
+1. C2.2 de Claude está diferida como opcional: CLI 2.1.310 y configuración habilitada, pero el probe no respondió y la tarea de producción fue interrumpida. No reintentar ni presentarlo como proveedor validado.
 2. Quedan seis trazas QA `knowledge_organize` fuera del borrado C1, que rechaza ese tipo. Para borrarlas haría falta diseñar y autorizar un flujo específico; no usar SQL directo.
 3. No existe staging de Supabase. Preparar uno antes de futuras migraciones que no tengan autorización expresa para producción.
 4. Word no tiene vista previa en la UI. La selección de Skills desde una respuesta y la Fase 6 opcional para colaboradores no están implementadas.

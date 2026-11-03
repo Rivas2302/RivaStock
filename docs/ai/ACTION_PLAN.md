@@ -279,7 +279,8 @@ Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archiv
 
 ### [ ] B4 Cierre del addendum
 - La sección “Cierre” de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md`. Si B3 sigue bloqueada, cerrar todo lo demás y dejar C2.2 como único pendiente por puerta.
-- En `AI_PUBLISHER_EXECUTION_PLAN.md`, fijar la versión del Bridge del supervisor (T2.3) en **la siguiente menor a la instalada** (1.13.0 si B2 terminó en 1.12.x).
+- En `AI_PUBLISHER_EXECUTION_PLAN.md`, fijar la versión del Bridge del supervisor (T2.3) en **la siguiente menor a la instalada** (1.19.0 con Bridge 1.18.0 instalado).
+- **Estado al 03/11:** la verificación de memoria y C5.4 ya está cerrada; C2.2 queda diferida como opcional. No marcar B4 cerrado mientras persistan las seis tareas históricas `knowledge_organize` con contenido QA que el flujo actual de C1 no puede borrar. No eliminarlas por SQL; documentar el desvío y seguir con tareas independientes.
 - **Commit:** `docs(ai): close knowledge and AI module pending items`
 
 ---
