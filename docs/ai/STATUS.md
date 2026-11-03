@@ -1,11 +1,17 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 — E3 implementada localmente; despliegue y validación pendientes
+## 2026-11-03 — E3 desplegada y validada en producción
 
-- El Bridge 1.19.0 ahora interpreta el modo de seguridad enviado por cada heartbeat; ante un modo ausente, inválido o un heartbeat fallido, vuelve a `read-only`. Codex usa red desactivada en `read-only` y `workspace-write`; las escrituras de este último quedan dentro de `.rivastock-ai/workspace`. Solo permite contexto del proyecto con `allow_project_root`.
-- La Edge Function incluye `security` en heartbeat, vinculación y estado; el valor se calcula desde `business_limits(owner)` y solo habilita `danger-full-access`/raíz de proyecto para el plan `interno`. IA → Conexión muestra el modo; el texto se carga en un chunk diferido.
-- Verificación local: lint; **715/715** pruebas del frontend; typecheck y **96/96** pruebas del Bridge; build, `perf:check` (AIHub **237.989 B gzip JS**, inicio **209.101 B**) y smoke multiempresa (**38 comprobaciones, TODO OK**) aprobados. Codex SDK v0.163.0 expone los modos de sandbox usados por el Bridge.
-- Paquete local generado: AI Bridge **1.19.0**. No se aplicó migración ni se desplegó la Edge Function o el frontend; no se instaló el paquete. Falta la prueba real del plan en `read-only` y la prueba negativa en producción. **E3 sigue `[ ]`** hasta cerrar esas verificaciones.
+- **E3 [x]**. El commit `a939aaf` está en `main`; Vercel reportó `success`. `ai-bridge` está ACTIVE v13 con `verify_jwt=false`. AI Bridge **1.19.0** quedó instalado desde el paquete del repo: un proceso worker, dispositivo `idle`, cero tareas activas y heartbeat reciente.
+- La Edge Function entrega el modo de seguridad para vinculación, heartbeat y estado. La UI mostró “protegido (solo lectura)” durante la prueba y “completo” después de restaurar el override original. El Bridge aplica el modo sin reinstalar y falla a solo lectura si falta o no reconoce la política.
+- Checklist real con Codex en solo lectura: Chat respondió el dato único `RVC-7159` con la fuente `K1`; Tareas devolvió `RIVA-E3-READONLY-OK`; Organizar con IA leyó texto legible de una captura real de 46.618 B y produjo una propuesta revisable que se descartó; Conocimientos quedó indexado `ready` con un fragmento; la memoria compartida recordó, actualizó y archivó una preferencia `[QA]`.
+- **Prueba negativa:** las tareas que solicitaron escribir en el Escritorio y acceder a `example.com` fueron rechazadas por Codex antes de invocar herramientas; el archivo no existe y no se ejecutó la consulta de red. **Desvío:** la prueba en vivo confirmó el rechazo y la ausencia de efectos, pero no ejercitó directamente el error del sistema operativo porque Codex no lanzó los comandos. `providers.test.ts` verifica las opciones del proveedor falso: `read-only`, red desactivada y política de aprobación correspondiente (**9/9** pruebas); la suite fixture del supervisor Facebook pasó **5/5**.
+- G2 quedó cerrada para una prueba Facebook en vivo: el dispositivo productivo reporta extensión 0.5.15, sin capacidad de capturas. Se usó el fixture; no se creó ni publicó contenido Facebook.
+- La limpieza `[QA]` desde la app se verificó con consultas de solo lectura: cero documentos, activos de Conocimientos, objetos Storage, tareas, chats y recuerdos de esta prueba. Quedan únicamente eventos de auditoría inmutables según el comportamiento de la app.
+- El override temporal se restauró a `{}`; producción devuelve `danger-full-access` para el plan interno y la UI indica “completo”. No hubo migraciones. El worker quedó `idle`, sin tarea actual y con heartbeat reciente.
+- **Desvío de consola revisado:** una inspección accidental de un objeto Playwright mostró una parte truncada de `process.env`. Las dos variables de API presentes en el proceso contenían solo el placeholder local `lm-studio`; no se observó una credencial real. Se cerró el REPL; no se requiere rotación ni acción del dueño.
+- Verificación local previa al despliegue: lint; frontend **715/715**; Bridge typecheck y **96/96**; build, `perf:check` (AIHub **237.989 B gzip JS**, inicio **209.101 B**) y smoke multiempresa (**38 comprobaciones, TODO OK**). Codex SDK v0.163.0 soporta los modos configurados.
+- **Siguiente:** continuar con el publicador de Facebook según el plan autónomo, empezando por las tareas que no dependen de G2 y sin publicar fuera del modo ensayo.
 
 ## 2026-11-03 — E2 completo en producción
 

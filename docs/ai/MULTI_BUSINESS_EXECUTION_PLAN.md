@@ -153,7 +153,7 @@ Programá `platform-usage-daily` (`17 6 * * *`) con `cron.schedule` siguiendo el
 
 - **Commit:** `feat(platform): usage metering, project storage guard and per-plan limits`
 
-### [ ] E3 Central segura en PCs de terceros
+### [x] E3 Central segura en PCs de terceros
 1. **El servidor indica el modo.** La respuesta de vinculación y la del heartbeat del Bridge (Edge Function `ai-bridge`) agregan `security: { codex_sandbox, allow_project_root }`, calculados con `business_limits(owner)`. `allow_project_root` es `true` solo para el plan `interno`.
 2. **El Bridge lo aplica** en `providers.ts`:
    - `read-only` → `sandboxMode: 'read-only'`, `networkAccessEnabled: false`, `approvalPolicy: 'never'`;
