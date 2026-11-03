@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — E2.3 migrada; rollout completo de E2 sigue abierto
+
+- Antes de E2.3 se verificó `%USERPROFILE%\rivastock-backups\20261103T035422Z`: 87 tablas, 13.828 filas con conteos exactos; schema 822.518 B, data 40.152.301 B; Storage 374 objetos/132.374.670 B y verificación de hashes/tamaños aprobada.
+- `supabase db push --linked --dry-run` listó únicamente `20261103031535_fb_trace_plan_limits.sql`; se aplicó solo esa migración. `supabase migration list --linked` confirma E2.1, E2.2 y E2.3 aplicadas y sin entradas remotas adicionales.
+- En producción las tres RPC de trazas usan `trace_bytes` y `trace_retention_days`; la reserva comprueba también el presupuesto global. Solo `service_role` tiene `EXECUTE` y `authenticated` no. La función mantiene la regla de no tocar entregas, intentos ni eventos.
+- Revisé los advisors de Supabase. Las nuevas tablas worker-only tienen RLS sin políticas por diseño; las RPC autenticadas de E2 mantienen guardas/propiedad y son `SECURITY DEFINER` como las versiones previas. El informe incluye avisos históricos globales; no se identificó un hallazgo nuevo de E2 que requiera abrir otra migración.
+- **E2.1–E2.3 aplicadas y verificadas; E2 sigue abierto** hasta publicar y validar E2.4 con las RPC ya disponibles. Después hay que subir el corte coherente de frontend y repetir lint, tests, build, perf y smoke de producción.
+
 ## 2026-11-03 — E2.2 aplicada y verificada en producción; E2 sigue abierto
 
 - Antes de E2.2 se creó y verificó `%USERPROFILE%\rivastock-backups\20261103T034825Z`: 87 tablas, 13.828 filas con conteos exactos; schema 822.044 B, data 40.152.299 B; Storage 374 objetos/132.374.670 B y hashes/tamaños coincidentes. `verification: passed`.
