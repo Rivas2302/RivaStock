@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 — F4 guía de entrega preparada
+
+- Se agregó `docs/clients/ENTREGA_CLIENTE.md` con el único paso de invitación para Riva, consulta SQL de solo lectura con los nombres confirmados (`profiles`, `business_subscriptions`, `collaborators`), mensaje de WhatsApp, instalación de la PWA y checklist del primer ingreso.
+- Se agregó `docs/ai/MENSAJE_PARA_RIVA.md` sin datos personales: informa el resultado de F1, que `disable_signup=true` no requiere acción y los pendientes F2b/E2/E7.
+- `OWNER_ACTIONS.md` suma la invitación del primer cliente como acción futura del dueño; no se creó ni invitó una cuenta y no hubo cambios de producción.
+- **F4 `[x]`**. Sigue el Bloque G; la tarea F5 de backup diario espera que el cliente invitado tenga datos.
+
 ## 2026-11-02 — F3 cerrada en producción
 
 - El flujo de invitación ahora pasa por `/auth/confirm?type=invite`, permite establecer la contraseña sin cerrar la sesión verificada y entra a la app. La prueba del hook confirma el callback; Playwright verifica validación de contraseña, confirmación y entrada directa, sin crear usuarios reales.

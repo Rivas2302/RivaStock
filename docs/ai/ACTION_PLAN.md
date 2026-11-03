@@ -145,7 +145,7 @@ La regla del Bloque E “ningún negocio real antes de E3” **no aplica** a neg
 4. `npm run lint`, `npm test`, `npm run build` y `npm run perf:check`. Desplegá y hacé el smoke del negocio de Riva.
 - **Commit:** `feat(onboarding): first login for new business owners`
 
-### [ ] F4 Guía de entrega y aviso a Riva
+### [x] F4 Guía de entrega y aviso a Riva
 - Escribí `docs/clients/ENTREGA_CLIENTE.md`:
   - **Pasos de Riva:** Supabase → Authentication → Users → **Invite user** → email del cliente. Nada más.
   - **Verificación tuya después de la invitación** (Riva te avisa o la detectás en la próxima tarea), con una consulta de solo lectura: el usuario nuevo existe, tiene perfil, no tiene fila en `business_subscriptions` (o sea, plan `base`, sin IA ni Automatizaciones) y no es colaborador de nadie.
