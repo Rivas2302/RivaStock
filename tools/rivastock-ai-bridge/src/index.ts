@@ -30,6 +30,7 @@ const HEARTBEAT_INTERVAL_MS = 20_000;
 const WORKSPACE_SYNC_INTERVAL_MS = 30_000;
 const CHAT_TOMBSTONE_SYNC_INTERVAL_MS = 5 * 60_000;
 const MEMORY_EMBEDDING_SYNC_INTERVAL_MS = 60_000;
+const MEMORY_IDLE_SUMMARY_SYNC_INTERVAL_MS = 60_000;
 const config = loadConfig();
 const client = new BridgeClient(config.endpoint, config.token);
 const knowledgeClient = config.knowledgeEndpoint ? new KnowledgeClient(config.knowledgeEndpoint, config.token) : null;
@@ -41,6 +42,7 @@ let supervisorController: AbortController | null = null;
 let lastWorkspaceSyncAt = 0;
 let lastChatTombstoneSyncAt = 0;
 let lastMemoryEmbeddingSyncAt = 0;
+let lastMemoryIdleSummarySyncAt = 0;
 const memoryQueue = new MemoryTurnQueue(20, 6);
 let codexSecurity: CodexSecuritySettings = DEFAULT_CODEX_SECURITY;
 let heartbeatSequence = 0;
@@ -303,6 +305,27 @@ async function run(): Promise<void> {
           activeController = null;
         }
         lastMemoryEmbeddingSyncAt = Date.now();
+      } else if (knowledgeClient && config.workerId
+        && Date.now() - lastMemoryIdleSummarySyncAt >= MEMORY_IDLE_SUMMARY_SYNC_INTERVAL_MS) {
+        lastMemoryIdleSummarySyncAt = Date.now();
+        const candidates = await knowledgeClient.idleMemorySummaryCandidates(workerId);
+        for (const candidate of candidates) {
+          for (const exchange of candidate.exchanges) {
+            if (!memoryQueue.enqueue({
+              jobId: candidate.job_id,
+              chatId: candidate.chat_id,
+              input: exchange.input,
+              output: exchange.output,
+              shouldExtract: true,
+              summaryDue: true,
+              summaryOnly: true,
+              metric: null,
+            })) {
+              throw new Error('La cola local de memoria está llena; no se pudo programar un resumen inactivo.');
+            }
+          }
+          process.stdout.write(`[AI Bridge] Se programó un resumen por inactividad para el chat ${candidate.chat_id}.\n`);
+        }
       } else await delay(POLL_INTERVAL_MS);
     } catch (error) {
       const safeMessage = reportError(error instanceof Error ? error.message : 'Error de conexión.');

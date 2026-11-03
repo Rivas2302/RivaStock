@@ -1,0 +1,49 @@
+{
+  "version": "chat-history-v1",
+  "cases": [
+    {
+      "id": "H01-last-questions",
+      "question": "¿Cuáles fueron mis últimas preguntas?",
+      "chats": [
+        {
+          "title": "Pedido de estufas",
+          "last_message_at": "2026-11-02T18:30:00.000Z",
+          "first_questions": ["¿Cuándo llega el pedido de estufas?", "¿Qué garantía tiene el modelo Boreal 2000?"],
+          "summary": "Se consultó al proveedor Calor Sur; quedó pendiente confirmar si la entrega se mantiene para el jueves."
+        },
+        {
+          "title": "Horario de verano",
+          "last_message_at": "2026-11-02T17:20:00.000Z",
+          "first_questions": ["¿A qué hora abre el local los sábados?"],
+          "summary": "Se definió abrir a las 9 los sábados durante noviembre."
+        }
+      ],
+      "must_mention": ["pedido de estufas", "cuándo llega", "horario de verano", "abre el local los sábados"]
+    },
+    {
+      "id": "H02-other-chats",
+      "question": "¿Y en los otros chats?",
+      "chats": [
+        {
+          "title": "Reclamo de envíos",
+          "last_message_at": "2026-11-02T19:10:00.000Z",
+          "first_questions": ["¿Qué transportista cubre Neuquén?"],
+          "summary": "Correo Andino reemplazó a Transporte Sur para Neuquén; falta confirmar el plazo del próximo retiro."
+        },
+        {
+          "title": "Revisión de stock",
+          "last_message_at": "2026-11-02T18:45:00.000Z",
+          "first_questions": ["¿Qué productos están por debajo del mínimo?"],
+          "summary": "Se revisó Cargadores; quedan dos cables Lightning y hay que reponerlos."
+        },
+        {
+          "title": "Horario de verano",
+          "last_message_at": "2026-11-02T17:20:00.000Z",
+          "first_questions": ["¿A qué hora abre el local los sábados?"],
+          "summary": "Se definió abrir a las 9 los sábados durante noviembre."
+        }
+      ],
+      "must_mention": ["reclamo de envíos", "neuquén", "revisión de stock", "cargadores", "dos cables lightning"]
+    }
+  ]
+}

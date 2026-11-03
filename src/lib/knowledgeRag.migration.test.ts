@@ -19,6 +19,12 @@ const VECTOR_MIGRATION = '20261025184236_knowledge_vector_extension.sql';
 const RAG_MIGRATION = '20261025184450_knowledge_rag.sql';
 const ORGANIZE_MIGRATION = '20261025233450_knowledge_organize.sql';
 const RETRIEVAL_MIGRATION = '20261026020609_knowledge_chat_retrieval.sql';
+const MEMORY_MIGRATIONS = [
+  '20261026231901_ai_memory_shared_store.sql',
+  '20261026233017_ai_memory_worker_helpers.sql',
+  '20261026235518_ai_memory_ui_reembed.sql',
+  '20261103163908_ai_memory_chat_history_and_idle_summaries.sql',
+];
 const BASE_MIGRATIONS = [
   '0076_ai_bridge.sql',
   '20261019222648_ai_agent_workspace.sql',
@@ -118,7 +124,8 @@ async function createDatabase(includeRag = true): Promise<PGlite> {
   }
 
   if (includeRag) {
-    for (const filename of [VECTOR_MIGRATION, RAG_MIGRATION, ORGANIZE_MIGRATION, RETRIEVAL_MIGRATION]) {
+    for (const filename of [VECTOR_MIGRATION, RAG_MIGRATION, ORGANIZE_MIGRATION,
+      RETRIEVAL_MIGRATION, ...MEMORY_MIGRATIONS]) {
       try {
         await database.exec(readFileSync(new URL(filename, MIGRATIONS), 'utf8'));
       } catch (error) {
@@ -710,11 +717,11 @@ describe('Knowledge chat retrieval migration', () => {
     await asUser(OWNER);
     await db.query('SELECT knowledge_update_settings(true, 2, 0)');
     const retried = await retrieveKnowledge(jobId);
-    expect((retried.sources as Array<Record<string, unknown>>).map((source) => source.label)).toEqual(['K1', 'K2']);
+    expect((retried.sources as Array<Record<string, unknown>>).map((source) => source.label)).toEqual(['K1']);
     await asSystem();
     expect((await db.query<{ count: number }>(
       'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [jobId],
-    )).rows[0].count).toBe(2);
+    )).rows[0].count).toBe(1);
   });
 
   it('honors the disabled setting and minimum similarity threshold', async () => {
@@ -736,6 +743,18 @@ describe('Knowledge chat retrieval migration', () => {
     expect((await db.query<{ count: number }>(
       'SELECT count(*)::int AS count FROM ai_job_knowledge_sources WHERE job_id = $1', [enabledJob],
     )).rows[0].count).toBe(0);
+  });
+
+  it('suppresses low-relevance Knowledge sources even when the saved threshold is zero', async () => {
+    await registerDevice();
+    await indexedDocument('Low relevance retrieval', 'La cámara del depósito funciona con el puerto 8080.', 1);
+    const jobId = '30000000-0000-4000-8000-000000000007';
+    await createTextJob(jobId);
+    await asUser(OWNER);
+    await db.query('SELECT knowledge_update_settings(true, 6, 0)');
+
+    const result = await retrieveKnowledge(jobId, makeVector(39));
+    expect(result).toMatchObject({ enabled: true, sources: [] });
   });
 
   it('rejects jobs reserved by another worker or for a different task type', async () => {

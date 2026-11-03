@@ -4,6 +4,7 @@ import { containsSensitiveMemoryData, hasExplicitMemoryCommand, isMemoryForgetCo
 import { buildExtractionPrompt, extractMemoryOperations, validateMemoryOperations } from '../src/memory/extract.ts';
 import { MemoryTurnQueue } from '../src/memory/queue.ts';
 import { buildMemoryContext, retrieveMemory, type MemoryItem } from '../src/memory/retrieve.ts';
+import { buildChatHistoryContext, referencesChatHistory } from '../src/memory/chatHistory.ts';
 import { processMemoryBatch } from '../src/memory/processor.ts';
 import { executeTextGeneration } from '../src/executeTextGeneration.ts';
 import { buildProviderPrompt } from '../src/providers.ts';
@@ -80,6 +81,27 @@ test('response prompt gives a direct, accurate acknowledgment for memory command
   }), /memoria compartida está desactivada/);
 });
 
+test('detects history questions and builds a bounded, same-user chat index context', () => {
+  assert.equal(referencesChatHistory('¿Cuáles fueron mis últimas preguntas?'), true);
+  assert.equal(referencesChatHistory('¿Y en los otros chats?'), true);
+  assert.equal(referencesChatHistory('¿Qué día abre el local?'), false);
+  const context = buildChatHistoryContext([{
+    title: 'Pedidos de invierno', last_message_at: '2026-11-02T15:30:00.000Z',
+    first_questions: ['¿Cuándo llega el pedido de estufas?'],
+    summary: 'Se consultó por el proveedor y quedó pendiente confirmar la fecha.',
+  }]);
+  assert.match(context, /Pedidos de invierno/);
+  assert.match(context, /¿Cuándo llega el pedido de estufas\?/);
+  assert.match(context, /confirmar la fecha/);
+  assert.match(context, /Nunca digas que no tenés acceso a otros chats/);
+  assert.ok(buildChatHistoryContext([{ title: 'a', last_message_at: '2026-11-02',
+    first_questions: ['x'], summary: 'y'.repeat(3000) }], 300).length <= 300);
+});
+
+test('provider prompt forbids claiming that earlier RivaStock chats are inaccessible', () => {
+  assert.match(buildProviderPrompt('¿Y en los otros chats?', ''), /Never claim that you cannot access other chats/);
+});
+
 test('local prefilter avoids greetings and questions without statements, but keeps explicit commands', () => {
   assert.equal(shouldSkipMemoryPrefilter('Gracias'), true);
   assert.equal(shouldSkipMemoryPrefilter('¿Qué horarios manejan?'), true);
@@ -145,6 +167,27 @@ test('limits extraction to 3000 exchange characters, eight similar memories, and
   });
   assert.deepEqual(result.operations, []);
   assert.equal(embedded, 0);
+});
+
+test('idle summary extraction accepts only a summary operation', async () => {
+  let prompt = '';
+  let embedded = 0;
+  const result = await extractMemoryOperations({
+    provider: { async execute(value) {
+      prompt = value;
+      return { output: JSON.stringify({ operations: [
+        { op: 'add', kind: 'fact', content: 'El local abre los martes.' },
+        { op: 'add', kind: 'summary', content: 'Se consultó el horario del local.' },
+      ] }) };
+    } },
+    signal: new AbortController().signal,
+    exchanges: [{ input: '¿Qué horario tiene el local?', output: 'Abre los martes.' }],
+    similar: [], summaryDue: true, summaryOnly: true,
+    dependencies: { embed: async (texts) => { embedded += texts.length; return [Array(384).fill(0)]; } },
+  });
+  assert.match(prompt, /No agregues hechos, preferencias/);
+  assert.deepEqual(result.operations, [{ op: 'add', kind: 'summary', content: 'Se consultó el horario del local.' }]);
+  assert.equal(embedded, 1);
 });
 
 test('sensitive extracted values are removed before embeddings and apply payload creation', async () => {
@@ -331,6 +374,41 @@ test('queues a summary on the tenth message even when its last user message is s
   });
   assert.equal(queued[0]?.shouldExtract, true);
   assert.equal(queued[0]?.summaryDue, true);
+});
+
+test('adds the same-owner recent chat index only for questions about earlier conversations', async () => {
+  let chatIndexCalls = 0;
+  let context = '';
+  const base = {
+    job: { id: jobId, input: '¿Cuáles fueron mis últimas preguntas?' },
+    provider: { async execute(_input: string, _signal: AbortSignal, suppliedContext: string) {
+      context = suppliedContext;
+      return { output: 'Preguntaste por el pedido de estufas.' };
+    } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: chatId, provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [], knowledgeClient: null, workerId: 'worker', knowledgeEnabled: false,
+    memoryWorkerId: 'worker', providerOptions: {}, complete: async () => undefined, log() {},
+    memoryRetrievalDependencies: { embed: async () => Array(384).fill(0) },
+    memoryClient: {
+      async memoryRetrieve() { return { enabled: true, mode: 'auto' as const, top_k: 5,
+        include_summaries: true, user_turn_count: 2, message_count: 3, memories: [] }; },
+      async memoryChatIndex() {
+        chatIndexCalls += 1;
+        return [{ title: 'Pedidos de invierno', last_message_at: '2026-11-02T15:30:00.000Z',
+          first_questions: ['¿Cuándo llega el pedido de estufas?'], summary: 'Quedó pendiente confirmar la fecha.' }];
+      },
+    },
+  };
+  await executeTextGeneration(base);
+  assert.equal(chatIndexCalls, 1);
+  assert.match(context, /Pedidos de invierno/);
+  assert.match(context, /pedido de estufas/);
+
+  chatIndexCalls = 0;
+  await executeTextGeneration({ ...base, job: { id: jobId, input: '¿Qué horario tiene el local?' } });
+  assert.equal(chatIndexCalls, 0);
 });
 
 test('queue batches only the same chat and enforces its pending limit', () => {

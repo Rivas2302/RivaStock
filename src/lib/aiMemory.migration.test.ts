@@ -31,6 +31,7 @@ const FILES = [
   '20261026231901_ai_memory_shared_store.sql',
   '20261026233017_ai_memory_worker_helpers.sql',
   '20261026235518_ai_memory_ui_reembed.sql',
+  '20261103163908_ai_memory_chat_history_and_idle_summaries.sql',
 ];
 const EMBEDDING = `[${[1, ...Array(383).fill(0)].join(',')}]`;
 
@@ -94,11 +95,43 @@ async function seedChatAndJob(owner: string, device: string, chatId: string, job
     VALUES ($1, $2, $3, 'user', 'What did we decide?')`, [owner, chatId, jobId]);
 }
 
+async function seedCompletedChat(owner: string, device: string, chatId: string, jobId: string, title: string): Promise<void> {
+  await db.query(`INSERT INTO public.ai_bridge_devices (id, user_id, name)
+    VALUES ($1, $2, 'Test PC') ON CONFLICT (id) DO NOTHING`, [device, owner]);
+  await db.query(`INSERT INTO public.ai_chats (id, user_id, provider, title, last_message_at)
+    VALUES ($1, $2, 'mock', $3, now() - interval '45 minutes')`, [chatId, owner, title]);
+  await db.query(`INSERT INTO public.ai_jobs (
+      id, user_id, idempotency_key, provider, input, output, status, completed_at, chat_id, created_at
+    ) VALUES ($1, $2, $3, 'mock', '¿Qué definimos?', 'Se acordó el despacho los martes.',
+      'completed', now() - interval '45 minutes', $4, now() - interval '45 minutes')`,
+  [jobId, owner, `50000000-0000-4000-8000-${jobId.slice(-12)}`, chatId]);
+  await db.query(`INSERT INTO public.ai_chat_messages (user_id, chat_id, job_id, role, content, created_at)
+    VALUES ($1, $2, $3, 'user', '¿Qué definimos?', now() - interval '45 minutes'),
+      ($1, $2, $3, 'assistant', 'Se acordó el despacho los martes.', now() - interval '44 minutes')`,
+  [owner, chatId, jobId]);
+}
+
 async function worker(owner: string, device: string, job: string, operation: string, payload: Record<string, unknown>) {
   await asService();
   const { rows } = await db.query<{ result: Record<string, unknown> }>(
     'SELECT public.ai_memory_worker($1, $2, $3, $4, $5::jsonb) AS result',
     [owner, device, operation, job, JSON.stringify(payload)],
+  );
+  return rows[0]?.result;
+}
+
+async function chatIndex(owner: string, device: string, job: string) {
+  await asService();
+  const { rows } = await db.query<{ result: { chats: Array<{ title: string }> } }>(
+    'SELECT public.ai_memory_chat_index($1, $2, $3) AS result', [owner, device, job],
+  );
+  return rows[0]?.result;
+}
+
+async function idleSummaryCandidates(owner: string, device: string, limit = 1) {
+  await asService();
+  const { rows } = await db.query<{ result: { candidates: Array<Record<string, unknown>> } }>(
+    'SELECT public.ai_memory_idle_summary_candidates($1, $2, $3) AS result', [owner, device, limit],
   );
   return rows[0]?.result;
 }
@@ -117,6 +150,47 @@ async function insertMemory(options: {
 }
 
 describe('ai_memory_shared_store migration', () => {
+  it('returns the recent chat index only for the worker owner and excludes the active chat', async () => {
+    await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
+    await seedCompletedChat(OWNER, DEVICE, OTHER_CHAT, OTHER_JOB, 'Historial del propietario');
+    const foreignChat = '30000000-0000-4000-8000-000000000003';
+    const foreignJob = '40000000-0000-4000-8000-000000000003';
+    await seedCompletedChat(OTHER, OTHER_DEVICE, foreignChat, foreignJob, 'Historial de otro negocio');
+
+    expect((await chatIndex(OWNER, DEVICE, JOB))?.chats.map((chat) => chat.title))
+      .toEqual(['Historial del propietario']);
+    await db.exec('SAVEPOINT wrong_owner');
+    await expect(db.query('SELECT public.ai_memory_chat_index($1, $2, $3)', [OTHER, DEVICE, JOB]))
+      .rejects.toThrow('Computadora desvinculada');
+    await db.exec('ROLLBACK TO SAVEPOINT wrong_owner; RELEASE SAVEPOINT wrong_owner;');
+  });
+
+  it('claims only this owner’s chats idle for 30 minutes and returns their recent exchanges', async () => {
+    const ownerChat = '30000000-0000-4000-8000-000000000004';
+    const ownerJob = '40000000-0000-4000-8000-000000000004';
+    const foreignChat = '30000000-0000-4000-8000-000000000005';
+    const foreignJob = '40000000-0000-4000-8000-000000000005';
+    await seedCompletedChat(OWNER, DEVICE, ownerChat, ownerJob, 'Resumen elegible');
+    await seedCompletedChat(OTHER, OTHER_DEVICE, foreignChat, foreignJob, 'Resumen ajeno');
+
+    const result = await idleSummaryCandidates(OWNER, DEVICE);
+    expect(result?.candidates).toHaveLength(1);
+    expect(result?.candidates[0]).toMatchObject({
+      chat_id: ownerChat,
+      job_id: ownerJob,
+      exchanges: [{ input: '¿Qué definimos?', output: 'Se acordó el despacho los martes.' }],
+    });
+    expect(await idleSummaryCandidates(OWNER, DEVICE)).toMatchObject({ candidates: [] });
+
+    await asSystem();
+    await db.query(`INSERT INTO public.ai_memories
+      (user_id, source_chat_id, source_job_id, kind, content, embedding)
+      VALUES ($1, $2, $3, 'summary', 'Resumen completado.', $4::extensions.vector)`,
+    [OWNER, ownerChat, ownerJob, EMBEDDING]);
+    await db.query('DELETE FROM public.ai_memory_job_claims WHERE user_id = $1 AND job_id = $2', [OWNER, ownerJob]);
+    expect(await idleSummaryCandidates(OWNER, DEVICE)).toMatchObject({ candidates: [] });
+  });
+
   it('invalidates embeddings after an owner edit and lets the worker re-embed summaries', async () => {
     await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
     const summaryId = await insertMemory({ kind: 'summary', content: 'Resumen original.', chat: CHAT });

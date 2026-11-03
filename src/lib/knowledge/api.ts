@@ -64,7 +64,7 @@ export interface KnowledgeJobSource {
 const DEFAULT_CHAT_SETTINGS: KnowledgeChatSettings = {
   chat_retrieval_enabled: true,
   top_k: 6,
-  min_similarity: 0,
+  min_similarity: 0.75,
 };
 
 export async function getKnowledgeChatSettings(): Promise<KnowledgeChatSettings> {
@@ -72,7 +72,12 @@ export async function getKnowledgeChatSettings(): Promise<KnowledgeChatSettings>
     'chat_retrieval_enabled, top_k, min_similarity',
   ).maybeSingle();
   throwQueryError(error);
-  return data ? data as unknown as KnowledgeChatSettings : DEFAULT_CHAT_SETTINGS;
+  if (!data) return DEFAULT_CHAT_SETTINGS;
+  return {
+    chat_retrieval_enabled: data.chat_retrieval_enabled,
+    top_k: data.top_k,
+    min_similarity: Math.max(0.75, Number(data.min_similarity) || 0),
+  };
 }
 
 export async function updateKnowledgeChatSettings(settings: KnowledgeChatSettings): Promise<KnowledgeChatSettings> {

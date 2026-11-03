@@ -39,6 +39,8 @@ const ACTIONS = {
   worker_memory_metric: 'metric',
   worker_memory_finish: 'finish',
   worker_memory_chat_summary: 'chat_summary',
+  worker_memory_chat_index: 'chat_index',
+  worker_memory_idle_summary_candidates: 'idle_summary_candidates',
   worker_memory_pending_embeddings: 'pending_embeddings',
   worker_memory_store_embeddings: 'store_embeddings',
 } as const;
@@ -671,6 +673,26 @@ serve(async (req: Request) => {
         p_owner: ownerUid,
         p_worker: body.worker_id,
         p_job_id: body.job_id,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action === 'worker_memory_chat_index') {
+      const { data, error } = await serviceClient.rpc('ai_memory_chat_index', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_job_id: body.job_id,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
+    if (action === 'worker_memory_idle_summary_candidates') {
+      const { data, error } = await serviceClient.rpc('ai_memory_idle_summary_candidates', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_limit: body.limit ?? 1,
       });
       if (error) return rpcErrorResponse(error);
       return jsonResponse(data as Record<string, unknown>);

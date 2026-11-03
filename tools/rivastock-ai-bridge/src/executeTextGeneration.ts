@@ -4,6 +4,7 @@ import { buildMemoryContext, retrieveMemory, type MemoryRetrievalDependencies } 
 import { hasExplicitMemoryCommand, isMemoryForgetCommand, isMemoryUpdateCommand, shouldSkipMemoryPrefilter } from './memory/filters.ts';
 import type { MemoryQueueEntry } from './memory/queue.ts';
 import { embedQuery } from './knowledge/embed.ts';
+import { buildChatHistoryContext, referencesChatHistory } from './memory/chatHistory.ts';
 import type { AIJobContext, AIProjectContext, AIProvider, AIProviderOptions, AIWorkspaceFile } from './types.ts';
 import { createBusinessContext, createCombinedContext } from './workspace.ts';
 
@@ -21,7 +22,7 @@ export interface ExecuteTextGenerationInput {
   complete: (output: string, sessionId?: string) => Promise<void>;
   log: (message: string) => void;
   retrievalDependencies?: Partial<RetrievalDependencies>;
-  memoryClient?: Pick<KnowledgeClient, 'memoryRetrieve'> | null;
+  memoryClient?: Pick<KnowledgeClient, 'memoryRetrieve'> & Partial<Pick<KnowledgeClient, 'memoryChatIndex'>> | null;
   memoryWorkerId?: string | null;
   onMemoryTurn?: (entry: MemoryQueueEntry) => void;
   memoryRetrievalDependencies?: Partial<MemoryRetrievalDependencies>;
@@ -38,6 +39,7 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
     return queryEmbedding;
   };
   let memoryContext = '';
+  let chatHistoryContext = '';
   let memoryTurn: MemoryQueueEntry | null = null;
   let memoryResponseGuidance: AIProviderOptions['memory_response_guidance'];
   if (input.memoryClient && input.memoryWorkerId) {
@@ -57,6 +59,16 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
         }
       }
       if (memories.enabled) memoryContext = buildMemoryContext(memories.memories);
+      if (memories.enabled && memories.mode !== 'off' && referencesChatHistory(input.job.input)
+        && input.memoryClient.memoryChatIndex) {
+        try {
+          chatHistoryContext = buildChatHistoryContext(
+            await input.memoryClient.memoryChatIndex(input.memoryWorkerId, input.job.id),
+          );
+        } catch {
+          input.log(`No se pudo recuperar el índice de chats anteriores para la tarea ${input.job.id}.`);
+        }
+      }
       if (chatId && memories.enabled && memories.mode !== 'off') {
         const cadenceDue = memories.user_turn_count === 1 || memories.user_turn_count % 3 === 0;
         const summaryDue = memories.message_count > 0 && memories.message_count % 10 === 9;
@@ -85,7 +97,7 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
   input.log(`Tarea ${input.job.id}: ${sources.length} fuentes de Conocimientos.`);
   const result = await input.provider.execute(input.job.input, input.signal,
     createCombinedContext(input.workspaceFiles, input.projectFiles, businessFiles,
-      [memoryContext, buildKnowledgeContext(sources)].filter(Boolean).join('\n\n')),
+      [chatHistoryContext, memoryContext, buildKnowledgeContext(sources)].filter(Boolean).join('\n\n')),
     { ...input.providerOptions, ...(memoryResponseGuidance ? { memory_response_guidance: memoryResponseGuidance } : {}) });
   if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
     throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');

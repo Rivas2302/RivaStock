@@ -5,6 +5,7 @@ export interface MemoryQueueEntry {
   output: string;
   shouldExtract: boolean;
   summaryDue: boolean;
+  summaryOnly?: boolean;
   metric: 'skipped_prefilter' | null;
 }
 

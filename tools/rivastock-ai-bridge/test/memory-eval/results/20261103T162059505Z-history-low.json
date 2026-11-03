@@ -1,0 +1,31 @@
+{
+  "started_at": "2026-11-03T16:20:59.505Z",
+  "completed_at": "2026-11-03T16:21:09.126Z",
+  "provider": "codex",
+  "model_id": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "dataset_version": "chat-history-v1",
+  "dataset_sha256": "ef94f5e0b167a3aa8b6d6a00d35873f9279256b5d3cb6c63a58502366a8d97e7",
+  "passed": 0,
+  "total": 2,
+  "cases": [
+    {
+      "id": "H01-last-questions",
+      "matched": false,
+      "missing": [
+        "horario de verano"
+      ],
+      "output": "Tus últimas preguntas registradas fueron:\n\n- «¿Cuándo llega el pedido de estufas?»\n- «¿Qué garantía tiene el modelo Boreal 2000?»\n- «¿A qué hora abre el local los sábados?»"
+    },
+    {
+      "id": "H02-other-chats",
+      "matched": false,
+      "missing": [
+        "reclamo de envíos",
+        "neuquén",
+        "cargadores"
+      ],
+      "output": "En los otros chats del índice: quedan dos cables Lightning y hay que reponerlos (Revisión de stock), y durante noviembre el local abre los sábados a las 9 (Horario de verano)."
+    }
+  ]
+}

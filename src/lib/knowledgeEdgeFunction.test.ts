@@ -42,6 +42,8 @@ describe('Knowledge Edge Function contract', () => {
       'worker_memory_metric',
       'worker_memory_finish',
       'worker_memory_chat_summary',
+      'worker_memory_chat_index',
+      'worker_memory_idle_summary_candidates',
       'worker_memory_pending_embeddings',
       'worker_memory_store_embeddings',
       'worker_memory_touch_similar',
@@ -52,6 +54,8 @@ describe('Knowledge Edge Function contract', () => {
     expect(functionSource).toContain("rpc('ai_memory_worker'");
     expect(functionSource).toContain("rpc('ai_memory_touch_similar'");
     expect(functionSource).toContain("rpc('ai_memory_chat_summary'");
+    expect(functionSource).toContain("rpc('ai_memory_chat_index'");
+    expect(functionSource).toContain("rpc('ai_memory_idle_summary_candidates'");
     expect(functionSource).toContain("rpc('ai_memory_pending_embeddings'");
     expect(functionSource).toContain("rpc('ai_memory_store_embeddings'");
   });

@@ -1,0 +1,25 @@
+{
+  "started_at": "2026-11-03T16:22:11.853Z",
+  "completed_at": "2026-11-03T16:22:21.784Z",
+  "provider": "codex",
+  "model_id": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "dataset_version": "chat-history-v1",
+  "dataset_sha256": "ef94f5e0b167a3aa8b6d6a00d35873f9279256b5d3cb6c63a58502366a8d97e7",
+  "passed": 2,
+  "total": 2,
+  "cases": [
+    {
+      "id": "H01-last-questions",
+      "matched": true,
+      "missing": [],
+      "output": "Tus últimas preguntas, en orden de fecha, fueron:\n\n- **Pedido de estufas** (2 de noviembre de 2026): “¿Cuándo llega el pedido de estufas?” y “¿Qué garantía tiene el modelo Boreal 2000?”\n- **Horario de verano** (2 de noviembre de 2026): “¿A qué hora abre el local los sábados?”"
+    },
+    {
+      "id": "H02-other-chats",
+      "matched": true,
+      "missing": [],
+      "output": "Los otros chats del índice son:\n\n- **Reclamo de envíos:** Correo Andino reemplazó a Transporte Sur para Neuquén; falta confirmar el plazo del próximo retiro.\n- **Revisión de stock:** se revisaron cargadores y quedan dos cables Lightning por reponer.\n- **Horario de verano:** se definió abrir el local a las 9 los sábados durante noviembre."
+    }
+  ]
+}

@@ -40,6 +40,7 @@ const FILES = [
   '20261026231901_ai_memory_shared_store.sql',
   '20261026233017_ai_memory_worker_helpers.sql',
   '20261026235518_ai_memory_ui_reembed.sql',
+  '20261103163908_ai_memory_chat_history_and_idle_summaries.sql',
 ];
 
 let db: PGlite;

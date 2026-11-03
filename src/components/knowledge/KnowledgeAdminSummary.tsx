@@ -16,7 +16,7 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
   const [latestModel, setLatestModel] = useState<string | null>(null);
   const [chatSettings, setChatSettings] = useState<KnowledgeChatSettings>({
-    chat_retrieval_enabled: true, top_k: 6, min_similarity: 0,
+    chat_retrieval_enabled: true, top_k: 6, min_similarity: 0.75,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState('');
@@ -88,7 +88,7 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={chatSettings.chat_retrieval_enabled} onChange={(event) => setChatSettings((current) => ({ ...current, chat_retrieval_enabled: event.target.checked }))} className="mt-0.5 accent-[#365fad]"/><span><strong>Incluir Conocimientos en Chats y Tareas</strong><span className="mt-0.5 block text-xs text-[var(--ink-muted)]">La IA recibe fragmentos relevantes y puede citar sus fuentes.</span></span></label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block space-y-1.5"><span className="text-xs font-semibold">Fragmentos por consulta</span><input type="number" min={1} max={12} step={1} required value={chatSettings.top_k} onChange={(event) => setChatSettings((current) => ({ ...current, top_k: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
-          <label className="block space-y-1.5"><span className="text-xs font-semibold">Similitud mínima</span><input type="number" min={0} max={0.9} step={0.05} required value={chatSettings.min_similarity} onChange={(event) => setChatSettings((current) => ({ ...current, min_similarity: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/></label>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold">Umbral mínimo de relevancia</span><input type="number" min={0.75} max={0.9} step={0.05} required value={chatSettings.min_similarity} onChange={(event) => setChatSettings((current) => ({ ...current, min_similarity: Number(event.target.value) }))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)]"/><span className="block text-xs text-[var(--ink-muted)]">La IA solo recibe fuentes con similitud de 0,75 o mayor.</span></label>
         </div>
         <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={savingSettings || loading} className="inline-flex items-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 py-2 text-xs font-bold text-[var(--action-ink)] disabled:opacity-50">{savingSettings ? <Loader2 size={14} className="animate-spin"/> : null}Guardar configuración</button>{settingsNotice && <span role="status" className="text-xs text-emerald-700 dark:text-emerald-300">{settingsNotice}</span>}</div>
       </form>

@@ -80,6 +80,16 @@ test('KnowledgeClient routes and validates memory retrieval and queued embedding
     if (body.action === 'worker_memory_chat_summary') {
       return new Response(JSON.stringify({ summary: null }), { status: 200 });
     }
+    if (body.action === 'worker_memory_chat_index') {
+      return new Response(JSON.stringify({ chats: [{ title: 'Pedidos de invierno',
+        last_message_at: '2026-11-02T15:30:00.000Z', first_questions: ['¿Cuándo llega el pedido?'],
+        summary: 'Pendiente confirmar fecha.' }] }), { status: 200 });
+    }
+    if (body.action === 'worker_memory_idle_summary_candidates') {
+      return new Response(JSON.stringify({ candidates: [{ chat_id: '123e4567-e89b-42d3-a456-426614174001',
+        job_id: '123e4567-e89b-42d3-a456-426614174000',
+        exchanges: [{ input: '¿Cuándo llega?', output: 'El martes.' }] }] }), { status: 200 });
+    }
     return new Response(JSON.stringify({ stored: 1 }), { status: 200 });
   };
   try {
@@ -94,9 +104,12 @@ test('KnowledgeClient routes and validates memory retrieval and queued embedding
       { id: jobId, kind: 'summary', content: 'Resumen editado.' },
     ]);
     assert.equal(await client.memoryChatSummary(workerId, jobId), null);
+    assert.equal((await client.memoryChatIndex(workerId, jobId))[0]?.title, 'Pedidos de invierno');
+    assert.equal((await client.idleMemorySummaryCandidates(workerId))[0]?.exchanges[0]?.input, '¿Cuándo llega?');
     await client.storeMemoryEmbeddings(workerId, [{ id: jobId, embedding: Array(384).fill(0) }], 'embedding-model');
     assert.deepEqual(requests.map((request) => request.action), [
-      'worker_memory_retrieve', 'worker_memory_similar', 'worker_memory_pending_embeddings', 'worker_memory_chat_summary', 'worker_memory_store_embeddings',
+      'worker_memory_retrieve', 'worker_memory_similar', 'worker_memory_pending_embeddings', 'worker_memory_chat_summary',
+      'worker_memory_chat_index', 'worker_memory_idle_summary_candidates', 'worker_memory_store_embeddings',
     ]);
   } finally {
     globalThis.fetch = originalFetch;

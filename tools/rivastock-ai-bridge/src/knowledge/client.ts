@@ -141,6 +141,19 @@ export interface MemoryRetrievalResult {
   include_summaries: boolean;
 }
 
+export interface MemoryChatHistoryEntry {
+  title: string;
+  last_message_at: string;
+  first_questions: string[];
+  summary: string | null;
+}
+
+export interface IdleMemorySummaryCandidate {
+  chat_id: string;
+  job_id: string;
+  exchanges: Array<{ input: string; output: string }>;
+}
+
 export interface SimilarMemoryResult {
   enabled: boolean;
   memories: Array<Pick<MemoryCandidate, 'id' | 'kind' | 'content' | 'source_chat_id' | 'similarity'>>;
@@ -439,6 +452,54 @@ export class KnowledgeClient {
       worker_id: workerId, job_id: jobId,
     });
     return response.summary === null ? null : validateMemoryCandidate(response.summary);
+  }
+
+  async memoryChatIndex(workerId: string, jobId: string): Promise<MemoryChatHistoryEntry[]> {
+    const response = await this.post<{ chats: unknown }>('worker_memory_chat_index', {
+      worker_id: workerId, job_id: jobId,
+    });
+    if (!Array.isArray(response.chats) || response.chats.length > 8) {
+      throw new Error('El índice de conversaciones anteriores es inválido.');
+    }
+    return response.chats.map((value) => {
+      if (!isRecord(value) || typeof value.title !== 'string' || value.title.length > 80
+        || typeof value.last_message_at !== 'string' || Number.isNaN(Date.parse(value.last_message_at))
+        || !Array.isArray(value.first_questions) || value.first_questions.length > 3
+        || !value.first_questions.every((question) => typeof question === 'string' && question.length <= 400)
+        || (value.summary !== null && (typeof value.summary !== 'string' || value.summary.length > 2000))) {
+        throw new Error('Una conversación del índice tiene datos inválidos.');
+      }
+      return {
+        title: value.title,
+        last_message_at: value.last_message_at,
+        first_questions: value.first_questions as string[],
+        summary: value.summary as string | null,
+      };
+    });
+  }
+
+  async idleMemorySummaryCandidates(workerId: string): Promise<IdleMemorySummaryCandidate[]> {
+    const response = await this.post<{ candidates: unknown }>('worker_memory_idle_summary_candidates', {
+      worker_id: workerId, limit: 1,
+    });
+    if (!Array.isArray(response.candidates) || response.candidates.length > 1) {
+      throw new Error('La lista de resúmenes pendientes es inválida.');
+    }
+    return response.candidates.map((value) => {
+      if (!isRecord(value) || typeof value.chat_id !== 'string' || !UUID_PATTERN.test(value.chat_id)
+        || typeof value.job_id !== 'string' || !UUID_PATTERN.test(value.job_id)
+        || !Array.isArray(value.exchanges) || value.exchanges.length < 1 || value.exchanges.length > 6
+        || !value.exchanges.every((exchange) => isRecord(exchange)
+          && typeof exchange.input === 'string' && exchange.input.length <= 8000
+          && typeof exchange.output === 'string' && exchange.output.length <= 20000)) {
+        throw new Error('Un resumen pendiente de conversación es inválido.');
+      }
+      return {
+        chat_id: value.chat_id,
+        job_id: value.job_id,
+        exchanges: value.exchanges as Array<{ input: string; output: string }>,
+      };
+    });
   }
 
   async pendingMemoryEmbeddings(workerId: string): Promise<PendingMemoryEmbedding[]> {

@@ -98,6 +98,8 @@ type MemoryWorkerAction =
   | 'worker_memory_metric'
   | 'worker_memory_finish'
   | 'worker_memory_chat_summary'
+  | 'worker_memory_chat_index'
+  | 'worker_memory_idle_summary_candidates'
   | 'worker_memory_pending_embeddings'
   | 'worker_memory_store_embeddings'
   | 'worker_memory_touch_similar';
@@ -139,7 +141,11 @@ export function validateMemoryWorkerAction(action: MemoryWorkerAction, body: Mem
         ? null : 'Métrica de memoria inválida.';
     case 'worker_memory_finish':
     case 'worker_memory_chat_summary':
+    case 'worker_memory_chat_index':
       return isUuid(body.job_id) ? null : 'Identificador de tarea inválido.';
+    case 'worker_memory_idle_summary_candidates':
+      return body.limit === undefined || (Number.isSafeInteger(body.limit) && Number(body.limit) >= 1
+        && Number(body.limit) <= 3) ? null : 'Límite de resúmenes inválido.';
     case 'worker_memory_pending_embeddings':
       return null;
     case 'worker_memory_store_embeddings':
@@ -162,7 +168,9 @@ export function memoryWorkerPayload(action: Exclude<MemoryWorkerAction, 'worker_
     case 'worker_memory_metric': return { metric: body.metric, provider: body.provider };
     case 'worker_memory_finish':
     case 'worker_memory_chat_summary':
+    case 'worker_memory_chat_index':
     case 'worker_memory_pending_embeddings': return {};
+    case 'worker_memory_idle_summary_candidates': return { limit: body.limit ?? 1 };
     case 'worker_memory_store_embeddings': return { embeddings: body.embeddings, model: body.model };
   }
 }

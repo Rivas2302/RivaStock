@@ -85,6 +85,7 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
       exchanges: remaining,
       similar: extractionContext,
       summaryDue,
+      summaryOnly: extractEntries.every((entry) => entry.summaryOnly === true),
       providerOptions: {
         ...(similar.extraction_settings ? {
         model_id: similar.extraction_settings.model_id,
