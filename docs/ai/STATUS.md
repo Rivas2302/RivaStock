@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — T7.1 pausada de forma segura; implementación local preservada
+
+- Se implementó localmente el catálogo y la bandeja confirmable para `facebook.publish_product`, con borrador pendiente, validaciones de propietario, revisión en IA/Automatizaciones y confirmación explícita. No hubo migración aplicada, despliegue ni cambio del Bridge.
+- Verificación local: lint, 750/750 pruebas en 122 archivos, build y `perf:check` aprobados. La migración `20261103071448_ai_action_catalog.sql` sigue pendiente; el dry-run con `--include-all` enumeró solo esa migración.
+- `supabase migration list --linked` no pudo autenticar con el rol temporal `cli_login_postgres`; se detuvo el reintento sin aplicar cambios. Este bloqueo queda para resolver dentro de A1 del plan maestro vigente.
+- La tarea del publicador queda abierta y subordinada al nuevo `docs/ai/ACTION_PLAN.md`. Esta implementación se conserva sin desplegar hasta revisar sus requisitos junto con el plan maestro.
+
 ## 2026-11-03 — T5.5 desplegada; T7.1 siguiente
 
 - Antes de migrar, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T065427Z`: 87 tablas y 13.841 filas; `schema.sql` 832.386 B, `data.sql` 40.150.510 B. Los conteos previos, bloques `COPY` exportados y conteos posteriores coincidieron tabla por tabla; `table-counts.csv` contiene 87 filas. Storage: 4 buckets, 374 objetos, 132.374.670 B; inventario, tamaños y SHA-256 verificados. El marcador de backup incompleto no existe.

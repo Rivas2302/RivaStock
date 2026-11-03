@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import type { Product } from '../types';
 import Modal from './Modal';
-import { composeGroupPublicationText, deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication } from '../lib/facebookPublications';
+import { composeGroupPublicationText, deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication, type PublicationContent } from '../lib/facebookPublications';
 import { lastProductGroupUse, rankFacebookGroups, type FacebookGroupPerformance } from '../lib/facebookGroupSuggestions';
 import { formatCurrency } from '../lib/utils';
 import { marketplaceCategories } from '../../extensions/facebook/marketplace-contract.js';
@@ -21,18 +21,24 @@ import { enhanceFacebookPhoto, loadProductPhotoBlob, type FacebookPhotoCrop } fr
 import { deleteFromStorage, supabase, uploadToStorage } from '../lib/db';
 import { supabaseProjectUrl } from '../lib/supabase';
 import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
+import type { AIActionRequest } from '../lib/aiActions';
 
 function localDateTimeInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16);}
 
-export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean }) {
+export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false, actionRequest }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean; actionRequest?: AIActionRequest }) {
   const { ownerUid, isOwner } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const [publicationProduct, setPublicationProduct] = useState(product);
-  const [content, setContent] = useState(() => initialPublication(product));
+  const [content, setContent] = useState<PublicationContent>(() => actionRequest ? {
+    ...initialPublication(product),
+    ...actionRequest.draft_content,
+    photos: productPhotos(product).slice(0, 10),
+  } : initialPublication(product));
   const selectionKey=`facebook-selection:${ownerUid}:${product.id}`;
   const savedSelection=useRef<{marketplace:boolean;groups:string[]}|null>((()=>{try{const value=JSON.parse(localStorage.getItem(selectionKey)??'null');return value&&typeof value.marketplace==='boolean'&&Array.isArray(value.groups)&&value.groups.every((id:unknown)=>typeof id==='string')?value:null;}catch{return null;}})());
-  const [marketplace, setMarketplace] = useState(savedSelection.current?.marketplace??true);
-  const [selectedGroups, setSelectedGroups] = useState<string[]>(savedSelection.current?.groups??[]);
+  const [marketplace, setMarketplace] = useState(actionRequest?.params.marketplace ?? savedSelection.current?.marketplace ?? true);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>(actionRequest?.params.groups ?? savedSelection.current?.groups ?? []);
+  const [actionGroupMode, setActionGroupMode] = useState<'marketplace_groups'|'separate'>(actionRequest?.params.group_mode ?? 'separate');
   const [groups, setGroups] = useState<FacebookGroup[]>([]);
   const [groupPerformance, setGroupPerformance] = useState<FacebookGroupPerformance[]>([]);
   const [devices, setDevices] = useState<FacebookDevice[]>([]);
@@ -44,8 +50,8 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [rehearsalDestination, setRehearsalDestination] = useState('marketplace');
   const [approved, setApproved] = useState(false);
   const [repeatOf,setRepeatOf]=useState<string|null>(null);
-  const [scheduleMode,setScheduleMode]=useState<'now'|'scheduled'>('now');
-  const [scheduleLocal,setScheduleLocal]=useState(()=>localDateTimeInput(new Date(Date.now()+60*60*1000)));
+  const [scheduleMode,setScheduleMode]=useState<'now'|'scheduled'>(actionRequest?.params.schedule_at?'scheduled':'now');
+  const [scheduleLocal,setScheduleLocal]=useState(()=>actionRequest?.params.schedule_at?localDateTimeInput(new Date(actionRequest.params.schedule_at)):localDateTimeInput(new Date(Date.now()+60*60*1000)));
   const [copywritingProposal,setCopywritingProposal]=useState<FacebookCopywritingProposal|null>(null);
   const [copywritingWarnings,setCopywritingWarnings]=useState<string[]>([]);
   const [copywritingSetting,setCopywritingSetting]=useState<AIFunctionSetting>(()=>defaultAIFunctionSetting(ownerUid??'','fb_copywriting'));
@@ -55,10 +61,12 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [photoReview,setPhotoReview]=useState<FacebookPhotoReview|null>(null);
   const [photoReviewPhotoUrls,setPhotoReviewPhotoUrls]=useState<string[]>([]);
   const [photoCrop,setPhotoCrop]=useState<FacebookPhotoCrop>('square');
-  const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal?'compose':'loading');
+  const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal||actionRequest?'compose':'loading');
   const hydrated=useRef(false);
   const viewTouched=useRef(startInRehearsal);
   const submitting = useRef(false);
+  const [conditionReviewed, setConditionReviewed] = useState(!actionRequest?.params.use_ai_copy);
+  const [aiCopyApplied, setAiCopyApplied] = useState(!actionRequest?.params.use_ai_copy);
   // Persist the intent before the request. Reopening or reloading retries the
   // same approved content without generating another job after a lost response.
   const intentStorage = `facebook-intent:${ownerUid}:${product.id}`;
@@ -71,12 +79,12 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         if (active) {
           setGroups(data.groups); setGroupPerformance(data.groupPerformance); setDevices(data.devices); setPublications(data.publications); setReady(true);
           if(!hydrated.current) {
-            if(data.publications.length) {
+            if(data.publications.length&&!actionRequest) {
               // A photo removed from the product since then cannot be approved again.
               const latest=data.publications[0];const current=productPhotos(product);const photos=latest.content.photos.filter(url=>current.includes(url));
               setContent({...latest.content,photos:photos.length?photos:initialPublication(product).photos});
               if(latest.content.schedule_at){const scheduled=new Date(latest.content.schedule_at);if(Number.isFinite(scheduled.getTime())&&scheduled>new Date()){setScheduleMode('scheduled');setScheduleLocal(localDateTimeInput(scheduled));}}
-              if(!savedSelection.current){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
+              if(!savedSelection.current&&!actionRequest){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
             }
             if(!viewTouched.current)setView(data.publications.length?'manage':'compose');
             hydrated.current=true;
@@ -87,7 +95,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     void refresh();
     const timer = setInterval(refresh, 10000);
     return () => { active = false; clearInterval(timer); };
-  }, [product.id, ownerUid]);
+  }, [product.id, ownerUid, actionRequest]);
   useEffect(() => {
     let active = true;
     if (!ownerUid) {
@@ -133,6 +141,10 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   };
   const confirm = () => run(async () => {
     if (!canWrite || !approved) throw new Error('Revisá y aprobá el contenido antes de confirmar.');
+    if (actionRequest?.params.use_ai_copy && !aiCopyApplied) throw new Error('La solicitud pide una propuesta de IA. Generala, aplicala y revisala antes de confirmar.');
+    if (actionRequest && actionGroupMode === 'marketplace_groups' && (!marketplace || selectedGroups.length === 0)) {
+      throw new Error('El modo Marketplace con grupos necesita Marketplace y al menos un grupo seleccionado.');
+    }
     const block=publicationBlock(publications,marketplace,selectedGroups,groups);
     if(block)throw new Error(block);
     if(publications.length&&!repeatOf)throw new Error('Elegí Preparar otra publicación para aprobar un nuevo envío.');
@@ -152,15 +164,33 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     if(scheduleMode==='scheduled'&&(!scheduledAt||!Number.isFinite(scheduledAt.getTime())||scheduledAt<=new Date()))throw new Error('Elegí una fecha y hora futuras para programar la publicación.');
     const schedule_at=scheduledAt?.toISOString()??null;
     const approvedContent = selectedGroups.length ? { ...preparedContent, groupText: groupPublicationText(preparedContent),schedule_at } : {...preparedContent,schedule_at};
-    const payload = { p_product: publicationProduct.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: [...selectedGroups].sort(),...(repeatOf?{p_repeat_of:repeatOf}:{}) };
-    const serialized = JSON.stringify(payload);
-    const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
-    // A changed payload gets a new key. If an earlier attempt did reach the server, a
-    // second first approval is rejected there: history requires p_repeat_of (0052).
-    const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
-    try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
+    const destinationGroupIds = [...selectedGroups].sort();
+    const payload = { p_product: publicationProduct.id, p_content: approvedContent, p_marketplace: marketplace, p_groups: destinationGroupIds,...(repeatOf?{p_repeat_of:repeatOf}:{}) };
+    const actionParams = actionRequest ? {
+      product_id: publicationProduct.id,
+      marketplace,
+      groups: destinationGroupIds,
+      group_mode: actionGroupMode,
+      use_ai_copy: actionRequest.params.use_ai_copy,
+      ...(schedule_at ? { schedule_at } : {}),
+    } : null;
     const requestStarted=performance.now();
-    await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: 'separate' });
+    if (actionRequest && actionParams) {
+      await facebookRpc('confirm_ai_action', {
+        p_request_id: actionRequest.id,
+        p_params: actionParams,
+        p_content: approvedContent,
+        p_repeat_of: repeatOf,
+      });
+    } else {
+      const serialized = JSON.stringify(payload);
+      const previous = (()=>{try{return JSON.parse(localStorage.getItem(intentStorage) ?? 'null') as { payload: string; key: string } | null;}catch{return null;}})();
+      // A changed payload gets a new key. If an earlier attempt did reach the server, a
+      // second first approval is rejected there: history requires p_repeat_of (0052).
+      const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
+      try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
+      await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: 'separate' });
+    }
     void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
     onApproved?.();
     setNotice(schedule_at?`Publicación programada para ${new Date(schedule_at).toLocaleString('es-AR')}. La computadora la tomará cuando llegue el horario y se respete el intervalo de seguridad.`:'Contenido aprobado y guardado. La computadora vinculada procesará los destinos cuando su cola esté activa.');
@@ -273,6 +303,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       condition: copywritingProposal.condition,
     };
     update({ ...nextContent, groupText: composeGroupPublicationText(nextContent, copywritingProposal.group_text) });
+    setAiCopyApplied(true);
     setCopywritingProposal(null);
     setNotice('Propuesta aplicada al formulario. Revisá también el precio, las fotos y los destinos antes de aprobar.');
   };
@@ -306,7 +337,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     if(publications.length){viewTouched.current=true;setView('manage');}
     else onClose();
   };
-  return <Modal isOpen onClose={onClose} title={view==='manage'?'Gestionar producto':view==='loading'?'Cargando publicación':'Preparar publicación'} className="max-w-6xl">
+  return <Modal isOpen onClose={onClose} title={actionRequest?(view==='manage'?'Revisar acción':'Revisar acción de publicación'):view==='manage'?'Gestionar producto':view==='loading'?'Cargando publicación':'Preparar publicación'} className="max-w-6xl">
     <div className="space-y-5">
       {error&&<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800 dark:bg-rose-950/50 dark:text-rose-200">{error}</p>}
       {notice&&<p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">{notice}</p>}
@@ -343,11 +374,12 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       </>:<>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Preparar publicación · {product.name}</h2>
-            <p className="mt-1 text-sm text-slate-500">Los cambios se guardan solo para Facebook. Revisá el contenido y los destinos antes de aprobar.</p>
+          <h2 className="text-lg font-bold">{actionRequest?'Revisar borrador de acción':'Preparar publicación'} · {product.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">{actionRequest?`Solicitud de ${actionRequest.source}. Revisá el borrador, completá los datos faltantes y confirmá solo si querés agregarlo a la cola de Facebook.`:'Los cambios se guardan solo para Facebook. Revisá el contenido y los destinos antes de aprobar.'}</p>
           </div>
           <button type="button" onClick={returnToHistory} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-600"><ArrowLeft size={16}/>{publications.length?'Volver al historial':'Cancelar'}</button>
         </div>
+        {actionRequest&&<p role="status" className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200">{actionRequest.params.use_ai_copy?'La solicitud pide redacción con IA. Elegí primero la condición correcta, generá y aplicá la propuesta, y revisala. ':''}La acción creó solo un borrador. No se agrega nada a la cola hasta que confirmes el contenido, las fotos y los destinos en esta pantalla.</p>}
         {ready&&!publications.length&&<p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Todavía no hay publicaciones registradas para este producto. La extensión revisará Marketplace antes de crear un anuncio y registrará el enlace si logra identificarlo.</p>}
         <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">La PC procesa cada destino por separado. En los grupos crea publicaciones independientes con texto y fotos; no comparte el anuncio de Marketplace. Si no puede verificar el formulario o los permisos, registra el bloqueo sin enviar.</p>
 
@@ -365,7 +397,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
                   {copywritingSetting.provider==='codex'&&<label className="block space-y-1 text-xs font-semibold sm:col-span-2"><span>Razonamiento para esta propuesta</span><select aria-label="Razonamiento para esta propuesta" disabled={busy||copywritingSettingLoading} value={copywritingSetting.reasoning_effort} onChange={event=>setCopywritingSetting(current=>({...current,reasoning_effort:event.target.value as AIFunctionReasoningEffort}))} className={inputClass}><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option><option value="xhigh">Muy alto</option></select></label>}
                   <p className="text-xs text-slate-500 sm:col-span-2">Se inicia desde el modelo predeterminado de «Modelos por función»; este cambio solo afecta esta propuesta.</p>
                 </div>
-                <button type="button" onClick={writeWithAI} disabled={busy||!ready||copywritingSettingLoading||!ownerUid} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-300">{busy?<Loader2 size={15} className="animate-spin"/>:<Sparkles size={15}/>} {busy?'Redactando…':'Redactar con IA'}</button>
+                <button type="button" onClick={writeWithAI} disabled={busy||!ready||copywritingSettingLoading||!ownerUid||Boolean(actionRequest?.params.use_ai_copy&&!conditionReviewed)} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-700 dark:text-indigo-300">{busy?<Loader2 size={15} className="animate-spin"/>:<Sparkles size={15}/>} {busy?'Redactando…':actionRequest?.params.use_ai_copy&&!conditionReviewed?'Elegí la condición antes de redactar':'Redactar con IA'}</button>
               </div>
               <label className="block text-sm">Título<input className={inputClass} value={content.title} maxLength={100} onChange={event=>update({title:event.target.value})}/></label>
               <label className="block text-sm">Descripción<textarea className={inputClass} rows={4} maxLength={5000} value={content.description} onChange={event=>update({description:event.target.value})}/></label>
@@ -383,7 +415,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
               </section>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">Precio<input className={inputClass} type="number" min="0.01" step="0.01" value={content.price} onChange={event=>update({price:Number(event.target.value)})}/></label>
-                <label className="block text-sm">Condición<select aria-label="Condición" className={inputClass} value={content.condition} onChange={event=>update({condition:event.target.value as typeof content.condition})}><option value="new">Nuevo</option><option value="like_new">Usado, como nuevo</option><option value="good">Usado, buen estado</option><option value="fair">Usado, estado aceptable</option></select></label>
+                <label className="block text-sm">Condición<select aria-label="Condición" className={inputClass} value={content.condition} onChange={event=>{update({condition:event.target.value as typeof content.condition});if(actionRequest?.params.use_ai_copy){setConditionReviewed(true);setAiCopyApplied(false);}}}><option value="new">Nuevo</option><option value="like_new">Usado, como nuevo</option><option value="good">Usado, buen estado</option><option value="fair">Usado, estado aceptable</option></select></label>
                 <label className="block text-sm">Ubicación<input className={inputClass} maxLength={160} placeholder="Ciudad o localidad" value={content.location} onChange={event=>update({location:event.target.value})}/></label>
                 <label className="block text-sm">Categoría de Facebook<select aria-label="Categoría de Facebook" className={inputClass} value={content.category} onChange={event=>update({category:event.target.value})}><option value="">Elegí una categoría</option>{marketplaceCategories.map(category=><option key={category} value={category}>{category}</option>)}</select></label>
               </div>
@@ -427,6 +459,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
             <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
               <fieldset className="space-y-2">
                 <legend className="text-sm font-bold">Destinos</legend>
+                {actionRequest&&<label className="block max-w-sm space-y-1 text-sm"><span>Modo de destino</span><select aria-label="Modo de destino" className={inputClass} value={actionGroupMode} onChange={event=>{setActionGroupMode(event.target.value as typeof actionGroupMode);setApproved(false);}}><option value="separate">Marketplace y grupos por separado</option><option value="marketplace_groups">Marketplace con grupos seleccionados</option></select></label>}
                 <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800"><input type="checkbox" checked={marketplace} onChange={event=>{setMarketplace(event.target.checked);setApproved(false);}}/>Marketplace</label>
                 <FacebookGroupPicker groups={groups} devices={devices} selected={selectedGroups} onChange={ids=>{setSelectedGroups(ids);setApproved(false);}} onRefresh={refresh} groupPerformance={groupPerformance} category={publicationProduct.category} lastProductUse={productGroupUse} allowRecentRepeat={startInRehearsal}/>
                 {validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)&&<p role="alert" className="text-sm text-rose-600">{validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)}</p>}

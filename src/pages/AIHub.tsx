@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { Bot, Brain, Cable, Check, ChevronRight, Clock3, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import AIChats from '../components/AIChats';
 import ConnectionBadge from '../components/ai/ConnectionBadge';
@@ -30,6 +30,7 @@ import {
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
+const AIActionInbox = lazy(() => import('../components/ai/AIActionInbox'));
 const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
 const BridgeSecurityMode = lazy(() => import('../components/ai/BridgeSecurityMode'));
 const AIWorkspace = lazy(() => import('../components/AIWorkspace'));
@@ -51,6 +52,7 @@ function formatDate(value: string): string {
 
 export default function AIHub() {
   const { isOwner, ownerUid } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
   const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
@@ -82,10 +84,20 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection' | 'memory'>('chats');
+  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection' | 'memory' | 'actions'>(() => isOwner && searchParams.get('view') === 'actions' ? 'actions' : 'chats');
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sourceChatId, setSourceChatId] = useState<string | null>(null);
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
+
+  const navigateView = (next: typeof view) => {
+    setView(next);
+    setSearchParams(current => {
+      const updated = new URLSearchParams(current);
+      if (next === 'actions') updated.set('view', 'actions');
+      else updated.delete('view');
+      return updated;
+    }, { replace: true });
+  };
 
   const refreshRecent = useCallback(async () => {
     const { jobs, knowledgeOrganizeJobs: organizeJobs, finishedTaskCount: count } = await getRecentAIJobs();
@@ -404,7 +416,7 @@ export default function AIHub() {
           <h2 className="page-heading text-2xl font-bold md:text-3xl">IA</h2>
           <p className="mt-1 text-sm text-[var(--ink-muted)]">Chats, tareas y conocimiento de tu negocio en un solo lugar.</p>
         </div>
-        <button type="button" onClick={() => setView('connection')} className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold shadow-sm transition hover:border-[var(--line-strong)]" aria-label={`Estado de la PC: ${bridgeState === null ? 'consultando' : bridgeState === 'idle' ? 'conectada' : bridgeState === 'busy' ? 'ocupada' : 'desconectada'}. Abrir conexión`}>
+        <button type="button" onClick={() => navigateView('connection')} className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold shadow-sm transition hover:border-[var(--line-strong)]" aria-label={`Estado de la PC: ${bridgeState === null ? 'consultando' : bridgeState === 'idle' ? 'conectada' : bridgeState === 'busy' ? 'ocupada' : 'desconectada'}. Abrir conexión`}>
           <ConnectionBadge state={bridgeState}/>
           <ChevronRight size={15} className="text-[var(--ink-muted)]"/>
         </button>
@@ -416,23 +428,26 @@ export default function AIHub() {
         {([
           { id: 'chats', label: 'Chats', icon: MessageSquare },
           { id: 'tasks', label: 'Tareas', icon: ListChecks },
+          ...(isOwner ? [{ id: 'actions' as const, label: 'Acciones', icon: ClipboardCheck }] : []),
           { id: 'library', label: 'Skills', icon: Wand2 },
           { id: 'memory', label: 'Memoria', icon: Brain },
           { id: 'connection', label: 'Conexión', icon: Cable },
-        ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
+        ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => navigateView(id)} aria-current={view === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${view === id ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}><Icon size={17}/>{label}</button>)}
         <Link to="/ia/conocimientos" className="inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink)]"><Library size={17}/>Conocimientos</Link>
       </nav>
 
       {view === 'chats' && <AIChats
         initialChatId={sourceChatId}
-        onOpenMemory={(memoryId) => { setSelectedMemoryId(memoryId); setView('memory'); }}
+        onOpenMemory={(memoryId) => { setSelectedMemoryId(memoryId); navigateView('memory'); }}
       />}
 
       {view === 'library' && <Suspense fallback={null}><AIWorkspace/></Suspense>}
 
+      {view === 'actions' && <Suspense fallback={<div role="status" className="py-8 text-sm text-[var(--ink-muted)]">Cargando acciones…</div>}><AIActionInbox/></Suspense>}
+
       {view === 'memory' && <Suspense fallback={<div className="flex items-center gap-2 py-8 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando memoria…</div>}><AIMemory
         initialSelectedId={selectedMemoryId}
-        onOpenChat={(chatId) => { setSourceChatId(chatId); setView('chats'); }}
+        onOpenChat={(chatId) => { setSourceChatId(chatId); navigateView('chats'); }}
       /></Suspense>}
 
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
