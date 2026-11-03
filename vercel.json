@@ -4,8 +4,29 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "routes": [
+    {
+      "src": "/p/(?<slug>[a-z0-9][a-z0-9-]{0,63})/(?<productId>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+      "dest": "https://nkfqhuqrgrpfufdymkcr.supabase.co/functions/v1/share?siteHost=rivastock.vercel.app&slug=$slug&productId=$productId",
+      "transforms": [
+        { "type": "response.headers", "op": "set", "target": { "key": "content-type" }, "args": "text/html; charset=utf-8" },
+        { "type": "response.headers", "op": "delete", "target": { "key": "content-security-policy" } },
+        { "type": "response.headers", "op": "set", "target": { "key": "content-security-policy" }, "args": "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'" }
+      ]
+    },
+    {
+      "src": "/p/(?<slug>[a-z0-9][a-z0-9-]{0,63})",
+      "dest": "https://nkfqhuqrgrpfufdymkcr.supabase.co/functions/v1/share?siteHost=rivastock.vercel.app&slug=$slug",
+      "transforms": [
+        { "type": "response.headers", "op": "set", "target": { "key": "content-type" }, "args": "text/html; charset=utf-8" },
+        { "type": "response.headers", "op": "delete", "target": { "key": "content-security-policy" } },
+        { "type": "response.headers", "op": "set", "target": { "key": "content-security-policy" }, "args": "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'" }
+      ]
+    }
+  ],
   "headers": [
     { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
+    { "source": "/p/:path*", "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "1" }] },
     {
       "source": "/(.*)",
       "headers": [

@@ -13,6 +13,7 @@ import {
   readStoredString,
   writeStoredIds,
 } from '../lib/productPhotos';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import { supabaseProjectUrl } from '../lib/supabase';
 import {
   copyThenShareProductPhotos,
@@ -398,7 +399,7 @@ export default function ProductPhotos() {
 
   const catalogUrlFor = (product: Product): string | null => (
     product.showInCatalog && user?.catalogSlug
-      ? `${window.location.origin}/catalogo/${encodeURIComponent(user.catalogSlug)}/${encodeURIComponent(product.id)}`
+      ? getCatalogShareUrl(window.location.origin, user.catalogSlug, product.id)
       : null
   );
 

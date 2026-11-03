@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import CatalogQRModal from '../components/CatalogQRModal';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -52,6 +53,9 @@ function isTab(value: string): value is Tab {
 
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
+  const catalogShareUrl = user?.catalogSlug
+    ? getCatalogShareUrl(window.location.origin, user.catalogSlug)
+    : '';
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -683,11 +687,11 @@ export default function Settings() {
                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Link del catálogo público</p>
                       <div className="flex gap-2">
                         <div className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-600 dark:text-slate-400 truncate">
-                          {window.location.origin}/catalogo/{user?.catalogSlug}
+                          {catalogShareUrl}
                         </div>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}/catalogo/${user?.catalogSlug}`);
+                            navigator.clipboard.writeText(catalogShareUrl);
                             showMessage('URL copiada al portapapeles');
                           }}
                           className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -1307,7 +1311,7 @@ export default function Settings() {
         <CatalogQRModal
           isOpen={isQRModalOpen}
           onClose={() => setIsQRModalOpen(false)}
-          catalogUrl={`${window.location.origin}/catalogo/${user?.catalogSlug}`}
+          catalogUrl={catalogShareUrl}
           businessName={user?.businessName || 'Mi Tienda'}
         />
       )}

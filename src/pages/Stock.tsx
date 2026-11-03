@@ -27,6 +27,7 @@ import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempot
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
 import { getProductPhotoStorageUrls } from '../lib/productPhotos';
+import { getCatalogShareUrl } from '../lib/catalogShare';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
@@ -1297,7 +1298,7 @@ export default function Stock() {
                       {p.showInCatalog && user?.catalogSlug && (
                         <button
                           onClick={() => {
-                            const url = `${window.location.origin}/catalogo/${user.catalogSlug}/${p.id}`;
+                            const url = getCatalogShareUrl(window.location.origin, user.catalogSlug, p.id);
                             navigator.clipboard.writeText(url);
                           }}
                           title="Copiar enlace del producto en el catálogo"
