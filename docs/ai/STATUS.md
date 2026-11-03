@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:30 ART — B2 revalidada y cerrada
+
+- Antes de B2 comparé ACTION_PLAN y el addendum con Desktop y `origin/main`; la copia Desktop del plan maestro tiene marca de modificación 02/11 22:18 ART y coincide con la vigente. No apareció una copia posterior.
+- `3a9622c` está publicado y Vercel dio `success`; Bridge 1.22.0 está instalado, con un worker y heartbeat reciente. La conversación A guardó martes; B lo recuperó con `M1`; C actualizó el mismo recuerdo a jueves y mostró el chip en el mismo chat; D archivó con la frase exacta y `Deshacer`; E no lo recuperó. El dato sensible se bloqueó y `confirm` creó una propuesta que se descartó. Se borraron desde la app los 11 chats y recuerdos `[QA]` correspondientes.
+- La evaluación real de Codex GPT-6 Luna Bajo pasó **41/41 casos**: importante 20/20, recuperación 20/20, precisión 32/32, actualizaciones 10/10, sensibles 3/3, archivo 12/12, olvidos nuevos 11/11 y 4/4 archivados ausentes. Resultado: `tools/rivastock-ai-bridge/test/memory-eval/results/20261103T100607625Z-low.json`. `ai_function_settings` mantiene `codex / gpt-6-luna / low`.
+- B2 cumple sus criterios y queda `[x]`; Claude sigue diferida y opcional según B3, sin acción para el dueño. No hubo migración nueva.
+- **Siguiente:** B4, cierre documental del addendum. No hay migración o instalación en curso.
+
 ## 2026-11-03 07:28 ART — A2 verificada; corte seguro; A1 sigue abierta
 
 - El worktree está en `main`; no hay migración, despliegue ni instalación del Bridge en curso. No hay cambios de producto sin commitear; `supabase/.temp/cli-latest` es el único cambio preexistente y queda excluido.
