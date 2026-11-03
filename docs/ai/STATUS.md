@@ -1,5 +1,18 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 09:46 ART — G1 completada; miniaturas existentes verificadas
+
+- Comparé la sección G1 de ACTION_PLAN.md de Desktop con el worktree: SHA-256 idéntico; `HEAD` y `origin/main` estaban en `bfa0cc1`. No hubo cambios de especificación.
+- G1 `[x]`: `/fotos` ya estaba implementada y el flujo Playwright cubre Android, iPhone, búsqueda, filtros, galería, compartir, selección múltiple y cuenta vacía. Añadí una prueba de subida que verifica original WebP más miniatura WebP derivada y una prueba del backfill para referencias faltantes.
+- El script quedó corregido para consultar productos con el cliente de service-role y para omitir, contando, referencias cuyo objeto original ya falta; nunca altera ni borra el original. La primera ejecución de aplicación no cargó objetos por un nombre de cliente indefinido; corregí el error, verifiqué que Storage seguía sin cambios y repetí desde cero.
+- Backup previo verificado por `npm run backup:db -- --with-storage`: `%USERPROFILE%\rivastock-backups\20261103T123012Z`, 94 tablas / 13.901 filas, schema 933.447 B, data 40.182.785 B y 377 objetos / 132.538.148 B en cinco buckets. No se imprimieron credenciales.
+- Dry-run y presupuesto: `platform_storage_total_bytes()` confirmó 132.538.148 B; 363 fotos originales existentes, dos referencias huérfanas y una miniatura que ya existía. El plan añadió 362 miniaturas, **11.052.160 B**; Storage quedó en **143.590.308 B**. Verificación SQL: 363 originales disponibles con miniatura y 2 referencias sin original; el conteo y el tamaño coinciden con el resultado del script.
+- **Desvío/riesgo de datos preexistente:** las dos referencias huérfanas no aparecen en Storage ni en los backups locales disponibles. No cambié filas de productos ni eliminé datos. Riva recibió aviso inmediato; el origen de esas dos imágenes sigue sin estar disponible.
+- Hallazgo para A1: el cliente con `sb_secret` de la CLI recibió HTTP 401 en `/rest/v1`; el cliente legado service-role funcionó para leer `products`, y el cliente de Storage funciona con la JWT legacy en `Authorization`. No se imprimió ninguna clave. A1 permanece abierta hasta resolver la compatibilidad antes de desactivar claves legacy.
+- Verificación local: lint aprobado; pruebas focales **31/31**; Playwright móvil **3/3**; suite completa **782/782**. Build y `perf:check` se ejecutan al cerrar el Bloque G.
+- No hubo migraciones. El frontend de G1 ya estaba desplegado desde `4f5f2e0`; esta tarea cierra el backfill y sus verificaciones.
+- **Siguiente:** G2, vistas previas Open Graph para links públicos del catálogo. Las dos fotos ausentes quedan para restaurar desde el original cuando esté disponible.
+
 ## 2026-11-03 08:49 ART — T4.5 completada detrás de la bandera
 
 - T4.5 `[x]`: el selector aparece únicamente con `VITE_FB_MARKETPLACE_GROUP_SHARING_ENABLED=true`, Marketplace activo y grupos seleccionados. Guarda la preferencia por negocio en el navegador, envía `p_mode`/`group_mode`, y el historial presenta el anuncio compartido más el estado y enlaces seguros de cada grupo. Una solicitud de IA en ese modo no se puede confirmar mientras la bandera esté apagada.

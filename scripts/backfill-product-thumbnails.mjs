@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 import {
   createStorageClient,
   getStorageBackupCredentials,
@@ -147,17 +148,21 @@ async function listAllProducts(client) {
 
 function productPhotoPathSet(products, projectRef, objectPaths) {
   const paths = new Set();
+  const missingPaths = new Set();
   for (const product of products) {
     if (typeof product.id !== 'string' || typeof product.user_id !== 'string') continue;
     const expectedPrefix = `${product.user_id}/products/${product.id}/`;
     for (const imageUrl of productImageUrls(product)) {
       const sourcePath = extractAssetsPath(imageUrl, projectRef);
       if (!sourcePath || !sourcePath.startsWith(expectedPrefix) || sourcePath.endsWith('.thumb.webp')) continue;
-      if (!objectPaths.has(sourcePath)) throw new Error('product-photo-object-missing');
+      if (!objectPaths.has(sourcePath)) {
+        missingPaths.add(sourcePath);
+        continue;
+      }
       paths.add(sourcePath);
     }
   }
-  return paths;
+  return { paths, missingReferences: missingPaths.size };
 }
 
 async function convertToWebpThumbnail(page, blob, path) {
@@ -180,40 +185,55 @@ async function convertToWebpThumbnail(page, blob, path) {
     if (!context) throw new Error('canvas-context-unavailable');
     context.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
-    const thumbnail = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((result) => result ? resolve(result) : reject(new Error('webp-encoding-failed')), 'image/webp', 0.82);
-    });
+    const thumbnailDataUrl = canvas.toDataURL('image/webp', 0.82);
     canvas.width = 0;
     canvas.height = 0;
-    if (thumbnail.type !== 'image/webp') throw new Error('webp-encoding-unavailable');
-    const data = new Uint8Array(await thumbnail.arrayBuffer());
-    let binaryOutput = '';
-    for (let offset = 0; offset < data.length; offset += 0x8000) {
-      binaryOutput += String.fromCharCode(...data.subarray(offset, offset + 0x8000));
-    }
-    return btoa(binaryOutput);
+    const webpPrefix = 'data:image/webp;base64,';
+    if (!thumbnailDataUrl.startsWith(webpPrefix)) throw new Error('webp-encoding-unavailable');
+    return thumbnailDataUrl.slice(webpPrefix.length);
   }, { base64: encodedSource, mimeType: sourceType });
   return Buffer.from(encodedThumbnail, 'base64');
 }
 
-async function generateMissingThumbnails(client, page, projectRef) {
-  const inventory = await listAllStorageObjects(client);
+async function generateMissingThumbnails(storageClient, productsClient, page, projectRef) {
+  const inventory = await listAllStorageObjects(storageClient);
   const assetObjects = new Set(inventory.objects.filter((object) => object.bucket === ASSETS_BUCKET).map((object) => object.path));
   const totalBytes = inventory.objects.reduce((total, object) => total + object.size, 0);
-  const products = await listAllProducts(client);
-  const sourcePaths = productPhotoPathSet(products, projectRef, assetObjects);
+  const products = await listAllProducts(productsClient);
+  const { paths: sourcePaths, missingReferences } = productPhotoPathSet(products, projectRef, assetObjects);
   const pending = [];
 
-  for (const sourcePath of sourcePaths) {
+  for (const [index, sourcePath] of [...sourcePaths].entries()) {
     const thumbnailPath = sourcePath.replace(/\.[^./]+$/, '.thumb.webp');
     if (assetObjects.has(thumbnailPath)) continue;
-    const { data, error } = await client.storage.from(ASSETS_BUCKET).download(sourcePath);
+    const { data, error } = await storageClient.storage.from(ASSETS_BUCKET).download(sourcePath);
     if (error || !data) throw new Error('product-photo-download-failed');
-    const bytes = await convertToWebpThumbnail(page, data, sourcePath);
+    let bytes;
+    try {
+      bytes = await convertToWebpThumbnail(page, data, sourcePath);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '';
+      const reason = message
+        .replace(/https?:\/\/\S+/gi, 'url')
+        .replace(/[a-z]:\\\S+/gi, 'path')
+        .replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, 'id')
+        .replace(/[a-z0-9+/=_-]{80,}/gi, 'payload')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 80)
+        || (cause instanceof Error ? cause.name.toLowerCase().replace(/[^a-z0-9-]/g, '') : 'unknown-error');
+      throw new Error(`thumbnail-image-conversion-${index + 1}-${reason}`);
+    }
     pending.push({ path: thumbnailPath, bytes });
   }
 
-  return { currentStorageBytes: totalBytes, pending, sourcePaths: sourcePaths.size };
+  return {
+    currentStorageBytes: totalBytes,
+    pending,
+    sourcePaths: sourcePaths.size,
+    missingPhotoReferences: missingReferences,
+  };
 }
 
 async function verifyBackupFilesForApply(backup) {
@@ -234,11 +254,16 @@ async function runBackfill(argv = process.argv.slice(2)) {
 
   const projectRef = projectRefFromEnvironment();
   const credentials = getStorageBackupCredentials(projectRef);
-  const client = createStorageClient(projectRef, credentials);
+  const storageClient = createStorageClient(projectRef, credentials);
+  // Use a dedicated service-role client for the products query; the Storage
+  // client only injects the legacy JWT on Storage paths.
+  const productsClient = createClient(`https://${projectRef}.supabase.co`, credentials.legacyStorageJwt, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    const plan = await generateMissingThumbnails(client, page, projectRef);
+    const plan = await generateMissingThumbnails(storageClient, productsClient, page, projectRef);
     if (options.confirmedStorageBytes !== null
       && plan.currentStorageBytes !== options.confirmedStorageBytes) {
       throw new Error('storage-total-changed-since-preflight');
@@ -249,17 +274,17 @@ async function runBackfill(argv = process.argv.slice(2)) {
     }
 
     if (options.apply) {
-      const beforeUpload = await listAllStorageObjects(client);
+      const beforeUpload = await listAllStorageObjects(storageClient);
       const beforeBytes = beforeUpload.objects.reduce((total, object) => total + object.size, 0);
       if (beforeBytes !== plan.currentStorageBytes) throw new Error('storage-inventory-changed-during-backfill');
       for (const object of plan.pending) {
-        const { error } = await client.storage.from(ASSETS_BUCKET).upload(object.path, new Blob([object.bytes], { type: 'image/webp' }), {
+        const { error } = await storageClient.storage.from(ASSETS_BUCKET).upload(object.path, new Blob([object.bytes], { type: 'image/webp' }), {
           contentType: 'image/webp',
           upsert: false,
         });
         if (error) throw new Error('thumbnail-upload-failed');
       }
-      const afterUpload = await listAllStorageObjects(client);
+      const afterUpload = await listAllStorageObjects(storageClient);
       const afterBytes = afterUpload.objects.reduce((total, object) => total + object.size, 0);
       if (afterBytes !== plan.currentStorageBytes + addedBytes
         || plan.pending.some((object) => !afterUpload.objects.some((saved) => saved.bucket === ASSETS_BUCKET && saved.path === object.path && saved.size === object.bytes.length))) {
@@ -268,7 +293,8 @@ async function runBackfill(argv = process.argv.slice(2)) {
       console.log(JSON.stringify({
         verification: 'passed',
         backup: backup.backup,
-        productsWithPhotos: plan.sourcePaths,
+        productPhotoObjects: plan.sourcePaths,
+        missingPhotoReferences: plan.missingPhotoReferences,
         thumbnailsAdded: plan.pending.length,
         bytesAdded: addedBytes,
         storageBytesBefore: plan.currentStorageBytes,
@@ -279,7 +305,8 @@ async function runBackfill(argv = process.argv.slice(2)) {
 
     console.log(JSON.stringify({
       verification: 'dry-run',
-      productsWithPhotos: plan.sourcePaths,
+      productPhotoObjects: plan.sourcePaths,
+      missingPhotoReferences: plan.missingPhotoReferences,
       thumbnailsPlanned: plan.pending.length,
       estimatedBytes: addedBytes,
       storageBytesBefore: plan.currentStorageBytes,

@@ -42,6 +42,7 @@ describe('ImageUpload storage guard', () => {
   afterEach(async () => {
     await act(async () => { root.unmount(); });
     host.remove();
+    vi.unstubAllGlobals();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
@@ -66,5 +67,40 @@ describe('ImageUpload storage guard', () => {
     expect(uploadToStorage).not.toHaveBeenCalled();
     expect(host.querySelector('p.text-rose-500')?.textContent)
       .toBe('No hay espacio en la nube de RivaStock. Avisá a RivaTech.');
+  });
+
+  it('uploads a WebP original and its derived thumbnail while exposing only the original URL', async () => {
+    const onChange = vi.fn();
+    rpc.mockResolvedValue({ data: { allowed: true, reason: null }, error: null });
+    uploadToStorage.mockImplementation(async (path: string) => `https://cdn.test/${path}`);
+    optimizeUploadImage.mockImplementation(async (_file: File, maxDimension: number) => new File(
+      [new Uint8Array([maxDimension === 1600 ? 1 : 2])],
+      maxDimension === 1600 ? 'original.webp' : 'thumbnail.webp',
+      { type: 'image/webp' },
+    ));
+    vi.stubGlobal('crypto', { randomUUID: () => 'thumbnail-test-id' });
+
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="product" onChange={onChange} />);
+    });
+
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File([new Uint8Array([9])], 'photo.png', { type: 'image/png' })],
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(optimizeUploadImage.mock.calls.map((call) => call[1])).toEqual([1600, 480]);
+    expect(uploadToStorage).toHaveBeenCalledTimes(2);
+    const originalPath = uploadToStorage.mock.calls[0][0] as string;
+    expect(originalPath).toMatch(/^owner\/products\/product\/.+\.webp$/);
+    expect(uploadToStorage.mock.calls[0][1]).toMatchObject({ type: 'image/webp' });
+    expect(uploadToStorage.mock.calls[1][0]).toBe(`thumbs/${originalPath}`);
+    expect(uploadToStorage.mock.calls[1][1]).toMatchObject({ type: 'image/webp' });
+    expect(onChange).toHaveBeenCalledWith([`https://cdn.test/${originalPath}`]);
   });
 });

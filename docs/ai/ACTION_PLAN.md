@@ -164,7 +164,7 @@ Ahora hay datos de un cliente. Creá en esta PC una tarea programada de Windows 
 
 Pedido de Riva: hoy se pierde mucho tiempo buscando la foto de un producto para mandársela a un cliente, porque hay que desplazarse por toda la lista. Se usa **desde el celular**. Es parte de la gestión comercial: lo reciben **todos los planes**, incluido `base`. Va **inmediatamente después del Bloque F**.
 
-### [ ] G1 Pantalla “Buscar y enviar”
+### [x] G1 Pantalla “Buscar y enviar”
 - **Acceso:** ruta `/fotos` (“Buscar y enviar”), con permiso `stock.read`, como acceso directo en el inicio y en la navegación móvil. Consulta rápida sigue igual.
 - **Búsqueda instantánea** sobre los productos ya cargados en el cliente:
   - normalizar acentos y mayúsculas;
