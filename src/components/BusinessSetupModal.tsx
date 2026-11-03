@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { showToast } from '../lib/toast';
@@ -44,15 +44,23 @@ function defaultCatalogConfig(ownerUid: string, businessName: string, slug: stri
 
 export default function BusinessSetupModal() {
   const { user, isOwner, updateUser } = useAuth();
-  const [businessName, setBusinessName] = useState('');
-  const [currencySymbol, setCurrencySymbol] = useState<string>(CURRENCIES[0].symbol);
+  const [businessName, setBusinessName] = useState(user?.businessName ?? '');
+  const [currencySymbol, setCurrencySymbol] = useState<string>(user?.currencySymbol || CURRENCIES[0].symbol);
   const [phone, setPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const proposedSlug = useMemo(() => slugify(businessName.trim()) || 'tu-negocio', [businessName]);
-  const shouldShow = Boolean(user && isOwner && !user.businessName.trim());
+  const shouldShow = Boolean(user && isOwner && !user.onboardingCompletedAt);
+
+  useEffect(() => {
+    if (!user) return;
+    setBusinessName(user.businessName ?? '');
+    setCurrencySymbol(user.currencySymbol || CURRENCIES[0].symbol);
+    setPhone(user.phone ?? '');
+    setContactEmail(user.email_contact ?? '');
+  }, [user]);
 
   if (!shouldShow || !user) return null;
 
@@ -112,6 +120,7 @@ export default function BusinessSetupModal() {
           phone: phone.trim(),
           email_contact: contactEmail.trim(),
           catalogSlug,
+          onboardingCompletedAt: new Date().toISOString(),
         });
       } catch (cause) {
         if (createdCatalogConfigId) {

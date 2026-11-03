@@ -119,6 +119,9 @@ function validateWorkerConfiguration(): boolean {
 
 function safeDbError(error: { message?: string } | null, status = 400, origin?: string | null): Response {
   const message = error?.message ?? '';
+  if (message.includes('La cuenta del negocio está suspendida. Comunicate con RivaTech.')) {
+    return jsonResponse({ error: 'La cuenta está suspendida. Comunicate con RivaTech.' }, 403, origin);
+  }
   if (message.includes('Solo el propietario')) return jsonResponse({ error: 'Solo el administrador propietario puede usar IA.' }, 403, origin);
   if (message.includes('ya se usó')) return jsonResponse({ error: 'Esta solicitud ya fue enviada con otros datos.' }, 409, origin);
   if (message.includes('Actualizá el AI Bridge')) return jsonResponse({ error: message }, 409, origin);

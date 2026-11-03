@@ -36,6 +36,8 @@ const QuickPrice = lazy(() => import('./pages/QuickPrice'));
 const ProductPhotos = lazy(() => import('./pages/ProductPhotosRoute'));
 const AIHub = lazy(() => import('./pages/AIHub'));
 const Knowledge = lazy(() => import('./pages/Knowledge'));
+const PlatformAdmin = lazy(() => import('./pages/PlatformAdmin'));
+const Welcome = lazy(() => import('./pages/Welcome'));
 
 function OwnerRoute({ children }: { children: React.ReactNode }) {
   const { isOwner } = useAuth();
@@ -81,6 +83,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
+  const { isPlatformAdmin, isPlatformAdminLoading, loading } = useAuth();
+  if (loading || isPlatformAdminLoading) return <PageLoader />;
+  return isPlatformAdmin ? <>{children}</> : <Navigate to="/" replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -94,6 +102,8 @@ function AppRoutes() {
 
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={withSuspense(<Dashboard />)} />
+          <Route path="bienvenida" element={withSuspense(<Welcome />)} />
+          <Route path="plataforma" element={<PlatformAdminRoute>{withSuspense(<PlatformAdmin />)}</PlatformAdminRoute>} />
           <Route path="consulta-rapida" element={withSuspense(<RequirePermission module="stock" action="read"><QuickPrice /></RequirePermission>)} />
           <Route path="fotos" element={withSuspense(<ProductPhotos />)} />
           <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />

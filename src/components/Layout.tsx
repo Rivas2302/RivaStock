@@ -72,7 +72,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
   const { plan, loading: planLoading, error: planError } = useBusinessPlan();
-  const needsBusinessSetup = !user?.businessName?.trim() && isOwner;
+  const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
@@ -196,6 +196,11 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {plan?.status === 'suspended' && (
+          <div role="alert" className="sticky top-0 z-30 border-b border-rose-300 bg-rose-100 px-4 py-3 text-center text-sm font-semibold text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
+            La cuenta está suspendida. Comunicate con RivaTech.
+          </div>
+        )}
         {needsBusinessSetup && (
           <Suspense fallback={<div className="fixed inset-0 z-[100] bg-black/50" />}>
             <BusinessSetupModal />

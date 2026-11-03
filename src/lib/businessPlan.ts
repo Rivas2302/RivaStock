@@ -15,6 +15,13 @@ export interface BusinessPlan {
   limits: Record<string, unknown> & { modules: BusinessModules };
 }
 
+export function getBusinessPlanDisplayName(planCode: string, fallback = 'Plan personalizado'): string {
+  if (planCode === 'base') return 'RivaStock';
+  if (planCode === 'pro') return 'RivaStock IA';
+  if (planCode === 'interno') return 'RivaStock Interno';
+  return fallback;
+}
+
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; plan: BusinessPlan }>();
 const inFlight = new Map<string, Promise<BusinessPlan>>();
@@ -49,7 +56,7 @@ function parseBusinessPlan(value: unknown): BusinessPlan {
 
   return {
     planCode: plan_code,
-    planName: plan_name,
+    planName: getBusinessPlanDisplayName(plan_code, plan_name),
     status: status as BusinessPlan['status'],
     limits: {
       ...limits,

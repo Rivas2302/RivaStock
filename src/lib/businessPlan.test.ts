@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('./supabase', () => ({ supabase: { rpc: mocks.rpc } }));
 
 import {
+  getBusinessPlanDisplayName,
   getBusinessPlanForOwner,
   getMyBusinessPlan,
   invalidateBusinessPlan,
@@ -31,7 +32,7 @@ describe('business plan client', () => {
   it('parses the current owner plan and fails on malformed module flags', async () => {
     await expect(getMyBusinessPlan()).resolves.toMatchObject({
       planCode: 'base',
-      planName: 'Base',
+      planName: 'RivaStock',
       status: 'active',
       limits: { modules: { ai: false, knowledge: false, automation: false } },
     });
@@ -41,6 +42,13 @@ describe('business plan client', () => {
       error: null,
     });
     await expect(getMyBusinessPlan()).rejects.toThrow('La configuración de módulos del plan no es válida.');
+  });
+
+  it('uses customer-facing plan names without changing the internal plan codes', () => {
+    expect(getBusinessPlanDisplayName('base')).toBe('RivaStock');
+    expect(getBusinessPlanDisplayName('pro')).toBe('RivaStock IA');
+    expect(getBusinessPlanDisplayName('interno')).toBe('RivaStock Interno');
+    expect(getBusinessPlanDisplayName('custom', 'Enterprise')).toBe('Enterprise');
   });
 
   it('shares in-flight requests and caches a business plan for five minutes', async () => {

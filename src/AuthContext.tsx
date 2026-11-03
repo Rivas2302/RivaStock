@@ -26,6 +26,7 @@ interface AuthContextType {
   ownerUid: string | null;
   isOwner: boolean;
   isPlatformAdmin: boolean;
+  isPlatformAdminLoading: boolean;
   collaboratorId: string | null;
   permissions: PermissionMatrix;
   allowedInventoryOwnerIds: string[];
@@ -449,6 +450,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ownerUid:       auth?.ownerUid ?? null,
         isOwner:        auth?.isOwner ?? false,
         isPlatformAdmin: Boolean(authUser && platformAdmin?.uid === authUser.uid && platformAdmin.isAdmin),
+        isPlatformAdminLoading: Boolean(authUser && platformAdmin?.uid !== authUser.uid),
         collaboratorId: auth?.collaboratorId ?? null,
         permissions:    auth?.permissions ?? ALL_TRUE_PERMISSIONS,
         allowedInventoryOwnerIds: auth?.allowedInventoryOwnerIds ?? [],

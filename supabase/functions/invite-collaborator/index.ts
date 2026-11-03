@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { hasReachedCollaboratorLimit } from '../_shared/platformAdminRules.ts';
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
@@ -85,6 +86,26 @@ serve(async (req) => {
   if (!isValidPermissions(body.permissions)) {
     return new Response(JSON.stringify({ error: 'Permisos inválidos' }),
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+
+  const { data: businessPlan, error: planError } = await userClient.rpc('my_business_plan');
+  const collaboratorLimit = Number((businessPlan?.limits as Record<string, unknown> | undefined)?.collaborators);
+  if (planError || !Number.isSafeInteger(collaboratorLimit) || collaboratorLimit < 0) {
+    return new Response(JSON.stringify({ error: 'No se pudo verificar el límite de colaboradores del plan.' }),
+      { status: 503, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+  const { count: activeCollaborators, error: countError } = await admin
+    .from('collaborators')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_uid', user.id)
+    .is('revoked_at', null);
+  if (countError || activeCollaborators === null) {
+    return new Response(JSON.stringify({ error: 'No se pudo verificar la cantidad de colaboradores activos.' }),
+      { status: 503, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+  if (hasReachedCollaboratorLimit(activeCollaborators, collaboratorLimit)) {
+    return new Response(JSON.stringify({ error: `Tu plan permite hasta ${collaboratorLimit} colaboradores` }),
+      { status: 403, headers: { ...CORS, 'Content-Type': 'application/json' } });
   }
 
   const normalizedEmail = body.email.trim().toLowerCase();

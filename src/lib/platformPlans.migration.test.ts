@@ -17,6 +17,10 @@ const MODULE_MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261103190000_platform_module_server_guards.sql', import.meta.url),
   'utf8',
 );
+const E7_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261103200000_platform_business_onboarding_and_suspension.sql', import.meta.url),
+  'utf8',
+);
 
 let db: PGlite;
 
@@ -26,19 +30,40 @@ beforeAll(async () => {
     CREATE ROLE anon;
     CREATE ROLE authenticated;
     CREATE SCHEMA auth;
-    CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
+    CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
       SELECT nullif(current_setting('test.uid', true), '')::uuid
     $$;
     CREATE TABLE public.profiles (
       id uuid PRIMARY KEY REFERENCES auth.users(id),
+      email text NOT NULL DEFAULT '',
+      display_name text NOT NULL DEFAULT '',
+      role text NOT NULL DEFAULT 'user',
       business_name text NOT NULL DEFAULT '',
+      business_name_lower text NOT NULL DEFAULT '',
+      currency_symbol text NOT NULL DEFAULT '$',
+      dark_mode boolean NOT NULL DEFAULT false,
+      catalog_slug text,
+      phone text,
+      email_contact text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX profiles_business_name_lower_unique ON public.profiles (business_name_lower) WHERE business_name_lower <> '';
     CREATE TABLE public.collaborators (
       owner_uid uuid NOT NULL,
       user_uid uuid NOT NULL UNIQUE,
-      revoked_at timestamptz
+      email text NOT NULL DEFAULT '',
+      permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
+      role_preset text,
+      invitation_id uuid,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      revoked_at timestamptz,
+      UNIQUE (owner_uid, user_uid)
+    );
+    CREATE TABLE public.invitations (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_uid uuid NOT NULL, email text NOT NULL,
+      permissions jsonb NOT NULL DEFAULT '{}'::jsonb, role_preset text, invited_at timestamptz NOT NULL DEFAULT now(),
+      accepted_at timestamptz, revoked_at timestamptz
     );
     CREATE TABLE public.ai_bridge_devices (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -130,6 +155,9 @@ beforeAll(async () => {
     );
   `);
   await db.exec(MODULE_MIGRATION);
+  await db.exec(E7_MIGRATION);
+  await db.exec(`CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();`);
 }, 60_000);
 
 beforeEach(async () => {
@@ -318,5 +346,72 @@ describe('F2b server-side business module guards', () => {
       "SELECT public.knowledge_owner_for('read')::text AS owner",
     );
     expect(collaboratorKnowledge.rows[0].owner).toBeNull();
+  });
+});
+
+describe('E7 onboarding and suspension migration', () => {
+  it('stores a unique invited business name on normal owner signup', async () => {
+    await db.exec(`INSERT INTO auth.users (id, email, raw_user_meta_data)
+      VALUES ('${NEW_OWNER}', 'new-owner@test.invalid', '{"business_name":"Cliente Nuevo"}'::jsonb);`);
+    const result = await db.query<{ business_name: string; business_name_lower: string }>(
+      `SELECT business_name, business_name_lower FROM public.profiles WHERE id = '${NEW_OWNER}'`,
+    );
+    expect(result.rows[0]).toEqual({ business_name: 'Cliente Nuevo', business_name_lower: 'cliente nuevo' });
+  });
+
+  it('leaves a duplicated owner name empty so onboarding can collect another name', async () => {
+    await db.exec(`INSERT INTO auth.users (id, email) VALUES ('${NEW_OWNER}', 'first-owner@test.invalid');
+      UPDATE public.profiles SET business_name = 'Tienda Repetida', business_name_lower = 'tienda repetida' WHERE id = '${NEW_OWNER}';
+      INSERT INTO auth.users (id, email, raw_user_meta_data)
+      VALUES ('10000000-0000-4000-8000-000000000006', 'new-owner-2@test.invalid', '{"business_name":"Tienda Repetida"}'::jsonb);`);
+    const result = await db.query<{ business_name: string; business_name_lower: string }>(
+      `SELECT business_name, business_name_lower FROM public.profiles WHERE id = '10000000-0000-4000-8000-000000000006'`,
+    );
+    expect(result.rows[0]).toEqual({ business_name: '', business_name_lower: '' });
+  });
+
+  it('keeps collaborator invitations unchanged even when auth metadata contains a business name', async () => {
+    await db.exec(`INSERT INTO public.invitations (id, owner_uid, email, permissions, role_preset)
+      VALUES ('20000000-0000-4000-8000-000000000001', '${RIVA}', 'new-collaborator@test.invalid', '{}'::jsonb, 'employee');
+      INSERT INTO auth.users (id, email, raw_user_meta_data)
+      VALUES ('10000000-0000-4000-8000-000000000006', 'new-collaborator@test.invalid', '{"business_name":"No es un negocio"}'::jsonb);`);
+    const result = await db.query<{ business_name: string; membership_count: number; accepted_at: Date }>(`
+      SELECT p.business_name, (SELECT count(*) FROM public.collaborators c WHERE c.user_uid = p.id) AS membership_count,
+        (SELECT accepted_at FROM public.invitations WHERE id = '20000000-0000-4000-8000-000000000001') AS accepted_at
+      FROM public.profiles p WHERE p.id = '10000000-0000-4000-8000-000000000006'
+    `);
+    expect(result.rows[0].business_name).toBe('');
+    expect(Number(result.rows[0].membership_count)).toBe(1);
+    expect(result.rows[0].accepted_at).toBeTruthy();
+  });
+
+  it('blocks AI task, chat, Facebook approval, and upload writes while suspended', async () => {
+    await db.exec(`INSERT INTO public.business_subscriptions (owner_uid, plan_code, status)
+      VALUES ('${EXTERNAL}', 'pro', 'suspended');`);
+    await asUser(EXTERNAL);
+    const expectSuspended = async (query: string) => {
+      await db.exec('SAVEPOINT suspended_guard');
+      try {
+        await expect(db.query(query)).rejects.toThrow('La cuenta del negocio está suspendida. Comunicate con RivaTech.');
+      } finally {
+        await db.exec('ROLLBACK TO SAVEPOINT suspended_guard; RELEASE SAVEPOINT suspended_guard');
+      }
+    };
+    await expectSuspended(`SELECT public.ai_create_job_with_model(
+      '50000000-0000-4000-8000-000000000011', 'codex', 'pregunta', false, false, 'gpt-6-luna', 'low'
+    )`);
+    await expectSuspended(`SELECT public.ai_send_chat_message(
+      '50000000-0000-4000-8000-000000000012', 'codex', 'pregunta', false, false, 'gpt-6-luna', 'low', NULL
+    )`);
+    await db.exec('RESET ROLE');
+    await expectSuspended(`INSERT INTO public.ai_chats (user_id, provider) VALUES ('${EXTERNAL}', 'codex')`);
+    await db.exec('SET ROLE authenticated');
+    await expectSuspended(`SELECT public.approve_facebook_publication_v2(
+      NULL, NULL, '{}'::jsonb, ARRAY[]::uuid[], false, 'separate'
+    )`);
+    const upload = await db.query<{ result: { allowed: boolean; reason: string } }>(
+      "SELECT public.storage_upload_check('assets', 100) AS result",
+    );
+    expect(upload.rows[0].result).toEqual({ allowed: false, reason: 'suspended' });
   });
 });

@@ -21,8 +21,11 @@ import {
   FileDown,
   ScanLine,
   Images,
+  Building2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { Link } from 'react-router-dom';
+import PlatformDashboardNotices from '../components/PlatformDashboardNotices';
 
 import type jsPDF from 'jspdf';
 import { loadPdfRuntime } from '../lib/pdfRuntime';
@@ -35,7 +38,7 @@ const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_
 export default function Dashboard() {
   const [exporting, setExporting] = useState(false);
   const {
-    user, refetchToken, refetchData, permissions, holdingsEnabled,
+    user, refetchToken, refetchData, permissions, holdingsEnabled, isPlatformAdmin,
     allowedInventoryOwnerIds, defaultInventoryOwnerId, inventoryAccessError,
   } = useAuth();
   const navigate = useNavigate();
@@ -298,6 +301,11 @@ export default function Dashboard() {
           <p className="text-slate-500 dark:text-slate-400">Resumen general de tu negocio</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          {isPlatformAdmin && (
+            <Link to="/plataforma" className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:w-auto">
+              <Building2 size={18} /> Plataforma
+            </Link>
+          )}
           {permissions.stock.read && (
             <button
               onClick={() => navigate('/consulta-rapida')}
@@ -326,6 +334,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <PlatformDashboardNotices />
 
       <div className="dashboard-panel p-4 space-y-2">
         <label htmlFor="stock-valuation-owner" className="block text-sm font-semibold text-slate-900 dark:text-white">

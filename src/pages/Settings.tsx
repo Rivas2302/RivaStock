@@ -371,6 +371,9 @@ export default function Settings() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Configuración</h2>
           <p className="text-slate-500 dark:text-slate-400">Personaliza tu experiencia y gestiona tu negocio</p>
+          {isOwner && !businessPlanLoading && !businessPlanError && businessPlan && (
+            <p className="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">Plan actual: {businessPlan.planName}</p>
+          )}
         </div>
       </div>
 

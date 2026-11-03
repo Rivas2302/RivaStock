@@ -13,6 +13,7 @@ export interface UserProfile {
   catalogSlug?: string;
   phone?: string;
   email_contact?: string;
+  onboardingCompletedAt?: string | null;
 }
 
 export interface Category {
