@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 08:49 ART — T4.5 completada detrás de la bandera
+
+- T4.5 `[x]`: el selector aparece únicamente con `VITE_FB_MARKETPLACE_GROUP_SHARING_ENABLED=true`, Marketplace activo y grupos seleccionados. Guarda la preferencia por negocio en el navegador, envía `p_mode`/`group_mode`, y el historial presenta el anuncio compartido más el estado y enlaces seguros de cada grupo. Una solicitud de IA en ese modo no se puede confirmar mientras la bandera esté apagada.
+- La bandera queda apagada por defecto hasta T4.3. No hubo migraciones, cambios de extensión/Bridge, ensayos, publicaciones ni datos `[QA]`.
+- Verificación: `npm run lint`; `npm test -- --maxWorkers=1` **779/779**; pruebas focales **70/70**; build; `perf:check` aprobado. Inicialmente la ruta Automatizaciones excedía el límite por 203 B; al diferir `PublicationHistory`, terminó en **232.178 B gzip JS**, con entrada **209.019 B JS / 22.208 B CSS**.
+- Comparación antes de la tarea: ACTION_PLAN de Desktop no cambia el orden y conserva checks reiniciados frente a la evidencia del worktree; AI_PUBLISHER de Desktop es anterior al de `main`, cuya especificación T4.5 se siguió. `HEAD` y `origin/main` estaban ambos en `b3d395b` al iniciar.
+- **Siguiente:** continuar con las tareas de código permitidas por §5.2b; T4.3/T4.4 y los ensayos siguen detrás de G2. No hay migración, despliegue o instalación a medias.
+
 ## 2026-11-03 08:31 ART — Pausa segura antes de T4.5
 
 - Detuve el trabajo en un punto seguro: no hay migración, despliegue ni instalación del Bridge en curso. T4.2 está desplegada y verificada; T4.5 sigue abierta y no tiene cambios de producto sin commitear.

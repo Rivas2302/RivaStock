@@ -1,5 +1,14 @@
 # Ejecución del plan del publicador de IA
 
+## 2026-11-03 — T4.5 UI implementada; bandera apagada hasta T4.3
+
+- Antes de empezar comparé los planes con Desktop y `origin/main`. `ACTION_PLAN.md` en Desktop sigue siendo más antiguo y reinicia checks verificados; mantuve las marcas respaldadas por `STATUS.md`. El plan del publicador de Desktop es del 25/10, mientras que el de `main` contiene la especificación vigente de T4.5; seguí `main`.
+- El selector aparece solo con la bandera `VITE_FB_MARKETPLACE_GROUP_SHARING_ENABLED=true`, Marketplace activado y al menos un grupo seleccionado. Ofrece compartir un anuncio desde Marketplace o crear posts separados; la preferencia se conserva en `localStorage` por negocio. El valor predeterminado es `false`; si una solicitud de IA pide el modo aún apagado, la UI impide confirmarla.
+- En `approve_facebook_publication_v2` se envía el modo elegido; las solicitudes de acciones de IA reciben el mismo `group_mode`. El historial presenta el anuncio compartido y una fila por grupo con estado, enlace seguro a la publicación observada y acceso validado al grupo. Las URLs que no pertenecen a Facebook o no cumplen el formato permitido no se convierten en enlaces.
+- Para respetar el presupuesto de la ruta Automatizaciones, `PublicationHistory` y los resultados por grupo se cargan de forma diferida. La primera corrida de `perf:check` superó el límite de esa ruta por 203 B; tras el ajuste final `perf:check` pasó: entrada **209.019 B gzip JS / 22.208 B CSS**; Automatizaciones **232.178 B gzip JS**, bajo el máximo de 240.640 B.
+- Verificación local: lint; `npm test -- --maxWorkers=1` **779/779**; pruebas focales de modo, enlaces e RPC **70/70**; build; `perf:check`. El valor de la bandera estuvo sin definir localmente y por eso se resolvió como apagada. No hubo migraciones, actividad de Bridge/extensión ni publicaciones o datos `[QA]`.
+- **T4.5 [x]** como tarea de UI. No se habilitó ni se probó el envío `marketplace_groups` en producción: sigue detrás de la bandera hasta T4.3 y el ensayo de la extensión continúa bloqueado por §5.2b/G2. Vercel se comprobará después del commit.
+
 ## 2026-11-03 — T4.2 contrato RPC completado
 
 - Antes de la migración comparé `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` con Desktop y `origin/main`. ACTION_PLAN del Desktop sigue siendo la regla maestra; su destino de C0 es 0.5.23. La copia Desktop del plan del publicador tiene fecha 25/10 y es anterior a `main`, así que seguí el contrato más reciente de `main`.

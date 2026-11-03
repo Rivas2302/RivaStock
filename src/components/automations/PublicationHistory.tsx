@@ -1,5 +1,5 @@
 import PublicationDecision from './PublicationDecision';
-import {useState,useEffect} from 'react';
+import {lazy,Suspense,useState,useEffect} from 'react';
 import {Link} from 'react-router-dom';
 import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft,ArrowLeft} from 'lucide-react';
 import {useAuth} from '../../AuthContext';
@@ -9,6 +9,8 @@ import {reviewFacebookUnknownAttempt} from '../../lib/facebookConnection';
 import type {PublicationContent} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
 import ExecutionTraceViewer from './ExecutionTraceViewer';
+
+const FacebookGroupResults = lazy(() => import('./FacebookGroupResults'));
 
 function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:FacebookDelivery;content:PublicationContent;onRefresh:()=>Promise<void>;compact?:boolean}) {
   const {isOwner}=useAuth();
@@ -53,7 +55,7 @@ function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:Faceb
   return <article aria-label={`${delivery.destination.name}: ${deliveryLabel(delivery)}`} className={`space-y-2 rounded-xl bg-slate-50 text-sm dark:bg-slate-800/60 ${compact?'p-2.5':'p-3'}`}>
     {/* Header: name + badge */}
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h4 className="font-semibold">{delivery.destination.name}</h4>
+      <h4 className="font-semibold">{delivery.destination.mechanism==='marketplace_groups'?'Anuncio de Marketplace compartido':delivery.destination.name}</h4>
       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${badgeClass}`}>
         {stateIsError||stateIsWarning?<AlertTriangle size={12}/>:state==='published'?<CheckCircle2 size={12}/>:<Clock3 size={12}/>}
         {deliveryLabel(delivery)}
@@ -64,6 +66,7 @@ function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:Faceb
     {shortStatus&&<p className="text-xs text-slate-500 dark:text-slate-400">{shortStatus}</p>}
     {(stateIsError||stateIsWarning)&&delivery.message&&delivery.message!==shortStatus&&<p className="break-words text-xs text-slate-600 dark:text-slate-300">{delivery.message.length>160?`${delivery.message.slice(0,160)}…`:delivery.message}</p>}
     {delivery.recovery_required&&<p className="text-xs text-rose-600 dark:text-rose-400" role="alert">Llegó evidencia después de una revisión. Otro envío queda bloqueado hasta revisar.</p>}
+    <Suspense fallback={null}><FacebookGroupResults delivery={delivery}/></Suspense>
 
     {/* Candidate found */}
     {candidate&&canWrite&&<div className="space-y-1.5 rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-xs dark:border-indigo-800 dark:bg-indigo-950/40">

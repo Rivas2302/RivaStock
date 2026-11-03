@@ -22,6 +22,7 @@ import { deleteFromStorage, supabase, uploadToStorage } from '../lib/db';
 import { supabaseProjectUrl } from '../lib/supabase';
 import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
 import type { AIActionRequest } from '../lib/aiActions';
+import { FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED, readFacebookGroupPublicationMode, resolveFacebookGroupPublicationMode, saveFacebookGroupPublicationMode, shouldShowFacebookGroupPublicationMode } from '../lib/facebookPublicationMode';
 
 function localDateTimeInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16);}
 
@@ -38,7 +39,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const savedSelection=useRef<{marketplace:boolean;groups:string[]}|null>((()=>{try{const value=JSON.parse(localStorage.getItem(selectionKey)??'null');return value&&typeof value.marketplace==='boolean'&&Array.isArray(value.groups)&&value.groups.every((id:unknown)=>typeof id==='string')?value:null;}catch{return null;}})());
   const [marketplace, setMarketplace] = useState(actionRequest?.params.marketplace ?? savedSelection.current?.marketplace ?? true);
   const [selectedGroups, setSelectedGroups] = useState<string[]>(actionRequest?.params.groups ?? savedSelection.current?.groups ?? []);
-  const [actionGroupMode, setActionGroupMode] = useState<'marketplace_groups'|'separate'>(actionRequest?.params.group_mode ?? 'separate');
+  const [groupMode, setGroupMode] = useState<'marketplace_groups'|'separate'>(()=>actionRequest?.params.group_mode ?? readFacebookGroupPublicationMode(ownerUid));
   const [groups, setGroups] = useState<FacebookGroup[]>([]);
   const [groupPerformance, setGroupPerformance] = useState<FacebookGroupPerformance[]>([]);
   const [devices, setDevices] = useState<FacebookDevice[]>([]);
@@ -67,6 +68,9 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const submitting = useRef(false);
   const [conditionReviewed, setConditionReviewed] = useState(!actionRequest?.params.use_ai_copy);
   const [aiCopyApplied, setAiCopyApplied] = useState(!actionRequest?.params.use_ai_copy);
+  const effectiveGroupMode = resolveFacebookGroupPublicationMode(FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED, groupMode, marketplace, selectedGroups.length);
+  const showGroupModeSelector = shouldShowFacebookGroupPublicationMode(FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED, marketplace, selectedGroups.length);
+  const blockedByUnavailableGroupMode = Boolean(actionRequest?.params.group_mode === 'marketplace_groups' && !FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED);
   // Persist the intent before the request. Reopening or reloading retries the
   // same approved content without generating another job after a lost response.
   const intentStorage = `facebook-intent:${ownerUid}:${product.id}`;
@@ -129,6 +133,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     return () => { active = false; };
   }, [ownerUid]);
   useEffect(()=>{if(ready)try{localStorage.setItem(selectionKey,JSON.stringify({marketplace,groups:selectedGroups}));}catch{/* Storage can be unavailable in private browsing. */}},[ready,selectionKey,marketplace,selectedGroups]);
+  useEffect(()=>{if(!actionRequest)setGroupMode(readFacebookGroupPublicationMode(ownerUid));},[ownerUid,actionRequest]);
   const refresh = async () => {
     const data = await loadFacebookPublicationData(product.id);
     setGroups(data.groups); setDevices(data.devices); setPublications(data.publications);
@@ -142,8 +147,11 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const confirm = () => run(async () => {
     if (!canWrite || !approved) throw new Error('Revisá y aprobá el contenido antes de confirmar.');
     if (actionRequest?.params.use_ai_copy && !aiCopyApplied) throw new Error('La solicitud pide una propuesta de IA. Generala, aplicala y revisala antes de confirmar.');
-    if (actionRequest && actionGroupMode === 'marketplace_groups' && (!marketplace || selectedGroups.length === 0)) {
+    if (actionRequest && effectiveGroupMode === 'marketplace_groups' && (!marketplace || selectedGroups.length === 0)) {
       throw new Error('El modo Marketplace con grupos necesita Marketplace y al menos un grupo seleccionado.');
+    }
+    if (blockedByUnavailableGroupMode) {
+      throw new Error('El modo Marketplace con grupos todavía no está habilitado. Cerrá esta solicitud y elegí publicaciones separadas.');
     }
     const block=publicationBlock(publications,marketplace,selectedGroups,groups);
     if(block)throw new Error(block);
@@ -170,7 +178,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       product_id: publicationProduct.id,
       marketplace,
       groups: destinationGroupIds,
-      group_mode: actionGroupMode,
+      group_mode: effectiveGroupMode,
       use_ai_copy: actionRequest.params.use_ai_copy,
       ...(schedule_at ? { schedule_at } : {}),
     } : null;
@@ -189,7 +197,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       // second first approval is rejected there: history requires p_repeat_of (0052).
       const key = previous?.payload===serialized?previous.key:crypto.randomUUID();
       try{localStorage.setItem(intentStorage, JSON.stringify({ payload: serialized, key }));}catch{/* Storage can be unavailable in private browsing. */}
-      await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: 'separate' });
+      await facebookRpc('approve_facebook_publication_v2', { ...payload, p_intent: key, p_mode: effectiveGroupMode });
     }
     void wakeFacebookPublications(devices.map(device=>device.id),requestStarted);
     onApproved?.();
@@ -459,9 +467,10 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
             <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
               <fieldset className="space-y-2">
                 <legend className="text-sm font-bold">Destinos</legend>
-                {actionRequest&&<label className="block max-w-sm space-y-1 text-sm"><span>Modo de destino</span><select aria-label="Modo de destino" className={inputClass} value={actionGroupMode} onChange={event=>{setActionGroupMode(event.target.value as typeof actionGroupMode);setApproved(false);}}><option value="separate">Marketplace y grupos por separado</option><option value="marketplace_groups">Marketplace con grupos seleccionados</option></select></label>}
                 <label className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800"><input type="checkbox" checked={marketplace} onChange={event=>{setMarketplace(event.target.checked);setApproved(false);}}/>Marketplace</label>
                 <FacebookGroupPicker groups={groups} devices={devices} selected={selectedGroups} onChange={ids=>{setSelectedGroups(ids);setApproved(false);}} onRefresh={refresh} groupPerformance={groupPerformance} category={publicationProduct.category} lastProductUse={productGroupUse} allowRecentRepeat={startInRehearsal}/>
+                {showGroupModeSelector&&<label className="block max-w-sm space-y-1 text-sm"><span>Cómo publicar en grupos</span><select aria-label="Cómo publicar en grupos" className={inputClass} value={effectiveGroupMode} onChange={event=>{const nextMode=event.target.value as typeof groupMode;setGroupMode(nextMode);saveFacebookGroupPublicationMode(ownerUid,nextMode);setApproved(false);}}><option value="marketplace_groups">Desde Marketplace (recomendado)</option><option value="separate">Posts separados en cada grupo</option></select><span className="block text-xs text-slate-500">La preferencia se guarda en este navegador para este negocio.</span></label>}
+                {blockedByUnavailableGroupMode&&<p role="status" className="max-w-xl text-xs text-amber-700 dark:text-amber-300">Esta solicitud pide compartir un anuncio de Marketplace, pero esa opción todavía no está habilitada. No se puede confirmar hasta que el modo esté disponible.</p>}
                 {validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)&&<p role="alert" className="text-sm text-rose-600">{validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds)}</p>}
               </fieldset>
               <Link onClick={onClose} to="/automatizaciones?view=configuration" className="inline-block text-sm font-semibold text-indigo-600 dark:text-indigo-300">Gestionar grupos y conexión</Link>
@@ -481,7 +490,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
             <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
               <h4 className="text-sm font-bold">Destinos seleccionados</h4>
               <ul className="mt-2 space-y-1 text-xs">{[...(marketplace?['Marketplace']:[]),...groups.filter(group=>selectedGroups.includes(group.id)).map(group=>group.name)].map((name,index)=><li key={`${name}-${index}`} className="break-words">{name}</li>)}</ul>
-              {selectedGroups.length>0&&<div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><h4 className="text-sm font-bold">Texto exacto para los grupos</h4><p className="mt-1 text-xs text-slate-500">Publicación directa; no comparte un anuncio de Marketplace.</p><textarea aria-label="Texto exacto para los grupos" className={`${inputClass} mt-2`} rows={8} value={content.groupText??groupPublicationText(content)} onChange={event=>update({groupText:event.target.value})}/></div>}
+              {selectedGroups.length>0&&<div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><h4 className="text-sm font-bold">{effectiveGroupMode==='marketplace_groups'?'Texto para compartir en los grupos':'Texto exacto para los grupos'}</h4><p className="mt-1 text-xs text-slate-500">{effectiveGroupMode==='marketplace_groups'?'Se creará un anuncio en Marketplace y se compartirá en los grupos seleccionados.':'Publicación directa; no comparte un anuncio de Marketplace.'}</p><textarea aria-label={effectiveGroupMode==='marketplace_groups'?'Texto para compartir en los grupos':'Texto exacto para los grupos'} className={`${inputClass} mt-2`} rows={8} value={content.groupText??groupPublicationText(content)} onChange={event=>update({groupText:event.target.value})}/></div>}
             </div>
           </section>
         </fieldset>
@@ -501,7 +510,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy||!canWrite} checked={approved} onChange={event=>setApproved(event.target.checked)}/>Revisé el contenido, las fotos y los destinos y autorizo esta publicación.</label>
-             <button type="button" disabled={busy||!ready||!approved||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':scheduleMode==='scheduled'?'Confirmar y programar':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
+             <button type="button" disabled={busy||!ready||!approved||blockedByUnavailableGroupMode||Boolean(blockReason)||Boolean(validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds))||(publications.length>0&&!repeatOf)} onClick={confirm} className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy?'Guardando…':scheduleMode==='scheduled'?'Confirmar y programar':repeatOf?'Confirmar nueva publicación':'Confirmar y publicar'}</button>
           </div>
         </div>
       </>}

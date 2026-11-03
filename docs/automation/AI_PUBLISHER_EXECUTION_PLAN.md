@@ -359,7 +359,7 @@ Documentar en `docs/automation/SUPERVISOR_CONTRACT.md` e implementar el mismo va
 - Seguimiento posterior (`track`) para grupos en `pending_approval`, como hoy.
 - **Commit:** `feat(facebook): verify each group share of a Marketplace listing`
 
-### [ ] T4.5 UI
+### [x] T4.5 UI
 - En `FacebookPublicationModal.tsx`, cuando están elegidos Marketplace y grupos: selector “Cómo publicar en grupos”:
   - **“Desde Marketplace (recomendado)”**: un anuncio compartido en los grupos (`marketplace_groups`);
   - **“Posts separados en cada grupo”**: el comportamiento actual.

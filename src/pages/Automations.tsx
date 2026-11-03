@@ -8,13 +8,13 @@ import {db} from '../lib/db';
 import type {Product} from '../types';
 import {automationSections} from '../lib/automations';
 import {facebookDeliveryFields,refreshFacebookDeliveryStates,deliveryState,deviceConnected,facebookRpc,type FacebookPublication,type FacebookDevice} from '../lib/facebookPublications';
-import PublicationHistory from '../components/automations/PublicationHistory';
 import PublicationProductPicker from '../components/automations/PublicationProductPicker';
 import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
 import FacebookGroupsSettings from '../components/automations/FacebookGroupsSettings';
 import RehearsalHistory from '../components/automations/RehearsalHistory';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 const FacebookPublicationModal=lazy(()=>import('../components/FacebookPublicationModal'));
+const PublicationHistory=lazy(()=>import('../components/automations/PublicationHistory'));
 const FacebookGroupPerformancePanel=lazy(()=>import('../components/automations/FacebookGroupPerformancePanel'));
 const FacebookPacingSettings=lazy(()=>import('../components/automations/FacebookPacingSettings'));
 const AIActionNotification=lazy(()=>import('../components/automations/AIActionNotification'));
@@ -75,7 +75,7 @@ export default function Automations() {
          <div className="flex flex-wrap gap-3"><label className="min-w-0 flex-1"><span className="sr-only">Buscar en esta página</span><input aria-label="Buscar en esta página" placeholder="Buscar producto en esta página…" value={search} onChange={e=>setSearch(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-600 dark:bg-slate-900"/></label><select aria-label="Filtrar estado" value={filter} onChange={e=>setFilter(e.target.value)} className="max-w-full rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-600 dark:bg-slate-900"><option value="all">Todos los estados</option>{[['pending','Pendientes'],['scheduled','Programadas'],['running','En ejecución'],['submitted','Enviadas'],['pending_approval','Pendientes de aprobación'],['published','Publicadas'],['failed','Preparaciones fallidas'],['unknown','Resultados desconocidos'],['cancelled','Canceladas']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
         {unknownTotal>0&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">{unknownTotal} {unknownTotal===1?'entrega con resultado desconocido requiere':'entregas con resultado desconocido requieren'} revisión.</p>}
         <p className="text-xs text-slate-500">En esta página: {jobs.filter(d=>d.status==='running').length} en ejecución · {jobs.filter(d=>deliveryState(d)==='unknown').length} con resultado desconocido. Actualización cada 10 segundos.</p>
-        {loading?<p role="status" className="p-6 text-center text-slate-500">Cargando publicaciones…</p>:<PublicationHistory publications={visible} onRefresh={refresh} showProductLink layout="cards"/>}
+        {loading?<p role="status" className="p-6 text-center text-slate-500">Cargando publicaciones…</p>:<Suspense fallback={<p role="status" className="p-6 text-center text-slate-500">Cargando historial de publicaciones…</p>}><PublicationHistory publications={visible} onRefresh={refresh} showProductLink layout="cards"/></Suspense>}
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm"><button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={page===0} onClick={()=>navigate({page:String(page-1)})}>Anterior</button><span>Página {page+1} · hasta 50 publicaciones</span><button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={!more} onClick={()=>navigate({page:String(page+1)})}>Siguiente</button></div>
       </>}
     </>}

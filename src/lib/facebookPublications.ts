@@ -160,6 +160,10 @@ export function normalizeGroupUrl(input: string): string {
   }
   return `${url.origin}${url.pathname.replace(/\/$/, '')}`;
 }
+export function safeFacebookGroupUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try { return normalizeGroupUrl(url); } catch { return null; }
+}
 export function deviceConnected(device: FacebookDevice, now = Date.now()): boolean {
   const seen = Date.parse(device.last_seen_at ?? '');
   return !device.revoked_at && Number.isFinite(seen) && now - seen < 150000 && seen <= now;
