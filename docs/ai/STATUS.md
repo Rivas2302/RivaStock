@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — Plan maestro adoptado; T6.1 publicado, selección pendiente
+
+- Copié de `C:\Users\USER\Desktop\IA\RivaStock\docs` `ACTION_PLAN.md`, `MULTI_BUSINESS_EXECUTION_PLAN.md`, el smoke y el SQL multiempresa. Las copias coinciden por SHA-256 con Desktop. El smoke pasó **27 comprobaciones / TODO OK**. Commit `8c31c93` (`docs(ai): adopt master action plan`) está en `main`, pusheado como Rivas2302.
+- T6.1 quedó en un punto seguro: sus dos migraciones ya estaban aplicadas; el commit `6b86b06` está en `main` y Vercel reportó `success`. La ruta publicada de Stock contiene los controles `qaPublishAllowed` y el texto de la opción. La selección del dueño sigue pendiente, así que T6.1 no se marca completa; no se cambió ningún indicador ni se crearon ensayos.
+- Verificación de A2 en esta sesión: `npx vitest run scripts/backup-db.test.ts`, **2/2**. A2, A3 y A4 ya tienen `[x]` y evidencia histórica de pruebas/backups en este archivo. `cli_login_postgres` fue verificado como temporal y vencido; no hay consumidores de su contraseña ni corresponde restablecerla.
+- A1 sigue abierto. Las cinco Edge Functions usan la clave `secret`, la web usa `publishable` y el inventario remoto conserva ambas claves legacy activas. `automation` y `knowledge` aún requieren el JWT legacy en llamadas Storage; la extensión del dispositivo sigue reportando 0.5.15. No desactivé las claves legacy porque se interrumpirían esos flujos. El camino documentado de S3 requiere credenciales de Storage generadas en el Dashboard, sin operación pública de Management API identificada.
+- No hay migraciones, despliegues ni instalaciones del Bridge a medias. El archivo preexistente y ajeno `supabase/.temp/cli-latest` continúa modificado y excluido.
+- **Siguiente:** cerrar lo posible de A1 sin desactivar claves que aún tienen consumidores; seguir B y luego las tareas independientes de C según las puertas y §5.2b.
+
 ## 2026-11-03 — T6.1 preparada; selección del dueño pendiente
 
 - Implementé los indicadores y controles visibles solo para el dueño en Stock y Automatizaciones. Las migraciones `20261103130000_facebook_qa_allowlist` y `20261103140000_facebook_qa_allowlist_policy_perf` ya están aplicadas en producción; la segunda optimiza la política RLS detectada por el advisor. El commit y el despliegue del frontend todavía están pendientes.
