@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — Revisión de puertas y acciones del dueño
+
+- Los documentos del Bloque E ya están en `main` desde `fcbdb36`; volví a ejecutar `node docs/ai/multi-business-sql-smoke.mjs`: 27 comprobaciones, `TODO OK`. La copia de trabajo sigue siendo más reciente que Desktop, así que no la reemplacé por una versión anterior.
+- Reescribí `OWNER_ACTIONS.md` según §8: no hay una acción inmediata, no se pide probar Claude y los ensayos Facebook los crea el agente por RPC. Identifiqué el perfil correcto de Chrome como «Kevin» (`Default`), con la extensión cargada desde `Downloads\rivastock-facebook (17)`.
+- G2 informa un heartbeat reciente, pero la extensión activa es 0.5.15; C0 requiere primero publicar 0.5.17 y su instalación inicial en ese perfil. Cuatro cierres de prueba Facebook siguen esperando una versión compatible y sesión en vivo; por §5.2b no inicio más cambios de extensión y continúo el Bloque E en orden.
+- A1 sigue abierto: el frontend y las funciones ya usan las claves nuevas donde corresponde, pero `automation` y `knowledge` aún requieren el JWT legacy para Storage. No desactivé las claves legacy; el acceso S3 generado requiere Project Settings y el perfil persistente de Playwright no tiene sesión del Dashboard. La rotación queda limitada por ese acceso, no por el vencimiento de `cli_login_postgres`, que ya se confirmó expirado.
+- B4 permanece abierto por las seis tareas históricas `knowledge_organize` con contenido `[QA]`; el flujo actual de C1 no las puede eliminar y no se usará SQL directo.
+- **Siguiente:** continuar E2, que no cambia la extensión ni depende del inicio interactivo de Claude; antes de aplicar su migración, obtener un backup completo verificado con `npm run backup:db`.
+
 ## 2026-11-03 00:30 ART — B4 documentado; cierre final sigue abierto por trazas históricas
 
 - Comparé `ACTION_PLAN.md`, `KNOWLEDGE_ADDENDUM_CLOSEOUT.md` y `AI_PUBLISHER_EXECUTION_PLAN.md` con Desktop: las copias locales son más recientes; conservé las locales. El plan del publicador fija T2.3 en AI Bridge 1.19.0, siguiente menor después del 1.18.0 instalado.
