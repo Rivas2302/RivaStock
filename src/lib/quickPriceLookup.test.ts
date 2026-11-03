@@ -53,6 +53,19 @@ describe('quick price lookup', () => {
     expect(searchProducts([item], 'sin coincidencias')).toEqual([]);
   });
 
+  it('matches every word in any order across searchable fields and ranks name matches first', () => {
+    const nameStartsWithQuery = product({ id: 'name-starts', name: 'WiFi Cámara 360' });
+    const allWordsInName = product({ id: 'name-contains', name: 'Cámara WiFi 360' });
+    const wordsAcrossFields = product({
+      id: 'other-fields', name: 'Cámara compacta', category: 'Conectividad',
+      customFields: { Conectividad: 'WiFi', SKU: 'CAM-360' },
+    });
+    const missingTerm = product({ id: 'missing-term', name: 'Cámara digital' });
+
+    expect(searchProducts([wordsAcrossFields, allWordsInName, nameStartsWithQuery, missingTerm], 'wifi   cámara'))
+      .toEqual([nameStartsWithQuery, allWordsInName, wordsAcrossFields]);
+  });
+
   it('extracts optional SKU, variant/model and image data safely', () => {
     const item = product({ images: ['', 'https://example.com/product.jpg'] });
 

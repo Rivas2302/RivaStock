@@ -25,6 +25,7 @@ import {
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
+import { getProductPhotoStorageUrls } from '../lib/productPhotos';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
@@ -583,9 +584,7 @@ export default function Stock() {
       await db.delete('products', id);
       setProducts(prev => prev.filter(p => p.id !== id));
       if (product) {
-        const allImages = [...new Set(
-          [...(product.images ?? []), product.imageUrl].filter(Boolean) as string[],
-        )];
+        const allImages = getProductPhotoStorageUrls(product);
         const results = await Promise.allSettled(allImages.map(url => deleteFromStorage(url)));
         const failedPaths = failedStorageCleanupPaths(allImages, results);
         if (failedPaths.length > 0) {

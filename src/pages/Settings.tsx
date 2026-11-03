@@ -7,6 +7,7 @@ import { useTheme } from '../components/ThemeProvider';
 import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
+import { getProductPhotoStorageUrls } from '../lib/productPhotos';
 import { optimizeUploadImage } from '../lib/imageOptimization';
 import {
   Category,
@@ -194,6 +195,7 @@ export default function Settings() {
       // Delete products
       for (const product of products) {
         await db.delete('products', product.id);
+        await Promise.allSettled(getProductPhotoStorageUrls(product).map(deleteFromStorage));
       }
     }
     
@@ -327,9 +329,15 @@ export default function Settings() {
           if (item.id) {
             // Special handling for catalog: only delete if showInCatalog is true
             if (selectedModules.catalog && !selectedModules.products && col === 'products') {
-              if (item.showInCatalog) await db.delete(col, item.id);
+              if (item.showInCatalog) {
+                await db.delete(col, item.id);
+                await Promise.allSettled(getProductPhotoStorageUrls(item as Product).map(deleteFromStorage));
+              }
             } else {
               await db.delete(col, item.id);
+              if (col === 'products') {
+                await Promise.allSettled(getProductPhotoStorageUrls(item as Product).map(deleteFromStorage));
+              }
             }
           }
         }

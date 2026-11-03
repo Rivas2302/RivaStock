@@ -65,7 +65,8 @@ function normalizeText(value: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('es-AR')
-    .trim();
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function customFieldValue(
@@ -127,8 +128,9 @@ export function resolveSelectedProduct(
 export function searchProducts(products: Product[], rawQuery: string): Product[] {
   const query = normalizeText(rawQuery);
   if (!query) return [];
+  const terms = query.split(' ');
 
-  return products.filter((product) => {
+  return products.flatMap((product, index) => {
     const customValues = Object.values(product.customFields ?? {})
       .filter((value) => value != null)
       .map((value) => String(value));
@@ -137,10 +139,21 @@ export function searchProducts(products: Product[], rawQuery: string): Product[]
       product.category,
       product.barcode ?? '',
       ...customValues,
-    ];
+      ...Object.keys(product.customFields ?? {}),
+    ].map(normalizeText);
+    const name = normalizeText(product.name);
+    const matchesEveryTerm = terms.every((term) => searchableValues.some((value) => value.includes(term)));
+    if (!matchesEveryTerm) return [];
 
-    return searchableValues.some((value) => normalizeText(value).includes(query));
-  });
+    const rank = name.startsWith(query)
+      ? 0
+      : terms.every((term) => name.includes(term))
+        ? 1
+        : 2;
+    return [{ product, rank, index }];
+  })
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ product }) => product);
 }
 
 export function getProductSku(product: Product): string | null {

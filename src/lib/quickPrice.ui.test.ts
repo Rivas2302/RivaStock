@@ -38,7 +38,7 @@ describe('quick price UI contract', () => {
   it('uses the allowed holdings catalog for scan/search and resolves selection by ID', () => {
     expect(page).toContain('getVisibleQuickPriceProducts({');
     expect(page).toContain('findProductByBarcode(visibleProducts, rawCode)');
-    expect(page).toContain('searchProducts(visibleProducts, search)');
+    expect(page).toContain('searchProducts(visibleProducts, debouncedSearch)');
     expect(page).toContain('resolveSelectedProduct(visibleProducts, selectedProductId)');
     expect(page).toContain('El producto ya no está disponible');
     expect(page).not.toContain('useState<Product | null>');

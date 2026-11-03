@@ -30,6 +30,22 @@ describe('image upload optimization', () => {
     expect(result.size).toBe(1024);
     expect(close).toHaveBeenCalledOnce();
   });
+  it('creates a forced WebP thumbnail even when encoding is larger than its source', async () => {
+    const file = new File(['source'], 'photo.png', { type: 'image/png' });
+    const close = vi.fn();
+    const drawImage = vi.fn();
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }), toBlob: (fn: (blob: Blob) => void) => fn(new Blob([new Uint8Array(1024)], { type: 'image/webp' })) };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 2400, height: 1200, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+
+    const thumbnail = await optimizeUploadImage(file, 480, { forceWebP: true });
+
+    expect(thumbnail).not.toBe(file);
+    expect(thumbnail.type).toBe('image/webp');
+    expect(thumbnail.name).toBe('photo.webp');
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 480, 240);
+    expect(close).toHaveBeenCalledOnce();
+  });
   it.each(['image/png', 'image/webp'])('accepts only smaller genuine WebP blobs (%s)', async type => {
     const file = new File(['original image bytes'], 'photo.jpg', { type: 'image/jpeg' });
     const close = vi.fn();

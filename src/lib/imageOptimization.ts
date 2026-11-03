@@ -1,5 +1,6 @@
 // Existing WebP may be animated; it is already compressed and stays untouched.
 const RASTER_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
+const CONVERTIBLE_TYPES = new Set([...RASTER_TYPES, 'image/webp']);
 
 export function hasPngAnimation(buffer: ArrayBuffer): boolean {
   const bytes = new Uint8Array(buffer);
@@ -23,12 +24,18 @@ export function fitImageDimensions(width: number, height: number, maxEdge = 1600
 /** Preserve originals on unsupported browsers/codecs; leave SVG and animated
  * formats untouched. Existing storage URL and cleanup contracts are retained.
  */
-export async function optimizeUploadImage(file: File, maxEdge = 1600): Promise<File> {
-  if (!RASTER_TYPES.has(file.type) || typeof createImageBitmap !== 'function') return file;
+export async function optimizeUploadImage(
+  file: File,
+  maxEdge = 1600,
+  options: { forceWebP?: boolean } = {},
+): Promise<File> {
+  const { forceWebP = false } = options;
+  if (!(forceWebP ? CONVERTIBLE_TYPES : RASTER_TYPES).has(file.type)
+    || typeof createImageBitmap !== 'function') return file;
   let bitmap: ImageBitmap | undefined;
   let canvas: HTMLCanvasElement | undefined;
   try {
-    if (file.type === 'image/png' && hasPngAnimation(await file.arrayBuffer())) return file;
+    if (!forceWebP && file.type === 'image/png' && hasPngAnimation(await file.arrayBuffer())) return file;
     bitmap = await createImageBitmap(file);
     const dimensions = fitImageDimensions(bitmap.width, bitmap.height, maxEdge);
     canvas = document.createElement('canvas');
@@ -38,7 +45,7 @@ export async function optimizeUploadImage(file: File, maxEdge = 1600): Promise<F
     if (!context) return file;
     context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
     const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', 0.85));
-    if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return file;
+    if (!blob || blob.type !== 'image/webp' || (!forceWebP && blob.size >= file.size)) return file;
     return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, {
       type: blob.type, lastModified: file.lastModified,
     });

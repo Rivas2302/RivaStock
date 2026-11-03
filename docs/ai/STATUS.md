@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-02 23:25 ART — G1 implementación local; prueba de producción y backfill pendientes
+
+- Implementé `/fotos` detrás de `stock.read`, accesos en inicio y navegación móvil, búsqueda normalizada con debounce de 100 ms, filtros, selector de precios, favoritos/recientes, ficha con galería táctil, compartir archivos y alternativas de guardado/copia. Consulta rápida usa la misma búsqueda y conserva su flujo.
+- Las nuevas fotos generan original y miniatura WebP; edición y borrado contemplan ambos objetos. El script de backfill queda en modo lectura por defecto, y en modo apply exige backup completo verificado, total de Storage confirmado, presupuesto disponible y subida sin sobrescribir ni borrar originales.
+- Verificación local: lint aprobado; `npm test` **700/700** en 114 archivos; Playwright Android/iPhone `e2e/product-photos.spec.ts` **3/3**; build y `perf:check` aprobados; `git diff --check`, sintaxis y `--help` del backfill aprobados.
+- Bundle gzip: entrada **209.071 B JS / 21.980 B CSS**; ruta AIHub **241.018 B JS**. La compilación base de `41ffab2` medía entrada **208.820 B** y AIHub **240.724 B**. El flujo nuevo suma **294 B** a AIHub; `scripts/performance-report.mjs` eleva únicamente ese presupuesto de 235,1 a 235,5 KiB para conservar el margen de la ruta. No se cambió el presupuesto de las otras rutas.
+- **G1 sigue `[ ]`**. No se desplegó ni se escribieron objetos: falta resolver A1 (la credencial legacy expuesta sigue siendo necesaria para Storage), ejecutar `npm run backup:db -- --with-storage`, medir el total y el crecimiento real del backfill, aplicarlo y hacer el smoke de producción. No hay migración pendiente para G1.
+- **Desvío/bloqueo:** la copia registrada de A1 confirma que no se pueden usar las claves legacy expuestas para el backfill ni desactivarlas hasta resolver la autenticación de Storage. No se leyó ni modificó Storage de producción en esta tarea.
+- **Siguiente:** cerrar la rotación de A1 y su sustitución de autenticación para Storage; volver a G1 para backup, backfill y verificación en producción, y luego continuar con G2.
+
 ## 2026-11-02 — F4 guía de entrega preparada
 
 - Se agregó `docs/clients/ENTREGA_CLIENTE.md` con el único paso de invitación para Riva, consulta SQL de solo lectura con los nombres confirmados (`profiles`, `business_subscriptions`, `collaborators`), mensaje de WhatsApp, instalación de la PWA y checklist del primer ingreso.

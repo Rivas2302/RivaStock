@@ -33,6 +33,7 @@ export default function QuickPrice() {
     initialQuickPriceLoadState,
   );
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectionUnavailable, setSelectionUnavailable] = useState(false);
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
@@ -53,6 +54,11 @@ export default function QuickPrice() {
   const loadError = scopeMatches ? loadState.error : null;
   const loading = !inventoryAccessError && (!scopeMatches || loadState.status === 'loading');
   const previousScopeRef = useRef(catalogScopeKey);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 100);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (previousScopeRef.current === catalogScopeKey) return;
@@ -115,8 +121,8 @@ export default function QuickPrice() {
   );
 
   const searchResults = useMemo(
-    () => searchProducts(visibleProducts, search).slice(0, 8),
-    [search, visibleProducts],
+    () => searchProducts(visibleProducts, debouncedSearch).slice(0, 8),
+    [debouncedSearch, visibleProducts],
   );
 
   const selectedProduct = useMemo(

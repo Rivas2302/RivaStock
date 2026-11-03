@@ -33,6 +33,7 @@ const POS = lazy(() => import('./pages/POS'));
 const Reports = lazy(() => import('./pages/Reports'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail'));
 const QuickPrice = lazy(() => import('./pages/QuickPrice'));
+const ProductPhotos = lazy(() => import('./pages/ProductPhotosRoute'));
 const AIHub = lazy(() => import('./pages/AIHub'));
 const Knowledge = lazy(() => import('./pages/Knowledge'));
 
@@ -94,6 +95,7 @@ function AppRoutes() {
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={withSuspense(<Dashboard />)} />
           <Route path="consulta-rapida" element={withSuspense(<RequirePermission module="stock" action="read"><QuickPrice /></RequirePermission>)} />
+          <Route path="fotos" element={withSuspense(<ProductPhotos />)} />
           <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
           <Route path="ventas" element={withSuspense(<RequirePermission module="ventas"><Sales /></RequirePermission>)} />
           <Route path="reportes" element={withSuspense(<RequirePermission module="ventas" action="read"><Reports /></RequirePermission>)} />

@@ -425,4 +425,13 @@ if (isMainModule()) {
   });
 }
 
-export { inventorySignature, isPathInside, normalizeStorageEntry, safeObjectRelativePath };
+export {
+  createStorageClient,
+  getStorageBackupCredentials,
+  inventorySignature,
+  isPathInside,
+  listAllStorageObjects,
+  normalizeStorageEntry,
+  projectRefFromEnvironment,
+  safeObjectRelativePath,
+};

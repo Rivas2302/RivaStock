@@ -20,6 +20,7 @@ import {
   Clock,
   FileDown,
   ScanLine,
+  Images,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -304,6 +305,15 @@ export default function Dashboard() {
             >
               <ScanLine size={18} />
               Consultar precio
+            </button>
+          )}
+          {permissions.stock.read && (
+            <button
+              onClick={() => navigate('/fotos')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#365fad] px-4 py-2.5 font-semibold text-[#365fad] transition-colors hover:bg-[#365fad]/5 dark:text-[#90a9df] sm:w-auto"
+            >
+              <Images size={18} />
+              Buscar y enviar
             </button>
           )}
           <button

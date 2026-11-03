@@ -19,6 +19,7 @@ import {
   BarChart3,
   History,
   ScanLine,
+  Images,
   Zap,
   Sparkles,
 } from 'lucide-react';
@@ -49,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Inicio', path: '/', icon: LayoutDashboard, module: null },
   { name: 'Consulta rápida', path: '/consulta-rapida', icon: ScanLine, module: 'stock' },
   { name: 'Stock', path: '/stock', icon: Package, module: 'stock' },
+  { name: 'Buscar y enviar', path: '/fotos', icon: Images, module: 'stock' },
   { name: 'Ventas', path: '/ventas', icon: ShoppingCart, module: 'ventas' },
   { name: 'Reportes', path: '/reportes', icon: BarChart3, module: 'ventas' },
   { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
@@ -82,7 +84,7 @@ export default function Layout() {
     && (!it.businessModule || includedModules?.[it.businessModule] === true)
   );
   const navGroups = [
-    { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/ventas', '/reportes', '/presupuestos'] },
+    { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/fotos', '/ventas', '/reportes', '/presupuestos'] },
     { label: 'Relaciones', paths: ['/clientes', '/proveedores', '/compras'] },
     { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
     { label: 'Sistema', paths: ['/automatizaciones', '/ia', '/trazabilidad', '/config'] },

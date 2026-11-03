@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
 import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
+import { getProductThumbnailPath, getProductThumbnailUrl } from '../lib/productPhotos';
 
 const MAX_IMAGES = 4;
 
@@ -58,21 +59,28 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     setProcessing(true);
     onUploadStart?.();
 
+    const uploadedUrls: string[] = [];
     try {
       // Decode sequentially to bound peak memory on mobile devices.
-      const prepared: File[] = [];
-      for (const file of toProcess) prepared.push(await optimizeUploadImage(file));
-      const urls = await Promise.all(
-        prepared.map((f, i) => {
-          const ext = imageFileExtension(f);
-          const path = `${ownerUid}/products/${productId}/${Date.now()}_${i}.${ext}`;
-          return uploadToStorage(path, f, f.type);
-        })
-      );
-      const updated = [...images, ...urls];
+      for (const [index, file] of toProcess.entries()) {
+        const original = await optimizeUploadImage(file, 1600, { forceWebP: true });
+        if (original.type !== 'image/webp') {
+          throw new Error('Este navegador no pudo preparar la foto en formato WebP.');
+        }
+        const thumbnail = await optimizeUploadImage(original, 480, { forceWebP: true });
+        if (thumbnail.type !== 'image/webp') {
+          throw new Error('Este navegador no pudo preparar la miniatura WebP.');
+        }
+        const path = `${ownerUid}/products/${productId}/${Date.now()}_${crypto.randomUUID()}_${index}.${imageFileExtension(original)}`;
+        const originalUrl = await uploadToStorage(path, original, original.type);
+        uploadedUrls.push(originalUrl);
+        await uploadToStorage(getProductThumbnailPath(path), thumbnail, thumbnail.type);
+      }
+      const updated = [...images, ...uploadedUrls];
       setImages(updated);
       onChange(updated);
     } catch (err: unknown) {
+      await Promise.allSettled(uploadedUrls.flatMap((url) => [url, getProductThumbnailUrl(url)]).map(deleteFromStorage));
       setError(`Error al subir imagen: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setProcessing(false);
@@ -83,10 +91,9 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   const removeImage = async (index: number) => {
     const url = images[index];
     if (url && url.startsWith('https://') && url.includes('supabase')) {
-      try {
-        await deleteFromStorage(url);
-      } catch (e) {
-        console.error('Error al eliminar imagen del almacenamiento:', e);
+      const result = await Promise.allSettled([url, getProductThumbnailUrl(url)].map(deleteFromStorage));
+      if (result.some((item) => item.status === 'rejected')) {
+        console.error('Error al eliminar imagen o miniatura del almacenamiento.');
       }
     }
     const updated = images.filter((_, i) => i !== index);
