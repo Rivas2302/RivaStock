@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 07:28 ART — A2 verificada; corte seguro; A1 sigue abierta
+
+- El worktree está en `main`; no hay migración, despliegue ni instalación del Bridge en curso. No hay cambios de producto sin commitear; `supabase/.temp/cli-latest` es el único cambio preexistente y queda excluido.
+- Reejecuté `npm run backup:db`. El backup externo `%USERPROFILE%\rivastock-backups\20261103T102259Z` contiene `schema.sql` (921.624 B) y `data.sql` (40.191.244 B); **94 tablas y 13.895 filas** coincidieron con conteos exactos antes/después y exportados. `verification=passed`; el resumen no mostró credenciales. `scripts/backup-db.test.ts` pasó **2/2** y `npm run check:no-secrets` no encontró patrones.
+- A1: Supabase confirma las claves legacy `anon` y `service_role` activas y las claves nuevas `default` publishable/secret presentes. Las cinco funciones siguen ACTIVE (ai-bridge v14, automation v11, knowledge v9, invite-collaborator v19 y delete-collaborator v5); en la última hora, los logs de ai-bridge, automation y knowledge registraron `key_mode: secret`. El frontend/funciones ya usan la clave publishable/secret en sus rutas migradas.
+- No desactivé las legacy: automation y knowledge aún requieren el JWT legacy para operaciones de Storage, y el dispositivo Facebook conectado reporta **0.5.15**, sin `self-reload` ni capacidad de refrescar la clave; §5.2b mantiene cerrados nuevos cambios de extensión mientras esperan cuatro pruebas en vivo. La guía oficial solo documenta generar el par S3 en Storage → S3 Configuration; no hallé una operación documentada de Management API para crearlo. La documentación oficial confirma que la contraseña de `cli_login_postgres` expira en pocos cientos de segundos; la contraseña temporal usada por este backup ya aparece expirada y no hay consumidor de contraseñas de base de datos en la app. No corresponde restablecerla ni dejar una acción de rotación en `OWNER_ACTIONS.md`.
+- **Desvío/bloqueo:** A1 queda abierta hasta reemplazar el acceso JWT de Storage y actualizar/verificar la extensión compatible; no cambié claves ni configuración productiva. A3 y A4 continúan `[x]`; auditorías recién reejecutadas en frontend y Bridge: **0 vulnerabilidades**.
+- **Siguiente:** continuar con el cierre B2/B4 según la evidencia de producción ya registrada; luego respetar las puertas del plan para C0/C y avanzar con E cuando C quede bloqueado. El SQL multiempresa sigue en **27 comprobaciones / TODO OK**.
+
 ## 2026-11-03 07:09 ART — B2 revalidada; corrección del diálogo pendiente de publicar
 
 - Con Bridge 1.21.1, la transferencia de `[QA] central-smoke.txt` quedó en `local` a las 10:06 UTC. Los **166 B** guardados en la central coinciden con el SHA-256 de la versión en producción; no se purgó la copia de nube. La UI todavía muestra el informe anterior de las 07:02 ART; espero su siguiente reporte periódico antes de declarar actualizado el contador.
