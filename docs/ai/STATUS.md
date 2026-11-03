@@ -1,10 +1,11 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 10:10 ART — G2 en corrección tras dos deploys
+## 2026-11-03 10:13 ART — G2 abierta; rutas de catálogo restauradas
 
-- Los commits 7899a25 y 1c4ead4 llegaron a producción con Vercel en success, pero las solicitudes a las funciones siguieron devolviendo FUNCTION_INVOCATION_FAILED. G2 permanece [ ].
-- **Desvío:** ambos despliegues dejaron inutilizables solo las nuevas rutas de vista previa; las rutas existentes de la SPA no cambiaron. No se escribieron datos en Supabase y no se ejecutó ninguna migración.
-- Para el tercer intento adapté los handlers a exports GET/HEAD documentados por Vercel y retiré una importación runtime que cruzaba a un módulo TypeScript de Supabase Edge. Lint, build, perf:check, escaneo de secretos y 23 pruebas focales pasan. G2 solo se marcará completa tras repetir el smoke en producción con facebookexternalhit y WhatsApp.
+- Los deploys 7899a25, 1c4ead4 y a46ed12 terminaron en Vercel success, pero las funciones de vista previa respondieron FUNCTION_INVOCATION_FAILED también tras cambiar entre las firmas Node y Web y los exports GET/HEAD. Las rutas públicas /catalogo/:slug y /catalogo/:slug/:productId devolvían 500.
+- **Desvío de producción:** revertí esos tres commits juntos con Git, sin force, para restaurar el rewrite SPA del catálogo. No hubo migraciones ni escrituras en Supabase. El commit de reversión aún debe desplegarse y verificarse.
+- G2 queda [ ]. Lint, build, perf:check, escaneo de secretos y la suite completa (792 pruebas) habían pasado antes del rollback.
+- Para reabrir G2 hay que inspeccionar los logs de runtime de Vercel, que no están disponibles con la sesión actual; no seguiré desplegando cambios a ciegas. La SPA se validará tras el deploy de reversión.
 
 ## 2026-11-03 09:46 ART — G1 completada; miniaturas existentes verificadas
 
