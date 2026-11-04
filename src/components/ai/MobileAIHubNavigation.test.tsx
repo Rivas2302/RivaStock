@@ -119,6 +119,7 @@ describe('mobile app chrome controller', () => {
     const ui = <MemoryRouter initialEntries={['/']}><Routes><Route path="/" element={<ChromeLayout/>}><Route index element={<MobileAIHubNavigation view="chats" bridgeState="idle" isOwner fullScreen onNavigate={vi.fn()}/>}/></Route></Routes></MemoryRouter>;
     await act(async () => { root.render(ui); });
     expect(host.querySelector('[data-testid="chrome-state"]')?.textContent).toBe('true:true');
+    expect(host.querySelector('header')).toBeNull();
   });
 
   it('hides mobile chrome only below the 1024px desktop breakpoint and resets on unmount', async () => {

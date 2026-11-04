@@ -100,7 +100,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - **Desvío comprobado:** en un chat existente, `ai_send_chat_message` rechaza cambios de `model_id` y `reasoning_effort`; la hoja los deja en solo lectura y explica que quedan fijos al crear el chat. Los dos toggles de contexto sí se aplican a cada mensaje siguiente.
 - **Commit:** `feat(ai): chat settings sheet`
 
-### [ ] H6 Lista de tareas (pantalla 4)
+### [x] H6 Lista de tareas (pantalla 4)
 - Mismo encabezado y selector que H2 (Tareas activo).
 - Filtros: Todas · N, En curso · N, Con error · N y Para revisar · N (solo si hay), con los conteos de H1. El menú “⋯” contiene “Eliminar finalizadas”, con el comportamiento y la confirmación actuales, ahora en hoja inferior.
 - Agrupadas por día. Cada fila tiene un ícono en círculo y el estado en texto:

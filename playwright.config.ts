@@ -10,7 +10,19 @@ export default defineConfig({
     ['json', { outputFile: 'test-results/results.json' }],
   ],
   use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'android-mobile-ai',
+      testMatch: /ai-mobile\.spec\.ts/,
+      use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: 'iphone-mobile-ai',
+      testMatch: /ai-mobile\.spec\.ts/,
+      use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } },
+    },
+  ],
   webServer: {
     command: 'npm.cmd run build -- --mode e2e && npm.cmd run preview -- --host 127.0.0.1 --port 4173 --strictPort',
     env: {

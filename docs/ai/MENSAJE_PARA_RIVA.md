@@ -1,3 +1,8 @@
+## Acción pendiente para cerrar H9 en producción
+
+Cuando puedas, iniciá sesión en la ventana de Playwright con el perfil persistente `C:\Users\USER\rivastock-qa-profile` y dejala abierta en RivaStock. Las pruebas locales de Android, iPhone y escritorio ya pasaron; el smoke autenticado de H5/H9 y las capturas de producción siguen pendientes. No compartas tu contraseña. No se crearon datos `[QA]` de producción.
+
+F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar
 
 Riva, terminé los 8 bocetos de la Tanda 1. Podés abrirlos desde el índice:
@@ -34,10 +39,5 @@ Avisame cuando termines de mirar.
 
 ---
 _[Claude Code] · 2026-11-04 · claude/redesign_
-# Validación móvil pendiente
-
-Para el cierre H9, el perfil persistente `C:\Users\USER\rivastock-qa-profile` redirige a `/login`. Cuando el código y las pruebas del bloque estén listos, hace falta que inicies sesión una vez en esa ventana de Playwright; la sesión quedará guardada para el smoke de producción. No hace falta hacerlo todavía.
-
-F1 (emails) queda sin desplegar hasta que compartas un dominio verificado.
 
 # Tanda 1 lista para revisar

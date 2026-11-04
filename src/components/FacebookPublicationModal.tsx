@@ -26,13 +26,17 @@ import { FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED, readFacebookGroupPublicatio
 
 function localDateTimeInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16);}
 
-export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false, actionRequest }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean; actionRequest?: AIActionRequest }) {
+export default function FacebookPublicationModal({ product, onClose, onApproved, onProductUpdated, startInRehearsal = false, actionRequest, initialDraftContent }: { product: Product; onClose: () => void; onApproved?: () => void; onProductUpdated?: (product: Product) => void; startInRehearsal?: boolean; actionRequest?: AIActionRequest; initialDraftContent?: Partial<PublicationContent> }) {
   const { ownerUid, isOwner } = useAuth();
   const canWrite = usePermission('stock', 'write');
   const [publicationProduct, setPublicationProduct] = useState(product);
   const [content, setContent] = useState<PublicationContent>(() => actionRequest ? {
     ...initialPublication(product),
     ...actionRequest.draft_content,
+    photos: productPhotos(product).slice(0, 10),
+  } : initialDraftContent ? {
+    ...initialPublication(product),
+    ...initialDraftContent,
     photos: productPhotos(product).slice(0, 10),
   } : initialPublication(product));
   const selectionKey=`facebook-selection:${ownerUid}:${product.id}`;
@@ -62,7 +66,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
   const [photoReview,setPhotoReview]=useState<FacebookPhotoReview|null>(null);
   const [photoReviewPhotoUrls,setPhotoReviewPhotoUrls]=useState<string[]>([]);
   const [photoCrop,setPhotoCrop]=useState<FacebookPhotoCrop>('square');
-  const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal||actionRequest?'compose':'loading');
+  const [view,setView]=useState<'loading'|'manage'|'compose'>(startInRehearsal||actionRequest||initialDraftContent?'compose':'loading');
   const hydrated=useRef(false);
   const viewTouched=useRef(startInRehearsal);
   const submitting = useRef(false);
@@ -83,14 +87,14 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
         if (active) {
           setGroups(data.groups); setGroupPerformance(data.groupPerformance); setDevices(data.devices); setPublications(data.publications); setReady(true);
           if(!hydrated.current) {
-            if(data.publications.length&&!actionRequest) {
+            if(data.publications.length&&!actionRequest&&!initialDraftContent) {
               // A photo removed from the product since then cannot be approved again.
               const latest=data.publications[0];const current=productPhotos(product);const photos=latest.content.photos.filter(url=>current.includes(url));
               setContent({...latest.content,photos:photos.length?photos:initialPublication(product).photos});
               if(latest.content.schedule_at){const scheduled=new Date(latest.content.schedule_at);if(Number.isFinite(scheduled.getTime())&&scheduled>new Date()){setScheduleMode('scheduled');setScheduleLocal(localDateTimeInput(scheduled));}}
-              if(!savedSelection.current&&!actionRequest){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
+              if(!savedSelection.current&&!actionRequest&&!initialDraftContent){setMarketplace(latest.content.selection?.marketplace??true);setSelectedGroups(latest.content.selection?.groups??[]);}
             }
-            if(!viewTouched.current)setView(data.publications.length?'manage':'compose');
+            if(!viewTouched.current&&!initialDraftContent)setView(data.publications.length?'manage':'compose');
             hydrated.current=true;
           }
         }
@@ -99,7 +103,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     void refresh();
     const timer = setInterval(refresh, 10000);
     return () => { active = false; clearInterval(timer); };
-  }, [product.id, ownerUid, actionRequest]);
+  }, [product.id, ownerUid, actionRequest, initialDraftContent]);
   useEffect(() => {
     let active = true;
     if (!ownerUid) {

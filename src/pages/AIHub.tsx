@@ -18,20 +18,26 @@ import {
   getAIJob,
   getRecentAIJobs,
   pairAIBridgeDevice,
+  retryAIJob,
   revokeAIBridgeDevice,
   updateAIHistorySettings,
   type AIBridgeState,
   type AIBridgeStatus,
   type AIBridgePairing,
   type AIJob,
+  type AIJobPageCursor,
+  type AIJobPageCounts,
   type CodexModelId,
   type CodexReasoningEffort,
   type AIProviderId,
 } from '../lib/aiBridge';
-import { getCentralStatus, listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
+import { getCentralStatus, getKnowledgeProposalTaskMetadata, listJobSources, type KnowledgeJobSource, type KnowledgeProposalTaskMetadata } from '../lib/knowledge/api';
 import type { KnowledgeCentralStatus } from '../lib/knowledge/types';
 import { formatBytes } from '../lib/knowledge/format';
 import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
+import type { PublicationContent } from '../lib/facebookPublications';
+import type { FacebookCopywritingProposal } from '../lib/facebookCopywriting';
+import type { Product } from '../types';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
 const MobileAIHubNavigation = lazy(() => import('../components/ai/MobileAIHubNavigation'));
@@ -39,6 +45,17 @@ const AIActionInbox = lazy(() => import('../components/ai/AIActionInbox'));
 const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
 const BridgeSecurityMode = lazy(() => import('../components/ai/BridgeSecurityMode'));
 const AIWorkspace = lazy(() => import('../components/AIWorkspace'));
+const MobileAITaskList = lazy(() => import('../components/ai/MobileAITaskList'));
+const MobileAITaskDetail = lazy(() => import('../components/ai/MobileAITaskDetail'));
+const MobileAITaskNewTask = lazy(() => import('../components/ai/MobileAITaskNewTask'));
+const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
+
+const EMPTY_TASK_COUNTS: AIJobPageCounts = { all: 0, inProgress: 0, failed: 0, knowledgeReview: 0 };
+
+function mergeJobsById(current: AIJob[], incoming: AIJob[]): AIJob[] {
+  return [...new Map([...current, ...incoming].map((job) => [job.id, job])).values()]
+    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+}
 
 function statusLabel(status: AIJob['status']): string {
   return ({ pending: 'Pendiente', processing: 'En ejecución', completed: 'Completada', failed: 'Fallida' })[status];
@@ -72,6 +89,12 @@ export default function AIHub() {
   const [recentJobs, setRecentJobs] = useState<AIJob[]>([]);
   const [knowledgeOrganizeJobs, setKnowledgeOrganizeJobs] = useState<AIJob[]>([]);
   const [finishedTaskCount, setFinishedTaskCount] = useState(0);
+  const [taskCounts, setTaskCounts] = useState<AIJobPageCounts>(EMPTY_TASK_COUNTS);
+  const [taskHasMore, setTaskHasMore] = useState(false);
+  const [taskNextBefore, setTaskNextBefore] = useState<AIJobPageCursor | null>(null);
+  const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
+  const [proposalTaskMetadata, setProposalTaskMetadata] = useState<Record<string, KnowledgeProposalTaskMetadata>>({});
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [deletingAllTasks, setDeletingAllTasks] = useState(false);
   const [historyRetention, setHistoryRetention] = useState<number | null>(null);
@@ -103,7 +126,13 @@ export default function AIHub() {
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sourceChatId, setSourceChatId] = useState<string | null>(null);
   const [mobileChatFullScreen, setMobileChatFullScreen] = useState(() => Boolean(searchParams.get('chat')));
+  const [mobileTaskActionError, setMobileTaskActionError] = useState('');
+  const [mobileTaskPublication, setMobileTaskPublication] = useState<{ jobId: string; product: Product; draft: Partial<PublicationContent> } | null>(null);
+  const [openingMobileTaskPublication, setOpeningMobileTaskPublication] = useState(false);
+  const requestedMobileTaskId = useRef<string | null>(null);
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
+  const mobileJobsRef = useRef<AIJob[]>([]);
+  mobileJobsRef.current = mergeJobsById(recentJobs, knowledgeOrganizeJobs);
 
   const navigateView = (next: MobileAIHubView) => {
     setView(next);
@@ -117,6 +146,7 @@ export default function AIHub() {
         updated.delete('chat');
         updated.delete('task');
         updated.delete('new');
+        updated.delete('repeat');
       } else if (next === 'actions') updated.set('view', 'actions');
       else updated.delete('view');
       return updated;
@@ -133,6 +163,7 @@ export default function AIHub() {
       updated.set('chat', chatId);
       updated.delete('task');
       updated.delete('new');
+      updated.delete('repeat');
       return updated;
     }, {
       replace,
@@ -162,6 +193,96 @@ export default function AIHub() {
     }, { replace: true, state: location.state });
   };
 
+  const openMobileTask = (job: AIJob) => {
+    setActiveJob(job);
+    setMobileTaskActionError('');
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.set('view', 'tasks');
+      updated.set('task', job.id);
+      updated.delete('new');
+      updated.delete('repeat');
+      updated.delete('chat');
+      return updated;
+    }, {
+      state: {
+        ...(typeof location.state === 'object' && location.state !== null ? location.state : {}),
+        mobileAITaskInAppEntry: true,
+      },
+    });
+  };
+
+  const backFromMobileTask = () => {
+    const state = location.state;
+    const cameFromApp = typeof state === 'object' && state !== null
+      && 'mobileAITaskInAppEntry' in state && state.mobileAITaskInAppEntry === true;
+    setMobileTaskActionError('');
+    if (cameFromApp) {
+      navigate(-1);
+      return;
+    }
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.delete('task');
+      updated.delete('new');
+      updated.delete('repeat');
+      return updated;
+    }, { replace: true, state: location.state });
+  };
+
+  const openCopywritingInPublication = async (
+    job: AIJob,
+    proposal: Pick<FacebookCopywritingProposal, 'title' | 'description' | 'category' | 'condition'>,
+  ) => {
+    if (!ownerUid || job.task_type !== 'fb_copywriting') return;
+    let snapshot: { name?: string; category?: string; price?: number } = {};
+    try {
+      const inputValue: unknown = JSON.parse(job.input);
+      if (inputValue && typeof inputValue === 'object' && 'product' in inputValue
+        && inputValue.product && typeof inputValue.product === 'object') {
+        snapshot = inputValue.product as typeof snapshot;
+      }
+    } catch {
+      setMobileTaskActionError('No pudimos identificar el producto de esta tarea.');
+      return;
+    }
+    if (!snapshot.name) {
+      setMobileTaskActionError('No pudimos identificar el producto de esta tarea.');
+      return;
+    }
+    setOpeningMobileTaskPublication(true);
+    setMobileTaskActionError('');
+    try {
+      const [{ db, invalidateDbCache }, { initialPublication }] = await Promise.all([
+        import('../lib/db'),
+        import('../lib/facebookPublications'),
+      ]);
+      invalidateDbCache('products');
+      const products = await db.list<Product>('products', ownerUid);
+      const normalize = (value: string) => value.trim().toLocaleLowerCase('es-AR');
+      const matches = products.filter((product) => normalize(product.name) === normalize(snapshot.name ?? '')
+        && normalize(product.category ?? '') === normalize(snapshot.category ?? '')
+        && (typeof snapshot.price !== 'number' || product.salePrice === snapshot.price));
+      if (matches.length !== 1) {
+        setMobileTaskActionError(matches.length > 1
+          ? 'Hay más de un producto que coincide con esta tarea. Abrí la publicación desde Buscar y enviar para elegirlo.'
+          : 'El producto ya no está disponible. Copiá el resultado para usarlo en otra publicación.');
+        return;
+      }
+      const product = matches[0];
+      const baseline = initialPublication(product);
+      setMobileTaskPublication({
+        jobId: job.id,
+        product,
+        draft: { ...baseline, title: proposal.title, description: proposal.description, category: proposal.category, condition: proposal.condition },
+      });
+    } catch (err) {
+      setMobileTaskActionError(err instanceof Error ? err.message : 'No se pudo abrir la publicación.');
+    } finally {
+      setOpeningMobileTaskPublication(false);
+    }
+  };
+
   useEffect(() => {
     if (!window.matchMedia('(max-width: 1023px)').matches) return;
     const value = searchParams.get('view');
@@ -171,20 +292,48 @@ export default function AIHub() {
   }, [isOwner, searchParams]);
 
   const refreshRecent = useCallback(async () => {
-    const { jobs, knowledgeOrganizeJobs: organizeJobs, finishedTaskCount: count } = await getRecentAIJobs();
+    const mobile = window.matchMedia('(max-width: 1023px)').matches;
+    const history = await getRecentAIJobs(mobile ? { limit: 10 } : undefined);
+    const { jobs, knowledgeOrganizeJobs: organizeJobs, finishedTaskCount: count } = history;
+    const metadata = mobile ? await getKnowledgeProposalTaskMetadata(organizeJobs.map((job) => job.id)) : {};
     setRecentJobs(jobs);
     setKnowledgeOrganizeJobs(organizeJobs);
     setFinishedTaskCount(count);
+    setTaskCounts(history.counts ?? EMPTY_TASK_COUNTS);
+    setTaskHasMore(history.hasMore ?? false);
+    setTaskNextBefore(history.nextBefore ?? null);
+    setProposalTaskMetadata(metadata);
     const allJobs = [...jobs, ...organizeJobs].sort((left, right) => right.created_at.localeCompare(left.created_at));
     setActiveJob((current) => current ? allJobs.find((job) => job.id === current.id) ?? allJobs[0] ?? null : allJobs[0] ?? null);
   }, []);
+
+  const loadMoreRecentTasks = async () => {
+    if (!taskHasMore || !taskNextBefore || loadingMoreTasks) return;
+    setLoadingMoreTasks(true);
+    try {
+      const history = await getRecentAIJobs({ limit: 10, before: taskNextBefore });
+      const metadata = await getKnowledgeProposalTaskMetadata(history.knowledgeOrganizeJobs.map((job) => job.id));
+      setRecentJobs((current) => mergeJobsById(current, history.jobs));
+      setKnowledgeOrganizeJobs((current) => mergeJobsById(current, history.knowledgeOrganizeJobs));
+      setTaskCounts(history.counts ?? EMPTY_TASK_COUNTS);
+      setTaskHasMore(history.hasMore ?? false);
+      setTaskNextBefore(history.nextBefore ?? null);
+      setProposalTaskMetadata((current) => ({ ...current, ...metadata }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron cargar las tareas anteriores.');
+    } finally {
+      setLoadingMoreTasks(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOwner) return;
     let mounted = true;
     const refresh = async () => {
       try {
-        const [bridge, history] = await Promise.all([getAIBridgeState(), getRecentAIJobs()]);
+        const mobile = window.matchMedia('(max-width: 1023px)').matches;
+        const [bridge, history] = await Promise.all([getAIBridgeState(), getRecentAIJobs(mobile ? { limit: 10 } : undefined)]);
+        const metadata = mobile ? await getKnowledgeProposalTaskMetadata(history.knowledgeOrganizeJobs.map((job) => job.id)) : {};
         if (!mounted) return;
         const { jobs, knowledgeOrganizeJobs: organizeJobs } = history;
         setBridgeState(bridge.state);
@@ -192,6 +341,10 @@ export default function AIHub() {
         setRecentJobs(jobs);
         setKnowledgeOrganizeJobs(organizeJobs);
         setFinishedTaskCount(history.finishedTaskCount);
+        setTaskCounts(history.counts ?? EMPTY_TASK_COUNTS);
+        setTaskHasMore(history.hasMore ?? false);
+        setTaskNextBefore(history.nextBefore ?? null);
+        setProposalTaskMetadata(metadata);
         const allJobs = [...jobs, ...organizeJobs].sort((left, right) => right.created_at.localeCompare(left.created_at));
         setActiveJob((current) => current ? allJobs.find((job) => job.id === current.id) ?? current : allJobs[0] ?? null);
         setError('');
@@ -238,6 +391,35 @@ export default function AIHub() {
     }, 2000);
     return () => { mounted = false; window.clearInterval(timer); };
   }, [activeJob?.id, activeJob?.status, refreshRecent]);
+
+  const mobileTaskUrlId = searchParams.get('task') ?? searchParams.get('repeat');
+  useEffect(() => {
+    const taskId = mobileTaskUrlId;
+    if (!taskId || view !== 'tasks' || !window.matchMedia('(max-width: 1023px)').matches || loading) {
+      requestedMobileTaskId.current = null;
+      return;
+    }
+    const loaded = mobileJobsRef.current.find((job) => job.id === taskId);
+    if (loaded) {
+      setActiveJob(loaded);
+      requestedMobileTaskId.current = taskId;
+      return;
+    }
+    if (requestedMobileTaskId.current === taskId) return;
+    requestedMobileTaskId.current = taskId;
+    let mounted = true;
+    void getAIJob(taskId).then(async (job) => {
+      if (!mounted) return;
+      setActiveJob(job);
+      if (job.task_type === 'knowledge_organize') {
+        const metadata = await getKnowledgeProposalTaskMetadata([job.id]);
+        if (mounted) setProposalTaskMetadata((current) => ({ ...current, ...metadata }));
+      }
+    }).catch((err) => {
+      if (mounted) setMobileTaskActionError(err instanceof Error ? err.message : 'No se pudo cargar esta tarea.');
+    });
+    return () => { mounted = false; };
+  }, [mobileTaskUrlId, view, loading]);
 
   useEffect(() => {
     let mounted = true;
@@ -295,18 +477,19 @@ export default function AIHub() {
     }
   };
 
-  const removeTask = async (job: AIJob) => {
+  const removeTask = async (job: AIJob, confirmedByMobileSheet = false) => {
     if (!canWriteBusiness || job.status === 'pending' || job.status === 'processing') return;
     const confirmation = job.task_type === 'knowledge_organize'
       ? 'Se eliminarán esta tarea y el historial de su propuesta. Si la propuesta ya se aplicó, los cambios del documento quedan intactos. No se puede deshacer.'
       : 'Se eliminará esta tarea y sus datos guardados. No se puede deshacer.';
-    if (!window.confirm(confirmation)) return;
+    if (!confirmedByMobileSheet && !window.confirm(confirmation)) return;
     setDeletingTaskId(job.id);
     setError('');
     try {
       if (job.task_type === 'knowledge_organize') await deleteKnowledgeOrganizeTask(job.id);
       else await deleteAITask(job.id);
       setActiveJob((current) => current?.id === job.id ? null : current);
+      if (confirmedByMobileSheet && searchParams.get('task') === job.id) backFromMobileTask();
       await refreshRecent();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar la tarea.');
@@ -315,9 +498,24 @@ export default function AIHub() {
     }
   };
 
-  const removeFinishedTasks = async () => {
+  const retryTask = async (job: AIJob) => {
+    if (!canWriteBusiness || job.status !== 'failed' || retryingTaskId !== null) return;
+    setRetryingTaskId(job.id);
+    setError('');
+    try {
+      const retried = await retryAIJob(job.id, crypto.randomUUID());
+      setActiveJob(retried);
+      await refreshRecent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo reintentar la tarea.');
+    } finally {
+      setRetryingTaskId(null);
+    }
+  };
+
+  const removeFinishedTasks = async (confirmedByMobileSheet = false) => {
     if (!canWriteBusiness || finishedTaskCount < 1 || deletingAllTasks) return;
-    const confirmed = window.confirm(
+    const confirmed = confirmedByMobileSheet || window.confirm(
       `Se eliminarán ${finishedTaskCount} tareas finalizadas de texto, redacción y revisión de fotos. Las tareas activas y los chats se conservarán. No se puede deshacer.`,
     );
     if (!confirmed) return;
@@ -481,13 +679,22 @@ export default function AIHub() {
   </li>;
 
   const regularJobs = recentJobs.filter((job) => ['text_generation', 'fb_copywriting', 'fb_photo_review'].includes(job.task_type));
+  const mobileTaskViewport = window.matchMedia('(max-width: 1023px)').matches;
+  const mobileTaskJobs = mergeJobsById(recentJobs, knowledgeOrganizeJobs);
+  const loadedMobileTaskCount = recentJobs.length + knowledgeOrganizeJobs.length;
+  const remainingMobileTaskCount = Math.max(0, taskCounts.all - loadedMobileTaskCount);
+  const mobileTaskFullScreen = mobileTaskViewport && Boolean(searchParams.get('task') || searchParams.get('new'));
+  const repeatTaskId = searchParams.get('repeat');
+  const mobileRepeatJob = repeatTaskId
+    ? mobileTaskJobs.find((job) => job.id === repeatTaskId) ?? (activeJob?.id === repeatTaskId ? activeJob : null)
+    : null;
 
   if (!isOwner) return null;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
       <Suspense fallback={<div aria-hidden="true" className="lg:hidden min-h-24"/>}>
-        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} fullScreen={mobileChatFullScreen} onNavigate={navigateView}/>
+        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} fullScreen={mobileChatFullScreen || mobileTaskFullScreen} onNavigate={navigateView}/>
       </Suspense>
       <header className="hidden flex-wrap items-center justify-between gap-4 lg:flex">
         <div>
@@ -501,7 +708,7 @@ export default function AIHub() {
         </button>
       </header>
 
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
+      {error && !(view === 'tasks' && mobileTaskViewport) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
       <nav className="hidden gap-1 overflow-x-auto border-b border-[var(--line)] lg:flex" aria-label="Secciones de IA">
         {([
@@ -540,7 +747,89 @@ export default function AIHub() {
         }}
       /></Suspense>}
 
-      {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
+      {view === 'tasks' && (mobileTaskViewport ? searchParams.get('task') ? <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse bg-[var(--surface-muted)] lg:hidden"/>}>
+        {activeJob?.id === searchParams.get('task') ? <MobileAITaskDetail
+          job={activeJob}
+          proposalMetadata={proposalTaskMetadata[activeJob.id]}
+          canWrite={canWriteBusiness}
+          deleting={deletingTaskId === activeJob.id}
+          openingPublication={openingMobileTaskPublication}
+          error={mobileTaskActionError || error}
+          onBack={backFromMobileTask}
+          onRepeat={(job) => setSearchParams((current) => {
+            const updated = new URLSearchParams(current);
+            updated.set('view', 'tasks');
+            updated.set('new', '1');
+            updated.set('repeat', job.id);
+            updated.delete('task');
+            updated.delete('chat');
+            return updated;
+          }, { state: { ...(typeof location.state === 'object' && location.state !== null ? location.state : {}), mobileAITaskInAppEntry: true } })}
+          onDelete={(job) => void removeTask(job, true)}
+          onOpenProposal={(documentId) => navigate(`/ia/conocimientos/doc/${documentId}/editar`)}
+          onUseInPublication={(job, proposal) => void openCopywritingInPublication(job, proposal)}
+        /> : mobileTaskActionError ? <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-4 px-6 text-center"><p role="alert" className="text-sm text-[var(--danger-ink)]">{mobileTaskActionError}</p><button type="button" onClick={backFromMobileTask} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">Volver a tareas</button></div> : <div role="status" className="flex min-h-[60dvh] items-center justify-center gap-2 text-sm text-[var(--ink-muted)]"><Loader2 size={17} className="animate-spin"/>Cargando tarea…</div>}
+      </Suspense> : searchParams.get('new') ? <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse bg-[var(--surface-muted)] lg:hidden"/>}>
+        {repeatTaskId && !mobileRepeatJob ? mobileTaskActionError
+          ? <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-4 px-6 text-center"><p role="alert" className="text-sm text-[var(--danger-ink)]">{mobileTaskActionError}</p><button type="button" onClick={backFromMobileTask} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">Volver a tareas</button></div>
+          : <div role="status" className="flex min-h-[60dvh] items-center justify-center gap-2 text-sm text-[var(--ink-muted)]"><Loader2 size={17} className="animate-spin"/>Cargando tarea…</div>
+          : <MobileAITaskNewTask
+            bridgeState={bridgeState}
+            canWrite={canWriteBusiness}
+            repeatJob={mobileRepeatJob}
+            provider={provider}
+            modelId={modelId}
+            reasoningEffort={reasoningEffort}
+            includeBusinessContext={includeBusinessContext}
+            includeProjectContext={includeProjectContext}
+            onModelChange={setModelId}
+            onReasoningChange={setReasoningEffort}
+            onBusinessContextChange={setIncludeBusinessContext}
+            onProjectContextChange={setIncludeProjectContext}
+            onClose={backFromMobileTask}
+            onCreated={(jobId) => {
+              setMobileTaskActionError('');
+              setSearchParams((current) => {
+                const updated = new URLSearchParams(current);
+                updated.set('view', 'tasks');
+                updated.set('task', jobId);
+                updated.delete('new');
+                updated.delete('repeat');
+                updated.delete('chat');
+                return updated;
+              }, { state: { ...(typeof location.state === 'object' && location.state !== null ? location.state : {}), mobileAITaskInAppEntry: true } });
+            }}
+          />}
+      </Suspense> : <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse bg-[var(--surface-muted)] lg:hidden"/>}>
+        <MobileAITaskList
+          jobs={mobileTaskJobs}
+          counts={taskCounts}
+          proposalMetadata={proposalTaskMetadata}
+          hasMore={taskHasMore}
+          remainingCount={remainingMobileTaskCount}
+          loading={loading}
+          loadingMore={loadingMoreTasks}
+          finishedTaskCount={finishedTaskCount}
+          deletingFinished={deletingAllTasks}
+          deletingTaskId={deletingTaskId}
+          retryingTaskId={retryingTaskId}
+          canWrite={canWriteBusiness}
+          error={error}
+          onLoadMore={() => void loadMoreRecentTasks()}
+          onOpenTask={openMobileTask}
+          onRetry={(job) => void retryTask(job)}
+          onNewTask={() => setSearchParams((current) => {
+            const updated = new URLSearchParams(current);
+            updated.set('view', 'tasks');
+            updated.set('new', '1');
+            updated.delete('task');
+            updated.delete('repeat');
+            updated.delete('chat');
+            return updated;
+          }, { state: { ...(typeof location.state === 'object' && location.state !== null ? location.state : {}), mobileAITaskInAppEntry: true } })}
+          onDeleteFinished={() => void removeFinishedTasks(true)}
+        />
+      </Suspense> : <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
         <aside className="min-h-72 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-sm xl:max-h-[calc(100dvh-15rem)] xl:overflow-y-auto">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Tareas recientes</h3><div className="flex items-center gap-2">{finishedTaskCount > 0 && <button type="button" onClick={() => void removeFinishedTasks()} disabled={!canWriteBusiness || deletingAllTasks || deletingTaskId !== null} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-semibold hover:bg-[var(--surface-muted)] disabled:opacity-50"><Trash2 size={13}/>{deletingAllTasks ? 'Eliminando…' : `Eliminar finalizadas (${finishedTaskCount})`}</button>}{loading && <Loader2 size={15} className="animate-spin text-[var(--ink-muted)]"/>}</div></div>
           {regularJobs.length ? <ul className="space-y-2">{regularJobs.map(renderTaskRow)}</ul> : knowledgeOrganizeJobs.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--ink-muted)]">Las tareas que envíes van a aparecer acá.</p> : null}
@@ -599,7 +888,7 @@ export default function AIHub() {
             <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente. El Mock no usa contexto.</p>
           </fieldset>
         </aside>
-      </form>}
+      </form>)}
 
       {view === 'connection' && <section className="space-y-5">
         <header><h3 className="text-xl font-bold">Conexión de tu PC</h3><p className="mt-1 text-sm text-[var(--ink-muted)]">El agente trabaja desde la computadora vinculada a este negocio.</p></header>
@@ -646,6 +935,13 @@ export default function AIHub() {
         {isOwner && ownerUid && <Suspense fallback={<p role="status" className="text-sm text-[var(--ink-muted)]">Cargando modelos…</p>}><AIFunctionSettings ownerUid={ownerUid}/></Suspense>}
         <CentralStatusCard status={centralStatus}/>
       </section>}
+      {mobileTaskPublication && <Suspense fallback={<div role="status" className="fixed inset-0 z-[80] grid place-items-center bg-black/40 text-sm text-white">Cargando publicación…</div>}><FacebookPublicationModal
+        key={mobileTaskPublication.jobId}
+        product={mobileTaskPublication.product}
+        initialDraftContent={mobileTaskPublication.draft}
+        onClose={() => setMobileTaskPublication(null)}
+        onApproved={() => setMobileTaskPublication(null)}
+      /></Suspense>}
     </div>
   );
 }

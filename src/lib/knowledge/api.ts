@@ -138,6 +138,38 @@ export interface PendingKnowledgeProposal {
   createdAt: string;
 }
 
+export interface KnowledgeProposalTaskMetadata {
+  pendingReview: boolean;
+  documentTitle: string | null;
+  documentId: string;
+}
+
+export async function getKnowledgeProposalTaskMetadata(jobIds: string[]): Promise<Record<string, KnowledgeProposalTaskMetadata>> {
+  const ids = [...new Set(jobIds)].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (ids.length === 0) return {};
+
+  const { data, error } = await supabase.from('knowledge_ai_proposals')
+    .select('job_id, document_id, status').in('job_id', ids);
+  throwQueryError(error);
+  const proposals = (data ?? []) as unknown as Array<{ job_id: string; document_id: string; status: string }>;
+  const documentIds = [...new Set(proposals.map((proposal) => proposal.document_id))];
+  const titlesById = new Map<string, string>();
+  if (documentIds.length > 0) {
+    const { data: documents, error: documentError } = await supabase.from('knowledge_documents')
+      .select('id, title').in('id', documentIds);
+    throwQueryError(documentError);
+    for (const document of (documents ?? []) as unknown as Array<{ id: string; title: string }>) {
+      titlesById.set(document.id, document.title);
+    }
+  }
+
+  return Object.fromEntries(proposals.map((proposal) => [proposal.job_id, {
+    pendingReview: proposal.status === 'pending',
+    documentTitle: titlesById.get(proposal.document_id) ?? null,
+    documentId: proposal.document_id,
+  }]));
+}
+
 export async function requestKnowledgeOrganize(input: {
   documentId: string;
   idempotencyKey: string;

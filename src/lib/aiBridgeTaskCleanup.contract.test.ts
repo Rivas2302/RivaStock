@@ -54,7 +54,7 @@ describe('safe Organize with AI task cleanup contract', () => {
       body: { action: 'recent', limit: 10, before },
     });
     expect(edgeSource).toContain("rpc('ai_recent_task_page'");
-    expect(uiSource).toContain('getRecentAIJobs()');
+    expect(uiSource).toContain('getRecentAIJobs(mobile ? { limit: 10 } : undefined)');
   });
 
   it('retries through an owner-scoped idempotent RPC', async () => {

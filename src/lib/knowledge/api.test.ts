@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getCentralStatus, getLatestKnowledgeOcrStats, getStats } from './api';
+import { getCentralStatus, getKnowledgeProposalTaskMetadata, getLatestKnowledgeOcrStats, getStats } from './api';
 import { supabase } from '../supabase';
 
 describe('knowledge RPC wrapper', () => {
@@ -40,5 +40,37 @@ describe('knowledge RPC wrapper', () => {
     const rpc = vi.spyOn(supabase, 'rpc').mockResolvedValue({ data: status, error: null } as never);
     await expect(getCentralStatus()).resolves.toEqual(status);
     expect(rpc).toHaveBeenCalledWith('my_central_status', {});
+  });
+
+  it('returns pending proposal state and document titles only for valid job IDs', async () => {
+    const proposalQuery = {
+      select: vi.fn(() => proposalQuery),
+      in: vi.fn(() => Promise.resolve({
+        data: [{ job_id: '00000000-0000-4000-8000-000000000001', document_id: 'doc-1', status: 'pending' }],
+        error: null,
+      })),
+    };
+    const documentQuery = {
+      select: vi.fn(() => documentQuery),
+      in: vi.fn(() => Promise.resolve({ data: [{ id: 'doc-1', title: 'Guía de recepción' }], error: null })),
+    };
+    const from = vi.spyOn(supabase, 'from').mockImplementation(((table: string) => (
+      table === 'knowledge_ai_proposals' ? proposalQuery : documentQuery
+    )) as never);
+    from.mockClear();
+
+    await expect(getKnowledgeProposalTaskMetadata([
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      'invalid',
+    ])).resolves.toEqual({
+      '00000000-0000-4000-8000-000000000001': {
+        pendingReview: true,
+        documentTitle: 'Guía de recepción',
+        documentId: 'doc-1',
+      },
+    });
+    expect(from).toHaveBeenCalledTimes(2);
+    expect(proposalQuery.in).toHaveBeenCalledWith('job_id', ['00000000-0000-4000-8000-000000000001']);
   });
 });

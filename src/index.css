@@ -33,6 +33,9 @@
     --success-surface: #eef9f1;
     --success-line: #b9ddc2;
     --success-ink: #23703a;
+    --warning-surface: #fff7e6;
+    --warning-line: #f1d399;
+    --warning-ink: #805500;
     --toast-success-bg: #176534;
     --toast-success-ink: #ffffff;
     --toast-success-line: #12532a;
@@ -70,6 +73,9 @@
     --success-surface: rgb(49 145 77 / 0.14);
     --success-line: rgb(89 183 116 / 0.34);
     --success-ink: #82d49a;
+    --warning-surface: rgb(160 108 0 / 0.18);
+    --warning-line: rgb(220 160 40 / 0.4);
+    --warning-ink: #f2c96d;
     --toast-success-bg: #1f3a28;
     --toast-success-ink: #b8f4c8;
     --toast-success-line: #356445;

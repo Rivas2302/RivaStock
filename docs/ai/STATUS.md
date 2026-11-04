@@ -1,5 +1,17 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H6 local listo; H7–H9 siguen abiertos
+
+- Comparé `ACTION_PLAN.md` con Desktop: SHA-256 coincide. Los criterios H6–H9 de `MOBILE_AI_UX_PLAN.md` coinciden; Desktop dejó H1–H5 sin marcar y conservé las marcas respaldadas por sus entradas. La versión local marca H6 como terminado. No requiere migración ni backup.
+- **H6 [x]:** lista móvil con filtros/conteos, agrupación, títulos por tipo, estados y motivos, reintento, paginación, confirmación accesible de borrado masivo y actualización de tareas en curso. Los componentes quedan en chunks lazy; el flujo de escritorio conserva su formulario existente.
+- **H7 [ ] — Desvío:** `Usar en publicación` carga título y descripción en el modal existente cuando el snapshot identifica un único producto. `ai_jobs.input` no conserva el ID del producto; si hay productos duplicados con el mismo nombre, categoría y precio, la acción no puede resolver el origen con certeza y ofrece abrir Buscar y enviar. No se marca H7 completo.
+- **H8 [ ] — Desvío:** los RPC existentes de `fb_copywriting` y `fb_photo_review` no reciben texto libre ni los toggles de contexto; para esos tipos, la UI deshabilita el campo y explica que usa el producto y la configuración de la función. La elegibilidad sí respeta los módulos `ai`/`automation` del plan y el permiso de stock. No se cambió la lógica de generación de IA; H8 sigue abierto.
+- Verificación local: `npm run lint`; **893/893 pruebas en 149 archivos**; `npm run build`; `npm run perf:check`; comprobación de secretos y `git diff --check`. E2E local: Android **4/4**, iPhone/WebKit **4/4** y Chromium escritorio **1/1** a 1280×900. Incluye búsqueda, atrás, borrado/cancelación, mock send, filtros, paginación, reintento, creación de tareas, módulos y estados vacíos. Pruebas unitarias enfocadas de las hojas: **13/13**.
+- Accesibilidad verificada: foco inicial/restaurado, tabulación atrapada y `Esc` en hojas de tareas; íconos con `aria-label`; movimiento reducido. Contraste de estado ámbar: **6,12:1** (claro) y **9,63:1** (oscuro).
+- Bundle gzip actual: inicio **209.927 B JS / 23.422 B CSS**; AIHub **246.171 B**; Stock **241.305 B**; Knowledge **25.213 B CSS**. Justifiqué los ajustes de `perf:check` con el incremento medido de la orquestación móvil H6–H8 y los tokens de estado; los límites quedan en **241 KiB AIHub**, **236 KiB Stock** y **24,8 KiB CSS**.
+- **H9 [ ] — Pendiente por puerta:** el perfil persistente redirige a `/login`. No hice escrituras ni creé datos `[QA]` en producción. Falta smoke autenticado, comparación visual de PC contra la captura anterior y capturas de producción; la acción requerida está en `MENSAJE_PARA_RIVA.md`.
+- **Siguiente:** continuar con el Bloque I según el plan maestro mientras H9 espera el inicio de sesión; volver a H7/H8 para cerrar los desvíos antes de marcar esas tareas.
+
 ## 2026-11-04 — H5 ajustes móviles implementados y desplegados
 
 - Comparé la sección H5 con Desktop y las seis referencias: el criterio coincide y `AjustesChat.dc.html` tiene el mismo SHA-256 en ambas copias. El plan maestro local coincide con la copia más reciente de Desktop.

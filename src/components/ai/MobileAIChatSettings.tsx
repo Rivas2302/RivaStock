@@ -11,6 +11,9 @@ interface MobileAIChatSettingsProps {
   includeProjectContext: boolean;
   isExistingChat: boolean;
   projectContextAllowed: boolean;
+  title?: string;
+  contextControlsDisabled?: boolean;
+  contextLockedText?: string;
   onModelChange: (model: CodexModelId) => void;
   onReasoningChange: (effort: CodexReasoningEffort) => void;
   onBusinessContextChange: (enabled: boolean) => void;
@@ -84,7 +87,7 @@ export default function MobileAIChatSettings(props: MobileAIChatSettingsProps) {
     >
       <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--line-strong)]" aria-hidden="true"/>
       <header className="mb-4 flex items-center justify-between gap-4">
-        <div><h2 id="mobile-ai-chat-settings-title" className="text-lg font-bold">Ajustes de este chat</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">{props.provider === 'codex' ? 'Codex' : props.provider === 'claude' ? 'Claude Code' : 'Mock'} en tu PC</p></div>
+        <div><h2 id="mobile-ai-chat-settings-title" className="text-lg font-bold">{props.title ?? 'Ajustes de este chat'}</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">{props.provider === 'codex' ? 'Codex' : props.provider === 'claude' ? 'Claude Code' : 'Mock'} en tu PC</p></div>
         <button ref={closeRef} type="button" onClick={props.onClose} aria-label="Cerrar ajustes" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"><X size={20}/></button>
       </header>
 
@@ -119,9 +122,9 @@ export default function MobileAIChatSettings(props: MobileAIChatSettingsProps) {
 
       <fieldset className="mt-5 space-y-3">
         <legend className="mb-2 text-sm font-bold">Qué puede consultar</legend>
-        <label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 flex-1"><span className="block font-semibold">Datos del negocio</span><span className="text-xs text-[var(--ink-muted)]">Catálogo, precios e inventario</span></span><input type="checkbox" checked={props.includeBusinessContext} onChange={(event) => props.onBusinessContextChange(event.target.checked)} className="size-5 accent-[var(--brand)]"/></label>
-        {props.projectContextAllowed && <label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 flex-1"><span className="block font-semibold">Proyecto RivaStock</span><span className="text-xs text-[var(--ink-muted)]">Documentación técnica del sistema</span></span><input type="checkbox" checked={props.includeProjectContext} onChange={(event) => props.onProjectContextChange(event.target.checked)} className="size-5 accent-[var(--brand)]"/></label>}
-        <p className="rounded-xl bg-[var(--brand-soft)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">Tus Skills, la memoria y Conocimientos se usan siempre.</p>
+        <label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 flex-1"><span className="block font-semibold">Datos del negocio</span><span className="text-xs text-[var(--ink-muted)]">Catálogo, precios e inventario</span></span><input type="checkbox" checked={props.includeBusinessContext} disabled={props.contextControlsDisabled} onChange={(event) => props.onBusinessContextChange(event.target.checked)} className="size-5 accent-[var(--brand)] disabled:opacity-60"/></label>
+        {props.projectContextAllowed && <label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 flex-1"><span className="block font-semibold">Proyecto RivaStock</span><span className="text-xs text-[var(--ink-muted)]">Documentación técnica del sistema</span></span><input type="checkbox" checked={props.includeProjectContext} disabled={props.contextControlsDisabled} onChange={(event) => props.onProjectContextChange(event.target.checked)} className="size-5 accent-[var(--brand)] disabled:opacity-60"/></label>}
+        <p className="rounded-xl bg-[var(--brand-soft)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">{props.contextLockedText ?? 'Tus Skills, la memoria y Conocimientos se usan siempre.'}</p>
       </fieldset>
 
       <button type="button" onClick={props.onClose} className="mt-5 min-h-12 w-full rounded-xl bg-[var(--action-bg)] px-4 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)]">Listo</button>

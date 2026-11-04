@@ -104,7 +104,7 @@ export default function MobileAIHubNavigation({ view, bridgeState, isOwner, full
 
   return (
     <>
-      <header className="-mx-4 -mt-4 space-y-3 border-b border-[var(--line)] bg-[var(--surface)] px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] text-[var(--ink)] lg:hidden">
+      {!fullScreen && <header className="-mx-4 -mt-4 space-y-3 border-b border-[var(--line)] bg-[var(--surface)] px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] text-[var(--ink)] lg:hidden">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[26px] font-bold tracking-tight">IA</h1>
           <button
@@ -143,7 +143,7 @@ export default function MobileAIHubNavigation({ view, bridgeState, isOwner, full
           >Más <ChevronDown size={15} aria-hidden="true"/>
           </button>
         </nav>
-      </header>
+      </header>}
 
       {isMoreOpen && <div
         className="fixed inset-0 z-[70] flex items-end bg-black/50 lg:hidden"
