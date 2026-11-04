@@ -516,7 +516,9 @@ export default function AIHub() {
       </nav>
 
       {view === 'chats' && <AIChats
-        initialChatId={searchParams.get('chat') === 'new' ? 'new' : searchParams.get('chat') ?? sourceChatId}
+        initialChatId={window.innerWidth < 1024
+          ? (searchParams.get('chat') === 'new' ? 'new' : searchParams.get('chat') ?? sourceChatId)
+          : sourceChatId}
         bridgeState={bridgeState}
         onMobileConversationOpenChange={setMobileChatFullScreen}
         onOpenMobileChat={openMobileChat}
