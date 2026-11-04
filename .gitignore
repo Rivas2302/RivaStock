@@ -9,6 +9,8 @@ playwright-report/
 .env*
 !.env.example
 .claude/
+!.claude/agents/
+!.claude/settings.local.json
 LEGACY_*
 scripts/migrate/
 supabase/.temp/*
@@ -20,3 +22,7 @@ public/downloads/rivastock-facebook/
 public/downloads/rivastock-ai-bridge-*.tgz
 
 public/downloads/rivastock-facebook-version.json
+
+# Impeccable local cache
+.impeccable/
+.claude/skills/impeccable/scripts/bin/
