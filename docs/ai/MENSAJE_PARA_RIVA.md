@@ -34,3 +34,10 @@ Avisame cuando termines de mirar.
 
 ---
 _[Claude Code] · 2026-11-04 · claude/redesign_
+# Validación móvil pendiente
+
+Para el cierre H9, el perfil persistente `C:\Users\USER\rivastock-qa-profile` redirige a `/login`. Cuando el código y las pruebas del bloque estén listos, hace falta que inicies sesión una vez en esa ventana de Playwright; la sesión quedará guardada para el smoke de producción. No hace falta hacerlo todavía.
+
+F1 (emails) queda sin desplegar hasta que compartas un dominio verificado.
+
+# Tanda 1 lista para revisar

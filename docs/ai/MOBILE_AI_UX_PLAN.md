@@ -89,7 +89,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
   - si la PC está desconectada, aviso arriba del compositor y botón deshabilitado con explicación.
 - **Commit:** `feat(ai): mobile chat conversation`
 
-### [ ] H5 Ajustes del chat (pantalla 3)
+### [x] H5 Ajustes del chat (pantalla 3)
 - Hoja inferior accesible:
   - **Modelo** con tres opciones (nombre y descripción);
   - **Razonamiento** segmentado (Bajo, Medio, Alto, Muy alto), con la ayuda “Bajo gasta menos de tu plan…”;
@@ -97,6 +97,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
   - botón **Listo**.
 - En un chat existente, el proveedor queda fijo (la sesión vive en la PC), pero **modelo, razonamiento y contexto se aplican a los mensajes siguientes**, si `sendAIChatMessage` ya los recibe por mensaje. Verificalo. Si el backend no lo permite, mostralos de solo lectura con la explicación y anotá el **Desvío**.
 - Sin cambios en los valores por defecto ni en la configuración por función de T5.1.
+- **Desvío comprobado:** en un chat existente, `ai_send_chat_message` rechaza cambios de `model_id` y `reasoning_effort`; la hoja los deja en solo lectura y explica que quedan fijos al crear el chat. Los dos toggles de contexto sí se aplican a cada mensaje siguiente.
 - **Commit:** `feat(ai): chat settings sheet`
 
 ### [ ] H6 Lista de tareas (pantalla 4)

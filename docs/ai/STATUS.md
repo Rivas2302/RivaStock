@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H5 ajustes móviles implementados y desplegados
+
+- Comparé la sección H5 con Desktop y las seis referencias: el criterio coincide y `AjustesChat.dc.html` tiene el mismo SHA-256 en ambas copias. El plan maestro local coincide con la copia más reciente de Desktop.
+- La hoja conserva modelo, razonamiento, contexto del negocio/proyecto y la nota de Skills/memoria/Conocimientos. El contrato de `ai_send_chat_message` en `20261103190000_platform_module_server_guards.sql` fija modelo y razonamiento al crear el chat, pero recibe contexto por mensaje; la UI explica el bloqueo en existentes y deja editables los dos toggles.
+- **Desvío:** modelo y razonamiento son de solo lectura en chats existentes porque la RPC vigente los rechaza. No se alteraron defaults ni ajustes de T5.1.
+- Commit `7ae8533` (`feat(ai): chat settings sheet`) en `main`, Vercel `success`. Prueba focalizada: **3/3**; `npm run lint`, `npm run build` y `npm run perf:check` pasaron. Bundle inicial **209.468 B JS / 23.152 B CSS gzip**; AIHub **242.257 B**, +11 B JS y sin cambio CSS frente a H4.
+- La sesión del perfil persistente de producción está cerrada. H5 quedó desplegado, pero su smoke autenticado se agrupa con H9; no se creó ni modificó ningún dato en producción.
+- **Siguiente:** H6, lista móvil de tareas. F1 sigue preparada sin desplegar hasta recibir un dominio verificado.
+
 ## 2026-11-04 — H4 conversación móvil desplegada y verificada
 
 - Antes de cerrar H4 comparé el plan con Desktop y `origin/main`. La copia de Desktop de `MOBILE_AI_UX_PLAN.md` había vuelto a dejar H1–H3 sin marcar; conservé las marcas `[x]` respaldadas por sus entradas de producción. El H4 de ambas copias tiene los mismos criterios. `ACTION_PLAN.md` de Desktop sí era más reciente: incorporé el Bloque I aprobado, que va después de H9 y antes de C.
