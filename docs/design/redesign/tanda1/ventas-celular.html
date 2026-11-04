@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boceto · Ventas en el celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap">
+<style>
+/*
+INVENTARIO DE FUNCIONES — Ventas en celular (< 1024 px)
+══════════════════════════════════════════════
+ENCABEZADO MÓVIL
+  - Título "Ventas", menú Exportar (⋯ / sheet inferior), botón "+" Nueva venta, botón "Modo POS"
+RESUMEN STRIP
+  - 3 tarjetas en scroll horizontal: Total vendido, Total cobrado, Pendiente
+FILTROS
+  - Campo búsqueda ancho completo
+  - Chips: Todos · Pagado · Pendiente (selector estado)
+  - Botón Filtros avanzados → bottom sheet (titular)
+LISTA DE VENTAS
+  - Fila: fecha (pequeña) · nombre producto + badges (POS, PPTO) · total · chip estado
+  - Tap en fila → expande detalle (ítems, titular, método, cliente)
+  - Toggle estado: tap en chip
+  - Deslizar → acciones Editar / Eliminar (o botón ⋯ por fila)
+  - Acciones según permisos
+PAGINACIÓN
+  - Botón "Cargar más" al fondo o scroll infinito
+BARRA INFERIOR
+  - 5 destinos: Inicio · Stock · Ventas (activo) · + · Más
+BOTTOM SHEET NUEVA/EDITAR VENTA
+  - Mismos campos que PC, en columna única
+  - Swipe para cerrar
+══════════════════════════════════════════════
+*/
+
+body{margin:0}
+.t-claro{--bg:#FFFFFF;--s1:#FAFAF9;--s2:#F4F4F3;--s3:#E8E8E6;--ink:#191919;--ink2:#6B6B6B;--ink3:#A3A3A3;--line:#EDEDEC;--acc:#23705F;--acc-ink:#FFFFFF;--acc-soft:#E3F1EC;--acc-text:#1D5E50;--danger:#C4382B;--danger-soft:#FBEDEB;--warn:#A86F0C;--warn-soft:#FBF3E2;--bar:#DEDEDB;--pri:#191919;--pri-ink:#FFFFFF}
+.t-oscuro{--bg:#121212;--s1:#181818;--s2:#202020;--s3:#2B2B2B;--ink:#F2F2F2;--ink2:#A7A7A7;--ink3:#6A6A6A;--line:#262626;--acc:#5FC2A5;--acc-ink:#0E2A22;--acc-soft:#16352D;--acc-text:#7DD3B8;--danger:#F07B6E;--danger-soft:#3A1F1C;--warn:#E0A84A;--warn-soft:#3A2D14;--bar:#333333;--pri:#F2F2F2;--pri-ink:#121212}
+
+.chip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;border:0;cursor:pointer;font:inherit}
+.chip-paid{background:var(--acc-soft);color:var(--acc-text)}
+.chip-pend{background:var(--warn-soft);color:var(--warn)}
+.chip-filter{background:var(--s2);color:var(--ink2)}
+.chip-filter-on{background:var(--pri);color:var(--pri-ink)}
+.badge{display:inline-flex;align-items:center;height:18px;padding:0 5px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.badge-pos{background:var(--danger-soft);color:var(--danger)}
+.badge-quote{background:var(--s3);color:var(--ink2)}
+.money-sign{font-size:12px;font-weight:400;opacity:.55;vertical-align:0.3em;margin-right:1px}
+.btn-icon{width:40px;height:40px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.btn-acc{height:44px;padding:0 20px;border-radius:8px;border:0;background:var(--acc);color:var(--acc-ink);font:inherit;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer;width:100%;justify-content:center}
+.btn-pri{height:44px;padding:0 20px;border-radius:8px;border:0;background:var(--pri);color:var(--pri-ink);font:inherit;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer;width:100%;justify-content:center}
+.btn-sec{height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap}
+.field{height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--s2);color:var(--ink);font:inherit;font-size:15px;outline:none;width:100%;box-sizing:border-box}
+.field:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.tema-toggle{position:fixed;right:12px;bottom:80px;z-index:99;height:34px;padding:0 12px;border-radius:17px;border:1px solid #999;background:#fff;color:#111;font:500 12px system-ui;cursor:pointer}
+/* bottom sheet */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;z-index:50}
+.sheet{background:var(--bg);border-radius:16px 16px 0 0;width:100%;padding:20px 20px 32px;box-sizing:border-box;max-height:90vh;overflow-y:auto}
+.sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--s3);margin:0 auto 20px}
+</style>
+</head>
+<body>
+<button type="button" class="tema-toggle" onclick="var p=document.getElementById('p');var o=p.classList.contains('t-oscuro');p.classList.toggle('t-oscuro',!o);p.classList.toggle('t-claro',o)">Cambiar claro / oscuro</button>
+
+<!-- Simulación del viewport móvil -->
+<div id="p" class="t-claro" style="max-width:390px;margin:0 auto;min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Hanken Grotesk',system-ui,sans-serif;font-variant-numeric:tabular-nums;position:relative;padding-bottom:80px">
+
+  <!-- Header móvil -->
+  <header style="padding:16px 20px 12px;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;top:0;z-index:10">
+    <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Ventas</h1>
+    <div style="display:flex;gap:6px">
+      <!-- Modo POS (acceso directo en móvil) -->
+      <button type="button" class="btn-sec" style="height:36px;padding:0 12px;font-size:13px" aria-label="Modo POS">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>
+        POS
+      </button>
+      <button type="button" class="btn-icon" style="width:36px;height:36px;border-radius:8px" aria-label="Más opciones (exportar)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
+      </button>
+      <button type="button" style="width:36px;height:36px;border-radius:8px;border:0;background:var(--pri);color:var(--pri-ink);display:flex;align-items:center;justify-content:center;cursor:pointer" aria-label="Nueva venta">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+
+    <!-- Resumen strip (scroll horizontal) -->
+    <div style="display:flex;gap:10px;overflow-x:auto;margin:0 -20px;padding:0 20px 4px;scrollbar-width:none">
+      <div style="flex:0 0 140px;background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+        <p style="margin:0;font-size:11px;color:var(--ink2);font-weight:500">Total vendido</p>
+        <p style="margin:4px 0 0;font-size:19px;font-weight:500;letter-spacing:-0.025em"><span class="money-sign">$</span>284.750</p>
+      </div>
+      <div style="flex:0 0 140px;background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+        <p style="margin:0;font-size:11px;color:var(--ink2);font-weight:500">Total cobrado</p>
+        <p style="margin:4px 0 0;font-size:19px;font-weight:500;letter-spacing:-0.025em;color:var(--acc-text)"><span class="money-sign">$</span>261.500</p>
+      </div>
+      <div style="flex:0 0 140px;background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+        <p style="margin:0;font-size:11px;color:var(--ink2);font-weight:500">Pendiente</p>
+        <p style="margin:4px 0 0;font-size:19px;font-weight:500;letter-spacing:-0.025em;color:var(--warn)"><span class="money-sign">$</span>23.250</p>
+      </div>
+    </div>
+
+    <!-- Búsqueda -->
+    <div style="position:relative">
+      <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink3)" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="search" placeholder="Buscar por producto o cliente…" class="field" style="padding-left:38px">
+    </div>
+
+    <!-- Chips filtro estado -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="chip chip-filter-on">Todos</button>
+      <button type="button" class="chip chip-filter">Pagado</button>
+      <button type="button" class="chip chip-filter">Pendiente</button>
+      <button type="button" class="chip chip-filter" aria-label="Filtros avanzados">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        Filtros
+      </button>
+    </div>
+
+    <!-- Lista de ventas -->
+    <div style="display:flex;flex-direction:column;gap:1px">
+
+      <!-- Fila normal (Pagado) -->
+      <div style="padding:14px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Auriculares Bluetooth M20</p>
+            <p style="margin:3px 0 0;font-size:13px;color:var(--ink2)">04/11 · Efectivo</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <p style="margin:0;font-size:15px;font-weight:600"><span class="money-sign">$</span>37.000</p>
+            <span class="chip chip-paid" style="margin-top:4px;display:inline-flex">Pagado</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila POS expandida (muestra detalles del ticket) -->
+      <div style="padding:14px 0;border-bottom:1px solid var(--line);background:var(--s1);margin:0 -20px;padding:14px 20px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px">
+              <p style="margin:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Cable iPhone Carga Rápida</p>
+              <span class="badge badge-pos">POS</span>
+            </div>
+            <p style="margin:3px 0 0;font-size:13px;color:var(--ink2)">04/11 · Transferencia</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <p style="margin:0;font-size:15px;font-weight:600"><span class="money-sign">$</span>12.100</p>
+            <span class="chip chip-paid" style="margin-top:4px;display:inline-flex">Pagado</span>
+          </div>
+        </div>
+        <!-- Detalle expandido (ticker expandible en tap) -->
+        <div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:8px;font-size:13px;color:var(--ink2)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>3 × Cable iPhone C</span><span>$ 12.600</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Ajuste</span><span>− $ 500</span></div>
+          <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:600;color:var(--ink)"><span>Total</span><span>$ 12.100</span></div>
+        </div>
+        <!-- Acciones dentro de la fila expandida -->
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button type="button" class="btn-sec" style="flex:1;height:36px;font-size:13px" aria-label="Editar venta">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
+            Editar
+          </button>
+          <button type="button" class="btn-sec" style="flex:1;height:36px;font-size:13px;color:var(--danger)" aria-label="Eliminar venta">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            Eliminar
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila pendiente -->
+      <div style="padding:14px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Funda Silicona Samsung S24</p>
+            <p style="margin:3px 0 0;font-size:13px;color:var(--ink2)">03/11 · María García · C/C</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <p style="margin:0;font-size:15px;font-weight:600;color:var(--warn)"><span class="money-sign">$</span>7.800</p>
+            <button type="button" class="chip chip-pend" style="margin-top:4px;display:inline-flex" aria-label="Cambiar a Pagado">Pendiente</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila presupuesto -->
+      <div style="padding:14px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px">
+              <p style="margin:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Power Bank 20000 mAh</p>
+              <span class="badge badge-quote">PPTO</span>
+            </div>
+            <p style="margin:3px 0 0;font-size:13px;color:var(--ink2)">03/11 · Efectivo · #0021</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <p style="margin:0;font-size:15px;font-weight:600"><span class="money-sign">$</span>58.000</p>
+            <span class="chip chip-paid" style="margin-top:4px;display:inline-flex">Pagado</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Cargar más -->
+    <button type="button" class="btn-sec" style="width:100%;justify-content:center;height:40px;font-size:14px">
+      Cargar más ventas (44 restantes)
+    </button>
+
+  </div>
+
+  <!-- Barra inferior -->
+  <nav aria-label="Navegación principal" style="position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:390px;background:var(--bg);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:8px 0 16px;z-index:30">
+    <a href="#" aria-label="Inicio" style="display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:11px;min-width:44px;padding:4px 0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      Inicio
+    </a>
+    <a href="#" aria-label="Stock" style="display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:11px;min-width:44px;padding:4px 0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+      Stock
+    </a>
+    <a href="#" aria-label="Ventas (activo)" aria-current="page" style="display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--acc);font-size:11px;font-weight:600;min-width:44px;padding:4px 0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg>
+      Ventas
+    </a>
+    <a href="#" aria-label="Clientes" style="display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:11px;min-width:44px;padding:4px 0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a5.5 5.5 0 0 1 3.5 6"/></svg>
+      Clientes
+    </a>
+    <a href="#" aria-label="Más" style="display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:11px;min-width:44px;padding:4px 0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>
+      Más
+    </a>
+  </nav>
+
+  <!-- Bottom Sheet Nueva Venta (superpuesto) -->
+  <div class="sheet-bg" role="dialog" aria-modal="true" aria-label="Nueva venta">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h2 style="margin:0 0 20px;font-size:20px;font-weight:600;letter-spacing:-0.02em">Nueva venta</h2>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label style="display:block;font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:5px">Producto</label>
+          <div style="position:relative">
+            <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink3)" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="search" placeholder="Buscar producto…" class="field" style="padding-left:38px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="display:block;font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:5px">Cantidad</label>
+            <input type="number" class="field" value="1">
+          </div>
+          <div>
+            <label style="display:block;font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:5px">Precio</label>
+            <input type="number" class="field" value="18500">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="position:relative">
+            <label style="display:block;font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:5px">Estado</label>
+            <select class="field" aria-label="Estado"><option>Pagado</option><option>Pendiente</option></select>
+          </div>
+          <div>
+            <label style="display:block;font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:5px">Método</label>
+            <select class="field" aria-label="Método de pago"><option>Efectivo</option><option>Transferencia</option></select>
+          </div>
+        </div>
+        <!-- Toggle c/c -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--s2);border-radius:8px">
+          <div style="width:36px;height:22px;border-radius:11px;background:var(--s3);position:relative;cursor:pointer;flex-shrink:0" role="switch" aria-checked="false" aria-label="Cuenta corriente">
+            <div style="width:16px;height:16px;border-radius:8px;background:var(--bg);position:absolute;top:3px;left:3px;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div>
+          </div>
+          <span style="font-size:14px;font-weight:500">Cuenta corriente</span>
+        </div>
+        <!-- Total -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--line)">
+          <span style="font-size:14px;color:var(--ink2)">Total</span>
+          <span style="font-size:22px;font-weight:600;letter-spacing:-0.025em"><span style="font-size:13px;opacity:.55;vertical-align:.3em;margin-right:1px">$</span>18.500</span>
+        </div>
+        <button type="button" class="btn-pri">Guardar venta</button>
+        <button type="button" style="height:44px;border-radius:8px;border:0;background:transparent;color:var(--ink2);font:inherit;font-size:14px;cursor:pointer">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
