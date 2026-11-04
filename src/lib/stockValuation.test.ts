@@ -19,6 +19,10 @@ describe('dashboard valuation wiring', () => {
     expect(dashboard).toContain('if (!user || inventoryAccessError)');
   });
 
+  it('requests catalog-only state and excludes those products from restock suggestions', () => {
+    expect(dashboard).toContain('min_stock,inventory_owner_id,catalog_only');
+    expect(dashboard).toContain('getRestockRecommendations(getDashboardInventoryProducts(products), sales)');
+  });
   it('keeps the selector, financial stock KPIs, category chart and PDF on the same scope', () => {
     expect(dashboard).toContain('selectStockValuationOwner(visibleOwners, selectedOwnerId, defaultInventoryOwnerId)');
     expect(dashboard).toContain('onChange={event => setSelectedOwnerId(event.target.value)}');

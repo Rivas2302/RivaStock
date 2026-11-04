@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { getRestockRecommendations } from '../lib/stockIntelligence';
+import { getDashboardInventoryProducts, getDashboardSummary } from '../lib/dashboardSummary';
 import { Product, Sale, CashFlowEntry, Order, InventoryHolding, InventoryOwner } from '../types';
 import { getInventoryHoldings } from '../lib/inventoryHoldings';
 import { filterInventoryOwnersByMembership, sortInventoryOwners } from '../lib/inventoryOwners';
@@ -33,7 +34,7 @@ import { showToast } from '../lib/toast';
 
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
 
-const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id';
+const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id,catalog_only';
 
 export default function Dashboard() {
   const [exporting, setExporting] = useState(false);
@@ -118,110 +119,30 @@ export default function Dashboard() {
   );
   const stockScope = valuationOwner?.name ?? 'Sin titular disponible';
 
-  const { kpis, lowStockProducts, recentSales } = useMemo(() => {
-    let totalCollected = 0;
-    let totalExpenses = 0;
-    let cashIncome = 0;
-    let cashExpenses = 0;
-    let bankIncome = 0;
-    let bankExpenses = 0;
+  const summary = useMemo(
+    () => getDashboardSummary({ sales, cashFlow, products, valuation, now: new Date() }),
+    [cashFlow, products, sales, valuation],
+  );
+  const { recentSales, monthlySalesData, monthlyBalanceData } = summary;
 
-    for (const entry of cashFlow) {
-      const isPaid = entry.status === 'Pagado';
-      if (!isPaid) continue;
-
-      if (entry.type === 'Ingreso') {
-        totalCollected += entry.amount ?? 0;
-        if (entry.paymentMethod === 'Efectivo') cashIncome += entry.amount ?? 0;
-        if (entry.paymentMethod === 'Transferencia') bankIncome += entry.amount ?? 0;
-      } else {
-        totalExpenses += entry.amount ?? 0;
-        if (entry.paymentMethod === 'Efectivo') cashExpenses += entry.amount ?? 0;
-        if (entry.paymentMethod === 'Transferencia') bankExpenses += entry.amount ?? 0;
-      }
-    }
-
-    let pendingSales = 0;
-    let thisMonthSales = 0;
-    const now = new Date();
-
-    for (const sale of sales) {
-      if (sale.status === 'No Pagado' || sale.status === 'Pendiente') {
-        pendingSales += sale.total ?? 0;
-      }
-
-      if (sale.status === 'Pagado') {
-        const saleDate = new Date(sale.date);
-        if (saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear()) {
-          thisMonthSales += sale.total;
-        }
-      }
-    }
-
-    let outOfStockCount = 0;
-    const lowStockProducts: Product[] = [];
-
-    for (const product of products) {
-      if (product.stock === 0) outOfStockCount += 1;
-      if (product.stock <= product.minStock) {
-        lowStockProducts.push(product);
-      }
-    }
-
-    return {
-      kpis: [
-        { title: 'Balance Neto', value: totalCollected - totalExpenses, icon: Wallet, color: 'indigo' },
-        { title: 'Efectivo Disponible', value: cashIncome - cashExpenses, icon: ArrowUpRight, color: 'emerald' },
-        { title: 'Transferencias Disp.', value: bankIncome - bankExpenses, icon: ArrowUpRight, color: 'blue' },
-        { title: 'Cobros Pendientes', value: pendingSales, icon: Clock, color: 'amber' },
-        { title: 'Valor en Stock', value: valuation.stockValue, icon: Package, color: 'violet', scope: stockScope },
-        { title: 'Total Invertido', value: valuation.totalInvested, icon: TrendingDown, color: 'rose', scope: stockScope },
-        { title: 'Ganancia Potencial', value: valuation.potentialProfit, icon: TrendingUp, color: 'emerald', scope: stockScope },
-        { title: 'Productos sin Stock', value: outOfStockCount, icon: AlertTriangle, color: 'rose', isCurrency: false },
-        { title: 'Ventas del Mes', value: thisMonthSales, icon: ShoppingCart, color: 'indigo' },
-      ],
-      lowStockProducts,
-      recentSales: sales.slice(0, 5),
-    };
-  }, [cashFlow, products, sales, valuation, stockScope]);
+  const kpis = useMemo(() => [
+    { title: 'Balance Neto', value: summary.month.netBalance, icon: Wallet, color: 'indigo' },
+    { title: 'Efectivo Disponible', value: summary.today.cashAvailable, icon: ArrowUpRight, color: 'emerald' },
+    { title: 'Transferencias Disp.', value: summary.month.transferAvailable, icon: ArrowUpRight, color: 'blue' },
+    { title: 'Cobros Pendientes', value: summary.today.pendingReceivables, icon: Clock, color: 'amber' },
+    { title: 'Valor en Stock', value: valuation.stockValue, icon: Package, color: 'violet', scope: stockScope },
+    { title: 'Total Invertido', value: valuation.totalInvested, icon: TrendingDown, color: 'rose', scope: stockScope },
+    { title: 'Ganancia Potencial', value: valuation.potentialProfit, icon: TrendingUp, color: 'emerald', scope: stockScope },
+    { title: 'Productos sin Stock', value: summary.alerts.outOfStockCount, icon: AlertTriangle, color: 'rose', isCurrency: false },
+    { title: 'Ventas del Mes', value: summary.month.salesTotal, icon: ShoppingCart, color: 'indigo' },
+  ], [stockScope, summary, valuation]);
 
   const restockRecommendations = useMemo(
-    () => getRestockRecommendations(products, sales),
+    () => getRestockRecommendations(getDashboardInventoryProducts(products), sales),
     [products, sales],
   );
 
-  const monthlySalesData = useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
-      const total = sales
-        .filter(s => s.status === 'Pagado' && s.date.startsWith(monthKey))
-        .reduce((acc, s) => acc + s.total, 0);
-      return { label, total };
-    });
-  }, [sales]);
-
   const stockByCategoryData = valuation.stockByCategory.slice(0, 8);
-
-  const monthlyBalanceData = useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
-      let income = 0;
-      let expense = 0;
-      for (const entry of cashFlow) {
-        if (!entry.date.startsWith(monthKey) || entry.status !== 'Pagado') continue;
-        if (entry.type === 'Ingreso') income += entry.amount;
-        else expense += entry.amount;
-      }
-      return { label, balance: income - expense };
-    });
-  }, [cashFlow]);
-
 
   const handleExportDashboardPDF = async () => {
     if (exporting) return;
