@@ -110,6 +110,17 @@ describe('mobile app chrome controller', () => {
     vi.unstubAllGlobals();
   });
 
+  it('hides the app bottom bar in full-screen chat mode', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const ui = <MemoryRouter initialEntries={['/']}><Routes><Route path="/" element={<ChromeLayout/>}><Route index element={<MobileAIHubNavigation view="chats" bridgeState="idle" isOwner fullScreen onNavigate={vi.fn()}/>}/></Route></Routes></MemoryRouter>;
+    await act(async () => { root.render(ui); });
+    expect(host.querySelector('[data-testid="chrome-state"]')?.textContent).toBe('true:true');
+  });
+
   it('hides mobile chrome only below the 1024px desktop breakpoint and resets on unmount', async () => {
     let matches = false;
     const listeners = new Set<(event: MediaQueryListEvent) => void>();

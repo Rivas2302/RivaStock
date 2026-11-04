@@ -89,6 +89,9 @@ export interface AIChatJob {
   status: AIJobStatus;
   error: string | null;
   created_at: string;
+  include_business_context?: boolean;
+  include_project_context?: boolean;
+  chat_history_count?: number;
 }
 
 export interface AIChatDetail {
@@ -217,6 +220,11 @@ export async function getAIChat(chatId: string): Promise<AIChatDetail> {
 
 export async function deleteAIChat(chatId: string): Promise<void> {
   await invoke({ action: 'chat_delete', chat_id: chatId });
+}
+
+export async function renameAIChat(chatId: string, title: string): Promise<string> {
+  const result = await invoke<{ title: string }>({ action: 'chat_rename', chat_id: chatId, title });
+  return result.title;
 }
 
 export async function deleteAITask(jobId: string): Promise<void> {

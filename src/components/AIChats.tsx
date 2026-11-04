@@ -4,7 +4,9 @@ import {
   deleteAIChat,
   getAIChat,
   getAIChats,
+  renameAIChat,
   sendAIChatMessage,
+  type AIBridgeState,
   type AIChat,
   type AIChatJob,
   type AIChatMessage,
@@ -18,6 +20,8 @@ import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import KnowledgeSources from './ai/KnowledgeSources';
 
 const MobileAIChatList = lazy(() => import('./ai/MobileAIChatList'));
+const MobileAIChatConversation = lazy(() => import('./ai/MobileAIChatConversation'));
+const noop = () => undefined;
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
   { id: 'codex', label: 'Codex — Mi PC' },
@@ -49,16 +53,28 @@ function jobStatusText(job: AIChatJob | undefined): string | null {
 
 export default function AIChats({
   initialChatId,
+  bridgeState = null,
+  onMobileConversationOpenChange = noop,
+  onOpenMobileChat = noop,
+  onStartMobileChat = noop,
+  onBackMobileChat = noop,
+  onMobileChatCreated = noop,
   onOpenMemory,
 }: {
   initialChatId: string | null;
+  bridgeState?: AIBridgeState | null;
+  onMobileConversationOpenChange?: (open: boolean) => void;
+  onOpenMobileChat?: (chatId: string) => void;
+  onStartMobileChat?: () => void;
+  onBackMobileChat?: () => void;
+  onMobileChatCreated?: (chatId: string) => void;
   onOpenMemory: (memoryId: string) => void;
 }) {
   const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [chats, setChats] = useState<AIChat[]>([]);
   const [mobileConversationOpen, setMobileConversationOpen] = useState(Boolean(initialChatId));
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth < 1024);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId === 'new' ? null : initialChatId);
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [jobs, setJobs] = useState<AIChatJob[]>([]);
@@ -78,15 +94,36 @@ export default function AIChats({
   const [undoingMemoryEventId, setUndoingMemoryEventId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const submissionRef = useRef<{ signature: string; key: string } | null>(null);
+  const loadedContextRef = useRef<{ chatId: string; jobId: string } | null>(null);
 
   const refreshChats = useCallback(async () => {
     const result = await getAIChats();
     setChats(result);
-    setSelectedChatId((current) => result.some((chat) => chat.id === current)
+    setSelectedChatId((current) => initialChatId === 'new' ? null : result.some((chat) => chat.id === current)
       ? current : initialChatId && result.some((chat) => chat.id === initialChatId)
         ? initialChatId : result[0]?.id ?? null);
     return result;
   }, [initialChatId]);
+
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    if (initialChatId === 'new') {
+      setSelectedChatId(null);
+      setMobileConversationOpen(true);
+      return;
+    }
+    if (initialChatId) {
+      setSelectedChatId(initialChatId);
+      setMobileConversationOpen(true);
+      return;
+    }
+    setSelectedChatId(null);
+    setMobileConversationOpen(false);
+  }, [initialChatId, isMobileViewport]);
+
+  useEffect(() => {
+    onMobileConversationOpenChange(isMobileViewport && mobileConversationOpen);
+  }, [isMobileViewport, mobileConversationOpen, onMobileConversationOpenChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -136,6 +173,13 @@ export default function AIChats({
         setSelectedChat(detail.chat);
         setMessages(detail.messages);
         setJobs(detail.jobs);
+        const latestContextJob = detail.jobs.at(-1);
+        if (latestContextJob && (loadedContextRef.current?.chatId !== selectedChatId
+          || loadedContextRef.current.jobId !== latestContextJob.id)) {
+          setIncludeBusinessContext(latestContextJob.include_business_context === true);
+          setIncludeProjectContext(latestContextJob.include_project_context === true);
+          loadedContextRef.current = { chatId: selectedChatId, jobId: latestContextJob.id };
+        }
         const completedJobIds = detail.jobs.filter((job) => job.status === 'completed').map((job) => job.id);
         const [nextSources, nextMemoryActivity] = await Promise.all([
           listJobSources(completedJobIds).catch(() => ({})),
@@ -230,6 +274,7 @@ export default function AIChats({
 
   const startNewChat = () => {
     if (!canWriteBusiness) return;
+    if (isMobileViewport) onStartMobileChat();
     setMobileConversationOpen(true);
     submissionRef.current = null;
     setSelectedChatId(null);
@@ -239,6 +284,7 @@ export default function AIChats({
     setJobSources({});
     setJobMemoryActivity({});
     setDraft('');
+    loadedContextRef.current = null;
     setProvider('codex');
     setModelId('gpt-6-luna');
     setReasoningEffort('low');
@@ -301,6 +347,7 @@ export default function AIChats({
       setSelectedChatId(result.chat_id);
       setChatRefreshKey((current) => current + 1);
       if (!isMobileViewport) await refreshChats();
+      else onMobileChatCreated(result.chat_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
     } finally {
@@ -309,6 +356,28 @@ export default function AIChats({
   };
 
   const currentChat = chats.find((chat) => chat.id === selectedChatId) ?? selectedChat;
+  const renameCurrentChat = async (title: string) => {
+    if (!canWriteBusiness || !currentChat) throw new Error('No se puede renombrar este chat.');
+    const normalizedTitle = await renameAIChat(currentChat.id, title);
+    setSelectedChat((chat) => chat?.id === currentChat.id ? { ...chat, title: normalizedTitle } : chat);
+    setChats((current) => current.map((chat) => chat.id === currentChat.id ? { ...chat, title: normalizedTitle } : chat));
+  };
+  const deleteCurrentChat = async () => {
+    if (!canWriteBusiness || !currentChat || hasPendingJob) throw new Error('Esperá a que termine la respuesta antes de borrar el chat.');
+    setDeletingChatId(currentChat.id);
+    setError('');
+    try {
+      await deleteAIChat(currentChat.id);
+      await refreshChats();
+      onBackMobileChat();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No se pudo eliminar el chat.';
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setDeletingChatId(null);
+    }
+  };
 
   return (
     <section className="space-y-3">
@@ -317,14 +386,45 @@ export default function AIChats({
       {isMobileViewport && !mobileConversationOpen && <Suspense fallback={<div role="status" className="min-h-64 animate-pulse bg-[var(--surface-muted)]"/>}>
         <MobileAIChatList
           canWrite={canWriteBusiness}
-          onOpenChat={(chatId) => { setSelectedChatId(chatId); setMobileConversationOpen(true); }}
+          onOpenChat={(chatId) => { setSelectedChatId(chatId); setMobileConversationOpen(true); onOpenMobileChat(chatId); }}
           onNewChat={startNewChat}
         />
       </Suspense>}
 
-      {mobileConversationOpen && <button type="button" onClick={() => setMobileConversationOpen(false)} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-[var(--brand)] lg:hidden">← Volver a chats</button>}
+      {isMobileViewport && mobileConversationOpen && <Suspense fallback={<div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--surface)] text-sm text-[var(--ink-muted)] lg:hidden"><Loader2 size={16} className="mr-2 animate-spin"/>Cargando conversación…</div>}>
+        <MobileAIChatConversation
+          chat={currentChat ?? null}
+          provider={provider}
+          bridgeState={bridgeState}
+          messages={messages}
+          jobs={jobs}
+          jobSources={jobSources}
+          jobMemoryActivity={jobMemoryActivity}
+          loading={loadingMessages}
+          sending={sending}
+          hasPendingJob={hasPendingJob}
+          canWrite={canWriteBusiness}
+          error={error}
+          draft={draft}
+          modelId={modelId}
+          reasoningEffort={reasoningEffort}
+          includeBusinessContext={includeBusinessContext}
+          includeProjectContext={includeProjectContext}
+          onDraftChange={setDraft}
+          onSend={(event) => void send(event)}
+          onBack={onBackMobileChat}
+          onRename={renameCurrentChat}
+          onDelete={deleteCurrentChat}
+          onOpenMemory={onOpenMemory}
+          onUndoMemory={(eventId) => void undoMemoryChange(eventId)}
+          onModelChange={setModelId}
+          onReasoningChange={setReasoningEffort}
+          onBusinessContextChange={setIncludeBusinessContext}
+          onProjectContextChange={setIncludeProjectContext}
+        />
+      </Suspense>}
 
-      <div className={`${mobileConversationOpen ? 'grid' : 'hidden lg:grid'} min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]`}>
+      <div className="hidden min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:grid lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
         <aside className="hidden min-h-72 flex-col border-b border-[var(--line)] p-3 lg:flex lg:min-h-0 lg:border-b-0 lg:border-r">
           <button type="button" onClick={startNewChat} disabled={!canWriteBusiness} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-3 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={16}/>Nuevo chat</button>
           <div className="mb-2 mt-5 flex items-center justify-between gap-2 px-1"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Tus chats</h3>{loadingChats && <Loader2 size={14} className="animate-spin text-[var(--ink-muted)]"/>}</div>

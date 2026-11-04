@@ -26,6 +26,7 @@ interface MobileAIHubNavigationProps {
   view: MobileAIHubView;
   bridgeState: AIBridgeState | null;
   isOwner: boolean;
+  fullScreen?: boolean;
   onNavigate: (view: MobileAIHubView) => void;
 }
 
@@ -51,8 +52,8 @@ function connectionState(state: AIBridgeState | null) {
   return { label: 'Consultando PC', Icon: Loader2, classes: 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink-muted)]' };
 }
 
-export default function MobileAIHubNavigation({ view, bridgeState, isOwner, onNavigate }: MobileAIHubNavigationProps) {
-  useMobileAppChrome({ hideHeader: true, hideBottomNav: false });
+export default function MobileAIHubNavigation({ view, bridgeState, isOwner, fullScreen = false, onNavigate }: MobileAIHubNavigationProps) {
+  useMobileAppChrome({ hideHeader: true, hideBottomNav: fullScreen });
   const [isMoreOpen, setMoreOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);

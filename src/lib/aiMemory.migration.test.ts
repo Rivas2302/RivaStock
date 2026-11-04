@@ -32,6 +32,7 @@ const FILES = [
   '20261026233017_ai_memory_worker_helpers.sql',
   '20261026235518_ai_memory_ui_reembed.sql',
   '20261103163908_ai_memory_chat_history_and_idle_summaries.sql',
+  '20261104130000_ai_mobile_chat_metadata_and_rename.sql',
 ];
 const EMBEDDING = `[${[1, ...Array(383).fill(0)].join(',')}]`;
 
@@ -159,10 +160,38 @@ describe('ai_memory_shared_store migration', () => {
 
     expect((await chatIndex(OWNER, DEVICE, JOB))?.chats.map((chat) => chat.title))
       .toEqual(['Historial del propietario']);
+    await asSystem();
+    const historyCount = await db.query<{ chat_history_count: number }>(
+      'SELECT chat_history_count FROM public.ai_jobs WHERE id = $1', [JOB],
+    );
+    expect(historyCount.rows[0]?.chat_history_count).toBe(1);
     await db.exec('SAVEPOINT wrong_owner');
     await expect(db.query('SELECT public.ai_memory_chat_index($1, $2, $3)', [OTHER, DEVICE, JOB]))
       .rejects.toThrow('Computadora desvinculada');
     await db.exec('ROLLBACK TO SAVEPOINT wrong_owner; RELEASE SAVEPOINT wrong_owner;');
+  });
+
+  it('renames chats only for their owner and normalizes the title', async () => {
+    await seedChatAndJob(OWNER, DEVICE, CHAT, JOB);
+    await asUser(OWNER);
+    const renamed = await db.query<{ ai_rename_chat: string }>(
+      'SELECT public.ai_rename_chat($1, $2)', [CHAT, '  Nuevo   título  '],
+    );
+    expect(renamed.rows[0]?.ai_rename_chat).toBe('Nuevo título');
+    const title = await db.query<{ title: string }>('SELECT title FROM public.ai_chats WHERE id = $1', [CHAT]);
+    expect(title.rows[0]?.title).toBe('Nuevo título');
+
+    await asUser(STAFF);
+    await db.exec('SAVEPOINT staff_rename;');
+    await expect(db.query('SELECT public.ai_rename_chat($1, $2)', [CHAT, 'No autorizado']))
+      .rejects.toThrow('Solo el propietario');
+    await db.exec('ROLLBACK TO SAVEPOINT staff_rename; RELEASE SAVEPOINT staff_rename;');
+
+    await asUser(OTHER);
+    await db.exec('SAVEPOINT foreign_rename;');
+    await expect(db.query('SELECT public.ai_rename_chat($1, $2)', [CHAT, 'No autorizado']))
+      .rejects.toThrow('No se encontró el chat');
+    await db.exec('ROLLBACK TO SAVEPOINT foreign_rename; RELEASE SAVEPOINT foreign_rename;');
   });
 
   it('claims only this owner’s chats idle for 30 minutes and returns their recent exchanges', async () => {

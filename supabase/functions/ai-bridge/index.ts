@@ -476,7 +476,7 @@ serve(async (req) => {
         .select('id, job_id, role, content, created_at')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
       userClient.from('ai_jobs')
-        .select('id, status, error, created_at')
+        .select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).limit(100),
     ]);
     if (messagesError) return safeDbError(messagesError, 400, origin);
@@ -486,6 +486,18 @@ serve(async (req) => {
       messages: (descendingMessages ?? []).reverse(),
       jobs: (jobs ?? []).reverse(),
     }, 200, origin);
+  }
+
+  if (action === 'chat_rename') {
+    if (!isUuid(body.chat_id) || typeof body.title !== 'string' || body.title.length > 160) {
+      return jsonResponse({ error: 'Ingresá un título válido de hasta 80 caracteres.' }, 400, origin);
+    }
+    const { data, error } = await userClient.rpc('ai_rename_chat', {
+      p_chat_id: body.chat_id,
+      p_title: body.title,
+    });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ title: data }, 200, origin);
   }
 
   if (action === 'chat_send') {

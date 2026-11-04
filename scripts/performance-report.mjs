@@ -45,11 +45,13 @@ if (process.argv[2] && !process.argv[2].startsWith('--')) writeFileSync(process.
 else console.log(json);
 if (process.argv.includes('--check')) {
   // AIHub shares the small lazy-route manifest for the product-photo workflow.
-  // H3 adds 234 B gzip to the AIHub wrapper; the 4.6 KiB chat list remains lazy.
-  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 235.6, 'src/pages/Stock.tsx': 235, 'src/pages/Sales.tsx': 230, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
+  // H3 added 234 B gzip to the wrapper; H4 adds 1,039 B for mobile URL/history
+  // coordination. The chat list and conversation remain lazy-loaded.
+  // H4 also adds 451 B gzip of shared CSS; the largest route stays under 24.5 KiB.
+  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 236.7, 'src/pages/Stock.tsx': 235, 'src/pages/Sales.tsx': 230, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
   for (const [route, data] of Object.entries(report)) {
     const jsBudget = (overrides[route] ?? 235) * 1024;
-    if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 24 * 1024) {
+    if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 24.5 * 1024) {
       console.error(`Bundle budget exceeded: ${route}`);
       process.exitCode = 1;
     }

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Database, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
@@ -59,6 +59,8 @@ export default function AIHub() {
   const { isOwner, ownerUid } = useAuth();
   const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
   const [reasoningEffort, setReasoningEffort] = useState<CodexReasoningEffort>('low');
@@ -100,10 +102,13 @@ export default function AIHub() {
   });
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sourceChatId, setSourceChatId] = useState<string | null>(null);
+  const [mobileChatFullScreen, setMobileChatFullScreen] = useState(() => Boolean(searchParams.get('chat')));
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
   const navigateView = (next: MobileAIHubView) => {
     setView(next);
+    if (next !== 'chats') setSourceChatId(null);
+    setMobileChatFullScreen(false);
     const isMobile = window.matchMedia('(max-width: 1023px)').matches;
     setSearchParams(current => {
       const updated = new URLSearchParams(current);
@@ -116,6 +121,45 @@ export default function AIHub() {
       else updated.delete('view');
       return updated;
     }, { replace: !isMobile });
+  };
+
+  const setMobileChatLocation = (chatId: string, replace = false) => {
+    setView('chats');
+    setMobileChatFullScreen(true);
+    setSourceChatId(null);
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.set('view', 'chats');
+      updated.set('chat', chatId);
+      updated.delete('task');
+      updated.delete('new');
+      return updated;
+    }, {
+      replace,
+      state: {
+        ...(typeof location.state === 'object' && location.state !== null ? location.state : {}),
+        mobileAIInAppEntry: true,
+      },
+    });
+  };
+
+  const openMobileChat = (chatId: string) => setMobileChatLocation(chatId);
+  const startMobileChat = () => setMobileChatLocation('new');
+  const backFromMobileChat = () => {
+    const state = location.state;
+    const cameFromApp = typeof state === 'object' && state !== null
+      && 'mobileAIInAppEntry' in state && state.mobileAIInAppEntry === true;
+    if (cameFromApp) {
+      navigate(-1);
+      setMobileChatFullScreen(false);
+      return;
+    }
+    setMobileChatFullScreen(false);
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.delete('chat');
+      return updated;
+    }, { replace: true, state: location.state });
   };
 
   useEffect(() => {
@@ -443,7 +487,7 @@ export default function AIHub() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
       <Suspense fallback={<div aria-hidden="true" className="lg:hidden min-h-24"/>}>
-        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} onNavigate={navigateView}/>
+        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} fullScreen={mobileChatFullScreen} onNavigate={navigateView}/>
       </Suspense>
       <header className="hidden flex-wrap items-center justify-between gap-4 lg:flex">
         <div>
@@ -472,7 +516,13 @@ export default function AIHub() {
       </nav>
 
       {view === 'chats' && <AIChats
-        initialChatId={sourceChatId}
+        initialChatId={searchParams.get('chat') === 'new' ? 'new' : searchParams.get('chat') ?? sourceChatId}
+        bridgeState={bridgeState}
+        onMobileConversationOpenChange={setMobileChatFullScreen}
+        onOpenMobileChat={openMobileChat}
+        onStartMobileChat={startMobileChat}
+        onBackMobileChat={backFromMobileChat}
+        onMobileChatCreated={(chatId) => setMobileChatLocation(chatId, true)}
         onOpenMemory={(memoryId) => { setSelectedMemoryId(memoryId); navigateView('memory'); }}
       />}
 
@@ -482,7 +532,10 @@ export default function AIHub() {
 
       {view === 'memory' && <Suspense fallback={<div className="flex items-center gap-2 py-8 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando memoria…</div>}><AIMemory
         initialSelectedId={selectedMemoryId}
-        onOpenChat={(chatId) => { setSourceChatId(chatId); navigateView('chats'); }}
+        onOpenChat={(chatId) => {
+          if (window.matchMedia('(max-width: 1023px)').matches) openMobileChat(chatId);
+          else { setSourceChatId(chatId); navigateView('chats'); }
+        }}
       /></Suspense>}
 
       {view === 'tasks' && <form onSubmit={(event) => void submit(event)} className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_18rem]">
