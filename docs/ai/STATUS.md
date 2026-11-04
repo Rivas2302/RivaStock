@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H7 detalle móvil verificado en producción
+
+- Vercel reportó `success` para `021b9ee` en `main`; Playwright con el perfil persistente autenticado cargó la pantalla de tareas a 390×844.
+- Verifiqué el flujo desplegado `Usar en publicación` con datos de red `[QA]` interceptados por Playwright: la tarea tenía el ID del segundo de dos productos con nombre, categoría y precio idénticos. El modal se abrió sin error de ambigüedad; las respuestas se simularon en el navegador y no se escribió nada en producción ni se publicó en Facebook.
+- La migración de H7 está aplicada y la definición de `request_fb_copywriting` incluye `product.id`; el código de producción usa ese ID para resolver el producto. No hubo cambio en el worker ni en el Bridge de PC.
+- Marco **H7 [x]**. La comprobación de UI usó respuestas simuladas, no una tarea persistida real; la migración y el despliegue sí son de producción.
+- **H8 [ ] — Desvío:** las tareas Facebook no admiten texto libre ni toggles de contexto en sus RPC/worker. La pantalla muestra esos controles bloqueados y explica los datos utilizados; no se amplió la lógica de IA fuera del alcance de H.
+- **Siguiente:** completar H8 y el cierre H9 con las pruebas locales y el smoke de producción.
+
 ## 2026-11-04 — H7 detalle móvil: migración aplicada, frontend pendiente de producción
 
 - Comparé los planes antes de H7: `ACTION_PLAN.md` coincide con Desktop por SHA-256. Desktop tiene una copia anterior de `MOBILE_AI_UX_PLAN.md`: solo difieren las marcas H1–H6 y se quitó la nota de desvío de H5; los criterios de H7–H9 coinciden. Conservé las marcas respaldadas por las entradas de estado anteriores y el desvío documentado de H5.

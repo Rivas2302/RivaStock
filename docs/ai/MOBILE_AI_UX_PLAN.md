@@ -114,7 +114,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - Las tareas en curso se actualizan solas con el mismo sondeo de hoy.
 - **Commit:** `feat(ai): mobile task list`
 
-### [ ] H7 Detalle de tarea (pantalla 5)
+### [x] H7 Detalle de tarea (pantalla 5)
 - Barra: volver, título por tipo y chip de estado.
 - Metadato: “<producto o documento> · <fecha y hora> · tardó N s”.
 - **El resultado primero**, en una tarjeta.

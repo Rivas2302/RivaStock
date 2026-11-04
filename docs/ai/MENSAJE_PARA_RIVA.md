@@ -1,10 +1,6 @@
 ## H9: perfil de validación disponible
 
-El perfil persistente de Playwright `C:\Users\USER\rivastock-qa-profile` ya está autenticado en RivaStock. No hace falta iniciar sesión para continuar el smoke H9. Todavía no se crearon datos `[QA]` para esta verificación.
-
-## Deploy de H7 pendiente
-
-El commit `8a95386` está en `main`, pero GitHub todavía no muestra un estado de Vercel para ese SHA y la producción sigue sirviendo el chunk anterior de IA. H7 no se marca terminado hasta verificar el resolver de producto por ID en el bundle desplegado. Continúo con las validaciones locales y las tareas que no dependen de ese deploy.
+El perfil persistente de Playwright `C:\Users\USER\rivastock-qa-profile` está autenticado en RivaStock. Vercel confirmó el despliegue móvil de IA y H7 quedó verificada con respuestas de red `[QA]` simuladas en Playwright; no se guardaron datos ni se publicó en Facebook. Sigo con el cierre H9.
 
 F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar
