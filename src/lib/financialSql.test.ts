@@ -33,6 +33,8 @@ beforeAll(async () => {
       || file === '20261103225950_platform_suspension_write_guards.sql') continue;
     // This migration requires hosted pg_net and Vault; account lifecycle has a dedicated local fixture with Vault stubs.
     if (file === '20261104002800_platform_account_lifecycle.sql') continue;
+    // Chat previews and AI task paging have a dedicated PGlite fixture with the full AI schema.
+    if (file === '20261104015507_ai_mobile_chat_previews_task_pagination.sql') continue;
     // D1 spans production tables that this focused financial fixture does not create.
     if (file === '20261103170000_index_used_foreign_keys.sql') continue;
     if (file === '20261027020952_fb_run_traces.sql') {

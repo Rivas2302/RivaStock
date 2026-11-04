@@ -129,7 +129,10 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   if (message.includes('No se encontró la tarea')) return jsonResponse({ error: message }, 404, origin);
   if (message.includes('Esperá a que termine') || message.includes('Ya hay diez tareas')
     || message.includes('Primero resolvé o descartá la propuesta')
-    || message.includes('no se puede cambiar') || message.includes('actualización segura')) return jsonResponse({ error: message }, 409, origin);
+    || message.includes('no se puede cambiar') || message.includes('actualización segura')
+    || message.includes('Solo se pueden reintentar')
+    || message.includes('propuesta de Conocimientos ya se resolvió')
+    || message.includes('clave de reintento')) return jsonResponse({ error: message }, 409, origin);
   if (message.includes('Computadora desvinculada')) return jsonResponse({ error: message }, 401, origin);
   if (message.includes('Resultado inválido') || message.includes('instrucción') || message.includes('Proveedor')
     || message.includes('mensaje debe') || message.includes('Opciones de contexto')
@@ -380,7 +383,7 @@ serve(async (req) => {
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);
     const { data, error } = await userClient.from('ai_chats')
-      .select('id, provider, title, model_id, reasoning_effort, created_at, updated_at, last_message_at')
+      .select('id, provider, title, last_message_preview, model_id, reasoning_effort, created_at, updated_at, last_message_at')
       .order('last_message_at', { ascending: false }).limit(50);
     if (error) return safeDbError(error, 400, origin);
     const chats = data ?? [];
@@ -500,6 +503,18 @@ serve(async (req) => {
     return jsonResponse({ job: data }, 200, origin);
   }
 
+  if (action === 'retry') {
+    if (!isUuid(body.job_id) || !isUuid(body.idempotency_key)) {
+      return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
+    }
+    const { data, error } = await userClient.rpc('ai_retry_job', {
+      p_job_id: body.job_id,
+      p_idempotency_key: body.idempotency_key,
+    });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse(data ?? {}, 201, origin);
+  }
+
   if (action === 'recent') {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -507,6 +522,28 @@ serve(async (req) => {
     });
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);
+    if (body.limit !== undefined || body.before !== undefined) {
+      const limit = body.limit === undefined ? 10 : body.limit;
+      const before = body.before;
+      if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 10 || limit > 50) {
+        return jsonResponse({ error: 'El límite debe estar entre 10 y 50.' }, 400, origin);
+      }
+      if (before !== undefined && before !== null
+        && (typeof before !== 'object' || Array.isArray(before)
+          || typeof (before as Record<string, unknown>).created_at !== 'string'
+          || Number.isNaN(Date.parse((before as Record<string, string>).created_at))
+          || !isUuid((before as Record<string, unknown>).id))) {
+        return jsonResponse({ error: 'El cursor de tareas no es válido.' }, 400, origin);
+      }
+      const cursor = before && typeof before === 'object' ? before as { created_at: string; id: string } : null;
+      const { data, error } = await userClient.rpc('ai_recent_task_page', {
+        p_limit: limit,
+        p_before_created_at: cursor?.created_at ?? null,
+        p_before_id: cursor?.id ?? null,
+      });
+      if (error) return safeDbError(error, 400, origin);
+      return jsonResponse(data ?? {}, 200, origin);
+    }
     const { data, error } = await userClient.from('ai_jobs')
       .select('id, provider, task_type, input, output, status, error, created_at, started_at, completed_at, attempt_count, include_business_context, include_project_context, model_id, reasoning_effort')
       .in('task_type', ['text_generation', 'fb_copywriting', 'fb_photo_review']).is('chat_id', null)

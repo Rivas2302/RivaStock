@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261104002800_platform_account_lifecycle.sql', import.meta.url),
   'utf8',
-).replace('CREATE EXTENSION IF NOT EXISTS pg_net;\n', '');
+).replace(/CREATE EXTENSION IF NOT EXISTS pg_net;\r?\n/, '');
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const ADMIN = '10000000-0000-4000-8000-000000000002';
 const INTERNAL = '10000000-0000-4000-8000-000000000003';

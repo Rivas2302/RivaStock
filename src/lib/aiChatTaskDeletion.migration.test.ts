@@ -8,6 +8,8 @@ const COLLABORATOR = '10000000-0000-4000-8000-000000000003';
 const WORKER = '20000000-0000-4000-8000-000000000001';
 const CHAT = '30000000-0000-4000-8000-000000000001';
 const CHAT_JOB = '40000000-0000-4000-8000-000000000001';
+const LEGACY_CHAT = '30000000-0000-4000-8000-000000000003';
+const LEGACY_CHAT_JOB = '40000000-0000-4000-8000-000000000003';
 const MIGRATIONS = new URL('../../supabase/migrations/', import.meta.url);
 const baseMigrations = [
   '0076_ai_bridge.sql',
@@ -64,10 +66,13 @@ beforeAll(async () => {
     CREATE TABLE public.knowledge_ai_proposals (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id uuid NOT NULL,
+      document_id uuid,
       job_id uuid NOT NULL UNIQUE,
-      status text NOT NULL CHECK (status IN ('pending', 'applied', 'discarded')),
+      status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'applied', 'discarded')),
+      image_map jsonb NOT NULL DEFAULT '{}'::jsonb,
       FOREIGN KEY (user_id, job_id) REFERENCES public.ai_jobs(user_id, id) ON DELETE CASCADE
     );
+    GRANT SELECT ON public.knowledge_ai_proposals TO authenticated;
   `);
   await db.exec(readFileSync(new URL('20261026205303_ai_chat_task_deletion.sql', MIGRATIONS), 'utf8'));
   await db.exec(readFileSync(new URL('20261103150000_ai_organize_task_cleanup.sql', MIGRATIONS), 'utf8'));
@@ -105,6 +110,21 @@ beforeAll(async () => {
     const detail = error as { message?: string; position?: string; detail?: string; where?: string };
     throw new Error(`Facebook AI migration at ${detail.position ?? 'unknown'}: ${detail.message ?? 'failed'} ${detail.where ?? ''}`, { cause: error });
   }
+  await db.query(
+    `INSERT INTO public.ai_chats (id, user_id, provider, title)
+     VALUES ($1, $2, 'mock', 'Legacy preview')`, [LEGACY_CHAT, OWNER],
+  );
+  await db.query(
+    `INSERT INTO public.ai_jobs (id, user_id, idempotency_key, provider, task_type, input, chat_id)
+     VALUES ($1, $2, $3, 'mock', 'text_generation', 'Legacy preview question', $4)`,
+    [LEGACY_CHAT_JOB, OWNER, crypto.randomUUID(), LEGACY_CHAT],
+  );
+  await db.query(
+    `INSERT INTO public.ai_chat_messages (user_id, chat_id, job_id, role, content)
+     VALUES ($1, $2, $3, 'user', E'# Howdy **world**\\n\\n- [guide](https://example.test)')`,
+    [OWNER, LEGACY_CHAT, LEGACY_CHAT_JOB],
+  );
+  await db.exec(readFileSync(new URL('20261104015507_ai_mobile_chat_previews_task_pagination.sql', MIGRATIONS), 'utf8'));
 }, 60_000);
 
 beforeEach(async () => { await db.exec("BEGIN; RESET ROLE; SET test.uid = ''; "); });
@@ -141,22 +161,28 @@ async function createChat(id = CHAT, provider = 'mock', lastMessageAt = 'now()')
 }
 
 async function createJob(options: {
-  id?: string; chatId?: string | null; taskType?: string; status?: 'pending' | 'processing' | 'completed' | 'failed';
-  createdAt?: string;
+  id?: string; userId?: string; chatId?: string | null; taskType?: string; status?: 'pending' | 'processing' | 'completed' | 'failed';
+  provider?: 'mock' | 'codex' | 'claude'; input?: string; includeBusinessContext?: boolean; includeProjectContext?: boolean;
+  modelId?: string | null; reasoningEffort?: string | null; createdAt?: string;
 } = {}): Promise<string> {
   const id = options.id ?? crypto.randomUUID();
   const status = options.status ?? 'completed';
+  const provider = options.provider ?? 'mock';
   await db.query(
     `INSERT INTO public.ai_jobs (
        id, user_id, idempotency_key, provider, task_type, input, status, created_at,
-       completed_at, worker_id, lease_expires_at, chat_id
-     ) VALUES ($1, $2, $3, 'mock', $4, 'QA task', $5, ${options.createdAt ?? 'now()'},
-       CASE WHEN $5 IN ('completed', 'failed') THEN now() ELSE NULL END,
-       CASE WHEN $5 = 'processing' THEN $6::uuid ELSE NULL END,
-       CASE WHEN $5 = 'processing' THEN now() + interval '1 minute' ELSE NULL END,
-       $7)`,
-    [id, OWNER, crypto.randomUUID(), options.taskType ?? 'text_generation', status,
-      WORKER, options.chatId ?? null],
+       completed_at, worker_id, lease_expires_at, chat_id,
+       include_business_context, include_project_context, model_id, reasoning_effort
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, ${options.createdAt ?? 'now()'},
+       CASE WHEN $7 IN ('completed', 'failed') THEN now() ELSE NULL END,
+       CASE WHEN $7 = 'processing' THEN $8::uuid ELSE NULL END,
+       CASE WHEN $7 = 'processing' THEN now() + interval '1 minute' ELSE NULL END,
+       $9, $10, $11, $12, $13)`,
+    [id, options.userId ?? OWNER, crypto.randomUUID(), provider, options.taskType ?? 'text_generation',
+      options.input ?? 'QA task', status, WORKER, options.chatId ?? null,
+      options.includeBusinessContext ?? false, options.includeProjectContext ?? false,
+      options.modelId ?? (provider === 'codex' ? 'gpt-6-luna' : null),
+      options.reasoningEffort ?? (provider === 'codex' ? 'low' : null)],
   );
   return id;
 }
@@ -558,5 +584,200 @@ describe('AI chat and task deletion migration', () => {
     await asSystem();
     const remaining = await db.query<{ count: number }>('SELECT count(*)::int AS count FROM public.ai_chat_tombstones WHERE cleaned_at IS NULL');
     expect(remaining.rows[0].count).toBe(0);
+  });
+
+  it('backfills a plain-text preview for existing chats and maintains it on message inserts', async () => {
+    const backfilled = await db.query<{ preview: string }>(
+      'SELECT last_message_preview AS preview FROM public.ai_chats WHERE id = $1', [LEGACY_CHAT],
+    );
+    expect(backfilled.rows[0].preview).toBe('Howdy world guide');
+
+    await createChat();
+    await createJob({ id: CHAT_JOB, chatId: CHAT });
+    await db.query(
+      `INSERT INTO public.ai_chat_messages (user_id, chat_id, job_id, role, content)
+       VALUES ($1, $2, $3, 'user', $4)`,
+      [OWNER, CHAT, CHAT_JOB, `${'**long** '.repeat(30)}\n- _tail_`],
+    );
+    const inserted = await db.query<{ preview: string; size: number }>(
+      `SELECT last_message_preview AS preview, char_length(last_message_preview)::int AS size
+       FROM public.ai_chats WHERE id = $1`, [CHAT],
+    );
+    expect(inserted.rows[0].size).toBe(140);
+    expect(inserted.rows[0].preview).not.toMatch(/[\n*_`#>|\[\]]/);
+    expect(inserted.rows[0].preview).toContain('long');
+  });
+
+  it('uses a seven-day first page, falls back to the ten latest tasks, and counts statuses', async () => {
+    const statuses = ['completed', 'failed', 'pending', 'processing', 'completed', 'failed',
+      'pending', 'processing', 'completed', 'completed', 'failed', 'completed'] as const;
+    const ids: string[] = [];
+    for (let index = 0; index < statuses.length; index += 1) {
+      const id = `60000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
+      ids.push(id);
+      await createJob({
+        id,
+        taskType: index === 0 ? 'knowledge_organize' : 'text_generation',
+        status: statuses[index],
+        createdAt: `now() - interval '20 days' + interval '${index} seconds'`,
+      });
+    }
+    await db.query(
+      `INSERT INTO public.knowledge_ai_proposals (user_id, job_id, status)
+       VALUES ($1, $2, 'pending')`, [OWNER, ids[0]],
+    );
+    await db.query("UPDATE public.ai_jobs SET output = 'proposal ready' WHERE id = $1", [ids[0]]);
+    await createJob({
+      id: '60000000-0000-4000-8000-000000000099', userId: OTHER,
+      createdAt: "now() - interval '20 days'",
+    });
+
+    await asUser(OWNER);
+    const first = await db.query<{ page: {
+      jobs: Array<{ id: string }>;
+      knowledge_organize_jobs: Array<{ id: string }>;
+      finished_task_count: number;
+      counts: { all: number; in_progress: number; failed: number; knowledge_review: number };
+      has_more: boolean;
+      next_before: { created_at: string; id: string } | null;
+    } }>('SELECT public.ai_recent_task_page(10, NULL, NULL) AS page');
+    const page = first.rows[0].page;
+    expect(page.jobs.length + page.knowledge_organize_jobs.length).toBe(10);
+    expect(page.knowledge_organize_jobs).toHaveLength(0);
+    expect(page.counts).toEqual({ all: 12, in_progress: 4, failed: 3, knowledge_review: 1 });
+    expect(page.finished_task_count).toBe(7);
+    expect(page.has_more).toBe(true);
+    expect(page.next_before).toMatchObject({ id: ids[2] });
+    expect([...page.jobs, ...page.knowledge_organize_jobs].some((job) => job.id.endsWith('000000000099'))).toBe(false);
+
+    const second = await db.query<{ page: typeof page }>(
+      'SELECT public.ai_recent_task_page(10, $1::timestamptz, $2::uuid) AS page',
+      [page.next_before!.created_at, page.next_before!.id],
+    );
+    expect(second.rows[0].page.jobs.map((job) => job.id)).toEqual([ids[1]]);
+    expect(second.rows[0].page.knowledge_organize_jobs.map((job) => job.id)).toEqual([ids[0]]);
+    expect(second.rows[0].page.has_more).toBe(false);
+    expect(second.rows[0].page.next_before).toBeNull();
+
+    await asUser(OTHER);
+    const other = await db.query<{ page: { jobs: Array<{ id: string }>; counts: { all: number } } }>(
+      'SELECT public.ai_recent_task_page(10, NULL, NULL) AS page',
+    );
+    expect(other.rows[0].page.counts.all).toBe(1);
+    expect(other.rows[0].page.jobs.map((job) => job.id)).toEqual(['60000000-0000-4000-8000-000000000099']);
+  });
+
+  it('prefers seven-day tasks even when older tasks exist and restricts the list RPC', async () => {
+    for (let index = 0; index < 10; index += 1) {
+      await createJob({
+        id: `70000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        createdAt: `now() - interval '1 day' + interval '${index} seconds'`,
+      });
+    }
+    await createJob({ id: '70000000-0000-4000-8000-000000000020', createdAt: "now() - interval '10 days'" });
+    await createJob({ id: '70000000-0000-4000-8000-000000000021', createdAt: "now() - interval '10 days' + interval '1 second'" });
+    await asUser(OWNER);
+    const result = await db.query<{ page: {
+      jobs: Array<{ created_at: string }>;
+      knowledge_organize_jobs: Array<{ created_at: string }>;
+      counts: { all: number };
+      has_more: boolean;
+    } }>('SELECT public.ai_recent_task_page(10, NULL, NULL) AS page');
+    const page = result.rows[0].page;
+    const listed = [...page.jobs, ...page.knowledge_organize_jobs];
+    expect(listed).toHaveLength(10);
+    expect(listed.every((job) => Date.parse(job.created_at) > Date.now() - 7 * 24 * 60 * 60 * 1000)).toBe(true);
+    expect(page.counts.all).toBe(12);
+    expect(page.has_more).toBe(true);
+
+    const privileges = await db.query<{ anon: boolean; authenticated: boolean }>(`
+      SELECT
+        has_function_privilege('anon', 'public.ai_recent_task_page(integer,timestamptz,uuid)', 'EXECUTE') AS anon,
+        has_function_privilege('authenticated', 'public.ai_recent_task_page(integer,timestamptz,uuid)', 'EXECUTE') AS authenticated
+    `);
+    expect(privileges.rows[0]).toEqual({ anon: false, authenticated: true });
+  });
+
+  it('retries only a failed standalone task, preserving its request and making retries idempotent', async () => {
+    const originalId = '80000000-0000-4000-8000-000000000001';
+    const idempotencyKey = '80000000-0000-4000-8000-000000000002';
+    await createJob({
+      id: originalId,
+      provider: 'codex',
+      taskType: 'fb_copywriting',
+      input: 'Write a short post for the selected product',
+      status: 'failed',
+      includeBusinessContext: true,
+      includeProjectContext: true,
+      modelId: 'gpt-6.1-sol',
+      reasoningEffort: 'high',
+    });
+    await asUser(OWNER);
+
+    const first = await db.query<{ result: { job: Record<string, unknown> } }>(
+      'SELECT public.ai_retry_job($1, $2) AS result', [originalId, idempotencyKey],
+    );
+    const retry = first.rows[0].result.job;
+    expect(retry).toMatchObject({
+      provider: 'codex', task_type: 'fb_copywriting', input: 'Write a short post for the selected product',
+      status: 'pending', include_business_context: true, include_project_context: true,
+      model_id: 'gpt-6.1-sol', reasoning_effort: 'high',
+    });
+    expect(retry.id).not.toBe(originalId);
+
+    const repeated = await db.query<{ result: { job: { id: string } } }>(
+      'SELECT public.ai_retry_job($1, $2) AS result', [originalId, idempotencyKey],
+    );
+    expect(repeated.rows[0].result.job.id).toBe(retry.id);
+
+    await asSystem();
+    const original = await db.query<{ status: string }>(
+      'SELECT status FROM public.ai_jobs WHERE id = $1', [originalId],
+    );
+    const retryCount = await db.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM public.ai_jobs WHERE idempotency_key = $1', [idempotencyKey],
+    );
+    expect(original.rows[0].status).toBe('failed');
+    expect(retryCount.rows[0].count).toBe(1);
+  });
+
+  it('moves pending Knowledge proposal metadata to the retry without changing the failed task', async () => {
+    const originalId = '80000000-0000-4000-8000-000000000003';
+    const idempotencyKey = '80000000-0000-4000-8000-000000000004';
+    const documentId = '90000000-0000-4000-8000-000000000001';
+    const imageMap = { 'page-1': 'storage/object/path' };
+    await createJob({
+      id: originalId,
+      provider: 'codex',
+      taskType: 'knowledge_organize',
+      input: 'Organize these notes',
+      status: 'failed',
+      modelId: 'gpt-6-luna',
+      reasoningEffort: 'low',
+    });
+    await db.query(
+      `INSERT INTO public.knowledge_ai_proposals (user_id, document_id, job_id, status, image_map)
+       VALUES ($1, $2, $3, 'pending', $4::jsonb)`,
+      [OWNER, documentId, originalId, JSON.stringify(imageMap)],
+    );
+    await asUser(OWNER);
+    const result = await db.query<{ result: { job: { id: string; task_type: string; input: string; status: string } } }>(
+      'SELECT public.ai_retry_job($1, $2) AS result', [originalId, idempotencyKey],
+    );
+    const retry = result.rows[0].result.job;
+    expect(retry).toMatchObject({ task_type: 'knowledge_organize', input: 'Organize these notes', status: 'pending' });
+
+    await asSystem();
+    const proposal = await db.query<{ document_id: string; image_map: Record<string, string>; status: string }>(
+      'SELECT document_id, image_map, status FROM public.knowledge_ai_proposals WHERE job_id = $1', [retry.id],
+    );
+    expect(proposal.rows[0]).toEqual({ document_id: documentId, image_map: imageMap, status: 'pending' });
+    const original = await db.query<{ status: string; proposals: number }>(
+      `SELECT job.status, count(proposal.id)::int AS proposals
+       FROM public.ai_jobs AS job
+       LEFT JOIN public.knowledge_ai_proposals AS proposal ON proposal.job_id = job.id
+       WHERE job.id = $1 GROUP BY job.status`, [originalId],
+    );
+    expect(original.rows[0]).toEqual({ status: 'failed', proposals: 0 });
   });
 });

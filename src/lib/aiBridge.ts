@@ -53,6 +53,7 @@ export interface AIChat {
   id: string;
   provider: AIProviderId;
   title: string;
+  last_message_preview?: string | null;
   model_id: CodexModelId | null;
   reasoning_effort: CodexReasoningEffort | null;
   created_at: string;
@@ -85,6 +86,18 @@ export interface AIChatDetail {
   chat: AIChat;
   messages: AIChatMessage[];
   jobs: AIChatJob[];
+}
+
+export interface AIJobPageCursor {
+  created_at: string;
+  id: string;
+}
+
+export interface AIJobPageCounts {
+  all: number;
+  inProgress: number;
+  failed: number;
+  knowledgeReview: number;
 }
 
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
@@ -136,20 +149,51 @@ export async function getAIJob(jobId: string): Promise<AIJob> {
   return result.job;
 }
 
-export async function getRecentAIJobs(): Promise<{
+export async function retryAIJob(jobId: string, idempotencyKey: string): Promise<AIJob> {
+  const result = await invoke<{ job: AIJob }>({
+    action: 'retry',
+    job_id: jobId,
+    idempotency_key: idempotencyKey,
+  });
+  return result.job;
+}
+
+export async function getRecentAIJobs(options?: { limit?: number; before?: AIJobPageCursor | null }): Promise<{
   jobs: AIJob[];
   knowledgeOrganizeJobs: AIJob[];
   finishedTaskCount: number;
+  counts?: AIJobPageCounts;
+  hasMore?: boolean;
+  nextBefore?: AIJobPageCursor | null;
 }> {
   const result = await invoke<{
     jobs: AIJob[];
     knowledge_organize_jobs?: AIJob[];
     finished_task_count: number;
-  }>({ action: 'recent' });
+    counts?: { all: number; in_progress: number; failed: number; knowledge_review: number };
+    has_more?: boolean;
+    next_before?: AIJobPageCursor | null;
+  }>({
+    action: 'recent',
+    ...(options ? {
+      limit: options.limit ?? 10,
+      before: options.before ?? null,
+    } : {}),
+  });
   return {
     jobs: result.jobs,
     knowledgeOrganizeJobs: result.knowledge_organize_jobs ?? [],
     finishedTaskCount: result.finished_task_count,
+    ...(result.counts ? {
+      counts: {
+        all: result.counts.all,
+        inProgress: result.counts.in_progress,
+        failed: result.counts.failed,
+        knowledgeReview: result.counts.knowledge_review,
+      },
+      hasMore: result.has_more ?? false,
+      nextBefore: result.next_before ?? null,
+    } : {}),
   };
 }
 
