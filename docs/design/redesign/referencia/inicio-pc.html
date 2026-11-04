@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Referencia aprobada · Inicio en la PC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+.t-claro{--bg:#FFFFFF;--s1:#FAFAF9;--s2:#F4F4F3;--s3:#E8E8E6;--ink:#191919;--ink2:#6B6B6B;--ink3:#A3A3A3;--line:#EDEDEC;--acc:#23705F;--acc-ink:#FFFFFF;--acc-soft:#E3F1EC;--acc-text:#1D5E50;--danger:#C4382B;--danger-soft:#FBEDEB;--warn:#A86F0C;--warn-soft:#FBF3E2;--bar:#DEDEDB;--pri:#191919;--pri-ink:#FFFFFF}
+.t-oscuro{--bg:#121212;--s1:#181818;--s2:#202020;--s3:#2B2B2B;--ink:#F2F2F2;--ink2:#A7A7A7;--ink3:#6A6A6A;--line:#262626;--acc:#5FC2A5;--acc-ink:#0E2A22;--acc-soft:#16352D;--acc-text:#7DD3B8;--danger:#F07B6E;--danger-soft:#3A1F1C;--warn:#E0A84A;--warn-soft:#3A2D14;--bar:#333333;--pri:#F2F2F2;--pri-ink:#121212}
+a{color:var(--ink);text-decoration:none}a:hover{color:var(--acc-text)}
+.ip-nav a{display:flex;align-items:center;gap:12px;height:36px;padding:0 10px;border-radius:6px;color:var(--ink2);font-size:14px;font-weight:500}
+.ip-nav a:hover{background:var(--s2);color:var(--ink)}
+.ip-nav a[aria-current]{background:var(--s3);color:var(--ink);font-weight:600}
+.ip-nav p{margin:18px 10px 6px;font-size:12px;font-weight:600;color:var(--ink2)}
+.ip-btn{height:38px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.ip-btn:hover{background:var(--s2)}
+.ip-stat dt{font-size:13px;color:var(--ink2);letter-spacing:0.005em}
+.ip-stat dd{margin:8px 0 0;font-size:26px;font-weight:500;letter-spacing:-0.03em}
+.ip-tr td{padding:12px 0;border-top:1px solid var(--line);font-size:14px}
+@media (max-width: 900px){.ip-side{display:none !important}}
+</style>
+<style>.tema-toggle{position:fixed;right:16px;top:16px;z-index:99;height:36px;padding:0 14px;border-radius:18px;border:1px solid #999;background:#fff;color:#111;font:500 13px system-ui;cursor:pointer}</style>
+</head>
+<body>
+<!-- Referencia visual aprobada por Riva el 04/11/2026. Datos de ejemplo. No es código de producción. -->
+<button type="button" class="tema-toggle" onclick="var p=document.getElementById('pantalla');var o=p.classList.contains('t-oscuro');p.classList.toggle('t-oscuro',!o);p.classList.toggle('t-claro',o);">Cambiar claro / oscuro</button>
+<div id="pantalla" class="t-claro" style="width: 100%; min-height: 1520px; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap">
+
+  <aside class="ip-side" style="flex: 0 0 248px; box-sizing: border-box; background: var(--s1); border-right: 1px solid var(--line); padding: 18px 12px; display: flex; flex-direction: column">
+    <button type="button" style="height: 44px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--ink); font: inherit; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer">
+      <span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 6px; background: var(--acc); color: var(--acc-ink); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">BA</span>
+      <span style="flex: 1"><span style="display: block; font-size: 14px; font-weight: 600">Bazar Alem</span><span style="display: block; font-size: 12px; color: var(--ink2)">RivaStock</span></span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>
+    </button>
+    <nav class="ip-nav" aria-label="Principal">
+      <p>Operación</p>
+      <a href="#" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>Consulta rápida</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Stock</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Buscar y enviar</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg>Ventas</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reportes</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>Presupuestos</a>
+      <p>Relaciones</p>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a5.5 5.5 0 0 1 3.5 6"/></svg>Clientes</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13M9 21v-6h6v6"/></svg>Proveedores</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h11v10H2zM13 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>Compras a proveedores</a>
+      <p>Gestión</p>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>Ingresos</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.5" r="1.2"/></svg>Flujo de caja</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></svg>Pedidos</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg>Calculadora</a>
+      <p>Sistema</p>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3 4 14h7l-1 7 9-11h-7z"/></svg>Automatizaciones</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1"/></svg>IA</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>Trazabilidad</a>
+      <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Configuración</a>
+    </nav>
+    <div style="margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px">
+      <span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 15px; background: var(--s3); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">R</span>
+      <span style="flex: 1; font-size: 13px"><span style="display: block; font-weight: 600">Riva</span><span style="display: block; color: var(--ink2)">Dueño</span></span>
+    </div>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 36px 48px 64px">
+    <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div>
+          <p style="margin: 0; font-size: 14px; color: var(--ink2)">Miércoles 4 de noviembre</p>
+          <h1 style="margin: 4px 0 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em">Buenas tardes, Riva</h1>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" class="ip-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>Consultar precio</button>
+          <button type="button" class="ip-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Buscar y enviar</button>
+          <button type="button" class="ip-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13M9 21v-6h6v6"/></svg>Plataforma</button>
+          <button type="button" class="ip-btn" aria-label="Exportar reporte en PDF"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Exportar PDF</button>
+          <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: var(--acc); color: var(--acc-ink); font: inherit; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg>Nueva venta</button>
+        </div>
+      </header>
+
+      <section aria-labelledby="ip-hoy" style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr); gap: 48px; align-items: end">
+        <div>
+          <h2 id="ip-hoy" style="margin: 0; font-size: 14px; font-weight: 500; color: var(--ink2)">Vendiste hoy</h2>
+          <p style="margin: 8px 0 0; font-size: 56px; font-weight: 500; letter-spacing: -0.045em; line-height: 1"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>84.500</p>
+          <p style="margin: 12px 0 0; font-size: 14px; color: var(--ink2)">5 ventas · la última a las 12:40</p>
+        </div>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; padding-bottom: 4px">
+          <div class="ip-stat"><dt>Efectivo disponible</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>132.000</dd></div>
+          <div class="ip-stat"><dt>Transferencias</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>58.300</dd></div>
+          <div class="ip-stat"><dt>Cobros pendientes</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>41.200</dd></div>
+          <div class="ip-stat"><dt>Balance neto</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>96.400</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="ip-meses" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px">
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <h2 id="ip-meses" style="margin: 0; font-size: 17px; font-weight: 600">Ventas por mes</h2>
+            <span style="font-size: 13px; color: var(--ink2)">Noviembre: $ 312.900 hasta hoy</span>
+          </div>
+          <div role="img" aria-label="Ventas de junio a noviembre: el mejor mes fue octubre con 356 mil pesos" style="margin-top: 20px; height: 180px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; align-items: end; border-bottom: 1px solid var(--line)">
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">248</span><span style="height: 54%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">271</span><span style="height: 59%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">233</span><span style="height: 51%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">305</span><span style="height: 67%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">356</span><span style="height: 78%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; font-weight: 600; color: var(--acc-text); text-align: center; margin-bottom: 6px">313</span><span style="height: 69%; background: var(--acc); border-radius: 4px 4px 0 0"></span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; margin-top: 8px; font-size: 12px; color: var(--ink2); text-align: center"><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span style="color: var(--ink); font-weight: 600">Nov</span></div>
+          <p style="margin: 10px 0 0; font-size: 12px; color: var(--ink2)">En miles de pesos</p>
+        </div>
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">Balance de caja por mes</h2>
+            <span style="font-size: 13px; color: var(--ink2)">Ingresos menos gastos</span>
+          </div>
+          <div role="img" aria-label="Balance de junio a noviembre: positivo todos los meses, el mejor octubre con 112 mil pesos" style="margin-top: 20px; height: 180px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; align-items: end; border-bottom: 1px solid var(--line)">
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">61</span><span style="height: 42%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">74</span><span style="height: 52%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">52</span><span style="height: 36%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">88</span><span style="height: 61%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; color: var(--ink2); text-align: center; margin-bottom: 6px">112</span><span style="height: 78%; background: var(--bar); border-radius: 4px 4px 0 0"></span></span>
+            <span style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%"><span style="font-size: 12px; font-weight: 600; color: var(--acc-text); text-align: center; margin-bottom: 6px">96</span><span style="height: 67%; background: var(--acc); border-radius: 4px 4px 0 0"></span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; margin-top: 8px; font-size: 12px; color: var(--ink2); text-align: center"><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span style="color: var(--ink); font-weight: 600">Nov</span></div>
+          <p style="margin: 10px 0 0; font-size: 12px; color: var(--ink2)">En miles de pesos</p>
+        </div>
+      </section>
+
+      <section aria-labelledby="ip-stock" style="padding-top: 36px; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 48px">
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <h2 id="ip-stock" style="margin: 0; font-size: 17px; font-weight: 600">Tu mercadería</h2>
+            <label for="ip-titular" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Titular para la valoración</label>
+            <select id="ip-titular" style="height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: 13px">
+              <option>Titular: Riva</option>
+              <option>Titular: Juan</option>
+            </select>
+          </div>
+          <dl style="margin: 20px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 24px">
+            <div class="ip-stat"><dt>Valor a precio de venta</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>4.210.000</dd></div>
+            <div class="ip-stat"><dt>Lo que invertiste</dt><dd><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>2.380.500</dd></div>
+            <div class="ip-stat"><dt>Ganancia si vendés todo</dt><dd style="color: var(--acc-text)"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>1.829.500</dd></div>
+            <div class="ip-stat"><dt>Productos sin stock</dt><dd><a href="#" style="color: var(--danger)">5</a></dd></div>
+          </dl>
+        </div>
+        <div>
+          <h3 style="margin: 0; font-size: 14px; font-weight: 500; color: var(--ink2)">Valor por categoría</h3>
+          <ul role="list" style="list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Seguridad</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 100%; height: 8px; border-radius: 4px; background: var(--acc)"></span></span><span style="text-align: right; color: var(--ink2)">$ 1.240.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Audio</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 66%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 820.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Cargadores</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 49%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 610.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Baterías</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 44%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 540.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Fundas</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 31%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 380.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Cables</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 23%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 290.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Smartwatch</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 17%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 210.000</span></li>
+            <li style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 12px; align-items: center"><span>Otros</span><span style="height: 8px; border-radius: 4px; background: var(--s2)"><span style="display: block; width: 10%; height: 8px; border-radius: 4px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 120.000</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section style="padding-top: 36px; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 48px">
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">Últimas ventas</h2>
+            <a href="#" style="font-size: 14px; font-weight: 500; color: var(--acc-text)">Ver todas</a>
+          </div>
+          <table style="width: 100%; margin-top: 12px; border-collapse: collapse">
+            <thead><tr style="text-align: left; font-size: 12px; color: var(--ink2)"><th style="padding: 0 0 8px; font-weight: 500">Cliente y producto</th><th style="padding: 0 0 8px; font-weight: 500">Hora</th><th style="padding: 0 0 8px; font-weight: 500">Estado</th><th style="padding: 0 0 8px; font-weight: 500; text-align: right">Total</th></tr></thead>
+            <tbody>
+              <tr class="ip-tr"><td><span style="display: block; font-weight: 500">Martín G.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cargador USB-C 20 W × 2</span></td><td style="color: var(--ink2)">12:40</td><td><span style="font-size: 13px; color: var(--ink2)">Pagado · efectivo</span></td><td style="text-align: right; font-weight: 600">$ 14.000</td></tr>
+              <tr class="ip-tr"><td><span style="display: block; font-weight: 500">Lucía P.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cámara WiFi 360°</span></td><td style="color: var(--ink2)">11:52</td><td><span style="font-size: 13px; color: var(--ink2)">Pagado · transferencia</span></td><td style="text-align: right; font-weight: 600">$ 39.900</td></tr>
+              <tr class="ip-tr"><td><span style="display: block; font-weight: 500">Consumidor final</span><span style="display: block; font-size: 13px; color: var(--ink2)">Funda silicona iPhone 15</span></td><td style="color: var(--ink2)">11:10</td><td><span style="font-size: 13px; color: var(--ink2)">Pagado · efectivo</span></td><td style="text-align: right; font-weight: 600">$ 5.500</td></tr>
+              <tr class="ip-tr"><td><span style="display: block; font-weight: 500">Carlos R.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Power bank 10.000 mAh</span></td><td style="color: var(--ink2)">10:35</td><td><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--warn)"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 3px; background: var(--warn)"></span>Pendiente</span></td><td style="text-align: right; font-weight: 600">$ 21.000</td></tr>
+              <tr class="ip-tr"><td><span style="display: block; font-weight: 500">Sofía M.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cable Lightning 1 m</span></td><td style="color: var(--ink2)">09:48</td><td><span style="font-size: 13px; color: var(--ink2)">Pagado · efectivo</span></td><td style="text-align: right; font-weight: 600">$ 4.100</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 17px; font-weight: 600">Para reponer</h2>
+            <a href="#" style="font-size: 14px; font-weight: 500; color: var(--acc-text)">Gestionar stock</a>
+          </div>
+          <p style="margin: 6px 0 0; font-size: 13px; color: var(--ink2)">Según lo que vendiste en los últimos 30 días · inversión estimada $ 151.800</p>
+          <ul role="list" style="list-style: none; margin: 12px 0 0; padding: 0">
+            <li style="padding: 12px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px"><span style="flex: 1"><span style="display: block; font-size: 14px; font-weight: 500">Auriculares Bluetooth</span><span style="display: block; font-size: 13px; color: var(--danger)">Sin stock · 9 vendidos en 30 días</span></span><span style="text-align: right; font-size: 13px"><span style="display: block; font-weight: 600">Pedir 6</span><span style="display: block; color: var(--ink2)">$ 58.800</span></span></li>
+            <li style="padding: 12px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px"><span style="flex: 1"><span style="display: block; font-size: 14px; font-weight: 500">Power bank 10.000 mAh</span><span style="display: block; font-size: 13px; color: var(--warn)">Queda 1 · 5 vendidos en 30 días</span></span><span style="text-align: right; font-size: 13px"><span style="display: block; font-weight: 600">Pedir 4</span><span style="display: block; color: var(--ink2)">$ 44.800</span></span></li>
+            <li style="padding: 12px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px"><span style="flex: 1"><span style="display: block; font-size: 14px; font-weight: 500">Cargador USB-C 20 W</span><span style="display: block; font-size: 13px; color: var(--warn)">Quedan 2 · 11 vendidos en 30 días</span></span><span style="text-align: right; font-size: 13px"><span style="display: block; font-weight: 600">Pedir 8</span><span style="display: block; color: var(--ink2)">$ 31.200</span></span></li>
+            <li style="padding: 12px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px"><span style="flex: 1"><span style="display: block; font-size: 14px; font-weight: 500">Cable Lightning 1 m</span><span style="display: block; font-size: 13px; color: var(--danger)">Sin stock · 14 vendidos en 30 días</span></span><span style="text-align: right; font-size: 13px"><span style="display: block; font-weight: 600">Pedir 10</span><span style="display: block; color: var(--ink2)">$ 17.000</span></span></li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

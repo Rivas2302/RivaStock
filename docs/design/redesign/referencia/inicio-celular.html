@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Referencia aprobada · Inicio en el celular</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+.t-claro{--bg:#FFFFFF;--s1:#FAFAF9;--s2:#F4F4F3;--s3:#E8E8E6;--ink:#191919;--ink2:#6B6B6B;--line:#EDEDEC;--acc:#23705F;--acc-ink:#FFFFFF;--acc-text:#1D5E50;--danger:#C4382B;--warn:#A86F0C;--bar:#DEDEDB;--pri:#191919;--pri-ink:#FFFFFF}
+.t-oscuro{--bg:#121212;--s1:#181818;--s2:#202020;--s3:#2B2B2B;--ink:#F2F2F2;--ink2:#A7A7A7;--line:#262626;--acc:#5FC2A5;--acc-ink:#0E2A22;--acc-text:#7DD3B8;--danger:#F07B6E;--warn:#E0A84A;--bar:#333333;--pri:#F2F2F2;--pri-ink:#121212}
+a{color:var(--ink);text-decoration:none}
+.ic-tile{display:flex;align-items:center;gap:12px;height:56px;border-radius:8px;background:var(--s2);overflow:hidden;font-size:14px;font-weight:600}
+.ic-tile i{width:56px;height:56px;background:var(--s3);color:var(--ink);display:flex;align-items:center;justify-content:center;flex:none;font-style:normal}
+.ic-row{display:flex;align-items:center;gap:14px;min-height:56px;border-top:1px solid var(--line);font-size:15px}
+.ic-h2{margin:0;font-size:19px;font-weight:600;letter-spacing:-0.015em}
+.ic-nav a{display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0;color:var(--ink2);font-size:11px;font-weight:500}
+.ic-nav a[aria-current]{color:var(--ink);font-weight:600}
+</style>
+<style>.tema-toggle{position:fixed;right:16px;top:16px;z-index:99;height:36px;padding:0 14px;border-radius:18px;border:1px solid #999;background:#fff;color:#111;font:500 13px system-ui;cursor:pointer}</style>
+</head>
+<body>
+<!-- Referencia visual aprobada por Riva el 04/11/2026. Datos de ejemplo. No es código de producción. -->
+<button type="button" class="tema-toggle" onclick="var p=document.getElementById('pantalla');var o=p.classList.contains('t-oscuro');p.classList.toggle('t-oscuro',!o);p.classList.toggle('t-claro',o);">Cambiar claro / oscuro</button>
+<div style="display:flex;justify-content:center;padding:24px 0;background:#888"><div id="pantalla" class="t-oscuro" style="width: 390px; height: 2240px; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; font-variant-numeric: tabular-nums; position: relative; overflow: hidden">
+
+  <header style="padding: 16px 16px 0 20px; display: flex; align-items: center; gap: 4px">
+    <button type="button" style="height: 36px; padding: 0 12px 0 6px; border-radius: 18px; border: 0; background: var(--s2); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px">
+      <span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 13px; background: var(--acc); color: var(--acc-ink); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">BA</span>
+      Bazar Alem
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <span style="flex: 1"></span>
+    <button type="button" aria-label="Avisos" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: var(--ink); display: flex; align-items: center; justify-content: center">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+    </button>
+    <button type="button" aria-label="Abrir menú completo" style="width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: var(--ink); display: flex; align-items: center; justify-content: center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </header>
+
+  <main style="padding: 22px 20px 120px; display: flex; flex-direction: column; gap: 36px">
+    <div>
+      <p style="margin: 0; font-size: 14px; color: var(--ink2)">Miércoles 4 de noviembre</p>
+      <h1 style="margin: 4px 0 0; font-size: 28px; font-weight: 600; letter-spacing: -0.025em">Buenas tardes, Riva</h1>
+    </div>
+
+    <section aria-labelledby="ic-hoy">
+      <h2 id="ic-hoy" style="margin: 0; font-size: 14px; font-weight: 500; color: var(--ink2)">Vendiste hoy</h2>
+      <p style="margin: 6px 0 0; font-size: 46px; font-weight: 500; letter-spacing: -0.045em; line-height: 1"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>84.500</p>
+      <p style="margin: 10px 0 0; font-size: 14px; color: var(--ink2)">5 ventas · la última a las 12:40</p>
+      <dl style="margin: 22px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <div><dt style="font-size: 12px; color: var(--ink2)">Efectivo</dt><dd style="margin: 4px 0 0; font-size: 17px; font-weight: 500"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>132.000</dd></div>
+        <div><dt style="font-size: 12px; color: var(--ink2)">Transferencias</dt><dd style="margin: 4px 0 0; font-size: 17px; font-weight: 500"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>58.300</dd></div>
+        <div><dt style="font-size: 12px; color: var(--ink2)">Te deben</dt><dd style="margin: 4px 0 0; font-size: 17px; font-weight: 500"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>41.200</dd></div>
+      </dl>
+    </section>
+
+    <nav aria-label="Accesos rápidos" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <a href="#" class="ic-tile"><i aria-hidden="true" style="background: var(--acc); color: var(--acc-ink)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg></i>Vender</a>
+      <a href="#" class="ic-tile"><i aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg></i>Consultar precio</a>
+      <a href="#" class="ic-tile"><i aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></i>Enviar fotos</a>
+      <a href="#" class="ic-tile"><i aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12l4 4 4-4"/></svg></i>Cargar ingreso</a>
+      <a href="#" class="ic-tile"><i aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></i>Presupuesto</a>
+      <a href="#" class="ic-tile"><i aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.5" r="1.2"/></svg></i>Caja</a>
+    </nav>
+
+    <section aria-labelledby="ic-at">
+      <h2 id="ic-at" class="ic-h2" style="margin-bottom: 6px">Para atender</h2>
+      <a href="#" class="ic-row"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: var(--danger); flex: none"></span><span style="flex: 1">Sin stock</span><span style="color: var(--ink2)">5 productos</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color: var(--ink2)"><path d="m9 6 6 6-6 6"/></svg></a>
+      <a href="#" class="ic-row"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: var(--warn); flex: none"></span><span style="flex: 1"><span style="display: block">Para reponer</span><span style="display: block; font-size: 13px; color: var(--ink2)">Inversión estimada $ 151.800</span></span><span style="color: var(--ink2)">12</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color: var(--ink2)"><path d="m9 6 6 6-6 6"/></svg></a>
+      <a href="#" class="ic-row" style="border-bottom: 1px solid var(--line)"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: var(--ink2); flex: none"></span><span style="flex: 1">Cobros pendientes</span><span style="color: var(--ink2)">$ 41.200</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color: var(--ink2)"><path d="m9 6 6 6-6 6"/></svg></a>
+    </section>
+
+    <section aria-labelledby="ic-mes">
+      <div style="display: flex; align-items: baseline; justify-content: space-between">
+        <h2 id="ic-mes" class="ic-h2">Este mes</h2>
+        <a href="#" style="font-size: 14px; font-weight: 500; color: var(--acc-text)">Reportes</a>
+      </div>
+      <dl style="margin: 14px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <div><dt style="font-size: 13px; color: var(--ink2)">Ventas de noviembre</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 500; letter-spacing: -0.02em"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>312.900</dd></div>
+        <div><dt style="font-size: 13px; color: var(--ink2)">Balance neto</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 500; letter-spacing: -0.02em"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>96.400</dd></div>
+      </dl>
+      <div role="img" aria-label="Ventas de junio a noviembre, en miles: 248, 271, 233, 305, 356 y 313 hasta hoy" style="margin-top: 18px; height: 120px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; align-items: end; border-bottom: 1px solid var(--line)">
+        <span style="height: 54%; background: var(--bar); border-radius: 4px 4px 0 0"></span>
+        <span style="height: 59%; background: var(--bar); border-radius: 4px 4px 0 0"></span>
+        <span style="height: 51%; background: var(--bar); border-radius: 4px 4px 0 0"></span>
+        <span style="height: 67%; background: var(--bar); border-radius: 4px 4px 0 0"></span>
+        <span style="height: 78%; background: var(--bar); border-radius: 4px 4px 0 0"></span>
+        <span style="height: 69%; background: var(--acc); border-radius: 4px 4px 0 0"></span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 6px; font-size: 12px; color: var(--ink2); text-align: center"><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span style="color: var(--ink); font-weight: 600">Nov</span></div>
+    </section>
+
+    <section aria-labelledby="ic-merc">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+        <h2 id="ic-merc" class="ic-h2">Tu mercadería</h2>
+        <button type="button" style="height: 32px; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px">Titular: Riva<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+      <dl style="margin: 14px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px">
+        <div><dt style="font-size: 13px; color: var(--ink2)">Valor a precio de venta</dt><dd style="margin: 4px 0 0; font-size: 19px; font-weight: 500"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>4.210.000</dd></div>
+        <div><dt style="font-size: 13px; color: var(--ink2)">Lo que invertiste</dt><dd style="margin: 4px 0 0; font-size: 19px; font-weight: 500"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>2.380.500</dd></div>
+        <div><dt style="font-size: 13px; color: var(--ink2)">Ganancia si vendés todo</dt><dd style="margin: 4px 0 0; font-size: 19px; font-weight: 500; color: var(--acc-text)"><span style="font-size: 0.58em; font-weight: 400; opacity: 0.55; margin-right: 0.14em; vertical-align: 0.36em">$</span>1.829.500</dd></div>
+        <div><dt style="font-size: 13px; color: var(--ink2)">Productos sin stock</dt><dd style="margin: 4px 0 0; font-size: 19px; font-weight: 600; color: var(--danger)">5</dd></div>
+      </dl>
+      <h3 style="margin: 22px 0 10px; font-size: 13px; font-weight: 500; color: var(--ink2)">Valor por categoría</h3>
+      <ul role="list" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+        <li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: 10px; align-items: center"><span>Seguridad</span><span style="height: 6px; border-radius: 3px; background: var(--s2)"><span style="display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--acc)"></span></span><span style="text-align: right; color: var(--ink2)">$ 1.240.000</span></li>
+        <li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: 10px; align-items: center"><span>Audio</span><span style="height: 6px; border-radius: 3px; background: var(--s2)"><span style="display: block; width: 66%; height: 6px; border-radius: 3px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 820.000</span></li>
+        <li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: 10px; align-items: center"><span>Cargadores</span><span style="height: 6px; border-radius: 3px; background: var(--s2)"><span style="display: block; width: 49%; height: 6px; border-radius: 3px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 610.000</span></li>
+        <li style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: 10px; align-items: center"><span>Baterías</span><span style="height: 6px; border-radius: 3px; background: var(--s2)"><span style="display: block; width: 44%; height: 6px; border-radius: 3px; background: var(--bar)"></span></span><span style="text-align: right; color: var(--ink2)">$ 540.000</span></li>
+      </ul>
+      <a href="#" style="display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 500; color: var(--acc-text)">Ver las 9 categorías</a>
+    </section>
+
+    <section aria-labelledby="ic-ult">
+      <div style="display: flex; align-items: baseline; justify-content: space-between">
+        <h2 id="ic-ult" class="ic-h2">Últimas ventas</h2>
+        <a href="#" style="font-size: 14px; font-weight: 500; color: var(--acc-text)">Ver todas</a>
+      </div>
+      <ul role="list" style="list-style: none; margin: 10px 0 0; padding: 0">
+        <li class="ic-row" style="min-height: 60px"><span style="flex: 1"><span style="display: block; font-weight: 500">Martín G.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cargador USB-C 20 W × 2 · 12:40</span></span><span style="font-weight: 600">$ 14.000</span></li>
+        <li class="ic-row" style="min-height: 60px"><span style="flex: 1"><span style="display: block; font-weight: 500">Lucía P.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cámara WiFi 360° · 11:52</span></span><span style="font-weight: 600">$ 39.900</span></li>
+        <li class="ic-row" style="min-height: 60px"><span style="flex: 1"><span style="display: block; font-weight: 500">Consumidor final</span><span style="display: block; font-size: 13px; color: var(--ink2)">Funda silicona iPhone 15 · 11:10</span></span><span style="font-weight: 600">$ 5.500</span></li>
+        <li class="ic-row" style="min-height: 60px"><span style="flex: 1"><span style="display: block; font-weight: 500">Carlos R.</span><span style="display: block; font-size: 13px; color: var(--warn)">Power bank · pendiente de cobro</span></span><span style="font-weight: 600">$ 21.000</span></li>
+        <li class="ic-row" style="min-height: 60px; border-bottom: 1px solid var(--line)"><span style="flex: 1"><span style="display: block; font-weight: 500">Sofía M.</span><span style="display: block; font-size: 13px; color: var(--ink2)">Cable Lightning 1 m · 09:48</span></span><span style="font-weight: 600">$ 4.100</span></li>
+      </ul>
+    </section>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <button type="button" style="height: 48px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Exportar reporte en PDF</button>
+      <a href="#" style="height: 44px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink2)">Panel de plataforma</a>
+    </div>
+  </main>
+
+  <nav aria-label="Principal" class="ic-nav" style="position: absolute; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 8px 4px 18px">
+    <a href="#" aria-current="page"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
+    <a href="#"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>Consulta</a>
+    <a href="StockCel.dc.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Stock</a>
+    <a href="#"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Enviar fotos</a>
+    <a href="#"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></svg>Ventas</a>
+  </nav>
+</div></div>
+</body>
+</html>
