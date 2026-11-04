@@ -1,9 +1,11 @@
-## Bloque I — implementación local lista; falta cerrar el smoke en producción
+## Bloque I — falta cierre autenticado en producción
 
-- Backup fresco verificado: 96 tablas / 14.235 filas y 789 objetos Storage. La migración `20261104124859_mobile_stock_adjustments` está aplicada; producción confirma permisos y guardas de suspensión.
-- I7 e I8 pasan lint, 936 pruebas unitarias y 40 escenarios E2E (23 omitidos por alcance del proyecto). Capturas de PC a 1280×900: 0 píxeles distintos en Inicio, Stock y editor. El bundle está dentro del presupuesto.
-- No hay productos de stock `[QA]` en producción. Para terminar I6/I7/I9 tengo que publicar el frontend, crear un producto `[QA]` desde la app, hacer el smoke SQL únicamente dentro de `BEGIN … ROLLBACK`, probar el flujo móvil y borrar el producto desde la app. Todavía no hice cambios de datos.
-- No necesitás hacer nada ahora. F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
+- El estado de Vercel para `e9cf831` fue `failure`. Reproduje el error local: un `\n` literal al final de `ProductEditorFields.tsx`; ya está corregido. Build, `perf:check`, lint, **938 pruebas unitarias** y **40 E2E** pasan. El deploy de la corrección todavía está pendiente de push y verificación.
+- Contraste AA para textos móviles verificado en ambos temas. Las capturas deterministas a 1280×900 de Inicio, Stock y editor coinciden píxel por píxel con `e9cf831`.
+- Backup verificado: 96 tablas / 14.235 filas y 789 objetos Storage. La migración `20261104124859_mobile_stock_adjustments` ya está aplicada; su smoke transaccional todavía requiere un producto de prueba.
+- **Acción tuya para cuando el deploy esté confirmado:** cerrá Chrome por completo, sin cerrar sesión ni borrar el perfil `C:\Users\USER\rivastock-qa-profile`, y avisame **“Chrome cerrado”**. Chrome tiene procesos activos sin CDP y Playwright no puede usar ese perfil mientras está bloqueado.
+- No hay productos `[QA]` de stock creados y no hubo escrituras nuevas en producción. Con el perfil desbloqueado voy a crear el producto `[QA]` desde la app, ejecutar el smoke únicamente con `BEGIN … ROLLBACK`, recorrer el flujo móvil y borrar el producto desde la app.
+- F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 
 # Tanda 1 lista para revisar
 

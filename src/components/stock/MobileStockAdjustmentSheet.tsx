@@ -139,7 +139,7 @@ export default function MobileStockAdjustmentSheet({
     <div className="space-y-4 pb-2">
       <div>
         <p className="truncate text-sm font-semibold">{product.name}</p>
-        <p className="text-sm text-[var(--ink-muted)]">
+        <p className="text-sm text-[var(--ink-subtle)]">
           {holdingsEnabled && selectedHolding && selectedOwnerId
             ? `${owners.find((owner) => owner.id === selectedOwnerId)?.name ?? 'Titular'} · `
             : ''}
@@ -166,7 +166,7 @@ export default function MobileStockAdjustmentSheet({
           type="button"
           aria-pressed={mode === value}
           onClick={() => chooseMode(value)}
-          className={`min-h-11 rounded-lg px-2 text-sm font-bold ${mode === value ? 'bg-[var(--surface)] text-[var(--brand-strong)] shadow-sm' : 'text-[var(--ink-muted)]'}`}
+          className={`min-h-11 rounded-lg px-2 text-sm font-bold ${mode === value ? 'bg-[var(--surface)] text-[var(--brand-strong)] shadow-sm' : 'text-[var(--ink-subtle)]'}`}
         >{label}</button>)}
       </div>
 

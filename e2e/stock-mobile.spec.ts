@@ -438,6 +438,7 @@ test('desktop Stock keeps its table and does not render the mobile list', async 
   await testInfo.attach('desktop-stock-1280x900', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   await page.goto('/stock?producto=camera');
   await expect(page.getByRole('dialog', { name: 'Editar Producto' })).toBeVisible();
+  await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }' });
   await testInfo.attach('desktop-stock-editor-1280x900', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   await page.keyboard.press('Escape');
   await page.goto('/stock');

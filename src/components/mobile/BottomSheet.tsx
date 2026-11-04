@@ -91,14 +91,14 @@ export default function BottomSheet({
         <header className="mb-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <h2 id={titleId} className="text-lg font-bold">{title}</h2>
-            {description && <div className="mt-1 text-sm text-[var(--ink-muted)]">{description}</div>}
+            {description && <div className="mt-1 text-sm text-[var(--ink-subtle)]">{description}</div>}
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={() => onCloseRef.current()}
             aria-label={closeLabel}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-[var(--ink-subtle)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
           >
             <X size={20} aria-hidden="true" />
           </button>

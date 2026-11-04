@@ -139,13 +139,13 @@ function AttentionRow({
       <span aria-hidden="true" className={'size-2 shrink-0 rounded-full ' + dotColor} />
       <span className="min-w-0 flex-1">
         <span className="block font-medium text-[var(--ink)]">{item.label}</span>
-        <span className="block truncate text-sm text-[var(--ink-muted)]">{item.detail}</span>
+        <span className="block truncate text-sm text-[var(--ink-subtle)]">{item.detail}</span>
       </span>
-      {item.value && <span className="shrink-0 text-sm text-[var(--ink-muted)]">{item.value}</span>}
+      {item.value && <span className="shrink-0 text-sm text-[var(--ink-subtle)]">{item.value}</span>}
       {item.source ? (
         <span className="shrink-0 text-sm font-semibold text-[var(--danger-ink)]">Reintentar</span>
       ) : (
-        <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-[var(--ink-muted)]" />
+        <ChevronRight aria-hidden="true" size={16} className="shrink-0 text-[var(--ink-subtle)]" />
       )}
     </>
   );
@@ -176,7 +176,7 @@ function MonthSalesChart({ data }: { data: DashboardSummary['monthlySalesData'] 
           </span>
         ))}
       </div>
-      <div aria-hidden="true" className="mt-1 grid grid-cols-6 gap-2 text-center text-xs text-[var(--ink-muted)]">
+      <div aria-hidden="true" className="mt-1 grid grid-cols-6 gap-2 text-center text-xs text-[var(--ink-subtle)]">
         {data.map((item, index) => (
           <span key={item.label} className={index === data.length - 1 ? 'font-semibold text-[var(--ink)]' : ''}>
             {shortMonthLabel(item.label)}
@@ -305,19 +305,19 @@ export default function MobileHome({
       {notices}
 
       <div>
-        <p className="text-sm text-[var(--ink-muted)]">{localDateLabel(now)}</p>
+        <p className="text-sm text-[var(--ink-subtle)]">{localDateLabel(now)}</p>
         <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[var(--ink)]">{greeting(now)}, {greetingName(user)}</h1>
       </div>
 
       {(showSales || showCash) && (
         <section aria-labelledby="mobile-today-heading">
-          <h2 id="mobile-today-heading" className="text-sm font-medium text-[var(--ink-muted)]">
+          <h2 id="mobile-today-heading" className="text-sm font-medium text-[var(--ink-subtle)]">
             {showSales ? 'Vendiste hoy' : 'Disponible'}
           </h2>
           {showSales && (
             <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>
               <p className="mt-1 text-[46px] font-medium leading-none tracking-tight text-[var(--ink)]">{formatCurrency(summary.today.salesTotal)}</p>
-              <p className="mt-2 text-sm text-[var(--ink-muted)]">
+              <p className="mt-2 text-sm text-[var(--ink-subtle)]">
                 {summary.today.salesCount} {summary.today.salesCount === 1 ? 'venta' : 'ventas'}
                 {formatSaleTime(summary.today.latestSale?.createdAt) && ' · la última a las ' + formatSaleTime(summary.today.latestSale?.createdAt)}
               </p>
@@ -327,13 +327,13 @@ export default function MobileHome({
             {showCash && (
               <>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--ink-muted)]">Efectivo</dt>
+                  <dt className="text-xs text-[var(--ink-subtle)]">Efectivo</dt>
                   <dd className="mt-1 text-base font-medium text-[var(--ink)]">
                     <SourceValue state={sourceStates.cashFlow} retry={() => onRetrySource('cashFlow')}>{formatCurrency(summary.today.cashAvailable)}</SourceValue>
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--ink-muted)]">Transferencias</dt>
+                  <dt className="text-xs text-[var(--ink-subtle)]">Transferencias</dt>
                   <dd className="mt-1 text-base font-medium text-[var(--ink)]">
                     <SourceValue state={sourceStates.cashFlow} retry={() => onRetrySource('cashFlow')}>{formatCurrency(summary.month.transferAvailable)}</SourceValue>
                   </dd>
@@ -342,7 +342,7 @@ export default function MobileHome({
             )}
             {showSales && (
               <div className="min-w-0">
-                <dt className="text-xs text-[var(--ink-muted)]">Te deben</dt>
+                <dt className="text-xs text-[var(--ink-subtle)]">Te deben</dt>
                 <dd className="mt-1 text-base font-medium text-[var(--ink)]">
                   <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>{formatCurrency(summary.today.pendingReceivables)}</SourceValue>
                 </dd>
@@ -387,7 +387,7 @@ export default function MobileHome({
           <dl className={'mt-3 grid gap-3 ' + (showSales && showCash ? 'grid-cols-2' : 'grid-cols-1')}>
             {showSales && (
               <div className="min-w-0">
-                <dt className="text-sm text-[var(--ink-muted)]">Ventas de {monthTitle}</dt>
+                <dt className="text-sm text-[var(--ink-subtle)]">Ventas de {monthTitle}</dt>
                 <dd className="mt-1 text-[22px] font-medium tracking-tight text-[var(--ink)]">
                   <SourceValue state={sourceStates.sales} retry={() => onRetrySource('sales')}>{formatCurrency(summary.month.salesTotal)}</SourceValue>
                 </dd>
@@ -395,7 +395,7 @@ export default function MobileHome({
             )}
             {showCash && (
               <div className="min-w-0">
-                <dt className="text-sm text-[var(--ink-muted)]">Balance neto</dt>
+                <dt className="text-sm text-[var(--ink-subtle)]">Balance neto</dt>
                 <dd className="mt-1 text-[22px] font-medium tracking-tight text-[var(--ink)]">
                   <SourceValue state={sourceStates.cashFlow} retry={() => onRetrySource('cashFlow')}>{formatCurrency(summary.month.netBalance)}</SourceValue>
                 </dd>
@@ -427,26 +427,26 @@ export default function MobileHome({
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-4">
             <div>
-              <dt className="text-[13px] text-[var(--ink-muted)]">Valor a precio de venta</dt>
+              <dt className="text-[13px] text-[var(--ink-subtle)]">Valor a precio de venta</dt>
               <dd className="mt-1 text-[19px] font-medium text-[var(--ink)]">{formatCurrency(summary.month.stockValue)}</dd>
             </div>
             <div>
-              <dt className="text-[13px] text-[var(--ink-muted)]">Lo que invertiste</dt>
+              <dt className="text-[13px] text-[var(--ink-subtle)]">Lo que invertiste</dt>
               <dd className="mt-1 text-[19px] font-medium text-[var(--ink)]">{formatCurrency(summary.month.totalInvested)}</dd>
             </div>
             <div>
-              <dt className="text-[13px] text-[var(--ink-muted)]">Ganancia si vendés todo</dt>
+              <dt className="text-[13px] text-[var(--ink-subtle)]">Ganancia si vendés todo</dt>
               <dd className="mt-1 text-[19px] font-medium text-[var(--success-ink)]">{formatCurrency(summary.month.potentialProfit)}</dd>
             </div>
             <div>
-              <dt className="text-[13px] text-[var(--ink-muted)]">Productos sin stock</dt>
+              <dt className="text-[13px] text-[var(--ink-subtle)]">Productos sin stock</dt>
               <dd className="mt-1 text-[19px] font-semibold text-[var(--danger-ink)]">{summary.alerts.outOfStockCount}</dd>
             </div>
           </dl>
 
           {stockByCategoryData.length > 0 && (
             <>
-              <h3 className="mb-2 mt-5 text-[13px] font-medium text-[var(--ink-muted)]">Valor por categoría</h3>
+              <h3 className="mb-2 mt-5 text-[13px] font-medium text-[var(--ink-subtle)]">Valor por categoría</h3>
               <ul role="list" className="flex list-none flex-col gap-2.5 p-0">
                 {stockByCategoryData.slice(0, 4).map((category, index) => {
                   const maxValue = Math.max(1, ...stockByCategoryData.slice(0, 4).map((item) => item.value));
@@ -457,7 +457,7 @@ export default function MobileHome({
                       <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
                         <span className="block h-full rounded-full" style={{ width: barWidth + '%', background: index === 0 ? 'var(--brand)' : 'var(--line-strong)' }} />
                       </span>
-                      <span className="text-right text-[var(--ink-muted)]">{formatCurrency(category.value)}</span>
+                      <span className="text-right text-[var(--ink-subtle)]">{formatCurrency(category.value)}</span>
                     </li>
                   );
                 })}
@@ -485,14 +485,14 @@ export default function MobileHome({
                   <li key={sale.id} className="flex min-h-[60px] items-center gap-3 border-t border-[var(--line)] py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-[var(--ink)]">{sale.client || 'Consumidor final'}</span>
-                      <span className={'block truncate text-[13px] ' + (saleStatus ? 'text-[var(--warning-ink)]' : 'text-[var(--ink-muted)]')}>
+                      <span className={'block truncate text-[13px] ' + (saleStatus ? 'text-[var(--warning-ink)]' : 'text-[var(--ink-subtle)]')}>
                         {saleProductsLabel(sale)} · {timeText}{saleStatus}
                       </span>
                     </span>
                     <span className="shrink-0 text-sm font-semibold text-[var(--ink)]">{formatCurrency(sale.total)}</span>
                   </li>
                 );
-              }) : <li className="border-t border-[var(--line)] py-4 text-center text-sm text-[var(--ink-muted)]">No hay ventas registradas</li>}
+              }) : <li className="border-t border-[var(--line)] py-4 text-center text-sm text-[var(--ink-subtle)]">No hay ventas registradas</li>}
             </ul>
           )}
         </section>
@@ -509,7 +509,7 @@ export default function MobileHome({
           {exporting ? 'Preparando reporte…' : 'Exportar reporte en PDF'}
         </button>
         {isPlatformAdmin && (
-          <Link to="/plataforma" className="flex min-h-11 items-center justify-center text-sm font-medium text-[var(--ink-muted)]">
+          <Link to="/plataforma" className="flex min-h-11 items-center justify-center text-sm font-medium text-[var(--ink-subtle)]">
             Panel de plataforma
           </Link>
         )}
@@ -519,7 +519,7 @@ export default function MobileHome({
         <BottomSheet title="Negocio activo" onClose={() => setBusinessSheetOpen(false)}>
           <div className="space-y-2 text-sm">
             <p className="font-semibold text-[var(--ink)]">{businessName}</p>
-            <p className="text-[var(--ink-muted)]">Este negocio pertenece a la sesión actual.</p>
+            <p className="text-[var(--ink-subtle)]">Este negocio pertenece a la sesión actual.</p>
           </div>
         </BottomSheet>
       )}
@@ -533,7 +533,7 @@ export default function MobileHome({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-[var(--ink-muted)]">No hay avisos para revisar.</p>
+            <p className="text-sm text-[var(--ink-subtle)]">No hay avisos para revisar.</p>
           )}
         </BottomSheet>
       )}
@@ -541,7 +541,7 @@ export default function MobileHome({
       {ownerSheetOpen && (
         <BottomSheet title="Titular para valoración de stock" onClose={() => setOwnerSheetOpen(false)}>
           <div className="space-y-2">
-            <p className="text-sm text-[var(--ink-muted)]">Elegí qué existencias querés ver en los indicadores.</p>
+            <p className="text-sm text-[var(--ink-subtle)]">Elegí qué existencias querés ver en los indicadores.</p>
             {visibleOwners.map((owner) => {
               const isSelected = owner.id === valuationOwner?.id;
               return (

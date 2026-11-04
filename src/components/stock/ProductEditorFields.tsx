@@ -186,5 +186,3 @@ export function ProductEditorImageField({
     </div>
   );
 }
-
-\n

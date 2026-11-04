@@ -168,10 +168,10 @@ export default function MobileProductDetail({
 
   if (!product || !currentEconomics) {
     return <section className="flex mobile-stock-empty-min-height flex-col items-center justify-center gap-4 text-center" aria-label="Producto no encontrado">
-      <span className="flex mobile-stock-hero-icon items-center justify-center rounded-2xl bg-[var(--surface-muted)] text-[var(--ink-muted)]"><Package size={28} aria-hidden="true" /></span>
+      <span className="flex mobile-stock-hero-icon items-center justify-center rounded-2xl bg-[var(--surface-muted)] text-[var(--ink-subtle)]"><Package size={28} aria-hidden="true" /></span>
       <div>
         <h1 className="text-xl font-bold">No encontramos ese producto</h1>
-        <p className="mt-1 text-sm text-[var(--ink-muted)]">Puede que ya no exista o no tengas acceso.</p>
+        <p className="mt-1 text-sm text-[var(--ink-subtle)]">Puede que ya no exista o no tengas acceso.</p>
       </div>
       <button type="button" onClick={onBack} className="min-h-12 rounded-xl bg-[var(--action-bg)] px-5 font-bold text-[var(--action-ink)]">Volver al stock</button>
     </section>;
@@ -215,25 +215,25 @@ export default function MobileProductDetail({
             <button type="button" aria-label="Foto siguiente" onClick={nextPhoto} className="absolute right-2 top-1/2 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full mobile-stock-photo-nav text-white"><ChevronRight size={24} aria-hidden="true" /></button>
             <span className="absolute mobile-stock-bottom-offset right-3 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white">{activePhoto + 1} / {photos.length}</span>
           </>}
-        </> : <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[var(--ink-muted)]"><ImageIcon size={30} aria-hidden="true" />Sin fotos cargadas</div>}
+        </> : <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[var(--ink-subtle)]"><ImageIcon size={30} aria-hidden="true" />Sin fotos cargadas</div>}
       </div>
 
       <div className="space-y-1">
         <h1 className="text-2xl font-bold leading-tight">{product.name}</h1>
-        <p className="text-sm text-[var(--ink-muted)]">{product.category || 'Sin categoría'} · {product.barcode || 'Sin código'}</p>
+        <p className="text-sm text-[var(--ink-subtle)]">{product.category || 'Sin categoría'} · {product.barcode || 'Sin código'}</p>
       </div>
 
       <section className="grid grid-cols-2 gap-3" aria-label="Precio y margen">
         <div className="col-span-2 rounded-2xl border border-[var(--line)] mobile-stock-surface p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Precio de venta</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-subtle)]">Precio de venta</p>
           <p className="mt-1 text-3xl font-bold text-[var(--brand-strong)]">{formatCurrency(product.salePrice)}</p>
         </div>
         <div className="rounded-2xl border border-[var(--line)] mobile-stock-surface p-3">
-          <p className="text-xs font-semibold text-[var(--ink-muted)]">Compra</p>
+          <p className="text-xs font-semibold text-[var(--ink-subtle)]">Compra</p>
           <p className="mt-1 text-sm font-bold">{purchaseLabel}</p>
         </div>
         <div className="rounded-2xl border border-[var(--line)] mobile-stock-surface p-3">
-          <p className="text-xs font-semibold text-[var(--ink-muted)]">Margen</p>
+          <p className="text-xs font-semibold text-[var(--ink-subtle)]">Margen</p>
           <p className="mt-1 text-sm font-bold">{marginLabel}</p>
         </div>
       </section>
@@ -241,12 +241,12 @@ export default function MobileProductDetail({
       <section className="rounded-2xl border border-[var(--line)] mobile-stock-surface p-4" aria-label="Stock del producto">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Stock</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-subtle)]">Stock</p>
             <p className="mt-1 text-2xl font-bold">{currentEconomics.stock} unidades</p>
           </div>
           <StockBadge stock={currentEconomics.stock} minStock={currentEconomics.minStock} />
         </div>
-        {ownerStockSummary && <p className="mt-2 text-sm text-[var(--ink-muted)]">{ownerStockSummary}</p>}
+        {ownerStockSummary && <p className="mt-2 text-sm text-[var(--ink-subtle)]">{ownerStockSummary}</p>}
         {canWrite && !product.catalogOnly && <button type="button" onClick={() => onAdjustStock(product)} className="mt-4 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-bold">Ajustar stock</button>}
       </section>
 
@@ -257,7 +257,7 @@ export default function MobileProductDetail({
       </div>
 
       <label className="flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-[var(--line)] mobile-stock-surface px-4">
-        <span><span className="block text-sm font-bold">Mostrar en catálogo</span><span className="block text-xs text-[var(--ink-muted)]">{product.showInCatalog ? 'Visible para tus clientes' : 'Oculto del catálogo'}</span></span>
+        <span><span className="block text-sm font-bold">Mostrar en catálogo</span><span className="block text-xs text-[var(--ink-subtle)]">{product.showInCatalog ? 'Visible para tus clientes' : 'Oculto del catálogo'}</span></span>
         <input type="checkbox" role="switch" aria-label="Mostrar en catálogo" checked={product.showInCatalog} onChange={() => onToggleCatalog(product)} disabled={!canWrite || catalogSaving} className="size-5 accent-[var(--brand)] disabled:opacity-50" />
       </label>
 
@@ -277,7 +277,7 @@ export default function MobileProductDetail({
       <details onToggle={(event) => setMovementsExpanded(event.currentTarget.open)} className="rounded-2xl border border-[var(--line)] mobile-stock-surface p-4">
         <summary className="cursor-pointer list-none text-sm font-bold">Movimientos</summary>
         {movementsExpanded && <div className="mt-3">
-          <Suspense fallback={<p role="status" className="text-sm text-[var(--ink-muted)]">Cargando movimientos…</p>}>
+          <Suspense fallback={<p role="status" className="text-sm text-[var(--ink-subtle)]">Cargando movimientos…</p>}>
             <MovementHistoryPanel productId={product.id} limit={10} compact onViewAll={() => onOpenAllMovements(product)} />
           </Suspense>
         </div>}
@@ -286,7 +286,7 @@ export default function MobileProductDetail({
       {(product.description || product.notes) && <details className="rounded-2xl border border-[var(--line)] mobile-stock-surface p-4">
         <summary className="cursor-pointer list-none text-sm font-bold">Descripción y observaciones</summary>
         {product.description && <p className="mt-3 whitespace-pre-wrap text-sm">{product.description}</p>}
-        {product.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-[var(--ink-muted)]">{product.notes}</p>}
+        {product.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-[var(--ink-subtle)]">{product.notes}</p>}
       </details>}
     </div>
 
@@ -302,7 +302,7 @@ export default function MobileProductDetail({
     </BottomSheet>}
 
     {deleteOpen && <BottomSheet title="Eliminar producto" titleId="mobile-delete-product-title" closeLabel="Cancelar eliminación" role="alertdialog" onClose={() => setDeleteOpen(false)}>
-      <p className="pb-4 text-sm text-[var(--ink-muted)]">Se borra el producto y sus fotos. No se puede deshacer.</p>
+      <p className="pb-4 text-sm text-[var(--ink-subtle)]">Se borra el producto y sus fotos. No se puede deshacer.</p>
       <div className="flex gap-2 pb-2">
         <button type="button" onClick={() => setDeleteOpen(false)} disabled={deleteBusy} className="min-h-12 flex-1 rounded-xl border border-[var(--line)] font-semibold">Cancelar</button>
         <button type="button" onClick={() => void confirmDelete()} disabled={deleteBusy} className="min-h-12 flex-1 rounded-xl bg-[var(--danger-surface)] font-bold text-[var(--danger-ink)] disabled:opacity-50">{deleteBusy ? 'Eliminando…' : 'Eliminar'}</button>

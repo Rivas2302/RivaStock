@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import './MobileStockList.css';
 import {
   Barcode,
   Check,
@@ -191,7 +192,7 @@ export default function MobileStockList({
             aria-label="Más acciones de stock"
             aria-haspopup="dialog"
             aria-expanded={menuOpen}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)] hover:bg-[var(--surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
           >
             <MoreHorizontal size={21} aria-hidden="true" />
           </button>
@@ -199,14 +200,14 @@ export default function MobileStockList({
 
         <div className="flex items-center gap-2">
           <label className="relative min-w-0 flex-1">
-            <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)]" />
+            <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-subtle)]" />
             <input
               type="search"
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Nombre, código o titular"
               aria-label="Buscar por nombre, código o titular"
-              className="min-h-12 w-full rounded-xl border border-[var(--line)] mobile-stock-surface pl-10 pr-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
+              className="min-h-12 w-full rounded-xl border border-[var(--line)] mobile-stock-surface mobile-placeholder-aa pl-10 pr-3 text-sm text-[var(--ink)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
             />
           </label>
           <button
@@ -224,7 +225,7 @@ export default function MobileStockList({
             type="button"
             onClick={() => setFiltersOpen(true)}
             aria-label={`Abrir filtros${activeFilterCount ? `, ${activeFilterCount} activos` : ''}`}
-            className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold ${activeFilterCount ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)]'}`}
+            className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold ${activeFilterCount ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)]'}`}
           >
             <Filter size={15} aria-hidden="true" />
             Filtros{activeFilterCount ? ` · ${activeFilterCount}` : ''}
@@ -233,7 +234,7 @@ export default function MobileStockList({
             type="button"
             onClick={() => setFiltersOpen(true)}
             aria-label="Filtrar por categoría"
-            className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-full border border-[var(--line)] mobile-stock-surface px-3 text-sm font-semibold text-[var(--ink-muted)]"
+            className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-full border border-[var(--line)] mobile-stock-surface px-3 text-sm font-semibold text-[var(--ink-subtle)]"
           >
             {category === 'all' ? 'Categoría' : category}
             <ChevronDown size={14} aria-hidden="true" />
@@ -242,7 +243,7 @@ export default function MobileStockList({
             type="button"
             onClick={() => onStatusChange(status === 'reponer' ? 'all' : 'reponer')}
             aria-pressed={status === 'reponer'}
-            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'reponer' ? 'border-[var(--warning-line)] bg-[var(--warning-surface)] text-[var(--warning-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)]'}`}
+            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'reponer' ? 'border-[var(--warning-line)] bg-[var(--warning-surface)] text-[var(--warning-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)]'}`}
           >
             Para reponer · {restockCount}
           </button>}
@@ -250,7 +251,7 @@ export default function MobileStockList({
             type="button"
             onClick={() => onStatusChange(status === 'no-disponible' ? 'all' : 'no-disponible')}
             aria-pressed={status === 'no-disponible'}
-            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'no-disponible' ? 'border-[var(--danger-line)] bg-[var(--danger-surface)] text-[var(--danger-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)]'}`}
+            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'no-disponible' ? 'border-[var(--danger-line)] bg-[var(--danger-surface)] text-[var(--danger-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)]'}`}
           >
             Sin stock · {stockCounts.out}
           </button>
@@ -258,7 +259,7 @@ export default function MobileStockList({
             type="button"
             onClick={() => onStatusChange(status === 'bajo' ? 'all' : 'bajo')}
             aria-pressed={status === 'bajo'}
-            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'bajo' ? 'border-[var(--warning-line)] bg-[var(--warning-surface)] text-[var(--warning-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)]'}`}
+            className={`min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold ${status === 'bajo' ? 'border-[var(--warning-line)] bg-[var(--warning-surface)] text-[var(--warning-ink)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)]'}`}
           >
             Stock bajo · {stockCounts.low}
           </button>
@@ -294,7 +295,7 @@ export default function MobileStockList({
         <p className="text-base font-semibold">No hay productos con esos filtros</p>
         <button type="button" onClick={onClearFilters} className="mt-3 min-h-11 rounded-xl px-4 text-sm font-semibold text-[var(--brand)] underline underline-offset-2">Limpiar filtros</button>
       </div> : <>
-        <p className="text-xs font-medium text-[var(--ink-muted)]">Orden: {sortLabel(sort)}</p>
+        <p className="text-xs font-medium text-[var(--ink-subtle)]">Orden: {sortLabel(sort)}</p>
         <ul className="divide-y divide-[var(--line)] rounded-2xl border border-[var(--line)] mobile-stock-surface" aria-label="Productos en stock">
           {visibleProducts.map((product) => {
             const stock = stockByProduct.get(product.id) ?? product.stock;
@@ -312,14 +313,14 @@ export default function MobileStockList({
                 <ProductThumbnail product={product} sizeClassName="size-12" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold">{product.name}</span>
-                  <span className="mt-0.5 block truncate text-xs text-[var(--ink-muted)]">{product.category} · {formatCurrency(product.salePrice)}</span>
-                  {holdingsEnabled && ownerSummary && <span className="mt-0.5 block truncate text-[11px] text-[var(--ink-muted)]">{ownerSummary}</span>}
+                  <span className="mt-0.5 block truncate text-xs text-[var(--ink-subtle)]">{product.category} · {formatCurrency(product.salePrice)}</span>
+                  {holdingsEnabled && ownerSummary && <span className="mt-0.5 block truncate text-[11px] text-[var(--ink-subtle)]">{ownerSummary}</span>}
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
                   <span className="text-xs font-semibold">{stock} {stock === 1 ? 'unidad' : 'unidades'}</span>
                   <StockBadge stock={stock} minStock={product.minStock} />
                 </span>
-                <ChevronRight size={17} aria-hidden="true" className="shrink-0 text-[var(--ink-muted)]" />
+                <ChevronRight size={17} aria-hidden="true" className="shrink-0 text-[var(--ink-subtle)]" />
               </button>
             </li>;
           })}
@@ -335,11 +336,11 @@ export default function MobileStockList({
 
       {menuOpen && <BottomSheet title="Acciones de stock" titleId="mobile-stock-menu-title" closeLabel="Cerrar acciones de stock" onClose={() => setMenuOpen(false)}>
         <nav aria-label="Acciones de stock" className="space-y-1">
-          <button type="button" onClick={() => runMenuAction(onOpenResellerList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><UsersRound size={19} aria-hidden="true" /></span><span className="flex-1">Lista revendedores</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-muted)]" /></button>
-          <button type="button" onClick={() => runMenuAction(onOpenPriceList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><FileText size={19} aria-hidden="true" /></span><span className="flex-1">Ver lista de precios</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-muted)]" /></button>
-          <button type="button" onClick={() => runMenuAction(onDownloadPriceList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><Download size={19} aria-hidden="true" /></span><span className="flex-1">Descargar PDF</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-muted)]" /></button>
-          {canWrite && <button type="button" onClick={() => runMenuAction(onStartCodeSelection)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><Barcode size={19} aria-hidden="true" /></span><span className="flex-1">Generar códigos</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-muted)]" /></button>}
-          <button type="button" onClick={() => runMenuAction(onOpenMovementHistory)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><History size={19} aria-hidden="true" /></span><span className="flex-1">Historial de movimientos</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-muted)]" /></button>
+          <button type="button" onClick={() => runMenuAction(onOpenResellerList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><UsersRound size={19} aria-hidden="true" /></span><span className="flex-1">Lista revendedores</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-subtle)]" /></button>
+          <button type="button" onClick={() => runMenuAction(onOpenPriceList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><FileText size={19} aria-hidden="true" /></span><span className="flex-1">Ver lista de precios</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-subtle)]" /></button>
+          <button type="button" onClick={() => runMenuAction(onDownloadPriceList)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><Download size={19} aria-hidden="true" /></span><span className="flex-1">Descargar PDF</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-subtle)]" /></button>
+          {canWrite && <button type="button" onClick={() => runMenuAction(onStartCodeSelection)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><Barcode size={19} aria-hidden="true" /></span><span className="flex-1">Generar códigos</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-subtle)]" /></button>}
+          <button type="button" onClick={() => runMenuAction(onOpenMovementHistory)} className={actionButtonClass()}><span className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><History size={19} aria-hidden="true" /></span><span className="flex-1">Historial de movimientos</span><ChevronRight size={18} aria-hidden="true" className="text-[var(--ink-subtle)]" /></button>
         </nav>
       </BottomSheet>}
 
@@ -397,7 +398,7 @@ export default function MobileStockList({
 }
 
 function FilterChoice({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
-  return <button type="button" onClick={onClick} aria-pressed={selected} className={`min-h-11 rounded-full border px-3 text-sm font-semibold ${selected ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-muted)]'}`}>
+  return <button type="button" onClick={onClick} aria-pressed={selected} className={`min-h-11 rounded-full border px-3 text-sm font-semibold ${selected ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'border-[var(--line)] mobile-stock-surface text-[var(--ink-subtle)]'}`}>
     {label}
   </button>;
 }

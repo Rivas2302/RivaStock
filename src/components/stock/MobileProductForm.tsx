@@ -284,7 +284,7 @@ export default function MobileProductForm({
   };
 
   const inputClass = 'min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]';
-  const labelClass = 'mb-1.5 block text-sm font-semibold text-[var(--ink-muted)]';
+  const labelClass = 'mb-1.5 block text-sm font-semibold text-[var(--ink-subtle)]';
 
   return (
     <div
@@ -302,12 +302,12 @@ export default function MobileProductForm({
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col" noValidate>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-6">
           {creatingProductForReseller && (
-            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-muted)]">
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-subtle)]">
               Este producto quedará en la lista de revendedores como “Por pedido”{supplierListName ? ` para ${supplierListName}` : ''}.
             </div>
           )}
           {promotingCatalogProduct && (
-            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-muted)]">
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-subtle)]">
               Cargá la existencia real y su costo para incorporarlo al stock.
             </div>
           )}
@@ -423,7 +423,7 @@ export default function MobileProductForm({
               {errors.salePrice && <span className="mt-1 block text-sm text-[var(--danger-ink)]">{errors.salePrice}</span>}
             </ProductEditorTextField>
           </div>
-          <div className="-mt-2 space-y-1 text-xs text-[var(--ink-muted)]">
+          <div className="-mt-2 space-y-1 text-xs text-[var(--ink-subtle)]">
             {margin !== null && <p>Margen {margin.toFixed(0)} %</p>}
             {suggestedPrice !== null && suggestedPrice !== Number(formData.salePrice ?? 0) && (
               <button type="button" onClick={() => updateForm('salePrice', suggestedPrice)} className="font-semibold text-[var(--brand)] underline-offset-2 hover:underline">
@@ -436,22 +436,22 @@ export default function MobileProductForm({
             <section className="space-y-3 rounded-xl border border-[var(--line)] p-3">
               <div>
                 <h2 className="font-semibold">Existencias por titular</h2>
-                <p className="text-xs text-[var(--ink-muted)]">Stock, costo y mínimo se administran por separado.</p>
+                <p className="text-xs text-[var(--ink-subtle)]">Stock, costo y mínimo se administran por separado.</p>
               </div>
               {holdingDrafts.map((draft, index) => {
                 const owner = owners.find((item) => item.id === draft.inventoryOwnerId);
                 return (
                   <div key={draft.inventoryOwnerId} className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--surface-raised)] p-3">
                     <p className="col-span-2 font-medium">{owner?.name ?? 'Titular'}</p>
-                    <label className="text-xs text-[var(--ink-muted)]">
+                    <label className="text-xs text-[var(--ink-subtle)]">
                       Stock
                       <input type="number" min="0" value={draft.stock} readOnly={Boolean(product)} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
                     </label>
-                    <label className="text-xs text-[var(--ink-muted)]">
+                    <label className="text-xs text-[var(--ink-subtle)]">
                       Mínimo
                       <input type="number" min="0" value={draft.minStock} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, minStock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
                     </label>
-                    <label className="col-span-2 text-xs text-[var(--ink-muted)]">
+                    <label className="col-span-2 text-xs text-[var(--ink-subtle)]">
                       Costo de compra
                       <input type="number" min="0" value={draft.purchaseCost} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, purchaseCost: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
                     </label>
@@ -564,7 +564,7 @@ export default function MobileProductForm({
                     <input type="checkbox" checked={product.qaPublishAllowed === true} disabled={qaPublishAllowedSaving} onChange={(event) => onToggleQaPublishAllowed(event.target.checked)} className="mt-1 size-5 accent-[var(--brand)]" />
                     <span>
                       <span className="font-medium">Permitir en pruebas automáticas</span>
-                      <span className="mt-1 block text-xs text-[var(--ink-muted)]">Habilita este producto para la certificación real del publicador.</span>
+                      <span className="mt-1 block text-xs text-[var(--ink-subtle)]">Habilita este producto para la certificación real del publicador.</span>
                     </span>
                   </label>
                   {qaPublishAllowedError && <p role="alert" className="mt-2 text-sm text-[var(--danger-ink)]">{qaPublishAllowedError}</p>}
@@ -585,7 +585,7 @@ export default function MobileProductForm({
         <div className="fixed inset-0 z-[100] flex items-end bg-black/50" role="presentation">
           <section role="alertdialog" aria-modal="true" aria-labelledby="discard-product-title" className="w-full rounded-t-3xl border border-[var(--line)] bg-[var(--surface)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-[var(--ink)]">
             <h2 id="discard-product-title" className="text-lg font-bold">¿Descartar los cambios?</h2>
-            <p className="mt-2 text-sm text-[var(--ink-muted)]">Los cambios que hiciste en este producto no se guardaron.</p>
+            <p className="mt-2 text-sm text-[var(--ink-subtle)]">Los cambios que hiciste en este producto no se guardaron.</p>
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button type="button" onClick={continueEditing} className="min-h-12 rounded-xl border border-[var(--line)] px-3 font-semibold">Seguir editando</button>
               <button type="button" onClick={discardChanges} className="min-h-12 rounded-xl border border-[var(--danger-line)] bg-[var(--danger-surface)] px-3 font-semibold text-[var(--danger-ink)]">Descartar</button>

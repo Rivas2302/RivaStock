@@ -1,13 +1,14 @@
 # Estado de ejecución autónoma
-## 2026-11-04 — I7/I8 implementadas localmente; I9 espera verificación productiva
+## 2026-11-04 — I7/I8 listas localmente; I9 espera despliegue y validación productiva
 
 - I7 agrega la hoja móvil de ajuste de stock con suma/resta/conteo, motivo, límites, titular e idempotencia; I8 agrega formulario móvil de alta/edición, carga y reordenamiento de fotos, validación/foco, opciones avanzadas y confirmación propia para cambios sin guardar y botón atrás.
-- `npm run lint` pasó; `npm test -- --maxWorkers=1` pasó **936/936 en 161 archivos** con variables Supabase ficticias solo en el proceso. Playwright `stock-mobile.spec.ts` y `ai-mobile.spec.ts`: **40 aprobadas, 23 omitidas por proyecto, 0 fallidas**; cubrió Android, iPhone/WebKit, 360×740, formularios, ajuste, roles, filtros y navegación.
-- Build y `perf:check` pasaron. Gzip: entrada **210.218 B JS / 23.604 B CSS**, AIHub **246.649 B**, Stock **240.621 B** (límite 241.664 B).
-- Las capturas deterministas de Playwright a 1280×900, comparadas con `b5bc06d`, dieron **0 píxeles distintos** en Inicio, lista de Stock y editor de escritorio. No cambié el Bridge ni su instalación de PC.
-- **I8 [x]** por criterios locales completos. **I7 [ ]** y **I9 [ ]** hasta completar el smoke transaccional y el flujo QA autenticado en producción.
-- **Desvío de commit:** I7 e I8 comparten `Stock.tsx`, el controlador de formulario y `ImageUpload`; se publicarán juntos en un commit atómico tras el commit separado de I6.
-- Vercel confirmó `success` para `6e3a88b`; producción respondió HTTP 200. **Siguiente:** publicar los cambios de I7/I8 y completar en producción el smoke con producto `[QA]`, `BEGIN … ROLLBACK`, la prueba móvil y la limpieza desde la app.
+- `npm run lint` pasó; `npm test -- --maxWorkers=1` pasó **938/938 en 162 archivos** con variables Supabase ficticias solo en el proceso. Playwright móvil pasó **40 escenarios; 23 omitidos por proyecto; 0 fallidos**, con Android, iPhone/WebKit, 360×740, formularios, ajuste, roles, filtros y navegación.
+- `npm run build` y `npm run perf:check` pasaron. Gzip: entrada **210.216 B JS / 23.604 B CSS**, AIHub **246.646 B**, Stock **240.619 B** (límite 241.664 B), Knowledge **221.369 B JS / 25.395 B CSS**. Se usa `ink-subtle` en los textos móviles: contraste entre **6,61:1 y 10,61:1** en claro/oscuro sobre las cuatro superficies base; `themeContrast.test.ts` cubre AA en ambos temas.
+- Las capturas Playwright de Inicio, lista de Stock y editor a 1280×900 son idénticas píxel por píxel entre `e9cf831` y el cambio actual. El test desactiva transiciones para hacer estable la comparación. La versión PC no cambia.
+- El estado de GitHub para `e9cf831` muestra Vercel `failure`. El build local reprodujo el error de sintaxis de un `\n` literal al final de `ProductEditorFields.tsx`; se quitó ese marcador. Falta publicar la corrección y comprobar el despliegue antes de la prueba autenticada.
+- Comparé los planes con Desktop: `ACTION_PLAN.md` coincide; Desktop tiene una copia anterior de `MOBILE_HOME_STOCK_PLAN.md` que desmarca I1–I5/I8 y omite notas de estado ya respaldadas, sin cambios nuevos de alcance. Desktop no contiene `STATUS.md`, `OWNER_ACTIONS.md` ni `MENSAJE_PARA_RIVA.md`.
+- **I8 [x]** por criterios locales completos. **I6, I7 e I9 [ ]** hasta terminar el smoke transaccional y la validación/limpieza QA autenticada en producción. La migración I6 está aplicada; no hubo nuevas migraciones ni escrituras de datos.
+- La producción aún sirve el frontend previo. Para cerrar I9 se necesita Chrome completamente cerrado para liberar `%USERPROFILE%\rivastock-qa-profile`; después se creará el producto `[QA]` desde la app, se ejecutará el smoke solo dentro de `BEGIN … ROLLBACK`, y se probará y borrará desde la app.
 
 ## 2026-11-04 — I6 migración aplicada; smoke transaccional pendiente
 
