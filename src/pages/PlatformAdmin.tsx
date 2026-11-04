@@ -10,12 +10,24 @@ type EditableBusiness = {
   limit_overrides: Record<string, unknown>;
 };
 
+type StorageUnit = 'MB' | 'GB';
+const STORAGE_UNIT_BYTES: Record<StorageUnit, number> = { MB: 1_048_576, GB: 1_073_741_824 };
+const GIGABYTE = STORAGE_UNIT_BYTES.GB;
+const MEGABYTE = STORAGE_UNIT_BYTES.MB;
+
 function formatBytes(value: unknown): string {
   const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-  return `${Math.round(bytes / 1_000)} KB`;
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+  if (bytes >= GIGABYTE) return `${(bytes / GIGABYTE).toFixed(2)} GB`;
+  return `${(bytes / MEGABYTE).toFixed(1)} MB`;
+}
+
+function initialStorageUnit(value: unknown): StorageUnit {
+  return Number(value) >= GIGABYTE ? 'GB' : 'MB';
+}
+
+function owns(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }
 
 function usageTone(ratio: number, warning: number): string {
@@ -38,6 +50,31 @@ function UsageMeter({ title, used, limit, warning }: { title: string; used: numb
       <p className="mt-2 text-right text-xs text-slate-500 dark:text-slate-400">{Math.round(ratio * 100)} %</p>
     </div>
   );
+}
+
+function StorageQuotaField({
+  title, value, planValue, unit, hasManualOverride, onChange, onUnitChange,
+}: {
+  title: string;
+  value: number;
+  planValue: number;
+  unit: StorageUnit;
+  hasManualOverride: boolean;
+  onChange: (value: number) => void;
+  onUnitChange: (unit: StorageUnit) => void;
+}) {
+  return <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+    {title}
+    <div className="mt-1 flex gap-2">
+      <input aria-label={`${title}: valor`} type="number" min={0} step="any" value={value / STORAGE_UNIT_BYTES[unit]} onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))} className="block min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+      <select aria-label={`${title}: unidad`} value={unit} onChange={(event) => onUnitChange(event.target.value as StorageUnit)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+        <option value="MB">MB</option><option value="GB">GB</option>
+      </select>
+    </div>
+    <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+      {hasManualOverride ? `Ajuste manual · plan: ${formatBytes(planValue)}` : `Según el plan · ${formatBytes(planValue)}`}
+    </span>
+  </label>;
 }
 
 function planLabel(code: string): string {
@@ -231,11 +268,28 @@ function BusinessCard({
 }) {
   const centralTime = business.central_last_seen_at ? Date.parse(business.central_last_seen_at) : 0;
   const centralOnline = centralTime > 0 && Date.now() - centralTime < 180_000;
-  const knowledgeLimit = Number(business.plan_limits.cloud_knowledge_bytes ?? 0);
+  const selectedPlan = plans.find((plan) => plan.code === edit.plan_code);
+  const planLimits = selectedPlan?.limits ?? business.plan_limits;
+  const knowledgeLimit = Number(planLimits.cloud_knowledge_bytes ?? 0);
   const knowledgeUsed = Number(business.storage_bytes?.knowledge ?? 0);
-  const modules = (edit.limit_overrides.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined)
-    ?? business.plan_limits.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined
+  const planModules = planLimits.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined
     ?? { ai: false, knowledge: false, automation: false };
+  const manualModules = edit.limit_overrides.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined;
+  const hasManualModulesOverride = owns(edit.limit_overrides, 'modules');
+  const modules = manualModules ?? planModules;
+  const cloudQuota = Number(edit.limit_overrides.cloud_knowledge_bytes ?? planLimits.cloud_knowledge_bytes ?? 0);
+  const localQuota = Number(edit.limit_overrides.local_knowledge_bytes ?? planLimits.local_knowledge_bytes ?? 0);
+  const [cloudUnit, setCloudUnit] = useState<StorageUnit>(() => initialStorageUnit(cloudQuota));
+  const [localUnit, setLocalUnit] = useState<StorageUnit>(() => initialStorageUnit(localQuota));
+
+  const resetModuleOverride = () => {
+    const { modules: _modules, ...remainingOverrides } = edit.limit_overrides;
+    onEdit({ ...edit, limit_overrides: remainingOverrides });
+  };
+
+  const updateQuota = (key: 'cloud_knowledge_bytes' | 'local_knowledge_bytes', amount: number, unit: StorageUnit) => {
+    onEdit(changedOverride(edit, key, Math.round(amount * STORAGE_UNIT_BYTES[unit])));
+  };
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -253,9 +307,9 @@ function BusinessCard({
 
       <div className="mt-4 grid gap-2 text-sm md:grid-cols-4">
         <p><span className="text-slate-500 dark:text-slate-400">Base estimada:</span> <strong>{formatBytes(business.db_bytes)}</strong></p>
-        <p><span className="text-slate-500 dark:text-slate-400">Nube total:</span> <strong>{formatBytes(business.storage_total_bytes)}</strong><span className="block text-xs text-slate-500">Conocimientos: {formatBytes(knowledgeUsed)} / {formatBytes(knowledgeLimit)}</span></p>
-        <p><span className="text-slate-500 dark:text-slate-400">Central:</span> <strong>{centralOnline ? 'En línea' : business.central_last_seen_at ? 'Desconectada' : 'Sin vincular'}</strong>{business.central_last_seen_at && <span className="block text-xs text-slate-500">{new Date(business.central_last_seen_at).toLocaleString('es-AR')}</span>}</p>
-        <p><span className="text-slate-500 dark:text-slate-400">Almacén / respaldo:</span> <strong>{formatBytes(business.store_bytes)}</strong><span className="block text-xs text-slate-500">{business.mirror_status === 'ready' ? 'Respaldo sincronizado' : business.mirror_status === 'none' ? 'Sin respaldo configurado' : business.mirror_status} · {business.files_missing ?? 0} faltantes</span></p>
+        <p><span className="text-slate-500 dark:text-slate-400">Nube total:</span> <strong>{formatBytes(business.storage_total_bytes)}</strong>{modules.knowledge && <span className="block text-xs text-slate-500">Conocimientos: {formatBytes(knowledgeUsed)} / {formatBytes(knowledgeLimit)}</span>}</p>
+        {modules.ai && <p><span className="text-slate-500 dark:text-slate-400">Central:</span> <strong>{centralOnline ? 'En línea' : business.central_last_seen_at ? 'Desconectada' : 'Sin vincular'}</strong>{business.central_last_seen_at && <span className="block text-xs text-slate-500">{new Date(business.central_last_seen_at).toLocaleString('es-AR')}</span>}</p>}
+        {modules.ai && <p><span className="text-slate-500 dark:text-slate-400">Almacén de la central:</span> <strong>{formatBytes(business.store_bytes)}</strong><span className="block text-xs text-slate-500">{business.mirror_status === 'ready' ? 'Respaldo sincronizado' : business.mirror_status === 'none' ? 'Sin respaldo configurado' : business.mirror_status} · {business.files_missing ?? 0} faltantes</span></p>}
       </div>
 
       <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 md:grid-cols-3">
@@ -265,16 +319,16 @@ function BusinessCard({
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
-        {([
-          ['cloud_knowledge_bytes', 'Cuota de Conocimientos (bytes)'],
-          ['local_knowledge_bytes', 'Almacén de la central (bytes)'],
-          ['trace_retention_days', 'Retención de trazas (días)'],
-        ] as const).map(([key, label]) => <label key={key} className="text-xs font-semibold text-slate-600 dark:text-slate-300">{label}<input type="number" min={0} value={Number(edit.limit_overrides[key] ?? business.plan_limits[key] ?? 0)} onChange={(event) => onEdit(changedOverride(edit, key, Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>)}
+        {modules.knowledge && <StorageQuotaField title="Cuota de Conocimientos" value={cloudQuota} planValue={Number(planLimits.cloud_knowledge_bytes ?? 0)} unit={cloudUnit} hasManualOverride={owns(edit.limit_overrides, 'cloud_knowledge_bytes')} onChange={(value) => updateQuota('cloud_knowledge_bytes', value, cloudUnit)} onUnitChange={setCloudUnit} />}
+        {modules.ai && <StorageQuotaField title="Almacén de la central" value={localQuota} planValue={Number(planLimits.local_knowledge_bytes ?? 0)} unit={localUnit} hasManualOverride={owns(edit.limit_overrides, 'local_knowledge_bytes')} onChange={(value) => updateQuota('local_knowledge_bytes', value, localUnit)} onUnitChange={setLocalUnit} />}
+        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Retención de trazas (días)<input type="number" min={0} value={Number(edit.limit_overrides.trace_retention_days ?? planLimits.trace_retention_days ?? 0)} onChange={(event) => onEdit(changedOverride(edit, 'trace_retention_days', Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       </div>
 
       <fieldset className="mt-3 flex flex-wrap gap-4 text-sm">
-        <legend className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Módulos habilitados</legend>
+        <legend className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Módulos</legend>
+        <p className="w-full text-xs text-slate-500 dark:text-slate-400">{hasManualModulesOverride ? 'Ajuste manual activo para los módulos.' : `Según el plan ${planLabel(edit.plan_code)}.`}</p>
         {(['ai', 'knowledge', 'automation'] as const).map((key) => <label key={key} className="inline-flex items-center gap-2"><input type="checkbox" checked={Boolean(modules[key])} onChange={(event) => onEdit(changedOverride(edit, 'modules', { ai: Boolean(modules.ai), knowledge: Boolean(modules.knowledge), automation: Boolean(modules.automation), [key]: event.target.checked }))} />{key === 'ai' ? 'IA' : key === 'knowledge' ? 'Conocimientos' : 'Automatizaciones'}</label>)}
+        {hasManualModulesOverride && <button type="button" onClick={resetModuleOverride} className="text-xs font-semibold text-indigo-700 underline dark:text-indigo-300">Restablecer según el plan</button>}
       </fieldset>
 
       <label className="mt-3 block text-xs font-semibold text-slate-600 dark:text-slate-300">Notas internas<textarea rows={2} maxLength={1000} value={edit.notes} onChange={(event) => onEdit({ ...edit, notes: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>

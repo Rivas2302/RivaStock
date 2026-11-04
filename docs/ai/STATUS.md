@@ -1,5 +1,12 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 21:03 ART — F4 `/plataforma`: cuotas y módulos listos, deploy pendiente
+
+- Ajusté `/plataforma` para presentar límites de almacenamiento con selector MB/GB; al guardar, convierte la cantidad a bytes para conservar el formato interno. Los controles muestran si el valor sigue al plan o tiene ajuste manual, y los módulos ahora se pueden restablecer a sus valores del plan.
+- Las cuentas sin Conocimientos ya no muestran su cuota; las cuentas sin IA no muestran el estado de la central ni su almacén. Las cuotas no exponen bytes en la interfaz.
+- Nuevos tests de interfaz para RivaStock y RivaStock IA, conversión a bytes y ajustes de módulos: **3/3**. Suite completa **828/828**, `npm run lint`, build y `npm run perf:check` aprobados.
+- **Pendiente:** commit, deploy Vercel y smoke de solo lectura en producción.
+
 ## 2026-11-03 20:52 ART — F3 suspensión en solo lectura desplegada
 
 - Antes de la migración, `npm run backup:db -- --with-storage` verificó `%USERPROFILE%\rivastock-backups\20261103T231015Z`: **94 tablas / 14.075 filas**, `schema.sql` **945.385 B**, `data.sql` **40.775.743 B**, **733 objetos / 143.061.033 B** de Storage; inventario, conteos y hashes aprobados. El primer intento se detuvo porque esta copia no tenía configuración local de Supabase; inicialicé y vinculé la CLI y repetí el backup completo. No usé el volcado incompleto.
