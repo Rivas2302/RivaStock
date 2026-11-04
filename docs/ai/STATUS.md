@@ -1,12 +1,12 @@
 # Estado de ejecución autónoma
 
-## 2026-11-04 — H1 implementado; despliegue web pendiente
+## 2026-11-04 — H1 desplegado y verificado
 
 - La migración `20261104015507_ai_mobile_chat_previews_task_pagination` está aplicada en `RivaStock_Oficial`; el backup previo verificado está fuera del repo en `%USERPROFILE%\rivastock-backups\20261104T021743Z` (96 tablas / 14.084 filas; 733 objetos de Storage / 143.061.033 B; conteos, inventario y hashes aprobados).
-- `ai-bridge` está ACTIVE v15 y conserva `verify_jwt=false`. Producción confirma el trigger de vista previa habilitado, las RPC de lista/reintento y sus permisos; el smoke autenticado en viewport 390×844 recibió HTTP 200, 10 tareas con cursor y conteos, y 7 chats con vista previa. Sin errores de consola ni de red.
+- `ai-bridge` está ACTIVE v15 y conserva `verify_jwt=false`. Producción confirma el trigger de vista previa habilitado, las RPC de lista/reintento y sus permisos; después del push, el smoke autenticado en viewport 390×844 recibió HTTP 200, 10 tareas con cursor y conteos, y 7 chats con vista previa. La app sirve los nuevos chunks de AIHub y `aiBridge`; sin errores de consola ni de red.
 - `npm run lint`, la suite completa (**854 tests pasaron en 138 archivos; 27 omitidos**), `npm run build`, `npm run perf:check` y `git diff --check` pasan. Bundle inicial: **209.358 B gzip JS / 22.338 B CSS**; AIHub: **240.593 B gzip JS**.
 - Security Advisor marca `ai_retry_job` por ser una función `SECURITY DEFINER` ejecutable por `authenticated`. Es intencional: exige `auth.uid()`, limita la tarea a ese dueño, bloquea colaboradores y solo copia tareas fallidas permitidas; tests de PGlite cubren aislamiento e idempotencia. Sin acceso para `anon` ni `PUBLIC`.
-- **Estado:** falta integrar el cliente y confirmar Vercel antes de marcar H1 `[x]`. **Siguiente:** completar el despliegue de H1 y después H2. F1 (emails) permanece sin despliegue hasta tener dominio verificado.
+- Commit `bf021a7` integrado directamente a `main` como Rivas2302; producción sirve la versión web de H1. **Desvío:** ninguno. **Siguiente:** H2. F1 (emails) permanece sin despliegue hasta tener dominio verificado.
 
 ## 2026-11-03 — Bloque H adoptado; sigue H1
 

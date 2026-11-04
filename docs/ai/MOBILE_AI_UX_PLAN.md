@@ -44,7 +44,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 
 ## 3. Tareas
 
-### [ ] H1 Datos para la lista
+### [x] H1 Datos para la lista
 - **Migración aditiva:** `ai_chats.last_message_preview text` (hasta 140 caracteres, sin saltos de línea ni markdown), mantenida por un trigger en `ai_chat_messages` al insertar, y rellenada una vez para los chats existentes. Mismo RLS. Sin datos sensibles nuevos: es un recorte del propio chat.
 - **Paginación de tareas:** `getRecentAIJobs` (o una RPC nueva) acepta `limit` y `before` (cursor por `created_at`) y devuelve los conteos por estado para los filtros (`todas`, `en curso` = `pending` + `processing`, `con error` = `failed`, `para revisar` = Organizar con propuesta pendiente). La primera página trae las tareas de los últimos 7 días, o las 10 más recientes si son menos.
 - **Reintentar:** si no hay una RPC de reintento segura, “Reintentar” crea una tarea nueva con el mismo tipo, entrada, modelo y contexto, y deja la fallida como está.
