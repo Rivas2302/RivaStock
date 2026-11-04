@@ -4,6 +4,7 @@
 **Estado verificado al generar:** `origin/main` = `9728340` · AI Bridge instalado 1.11.0 (paquete 1.12.0 generado) · extensión Facebook 0.5.16 publicada · publicador en T1.4.
 **Actualizado 02/11 18:30:** `origin/main` = `d283206` · Bridge 1.17.0 instalado · publicador con 14 tareas `[x]`. **El Bloque A todavía no se hizo y la credencial temporal `cli_login_postgres` quedó expuesta tres veces hoy en salidas de `supabase db dump --dry-run`: el Bloque A va primero, antes de cualquier otra tarea.**
 **Actualizado 03/11:** Riva aprobó el Bloque H. Después del punto seguro del trabajo en curso y antes de retomar el Bloque C, ejecutar H1–H9 según `docs/ai/MOBILE_AI_UX_PLAN.md`.
+**Actualizado 04/11:** Riva aprobó el Bloque I (Inicio y Stock en el celular). Ejecutar I1–I9 según `docs/ai/MOBILE_HOME_STOCK_PLAN.md` apenas termine H9 y antes de retomar el Bloque C.
 **Actualizado 04/11 (2):** Riva aprobó un rediseño visual completo (Bloque J). **Lo ejecuta Claude Code, no Codex**, según `docs/ai/REDESIGN_PLAN.md`. Codex no toca `PRODUCT.md`, `DESIGN.md`, `docs/design/redesign/**` ni `.claude/**`, y avisa en `MENSAJE_PARA_RIVA.md` cuando termine I9.
 
 Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cada tarea sigue en los planes existentes; este plan los referencia y, si hay contradicción, **manda este archivo** (salvo los límites de seguridad de `docs/automation/HANDOFF.md` §6 y §2 del plan del publicador, que nunca se relajan).
@@ -15,6 +16,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 | `docs/ai/KNOWLEDGE_ADDENDUM_CLOSEOUT.md` | Detalle de C2.2, C5.4 y Cierre |
 | `docs/ai/MULTI_BUSINESS_EXECUTION_PLAN.md` | Detalle del Bloque E (E0–E10): RivaStock para cualquier negocio |
 | `docs/ai/MOBILE_AI_UX_PLAN.md` | Detalle del Bloque H (H1–H9): Chat IA y Tareas en el celular |
+| `docs/ai/MOBILE_HOME_STOCK_PLAN.md` | Detalle del Bloque I (I1–I9): Inicio y Stock en el celular |
 | `docs/ai/REDESIGN_PLAN.md` + `DESIGN.md` | Bloque J (lo ejecuta Claude Code): rediseño visual completo |
 | `docs/ai/STATUS.md` | **Tu memoria:** una entrada por tarea |
 | `docs/ai/OWNER_ACTIONS.md` | Lo único que necesita a Riva |
@@ -29,6 +31,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 3. Bloque A — Seguridad y respaldo (primero)
 4. Bloque B — Cierre del módulo IA
 4b. **Bloque H — Chat IA y Tareas para el celular** (después del punto seguro en curso, antes de C)
+4c. **Bloque I — Inicio y Stock para el celular** (después de H, antes de C)
 4d. **Bloque J — Rediseño visual completo** (lo ejecuta Claude Code; Codex solo coordina)
 5. Bloque C — Publicador de Facebook supervisado por IA
 5b. Bloque E — RivaStock para cualquier negocio (agregado el 02/11)
@@ -296,6 +299,19 @@ Detalle y criterios de aceptación: `docs/ai/MOBILE_AI_UX_PLAN.md` (H1–H9). La
 - **Prioridad:** dejar primero el trabajo que ya está en curso en un punto seguro; luego ejecutar H1–H9 en orden y antes de retomar el Bloque C. Si el trabajo en curso espera una puerta del dueño, continuar H sin esperar esa puerta.
 - El cambio es solo para móvil (menos de 1024 px). Desde `lg` la experiencia de PC debe quedar igual que hoy y verificarse con capturas antes/después. Usá tokens de color de la app y respetá ambos temas.
 - **Commit de adopción:** `docs(ai): add mobile AI UX plan`. Los commits H1–H8 y el cierre siguen los mensajes indicados en el plan de móvil.
+
+---
+
+## 4c. Bloque I — Inicio y Stock para el celular (aprobado por Riva el 04/11)
+
+Detalle y criterios de aceptación: `docs/ai/MOBILE_HOME_STOCK_PLAN.md` (I1–I9). Las seis pantallas aprobadas están en `docs/design/mobile-home-stock/`.
+
+- **Prioridad:** apenas termine H9 y antes de retomar el Bloque C. Si H queda esperando una puerta del dueño, seguir con I.
+- **Estructura actualizada el 04/11:** para el Inicio (I3) y la lista de Stock (I4) en el celular, seguí el contenido y el orden de `docs/design/redesign/referencia/inicio-celular.html` y `stock-celular.html` (aprobadas después que las maquetas de `mobile-home-stock`). Ficha, Ajustar stock y Nuevo producto siguen las maquetas de `mobile-home-stock`. **Usá los tokens de color actuales:** el estilo visual nuevo lo aplica después el Bloque J.
+- Solo móvil (menos de 1024 px). En PC solo cambian los bugs listados en la sección 1 del plan (productos “solo catálogo” contados como sin stock, fallback a picsum, ojo de catálogo sin manejo de errores, `confirm()` al eliminar). Capturas antes/después a 1280 px.
+- **I6 tiene migración:** backup verificado con `npm run backup:db` antes de aplicarla. En producción, smoke solo con `ROLLBACK`. Nunca ajustar stock de productos reales; usar un producto `[QA]` creado y borrado desde la app.
+- No romper los flujos de revendedores, promoción de catálogo a stock, titulares ni la idempotencia del guardado.
+- **Commit de adopción:** `docs(stock): add mobile home and stock plan` (incluye `docs/design/mobile-home-stock/`). Los commits I1–I9 siguen los mensajes del plan.
 
 ---
 

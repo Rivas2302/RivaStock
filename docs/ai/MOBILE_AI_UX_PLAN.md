@@ -69,7 +69,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - Estados: cargando (esqueletos), vacío (“Todavía no tenés chats. Preguntale algo a tu IA.” + botón) y error con reintento.
 - **Commit:** `feat(ai): mobile chat list`
 
-### [ ] H4 Conversación (pantalla 2)
+### [x] H4 Conversación (pantalla 2)
 - Barra superior: volver, título en una línea, subtítulo con el punto de estado (“Codex en tu PC”) y menú “⋯” (Renombrar, Ajustes, Eliminar chat).
 - Separadores de fecha (“Hoy”, “Ayer”, fecha).
 - **Tus mensajes:** burbuja a la derecha, con un ancho máximo del 80 % y la hora debajo.
