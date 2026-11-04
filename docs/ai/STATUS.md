@@ -1,4 +1,21 @@
 # Estado de ejecución autónoma
+## 2026-11-04 — I6 migración aplicada; smoke transaccional pendiente
+
+- Backup previo verificado en `C:\Users\USER\rivastock-backups\20261104T145443Z`: 96 tablas y 14.235 filas; todos los conteos exactos coinciden con el volcado (`table-counts.csv`). `schema.sql` 1.002.484 B, `data.sql` 42.404.221 B; Storage: 789 objetos / 146.594.486 B. La verificación de Postgres y Storage reportó `passed`.
+- `supabase migration list --linked` mostró una sola pendiente: `20261104124859_mobile_stock_adjustments`. El primer `db push` se detuvo antes de cambiar la base por el orden histórico; `db push --include-all` aplicó únicamente esa migración.
+- La consulta de producción verificó `SECURITY DEFINER`, `search_path=public, pg_temp`, ejecución permitida a `authenticated`, denegada a `anon`, y las tres guardas de suspensión activas. El smoke PGlite local terminó `TODO OK` con 20 comprobaciones.
+- La consulta encontró cero productos de stock `[QA]`. No alteré datos de productos; queda pendiente el smoke real dentro de `BEGIN … ROLLBACK` con un producto `[QA]` creado desde la app después del despliegue.
+- **I6 sigue `[ ]`** hasta cerrar ese smoke transaccional. No desplegué aún el frontend.
+
+
+## 2026-11-04 — I6/I7 listos localmente; backup bloquea migración y despliegue
+
+- I6 agrega la migración aditiva de `adjust_product_stock`, el cliente tipado y una prueba PGlite con 20 comprobaciones. El smoke pasa `TODO OK`: cubre stock con/sin titulares, suma/resta/conteo, no negatividad, idempotencia, permiso de solo lectura, aislamiento entre negocios, catálogo y suspensión.
+- I7 agrega la hoja inferior con selector Sumar/Restar/Contar, motivo obligatorio, vista previa, límites, titular operable, idempotencia y navegación por `?producto=<id>&ajustar=1`. Tests focales: **6/6**; Playwright local Android/iPhone: **14 aprobadas, 2 omitidas**; `npm run lint` y `git diff --check` pasan.
+- El backup exigido falló dos veces porque la base cambió mientras se exportaba. Carpetas `20261104T124716Z` y `20261104T125538Z` quedan con `BACKUP-UNVERIFIED.txt` y **no se usan**. En la segunda exportación, las filas exportadas y el conteo actual difieren en `audit_events` (5114/5142), `inventory_holdings` (720/723) e `inventory_product_commands` (615/622). El proceso abortó antes de respaldar Storage.
+- No apliqué migraciones, no hice escrituras ni despliegues en producción. I6 e I7 siguen `[ ]`; los criterios de producción no están verificados. El cambio aún no se publicó.
+- **Desvío:** la verificación de backup no puede estabilizar tres tablas con escrituras concurrentes; no se relajó el criterio y no se migró. El plan de Stock local difiere de Desktop únicamente en las casillas I2/I3 que ya están respaldadas por la evidencia histórica de producción.
+- **Siguiente:** I8 en local. Antes de aplicar I6 en producción, repetir `npm run backup:db -- --with-storage` y exigir `verification: "passed"`.
 
 ## 2026-11-04 — I4/I5 Stock móvil listo localmente
 

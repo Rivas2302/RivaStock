@@ -31,6 +31,8 @@ beforeAll(async () => {
     // Knowledge, AI memory, and suspension guards have dedicated PGlite fixtures.
     if (file.includes('_knowledge_') || file.includes('_ai_memory_')
       || file === '20261103225950_platform_suspension_write_guards.sql') continue;
+    // Mobile stock adjustment RPC adds suspension triggers and has a dedicated PGlite smoke fixture.
+    if (file === '20261104124859_mobile_stock_adjustments.sql') continue;
     // This migration requires hosted pg_net and Vault; account lifecycle has a dedicated local fixture with Vault stubs.
     if (file === '20261104002800_platform_account_lifecycle.sql') continue;
     // Chat previews and AI task paging have a dedicated PGlite fixture with the full AI schema.

@@ -153,6 +153,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 - **Commit:** `feat(stock): mobile product detail`
 
 ### [ ] I6 Ajustar stock con motivo (pantalla 5): base de datos
+**Estado 04/11:** el smoke PGlite pasa con 20 comprobaciones. La migración `20261104124859_mobile_stock_adjustments` está aplicada; producción confirma sus permisos y las guardas de suspensión. Backup previo verificado: 96 tablas / 14.235 filas y 789 objetos Storage. I6 sigue `[ ]` hasta el smoke transaccional con producto `[QA]` y `ROLLBACK`.
 **Requiere backup verificado antes de migrar.**
 
 Migración aditiva `adjust_product_stock`, `SECURITY DEFINER`, `SET search_path = public, pg_temp`. Firma:
@@ -190,6 +191,7 @@ Pruebas y cierre:
 - **Commit:** `feat(stock): stock adjustments with reason`
 
 ### [ ] I7 Ajustar stock: hoja inferior
+**Estado local 04/11:** hoja inferior implementada y verificada con tests y Playwright local Android/iPhone. Queda abierta hasta completar el cierre de producción de I6/I9.
 - Se abre desde la ficha (y desde “⋯” → Ajustar en una fila larga si querés), con `&ajustar=1`.
 - Elementos de la hoja:
   - selector segmentado **Sumar | Restar | Contar**, con Sumar por defecto. “Contar” cambia el texto a “¿Cuántas unidades contaste?”;
