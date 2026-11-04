@@ -9,6 +9,7 @@ export interface MobileAppChromeState {
 
 interface MobileAppChromeOutletContext {
   setMobileChrome: (state: MobileAppChromeState) => void;
+  menu: (open: boolean) => void;
 }
 
 const DEFAULT_CHROME: MobileAppChromeState = { hideHeader: false, hideBottomNav: false };
@@ -24,4 +25,9 @@ export function useMobileAppChrome(options: MobileAppChromeState): void {
       setMobileChrome(DEFAULT_CHROME);
     };
   }, [hideBottomNav, hideHeader, isMobile, setMobileChrome]);
+}
+
+export function useMobileAppMenu(): () => void {
+  const { menu } = useOutletContext<MobileAppChromeOutletContext>();
+  return () => menu(true);
 }

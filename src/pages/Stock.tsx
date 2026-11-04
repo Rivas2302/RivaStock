@@ -223,9 +223,8 @@ export default function Stock() {
   }, [editingProduct, formData.inventoryOwnerId, primaryOwner]);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('status') === 'reponer') {
-      setStatusFilter('reponer');
-    }
+    const requestedStatus = /[?&](?:estado|status)=(reponer|no-disponible)(?:&|$)/.exec(location.search)?.[1];
+    if (requestedStatus) setStatusFilter(requestedStatus);
   }, [location.search]);
 
   useEffect(() => {

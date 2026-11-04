@@ -17,6 +17,7 @@ export interface DashboardSummary {
   today: {
     salesTotal: number;
     salesCount: number;
+    latestSale: Sale | null;
     cashAvailable: number;
     pendingReceivables: number;
   };
@@ -103,6 +104,12 @@ export function getDashboardSummary({
 
   const todayKey = dateKey(now);
   const todaySales = sales.filter((sale) => getLocalDateKey(sale.date) === todayKey);
+  const latestTodaySale = todaySales.reduce<Sale | null>((latest, sale) => {
+    if (!latest) return sale;
+    const latestTime = Date.parse(latest.createdAt ?? latest.date);
+    const currentTime = Date.parse(sale.createdAt ?? sale.date);
+    return currentTime > latestTime ? sale : latest;
+  }, null);
   let monthSalesTotal = 0;
   for (const sale of sales) {
     if (sale.status !== 'Pagado') continue;
@@ -142,6 +149,7 @@ export function getDashboardSummary({
     today: {
       salesTotal: todaySales.reduce((total, sale) => total + (sale.total ?? 0), 0),
       salesCount: todaySales.length,
+      latestSale: latestTodaySale,
       cashAvailable: cashIncome - cashExpenses,
       pendingReceivables,
     },

@@ -1,5 +1,14 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — I3 Inicio móvil listo localmente; verificación de producción pendiente
+
+- La vista móvil sigue la referencia aprobada `docs/design/redesign/referencia/inicio-celular.html`: encabezado, saludo, resumen del día, seis accesos, atención, mes, mercadería, últimas ventas y exportación. Usa los tokens vigentes. `MobileHome` y sus acciones se cargan de forma diferida; el JSX de escritorio se mantiene en la rama existente.
+- El filtro `Sin stock` abre `/stock?estado=no-disponible`; `Para reponer` y el enlace histórico `?status=reponer` siguen admitidos. El menú móvil reutiliza el estado de navegación del `Layout`.
+- Capturas de referencia de escritorio de producción (1280×900) guardadas fuera del repo en `%USERPROFILE%\rivastock-qa-artifacts\I3-before\`; Playwright verificó sesión autenticada y esperó la carga completa. No se hicieron escrituras ni cambios de datos.
+- Verificación local: `npm run lint`; **915/915 pruebas en 156 archivos** con URL/clave Supabase ficticias limitadas al proceso; `npm run build`; `npm run perf:check`; `git diff --check`. Bundle gzip: entrada **210.029 B JS / 23.585 B CSS**; Dashboard **221.430 B JS**; Stock **241.664 B JS** (límite exacto de 236 KiB).
+- No requiere migración ni backup. I3 queda `[ ]` hasta que Vercel sirva este commit y se compare la captura posterior de `/` y `/stock` a 1280 px.
+- Desvío: ninguno. Siguiente: publicar I3; después cerrar las tareas H7/H8 y el smoke H9 antes de retomar I4.
+
 ## 2026-11-04 — I2 resumen puro del Inicio, listo para producción
 
 - Antes de I2 comparé STATUS.md y los planes: MOBILE_HOME_STOCK_PLAN.md coincide por SHA-256 con Desktop y origin/main contiene la copia adoptada en b4feebb. Vercel confirmó success para b4feebb.
@@ -7,8 +16,8 @@
 - La única ampliación de la consulta fue catalog_only en DASHBOARD_PRODUCT_COLUMNS. Los productos solo catálogo no cuentan como sin stock/stock bajo ni entran en reposición sugerida.
 - Agregué pruebas para el borde de medianoche en America/Argentina/Buenos_Aires, todos los estados de venta, fórmulas de caja/mes, alertas, exclusión de catalog_only y gráficos.
 - Verificación local: npm run lint; 907 pruebas en 153 archivos; build; perf:check; git diff --check. Bundle gzip: entrada 209.855 B JS / 23.436 B CSS; Dashboard 220.212 B JS / 23.436 B CSS, dentro del presupuesto.
-- I2 queda pendiente de push y confirmación de producción; no hay migraciones ni cambios de datos.
-- Desvío: ninguno. Siguiente: integrar el Inicio móvil (I3) mientras se publica esta tarea. H9 sigue esperando el inicio de sesión del perfil persistente, documentado en MENSAJE_PARA_RIVA.md.
+- Commit `1654a2f` está en `origin/main` y Vercel reportó éxito, pero el alias aún responde con `index-CE_qD5a4.js` (`x-vercel-cache: HIT`), distinto del build de I2. I2 queda pendiente de confirmación en producción; no hay migraciones ni cambios de datos.
+- Desvío: ninguno. I3 está implementándose. La sesión persistente ya abre la producción autenticada; el cierre H7–H9 sigue pendiente de completar y registrar.
 ## 2026-11-04 — Bloque I, base compartida de I1
 
 - Comparé ACTION_PLAN.md y MOBILE_HOME_STOCK_PLAN.md con Desktop; la copia del plan tiene el mismo SHA-256 (A48E58E8…8D53BD). La versión I no está todavía en origin/main. Copié las seis maquetas mobile-home-stock; sus seis SHA-256 coinciden con Desktop.

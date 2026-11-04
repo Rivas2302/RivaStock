@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../AuthContext';
 import { db } from '../lib/db';
 import { getRestockRecommendations } from '../lib/stockIntelligence';
@@ -27,22 +28,31 @@ import {
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import PlatformDashboardNotices from '../components/PlatformDashboardNotices';
+import type { DashboardDataSource, DashboardSourceStates } from '../components/mobile/MobileHome';
 
 import type jsPDF from 'jspdf';
 import { loadPdfRuntime } from '../lib/pdfRuntime';
 import { showToast } from '../lib/toast';
 
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
+const MobileHome = lazy(() => import('../components/mobile/MobileHome'));
 
 const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id,catalog_only';
 
 export default function Dashboard() {
   const [exporting, setExporting] = useState(false);
   const {
-    user, refetchToken, refetchData, permissions, holdingsEnabled, isPlatformAdmin,
+    user, refetchToken, refetchData, permissions, holdingsEnabled, isPlatformAdmin, isOwner,
     allowedInventoryOwnerIds, defaultInventoryOwnerId, inventoryAccessError,
   } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const [now, setNow] = useState(() => new Date());
+  const [sourceStates, setSourceStates] = useState<DashboardSourceStates>({
+    sales: { loading: false, error: false },
+    cashFlow: { loading: false, error: false },
+    orders: { loading: false, error: false },
+  });
   const [products, setProducts] = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const [owners, setOwners] = useState<InventoryOwner[]>([]);
@@ -52,6 +62,12 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!user || inventoryAccessError) {
@@ -81,6 +97,11 @@ export default function Dashboard() {
         setOwners(sortInventoryOwners(o));
         setLoading(false);
 
+        setSourceStates({
+          sales: { loading: true, error: false },
+          cashFlow: { loading: true, error: false },
+          orders: { loading: true, error: false },
+        });
         const results = await Promise.allSettled([
           db.list<Sale>('sales', user.uid),
           db.list<CashFlowEntry>('cash_flow', user.uid),
@@ -90,10 +111,13 @@ export default function Dashboard() {
         if (results[0].status === 'fulfilled') setSales(results[0].value);
         if (results[1].status === 'fulfilled') setCashFlow(results[1].value);
         if (results[2].status === 'fulfilled') setOrders(results[2].value);
+        setSourceStates({
+          sales: { loading: false, error: results[0].status === 'rejected' },
+          cashFlow: { loading: false, error: results[1].status === 'rejected' },
+          orders: { loading: false, error: results[2].status === 'rejected' },
+        });
         for (const r of results) {
-          if (r.status === 'rejected') {
-            console.warn('Dashboard secondary fetch error:', r.reason);
-          }
+          if (r.status === 'rejected') console.warn('Dashboard secondary fetch error:', r.reason);
         }
       } catch (err) {
         if (cancelled) return;
@@ -120,8 +144,8 @@ export default function Dashboard() {
   const stockScope = valuationOwner?.name ?? 'Sin titular disponible';
 
   const summary = useMemo(
-    () => getDashboardSummary({ sales, cashFlow, products, valuation, now: new Date() }),
-    [cashFlow, products, sales, valuation],
+    () => getDashboardSummary({ sales, cashFlow, products, valuation, now: isMobile ? now : new Date() }),
+    [cashFlow, isMobile, isMobile ? now : null, products, sales, valuation],
   );
   const { recentSales, monthlySalesData, monthlyBalanceData } = summary;
 
@@ -141,6 +165,20 @@ export default function Dashboard() {
     () => getRestockRecommendations(getDashboardInventoryProducts(products), sales),
     [products, sales],
   );
+
+  const handleRetrySource = async (source: DashboardDataSource) => {
+    if (!user) return;
+    setSourceStates((current) => ({ ...current, [source]: { loading: true, error: false } }));
+    try {
+      if (source === 'sales') setSales(await db.list<Sale>('sales', user.uid));
+      if (source === 'cashFlow') setCashFlow(await db.list<CashFlowEntry>('cash_flow', user.uid));
+      if (source === 'orders') setOrders(await db.list<Order>('orders', user.uid));
+      setSourceStates((current) => ({ ...current, [source]: { loading: false, error: false } }));
+    } catch (cause) {
+      console.warn('Dashboard secondary fetch retry failed:', cause);
+      setSourceStates((current) => ({ ...current, [source]: { loading: false, error: true } }));
+    }
+  };
 
   const stockByCategoryData = valuation.stockByCategory.slice(0, 8);
 
@@ -185,13 +223,39 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) return <div className="animate-pulse space-y-8">
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
-    </div>
-  </div>;
+  if (loading) {
+    if (isMobile) {
+      return (
+        <div role="status" aria-label="Cargando inicio" className="space-y-4 animate-pulse lg:hidden">
+          <div className="h-14 rounded-xl bg-[var(--surface-muted)]" />
+          <div className="h-52 rounded-2xl bg-[var(--surface-muted)]" />
+          <div className="h-24 rounded-2xl bg-[var(--surface-muted)]" />
+          <div className="h-28 rounded-2xl bg-[var(--surface-muted)]" />
+        </div>
+      );
+    }
+    return <div className="animate-pulse space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {[...Array(8)].map((_, i) => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-2xl" />)}
+      </div>
+    </div>;
+  }
 
   if (error) {
+    if (isMobile) {
+      return (
+        <div role="alert" className="rounded-2xl border border-[var(--danger-ink)] bg-[var(--surface-muted)] p-4 text-[var(--ink)]">
+          <p className="font-bold">No se pudo cargar el inicio.</p>
+          <button
+            type="button"
+            onClick={() => { setError(null); setLoading(true); refetchData(); }}
+            className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[var(--action-bg)] px-4 font-semibold text-[var(--action-ink)]"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="p-8 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 rounded-2xl border border-rose-200 dark:border-rose-800">
         <p className="font-bold">No se pudo cargar el panel</p>
@@ -211,6 +275,31 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div role="status" aria-label="Cargando inicio" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)]" />}>
+        <MobileHome
+          user={user}
+          isOwner={isOwner}
+          isPlatformAdmin={isPlatformAdmin}
+          permissions={permissions}
+          now={now}
+          summary={summary}
+          sourceStates={sourceStates}
+          onRetrySource={(source) => { void handleRetrySource(source); }}
+          visibleOwners={visibleOwners}
+          valuationOwner={valuationOwner}
+          onSelectOwner={setSelectedOwnerId}
+          stockByCategoryData={stockByCategoryData}
+          restockRecommendations={restockRecommendations}
+          exporting={exporting}
+          onExport={() => { void handleExportDashboardPDF(); }}
+          notices={<PlatformDashboardNotices hasProducts={products.length > 0} />}
+        />
+      </Suspense>
     );
   }
 

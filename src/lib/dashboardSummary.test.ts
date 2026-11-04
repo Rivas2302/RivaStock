@@ -36,7 +36,7 @@ describe('getDashboardSummary', () => {
       sales: [
         sale({ id: 'paid', total: 100 }),
         sale({ id: 'pending', status: 'Pendiente', total: 40 }),
-        sale({ id: 'unpaid', status: 'No Pagado', total: 30 }),
+        sale({ id: 'unpaid', status: 'No Pagado', total: 30, createdAt: '2026-11-04T18:50:00.000Z' }),
         sale({ id: 'yesterday', date: '2026-11-03', total: 900 }),
       ],
       cashFlow: [],
@@ -47,6 +47,7 @@ describe('getDashboardSummary', () => {
 
     expect(summary.today.salesTotal).toBe(170);
     expect(summary.today.salesCount).toBe(3);
+    expect(summary.today.latestSale?.id).toBe('unpaid');
   });
 
   it('keeps a date-only sale on the previous local day just before midnight in Argentina', () => {
@@ -78,7 +79,7 @@ describe('getDashboardSummary', () => {
         sale({ id: 'paid', total: 100 }),
         sale({ id: 'paid-older', date: '2026-10-31', total: 70 }),
         sale({ id: 'pending', status: 'Pendiente', total: 40 }),
-        sale({ id: 'unpaid', status: 'No Pagado', total: 30 }),
+        sale({ id: 'unpaid', status: 'No Pagado', total: 30, createdAt: '2026-11-04T18:50:00.000Z' }),
       ],
       cashFlow: [
         cashFlow({ id: 'cash-in', amount: 100 }),

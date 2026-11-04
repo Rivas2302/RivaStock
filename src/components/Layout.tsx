@@ -219,7 +219,7 @@ export default function Layout() {
         </header>}
 
         <div className="app-content flex-1 overflow-y-auto p-4 lg:p-8">
-          <Outlet context={{ setMobileChrome }} />
+          <Outlet context={{ setMobileChrome, menu: setIsMobileMenuOpen }} />
         </div>
 
         {/* Mobile Bottom Bar */}
