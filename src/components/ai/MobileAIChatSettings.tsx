@@ -98,7 +98,7 @@ export default function MobileAIChatSettings(props: MobileAIChatSettingsProps) {
           onClick={() => props.onModelChange(model.id)}
           className={`flex min-h-14 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-70 ${props.modelId === model.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] bg-[var(--surface)]'}`}
         ><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{model.label.split(' — ')[0]}</span><span className="block text-xs text-[var(--ink-muted)]">{model.id === props.modelId ? `${modelDescription} · recomendado` : model.id === 'gpt-6-astra' ? 'Máxima capacidad · consume más' : model.label.split(' — ')[1]}</span></span>{props.modelId === model.id && <Check size={17} aria-label="Seleccionado" className="shrink-0 text-[var(--brand)]"/>}</button>)}
-        {props.isExistingChat && <p className="text-xs leading-5 text-[var(--ink-muted)]">El modelo queda fijo cuando se crea el chat para conservar la sesión de tu PC.</p>}
+        {props.isExistingChat && <p className="text-xs leading-5 text-[var(--ink-muted)]">El modelo y el razonamiento quedan fijos al crear el chat para conservar la sesión de tu PC.</p>}
         {props.provider !== 'codex' && <p className="text-xs leading-5 text-[var(--ink-muted)]">Este chat usa {props.provider === 'claude' ? 'Claude Code' : 'Mock'}; los modelos Codex no se aplican.</p>}
       </fieldset>
 

@@ -91,6 +91,24 @@ describe('MobileAIChatConversation', () => {
     expect(dialog?.textContent).toContain('Ajustes de este chat');
     expect(dialog?.textContent).toContain('Bajo gasta menos de tu plan');
     expect(dialog?.textContent).toContain('Tus Skills, la memoria y Conocimientos se usan siempre.');
-    expect((dialog?.querySelector('button[aria-pressed="true"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(dialog?.textContent).toContain('El modelo y el razonamiento quedan fijos al crear el chat');
+    expect([...dialog!.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].every((button) => button.disabled)).toBe(true);
+  });
+
+  it('applies chat context toggles to the next message settings', async () => {
+    const value = props();
+    const onBusinessContextChange = vi.fn();
+    const onProjectContextChange = vi.fn();
+    value.onBusinessContextChange = onBusinessContextChange;
+    value.onProjectContextChange = onProjectContextChange;
+    await render(<MobileAIChatConversation {...value}/>);
+    await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Datos del negocio')) as HTMLButtonElement);
+
+    const inputs = host.querySelectorAll<HTMLInputElement>('[role="dialog"] input[type="checkbox"]');
+    expect(inputs).toHaveLength(2);
+    await act(async () => { inputs[0].click(); });
+    await act(async () => { inputs[1].click(); });
+    expect(onBusinessContextChange).toHaveBeenCalledWith(false);
+    expect(onProjectContextChange).toHaveBeenCalledWith(true);
   });
 });
