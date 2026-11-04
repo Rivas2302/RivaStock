@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H2 implementado; despliegue pendiente
+
+- Comparé el bloque H2 con `docs/ai/MOBILE_AI_UX_PLAN.md` de Desktop: coincide. No requiere migración ni backup.
+- Agregué navegación móvil `Chats | Tareas | Más`, estado de la PC, y una hoja accesible con Conocimientos, Skills, Memoria, Conexión y Acciones solo para el dueño. Los tabs de escritorio quedan visibles desde `lg`; Layout oculta su encabezado solo en IA y deja la barra inferior hasta que un flujo pida modo de pantalla completa. El control pasa por el contexto explícito de `Outlet`, no por inspección de la URL en Layout.
+- La hoja y su controlador están en chunk lazy. `npm run lint`, suite completa (**858 tests en 139 archivos**), build y `npm run perf:check` pasan. Bundle: **209.461 B gzip JS / 22.479 B CSS**; AIHub: **240.953 B**; Stock: **240.617 B**. No se ajustaron presupuestos.
+- Playwright en producción guardó referencias temporales de Chats y Tareas a 1280×900, con la pestaña correcta activa y cero errores de página, para comparar el escritorio después del despliegue.
+- **Estado:** el commit H2 aún debe integrarse y verificarse en producción antes de marcar `[x]`. **Siguiente:** terminar esa verificación y después H3.
+
 ## 2026-11-04 — H1 desplegado y verificado
 
 - La migración `20261104015507_ai_mobile_chat_previews_task_pagination` está aplicada en `RivaStock_Oficial`; el backup previo verificado está fuera del repo en `%USERPROFILE%\rivastock-backups\20261104T021743Z` (96 tablas / 14.084 filas; 733 objetos de Storage / 143.061.033 B; conteos, inventario y hashes aprobados).

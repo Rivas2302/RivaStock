@@ -31,8 +31,10 @@ import {
 import { getCentralStatus, listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 import type { KnowledgeCentralStatus } from '../lib/knowledge/types';
 import { formatBytes } from '../lib/knowledge/format';
+import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
+const MobileAIHubNavigation = lazy(() => import('../components/ai/MobileAIHubNavigation'));
 const AIActionInbox = lazy(() => import('../components/ai/AIActionInbox'));
 const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
 const BridgeSecurityMode = lazy(() => import('../components/ai/BridgeSecurityMode'));
@@ -89,20 +91,40 @@ export default function AIHub() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<'chats' | 'tasks' | 'library' | 'connection' | 'memory' | 'actions'>(() => isOwner && searchParams.get('view') === 'actions' ? 'actions' : 'chats');
+  const [view, setView] = useState<MobileAIHubView>(() => {
+    const initialView = searchParams.get('view');
+    if (isOwner && initialView === 'actions') return 'actions';
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+      && ['tasks', 'library', 'connection', 'memory'].includes(initialView ?? '')) return initialView as MobileAIHubView;
+    return 'chats';
+  });
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [sourceChatId, setSourceChatId] = useState<string | null>(null);
   const submissionRef = useRef<{ input: string; provider: AIProviderId; modelId: CodexModelId; reasoningEffort: CodexReasoningEffort; includeBusinessContext: boolean; includeProjectContext: boolean; key: string } | null>(null);
 
-  const navigateView = (next: typeof view) => {
+  const navigateView = (next: MobileAIHubView) => {
     setView(next);
+    const isMobile = window.matchMedia('(max-width: 1023px)').matches;
     setSearchParams(current => {
       const updated = new URLSearchParams(current);
-      if (next === 'actions') updated.set('view', 'actions');
+      if (isMobile) {
+        updated.set('view', next);
+        updated.delete('chat');
+        updated.delete('task');
+        updated.delete('new');
+      } else if (next === 'actions') updated.set('view', 'actions');
       else updated.delete('view');
       return updated;
-    }, { replace: true });
+    }, { replace: !isMobile });
   };
+
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+    const value = searchParams.get('view');
+    const next: MobileAIHubView = value === 'tasks' || value === 'library' || value === 'connection' || value === 'memory'
+      || value === 'actions' && isOwner ? value : 'chats';
+    setView(next);
+  }, [isOwner, searchParams]);
 
   const refreshRecent = useCallback(async () => {
     const { jobs, knowledgeOrganizeJobs: organizeJobs, finishedTaskCount: count } = await getRecentAIJobs();
@@ -420,7 +442,10 @@ export default function AIHub() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+      <Suspense fallback={<div aria-hidden="true" className="lg:hidden min-h-24"/>}>
+        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} onNavigate={navigateView}/>
+      </Suspense>
+      <header className="hidden flex-wrap items-center justify-between gap-4 lg:flex">
         <div>
           <p className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand)]"><Sparkles size={15}/>RivaStock AI</p>
           <h2 className="page-heading text-2xl font-bold md:text-3xl">IA</h2>
@@ -434,7 +459,7 @@ export default function AIHub() {
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
-      <nav className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="Secciones de IA">
+      <nav className="hidden gap-1 overflow-x-auto border-b border-[var(--line)] lg:flex" aria-label="Secciones de IA">
         {([
           { id: 'chats', label: 'Chats', icon: MessageSquare },
           { id: 'tasks', label: 'Tareas', icon: ListChecks },

@@ -71,6 +71,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
+  const [mobileChrome, setMobileChrome] = useState({ hideHeader: false, hideBottomNav: false });
   const { plan, loading: planLoading, error: planError } = useBusinessPlan();
   const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -138,7 +139,7 @@ export default function Layout() {
   return (
     <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="app-sidebar hidden md:flex flex-col w-64 text-white shrink-0">
+      <aside className="app-sidebar hidden lg:flex flex-col w-64 text-white shrink-0">
         <div className="p-6">
           <h1 className="brand-mark text-2xl font-extrabold text-white">RivaStock</h1>
           <p className="mt-1 text-xs text-slate-400">{user?.businessName}</p>
@@ -207,7 +208,7 @@ export default function Layout() {
           </Suspense>
         )}
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 bg-[#FCFAF5] dark:bg-[#202329] border-b border-[#DDD8CE] dark:border-slate-700 shrink-0">
+        {!mobileChrome.hideHeader && <header className="lg:hidden flex items-center justify-between p-4 bg-[#FCFAF5] dark:bg-[#202329] border-b border-[#DDD8CE] dark:border-slate-700 shrink-0">
           <h1 className="brand-mark text-xl font-extrabold text-[#1D2026] dark:text-white">RivaStock</h1>
           <button 
             onClick={() => setIsMobileMenuOpen(true)}
@@ -215,14 +216,14 @@ export default function Layout() {
           >
             <Menu size={24} />
           </button>
-        </header>
+        </header>}
 
-        <div className="app-content flex-1 overflow-y-auto p-4 md:p-8">
-          <Outlet />
+        <div className="app-content flex-1 overflow-y-auto p-4 lg:p-8">
+          <Outlet context={{ setMobileChrome }} />
         </div>
 
         {/* Mobile Bottom Bar */}
-        <nav className="md:hidden flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
+        {!mobileChrome.hideBottomNav && <nav className="lg:hidden flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = isNavItemActive(item.path, location.pathname);
@@ -240,7 +241,7 @@ export default function Layout() {
               </Link>
             );
           })}
-        </nav>
+        </nav>}
       </main>
 
       {/* Mobile Menu Overlay */}
@@ -252,13 +253,13 @@ export default function Layout() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-black/50 z-40 md:hidden"
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
             />
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="fixed inset-y-0 right-0 w-64 max-w-[85vw] app-sidebar text-white z-50 md:hidden flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+              className="fixed inset-y-0 right-0 w-64 max-w-[85vw] app-sidebar text-white z-50 lg:hidden flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
             >
               <div className="p-6 flex items-center justify-between">
                 <h1 className="text-xl font-bold text-indigo-400">Menú</h1>
