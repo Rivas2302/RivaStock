@@ -1,14 +1,16 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 22:29 ART — F5 gestión del ciclo de vida implementada; frontend pendiente de despliegue
+## 2026-11-03 22:33 ART — F5 gestión del ciclo de vida desplegada y verificada
 
 - Agregué al panel recuperación por email, contraseña temporal de un solo uso con cambio obligatorio al ingresar, exportación ZIP previa a la baja, confirmación por nombre exacto, suspensión inmediata por 30 días y cancelación antes del inicio del borrado.
 - La migración `20261104002800_platform_account_lifecycle` quedó aplicada en `RivaStock_Oficial`. Convierte a cascada las FKs de propiedad que impedirían borrar el usuario, agrega exportación con autorización de administrador y programa la limpieza cada 15 minutos: primero Storage, luego filas del negocio y finalmente Auth. Protege administradores e internos.
 - Antes de aplicar, verifiqué `%USERPROFILE%\rivastock-backups\20261104T011600Z`: **94 tablas / 14.083 filas** con conteos exactos coincidentes antes/después, **132 migraciones** copiadas y **733 objetos / 143.061.033 bytes** de Storage con inventario, tamaño y SHA-256 verificados. Los conteos están en `table-counts.csv`; mantener este backup con acceso restringido.
 - `platform-admin` quedó ACTIVE v3 y `account-purge` ACTIVE v1, ambas con `verify_jwt=false` porque verifican identidad/permiso o token internamente. SQL confirmó pg_net, cron `*/15 * * * *`, secretos Vault presentes sin exponer valores, hash del token, cero bajas vencidas y cero permisos `authenticated` para las RPC internas de borrado. Smoke HTTPS sin sesión/token válido: ambas funciones respondieron 401.
+- El commit `cfd575f` se envió directamente a `main` con la cuenta Rivas2302; Vercel confirmó `success`. Playwright con el perfil persistente verificó `/plataforma` en producción: 4 secciones de gestión, recuperación, contraseña temporal y baja visibles para clientes, cero errores de página; no se ejecutó ninguna acción mutante.
+- Producción confirma **0** FKs de negocio que bloquearían la baja, RLS activa en solicitudes y ningún permiso directo de clientes para leer/escribir las solicitudes ni el secreto cron.
 - No inicié una baja real de cuenta: producción no tenía solicitudes vencidas y la eliminación de una cuenta real no se usa como prueba. El flujo tiene cobertura de tests unitarios e integración de migración.
 - Verificación local: **847/847 tests**, `npm run lint`, `npm run build`, `npm run perf:check` y `git diff --check` aprobados. Bundle inicial: **209.368 B gzip JS / 22.305 B CSS**; AIHub: **240.492 B gzip JS**. Deno no está instalado localmente; ambos Edge Functions se desplegaron correctamente desde CLI.
-- **Pendiente:** subir el frontend y verificar el despliegue de Vercel con Playwright en producción. F1 de correos sigue bloqueada por falta de dominio remitente verificado; no envié mensajes al sandbox ni a Gmail.
+- F1 de correos sigue bloqueada por falta de dominio remitente verificado; no envié mensajes al sandbox ni a Gmail. El paso DNS está en `MENSAJE_PARA_RIVA.md`.
 
 ## 2026-11-03 21:03 ART — F4 `/plataforma` desplegado y verificado
 
