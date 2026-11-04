@@ -51,7 +51,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - Tests PGlite del trigger, del relleno, del cursor y de los conteos, más el aislamiento por negocio.
 - **Commit:** `feat(ai): chat previews and paginated task lists`
 
-### [ ] H2 Navegación de IA en el celular
+### [x] H2 Navegación de IA en el celular
 - Encabezado: título **IA** y la píldora de estado de la PC (“PC conectada” / “PC ocupada” / “PC desconectada”, con punto e ícono), que abre Conexión.
 - Selector segmentado **Chats | Tareas | Más**. “Más” abre una hoja inferior con Conocimientos, Skills, Memoria, Conexión y Acciones (solo dueño), con ícono y una línea de descripción cada una.
 - En `lg+`, las pestañas de hoy sin cambios.

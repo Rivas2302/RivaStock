@@ -1,12 +1,14 @@
 # Estado de ejecución autónoma
 
-## 2026-11-04 — H2 implementado; despliegue pendiente
+## 2026-11-04 — H2 desplegado y verificado
 
 - Comparé el bloque H2 con `docs/ai/MOBILE_AI_UX_PLAN.md` de Desktop: coincide. No requiere migración ni backup.
 - Agregué navegación móvil `Chats | Tareas | Más`, estado de la PC, y una hoja accesible con Conocimientos, Skills, Memoria, Conexión y Acciones solo para el dueño. Los tabs de escritorio quedan visibles desde `lg`; Layout oculta su encabezado solo en IA y deja la barra inferior hasta que un flujo pida modo de pantalla completa. El control pasa por el contexto explícito de `Outlet`, no por inspección de la URL en Layout.
 - La hoja y su controlador están en chunk lazy. `npm run lint`, suite completa (**858 tests en 139 archivos**), build y `npm run perf:check` pasan. Bundle: **209.461 B gzip JS / 22.479 B CSS**; AIHub: **240.953 B**; Stock: **240.617 B**. No se ajustaron presupuestos.
 - Playwright en producción guardó referencias temporales de Chats y Tareas a 1280×900, con la pestaña correcta activa y cero errores de página, para comparar el escritorio después del despliegue.
-- **Estado:** el commit H2 aún debe integrarse y verificarse en producción antes de marcar `[x]`. **Siguiente:** terminar esa verificación y después H3.
+- Commit `d97030d` integrado directamente a `main` como Rivas2302. La producción sirve `MobileAIHubNavigation-CDXHvuhU.js`; Playwright autenticado en 390×844 verificó IA, los tabs Chats/Tareas/Más, la hoja y sus cinco destinos; Tareas y Conexión actualizaron `view` en la URL. Cero errores de página y de red.
+- A 1280×900, las capturas estabilizadas de Chats y Tareas son idénticas byte por byte al baseline previo a H2. Se conservaron temporalmente fuera del repo para la comparación final de H9. Durante el smoke cerré el aviso de instalación con «Ahora no»; no instalé nada.
+- **Desvío:** ninguno. **Siguiente:** H3.
 
 ## 2026-11-04 — H1 desplegado y verificado
 
