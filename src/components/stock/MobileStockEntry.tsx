@@ -3,12 +3,14 @@ import type { InventoryHolding, InventoryOwner, Product } from '../../types';
 import MobileStockExperience from './MobileStockExperience';
 import { dispatchMobileStockAction } from './dispatchMobileStockAction';
 import type { MobileStockActionHandlers } from './dispatchMobileStockAction';
+import type { AdjustProductStockInput } from '../../lib/stockAdjustments';
 
 type Data = [
   products: Product[],
   visibleHoldingsByProduct: ReadonlyMap<string, InventoryHolding[]>,
   owners: InventoryOwner[],
   ownersById: ReadonlyMap<string, InventoryOwner>,
+  operableInventoryOwnerIds: string[],
   holdingsEnabled: boolean,
   loading: boolean,
   canWrite: boolean,
@@ -34,6 +36,7 @@ type Handlers = [
   openPriceList: MobileStockActionHandlers['openPriceList'],
   downloadPriceList: MobileStockActionHandlers['downloadPriceList'],
   adjustStock: MobileStockActionHandlers['adjustStock'],
+  saveStockAdjustment: (input: AdjustProductStockInput) => Promise<unknown>,
   toggleCatalog: MobileStockActionHandlers['toggleCatalog'],
   printBarcode: MobileStockActionHandlers['printBarcode'],
   publishFacebook: MobileStockActionHandlers['publishFacebook'],
@@ -50,13 +53,13 @@ interface Props {
 
 export default function MobileStockEntry({ data, handlers }: Props) {
   const [
-    products, visibleHoldingsByProduct, owners, ownersById, holdingsEnabled, loading,
+    products, visibleHoldingsByProduct, owners, ownersById, operableInventoryOwnerIds, holdingsEnabled, loading,
     canWrite, canDelete, catalogSavingIds, restockProductIds, categories, selectedIds,
     selectingForCodes, bulkGenerating, pendingImageCleanupCount, imageCleanupRetrying, restockCount,
   ] = data;
   const [
     onToggleSelect, startCodeSelection, cancelCodeSelection, generateCodes, addProduct,
-    openResellers, openPriceList, downloadPriceList, adjustStock,
+    openResellers, openPriceList, downloadPriceList, adjustStock, saveStockAdjustment,
     toggleCatalog, printBarcode, publishFacebook, deleteProduct, createProductFromScan,
     editProduct, retryImageCleanup,
   ] = handlers;
@@ -77,6 +80,7 @@ export default function MobileStockEntry({ data, handlers }: Props) {
     visibleHoldingsByProduct={visibleHoldingsByProduct}
     owners={owners}
     ownersById={ownersById}
+    operableInventoryOwnerIds={operableInventoryOwnerIds}
     holdingsEnabled={holdingsEnabled}
     loading={loading}
     canWrite={canWrite}
@@ -92,5 +96,6 @@ export default function MobileStockEntry({ data, handlers }: Props) {
     restockCount={restockCount}
     onToggleSelect={onToggleSelect}
     onAction={onAction}
+    onSaveStockAdjustment={saveStockAdjustment}
   />;
 }

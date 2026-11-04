@@ -247,13 +247,13 @@ export default function MobileProductDetail({
           <StockBadge stock={currentEconomics.stock} minStock={currentEconomics.minStock} />
         </div>
         {ownerStockSummary && <p className="mt-2 text-sm text-[var(--ink-muted)]">{ownerStockSummary}</p>}
-        <button type="button" onClick={() => onAdjustStock(product)} disabled={!canWrite || product.catalogOnly} className="mt-4 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50">Ajustar stock</button>
+        {canWrite && !product.catalogOnly && <button type="button" onClick={() => onAdjustStock(product)} className="mt-4 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-bold">Ajustar stock</button>}
       </section>
 
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => onSell(product)} disabled={currentEconomics.stock <= 0} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-3 text-sm font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-50"><ShoppingBag size={19} aria-hidden="true" />{currentEconomics.stock <= 0 ? 'Sin stock' : 'Vender'}</button>
         <button type="button" onClick={() => onSendPhotos(product)} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold"><Share2 size={19} aria-hidden="true" />Enviar fotos</button>
-        <button type="button" onClick={() => onEdit(product)} disabled={!canWrite} className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold disabled:opacity-50"><Edit3 size={18} aria-hidden="true" />Editar</button>
+        {canWrite && <button type="button" onClick={() => onEdit(product)} className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] mobile-stock-surface px-3 text-sm font-bold"><Edit3 size={18} aria-hidden="true" />Editar</button>}
       </div>
 
       <label className="flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-[var(--line)] mobile-stock-surface px-4">

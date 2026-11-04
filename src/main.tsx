@@ -6,6 +6,7 @@ import './styles/public-settings.css';
 import { AuthProvider } from './AuthContext';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import './lib/mobileNavigationGuard';
 
 if (typeof crypto.randomUUID !== 'function') {
   (crypto as { randomUUID?: () => string }).randomUUID = (): string => {

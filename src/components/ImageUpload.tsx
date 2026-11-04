@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, X, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
 import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
 import { getProductThumbnailPath, getProductThumbnailUrl } from '../lib/productPhotos';
@@ -14,6 +14,8 @@ interface ImageUploadProps {
   onChange: (urls: string[]) => void;
   onUploadStart?: () => void;
   onUploadEnd?: () => void;
+  mobileControls?: boolean;
+  allowReorder?: boolean;
 }
 
 export const ImageUpload: React.FC<ImageUploadProps> = ({
@@ -23,11 +25,15 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   onChange,
   onUploadStart,
   onUploadEnd,
+  mobileControls = false,
+  allowReorder = false,
 }) => {
   const [images, setImages] = useState<string[]>(currentImages);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Re-sync when the parent swaps the product being edited.
   const lastKey = useRef<string>(productId);
@@ -104,14 +110,66 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     onChange(updated);
   };
 
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= images.length) return;
+    const updated = [...images];
+    [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
+    setImages(updated);
+    onChange(updated);
+  };
+
   return (
     <div className="space-y-2">
+      {mobileControls && images.length < MAX_IMAGES && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={processing}
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex min-h-12 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"
+          >
+            Sacar foto
+          </button>
+          <button
+            type="button"
+            disabled={processing}
+            onClick={() => galleryInputRef.current?.click()}
+            className="flex min-h-12 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"
+          >
+            Galería
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-4 gap-2">
         {images.map((url, i) => (
           <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
             <img src={url} alt={`Imagen ${i + 1}`} className="w-full h-full object-cover" />
+            {allowReorder && (
+              <div className="absolute bottom-1.5 left-1 flex gap-1">
+                <button
+                  type="button"
+                  aria-label={`Mover imagen ${i + 1} a la izquierda`}
+                  disabled={processing || i === 0}
+                  onClick={() => moveImage(i, -1)}
+                  className="rounded-full bg-black/70 p-1 text-white disabled:opacity-40"
+                >
+                  <ChevronLeft size={14} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Mover imagen ${i + 1} a la derecha`}
+                  disabled={processing || i === images.length - 1}
+                  onClick={() => moveImage(i, 1)}
+                  className="rounded-full bg-black/70 p-1 text-white disabled:opacity-40"
+                >
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             <button
               type="button"
+              aria-label={`Quitar imagen ${i + 1}`}
               onClick={() => removeImage(i)}
               disabled={processing}
               className="absolute top-1 right-1 bg-rose-500 text-white rounded-full p-0.5 hover:bg-rose-600 transition-colors disabled:opacity-50"
@@ -121,7 +179,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           </div>
         ))}
 
-        {images.length < MAX_IMAGES && (
+        {images.length < MAX_IMAGES && !mobileControls && (
           <div
             className="aspect-square border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors"
             onClick={() => !processing && fileInputRef.current?.click()}
@@ -156,6 +214,32 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         multiple
         onChange={(e) => e.target.files && handleFiles(e.target.files)}
       />
+      {mobileControls && (
+        <>
+          <input
+            type="file"
+            ref={cameraInputRef}
+            className="hidden"
+            accept="image/*"
+            capture="environment"
+            onChange={(event) => {
+              if (event.target.files) void handleFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          <input
+            type="file"
+            ref={galleryInputRef}
+            className="hidden"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            onChange={(event) => {
+              if (event.target.files) void handleFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };

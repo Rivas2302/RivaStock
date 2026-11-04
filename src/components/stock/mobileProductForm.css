@@ -1,0 +1,4 @@
+.mobile-product-form-focus-within:focus-within {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

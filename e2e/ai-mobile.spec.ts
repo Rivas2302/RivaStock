@@ -201,6 +201,17 @@ async function mockRiva(page: Page, modules: Modules = { ai: true, knowledge: tr
   return { calls, chats, jobs };
 }
 
+test('mobile home fits a 360×740 phone viewport without horizontal overflow', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile layout checks run in Android and iPhone projects.');
+  await mockRiva(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1, name: /Buen día|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Accesos rápidos' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await testInfo.attach(`${testInfo.project.name}-home-360x740`, { body: await page.screenshot(), contentType: 'image/png' });
+});
+
 test('mobile chat: search, swipe-delete confirmation, browser back, settings and mock send', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   const { calls } = await mockRiva(page);

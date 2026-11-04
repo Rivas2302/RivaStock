@@ -12,9 +12,11 @@ import { normalizeBarcode } from '../../lib/barcode';
 import './mobileStock.css';
 import type { MobileStockNotice } from './MobileStockList';
 import type { MobileStockSort, MobileStockStatusFilter } from '../../lib/mobileStockFilters';
+import type { AdjustProductStockInput } from '../../lib/stockAdjustments';
 
 const MobileStockList = lazy(() => import('./MobileStockList'));
 const MobileProductDetail = lazy(() => import('./MobileProductDetail'));
+const MobileStockAdjustmentSheet = lazy(() => import('./MobileStockAdjustmentSheet'));
 const MovementHistoryPanel = lazy(() => import('../inventory/MovementHistoryPanel'));
 const PAGE_SIZE = 30;
 
@@ -71,6 +73,8 @@ interface Props {
   restockCount: number;
   onToggleSelect: (productId: string) => void;
   onAction: (action: MobileStockAction) => void | Promise<boolean>;
+  onSaveStockAdjustment: (input: AdjustProductStockInput) => Promise<unknown>;
+  operableInventoryOwnerIds: string[];
 }
 
 export default function MobileStockExperience({
@@ -93,6 +97,8 @@ export default function MobileStockExperience({
   restockCount,
   onToggleSelect,
   onAction,
+  onSaveStockAdjustment,
+  operableInventoryOwnerIds,
 }: Props) {
   const { user } = useAuth();
   const { plan } = useBusinessPlan();
@@ -102,6 +108,9 @@ export default function MobileStockExperience({
   const product = productId ? products.find((item) => item.id === productId) ?? null : null;
   const scrollTopRef = useRef<number | null>(null);
   const openedEditorIdRef = useRef<string | null>(null);
+  const openedNewEditorRef = useRef(false);
+  const openedAdjustmentInAppRef = useRef(false);
+  const adjustmentOpen = new URLSearchParams(location.search).get('ajustar') === '1';
   const initialParams = new URLSearchParams(location.search);
   const [search, setSearch] = useState(() => initialParams.get('q') ?? '');
   const [category, setCategory] = useState(() => initialParams.get('cat') ?? 'all');
@@ -165,6 +174,17 @@ export default function MobileStockExperience({
     openedEditorIdRef.current = requestedId;
     onAction({ type: 'edit-product', product: requestedProduct });
   }, [loading, location.search, onAction, products]);
+
+  useEffect(() => {
+    const requestedNewProduct = new URLSearchParams(location.search).get('nuevo') === '1';
+    if (!requestedNewProduct) {
+      openedNewEditorRef.current = false;
+      return;
+    }
+    if (loading || openedNewEditorRef.current) return;
+    openedNewEditorRef.current = true;
+    onAction({ type: 'add-product' });
+  }, [loading, location.search, onAction]);
 
   useEffect(() => {
     if (productId || scrollTopRef.current === null) return;
@@ -271,6 +291,26 @@ export default function MobileStockExperience({
     ? `${window.location.origin}/catalogo/${encodeURIComponent(user.catalogSlug)}/${encodeURIComponent(product.id)}`
     : null;
 
+  const openStockAdjustment = (item: Product) => {
+    openedAdjustmentInAppRef.current = true;
+    const params = new URLSearchParams(location.search);
+    params.set('producto', item.id);
+    params.set('ajustar', '1');
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { state: location.state });
+  };
+
+  const closeStockAdjustment = () => {
+    if (openedAdjustmentInAppRef.current) {
+      openedAdjustmentInAppRef.current = false;
+      navigate(-1);
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.delete('ajustar');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+  };
+
   const clearFilters = () => {
     setSearch('');
     setCategory('all');
@@ -312,7 +352,7 @@ export default function MobileStockExperience({
     return true;
   };
 
-  if (productId) {
+  if (productId && !adjustmentOpen) {
     return <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
       <MobileProductDetail
         product={product}
@@ -332,13 +372,29 @@ export default function MobileStockExperience({
         onSell={(item) => navigate(`/pos?producto=${encodeURIComponent(item.id)}`)}
         onSendPhotos={(item) => navigate(`/fotos?producto=${encodeURIComponent(item.id)}`)}
         onEdit={(item) => navigate(`/stock?editar=${encodeURIComponent(item.id)}`)}
-        onAdjustStock={(item) => { void onAction({ type: 'adjust-stock', product: item }); }}
+        onAdjustStock={openStockAdjustment}
         onToggleCatalog={(item) => { void onAction({ type: 'toggle-catalog', product: item }); }}
         onPrintBarcode={(item) => { void onAction({ type: 'print-barcode', product: item }); }}
         onOpenResellerList={() => { void onAction({ type: 'open-resellers' }); }}
         onOpenAllMovements={(item) => navigate(`/config?tab=owners&producto=${encodeURIComponent(item.id)}`)}
         onPublishFacebook={(item) => { void onAction({ type: 'publish-facebook', product: item }); }}
         onDelete={deleteProduct}
+      />
+    </Suspense>;
+  }
+
+  if (product && adjustmentOpen) {
+    return <Suspense fallback={<div role="status" className="fixed inset-0 z-[90] animate-pulse bg-[var(--surface)] lg:hidden" />}>
+      <MobileStockAdjustmentSheet
+        product={product}
+        holdings={visibleHoldingsByProduct.get(product.id) ?? []}
+        owners={owners}
+        operableInventoryOwnerIds={operableInventoryOwnerIds}
+        holdingsEnabled={holdingsEnabled}
+        canWrite={canWrite}
+        onClose={closeStockAdjustment}
+        onSave={onSaveStockAdjustment}
+        onOpenIntake={() => navigate('/ingresos')}
       />
     </Suspense>;
   }

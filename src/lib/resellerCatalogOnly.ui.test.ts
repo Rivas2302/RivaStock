@@ -7,21 +7,22 @@ const modal = readFileSync(
   'utf8',
 );
 const stock = readFileSync(resolve(process.cwd(), 'src/pages/Stock.tsx'), 'utf8');
+const editor = readFileSync(resolve(process.cwd(), 'src/hooks/useProductEditor.ts'), 'utf8');
 
 describe('catalog-only reseller products UI', () => {
   it('creates a product with the supplier-list context', () => {
     expect(modal).toContain('Crear para esta lista');
     expect(modal).toContain('supplierId: supplier.id');
     expect(modal).toContain('productIds: supplierDraftProductIds');
-    expect(stock).toContain('saveResellerSupplierList');
+    expect(editor).toContain('saveResellerSupplierList');
   });
 
   it('collects the full public product record without creating inventory', () => {
     expect(stock).toContain('Costo del proveedor');
     expect(stock).toContain('Descripción pública');
-    expect(stock).toContain('catalogOnly: true');
-    expect(stock).toContain('stock: 0');
-    expect(stock).toContain('showInCatalog: false');
+    expect(editor).toContain('catalogOnly: true');
+    expect(editor).toContain('stock: 0');
+    expect(editor).toContain('showInCatalog: false');
   });
 
   it('keeps catalog-only products out of Stock and its ordinary PDF', () => {
@@ -33,7 +34,7 @@ describe('catalog-only reseller products UI', () => {
     expect(modal).toContain('Solo catálogo · no está en stock');
     expect(modal).toContain('Editar ficha');
     expect(modal).toContain('Agregar al stock');
-    expect(stock).toContain('promotionStock <= 0');
-    expect(stock).toContain('promoteResellerCatalogProduct');
+    expect(editor).toContain('promotionStock <= 0');
+    expect(editor).toContain('promoteResellerCatalogProduct');
   });
 });

@@ -1,12 +1,10 @@
-## Bloque H verificado; I4/I5 listos localmente; sigo con I6
+## Bloque I — implementación local lista; falta cerrar el smoke en producción
 
-El Chat IA y las Tareas del celular ya tienen el diseño nuevo. Validé Chats y Tareas en Android y iPhone, y comparé la versión de PC a 1280 px: mantiene la misma composición; las únicas diferencias visuales son los minutos dinámicos de las fechas. Probé el envío de un chat con `MockProvider` en producción y eliminé el chat `[QA]` desde la app.
+- Backup fresco verificado: 96 tablas / 14.235 filas y 789 objetos Storage. La migración `20261104124859_mobile_stock_adjustments` está aplicada; producción confirma permisos y guardas de suspensión.
+- I7 e I8 pasan lint, 936 pruebas unitarias y 40 escenarios E2E (23 omitidos por alcance del proyecto). Capturas de PC a 1280×900: 0 píxeles distintos en Inicio, Stock y editor. El bundle está dentro del presupuesto.
+- No hay productos de stock `[QA]` en producción. Para terminar I6/I7/I9 tengo que publicar el frontend, crear un producto `[QA]` desde la app, hacer el smoke SQL únicamente dentro de `BEGIN … ROLLBACK`, probar el flujo móvil y borrar el producto desde la app. Todavía no hice cambios de datos.
+- No necesitás hacer nada ahora. F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 
-H8 queda abierto: Publicación para Facebook y Revisar fotos todavía no admiten el texto libre ni los toggles de contexto porque las RPC y el worker actuales no los reciben. La interfaz lo informa y no se cambió la lógica ni la instalación del Bridge de PC.
-
-La lista y la ficha de Stock para el celular están implementadas y pasan la verificación local; todavía no se desplegaron. No necesitás hacer nada ahora. El cierre en producción queda para I9.
-
-F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar
 
 Riva, terminé los 8 bocetos de la Tanda 1. Podés abrirlos desde el índice:

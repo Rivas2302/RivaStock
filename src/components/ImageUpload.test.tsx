@@ -103,4 +103,28 @@ describe('ImageUpload storage guard', () => {
     expect(uploadToStorage.mock.calls[1][1]).toMatchObject({ type: 'image/webp' });
     expect(onChange).toHaveBeenCalledWith([`https://cdn.test/${originalPath}`]);
   });
+
+  it('offers camera and gallery inputs on mobile and reorders images without uploading them again', async () => {
+    const onChange = vi.fn();
+    await act(async () => {
+      root.render(<ImageUpload
+        ownerUid="owner"
+        productId="product"
+        currentImages={['https://cdn.test/one.webp', 'https://cdn.test/two.webp']}
+        onChange={onChange}
+        mobileControls
+        allowReorder
+      />);
+    });
+
+    expect(host.querySelector<HTMLInputElement>('input[capture="environment"]')?.accept).toBe('image/*');
+    expect(host.querySelector<HTMLInputElement>('input[multiple]')?.accept).toBe('image/jpeg,image/png,image/webp');
+    const moveLeft = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.getAttribute('aria-label') === 'Mover imagen 2 a la izquierda');
+    if (!moveLeft) throw new Error('No se encontró el control para reordenar la foto.');
+    await act(async () => { moveLeft.click(); });
+
+    expect(onChange).toHaveBeenCalledWith(['https://cdn.test/two.webp', 'https://cdn.test/one.webp']);
+    expect(uploadToStorage).not.toHaveBeenCalled();
+  });
 });

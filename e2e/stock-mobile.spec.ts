@@ -51,7 +51,13 @@ function productsFixture() {
   ];
 }
 
-async function mockStock(page: Page, rows = productsFixture()) {
+interface StockFixtureOptions {
+  automation?: boolean;
+  planStatus?: 'active' | 'suspended';
+  collaboratorReadOnly?: boolean;
+}
+
+async function mockStock(page: Page, rows = productsFixture(), options: StockFixtureOptions = {}) {
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -73,12 +79,62 @@ async function mockStock(page: Page, rows = productsFixture()) {
     }] });
     if (path.endsWith('/rpc/is_platform_admin')) return route.fulfill({ json: false });
     if (path.endsWith('/rpc/my_business_plan')) return route.fulfill({ json: {
-      plan_code: 'pro', plan_name: 'RivaStock IA', status: 'active', limits: { modules: { ai: true, knowledge: true, automation: true } },
+      plan_code: options.automation === false ? 'base' : 'pro',
+      plan_name: options.automation === false ? 'RivaStock' : 'RivaStock IA',
+      status: options.planStatus ?? 'active',
+      limits: { modules: { ai: options.automation !== false, knowledge: options.automation !== false, automation: options.automation !== false } },
     } });
     if (path.endsWith('/rpc/get_public_catalog_products') || path.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
+    if (path.endsWith('/rpc/adjust_product_stock')) {
+      const input = route.request().postDataJSON() as {
+        p_product_id: string; p_mode: 'add' | 'remove' | 'count'; p_quantity: number; p_reason: string; p_idempotency_key: string;
+      };
+      const target = rows.find((item) => item.id === input.p_product_id);
+      if (!target) return route.fulfill({ status: 400, json: { message: 'Product not found' } });
+      const delta = input.p_mode === 'add' ? input.p_quantity : input.p_mode === 'remove' ? -input.p_quantity : input.p_quantity - Number(target.stock);
+      if (delta === 0) return route.fulfill({ json: null });
+      target.stock = Number(target.stock) + delta;
+      return route.fulfill({ json: {
+        id: `command-${input.p_idempotency_key}`,
+        user_id: OWNER_ID,
+        idempotency_key: input.p_idempotency_key,
+        product_id: target.id,
+        product_name: target.name,
+        inventory_owner_id: 'owner-default',
+        inventory_owner_name: 'Depósito principal',
+        actor_uid: OWNER_ID,
+        delta,
+        reason: `Ajuste manual · ${input.p_reason}`,
+        resulting_stock: Number(target.stock),
+        created_at: now,
+      } });
+    }
     if (path.startsWith('/rest/v1/')) {
       const table = path.replace('/rest/v1/', '');
-      if (table === 'products') return route.fulfill({ json: rows });
+      if (table === 'products') {
+        const method = route.request().method();
+        if (method === 'POST') {
+          const created = route.request().postDataJSON() as Record<string, unknown>;
+          rows.push(created);
+          return route.fulfill({ status: 201, json: created });
+        }
+        if (method === 'PATCH') {
+          const idFilter = url.searchParams.get('id') ?? '';
+          const targetId = idFilter.replace(/^eq\./, '');
+          const target = rows.find((item) => item.id === targetId);
+          if (!target) return route.fulfill({ status: 404, json: { message: 'Product not found' } });
+          Object.assign(target, route.request().postDataJSON());
+          return route.fulfill({ json: target });
+        }
+        if (method === 'DELETE') {
+          const idFilter = url.searchParams.get('id') ?? '';
+          const targetId = idFilter.replace(/^eq\./, '');
+          const index = rows.findIndex((item) => item.id === targetId);
+          if (index >= 0) rows.splice(index, 1);
+          return route.fulfill({ status: 204, body: '' });
+        }
+        return route.fulfill({ json: rows });
+      }
       if (table === 'categories') return route.fulfill({ json: [
         { id: 'category-general', user_id: OWNER_ID, name: 'General' },
         { id: 'category-camera', user_id: OWNER_ID, name: 'Cámaras' },
@@ -86,6 +142,10 @@ async function mockStock(page: Page, rows = productsFixture()) {
       ] });
       if (table === 'inventory_operation_settings') return route.fulfill({ json: { holdings_enabled: false } });
       if (table === 'profiles') return route.fulfill({ json: [{ id: OWNER_ID, business_name: 'Negocio QA', onboarding_completed_at: now }] });
+      if (table === 'collaborators') return route.fulfill({ json: options.collaboratorReadOnly ? [{
+        id: 'collaborator-read-only', owner_uid: OWNER_ID,
+        permissions: { stock: { read: true, write: false, delete: false } },
+      }] : [] });
       return route.fulfill({ json: [] });
     }
     if (path.startsWith('/storage/v1/object/public/assets/')) {
@@ -150,6 +210,123 @@ test('mobile stock shows a clear empty state and filters remain available', asyn
   await expect(page.getByRole('button', { name: /^Abrir filtros/ })).toBeVisible();
 });
 
+test('mobile stock and product form fit a 360×740 phone viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile layout checks run in Android and iPhone projects.');
+  await mockStock(page, []);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/stock');
+  await expect(page.getByRole('region', { name: 'Stock móvil' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+
+  await page.getByRole('button', { name: 'Agregar producto', exact: true }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  const saveButton = form.getByRole('button', { name: 'Guardar producto' });
+  await expect(saveButton).toBeVisible();
+  const bounds = await saveButton.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(740);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await testInfo.attach(`${testInfo.project.name}-stock-form-360x740`, { body: await page.screenshot(), contentType: 'image/png' });
+});
+
+test('mobile stock hides write actions for a read-only collaborator', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock permission checks run in Android and iPhone projects.');
+  await mockStock(page, productsFixture(), { collaboratorReadOnly: true });
+  await page.goto('/stock');
+  await expect(page.getByRole('button', { name: 'Agregar producto', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Abrir ficha de [QA] Cámara WiFi 360' }).click();
+  await expect(page.getByRole('region', { name: 'Ficha de [QA] Cámara WiFi 360' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ajustar stock', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Editar', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Más acciones del producto' }).click();
+  await expect(page.getByRole('button', { name: 'Eliminar producto', exact: true })).toHaveCount(0);
+});
+
+test('mobile stock is read-only for a suspended business', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock permission checks run in Android and iPhone projects.');
+  await mockStock(page, productsFixture(), { planStatus: 'suspended' });
+  await page.goto('/stock');
+  await expect(page.getByRole('button', { name: 'Agregar producto', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Abrir ficha de [QA] Cámara WiFi 360' }).click();
+  await expect(page.getByRole('button', { name: 'Ajustar stock', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Editar', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Más acciones del producto' }).click();
+  await expect(page.getByRole('button', { name: 'Eliminar producto', exact: true })).toHaveCount(0);
+});
+
+test('mobile Stock hides Facebook publication without the automation module', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock module checks run in Android and iPhone projects.');
+  await mockStock(page, productsFixture(), { automation: false });
+  await page.goto('/stock?producto=camera');
+  await page.getByRole('button', { name: 'Más acciones del producto' }).click();
+  await expect(page.getByRole('button', { name: 'Publicar en Facebook', exact: true })).toHaveCount(0);
+});
+
+test('mobile product form creates a product and opens its detail', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
+  await mockStock(page, []);
+  await page.goto('/stock?nuevo=1');
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await form.getByLabel('Nombre').fill('[QA] Producto celular');
+  await form.getByLabel('Categoría').selectOption('category-general');
+  await form.getByLabel('Precio de compra').fill('1200');
+  await form.getByLabel('Precio de venta').fill('2400');
+  await form.getByLabel('Stock inicial').fill('3');
+  await form.getByRole('button', { name: 'Guardar producto' }).click();
+
+  await expect(page).toHaveURL(/\/stock\?producto=/);
+  await expect(page.getByRole('region', { name: 'Ficha de [QA] Producto celular' })).toBeVisible();
+  await expect(page.getByText('3 unidades', { exact: true })).toBeVisible();
+});
+
+test('mobile product form edits the product and asks before discarding changes', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
+  await mockStock(page);
+  await page.goto('/stock?editar=cable');
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await form.getByLabel('Nombre').fill('[QA] Cable editado');
+  await form.getByRole('button', { name: 'Guardar producto' }).click();
+  await expect(page).toHaveURL(/\/stock\?producto=cable$/);
+  await expect(page.getByRole('region', { name: 'Ficha de [QA] Cable editado' })).toBeVisible();
+
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Agregar producto', exact: true }).first().click();
+  const newForm = page.getByTestId('mobile-product-form');
+  await expect(newForm).toBeVisible();
+  await expect(page).toHaveURL(/nuevo=1/);
+  await newForm.getByLabel('Nombre').fill('[QA] Borrador sin guardar');
+  await newForm.getByRole('button', { name: 'Cerrar editor' }).click();
+  const discard = page.getByRole('alertdialog', { name: '¿Descartar los cambios?' });
+  await expect(discard).toBeVisible();
+  await discard.getByRole('button', { name: 'Seguir editando' }).click();
+  await expect(newForm).toBeVisible();
+  await newForm.getByRole('button', { name: 'Cerrar editor' }).click();
+  await page.getByRole('alertdialog', { name: '¿Descartar los cambios?' }).getByRole('button', { name: 'Descartar' }).click();
+  await expect(page).toHaveURL(/\/stock$/);
+  await expect(page.getByTestId('mobile-product-form')).toHaveCount(0);
+});
+
+test('mobile product form asks before browser back when it has unsaved changes', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
+  await mockStock(page, []);
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Agregar producto', exact: true }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await form.getByLabel('Nombre').fill('[QA] Borrador atrás');
+  await page.evaluate(() => window.history.back());
+  const discard = page.getByRole('alertdialog', { name: '¿Descartar los cambios?' });
+  await expect(discard).toBeVisible();
+  await expect(page).toHaveURL(/nuevo=1/);
+  await discard.getByRole('button', { name: 'Seguir editando' }).click();
+  await expect(form).toBeVisible();
+  await form.getByRole('button', { name: 'Cerrar editor' }).click();
+  await page.getByRole('alertdialog', { name: '¿Descartar los cambios?' }).getByRole('button', { name: 'Descartar' }).click();
+});
+
 test('mobile stock restores the URL filters and list scroll after returning from a product', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
   await mockStock(page);
@@ -211,6 +388,28 @@ test('mobile product detail routes to POS once and opens Buscar y enviar on the 
   await expect(page).toHaveURL(/\/fotos$/);
 });
 
+test('mobile stock adjustment previews limits, records the reason, and returns to the product detail', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
+  await mockStock(page);
+  await page.goto('/stock?producto=camera');
+  await page.getByRole('button', { name: 'Ajustar stock' }).click();
+
+  await expect(page).toHaveURL(/producto=camera&ajustar=1/);
+  const sheet = page.getByRole('dialog', { name: 'Ajustar stock' });
+  await expect(sheet).toContainText('Stock actual: 1 unidades');
+  await sheet.getByRole('button', { name: 'Restar', exact: true }).click();
+  await sheet.getByRole('spinbutton', { name: 'Cantidad' }).fill('2');
+  await expect(sheet).toContainText('Va a quedar en -1 unidades');
+  await expect(sheet.getByRole('button', { name: 'Guardar ajuste' })).toBeDisabled();
+
+  await sheet.getByRole('spinbutton', { name: 'Cantidad' }).fill('1');
+  await sheet.getByRole('textbox', { name: 'Escribí el motivo' }).fill('Rotura durante la prueba');
+  await sheet.getByRole('button', { name: 'Guardar ajuste' }).click();
+  await expect(page).toHaveURL(/\/stock\?producto=camera$/);
+  await expect(page.getByText('Stock actualizado: 0 unidades')).toBeVisible();
+  await expect(page.getByText('0 unidades', { exact: true })).toBeVisible();
+});
+
 test('mobile product detail shows a safe not-found state for an unknown business product', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Stock touch flows run in Android and iPhone projects.');
   await mockStock(page);
@@ -227,12 +426,19 @@ test('mobile product detail shows a safe not-found state for an unknown business
 test('desktop Stock keeps its table and does not render the mobile list', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'Desktop Stock regression runs in Chromium only.');
   await mockStock(page);
+  await page.clock.install({ time: new Date('2026-11-04T12:00:00-03:00') });
   await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation').first()).toBeVisible();
+  await testInfo.attach('desktop-home-1280x900', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   await page.goto('/stock');
   await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Descargar PDF', exact: true })).toBeEnabled();
   await expect(page.getByRole('region', { name: 'Stock móvil' })).toHaveCount(0);
+  await testInfo.attach('desktop-stock-1280x900', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   await page.goto('/stock?producto=camera');
   await expect(page.getByRole('dialog', { name: 'Editar Producto' })).toBeVisible();
+  await testInfo.attach('desktop-stock-editor-1280x900', { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
   await page.keyboard.press('Escape');
   await page.goto('/stock');
   await page.getByRole('button', { name: 'Eliminar [QA] Cámara WiFi 360' }).click();

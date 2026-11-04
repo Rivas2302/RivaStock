@@ -1,4 +1,14 @@
 # Estado de ejecución autónoma
+## 2026-11-04 — I7/I8 implementadas localmente; I9 espera verificación productiva
+
+- I7 agrega la hoja móvil de ajuste de stock con suma/resta/conteo, motivo, límites, titular e idempotencia; I8 agrega formulario móvil de alta/edición, carga y reordenamiento de fotos, validación/foco, opciones avanzadas y confirmación propia para cambios sin guardar y botón atrás.
+- `npm run lint` pasó; `npm test -- --maxWorkers=1` pasó **936/936 en 161 archivos** con variables Supabase ficticias solo en el proceso. Playwright `stock-mobile.spec.ts` y `ai-mobile.spec.ts`: **40 aprobadas, 23 omitidas por proyecto, 0 fallidas**; cubrió Android, iPhone/WebKit, 360×740, formularios, ajuste, roles, filtros y navegación.
+- Build y `perf:check` pasaron. Gzip: entrada **210.218 B JS / 23.604 B CSS**, AIHub **246.649 B**, Stock **240.621 B** (límite 241.664 B).
+- Las capturas deterministas de Playwright a 1280×900, comparadas con `b5bc06d`, dieron **0 píxeles distintos** en Inicio, lista de Stock y editor de escritorio. No cambié el Bridge ni su instalación de PC.
+- **I8 [x]** por criterios locales completos. **I7 [ ]** y **I9 [ ]** hasta completar el smoke transaccional y el flujo QA autenticado en producción.
+- **Desvío de commit:** I7 e I8 comparten `Stock.tsx`, el controlador de formulario y `ImageUpload`; se publicarán juntos en un commit atómico tras el commit separado de I6.
+- Vercel confirmó `success` para `6e3a88b`; producción respondió HTTP 200. **Siguiente:** publicar los cambios de I7/I8 y completar en producción el smoke con producto `[QA]`, `BEGIN … ROLLBACK`, la prueba móvil y la limpieza desde la app.
+
 ## 2026-11-04 — I6 migración aplicada; smoke transaccional pendiente
 
 - Backup previo verificado en `C:\Users\USER\rivastock-backups\20261104T145443Z`: 96 tablas y 14.235 filas; todos los conteos exactos coinciden con el volcado (`table-counts.csv`). `schema.sql` 1.002.484 B, `data.sql` 42.404.221 B; Storage: 789 objetos / 146.594.486 B. La verificación de Postgres y Storage reportó `passed`.

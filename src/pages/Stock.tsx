@@ -7,6 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
+import useProductEditor from '../hooks/useProductEditor';
 import {
   getAssignableInventoryOwners,
   getInventoryOwnerName,
@@ -14,20 +15,18 @@ import {
 import { db, deleteFromStorage, invalidateDbCache } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import {
-  buildHoldingDrafts,
   filterProductsByHoldingOwner,
   getVisibleHoldingEconomics,
   indexHoldingsByProduct,
   getVisibleInventoryHoldings,
   getVisibleProductStock,
   getInventoryHoldings,
-  saveProductWithHoldings,
   transferInventoryHoldingStock,
 } from '../lib/inventoryHoldings';
+import { adjustProductStock, type AdjustProductStockInput } from '../lib/stockAdjustments';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
-import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
 import { getRecentRestockSales } from '../lib/recentSales';
@@ -56,22 +55,22 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 import Modal from '../components/Modal';
-import { ImageUpload } from '../components/ImageUpload';
 import ProductThumbnail from '../components/stock/ProductThumbnail';
-import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
+import {
+  ProductEditorImageField,
+  ProductEditorSelectField,
+  ProductEditorTextField,
+  ProductEditorTextareaField,
+} from '../components/stock/ProductEditorFields';
 const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
 const BarcodeScannerOverlay = lazy(() => import('../components/BarcodeScannerOverlay'));
 const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
 const ResellerPriceListModal = lazy(() => import('../components/ResellerPriceListModal'));
 const MobileStockEntry = lazy(() => import('../components/stock/MobileStockEntry'));
+const MobileProductForm = lazy(() => import('../components/stock/MobileProductForm'));
 const ProductDeleteConfirmation = lazy(() => import('../components/stock/ProductDeleteConfirmation'));
 const DesktopProductEditorRoute = lazy(() => import('../components/stock/DesktopProductEditorRoute'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
-import {
-  addProductToResellerPriceList,
-  promoteResellerCatalogProduct,
-  saveResellerSupplierList,
-} from '../lib/priceLists';
 import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -90,6 +89,7 @@ export default function Stock() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogVisibilitySavingIds, setCatalogVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
+  const [resellerPriceListOpen, setResellerPriceListOpen] = useState(false);
   const holdingsByProduct = useMemo(() => indexHoldingsByProduct(holdings), [holdings]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -106,34 +106,64 @@ export default function Stock() {
     allowedInventoryOwnerIds,
   );
   
-  // Modal states
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [qaPublishAllowedSaving, setQaPublishAllowedSaving] = useState(false);
   const [qaPublishAllowedError, setQaPublishAllowedError] = useState('');
-  const [formData, setFormData] = useState<Partial<Product>>({
-    name: '',
-    categoryId: '',
-    category: '',
-    purchasePrice: 0,
-    salePrice: 0,
-    stock: 0,
-    minStock: 2,
-    showInCatalog: true,
-    notes: '',
-    images: []
-  });
-  const [holdingDrafts, setHoldingDrafts] = useState<InventoryHoldingDraft[]>([]);
   const [transfer, setTransfer] = useState<{
     productId: string; sourceOwnerId: string; destinationOwnerId: string; quantity: number; reason: string;
   } | null>(null);
-  const productIntentRef = useRef<IdempotencyIntent | null>(null);
-  const productSubmitInFlightRef = useRef(false);
   const transferIntentRef = useRef<IdempotencyIntent | null>(null);
   const transferSubmitInFlightRef = useRef(false);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
   const [pendingImageCleanup, setPendingImageCleanup] = useState<string[]>([]);
   const [imageCleanupRetrying, setImageCleanupRetrying] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [generatingFor, setGeneratingFor] = useState<string | null>(null);
+  const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectingForCodes, setSelectingForCodes] = useState(false);
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
+
+  const operableOwners = useMemo(() => {
+    const operable = new Set(operableInventoryOwnerIds);
+    return inventoryOwners.filter((owner) => (
+      operable.has(owner.id)
+      && (!owner.archivedAt || holdings.some((holding) => holding.inventoryOwnerId === owner.id))
+    ));
+  }, [holdings, inventoryOwners, operableInventoryOwnerIds]);
+
+  const productEditor = useProductEditor({
+    user,
+    inventoryAccessError,
+    isMobile,
+    holdingsEnabled,
+    categories,
+    primaryOwner,
+    operableOwners,
+    holdings,
+    products,
+    setProducts,
+    setHoldings,
+    setResellerPriceListOpen,
+    location,
+    navigate,
+  });
+  const {
+    isModalOpen, setIsModalOpen, editingProduct, setEditingProduct, formData, setFormData,
+    holdingDrafts, setHoldingDrafts, isUploadingImage, setIsUploadingImage, saving,
+    creatingProductForReseller, setCreatingProductForReseller,
+    supplierProductCreationContext, setSupplierProductCreationContext,
+    promotingCatalogProduct, setPromotingCatalogProduct, returnToResellerList,
+    setReturnToResellerList, productIntentRef, productSubmitInFlightRef,
+    openProductEditor, handleSave, closeProductEditor,
+  } = productEditor;
+  useEffect(() => {
+    if (!isMobile || !isModalOpen) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has('nuevo') && !params.has('editar')) setIsModalOpen(false);
+  }, [isMobile, isModalOpen, location.search, setIsModalOpen]);
   const assignableOwners = useMemo(
     () => getAssignableInventoryOwners(inventoryOwners, editingProduct?.inventoryOwnerId),
     [editingProduct?.inventoryOwnerId, inventoryOwners],
@@ -154,7 +184,7 @@ export default function Stock() {
       if (error) throw error;
       const updated = { ...editingProduct, qaPublishAllowed: allowed };
       setEditingProduct(updated);
-      setProducts(current => current.map(product => product.id === updated.id ? updated : product));
+      setProducts((current) => current.map((product) => product.id === updated.id ? updated : product));
       invalidateDbCache('products');
     } catch (error) {
       setQaPublishAllowedError((error as Error).message || 'No se pudo actualizar el permiso de pruebas.');
@@ -166,20 +196,20 @@ export default function Stock() {
   const fetchData = async () => {
     if (!user || inventoryAccessError) return;
     try {
-      const [p, c, pr, s, h] = await Promise.all([
+      const [nextProducts, nextCategories, nextPriceRanges, nextSales, nextHoldings] = await Promise.all([
         db.list<Product>('products', user.uid),
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
         holdingsEnabled ? Promise.resolve([]) : getRecentRestockSales(user.uid),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
-      setProducts(p);
-      setCategories(c);
-      setPriceRanges(pr);
-      setSales(s);
-      setHoldings(h);
-    } catch (err) {
-      console.error('[Stock] fetchData error:', err);
+      setProducts(nextProducts);
+      setCategories(nextCategories);
+      setPriceRanges(nextPriceRanges);
+      setSales(nextSales);
+      setHoldings(nextHoldings);
+    } catch (error) {
+      console.error('[Stock] fetchData error:', error);
     } finally {
       setLoading(false);
     }
@@ -195,7 +225,7 @@ export default function Stock() {
     }
     (async () => {
       try {
-        const [p, c, pr, s, h] = await Promise.all([
+        const [nextProducts, nextCategories, nextPriceRanges, nextSales, nextHoldings] = await Promise.all([
           db.list<Product>('products', user.uid),
           db.list<Category>('categories', user.uid),
           db.list<PriceRange>('price_ranges', user.uid),
@@ -203,14 +233,14 @@ export default function Stock() {
           holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
-        setProducts(p);
-        setCategories(c);
-        setPriceRanges(pr);
-        setSales(s);
-        setHoldings(h);
-      } catch (err) {
+        setProducts(nextProducts);
+        setCategories(nextCategories);
+        setPriceRanges(nextPriceRanges);
+        setSales(nextSales);
+        setHoldings(nextHoldings);
+      } catch (error) {
         if (cancelled) return;
-        console.error('[Stock] fetch error:', err);
+        console.error('[Stock] fetch error:', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -220,11 +250,8 @@ export default function Stock() {
 
   useEffect(() => {
     if (editingProduct || formData.inventoryOwnerId || !primaryOwner) return;
-    setFormData((current) => ({
-      ...current,
-      inventoryOwnerId: primaryOwner.id,
-    }));
-  }, [editingProduct, formData.inventoryOwnerId, primaryOwner]);
+    setFormData((current) => ({ ...current, inventoryOwnerId: primaryOwner.id }));
+  }, [editingProduct, formData.inventoryOwnerId, primaryOwner, setFormData]);
 
   useEffect(() => {
     const requestedStatus = /[?&](?:estado|status)=(reponer|no-disponible)(?:&|$)/.exec(location.search)?.[1];
@@ -233,54 +260,17 @@ export default function Stock() {
 
   useEffect(() => {
     const state = location.state as { newBarcode?: string } | null;
-    if (state?.newBarcode && !prefilledBarcodeRef.current) {
-      prefilledBarcodeRef.current = state.newBarcode;
-      setEditingProduct(null);
-      setFormData({
-        id: crypto.randomUUID(),
-        name: '',
-        categoryId: categories[0]?.id || '',
-        category: categories[0]?.name || '',
-        purchasePrice: 0,
-        salePrice: 0,
-        stock: 0,
-        minStock: 2,
-        showInCatalog: true,
-        notes: '',
-        images: [],
-        barcode: state.newBarcode,
-        inventoryOwnerId: primaryOwner?.id,
-      });
-      setHoldingDrafts(buildHoldingDrafts(
-        inventoryOwners.filter((owner) => !owner.archivedAt),
-        [],
-      ));
-      productIntentRef.current = null;
-      setIsModalOpen(true);
-      navigate(location.pathname, { replace: true, state: {} });
-    }
-  }, [location, categories, inventoryOwners, navigate, primaryOwner]);
+    if (!state?.newBarcode || prefilledBarcodeRef.current) return;
+    prefilledBarcodeRef.current = state.newBarcode;
+    openProductEditor(undefined, state.newBarcode);
+    const params = new URLSearchParams(location.search);
+    if (isMobile) params.set('nuevo', '1');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: {} });
+  }, [isMobile, location, navigate, openProductEditor]);
 
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [generatingFor, setGeneratingFor] = useState<string | null>(null);
-  const [printProduct, setPrintProduct] = useState<Product | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectingForCodes, setSelectingForCodes] = useState(false);
-  const [bulkGenerating, setBulkGenerating] = useState(false);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
-  const [resellerPriceListOpen, setResellerPriceListOpen] = useState(false);
-  const [creatingProductForReseller, setCreatingProductForReseller] = useState(false);
-  const [supplierProductCreationContext, setSupplierProductCreationContext] = useState<SupplierProductCreationContext | null>(null);
-  const [promotingCatalogProduct, setPromotingCatalogProduct] = useState(false);
-  const [returnToResellerList, setReturnToResellerList] = useState(false);
   const priceListProducts = useMemo(() => {
-    const visibleProducts = holdingsEnabled
-      ? filterProductsByHoldingOwner(products, holdings, 'all')
-      : products;
+    const visibleProducts = holdingsEnabled ? filterProductsByHoldingOwner(products, holdings, 'all') : products;
     return visibleProducts.filter((product) => (
       !product.catalogOnly
       && (holdingsEnabled ? getVisibleProductStock(product.id, holdingsByProduct.get(product.id) ?? []) > 0 : product.stock > 0)
@@ -292,32 +282,22 @@ export default function Stock() {
   }, [priceListPreview]);
 
   const handlePriceList = async (action: 'preview' | 'download') => {
-    if (isExportingPdf) return;
-    if (!user) return;
+    if (isExportingPdf || !user) return;
     if (priceListProducts.length === 0) {
       showToast('No hay productos con stock disponible para incluir en la lista de precios.', 'info');
       return;
     }
-
-    // Mobile browsers do not consistently render blob PDFs embedded in iframes.
-    // Opening a blank tab before the first await preserves the user gesture, so
-    // the native PDF viewer can be used without triggering the popup blocker.
     const useNativePdfPreview = action === 'preview' && window.matchMedia(
       '(max-width: 767px), (hover: none) and (pointer: coarse)',
     ).matches;
     const previewWindow = useNativePdfPreview ? window.open('', '_blank') : null;
-
     setIsExportingPdf(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
       const pdf = await createPriceListPdf({
-        products: priceListProducts,
-        categories,
-        businessName: user.businessName,
-        currencySymbol: user.currencySymbol,
-        inventoryOwners,
+        products: priceListProducts, categories, businessName: user.businessName,
+        currencySymbol: user.currencySymbol, inventoryOwners,
       });
-
       const url = URL.createObjectURL(pdf.blob);
       if (action === 'preview') {
         if (previewWindow && !previewWindow.closed) {
@@ -337,269 +317,60 @@ export default function Stock() {
         window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
         showToast('Lista de precios descargada correctamente.', 'success');
       }
-    } catch (err) {
+    } catch (error) {
       previewWindow?.close();
-      console.error('[Stock] price list PDF error:', err);
+      console.error('[Stock] price list PDF error:', error);
       showToast('No se pudo generar la lista de precios.', 'error');
     } finally {
       setIsExportingPdf(false);
     }
   };
 
-  const operableOwners = useMemo(() => {
-    const operable = new Set(operableInventoryOwnerIds);
-    return inventoryOwners.filter((owner) => (
-      operable.has(owner.id)
-      && (!owner.archivedAt || holdings.some((holding) => holding.inventoryOwnerId === owner.id))
-    ));
-  }, [holdings, inventoryOwners, operableInventoryOwnerIds]);
-
-  const openProductEditor = (
-    product?: Product,
-    barcode?: string,
-    options?: {
-      forReseller?: boolean;
-      promoteToStock?: boolean;
-      returnToResellerList?: boolean;
-      supplierContext?: SupplierProductCreationContext;
-    },
-  ) => {
-    const promoteToStock = Boolean(product?.catalogOnly && options?.promoteToStock);
-    const forReseller = Boolean(options?.forReseller || (product?.catalogOnly && !promoteToStock));
-    const next = product ? {
-      ...product,
-      purchasePrice: promoteToStock ? Number(product.catalogCost ?? 0) : product.purchasePrice,
-      minStock: promoteToStock ? 2 : product.minStock,
-    } : {
-      id: crypto.randomUUID(),
-      name: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
-      purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2,
-      showInCatalog: !forReseller, notes: '', images: [], barcode,
-      catalogOnly: forReseller,
-      catalogCost: forReseller ? 0 : null,
-      inventoryOwnerId: primaryOwner?.id,
-      ownerUid: user?.uid ?? '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    setCreatingProductForReseller(forReseller);
-    setPromotingCatalogProduct(promoteToStock);
-    setSupplierProductCreationContext(options?.supplierContext ?? null);
-    setReturnToResellerList(Boolean(options?.returnToResellerList || forReseller || promoteToStock));
-    setEditingProduct(product ?? null);
-    setQaPublishAllowedError('');
-    productIntentRef.current = null;
-    setIsUploadingImage(false);
-    setFormData(next);
-    const nextHoldingDrafts = buildHoldingDrafts(
-      operableOwners,
-      product && !product.catalogOnly ? holdings.filter((holding) => holding.productId === product.id) : [],
-    ).map((draft, index) => (
-      promoteToStock && index === 0
-        ? { ...draft, purchaseCost: Number(product?.catalogCost ?? 0) }
-        : draft
-    ));
-    setHoldingDrafts(forReseller ? [] : nextHoldingDrafts);
-    setIsModalOpen(true);
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || inventoryAccessError || isUploadingImage) return;
-    if (!beginSubmission(productSubmitInFlightRef)) return;
-    setSaving(true);
-
-    try {
-      let savedProduct: Product | null = null;
-      if (creatingProductForReseller && Number(formData.catalogCost ?? 0) <= 0) {
-        showToast('Cargá el costo del proveedor para calcular la ganancia.', 'error');
-        return;
-      }
-      if (promotingCatalogProduct) {
-        const promotionStock = holdingsEnabled
-          ? holdingDrafts.reduce((total, draft) => total + draft.stock, 0)
-          : Number(formData.stock ?? 0);
-        if (promotionStock <= 0) {
-          showToast('Cargá una cantidad mayor que cero para incorporar el producto al stock.', 'error');
-          return;
-        }
-      }
-      const normalizedBarcode = normalizeBarcode(formData.barcode ?? '');
-      if (normalizedBarcode) {
-        const duplicate = products.find(
-          (p) => normalizeBarcode(p.barcode ?? '') === normalizedBarcode && p.id !== editingProduct?.id,
-        );
-        if (duplicate) {
-          showToast(`Ya existe un producto con ese código: "${duplicate.name}"`, 'error');
-          return;
-        }
-      }
-
-      const productData = {
-        ...formData,
-        barcode: normalizedBarcode || undefined,
-        inventoryOwnerId: formData.inventoryOwnerId || primaryOwner?.id,
-        ownerUid: user.uid,
-        updatedAt: new Date().toISOString()
-      } as Product;
-
-      if (creatingProductForReseller) {
-        const catalogProductData = {
-          ...productData,
-          stock: 0,
-          minStock: 0,
-          purchasePrice: 0,
-          showInCatalog: false,
-          catalogOnly: true,
-          catalogCost: Number(formData.catalogCost ?? 0),
-        } as Product;
-        if (editingProduct) {
-          await db.update('products', editingProduct.id, catalogProductData);
-          savedProduct = { ...editingProduct, ...catalogProductData };
-          setProducts((previous) => previous.map((product) => (
-            product.id === editingProduct.id ? savedProduct as Product : product
-          )));
-        } else {
-          savedProduct = await db.create<Product>('products', {
-            ...catalogProductData,
-            id: catalogProductData.id || crypto.randomUUID(),
-            createdAt: new Date().toISOString(),
-          });
-          setProducts((previous) => [...previous, savedProduct as Product]);
-        }
-      } else if (holdingsEnabled) {
-        const intent = resolveIdempotencyIntent('product', {
-          editingProductId: editingProduct?.id ?? null,
-          formData,
-          holdings: holdingDrafts,
-        }, productIntentRef.current);
-        productIntentRef.current = intent;
-        const result = await saveProductWithHoldings({
-          product: {
-            ...productData,
-            id: editingProduct?.id ?? productData.id ?? crypto.randomUUID(),
-            createdAt: editingProduct?.createdAt ?? new Date().toISOString(),
-          },
-          holdings: holdingDrafts,
-          idempotencyKey: intent.key,
-        });
-        setProducts((previous) => {
-          const exists = previous.some((product) => product.id === result.product.id);
-          return exists
-            ? previous.map((product) => product.id === result.product.id ? result.product : product)
-            : [...previous, result.product];
-        });
-        setHoldings((previous) => [
-          ...previous.filter((holding) => holding.productId !== result.product.id),
-          ...result.holdings,
-        ]);
-        savedProduct = result.product;
-      } else if (editingProduct) {
-        const inventoryProductData = promotingCatalogProduct
-          ? {
-              ...productData,
-              catalogOnly: true,
-              catalogCost: editingProduct.catalogCost ?? null,
-            }
-          : productData;
-        await db.update('products', editingProduct.id, inventoryProductData);
-        setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...inventoryProductData } as Product : p));
-        savedProduct = { ...editingProduct, ...inventoryProductData } as Product;
-      } else {
-        // Idempotency: reject duplicate product name within 5 seconds
-        const cutoff = new Date(Date.now() - DUPLICATE_DETECTION_WINDOW_MS).toISOString();
-        const potentialDuplicate = products.find(p =>
-          p.name.toLowerCase() === (formData.name || '').toLowerCase() &&
-          p.inventoryOwnerId === productData.inventoryOwnerId &&
-          p.createdAt && p.createdAt > cutoff
-        );
-        if (potentialDuplicate) {
-          alert('Se detectó un producto con el mismo nombre creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
-          return;
-        }
-        const created = await db.create<Product>('products', {
-          ...productData,
-          id: productData.id || crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-        });
-        setProducts(prev => [...prev, created]);
-        savedProduct = created;
-      }
-
-      if (creatingProductForReseller && savedProduct && !editingProduct) {
-        try {
-          if (supplierProductCreationContext) {
-            await saveResellerSupplierList({
-              priceListId: supplierProductCreationContext.priceListId,
-              supplierId: supplierProductCreationContext.supplierId,
-              productIds: [...supplierProductCreationContext.productIds, savedProduct.id],
-            });
-            showToast('Producto creado exclusivamente para la lista del proveedor.', 'success');
-          } else {
-            await addProductToResellerPriceList(savedProduct.id, 'on_order');
-            showToast('Producto de catálogo creado y agregado como “Por pedido”.', 'success');
-          }
-        } catch (listError) {
-          console.error('[Stock] add product to reseller list error:', listError);
-          showToast('El producto se guardó, pero deberás agregarlo manualmente a la lista de revendedores.', 'info');
-        }
-      }
-
-      if (promotingCatalogProduct && savedProduct) {
-        const promoted = await promoteResellerCatalogProduct(savedProduct.id);
-        savedProduct = promoted;
-        setProducts((previous) => previous.map((product) => (
-          product.id === promoted.id ? promoted : product
-        )));
-        showToast('Producto incorporado al stock y separado de la lista por pedido.', 'success');
-      }
-
-      setIsModalOpen(false);
-      setCreatingProductForReseller(false);
-      setPromotingCatalogProduct(false);
-      setSupplierProductCreationContext(null);
-      productIntentRef.current = null;
-      setEditingProduct(null);
-      setHoldingDrafts([]);
-      setFormData({
-        name: '',
-        categoryId: '',
-        category: '',
-        purchasePrice: 0,
-        salePrice: 0,
-        stock: 0,
-        minStock: 2,
-        showInCatalog: true,
-        catalogOnly: false,
-        catalogCost: null,
-        notes: '',
-        images: [],
-        inventoryOwnerId: primaryOwner?.id,
-      });
-      if (returnToResellerList) setResellerPriceListOpen(true);
-      setReturnToResellerList(false);
-    } catch (error) {
-      console.error('[Stock] save product error:', error);
-      showToast(error instanceof Error ? error.message : 'No se pudo guardar el producto.', 'error');
-    } finally {
-      endSubmission(productSubmitInFlightRef);
-      setSaving(false);
-    }
-  };
-
-  const closeProductEditor = () => {
+  const discardProductEditor = () => {
     if (productSubmitInFlightRef.current) return;
     productIntentRef.current = null;
     setIsModalOpen(false);
+    setEditingProduct(null);
     setCreatingProductForReseller(false);
     setPromotingCatalogProduct(false);
     setSupplierProductCreationContext(null);
     if (returnToResellerList) setResellerPriceListOpen(true);
     setReturnToResellerList(false);
+  };
+
+  const adjustStockFromProductEditor = () => {
+    const productId = editingProduct?.id;
+    if (!productId) return;
+    setIsModalOpen(false);
     const params = new URLSearchParams(location.search);
-    if (params.has('editar')) {
-      params.delete('editar');
-      const query = params.toString();
-      navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+    params.delete('editar');
+    params.delete('nuevo');
+    params.set('producto', productId);
+    params.set('ajustar', '1');
+    navigate({ pathname: '/stock', search: `?${params.toString()}` }, { replace: true, state: { fromMobileStock: true } });
+  };
+
+  const saveMobileStockAdjustment = async (input: AdjustProductStockInput) => {
+    const command = await adjustProductStock(input);
+    if (!command) {
+      showToast('El stock ya tenía esa cantidad. No se realizaron cambios.', 'info');
+      return null;
     }
+    if (holdingsEnabled) {
+      setHoldings((current) => current.map((holding) => (
+        holding.productId === command.productId && holding.inventoryOwnerId === command.inventoryOwnerId
+          ? { ...holding, stock: command.resultingStock, updatedAt: command.createdAt }
+          : holding
+      )));
+    } else {
+      setProducts((current) => current.map((product) => (
+        product.id === command.productId
+          ? { ...product, stock: command.resultingStock, updatedAt: command.createdAt }
+          : product
+      )));
+    }
+    showToast(`Stock actualizado: ${command.resultingStock} unidades.`, 'success');
+    return command;
   };
 
   const retryImageCleanup = async () => {
@@ -885,7 +656,7 @@ export default function Stock() {
       {isMobile && <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
         <MobileStockEntry
           data={[
-            ownerVisibleProducts, visibleHoldingsByProduct, inventoryOwners, inventoryOwnersById,
+            ownerVisibleProducts, visibleHoldingsByProduct, inventoryOwners, inventoryOwnersById, operableInventoryOwnerIds,
             holdingsEnabled, loading, canWrite, canDelete, catalogVisibilitySavingIds, restockProductIds,
             categories, selectedIds, selectingForCodes, bulkGenerating, pendingImageCleanup.length,
             imageCleanupRetrying, restockRecommendations.length,
@@ -896,12 +667,50 @@ export default function Stock() {
             () => { void handleBulkGenerate(); }, () => openProductEditor(),
             () => setResellerPriceListOpen(true), () => { void handlePriceList('preview'); },
             () => { void handlePriceList('download'); },
-            (product) => openProductEditor(product), (product) => { void toggleCatalogVisibility(product); },
+            (product) => {
+              const params = new URLSearchParams(location.search);
+              params.set('producto', product.id);
+              params.set('ajustar', '1');
+              navigate({ pathname: location.pathname, search: `?${params.toString()}` });
+            }, saveMobileStockAdjustment, (product) => { void toggleCatalogVisibility(product); },
             (product) => { if (product.barcode) setPrintProduct(product); else void generateAndPrint(product); },
             (product) => setFacebookProduct(product), deleteProduct,
             (barcode) => openProductEditor(undefined, barcode), (product) => openProductEditor(product),
             () => { void retryImageCleanup(); },
           ]}
+        />
+      </Suspense>}
+      {isMobile && isModalOpen && user && <Suspense fallback={<div role="status" className="fixed inset-0 z-[80] animate-pulse bg-[var(--surface)]" />}>
+        <MobileProductForm
+          key={editingProduct?.id ?? formData.id ?? 'new-product'}
+          product={editingProduct}
+          formData={formData}
+          setFormData={setFormData}
+          holdingDrafts={holdingDrafts}
+          setHoldingDrafts={setHoldingDrafts}
+          categories={categories}
+          owners={inventoryOwners}
+          assignableOwners={assignableOwners}
+          priceRanges={priceRanges}
+          ownerUid={user.uid}
+          holdingsEnabled={holdingsEnabled}
+          creatingProductForReseller={creatingProductForReseller}
+          supplierListName={supplierProductCreationContext ? 'la lista del proveedor' : null}
+          promotingCatalogProduct={promotingCatalogProduct}
+          canEditInitialStock={!editingProduct}
+          isOwner={isOwner}
+          qaPublishAllowedSaving={qaPublishAllowedSaving}
+          qaPublishAllowedError={qaPublishAllowedError}
+          isUploadingImage={isUploadingImage}
+          saving={saving}
+          onSave={handleSave}
+          onClose={closeProductEditor}
+          onDiscard={discardProductEditor}
+          onAdjustStock={adjustStockFromProductEditor}
+          onScanBarcode={() => setScannerOpen(true)}
+          onToggleQaPublishAllowed={(allowed) => { void setProductQaPublishAllowed(allowed); }}
+          onImageUploadStart={() => setIsUploadingImage(true)}
+          onImageUploadEnd={() => setIsUploadingImage(false)}
         />
       </Suspense>}
       <div className="hidden flex-col justify-between gap-4 md:flex-row md:items-center lg:flex">
@@ -1414,7 +1223,7 @@ export default function Stock() {
         <ProductDeleteConfirmation product={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={deleteProduct} />
       </Suspense>}
       <Modal
-        isOpen={isModalOpen} 
+        isOpen={isModalOpen && !isMobile}
         onClose={closeProductEditor}
         title={editingProduct
           ? promotingCatalogProduct
@@ -1440,36 +1249,30 @@ export default function Stock() {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre del Producto</label>
-              <input 
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-              />
-            </div>
+            <ProductEditorTextField
+              label="Nombre del Producto"
+              value={formData.name ?? ''}
+              onChange={(value) => setFormData((previous) => ({ ...previous, name: value }))}
+              required
+              wrapperClassName="md:col-span-2"
+              labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+              inputClassName="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+            />
             
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Categoría</label>
-              <select 
-                required
-                value={formData.categoryId}
-                onChange={(e) => {
-                  const cat = categories.find(c => c.id === e.target.value);
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    categoryId: e.target.value,
-                    category: cat?.name || ''
-                  }));
-                }}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-              >
-                <option value="">Seleccionar categoría</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+            <ProductEditorSelectField
+              label="Categoría"
+              value={formData.categoryId ?? ''}
+              onChange={(value) => {
+                const category = categories.find((item) => item.id === value);
+                setFormData((previous) => ({ ...previous, categoryId: value, category: category?.name ?? '' }));
+              }}
+              required
+              labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+              selectClassName="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+            >
+              <option value="">Seleccionar categoría</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </ProductEditorSelectField>
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Titular de la mercadería</label>
@@ -1705,36 +1508,36 @@ export default function Stock() {
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Mostrar en Catálogo</span>
             </div>}
 
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Descripción pública</label>
-              <textarea
-                value={formData.description ?? ''}
-                onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))}
-                placeholder="Descripción que verá el cliente en el catálogo"
-                className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-              />
-            </div>
+            <ProductEditorTextareaField
+              label="Descripción pública"
+              value={formData.description ?? ''}
+              onChange={(value) => setFormData((current) => ({ ...current, description: value }))}
+              placeholder="Descripción que verá el cliente en el catálogo"
+              wrapperClassName="md:col-span-2"
+              labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+              textareaClassName="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imágenes del Producto</label>
-              <ImageUpload
-                ownerUid={user!.uid}
-                productId={formData.id || editingProduct?.id || ''}
-                currentImages={formData.images ?? []}
-                onChange={(urls) => setFormData(prev => ({ ...prev, images: urls }))}
-                onUploadStart={() => setIsUploadingImage(true)}
-                onUploadEnd={() => setIsUploadingImage(false)}
-              />
-            </div>
+            <ProductEditorImageField
+              ownerUid={user!.uid}
+              productId={formData.id || editingProduct?.id || ''}
+              currentImages={formData.images ?? []}
+              onChange={(urls) => setFormData((previous) => ({ ...previous, images: urls }))}
+              onUploadStart={() => setIsUploadingImage(true)}
+              onUploadEnd={() => setIsUploadingImage(false)}
+              label="Imágenes del Producto"
+              wrapperClassName="md:col-span-2"
+              labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+            />
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Observaciones</label>
-              <textarea 
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white h-24 resize-none"
-              />
-            </div>
+            <ProductEditorTextareaField
+              label="Observaciones"
+              value={formData.notes ?? ''}
+              onChange={(value) => setFormData((current) => ({ ...current, notes: value }))}
+              wrapperClassName="md:col-span-2"
+              labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+              textareaClassName="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white h-24 resize-none"
+            />
 
             {isOwner && editingProduct && !editingProduct.catalogOnly && !promotingCatalogProduct && (
               <fieldset className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">

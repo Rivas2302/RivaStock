@@ -206,7 +206,8 @@ Pruebas y cierre:
 - **Edición de producto existente en el celular:** el campo stock queda de solo lectura con “Ajustar” al lado, para que todo cambio de stock deje motivo. En PC, el editor queda como hoy.
 - **Commit:** `feat(stock): mobile stock adjustment sheet`
 
-### [ ] I8 Nuevo y editar producto (pantalla 6)
+### [x] I8 Nuevo y editar producto (pantalla 6)
+**Estado 04/11:** implementación local completa; `npm run lint`, 936 pruebas unitarias, E2E móvil y comparación de PC a 1280×900 aprobaron. El bundle Stock queda 1.043 B bajo el límite. Producción permanece en I9.
 - `/stock?nuevo=1` y `/stock?editar=<id>` abren `MobileProductForm` a pantalla completa debajo de `lg`. En PC sigue el `Modal` de hoy.
   - Para no duplicar, sacá el estado del formulario y `handleSave`/`closeProductEditor` a un hook (`useProductEditor`), y los campos a componentes que usen los dos contenedores.
   - Los flujos de revendedor, promoción y `returnToResellerList` siguen igual en las dos vistas.
