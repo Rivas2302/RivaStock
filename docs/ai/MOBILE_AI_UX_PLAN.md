@@ -59,7 +59,7 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - Respetá `env(safe-area-inset-bottom)`.
 - **Commit:** `feat(ai): mobile navigation for the AI hub`
 
-### [ ] H3 Lista de chats (pantalla 1)
+### [x] H3 Lista de chats (pantalla 1)
 - Buscador que filtra por título y vista previa, sin acentos ni mayúsculas, con espera de 150 ms.
 - Grupos **Hoy, Ayer, Esta semana** y luego por mes (“Octubre”).
 - Fila compacta de 64 px o más: título en una línea, vista previa en una línea con color atenuado, y hora (hoy) o fecha corta.

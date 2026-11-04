@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H3 desplegado y verificado
+
+- Comparé H3 con la copia de `docs/ai/MOBILE_AI_UX_PLAN.md` en Desktop; los criterios coinciden. La lista móvil agrega búsqueda sin acentos y sin mayúsculas con 150 ms de espera, grupos por fecha, vista de los últimos 30 días y acceso paginado al resto, filas con vista previa, gesto de deslizamiento y menú accesible, confirmación propia, estados de carga/vacío/error y el botón «Nuevo chat». El texto de vacío coincide con el plan.
+- `chat_list` pagina y cuenta usando el cliente autenticado sujeto a RLS, con máximo de 50 chats por página, orden estable y conteo separado de chats de más de 30 días. Los jobs activos quedan filtrados por `user.id`. No hubo migración ni cambio de datos.
+- `ai-bridge` quedó ACTIVE v16 con `verify_jwt=false`, igual que antes. Vercel confirmó éxito para `4064b11`. Playwright autenticado en producción, 390×844: 7 chats, 7 vistas previas, respuesta paginada HTTP 200, búsqueda «ÚLTIMAS PREGUNTAS» con coincidencia y cero errores de página/consola/red. A 1280×900 la captura de Chats es byte por byte idéntica al baseline previo de H2; la lista móvil no se cargó.
+- Verificación: lint, suite completa (**869 tests en 143 archivos**), build, `perf:check` y `git diff --check` pasan. Bundle inicial: **209.456 B gzip JS / 22.656 B CSS**; AIHub: **241.187 B gzip JS**, frente a **240.953 B** en H2 (+234 B). El chat móvil queda en un chunk lazy de **4.707 B gzip**. Con esa diferencia medida, el presupuesto exclusivo de AIHub pasó de 235,5 a 235,6 KiB; los otros presupuestos no cambiaron.
+- **Desvío:** ninguno. **Siguiente:** H4.
+
 ## 2026-11-04 — H2 desplegado y verificado
 
 - Comparé el bloque H2 con `docs/ai/MOBILE_AI_UX_PLAN.md` de Desktop: coincide. No requiere migración ni backup.
