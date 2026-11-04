@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { useIsMobile } from './useIsMobile';
 
 export interface MobileAppChromeState {
   hideHeader: boolean;
@@ -15,21 +16,12 @@ const DEFAULT_CHROME: MobileAppChromeState = { hideHeader: false, hideBottomNav:
 export function useMobileAppChrome(options: MobileAppChromeState): void {
   const { setMobileChrome } = useOutletContext<MobileAppChromeOutletContext>();
   const { hideHeader, hideBottomNav } = options;
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    const media = typeof window.matchMedia === 'function'
-      ? window.matchMedia('(max-width: 1023px)')
-      : null;
-    const update = () => {
-      const isMobile = media?.matches ?? window.innerWidth < 1024;
-      setMobileChrome(isMobile ? { hideHeader, hideBottomNav } : DEFAULT_CHROME);
-    };
-
-    update();
-    media?.addEventListener('change', update);
+    setMobileChrome(isMobile ? { hideHeader, hideBottomNav } : DEFAULT_CHROME);
     return () => {
-      media?.removeEventListener('change', update);
       setMobileChrome(DEFAULT_CHROME);
     };
-  }, [hideBottomNav, hideHeader, setMobileChrome]);
+  }, [hideBottomNav, hideHeader, isMobile, setMobileChrome]);
 }

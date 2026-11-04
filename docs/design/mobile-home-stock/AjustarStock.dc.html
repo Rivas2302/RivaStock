@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Stock · Ajustar stock</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; display: flex; flex-direction: column">
+    <div style="height: 236px; background: #2C2E34"></div>
+    <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px">
+      <div style="font-size: 22px; font-weight: 700">Cable iPhone C-C</div>
+      <div style="display: flex; gap: 10px"><div style="flex: 1; height: 96px; border-radius: 14px; background: #24262B"></div><div style="flex: 1; height: 96px; border-radius: 14px; background: #24262B"></div></div>
+    </div>
+  </div>
+  <a href="Producto.dc.html" aria-label="Cerrar sin guardar" style="position: absolute; inset: 0; background: rgba(8, 9, 11, 0.62)"></a>
+
+  <section aria-labelledby="ajuste-titulo" style="position: absolute; left: 0; right: 0; bottom: 0; background: #24262B; border-radius: 22px 22px 0 0; padding: 10px 20px 18px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 -8px 24px rgba(0,0,0,0.35)">
+    <div style="align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #4A4D55"></div>
+    <div>
+      <h2 id="ajuste-titulo" style="margin: 0; font-size: 19px; font-weight: 700">Ajustar stock</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #A4A8B0">Cable iPhone C-C · hoy hay 7</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #1C1D21">
+      <button type="button" aria-pressed="true" style="height: 40px; border: 0; border-radius: 9px; background: #365FAD; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 700">Sumar</button>
+      <button type="button" aria-pressed="false" style="height: 40px; border: 0; border-radius: 9px; background: transparent; color: #C9CCD2; font: inherit; font-size: 14px; font-weight: 600">Restar</button>
+      <button type="button" aria-pressed="false" style="height: 40px; border: 0; border-radius: 9px; background: transparent; color: #C9CCD2; font: inherit; font-size: 14px; font-weight: 600">Contar</button>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center; gap: 20px">
+      <button type="button" aria-label="Uno menos" style="width: 60px; height: 60px; border-radius: 30px; border: 1px solid #44474F; background: #1C1D21; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+      </button>
+      <label style="display: flex; flex-direction: column; align-items: center">
+        <span style="position: absolute; left: -9999px">Cantidad a sumar</span>
+        <input type="number" value="3" inputmode="numeric" style="width: 96px; height: 64px; border: 0; border-radius: 14px; background: transparent; color: #ECEDEF; font: inherit; font-size: 44px; font-weight: 700; text-align: center; outline: none">
+      </label>
+      <button type="button" aria-label="Uno más" style="width: 60px; height: 60px; border-radius: 30px; border: 1px solid #44474F; background: #1C1D21; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <p style="margin: -6px 0 0; text-align: center; font-size: 14px; color: #C9CCD2">Va a quedar en <strong style="color: #ECEDEF">10 unidades</strong></p>
+
+    <fieldset style="margin: 0; padding: 0; border: 0">
+      <legend style="padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 700; color: #C9CCD2">Motivo</legend>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <button type="button" aria-pressed="true" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 0; background: #ECEDEF; color: #1C1D21; font: inherit; font-size: 13px; font-weight: 700">Llegó mercadería</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Devolución</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Rotura o falla</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Corrección</button>
+      </div>
+    </fieldset>
+
+    <a href="Producto.dc.html" style="height: 52px; border-radius: 14px; background: #365FAD; color: #FFFFFF; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center">Guardar ajuste</a>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

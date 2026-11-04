@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Stock · Nuevo producto</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 4px; border-bottom: 1px solid #2A2C31">
+    <a href="Stock.dc.html" aria-label="Cerrar sin guardar" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ECEDEF">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </a>
+    <h1 style="margin: 0; font-size: 17px; font-weight: 700">Nuevo producto</h1>
+  </header>
+
+  <form style="flex: 1; display: flex; flex-direction: column; overflow: hidden">
+    <div style="flex: 1; overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px">
+
+      <div style="display: flex; gap: 10px">
+        <button type="button" style="width: 96px; height: 96px; border-radius: 14px; border: 1.5px dashed #555861; background: #24262B; color: #C9CCD2; font: inherit; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Sacar foto</button>
+        <button type="button" style="width: 96px; height: 96px; border-radius: 14px; border: 1.5px dashed #555861; background: #24262B; color: #C9CCD2; font: inherit; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Galería</button>
+      </div>
+
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Nombre</span>
+        <input type="text" placeholder="Ej: Cámara WiFi 360°" style="height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+      </label>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Categoría</span>
+          <select style="height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px">
+            <option>Elegir</option><option>Cargadores</option><option>Cámaras</option>
+          </select>
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Código de barras</span>
+          <span style="display: flex; align-items: center; height: 48px; padding: 0 4px 0 12px; border-radius: 12px; border: 1px solid #44474F; background: #24262B">
+            <input type="text" inputmode="numeric" placeholder="Opcional" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+            <button type="button" aria-label="Escanear código" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #2F3137; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
+            </button>
+          </span>
+        </label>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Precio de compra</span>
+          <input type="text" inputmode="decimal" placeholder="$ 0" style="height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Precio de venta</span>
+          <input type="text" inputmode="decimal" placeholder="$ 0" style="height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+        </label>
+      </div>
+      <p style="margin: -8px 0 0; font-size: 12px; color: #A4A8B0">El margen y el precio sugerido se calculan solos con tus rangos de precios.</p>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Stock inicial</span>
+          <input type="number" inputmode="numeric" placeholder="0" style="height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Avisarme con</span>
+          <input type="number" inputmode="numeric" placeholder="Mínimo" style="height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #44474F; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+        </label>
+      </div>
+
+      <details style="border-radius: 14px; background: #24262B; border: 1px solid #383B42">
+        <summary style="min-height: 52px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 600; cursor: pointer; list-style: none">Catálogo, descripción y más
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A4A8B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <p style="margin: 0; padding: 0 14px 14px; font-size: 13px; color: #C9CCD2">Mostrar en catálogo, descripción pública, titular, observaciones y campos propios.</p>
+      </details>
+    </div>
+
+    <div style="padding: 12px 20px 18px; border-top: 1px solid #2A2C31">
+      <button type="submit" style="width: 100%; height: 52px; border: 0; border-radius: 14px; background: #365FAD; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 700">Guardar producto</button>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

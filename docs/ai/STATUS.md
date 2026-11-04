@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — Bloque I, base compartida de I1
+
+- Comparé ACTION_PLAN.md y MOBILE_HOME_STOCK_PLAN.md con Desktop; la copia del plan tiene el mismo SHA-256 (A48E58E8…8D53BD). La versión I no está todavía en origin/main. Copié las seis maquetas mobile-home-stock; sus seis SHA-256 coinciden con Desktop.
+- La producción sirve el commit H 115b279; Vercel reportó success. No hice pruebas autenticadas de I1 ni escrituras en producción.
+- Preparé BottomSheet con foco atrapado/restaurado, Escape, cierre por gesto, título y safe area; IA lo usa en “Más” y en ajustes del chat. useIsMobile() y useMobileAppChrome comparten el breakpoint de 1023 px.
+- Agregué getStockStatus/StockBadge y ProductThumbnail local. Stock ya no usa picsum.photos; el ojo de catálogo requiere canWrite, actualiza optimistamente, revierte ante fallo y avisa; copiar enlace muestra “Enlace copiado”.
+- Verificación: npm run lint; 900 pruebas en 152 archivos; build; perf:check; git diff --check. El bundle gzip quedó en 209.863 B JS / 23.436 B CSS; AIHub 246.146 B y Stock 241.473 B, ambos dentro de sus topes vigentes (241 KiB y 236 KiB).
+- I1 queda abierto hasta conectar y verificar estos mismos componentes/acciones en la lista móvil de Stock de I4; no marco [x] antes de cumplir ese criterio.
+- Desvío: ninguno confirmado; queda pendiente la integración móvil prevista en I4. No hubo migraciones.
+- Siguiente: I2, extraer cálculos del Inicio. H9 sigue esperando la sesión autenticada solicitada en MENSAJE_PARA_RIVA.md.
 ## 2026-11-04 — H6 local listo; H7–H9 siguen abiertos
 
 - Comparé `ACTION_PLAN.md` con Desktop: SHA-256 coincide. Los criterios H6–H9 de `MOBILE_AI_UX_PLAN.md` coinciden; Desktop dejó H1–H5 sin marcar y conservé las marcas respaldadas por sus entradas. La versión local marca H6 como terminado. No requiere migración ni backup.

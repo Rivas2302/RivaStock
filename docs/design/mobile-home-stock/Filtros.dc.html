@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Stock · Filtros</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+    <div style="font-size: 24px; font-weight: 700">Stock</div>
+    <div style="height: 48px; border-radius: 14px; background: #24262B"></div>
+    <div style="display: flex; gap: 12px; align-items: center"><div style="width: 52px; height: 52px; border-radius: 12px; background: #2C2E34"></div><div style="width: 180px; height: 14px; border-radius: 7px; background: #2E3036"></div></div>
+    <div style="display: flex; gap: 12px; align-items: center"><div style="width: 52px; height: 52px; border-radius: 12px; background: #2C2E34"></div><div style="width: 150px; height: 14px; border-radius: 7px; background: #2E3036"></div></div>
+  </div>
+  <a href="Stock.dc.html" aria-label="Cerrar filtros" style="position: absolute; inset: 0; background: rgba(8, 9, 11, 0.62)"></a>
+
+  <section aria-labelledby="filtros-titulo" style="position: absolute; left: 0; right: 0; bottom: 0; background: #24262B; border-radius: 22px 22px 0 0; padding: 10px 20px 18px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 -8px 24px rgba(0,0,0,0.35)">
+    <div style="align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #4A4D55"></div>
+    <h2 id="filtros-titulo" style="margin: 0; font-size: 19px; font-weight: 700">Filtrar y ordenar</h2>
+
+    <fieldset style="margin: 0; padding: 0; border: 0">
+      <legend style="padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 700; color: #C9CCD2">Categoría</legend>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <button type="button" aria-pressed="true" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 0; background: #ECEDEF; color: #1C1D21; font: inherit; font-size: 13px; font-weight: 700">Cargadores</button>
+        <button type="button" aria-pressed="true" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 0; background: #ECEDEF; color: #1C1D21; font: inherit; font-size: 13px; font-weight: 700">Cámaras</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Alarmas</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Redes</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Almacenamiento</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Accesorios</button>
+      </div>
+    </fieldset>
+
+    <fieldset style="margin: 0; padding: 0; border: 0">
+      <legend style="padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 700; color: #C9CCD2">Estado</legend>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <button type="button" aria-pressed="true" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 0; background: #ECEDEF; color: #1C1D21; font: inherit; font-size: 13px; font-weight: 700">Todos</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Disponible</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Stock bajo</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Sin stock</button>
+        <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #44474F; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px; font-weight: 600">Por pedido</button>
+      </div>
+    </fieldset>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Titular</span>
+        <select style="height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #44474F; background: #1C1D21; color: #ECEDEF; font: inherit; font-size: 14px">
+          <option>Todos</option><option>Principal</option>
+        </select>
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Ordenar por</span>
+        <select style="height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #44474F; background: #1C1D21; color: #ECEDEF; font: inherit; font-size: 14px">
+          <option>Nombre</option><option>Precio</option><option>Stock</option><option>Más recientes</option>
+        </select>
+      </label>
+    </div>
+
+    <label style="display: flex; align-items: center; gap: 12px; min-height: 48px">
+      <span style="flex: 1; font-size: 15px; font-weight: 600">Solo los que están en el catálogo</span>
+      <input type="checkbox" style="position: absolute; left: -9999px">
+      <span aria-hidden="true" style="width: 48px; height: 28px; border-radius: 14px; background: #3A3D44; position: relative; flex: none"><span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 11px; background: #A4A8B0"></span></span>
+    </label>
+
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px">
+      <button type="button" style="height: 50px; border-radius: 14px; border: 1px solid #44474F; background: transparent; color: #ECEDEF; font: inherit; font-size: 15px; font-weight: 700">Limpiar</button>
+      <a href="Stock.dc.html" style="height: 50px; border-radius: 14px; background: #365FAD; color: #FFFFFF; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center">Ver 37 productos</a>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

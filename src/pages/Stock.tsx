@@ -42,7 +42,6 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  Image as ImageIcon,
   Check,
   X,
   ChevronDown,
@@ -58,6 +57,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
+import ProductThumbnail from '../components/stock/ProductThumbnail';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
 const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
@@ -84,6 +84,7 @@ export default function Stock() {
   const navigate = useNavigate();
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogVisibilitySavingIds, setCatalogVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const holdingsByProduct = useMemo(() => indexHoldingsByProduct(holdings), [holdings]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -605,6 +606,34 @@ export default function Stock() {
     setImageCleanupRetrying(false);
   };
 
+  const toggleCatalogVisibility = async (product: Product) => {
+    if (!canWrite || catalogVisibilitySavingIds.has(product.id)) return;
+    const previousVisibility = product.showInCatalog;
+    const nextVisibility = !previousVisibility;
+
+    setCatalogVisibilitySavingIds((current) => new Set(current).add(product.id));
+    setProducts((current) => current.map((item) => (
+      item.id === product.id ? { ...item, showInCatalog: nextVisibility } : item
+    )));
+
+    try {
+      const updated = await db.update<Product>('products', product.id, { showInCatalog: nextVisibility });
+      setProducts((current) => current.map((item) => item.id === product.id ? updated : item));
+      invalidateDbCache('products');
+      showToast(nextVisibility ? 'Producto visible en el catálogo.' : 'Producto oculto del catálogo.', 'success');
+    } catch {
+      setProducts((current) => current.map((item) => (
+        item.id === product.id ? { ...item, showInCatalog: previousVisibility } : item
+      )));
+      showToast('No se pudo actualizar la visibilidad del catálogo. Reintentá.', 'error');
+    } finally {
+      setCatalogVisibilitySavingIds((current) => {
+        const next = new Set(current);
+        next.delete(product.id);
+        return next;
+      });
+    }
+  };
   const handleDelete = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
     const product = products.find(p => p.id === id);
@@ -1193,23 +1222,7 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
-                        {(p.images?.[0] ?? p.imageUrl) ? (
-                          <img
-                            src={p.images?.[0] ?? p.imageUrl}
-                            alt={p.name}
-                            loading="lazy"
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/product/100/100';
-                              (e.target as HTMLImageElement).onerror = null;
-                            }}
-                          />
-                        ) : (
-                          <ImageIcon size={20} />
-                        )}
-                      </div>
+                      <ProductThumbnail product={p}/>
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white">{p.name}</p>
                         <span className="text-[10px] bg-indigo-50 text-[#365fad] dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">
@@ -1254,10 +1267,10 @@ export default function Stock() {
                   </td>
                   <td className="px-6 py-4">
                     <button 
-                      onClick={async () => {
-                        await db.update<Product>('products', p.id, { showInCatalog: !p.showInCatalog });
-                        fetchData();
-                      }}
+                      onClick={() => void toggleCatalogVisibility(p)}
+                      disabled={!canWrite || catalogVisibilitySavingIds.has(p.id)}
+                      aria-label={(p.showInCatalog ? 'Ocultar ' : 'Mostrar ') + p.name + ' en el catálogo'}
+                      title={!canWrite ? 'Sin permiso' : undefined}
                       className={cn(
                         "p-1.5 rounded-lg transition-colors",
                         p.showInCatalog ? "text-[#365fad] bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -1296,10 +1309,16 @@ export default function Stock() {
                       )}
                       {p.showInCatalog && user?.catalogSlug && (
                         <button
-                          onClick={() => {
-                            const url = `${window.location.origin}/catalogo/${user.catalogSlug}/${p.id}`;
-                            navigator.clipboard.writeText(url);
+                          onClick={async () => {
+                            try {
+                              const url = window.location.origin + '/catalogo/' + user.catalogSlug + '/' + p.id;
+                              await navigator.clipboard.writeText(url);
+                              showToast('Enlace copiado', 'success');
+                            } catch {
+                              showToast('No se pudo copiar el enlace.', 'error');
+                            }
                           }}
+                          aria-label={'Copiar enlace del catálogo de ' + p.name}
                           title="Copiar enlace del producto en el catálogo"
                           className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                         >
