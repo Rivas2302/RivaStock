@@ -57,7 +57,7 @@ function withSuspense(element: React.ReactNode) {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, authError, refetchData, logout } = useAuth();
+  const { user, authUser, loading, authError, refetchData, logout } = useAuth();
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50 dark:bg-slate-950">
@@ -80,6 +80,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" />;
+  if (authUser?.forcePass) return <Navigate to="/reset-password?type=temporary" replace />;
   return <>{children}</>;
 }
 

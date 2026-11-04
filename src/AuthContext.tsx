@@ -22,7 +22,7 @@ interface LoadedAuth {
 
 interface AuthContextType {
   user: UserProfile | null;
-  authUser: { uid: string; email: string } | null;
+  authUser: { uid: string; email: string; forcePass: boolean } | null;
   ownerUid: string | null;
   isOwner: boolean;
   isPlatformAdmin: boolean;
@@ -42,7 +42,6 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (user: UserProfile) => void;
   sendResetEmail: (email: string) => Promise<void>;
-  resetPassword: (code: string, newPassword: string, options?: { keepSession?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -142,7 +141,7 @@ async function loadProfile(session: Session, signal: AbortSignal): Promise<Loade
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth]                 = useState<LoadedAuth | null>(null);
-  const [authUser, setAuthUser]         = useState<{ uid: string; email: string } | null>(null);
+  const [authUser, setAuthUser]         = useState<{ uid: string; email: string; forcePass: boolean } | null>(null);
   const [platformAdmin, setPlatformAdmin] = useState<{ uid: string; isAdmin: boolean } | null>(null);
   const [loading, setLoading]           = useState(true);
   const [authError, setAuthError]       = useState<string | null>(null);
@@ -193,7 +192,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuth(null);
       setLoading(true);
     }
-    setAuthUser({ uid: session.user.id, email: session.user.email ?? '' });
+    setAuthUser({
+      uid: session.user.id,
+      email: session.user.email ?? '',
+      forcePass: session.user.user_metadata?.must_change_password === true,
+    });
   }, []);
 
   useEffect(() => {
@@ -418,23 +421,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error('Error al enviar el email de recuperación.');
   };
 
-  const resetPassword = async (_code: string, newPassword: string, options: { keepSession?: boolean } = {}) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error('Link inválido o vencido. Solicitá un nuevo email de recuperación.');
-    }
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw new Error(error.message);
-    if (!options.keepSession) {
-      // Fire-and-forget local signOut: clears localStorage instantly without a
-      // network round-trip. Awaiting a global signOut() here can hang because
-      // AuthContext may still be mid-loadProfile from the SIGNED_IN fired by
-      // verifyOtp moments before. Recovery users log in fresh; invitees keep
-      // their verified session so they can enter the app directly.
-      supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
-    }
-  };
-
   const updateUser = (updatedUser: UserProfile) => {
     // updatedUser.uid is the account owner, not necessarily the signed-in actor.
     invalidateDbCache('users');
@@ -468,7 +454,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         updateUser,
         sendResetEmail,
-        resetPassword,
       }}
     >
       {children}

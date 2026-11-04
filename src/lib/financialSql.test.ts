@@ -31,6 +31,8 @@ beforeAll(async () => {
     // Knowledge, AI memory, and suspension guards have dedicated PGlite fixtures.
     if (file.includes('_knowledge_') || file.includes('_ai_memory_')
       || file === '20261103225950_platform_suspension_write_guards.sql') continue;
+    // This migration requires hosted pg_net and Vault; account lifecycle has a dedicated local fixture with Vault stubs.
+    if (file === '20261104002800_platform_account_lifecycle.sql') continue;
     // D1 spans production tables that this focused financial fixture does not create.
     if (file === '20261103170000_index_used_foreign_keys.sql') continue;
     if (file === '20261027020952_fb_run_traces.sql') {

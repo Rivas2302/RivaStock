@@ -41,6 +41,11 @@ function makeBusiness(planCode: 'base' | 'pro'): PlatformBusiness {
     },
     limit_overrides: {},
     notes: '',
+    can_manage_account: true,
+    deletion_requested_at: null,
+    deletion_scheduled_for: null,
+    deletion_purge_started_at: null,
+    deletion_failure: null,
   };
 }
 
@@ -147,5 +152,59 @@ describe('PlatformAdmin quota controls', () => {
     expect(reset).not.toBeUndefined();
     await act(async () => { reset?.click(); });
     expect(host.textContent).toContain('Según el plan RivaStock.');
+  });
+
+  it('offers recovery and one-time password actions only for manageable customer accounts', async () => {
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const recovery = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Enviar enlace para cambiar contraseña'));
+    expect(recovery).not.toBeUndefined();
+    await act(async () => { recovery?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({ action: 'send_password_recovery', owner_uid: 'owner-base' });
+
+    const passwordInput = host.querySelector<HTMLInputElement>('input[autocomplete="new-password"]');
+    expect(passwordInput).not.toBeNull();
+    await act(async () => {
+      if (!passwordInput) throw new Error('No se encontró la contraseña temporal.');
+      setInputValue(passwordInput, 'TempPass-123');
+    });
+    const setPassword = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Establecer contraseña temporal'));
+    await act(async () => { setPassword?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({ action: 'set_temporary_password', owner_uid: 'owner-base', password: 'TempPass-123' });
+    expect(passwordInput?.value).toBe('');
+    expect(host.textContent).toContain('TempPass-123');
+    expect(host.textContent).toContain('La contraseña se muestra una sola vez.');
+    const hidePassword = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Ocultar y borrar'));
+    await act(async () => { hidePassword?.click(); });
+    expect(host.textContent).not.toContain('TempPass-123');
+  });
+
+  it('requires an export before enabling the deletion confirmation and hides account controls for protected plans', async () => {
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const openDelete = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'));
+    await act(async () => { openDelete?.click(); });
+    const confirmDelete = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Dar de baja por 30 días'));
+    expect(confirmDelete?.disabled).toBe(true);
+    expect(host.textContent).toContain('Preparar copia');
+    expect(mocks.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'request_business_deletion' }));
+
+    await act(async () => { root.unmount(); });
+    business = { ...makeBusiness('pro'), plan_code: 'interno', can_manage_account: false };
+    root = createRoot(host);
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    expect(host.textContent).not.toContain('Gestión de cuenta');
+  });
+
+  it('locks plan changes while a scheduled deletion is pending and offers cancellation', async () => {
+    business = {
+      ...makeBusiness('base'),
+      status: 'suspended',
+      deletion_requested_at: '2026-11-03T00:00:00.000Z',
+      deletion_scheduled_for: '2026-12-03T00:00:00.000Z',
+    };
+    await act(async () => { root.render(<PlatformAdmin/>); });
+
+    expect(host.querySelector('article fieldset[disabled]')).not.toBeNull();
+    expect([...host.querySelectorAll('button')].some((button) => button.textContent?.includes('Cancelar baja'))).toBe(true);
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Guardar cambios'))?.matches(':disabled')).toBe(true);
   });
 });

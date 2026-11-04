@@ -11,6 +11,12 @@ function createBackend(overrides: Partial<PlatformAdminBackend> = {}): PlatformA
     inviteBusinessOwner: vi.fn().mockResolvedValue('10000000-0000-4000-8000-000000000002'),
     setBusinessPlan: vi.fn().mockResolvedValue(undefined),
     resendInvite: vi.fn().mockResolvedValue(undefined),
+    sendPasswordRecovery: vi.fn().mockResolvedValue(undefined),
+    setTemporaryPassword: vi.fn().mockResolvedValue(undefined),
+    requestBusinessDeletion: vi.fn().mockResolvedValue('2026-12-03T00:00:00.000Z'),
+    cancelBusinessDeletion: vi.fn().mockResolvedValue(undefined),
+    exportBusinessManifest: vi.fn().mockResolvedValue({ tables: [], objects: [] }),
+    exportBusinessTable: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -85,5 +91,48 @@ describe('platform admin function', () => {
     expect(parseBusinessLimitOverrides({ modules: { ai: true } })).toBeNull();
     expect(hasReachedCollaboratorLimit(5, 5)).toBe(true);
     expect(hasReachedCollaboratorLimit(4, 5)).toBe(false);
+  });
+
+  it('sets a temporary password without returning or recording it in the response', async () => {
+    const backend = createBackend();
+    const response = await createPlatformAdminHandler(() => backend)(request({
+      action: 'set_temporary_password',
+      owner_uid: '10000000-0000-4000-8000-000000000002',
+      password: 'Temporary-Secret-123',
+    }));
+
+    expect(response.status).toBe(200);
+    const responseText = await response.clone().text();
+    expect(await response.json()).toEqual({ ok: true });
+    expect(backend.setTemporaryPassword).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000002', 'Temporary-Secret-123');
+    expect(responseText).not.toContain('Temporary-Secret-123');
+  });
+
+  it('rejects weak temporary passwords and invalid export page limits', async () => {
+    const backend = createBackend();
+    const weakPassword = await createPlatformAdminHandler(() => backend)(request({
+      action: 'set_temporary_password', owner_uid: '10000000-0000-4000-8000-000000000002', password: 'short',
+    }));
+    const oversizedExportPage = await createPlatformAdminHandler(() => backend)(request({
+      action: 'export_business_table', owner_uid: '10000000-0000-4000-8000-000000000002', table_name: 'products', offset: 0, limit: 501,
+    }));
+
+    expect(weakPassword.status).toBe(400);
+    expect(backend.setTemporaryPassword).not.toHaveBeenCalled();
+    expect(oversizedExportPage.status).toBe(400);
+    expect(backend.exportBusinessTable).not.toHaveBeenCalled();
+  });
+
+  it('validates the business name before scheduling a 30-day deletion', async () => {
+    const backend = createBackend();
+    const response = await createPlatformAdminHandler(() => backend)(request({
+      action: 'request_business_deletion',
+      owner_uid: '10000000-0000-4000-8000-000000000002',
+      confirm_business_name: '  Mi   Negocio  ',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(backend.requestBusinessDeletion).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000002', 'Mi Negocio');
+    expect(await response.json()).toMatchObject({ ok: true, scheduled_for: '2026-12-03T00:00:00.000Z' });
   });
 });

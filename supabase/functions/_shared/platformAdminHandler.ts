@@ -28,6 +28,12 @@ export interface PlatformAdminBackend {
     notes: string;
   }): Promise<void>;
   resendInvite(ownerUid: string): Promise<void>;
+  sendPasswordRecovery(ownerUid: string): Promise<void>;
+  setTemporaryPassword(ownerUid: string, password: string): Promise<void>;
+  requestBusinessDeletion(ownerUid: string, confirmedBusinessName: string): Promise<string>;
+  cancelBusinessDeletion(ownerUid: string): Promise<void>;
+  exportBusinessManifest(ownerUid: string): Promise<unknown>;
+  exportBusinessTable(ownerUid: string, tableName: string, offset: number, limit: number): Promise<unknown>;
 }
 
 const CORS_HEADERS = {
@@ -139,6 +145,53 @@ export function createPlatformAdminHandler(
         return json({ ok: true });
       }
 
+      if (body.action === 'send_password_recovery') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        await backend.sendPasswordRecovery(body.owner_uid);
+        return json({ ok: true });
+      }
+
+      if (body.action === 'set_temporary_password') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        if (typeof body.password !== 'string' || body.password.length < 10 || body.password.length > 128) {
+          return json({ error: 'La contraseña temporal debe tener entre 10 y 128 caracteres.' }, 400);
+        }
+        await backend.setTemporaryPassword(body.owner_uid, body.password);
+        return json({ ok: true });
+      }
+
+      if (body.action === 'request_business_deletion') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        const confirmedName = normalizeBusinessName(body.confirm_business_name);
+        if (!confirmedName) return json({ error: 'Escribí el nombre completo del negocio.' }, 400);
+        const scheduledFor = await backend.requestBusinessDeletion(body.owner_uid, confirmedName.name);
+        return json({ ok: true, scheduled_for: scheduledFor });
+      }
+
+      if (body.action === 'cancel_business_deletion') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        await backend.cancelBusinessDeletion(body.owner_uid);
+        return json({ ok: true });
+      }
+
+      if (body.action === 'export_business_manifest') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        return json(await backend.exportBusinessManifest(body.owner_uid));
+      }
+
+      if (body.action === 'export_business_table') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        if (typeof body.table_name !== 'string' || !/^[a-z][a-z0-9_]{0,62}$/.test(body.table_name)) {
+          return json({ error: 'Tabla de exportación inválida.' }, 400);
+        }
+        const offset = body.offset ?? 0;
+        const limit = body.limit ?? 500;
+        if (!Number.isSafeInteger(offset) || Number(offset) < 0 || !Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > 500) {
+          return json({ error: 'Paginación de exportación inválida.' }, 400);
+        }
+        return json(await backend.exportBusinessTable(body.owner_uid, body.table_name, Number(offset), Number(limit)));
+      }
+
       return json({ error: 'Operación no permitida.' }, 400);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -146,6 +199,11 @@ export function createPlatformAdminHandler(
       if (message === 'platform-business-name-exists') return json({ error: 'Ese nombre de negocio ya está en uso.' }, 409);
       if (message === 'platform-business-not-found') return json({ error: 'No se encontró el negocio.' }, 404);
       if (message === 'platform-invite-already-accepted') return json({ error: 'La invitación ya fue aceptada; no hace falta reenviarla.' }, 409);
+      if (message === 'platform-business-protected') return json({ error: 'No se puede administrar la cuenta del equipo RivaTech.' }, 403);
+      if (message === 'platform-business-name-confirmation-mismatch') return json({ error: 'El nombre no coincide con el negocio.' }, 409);
+      if (message === 'platform-business-deletion-already-pending') return json({ error: 'La baja de este negocio ya está programada.' }, 409);
+      if (message === 'platform-business-deletion-not-pending') return json({ error: 'Este negocio no tiene una baja pendiente.' }, 409);
+      if (message === 'platform-business-deletion-already-started') return json({ error: 'La eliminación ya empezó y no se puede cancelar.' }, 409);
       return json({ error: 'No se pudo completar la operación de plataforma.' }, 500);
     }
   };

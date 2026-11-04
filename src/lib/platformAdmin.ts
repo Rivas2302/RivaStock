@@ -25,6 +25,11 @@ export interface PlatformBusiness {
   plan_limits: Record<string, unknown>;
   limit_overrides: Record<string, unknown>;
   notes: string;
+  can_manage_account: boolean;
+  deletion_requested_at: string | null;
+  deletion_scheduled_for: string | null;
+  deletion_purge_started_at: string | null;
+  deletion_failure: string | null;
 }
 
 export interface PlatformDashboardData {

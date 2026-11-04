@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Building2, Loader2, Mail, RefreshCw, Save } from 'lucide-react';
 import { platformAdminRequest, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
 import { getBusinessPlanDisplayName } from '../lib/businessPlan';
+import BusinessAccountActions from '../components/platform/BusinessAccountActions';
 
 type EditableBusiness = {
   plan_code: string;
@@ -247,6 +248,7 @@ export default function PlatformAdmin() {
             onEdit={(edit) => setEdits((current) => ({ ...current, [business.owner_uid]: edit }))}
             onSave={() => void saveBusiness(business)}
             onResend={() => void resendInvite(business)}
+            onAccountChange={() => void load()}
           />
         ))}
       </section>
@@ -255,7 +257,7 @@ export default function PlatformAdmin() {
 }
 
 function BusinessCard({
-  business, plans, edit, saving, resending, onEdit, onSave, onResend,
+  business, plans, edit, saving, resending, onEdit, onSave, onResend, onAccountChange,
 }: {
   business: PlatformBusiness;
   plans: PlatformDashboardData['plans'];
@@ -265,6 +267,7 @@ function BusinessCard({
   onEdit: (edit: EditableBusiness) => void;
   onSave: () => void;
   onResend: () => void;
+  onAccountChange: () => void;
 }) {
   const centralTime = business.central_last_seen_at ? Date.parse(business.central_last_seen_at) : 0;
   const centralOnline = centralTime > 0 && Date.now() - centralTime < 180_000;
@@ -281,6 +284,7 @@ function BusinessCard({
   const localQuota = Number(edit.limit_overrides.local_knowledge_bytes ?? planLimits.local_knowledge_bytes ?? 0);
   const [cloudUnit, setCloudUnit] = useState<StorageUnit>(() => initialStorageUnit(cloudQuota));
   const [localUnit, setLocalUnit] = useState<StorageUnit>(() => initialStorageUnit(localQuota));
+  const deletionPending = Boolean(business.deletion_scheduled_for);
 
   const resetModuleOverride = () => {
     const { modules: _modules, ...remainingOverrides } = edit.limit_overrides;
@@ -312,7 +316,9 @@ function BusinessCard({
         {modules.ai && <p><span className="text-slate-500 dark:text-slate-400">Almacén de la central:</span> <strong>{formatBytes(business.store_bytes)}</strong><span className="block text-xs text-slate-500">{business.mirror_status === 'ready' ? 'Respaldo sincronizado' : business.mirror_status === 'none' ? 'Sin respaldo configurado' : business.mirror_status} · {business.files_missing ?? 0} faltantes</span></p>}
       </div>
 
-      <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 md:grid-cols-3">
+      <fieldset disabled={deletionPending} className="mt-5 space-y-3 border-0 p-0">
+      <legend className="sr-only">Configuración del negocio</legend>
+      <div className="grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 md:grid-cols-3">
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Plan<select value={edit.plan_code} onChange={(event) => onEdit({ ...edit, plan_code: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{plans.filter((plan) => plan.code === 'base' || plan.code === 'pro' || plan.code === 'interno').map((plan) => <option key={plan.code} value={plan.code}>{planLabel(plan.code)}</option>)}</select></label>
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Estado<select value={edit.status} onChange={(event) => onEdit({ ...edit, status: event.target.value as EditableBusiness['status'] })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="trial">Prueba</option><option value="active">Activo</option><option value="suspended">Suspendido</option></select></label>
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Colaboradores permitidos<input type="number" min={0} max={1000} value={Number(edit.limit_overrides.collaborators ?? business.plan_limits.collaborators ?? 0)} onChange={(event) => onEdit(changedOverride(edit, 'collaborators', Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -336,6 +342,8 @@ function BusinessCard({
         <button type="button" onClick={onResend} disabled={resending} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15} />{resending ? 'Reenviando…' : 'Reenviar invitación'}</button>
         <button type="button" onClick={onSave} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save size={15} />{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
+      </fieldset>
+      {business.can_manage_account && <BusinessAccountActions business={business} onChange={onAccountChange} />}
     </article>
   );
 }

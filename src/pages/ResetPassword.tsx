@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
 import { Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -15,10 +14,10 @@ export default function ResetPassword() {
   // Supabase fires PASSWORD_RECOVERY event when the user lands via the email link
   const [ready, setReady]                 = useState(false);
 
-  const { resetPassword } = useAuth();
   const navigate          = useNavigate();
   const [searchParams] = useSearchParams();
   const isInvitation = searchParams.get('type') === 'invite';
+  const isTemporaryLogin = searchParams.get('type') === 'temporary';
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +74,18 @@ export default function ResetPassword() {
     setError(null);
     setLoading(true);
     try {
-      await resetPassword('', password, { keepSession: isInvitation });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Link inválido o vencido. Solicitá un nuevo email de recuperación.');
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+        data: { must_change_password: false },
+      });
+      if (updateError) throw new Error(updateError.message);
+      if (!isInvitation && !isTemporaryLogin) {
+        supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
+      }
       setSuccess(true);
-      if (!isInvitation) setTimeout(() => navigate('/login'), 3000);
+      if (!isInvitation && !isTemporaryLogin) setTimeout(() => navigate('/login'), 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al actualizar la contraseña.');
     } finally {
@@ -96,8 +104,8 @@ export default function ResetPassword() {
           <div className="auth-brand-mark mx-auto mb-6">
             <Lock className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{isInvitation ? 'Creá tu contraseña' : 'Nueva Contraseña'}</h1>
-          <p className="text-slate-500 font-medium">{isInvitation ? 'Definí una contraseña para entrar a RivaStock.' : 'Ingresá tu nueva contraseña de acceso'}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{isInvitation ? 'Creá tu contraseña' : isTemporaryLogin ? 'Elegí una nueva contraseña' : 'Nueva Contraseña'}</h1>
+          <p className="text-slate-500 font-medium">{isInvitation ? 'Definí una contraseña para entrar a RivaStock.' : isTemporaryLogin ? 'Para continuar, reemplazá la contraseña temporal por una propia.' : 'Ingresá tu nueva contraseña de acceso'}</p>
         </div>
 
         {!ready && !success && !error && (
@@ -132,9 +140,10 @@ export default function ResetPassword() {
           <div className="text-center space-y-6">
             <div className="auth-success p-6 font-semibold flex flex-col items-center gap-4">
               <CheckCircle2 size={48} className="text-[#365FAD]" />
-              <span>{isInvitation ? 'Tu contraseña quedó guardada.' : 'Contraseña actualizada correctamente. Redirigiendo...'}</span>
+              <span>{isInvitation ? 'Tu contraseña quedó guardada.' : isTemporaryLogin ? 'La contraseña temporal quedó reemplazada.' : 'Contraseña actualizada correctamente. Redirigiendo...'}</span>
             </div>
             {isInvitation && <button type="button" onClick={() => navigate('/', { replace: true })} className="auth-primary w-full py-3.5 font-semibold transition-colors">Entrar a RivaStock</button>}
+            {isTemporaryLogin && <button type="button" onClick={() => window.location.assign('/')} className="auth-primary w-full py-3.5 font-semibold transition-colors">Continuar</button>}
           </div>
         ) : ready ? (
           <form onSubmit={handleSubmit} className="space-y-6">
