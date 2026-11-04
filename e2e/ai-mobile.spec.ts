@@ -202,9 +202,10 @@ async function mockRiva(page: Page, modules: Modules = { ai: true, knowledge: tr
 }
 
 test('mobile chat: search, swipe-delete confirmation, browser back, settings and mock send', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   const { calls } = await mockRiva(page);
   await page.goto('/ia?view=chats');
-  await expect(page.getByRole('heading', { name: '[QA] Stock de cámaras' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^\[QA\] Stock de cámaras\./ })).toBeVisible();
   await page.getByLabel('Buscar en tus chats').fill('cargadores');
   await expect(page.getByRole('button', { name: /^\[QA\] Reposición\./ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^\[QA\] Stock de cámaras\./ })).toHaveCount(0);
@@ -227,7 +228,7 @@ test('mobile chat: search, swipe-delete confirmation, browser back, settings and
   await expect(page.getByLabel('Conversación de IA')).toBeVisible();
   await expect(page).toHaveURL(/chat=chat-cameras/);
   await page.goBack();
-  await expect(page.getByRole('heading', { name: '[QA] Stock de cámaras' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^\[QA\] Stock de cámaras\./ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Nuevo chat' }).click();
   await expect(page.getByRole('heading', { name: 'Nuevo chat' })).toBeVisible();
@@ -248,6 +249,7 @@ test('mobile chat: search, swipe-delete confirmation, browser back, settings and
 });
 
 test('mobile tasks: filters, pagination, detail, retry, new task and product task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   const { calls } = await mockRiva(page);
   await page.goto('/ia?view=tasks');
   await expect(page.getByRole('button', { name: 'Todas · 12' })).toBeVisible();
@@ -286,7 +288,8 @@ test('mobile tasks: filters, pagination, detail, retry, new task and product tas
   await testInfo.attach(`${testInfo.project.name}-mobile-tasks`, { body: await page.screenshot(), contentType: 'image/png' });
 });
 
-test('mobile chat and task lists show their empty states and next actions', async ({ page }) => {
+test('mobile chat and task lists show their empty states and next actions', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   await mockRiva(page, undefined, true);
   await page.goto('/ia?view=chats');
   await expect(page.getByText('Todavía no tenés chats. Preguntale algo a tu IA.')).toBeVisible();
@@ -314,7 +317,8 @@ test('desktop AI hub retains the existing Chats and Tasks workspace', async ({ p
   await expect(page.locator('button').filter({ hasText: 'Nueva tarea' })).toHaveCount(0);
   await testInfo.attach('desktop-ai-tasks-1280x900', { body: await page.screenshot(), contentType: 'image/png' });
 });
-test('mobile new task only shows types enabled by the business modules', async ({ page }) => {
+test('mobile new task only shows types enabled by the business modules', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   await mockRiva(page, { ai: true, knowledge: false, automation: false });
   await page.goto('/ia?view=tasks&new=1');
   await expect(page.getByRole('radio')).toHaveCount(1);

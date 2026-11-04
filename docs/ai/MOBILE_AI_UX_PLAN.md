@@ -139,7 +139,9 @@ Los colores de la maqueta son los del tema oscuro actual. **Usá los tokens exis
 - Pie fijo con el estado de la PC (“Tu PC está conectada. Te avisamos cuando esté lista.”) y el botón **“Enviar a mi PC”**. Al enviar, va al detalle de la tarea nueva en estado “En proceso”.
 - **Commit:** `feat(ai): mobile new task flow`
 
-### [ ] H9 Cierre: pruebas y verificación en producción
+**Desvío vigente:** las RPC y el worker actuales de `fb_copywriting` y `fb_photo_review` no reciben el campo de texto libre ni los toggles de contexto. En esos dos tipos la interfaz los mantiene bloqueados y explica qué datos sí usa. H8 queda abierta; cambiar la lógica de generación excede el alcance de §4 y tocaría el flujo de PC.
+
+### [x] H9 Cierre: pruebas y verificación en producción
 - Playwright con viewport Android (390×844) e iPhone (390×844, WebKit):
   - lista → conversación → atrás (también con el botón atrás del navegador);
   - buscar;

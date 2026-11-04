@@ -1,6 +1,10 @@
-## H9: perfil de validación disponible
+## Bloque H: verificación lista; sigo con I4
 
-El perfil persistente de Playwright `C:\Users\USER\rivastock-qa-profile` está autenticado en RivaStock. Vercel confirmó el despliegue móvil de IA y H7 quedó verificada con respuestas de red `[QA]` simuladas en Playwright; no se guardaron datos ni se publicó en Facebook. Sigo con el cierre H9.
+El Chat IA y las Tareas del celular ya tienen el diseño nuevo. Validé Chats y Tareas en Android y iPhone, y comparé la versión de PC a 1280 px: mantiene la misma composición; las únicas diferencias visuales son los minutos dinámicos de las fechas. Probé el envío de un chat con `MockProvider` en producción y eliminé el chat `[QA]` desde la app.
+
+H8 queda abierto: Publicación para Facebook y Revisar fotos todavía no admiten el texto libre ni los toggles de contexto porque las RPC y el worker actuales no los reciben. La interfaz lo informa y no se cambió la lógica ni la instalación del Bridge de PC.
+
+Sigo con I4, lista de stock móvil. No necesitás hacer nada ahora.
 
 F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar

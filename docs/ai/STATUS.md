@@ -1,5 +1,15 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H9 verificado; H8 queda abierto por desvío
+
+- Comparé los planes antes del cierre: `ACTION_PLAN.md` coincide con Desktop. `MOBILE_AI_UX_PLAN.md` de Desktop retrocedió las marcas H1–H7 y quitó el desvío de H5; conservé el historial respaldado por este archivo. `MOBILE_HOME_STOCK_PLAN.md` de Desktop también retrocedió I2/I3; preservé las marcas y verificaciones de producción ya registradas.
+- **Verificación local:** `npm run lint` pasó; `npm test -- --maxWorkers=2` pasó **920/920** en 157 archivos. Una primera corrida sin límite de workers tuvo dos timeouts de PGlite; la repetición controlada pasó. Playwright `e2e/ai-mobile.spec.ts`: **9 aprobadas, 6 omitidas** por alcance de proyecto; incluye Android, iPhone/WebKit y Chromium.
+- `npm run build` y `npm run perf:check` pasaron. Gzip: entrada **210.011 B JS / 23.585 B CSS**, AIHub **246.437 B** (347 B bajo 241 KiB) y Stock **241.648 B** (16 B bajo 236 KiB). No ajusté presupuestos.
+- **PC sin cambios visuales:** comparé capturas de Chats y Tareas a 1280×900 de `bf021a7` (antes de H2) con las actuales. Las estructuras coinciden; las diferencias fueron únicamente los minutos dinámicos de las fechas en las fixtures: Chats **704/1.152.000 píxeles (0,06111%)**, Tareas **649/1.152.000 (0,05634%)**. La prueba de escritorio también conserva navegación y composición.
+- Producción: Vercel reportó `success` para `021b9ee`; Playwright autenticado a 390×844 verificó los seis destinos mediante la UI desplegada y fixtures `[QA]` interceptadas para no escribir datos reales. En el flujo real probé envío con `MockProvider` en producción; borré el chat `[QA] ok` desde la app y confirmé que ya no aparece `[QA]` en Chats ni Tareas. Los archivos en `docs/design/mobile-ai/production/` son capturas QA sin datos personales. No hubo migraciones, cambios al worker ni actualización del Bridge de PC.
+- **H9 [x]. H8 [ ] — Desvío:** el campo de texto y los toggles de contexto no se envían para las dos tareas Facebook porque sus RPC/worker actuales no los admiten. Los controles se explican y deshabilitan; no cambié lógica de IA fuera del alcance ni la versión de PC.
+- **Siguiente:** I4, lista de stock móvil. F1 (emails) sigue sin desplegarse hasta recibir un dominio remitente verificado.
+
 ## 2026-11-04 — H7 detalle móvil verificado en producción
 
 - Vercel reportó `success` para `021b9ee` en `main`; Playwright con el perfil persistente autenticado cargó la pantalla de tareas a 390×844.
