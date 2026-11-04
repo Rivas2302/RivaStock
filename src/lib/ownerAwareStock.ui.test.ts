@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const stock = readFileSync(resolve(process.cwd(), 'src/pages/Stock.tsx'), 'utf8');
+const deleteStockProduct = readFileSync(resolve(process.cwd(), 'src/lib/deleteStockProduct.ts'), 'utf8');
 const intake = readFileSync(resolve(process.cwd(), 'src/pages/Intake.tsx'), 'utf8');
 const auth = readFileSync(resolve(process.cwd(), 'src/AuthContext.tsx'), 'utf8');
 
@@ -47,14 +48,10 @@ describe('owner-aware stock UI safety contract', () => {
   });
 
   it('deletes the database row before attempting image cleanup and reports failures', () => {
-    const deleteHandler = stock.slice(
-      stock.indexOf('const handleDelete'),
-      stock.indexOf('const autoCalculatePrice'),
-    );
-    expect(deleteHandler.indexOf("await db.delete('products', id)")).toBeGreaterThan(-1);
-    expect(deleteHandler.indexOf("await db.delete('products', id)"))
-      .toBeLessThan(deleteHandler.indexOf('deleteFromStorage(url)'));
-    expect(deleteHandler).toContain('No se pudo eliminar el producto');
+    expect(deleteStockProduct.indexOf("await db.delete('products', product.id)")).toBeGreaterThan(-1);
+    expect(deleteStockProduct.indexOf("await db.delete('products', product.id)"))
+      .toBeLessThan(deleteStockProduct.indexOf('deleteFromStorage(url)'));
+    expect(stock).toContain('No se pudo eliminar el producto');
   });
 
   it('keeps failed image paths in session and exposes an actionable retry', () => {

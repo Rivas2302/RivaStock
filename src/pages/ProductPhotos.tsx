@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import { db } from '../lib/db';
@@ -113,6 +113,7 @@ function downloadFile(file: File): void {
 
 export default function ProductPhotos() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     user,
     refetchToken,
@@ -141,6 +142,7 @@ export default function ProductPhotos() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const photoTouchStartX = useRef<number | null>(null);
+  const handledProductQueryRef = useRef<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [fallbackFiles, setFallbackFiles] = useState<File[]>([]);
   const [fallbackText, setFallbackText] = useState('');
@@ -364,6 +366,35 @@ export default function ProductPhotos() {
     if (getProductPhotoUrlsForSharing(product, supabaseProjectUrl).length > 0) {
       void prepareProductFiles(product).catch(() => undefined);
     }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const productId = params.get('producto');
+    if (!productId) {
+      handledProductQueryRef.current = null;
+      return;
+    }
+    if (loading || handledProductQueryRef.current === productId) return;
+    handledProductQueryRef.current = productId;
+    const product = visibleProducts.find((item) => item.id === productId);
+    if (product) {
+      openProduct(product);
+      return;
+    }
+    showToast('No encontramos ese producto.', 'error');
+    params.delete('producto');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+  }, [loading, location.pathname, location.search, location.state, navigate, visibleProducts]);
+
+  const closeSelectedProduct = () => {
+    setSelectedProductId(null);
+    const params = new URLSearchParams(location.search);
+    if (!params.has('producto')) return;
+    params.delete('producto');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
   };
 
   const toggleFavorite = (productId: string) => {
@@ -811,7 +842,7 @@ export default function ProductPhotos() {
           <section role="dialog" aria-modal="true" aria-label={`Producto ${selectedProduct.name}`} className="max-h-[95dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:rounded-3xl">
             <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
               <h3 className="pr-4 text-lg font-bold text-slate-900 dark:text-white">{selectedProduct.name}</h3>
-              <button type="button" aria-label="Cerrar producto" onClick={() => setSelectedProductId(null)} className="rounded-full p-2 text-slate-500"><ProductPhotoIcon name="x" size={22}  /></button>
+              <button type="button" aria-label="Cerrar producto" onClick={closeSelectedProduct} className="rounded-full p-2 text-slate-500"><ProductPhotoIcon name="x" size={22}  /></button>
             </header>
             <div className="p-4 sm:p-5">
               <div

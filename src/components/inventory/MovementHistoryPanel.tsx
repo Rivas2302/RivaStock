@@ -13,6 +13,13 @@ import { cn, formatDate } from '../../lib/utils';
 
 const PAGE_SIZE = 25;
 
+interface MovementHistoryPanelProps {
+  productId?: string;
+  limit?: number;
+  compact?: boolean;
+  onViewAll?: () => void;
+}
+
 const MOVEMENT_ICONS: Record<MovementType, typeof PackagePlus> = {
   intake: PackagePlus,
   transfer_in: ArrowRight,
@@ -26,7 +33,12 @@ function formatDelta(delta: number): string {
   return String(delta);
 }
 
-export default function MovementHistoryPanel() {
+export default function MovementHistoryPanel({
+  productId,
+  limit = PAGE_SIZE,
+  compact = false,
+  onViewAll,
+}: MovementHistoryPanelProps) {
   const { user, refetchToken } = useAuth();
   const { owners, loading: ownersLoading } = useInventoryOwners(user?.uid, refetchToken);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -36,7 +48,7 @@ export default function MovementHistoryPanel() {
     return d.toISOString().slice(0, 10);
   }, []);
 
-  const [dateFrom, setDateFrom] = useState<string>(firstOfMonth);
+  const [dateFrom, setDateFrom] = useState<string>(() => productId ? '' : firstOfMonth);
   const [dateTo, setDateTo] = useState<string>(today);
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | MovementType>('all');
@@ -53,12 +65,13 @@ export default function MovementHistoryPanel() {
     setError(null);
     try {
       const result = await listInventoryMovements({
-        dateFrom: dateFrom || null,
-        dateTo: dateTo || null,
-        inventoryOwnerId: ownerFilter === 'all' ? null : ownerFilter,
-        movementType: typeFilter === 'all' ? null : typeFilter,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
+        dateFrom: compact ? null : dateFrom || null,
+        dateTo: compact ? null : dateTo || null,
+        inventoryOwnerId: compact || ownerFilter === 'all' ? null : ownerFilter,
+        movementType: compact || typeFilter === 'all' ? null : typeFilter,
+        productId: productId ?? null,
+        limit,
+        offset: compact ? 0 : page * limit,
       });
       if (signal?.cancelled) return;
       setRows(result);
@@ -72,7 +85,7 @@ export default function MovementHistoryPanel() {
     } finally {
       if (!signal?.cancelled) setLoading(false);
     }
-  }, [dateFrom, dateTo, ownerFilter, typeFilter, page, user]);
+  }, [compact, dateFrom, dateTo, limit, ownerFilter, page, productId, typeFilter, user]);
 
   useEffect(() => {
     const signal = { cancelled: false };
@@ -94,7 +107,7 @@ export default function MovementHistoryPanel() {
     ));
   }, [rows, search]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / limit));
   const hasPrev = page > 0;
   const hasNext = page + 1 < totalPages;
 
@@ -109,7 +122,7 @@ export default function MovementHistoryPanel() {
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {!compact && <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 dark:text-slate-400">
           Desde
           <div className="relative">
@@ -167,9 +180,9 @@ export default function MovementHistoryPanel() {
             </select>
           </div>
         </label>
-      </div>
+      </div>}
 
-      <div className="relative mb-4">
+      {!compact && <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
@@ -178,15 +191,23 @@ export default function MovementHistoryPanel() {
           placeholder="Buscar por producto o titular..."
           className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
         />
-      </div>
+      </div>}
 
-      {error && (
+      {error && !compact && (
         <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">
           {error}
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {compact ? <ul className="divide-y divide-[var(--line)]" aria-label="Últimos movimientos">
+        {loading ? <li className="py-4 text-center text-sm text-[var(--ink-muted)]">Cargando movimientos…</li>
+          : error ? <li role="alert" className="py-4 text-sm text-[var(--danger-ink)]">{error}</li>
+            : filteredRows.length === 0 ? <li className="py-4 text-sm text-[var(--ink-muted)]">No hay movimientos para este producto.</li>
+              : filteredRows.map((row) => <li key={row.id} className="flex items-start justify-between gap-3 py-3 text-sm">
+                <span className="min-w-0"><span className="block font-semibold">{MOVEMENT_TYPE_LABELS[row.movementType]} · {formatDelta(row.delta)}</span><span className="mt-0.5 block text-xs text-[var(--ink-muted)]">{row.transferReason ?? row.reason} · {formatDate(row.createdAt)}</span></span>
+                <span className="shrink-0 text-xs text-[var(--ink-muted)]">{row.resultingStock ?? '—'} u.</span>
+              </li>)}
+      </ul> : <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
             <tr>
@@ -253,9 +274,9 @@ export default function MovementHistoryPanel() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+      {compact ? onViewAll && total > 0 && <button type="button" onClick={onViewAll} className="mt-3 min-h-11 text-sm font-semibold text-[var(--brand-strong)]">Ver todos los movimientos</button> : <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>
           {total === 0
             ? 'Sin resultados'
@@ -279,7 +300,7 @@ export default function MovementHistoryPanel() {
             Siguiente
           </button>
         </div>
-      </div>
+      </div>}
     </section>
   );
 }

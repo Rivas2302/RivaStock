@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { lazy, Suspense, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Archive, ArrowDown, ArrowUp, Check, Edit2, Plus, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { useInventoryOwners } from '../../hooks/useInventoryOwners';
@@ -12,9 +13,10 @@ import {
 import { setInventoryHoldingsEnabled } from '../../lib/inventoryHoldings';
 import { showToast } from '../../lib/toast';
 import type { InventoryOwner } from '../../types';
-import MovementHistoryPanel from './MovementHistoryPanel';
+const MovementHistoryPanel = lazy(() => import('./MovementHistoryPanel'));
 
 export default function InventoryOwnersTab() {
+  const [searchParams] = useSearchParams();
   const { user, refetchToken, holdingsEnabled, refetchData } = useAuth();
   const canReadConfig = usePermission('config', 'read');
   const canManageConfig = usePermission('config', 'write');
@@ -181,7 +183,9 @@ export default function InventoryOwnersTab() {
         </div>
       )}
 
-      <MovementHistoryPanel />
+      <Suspense fallback={<p role="status" className="py-4 text-center text-sm text-slate-500">Cargando movimientos…</p>}>
+        <MovementHistoryPanel productId={searchParams.get('producto') ?? undefined} />
+      </Suspense>
 
       <form onSubmit={handleCreate} className="flex flex-col gap-2 sm:flex-row">
         <input

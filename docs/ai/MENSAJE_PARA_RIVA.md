@@ -1,10 +1,10 @@
-## Bloque H: verificación lista; sigo con I4
+## Bloque H verificado; I4/I5 listos localmente; sigo con I6
 
 El Chat IA y las Tareas del celular ya tienen el diseño nuevo. Validé Chats y Tareas en Android y iPhone, y comparé la versión de PC a 1280 px: mantiene la misma composición; las únicas diferencias visuales son los minutos dinámicos de las fechas. Probé el envío de un chat con `MockProvider` en producción y eliminé el chat `[QA]` desde la app.
 
 H8 queda abierto: Publicación para Facebook y Revisar fotos todavía no admiten el texto libre ni los toggles de contexto porque las RPC y el worker actuales no los reciben. La interfaz lo informa y no se cambió la lógica ni la instalación del Bridge de PC.
 
-Sigo con I4, lista de stock móvil. No necesitás hacer nada ahora.
+La lista y la ficha de Stock para el celular están implementadas y pasan la verificación local; todavía no se desplegaron. No necesitás hacer nada ahora. El cierre en producción queda para I9.
 
 F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar

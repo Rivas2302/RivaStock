@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Plus, Minus, Trash2, ScanLine, Search, X, ShoppingCart, UserCheck, ArrowLeft, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
@@ -20,6 +20,7 @@ import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempot
 
 export default function POS() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,
@@ -52,6 +53,7 @@ export default function POS() {
   const [saving, setSaving] = useState(false);
   const [lastSaleAt, setLastSaleAt] = useState<number | null>(null);
   const saleIntentRef = useRef<IdempotencyIntent | null>(null);
+  const handledProductQueryRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!user || inventoryAccessError) {
@@ -95,6 +97,33 @@ export default function POS() {
       )
       : product.stock
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const productId = params.get('producto');
+    if (!productId) {
+      handledProductQueryRef.current = null;
+      return;
+    }
+    if (loading || handledProductQueryRef.current === productId) return;
+
+    handledProductQueryRef.current = productId;
+    const product = products.find((item) => item.id === productId);
+    if (product) {
+      cart.addProduct({
+        id: product.id,
+        name: product.name,
+        salePrice: product.salePrice,
+        stock: visibleStockForProduct(product),
+      });
+      showToast(`Agregado: ${product.name}`, 'success');
+    } else {
+      showToast('No encontramos ese producto.', 'error');
+    }
+    params.delete('producto');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+  }, [cart.addProduct, loading, location.pathname, location.search, location.state, navigate, products]);
 
   const handleScannedCode = (raw: string) => {
     const code = normalizeBarcode(raw);

@@ -4,6 +4,7 @@ import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import {
@@ -26,7 +27,6 @@ import {
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { failedStorageCleanupPaths } from '../lib/storageCleanup';
-import { getProductPhotoStorageUrls } from '../lib/productPhotos';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
@@ -58,11 +58,14 @@ import {
 import Modal from '../components/Modal';
 import { ImageUpload } from '../components/ImageUpload';
 import ProductThumbnail from '../components/stock/ProductThumbnail';
-import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
 const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
+const BarcodeScannerOverlay = lazy(() => import('../components/BarcodeScannerOverlay'));
 const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
 const ResellerPriceListModal = lazy(() => import('../components/ResellerPriceListModal'));
+const MobileStockEntry = lazy(() => import('../components/stock/MobileStockEntry'));
+const ProductDeleteConfirmation = lazy(() => import('../components/stock/ProductDeleteConfirmation'));
+const DesktopProductEditorRoute = lazy(() => import('../components/stock/DesktopProductEditorRoute'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import {
   addProductToResellerPriceList,
@@ -82,6 +85,7 @@ export default function Stock() {
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogVisibilitySavingIds, setCatalogVisibilitySavingIds] = useState<Set<string>>(new Set());
@@ -262,7 +266,9 @@ export default function Stock() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectingForCodes, setSelectingForCodes] = useState(false);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [priceListPreview, setPriceListPreview] = useState<{ url: string; fileName: string } | null>(null);
@@ -588,6 +594,12 @@ export default function Stock() {
     setSupplierProductCreationContext(null);
     if (returnToResellerList) setResellerPriceListOpen(true);
     setReturnToResellerList(false);
+    const params = new URLSearchParams(location.search);
+    if (params.has('editar')) {
+      params.delete('editar');
+      const query = params.toString();
+      navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+    }
   };
 
   const retryImageCleanup = async () => {
@@ -633,25 +645,28 @@ export default function Stock() {
       });
     }
   };
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este producto?')) return;
-    const product = products.find(p => p.id === id);
+  const deleteProduct = async (product: Product): Promise<boolean> => {
+    if (!canDelete) return false;
     try {
-      await db.delete('products', id);
-      setProducts(prev => prev.filter(p => p.id !== id));
-      if (product) {
-        const allImages = getProductPhotoStorageUrls(product);
-        const results = await Promise.allSettled(allImages.map(url => deleteFromStorage(url)));
-        const failedPaths = failedStorageCleanupPaths(allImages, results);
-        if (failedPaths.length > 0) {
-          setPendingImageCleanup((current) => [...new Set([...current, ...failedPaths])]);
-          showToast(`Producto eliminado, pero no se pudieron eliminar ${failedPaths.length} imágenes. Reintentá desde el aviso.`, 'error');
-        }
+      const { deleteStockProduct } = await import('../lib/deleteStockProduct');
+      const failedPaths = await deleteStockProduct(product, () => setProducts((previous) => previous.filter((item) => item.id !== product.id)));
+      if (failedPaths.length > 0) {
+        setPendingImageCleanup((current) => [...new Set([...current, ...failedPaths])]);
+        showToast(`Producto eliminado, pero no se pudieron eliminar ${failedPaths.length} imágenes. Reintentá desde el aviso.`, 'error');
+      } else {
+        showToast('Producto eliminado.', 'success');
       }
+      return true;
     } catch (error) {
       console.error('[Stock] delete product error:', error);
       showToast('No se pudo eliminar el producto. Las imágenes se conservaron.', 'error');
+      return false;
     }
+  };
+
+  const requestProductDelete = (id: string) => {
+    if (!canDelete) return;
+    setDeleteTarget(products.find((product) => product.id === id) ?? null);
   };
 
   const autoCalculatePrice = () => {
@@ -760,6 +775,7 @@ export default function Stock() {
     }
     setBulkGenerating(false);
     setSelectedIds(new Set());
+    setSelectingForCodes(false);
   };
 
   const visibleHoldings = useMemo(
@@ -828,6 +844,11 @@ export default function Stock() {
     });
   };
 
+  const startMobileCodeSelection = () => {
+    setSelectedIds(new Set());
+    setSelectingForCodes(true);
+  };
+
   const getMarginColor = (purchase: number, sale: number) => {
     if (!purchase || !sale) return 'text-slate-400';
     const margin = ((sale - purchase) / sale) * 100;
@@ -854,9 +875,36 @@ export default function Stock() {
     );
   }
 
+  const desktopProductId = isMobile ? null : new URLSearchParams(location.search).get('producto');
+
   return (
     <div className="operational-page space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {desktopProductId && <Suspense fallback={null}>
+        <DesktopProductEditorRoute key={desktopProductId} productId={desktopProductId} products={products} loading={loading} onEditProduct={openProductEditor} />
+      </Suspense>}
+      {isMobile && <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
+        <MobileStockEntry
+          data={[
+            ownerVisibleProducts, visibleHoldingsByProduct, inventoryOwners, inventoryOwnersById,
+            holdingsEnabled, loading, canWrite, canDelete, catalogVisibilitySavingIds, restockProductIds,
+            categories, selectedIds, selectingForCodes, bulkGenerating, pendingImageCleanup.length,
+            imageCleanupRetrying, restockRecommendations.length,
+          ]}
+          handlers={[
+            toggleSelect, startMobileCodeSelection,
+            () => { setSelectingForCodes(false); setSelectedIds(new Set()); },
+            () => { void handleBulkGenerate(); }, () => openProductEditor(),
+            () => setResellerPriceListOpen(true), () => { void handlePriceList('preview'); },
+            () => { void handlePriceList('download'); },
+            (product) => openProductEditor(product), (product) => { void toggleCatalogVisibility(product); },
+            (product) => { if (product.barcode) setPrintProduct(product); else void generateAndPrint(product); },
+            (product) => setFacebookProduct(product), deleteProduct,
+            (barcode) => openProductEditor(undefined, barcode), (product) => openProductEditor(product),
+            () => { void retryImageCleanup(); },
+          ]}
+        />
+      </Suspense>}
+      <div className="hidden flex-col justify-between gap-4 md:flex-row md:items-center lg:flex">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Gestión de Stock</h2>
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
@@ -925,7 +973,7 @@ export default function Stock() {
       </div>
 
       {pendingImageCleanup.length > 0 && (
-        <section role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+        <section role="alert" className="hidden flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between lg:flex">
           <div>
             <h3 className="font-bold">Limpieza de imágenes pendiente</h3>
             <p className="text-sm">
@@ -945,7 +993,7 @@ export default function Stock() {
       )}
 
       {!holdingsEnabled && (
-        <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/30">
+        <section className="hidden rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/30 lg:block">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-bold text-indigo-950 dark:text-indigo-100">Stock compartido por titular</h3>
@@ -1031,7 +1079,7 @@ export default function Stock() {
       </Modal>
 
       {restockRecommendations.length > 0 && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/30">
+        <section className="hidden rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/30 lg:block">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex gap-3">
               <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
@@ -1079,7 +1127,7 @@ export default function Stock() {
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#365fad] text-white px-4 py-3 rounded-xl shadow-sm shadow-slate-900/10"
+          className="hidden flex-col justify-between gap-3 rounded-xl bg-[#365fad] px-4 py-3 text-white shadow-sm shadow-slate-900/10 sm:flex-row sm:items-center lg:flex"
         >
           <span className="text-sm font-semibold">
             {selectedIds.size} producto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}
@@ -1109,7 +1157,7 @@ export default function Stock() {
       )}
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="hidden grid-cols-1 gap-4 md:grid-cols-5 lg:grid">
         <div className="relative md:col-span-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -1165,7 +1213,7 @@ export default function Stock() {
       </div>
 
       {/* Table */}
-      <div className="operational-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="operational-card hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="table-head bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold">
@@ -1334,8 +1382,9 @@ export default function Stock() {
                       </button>
                       <button
                         disabled={!canDelete}
+                        aria-label={`Eliminar ${p.name}`}
                         title={!canDelete ? 'Sin permiso' : undefined}
-                        onClick={() => handleDelete(p.id)}
+                        onClick={() => requestProductDelete(p.id)}
                         className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Trash2 size={18} />
@@ -1361,6 +1410,9 @@ export default function Stock() {
 
       {/* Add/Edit Modal */}
       {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onProductUpdated={updated => { setFacebookProduct(updated); setProducts(previous => previous.map(item => item.id === updated.id ? updated : item)); }} onClose={() => setFacebookProduct(null)} /></Suspense>}
+      {deleteTarget && !isMobile && <Suspense fallback={<p role="status">Cargando confirmación…</p>}>
+        <ProductDeleteConfirmation product={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={deleteProduct} />
+      </Suspense>}
       <Modal
         isOpen={isModalOpen} 
         onClose={closeProductEditor}
@@ -1820,7 +1872,7 @@ export default function Stock() {
         )}
       </Modal>
 
-      <BarcodeScannerOverlay
+      {scannerOpen && <Suspense fallback={null}><BarcodeScannerOverlay
         isOpen={scannerOpen}
         onClose={() => setScannerOpen(false)}
         continuous={false}
@@ -1830,7 +1882,7 @@ export default function Stock() {
           setFormData(prev => ({ ...prev, barcode: norm }));
           setScannerOpen(false);
         }}
-      />
+      /></Suspense>}
 
       <DeferredMount active={printProduct !== null}><Suspense fallback={<p role="status">Cargando etiquetas…</p>}><BarcodePrintModal
         isOpen={printProduct !== null}

@@ -62,7 +62,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 
 ## 3. Tareas
 
-### [ ] I1 Piezas compartidas
+### [x] I1 Piezas compartidas
 - Llevá la hoja inferior de H a `src/components/mobile/BottomSheet.tsx` (con título, foco atrapado, `Esc`, deslizar, `safe-area-inset-bottom`) y usala desde IA, sin cambiar su comportamiento.
 - Agregá `useIsMobile()` en `src/hooks/` con la misma media query que `useMobileAppChrome` (`max-width: 1023px`) y reutilizala en los dos.
 - Agregá `src/components/stock/StockBadge.tsx`: “Sin stock” (peligro), “Quedan N” (atención, cuando `0 < stock <= minStock`) o nada.
@@ -105,7 +105,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 - Estados: esqueletos al cargar; si falla una fuente (ventas, caja o pedidos), la tarjeta muestra “No se pudo cargar” con reintento y el resto sigue andando. Una cuenta vacía muestra la bienvenida que ya existe.
 - **Commit:** `feat(dashboard): mobile home`
 
-### [ ] I4 Lista de stock (pantallas 2 y 3)
+### [x] I4 Lista de stock (pantallas 2 y 3)
 - Debajo de `lg`, la tabla se reemplaza por **filas compactas** (`MobileStockList`, lazy), de 72 px o más.
   - Cada fila tiene miniatura (primera imagen o ícono), nombre en una línea, categoría, precio de venta y `StockBadge`.
   - Con titulares activados, la fila suma una línea chica con el reparto (“Riva 4 · Juan 3”).
@@ -126,7 +126,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 - Estados vacíos: “Todavía no cargaste productos” con botón; “No hay productos con esos filtros” con “Limpiar filtros”.
 - **Commit:** `feat(stock): mobile product list and filters`
 
-### [ ] I5 Ficha del producto (pantalla 4)
+### [x] I5 Ficha del producto (pantalla 4)
 - `/stock?producto=<id>` abre `MobileProductDetail` a pantalla completa (sin barra inferior ni encabezado, con `useMobileAppChrome`).
   - Un id inexistente o de otro negocio muestra “No encontramos ese producto” y “Volver al stock”.
   - En PC, ese mismo link abre el editor de hoy.

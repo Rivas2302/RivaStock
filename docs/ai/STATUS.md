@@ -1,5 +1,16 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — I4/I5 Stock móvil listo localmente
+
+- I4 agrega lista móvil con búsqueda normalizada y debounce de 150 ms, escáner, filtros persistidos en URL, conteos, orden, paginación de 30, selección de códigos, avisos y acciones en hojas inferiores. La paginación y el scroll se conservan al abrir una ficha y volver. El filtro por titular también cubre negocios con existencias compartidas.
+- I5 agrega ficha de producto en pantalla completa, fotos deslizables/ampliables, economía visible por titular, venta, envío de fotos, catálogo, código de barras, revendedores, movimientos filtrados y eliminación confirmada. En PC, `?producto=` sigue abriendo el editor y `confirm()` de borrado se reemplaza por un modal.
+- I1 queda cerrado: `BottomSheet`, `useIsMobile`, `StockBadge` y los arreglos compartidos quedaron conectados con la lista móvil. La prueba verifica filtro por titular con existencias compartidas.
+- Verificación local: `npm run lint`; suite **926/926** en 158 archivos; Playwright `stock-mobile.spec.ts` **13 aprobadas / 8 omitidas** (Android, iPhone y escritorio); tests focales **14/14**; `npm run build`; `npm run perf:check`; `git diff --check`.
+- Rendimiento Stock: **241.648 B → 238.314 B gzip JS**, dentro del tope de **236 KiB (241.664 B)**. JS inicial: **210.108 B**; CSS global: **23.585 B**; CSS móvil diferido: **480 B** gzip. Los componentes de lista/ficha se cargan en chunks diferidos.
+- No hubo migraciones, backup ni escrituras de datos. I4/I5 quedan listos localmente; el despliegue y la verificación autenticada de producción quedan para I9.
+- **Desvío de commits:** I4 e I5 comparten la ruta y el controlador lazy de Stock; se agrupan en un solo commit atómico. No se relaja ningún criterio funcional.
+- **Siguiente:** I6, con backup verificado antes de la migración.
+
 ## 2026-11-04 — H9 verificado; H8 queda abierto por desvío
 
 - Comparé los planes antes del cierre: `ACTION_PLAN.md` coincide con Desktop. `MOBILE_AI_UX_PLAN.md` de Desktop retrocedió las marcas H1–H7 y quitó el desvío de H5; conservé el historial respaldado por este archivo. `MOBILE_HOME_STOCK_PLAN.md` de Desktop también retrocedió I2/I3; preservé las marcas y verificaciones de producción ya registradas.
