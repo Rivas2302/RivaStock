@@ -74,7 +74,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 - Tests de `getStockStatus` y de la hoja inferior (foco y `Esc`).
 - **Commit:** `feat(mobile): shared mobile primitives for stock`
 
-### [ ] I2 Resumen del Inicio (datos)
+### [x] I2 Resumen del Inicio (datos)
 - Pasá los cálculos de `Dashboard.tsx` a `src/lib/dashboardSummary.ts`, como funciones puras con tests:
   - **Hoy:** ventas de hoy (suma de `total` y cantidad de ventas con fecha local de hoy, todos los estados), efectivo disponible y cobros pendientes (mismo cálculo que hoy);
   - **Mes:** ventas del mes, balance neto, transferencias disponibles, valor en stock, total invertido y ganancia potencial (sin cambiar las fórmulas);
@@ -84,7 +84,7 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
 - Sin cambios de consultas en esta tarea. Si querés achicar lo que baja el Inicio (columnas o rango de fechas), hacelo como mejora aparte, con números de antes y después en `STATUS.md` y sin cambiar los resultados.
 - **Commit:** `refactor(dashboard): extract dashboard summary`
 
-### [ ] I3 Inicio en el celular (pantalla 1)
+### [x] I3 Inicio en el celular (pantalla 1)
 - Debajo de `lg`, `Dashboard.tsx` renderiza `MobileHome` (lazy). La versión de PC queda igual.
 - Arriba, la fecha (“Miércoles 4 de noviembre”) y “Hola, {nombre}” (primer nombre del perfil, o el nombre del negocio).
 - Tarjeta **Hoy**:

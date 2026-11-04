@@ -7,9 +7,18 @@
 - Backup previo verificado en `C:\Users\USER\rivastock-backups\20261104T092439Z`: **96 tablas / 14.023 filas**, conteos exactos coincidentes; `schema.sql` **1.002.458 B**, `data.sql` **40.765.498 B**; Storage **733 objetos / 143.061.033 B**, verificación aprobada.
 - La única migración de la tarea, `20261104140100_ai_copywriting_product_id_snapshot`, quedó aplicada en `RivaStock_Oficial`. `pg_get_functiondef` confirmó que la función contiene `product.id`; no se modificaron filas ni se crearon datos `[QA]`.
 - Verificación local final: `npm run lint`; **920/920 pruebas en 157 archivos**. El diff de la función confirma que solo agrega el ID. `npm run build` y `npm run perf:check` quedan para el cierre H9 según el ciclo del plan.
-- **H7 [ ]:** falta publicar la interfaz y verificar en producción que la tarea apunta al producto correcto cuando hay duplicados. El perfil persistente de Playwright ya está autenticado, así que H9 no espera una acción manual.
+- El commit `8a95386` está pusheado a `main`. GitHub todavía no reporta un estado Vercel para ese SHA. Playwright autenticado en producción sigue cargando `AIHub-DM5OkAWR.js`, que no contiene el resolver por ID; H7 sigue `[ ]` hasta desplegar y validar el bundle nuevo.
+- **H7 [ ]:** falta verificar en producción que la tarea apunta al producto correcto cuando hay duplicados. El perfil persistente de Playwright ya está autenticado, así que H9 no espera una acción manual.
 - **H8 [ ] — Desvío vigente:** las RPC y el worker de las tareas Facebook no consumen el texto libre ni los toggles de contexto. La interfaz mantiene esos controles deshabilitados para esos dos tipos y explica qué datos sí recibe; no amplié la lógica de IA fuera del alcance del plan.
-- **Siguiente:** commit/push del H7; esperar Vercel y verificar el flujo con Playwright. Luego continuar H8/H9 y cerrar el bloque.
+- **Siguiente:** resolver el deploy de `8a95386`, validar H7 con Playwright y continuar H8/H9. Mientras tanto avanzar las verificaciones locales que no dependan del bundle de producción.
+
+## 2026-11-04 — I2 e I3 verificadas en producción
+
+- Volví a comparar `ACTION_PLAN.md` y `MOBILE_HOME_STOCK_PLAN.md` con Desktop; ambos SHA-256 coinciden con la copia de trabajo. La versión de I2/I3 no agrega cambios desde la última comparación.
+- Vercel reportó `success` para `4822a5c` en `main`. En producción, Playwright con el perfil autenticado abrió el Inicio a 390×844: saludo y seis accesos rápidos visibles, sin desborde horizontal. Esto confirma I2/I3 en el mismo despliegue.
+- La captura de escritorio de Inicio a 1280×900 coincide byte por byte antes/después. Las capturas repetidas de Stock coinciden byte por byte; la comparación contra el baseline anterior difiere solo en 2.027 píxeles del área de miniatura/texto (x=361–400, y=609–874), sin cambio de estructura.
+- Marco **I2 [x]** e **I3 [x]**. No hubo migraciones ni escrituras de datos.
+- **Siguiente:** cerrar H7–H9; luego I4 según el plan.
 
 ## 2026-11-04 — I3 Inicio móvil listo localmente; verificación de producción pendiente
 
