@@ -3,6 +3,7 @@
 **Repositorio:** `C:\Users\USER\Desktop\IA\RivaStock` · **Generado:** 02/11/2026 · **Destino:** Codex (agente ejecutor autónomo)
 **Estado verificado al generar:** `origin/main` = `9728340` · AI Bridge instalado 1.11.0 (paquete 1.12.0 generado) · extensión Facebook 0.5.16 publicada · publicador en T1.4.
 **Actualizado 02/11 18:30:** `origin/main` = `d283206` · Bridge 1.17.0 instalado · publicador con 14 tareas `[x]`. **El Bloque A todavía no se hizo y la credencial temporal `cli_login_postgres` quedó expuesta tres veces hoy en salidas de `supabase db dump --dry-run`: el Bloque A va primero, antes de cualquier otra tarea.**
+**Actualizado 03/11:** Riva aprobó el Bloque H. Después del punto seguro del trabajo en curso y antes de retomar el Bloque C, ejecutar H1–H9 según `docs/ai/MOBILE_AI_UX_PLAN.md`.
 
 Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cada tarea sigue en los planes existentes; este plan los referencia y, si hay contradicción, **manda este archivo** (salvo los límites de seguridad de `docs/automation/HANDOFF.md` §6 y §2 del plan del publicador, que nunca se relajan).
 
@@ -12,6 +13,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 | `docs/automation/AI_PUBLISHER_EXECUTION_PLAN.md` | Detalle de las tareas T1.4–T7.1 |
 | `docs/ai/KNOWLEDGE_ADDENDUM_CLOSEOUT.md` | Detalle de C2.2, C5.4 y Cierre |
 | `docs/ai/MULTI_BUSINESS_EXECUTION_PLAN.md` | Detalle del Bloque E (E0–E10): RivaStock para cualquier negocio |
+| `docs/ai/MOBILE_AI_UX_PLAN.md` | Detalle del Bloque H (H1–H9): Chat IA y Tareas en el celular |
 | `docs/ai/STATUS.md` | **Tu memoria:** una entrada por tarea |
 | `docs/ai/OWNER_ACTIONS.md` | Lo único que necesita a Riva |
 | `docs/automation/AI_PUBLISHER_PROGRESS.md` / `docs/ai/knowledge-progress.md` | Evidencia detallada (backups, pruebas, hashes) |
@@ -24,6 +26,7 @@ Este archivo **ordena** el trabajo y fija las reglas. El detalle técnico de cad
 2. Puertas (qué se puede hacer sin Riva y qué no)
 3. Bloque A — Seguridad y respaldo (primero)
 4. Bloque B — Cierre del módulo IA
+4b. **Bloque H — Chat IA y Tareas para el celular** (después del punto seguro en curso, antes de C)
 5. Bloque C — Publicador de Facebook supervisado por IA
 5b. Bloque E — RivaStock para cualquier negocio (agregado el 02/11)
 2b. **Bloque F — Entrega del primer cliente el 03/11 (urgente, va primero)**
@@ -280,6 +283,16 @@ Falla observada el 26/10: “Olvidá lo de los envíos a Santa Rosa” no archiv
 - La sección “Cierre” de `KNOWLEDGE_ADDENDUM_CLOSEOUT.md`. Si B3 sigue bloqueada, cerrar todo lo demás y dejar C2.2 como único pendiente por puerta.
 - En `AI_PUBLISHER_EXECUTION_PLAN.md`, fijar la versión del Bridge del supervisor (T2.3) en **la siguiente menor a la instalada** (1.13.0 si B2 terminó en 1.12.x).
 - **Commit:** `docs(ai): close knowledge and AI module pending items`
+
+---
+
+## 4b. Bloque H — Chat IA y Tareas para el celular (aprobado por Riva el 03/11)
+
+Detalle y criterios de aceptación: `docs/ai/MOBILE_AI_UX_PLAN.md` (H1–H9). Las seis pantallas aprobadas están en `docs/design/mobile-ai/`.
+
+- **Prioridad:** dejar primero el trabajo que ya está en curso en un punto seguro; luego ejecutar H1–H9 en orden y antes de retomar el Bloque C. Si el trabajo en curso espera una puerta del dueño, continuar H sin esperar esa puerta.
+- El cambio es solo para móvil (menos de 1024 px). Desde `lg` la experiencia de PC debe quedar igual que hoy y verificarse con capturas antes/después. Usá tokens de color de la app y respetá ambos temas.
+- **Commit de adopción:** `docs(ai): add mobile AI UX plan`. Los commits H1–H8 y el cierre siguen los mensajes indicados en el plan de móvil.
 
 ---
 

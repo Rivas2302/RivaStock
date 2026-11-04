@@ -1,5 +1,13 @@
 # Estado de ejecución autónoma
 
+## 2026-11-03 — Bloque H adoptado; sigue H1
+
+- Copié `MOBILE_AI_UX_PLAN.md` y las seis referencias HTML desde Desktop; SHA-256 coincide archivo por archivo. No hay cambios de producto todavía.
+- Comparé los planes: `ACTION_PLAN.md` del Desktop conserva el corte del 02/11 y está por detrás de `origin/main` (`dc40edd`), cuyo estado ya registra F5. Usé la versión de `origin/main`; no reemplacé el plan vigente con el archivo viejo del Desktop.
+- Agregué el Bloque H al plan maestro con prioridad después del punto seguro del trabajo en curso y antes de retomar C. Los criterios completos y las seis pantallas están vinculados desde el plan.
+- La instrucción de Riva deja las plantillas F1 listas y sin despliegue hasta que entregue un dominio verificado.
+- **Siguiente:** H1, datos para vista previa y paginación. Seguir H2–H9 en orden; conservar sin cambios la versión de PC.
+
 ## 2026-11-03 22:33 ART — F5 gestión del ciclo de vida desplegada y verificada
 
 - Agregué al panel recuperación por email, contraseña temporal de un solo uso con cambio obligatorio al ingresar, exportación ZIP previa a la baja, confirmación por nombre exacto, suspensión inmediata por 30 días y cancelación antes del inicio del borrado.

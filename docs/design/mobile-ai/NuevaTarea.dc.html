@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>IA · Nueva tarea</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 4px; border-bottom: 1px solid #2A2C31">
+    <a href="Tareas.dc.html" aria-label="Cerrar sin crear la tarea" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ECEDEF">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </a>
+    <h1 style="margin: 0; font-size: 17px; font-weight: 700">Nueva tarea</h1>
+  </header>
+
+  <form style="flex: 1; display: flex; flex-direction: column; overflow: hidden">
+    <div style="flex: 1; overflow: hidden; padding: 18px 20px; display: flex; flex-direction: column; gap: 20px">
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+        <legend style="padding: 0; margin-bottom: 10px; font-size: 15px; font-weight: 700">¿Qué querés hacer?</legend>
+        <label style="display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 14px; border-radius: 14px; border: 2px solid #6E8BD8; background: #2A3550">
+          <input type="radio" name="tipo" checked style="position: absolute; left: -9999px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: #365FAD; color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: none">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </span>
+          <span style="flex: 1"><span style="display: block; font-size: 15px; font-weight: 700">Texto libre</span><span style="display: block; margin-top: 2px; font-size: 13px; color: #C9CCD2">Respuestas, ideas, resúmenes</span></span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 14px; border-radius: 14px; border: 1px solid #383B42">
+          <input type="radio" name="tipo" style="position: absolute; left: -9999px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: #2C2E34; color: #C9CCD2; display: flex; align-items: center; justify-content: center; flex: none">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          </span>
+          <span style="flex: 1"><span style="display: block; font-size: 15px; font-weight: 700">Publicación para Facebook</span><span style="display: block; margin-top: 2px; font-size: 13px; color: #A4A8B0">Título y descripción de un producto</span></span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 14px; border-radius: 14px; border: 1px solid #383B42">
+          <input type="radio" name="tipo" style="position: absolute; left: -9999px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: #2C2E34; color: #C9CCD2; display: flex; align-items: center; justify-content: center; flex: none">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+          </span>
+          <span style="flex: 1"><span style="display: block; font-size: 15px; font-weight: 700">Revisar fotos</span><span style="display: block; margin-top: 2px; font-size: 13px; color: #A4A8B0">Orden, portada y mejoras</span></span>
+        </label>
+      </fieldset>
+
+      <label style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 15px; font-weight: 700">Contale qué necesitás</span>
+        <textarea rows="5" placeholder="Ej: escribí una respuesta amable para un cliente mayorista que pide precio por 10 cámaras" style="box-sizing: border-box; width: 100%; padding: 14px; border-radius: 14px; border: 1px solid #383B42; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; line-height: 1.5; resize: none; outline: none"></textarea>
+      </label>
+
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <a href="AjustesChat.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; background: #24262B; border: 1px solid #383B42; color: #C9CCD2; font-size: 13px; font-weight: 600">GPT-6 Luna · Bajo
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </a>
+        <a href="AjustesChat.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; background: #24262B; border: 1px solid #383B42; color: #C9CCD2; font-size: 13px; font-weight: 600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5FC08A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Datos del negocio
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 12px 20px 18px; border-top: 1px solid #2A2C31; display: flex; flex-direction: column; gap: 10px">
+      <p style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #A4A8B0"><span style="width: 8px; height: 8px; border-radius: 4px; background: #5FC08A"></span>Tu PC está conectada. Te avisamos cuando esté lista.</p>
+      <button type="submit" style="height: 52px; border: 0; border-radius: 14px; background: #365FAD; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 700">Enviar a mi PC</button>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

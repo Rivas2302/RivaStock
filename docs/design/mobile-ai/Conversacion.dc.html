@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>IA · Conversación</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 4px; border-bottom: 1px solid #2A2C31; background: #1C1D21">
+    <a href="Main.dc.html" aria-label="Volver a los chats" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ECEDEF">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+    </a>
+    <div style="flex: 1; min-width: 0">
+      <h1 style="margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Cuáles fueron mis últimas preguntas</h1>
+      <p style="margin: 2px 0 0; font-size: 12px; color: #A4A8B0; display: flex; align-items: center; gap: 6px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #5FC08A"></span>Codex en tu PC</p>
+    </div>
+    <button type="button" aria-label="Opciones del chat" style="width: 44px; height: 44px; border: 0; background: transparent; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+    </button>
+  </header>
+
+  <main style="flex: 1; overflow: hidden; padding: 12px 16px 8px; display: flex; flex-direction: column; gap: 18px">
+    <p style="margin: 0; align-self: center; font-size: 12px; color: #A4A8B0; background: #24262B; padding: 4px 12px; border-radius: 12px">Hoy</p>
+
+    <div style="align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+      <p style="margin: 0; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: #2F4A86; color: #F2F5FC; font-size: 15px; line-height: 1.45">¿Cuáles fueron mis últimas preguntas?</p>
+      <span style="font-size: 11px; color: #A4A8B0">07:55</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="font-size: 15px; line-height: 1.55; color: #ECEDEF">
+        <p style="margin: 0 0 6px">En tus chats anteriores me preguntaste:</p>
+        <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px">
+          <li>¿Tenés memoria? <span style="color: #A4A8B0">(26 oct)</span></li>
+          <li>¿Cuándo juega Boca Juniors? <span style="color: #A4A8B0">(25 oct)</span></li>
+          <li>¿Cuánto salió Boca Juniors? <span style="color: #A4A8B0">(21 oct)</span></li>
+        </ul>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+        <button type="button" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid #383B42; background: #24262B; color: #C9CCD2; font: inherit; font-size: 12px; font-weight: 600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Usé 3 chats anteriores
+        </button>
+        <span style="flex: 1"></span>
+        <button type="button" aria-label="Copiar respuesta" style="width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: #A4A8B0; display: flex; align-items: center; justify-content: center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div style="align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+      <p style="margin: 0; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: #2F4A86; color: #F2F5FC; font-size: 15px; line-height: 1.45">¿A cuánto está el Cable iPhone C?</p>
+      <span style="font-size: 11px; color: #A4A8B0">07:58</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <p style="margin: 0; font-size: 15px; line-height: 1.55">El <strong>Cable iPhone C</strong> está a <strong>$7.000</strong>. Ahora no tenés unidades en stock.</p>
+      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+        <button type="button" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid #383B42; background: #24262B; color: #C9CCD2; font: inherit; font-size: 12px; font-weight: 600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/></svg>Tu stock
+        </button>
+        <span style="flex: 1"></span>
+        <button type="button" aria-label="Copiar respuesta" style="width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: #A4A8B0; display: flex; align-items: center; justify-content: center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #24262B; border: 1px solid #383B42; font-size: 13px; color: #C9CCD2">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9DB4EC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      <span style="flex: 1">Memoria actualizada: precio del Cable iPhone C</span>
+      <button type="button" style="height: 32px; padding: 0 8px; border: 0; background: transparent; color: #9DB4EC; font: inherit; font-size: 13px; font-weight: 700">Deshacer</button>
+    </div>
+  </main>
+
+  <form style="padding: 8px 12px 14px; border-top: 1px solid #2A2C31; background: #1C1D21; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; gap: 8px">
+      <a href="AjustesChat.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; background: #24262B; border: 1px solid #383B42; color: #C9CCD2; font-size: 12px; font-weight: 600">GPT-6 Luna · Bajo
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </a>
+      <a href="AjustesChat.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; background: #24262B; border: 1px solid #383B42; color: #C9CCD2; font-size: 12px; font-weight: 600">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5FC08A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Datos del negocio
+      </a>
+    </div>
+    <div style="display: flex; align-items: flex-end; gap: 8px">
+      <button type="button" aria-label="Adjuntar imagen" style="width: 44px; height: 44px; flex: none; border: 1px solid #383B42; border-radius: 22px; background: #24262B; color: #C9CCD2; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <label style="flex: 1; min-width: 0">
+        <span style="position: absolute; left: -9999px">Mensaje</span>
+        <textarea rows="1" placeholder="Escribí tu mensaje…" style="display: block; width: 100%; box-sizing: border-box; min-height: 44px; padding: 11px 16px; border-radius: 22px; border: 1px solid #383B42; background: #24262B; color: #ECEDEF; font: inherit; font-size: 15px; resize: none; outline: none"></textarea>
+      </label>
+      <button type="submit" aria-label="Enviar mensaje" style="width: 44px; height: 44px; flex: none; border: 0; border-radius: 22px; background: #365FAD; color: #FFFFFF; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      </button>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

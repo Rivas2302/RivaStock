@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>IA · Lista de chats</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <header style="padding: 20px 20px 12px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.3px">IA</h1>
+      <a href="#" style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 18px; background: #24262B; border: 1px solid #383B42; color: #ECEDEF; font-size: 13px; font-weight: 600">
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: #5FC08A"></span>PC conectada
+      </a>
+    </div>
+    <nav aria-label="Secciones de IA" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; background: #24262B; border-radius: 14px">
+      <a href="Main.dc.html" aria-current="page" style="height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #365FAD; color: #FFFFFF; font-size: 14px; font-weight: 700">Chats</a>
+      <a href="Tareas.dc.html" style="height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #C9CCD2; font-size: 14px; font-weight: 600">Tareas</a>
+      <button type="button" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 10px; background: transparent; color: #C9CCD2; font: inherit; font-size: 14px; font-weight: 600">Más
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </nav>
+    <label style="display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 12px; background: #24262B; border: 1px solid #383B42; color: #A4A8B0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span style="position: absolute; left: -9999px">Buscar en tus chats</span>
+      <input type="search" placeholder="Buscar en tus chats" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: #ECEDEF; font: inherit; font-size: 15px">
+    </label>
+  </header>
+
+  <main style="flex: 1; overflow: hidden; padding: 0 0 140px">
+    <p style="margin: 8px 20px 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #A4A8B0">Hoy</p>
+    <a href="Conversacion.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 20px; min-height: 64px; box-sizing: border-box; color: #ECEDEF; background: #24262B">
+      <span style="flex: 1; min-width: 0">
+        <span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Cuáles fueron mis últimas preguntas</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; color: #A4A8B0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Fueron sobre Boca Juniors y sobre la memoria…</span>
+      </span>
+      <span style="font-size: 12px; color: #A4A8B0; padding-top: 2px">07:55</span>
+    </a>
+
+    <p style="margin: 18px 20px 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #A4A8B0">Octubre</p>
+
+    <div style="position: relative; overflow: hidden">
+      <button type="button" style="position: absolute; top: 0; right: 0; bottom: 0; width: 96px; border: 0; background: #B4423A; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Eliminar
+      </button>
+      <a href="Conversacion.dc.html" style="position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 12px 20px; min-height: 64px; box-sizing: border-box; color: #ECEDEF; background: #1C1D21; transform: translateX(-96px)">
+        <span style="flex: 1; min-width: 0">
+          <span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">¿Tenés memoria?</span>
+          <span style="display: block; margin-top: 3px; font-size: 13px; color: #A4A8B0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Sí, recuerdo los datos importantes de…</span>
+        </span>
+        <span style="font-size: 12px; color: #A4A8B0; padding-top: 2px">26 oct</span>
+      </a>
+    </div>
+
+    <a href="Conversacion.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 20px; min-height: 64px; box-sizing: border-box; color: #ECEDEF; border-top: 1px solid #2A2C31">
+      <span style="flex: 1; min-width: 0">
+        <span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">¿Cuándo juega Boca Juniors?</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; color: #A4A8B0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">El próximo partido es el domingo a las…</span>
+      </span>
+      <span style="font-size: 12px; color: #A4A8B0; padding-top: 2px">25 oct</span>
+    </a>
+    <a href="Conversacion.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 20px; min-height: 64px; box-sizing: border-box; color: #ECEDEF; border-top: 1px solid #2A2C31">
+      <span style="flex: 1; min-width: 0">
+        <span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">¿Cuánto salió Boca Juniors?</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; color: #A4A8B0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Boca ganó 2 a 1 el último partido…</span>
+      </span>
+      <span style="font-size: 12px; color: #A4A8B0; padding-top: 2px">21 oct</span>
+    </a>
+    <a href="Conversacion.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 20px; min-height: 64px; box-sizing: border-box; color: #ECEDEF; border-top: 1px solid #2A2C31">
+      <span style="flex: 1; min-width: 0">
+        <span style="display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hola, ¿qué podés hacer?</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; color: #A4A8B0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Puedo responder sobre tus productos, stock…</span>
+      </span>
+      <span style="font-size: 12px; color: #A4A8B0; padding-top: 2px">20 oct</span>
+    </a>
+    <button type="button" style="display: block; width: calc(100% - 40px); margin: 8px 20px 0; height: 44px; border: 1px solid #383B42; border-radius: 12px; background: transparent; color: #C9CCD2; font: inherit; font-size: 14px; font-weight: 600">Ver chats anteriores (3)</button>
+  </main>
+
+  <a href="Conversacion.dc.html" style="position: absolute; right: 16px; bottom: 88px; display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px; border-radius: 26px; background: #365FAD; color: #FFFFFF; font-size: 15px; font-weight: 700; box-shadow: 0 6px 18px rgba(0,0,0,0.35)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nuevo chat
+  </a>
+
+  <nav aria-label="Navegación principal" style="position: absolute; left: 0; right: 0; bottom: 0; height: 68px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: #202125; border-top: 1px solid #2E3036">
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #A4A8B0; font-size: 11px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #A4A8B0; font-size: 11px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Consulta</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #A4A8B0; font-size: 11px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Stock</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #A4A8B0; font-size: 11px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Enviar fotos</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #A4A8B0; font-size: 11px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.5 12h11l2-8H6"/></svg>Ventas</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
