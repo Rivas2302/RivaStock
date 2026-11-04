@@ -952,3 +952,18 @@
 - **Backup pre-migración:** `%USERPROFILE%\rivastock-backups\20261027T012616Z\`; 73 tablas, 13.054 filas, 365 objetos `assets`, 0 `knowledge`. Se verificaron 97 migraciones por nombre y SHA-256 contra el repo antes de aplicar `20261027013321_ai_function_settings_memory_default`; detalle tabla por tabla en `knowledge-progress.md`.
 - **Verificación local:** lint aprobado; 568 pruebas en 94 archivos aprobadas con credenciales ficticias de proceso; Bridge typecheck y 69 pruebas aprobados; build y perf:check aprobados. El paquete AI Bridge 1.12.0 se generó.
 - **Publicador:** aún sin iniciar. El plan de trabajo de este worktree es más reciente que la copia del Desktop. No publicar contenido fuera de modo ensayo. Antes de cada migración, respaldar el estado más reciente.
+
+## 2026-11-04 [Claude Code] J1 Tanda 1 — Bocetos HTML
+
+- **ventas-pc.html** ✅ — Tabla filtros, modal nueva venta, resumen cards, exportar, POS shortcut
+- **ventas-celular.html** ✅ — Lista expandible, chips filtro, bottom sheet, bottom nav
+- **pos-pc.html** ✅ — Panel catálogo + carrito, oversell, ajuste global, método pago
+- **pos-celular.html** ✅ — Tabs Buscar/Carrito, oversell, distribución titular, cobrar
+- **consulta-rapida-pc.html** ✅ — Tarjeta producto precio grande, estados found/unknown/idle
+- **consulta-rapida-celular.html** ✅ — Escanear header, precio accent, estados
+- **buscar-y-enviar-pc.html** ✅ — Grid 4 col, filtros multi, panel fotos, lista precios, compartir
+- **buscar-y-enviar-celular.html** ✅ — Grid 2 col, chips colección, barra sticky, share nativo
+- **index.html** ✅ — Índice con links a todas las pantallas + referencias aprobadas
+
+Todos los bocetos usan tokens CSS de DESIGN.md, Hanken Grotesk, ejemplo en pesos, toggle claro/oscuro.
+Sin toque en src/, supabase/ ni extensions/.

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boceto · Consulta rápida (PC)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap">
+<style>
+/*
+INVENTARIO DE FUNCIONES — Consulta rápida / QuickPrice (QuickPrice.tsx)
+══════════════════════════════════════════════
+ESTADO GENERAL
+  - Reducer-based load state: idle | searching | found | unknownCode | selectionUnavailable | empty
+  - Debouce 100ms en la búsqueda (useEffect + timeout)
+  - currentProduct: el producto actualmente mostrado
+
+HEADER / NAVEGACIÓN
+  - Título de sección (desde menú lateral de RivaStock)
+  - No tiene botón volver (es una pantalla de primer nivel en el sidebar)
+
+BÚSQUEDA
+  - Input texto: búsqueda por nombre, código de barras, SKU, variantModel
+  - Botón "Escanear" → BarcodeScannerOverlay (fullscreen)
+  - Focus automático al montar
+
+RESULTADO — tarjeta de producto
+  - Foto del producto (si existe, con placeholder)
+  - Nombre del producto (grande, prominente)
+  - Precio de venta (muy grande, con signo $)
+  - Stock disponible (chips de color: verde ok, warn bajo, danger sin stock)
+  - Código de barras
+  - SKU (si existe)
+  - variantModel (si existe)
+  - Descripción / notas (si existen)
+
+ESTADOS ESPECIALES
+  - loading: spinner
+  - unknownCode: "No encontramos ningún producto con ese código"
+                  + botón "Escanear otro"
+  - selectionUnavailable: aviso de que el producto no está disponible
+                           para selección (ej. deshabilitado)
+  - empty: "Escribí o escaneá para buscar"
+  - found: tarjeta de producto completa
+  - multiple results: lista de coincidencias para seleccionar
+
+ESCANEAR OTRO
+  - Botón para limpiar y volver al estado idle → escanear de nuevo
+══════════════════════════════════════════════
+*/
+
+body{margin:0}
+.t-claro{--bg:#FFFFFF;--s1:#FAFAF9;--s2:#F4F4F3;--s3:#E8E8E6;--ink:#191919;--ink2:#6B6B6B;--ink3:#A3A3A3;--line:#EDEDEC;--acc:#23705F;--acc-ink:#FFFFFF;--acc-soft:#E3F1EC;--acc-text:#1D5E50;--danger:#C4382B;--danger-soft:#FBEDEB;--warn:#A86F0C;--warn-soft:#FBF3E2;--bar:#DEDEDB;--pri:#191919;--pri-ink:#FFFFFF}
+.t-oscuro{--bg:#121212;--s1:#181818;--s2:#202020;--s3:#2B2B2B;--ink:#F2F2F2;--ink2:#A7A7A7;--ink3:#6A6A6A;--line:#262626;--acc:#5FC2A5;--acc-ink:#0E2A22;--acc-soft:#16352D;--acc-text:#7DD3B8;--danger:#F07B6E;--danger-soft:#3A1F1C;--warn:#E0A84A;--warn-soft:#3A2D14;--bar:#333333;--pri:#F2F2F2;--pri-ink:#121212}
+
+.btn-sec{height:38px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap}
+.btn-sec:hover{background:var(--s2)}
+.field{height:48px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--s2);color:var(--ink);font:inherit;font-size:16px;outline:none}
+.field:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.chip-stock-ok{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;background:var(--acc-soft);color:var(--acc-text);font-size:13px;font-weight:600}
+.chip-stock-warn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:13px;font-weight:600}
+.chip-stock-no{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;background:var(--danger-soft);color:var(--danger);font-size:13px;font-weight:600}
+.money-sign{font-size:18px;font-weight:400;opacity:.45;vertical-align:.35em;margin-right:2px}
+.tema-toggle{position:fixed;right:16px;top:16px;z-index:99;height:34px;padding:0 14px;border-radius:17px;border:1px solid #999;background:#fff;color:#111;font:500 13px system-ui;cursor:pointer}
+</style>
+</head>
+<body>
+<button type="button" class="tema-toggle" onclick="var p=document.getElementById('p');var o=p.classList.contains('t-oscuro');p.classList.toggle('t-oscuro',!o);p.classList.toggle('t-claro',o)">Cambiar claro / oscuro</button>
+
+<div id="p" class="t-claro" style="min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Hanken Grotesk',system-ui,sans-serif;font-variant-numeric:tabular-nums;display:flex">
+
+  <!-- Sidebar navegación (simulado) -->
+  <aside style="width:220px;flex-shrink:0;border-right:1px solid var(--line);background:var(--s1);padding:16px 0;display:flex;flex-direction:column">
+    <div style="padding:0 16px 16px;border-bottom:1px solid var(--line);margin-bottom:8px">
+      <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--ink3)">RIVASTOCK</p>
+    </div>
+    <nav style="flex:1;padding:0 8px;display:flex;flex-direction:column;gap:1px">
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;text-decoration:none;color:var(--ink2);font-size:14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Inicio
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;text-decoration:none;color:var(--ink2);font-size:14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h8"/></svg>
+        Stock
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;text-decoration:none;color:var(--ink2);font-size:14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+        Ventas
+      </a>
+      <a href="#" aria-current="page" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;text-decoration:none;color:var(--acc);background:var(--acc-soft);font-size:14px;font-weight:600">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Consulta rápida
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;text-decoration:none;color:var(--ink2);font-size:14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Clientes
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Contenido principal -->
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px">
+
+    <!-- Encabezado -->
+    <div style="width:100%;max-width:560px;margin-bottom:28px">
+      <h1 style="margin:0 0 4px;font-size:24px;font-weight:700;letter-spacing:-0.025em">Consulta rápida</h1>
+      <p style="margin:0;font-size:14px;color:var(--ink2)">Buscá por nombre, código de barras o SKU</p>
+    </div>
+
+    <!-- Barra de búsqueda -->
+    <div style="width:100%;max-width:560px;display:flex;gap:10px;margin-bottom:32px">
+      <div style="position:relative;flex:1">
+        <svg style="position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink3)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" value="auriculares" placeholder="Nombre, código, SKU…" class="field" style="width:100%;padding-left:44px;box-sizing:border-box">
+      </div>
+      <button type="button" class="btn-sec" aria-label="Escanear código de barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M4 12h16"/></svg>
+        Escanear
+      </button>
+    </div>
+
+    <!-- ───── ESTADO: producto encontrado (tarjeta) ───── -->
+    <div style="width:100%;max-width:560px">
+
+      <div style="background:var(--s1);border:1px solid var(--line);border-radius:14px;overflow:hidden">
+        <!-- Foto -->
+        <div style="height:220px;background:var(--s2);display:flex;align-items:center;justify-content:center;position:relative">
+          <!-- Placeholder foto -->
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true" style="color:var(--ink3)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <!-- Badge de stock encima de la foto -->
+          <div style="position:absolute;top:12px;right:12px">
+            <span class="chip-stock-ok">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              Stock: 24
+            </span>
+          </div>
+        </div>
+
+        <!-- Info del producto -->
+        <div style="padding:24px">
+          <h2 style="margin:0 0 6px;font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.2">Auriculares Bluetooth M20</h2>
+          <p style="margin:0 0 20px;font-size:13px;color:var(--ink2)">Electrónica · SKU: AU-BT-M20 · 779456</p>
+
+          <!-- Precio prominente -->
+          <div style="margin-bottom:20px">
+            <p style="margin:0 0 2px;font-size:12px;color:var(--ink3);font-weight:500;letter-spacing:.03em;text-transform:uppercase">Precio de venta</p>
+            <p style="margin:0;font-size:48px;font-weight:700;letter-spacing:-0.04em;line-height:1"><span class="money-sign">$</span>18.500</p>
+          </div>
+
+          <!-- Detalles -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+            <div style="padding:12px;background:var(--s2);border-radius:8px">
+              <p style="margin:0 0 2px;font-size:11px;color:var(--ink3);font-weight:500;letter-spacing:.03em;text-transform:uppercase">Código</p>
+              <p style="margin:0;font-size:14px;font-weight:600;font-family:monospace">779456</p>
+            </div>
+            <div style="padding:12px;background:var(--s2);border-radius:8px">
+              <p style="margin:0 0 2px;font-size:11px;color:var(--ink3);font-weight:500;letter-spacing:.03em;text-transform:uppercase">Variante</p>
+              <p style="margin:0;font-size:14px;font-weight:600">Negro</p>
+            </div>
+          </div>
+
+          <!-- Descripción / notas -->
+          <div style="padding:12px;background:var(--s2);border-radius:8px">
+            <p style="margin:0 0 4px;font-size:11px;color:var(--ink3);font-weight:500;letter-spacing:.03em;text-transform:uppercase">Notas</p>
+            <p style="margin:0;font-size:13px;color:var(--ink2);line-height:1.5">Auriculares inalámbricos Bluetooth 5.3, cancelación de ruido activa, autonomía 40 hs.</p>
+          </div>
+
+          <!-- Botón escanear otro -->
+          <div style="margin-top:20px;text-align:center">
+            <button type="button" class="btn-sec" style="margin:0 auto">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M4 12h16"/></svg>
+              Escanear otro
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── ESTADO ALTERNATIVO: código desconocido ───── -->
+      <div style="margin-top:28px;padding:32px;text-align:center;background:var(--s1);border:1px solid var(--line);border-radius:14px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color:var(--ink3);margin-bottom:12px"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M4 12h16"/><path d="M9 10h.01M15 10h.01M9 14h6"/></svg>
+        <p style="margin:0 0 4px;font-size:16px;font-weight:600">Código no encontrado</p>
+        <p style="margin:0 0 2px;font-size:14px;color:var(--ink2)">No hay ningún producto con el código</p>
+        <p style="margin:0 0 20px;font-size:14px;font-weight:600;font-family:monospace;color:var(--ink)">779999</p>
+        <button type="button" class="btn-sec" style="margin:0 auto">Escanear otro</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>
