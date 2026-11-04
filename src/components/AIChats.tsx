@@ -174,7 +174,7 @@ export default function AIChats({
         setMessages(detail.messages);
         setJobs(detail.jobs);
         const latestContextJob = detail.jobs.at(-1);
-        if (latestContextJob && (loadedContextRef.current?.chatId !== selectedChatId
+        if (isMobileViewport && latestContextJob && (loadedContextRef.current?.chatId !== selectedChatId
           || loadedContextRef.current.jobId !== latestContextJob.id)) {
           setIncludeBusinessContext(latestContextJob.include_business_context === true);
           setIncludeProjectContext(latestContextJob.include_project_context === true);
@@ -225,7 +225,7 @@ export default function AIChats({
       window.removeEventListener('focus', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [selectedChatId, hasPendingJob, chatRefreshKey]);
+  }, [selectedChatId, hasPendingJob, chatRefreshKey, isMobileViewport]);
 
   useEffect(() => {
     if (!selectedChatId || loadingMessages || hasPendingJob || !latestCompletedJob || latestMemoryChangeCount > 0) return;

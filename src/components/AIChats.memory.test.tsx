@@ -90,6 +90,26 @@ describe('AIChats memory activity', () => {
     expect(mocks.undoAIMemoryEvent).toHaveBeenCalledWith(EVENT_ID);
   });
 
+  it('keeps desktop context defaults unchanged when loading an existing chat', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    mocks.getAIChat.mockResolvedValueOnce({
+      chat: { id: CHAT_ID, provider: 'codex', title: 'Memoria QA', model_id: null, reasoning_effort: null, created_at: '2026-10-26T10:00:00Z', updated_at: '2026-10-26T10:00:00Z', last_message_at: '2026-10-26T10:00:00Z' },
+      messages: [],
+      jobs: [{ id: JOB_ID, status: 'completed', error: null, created_at: '2026-10-26T10:00:00Z', include_business_context: true, include_project_context: true }],
+    });
+
+    await render(<AIChats initialChatId={CHAT_ID} onOpenMemory={vi.fn()}/>);
+
+    const businessContext = [...host.querySelectorAll('label')]
+      .find((label) => label.textContent?.includes('Catálogo e inventario'))
+      ?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const projectContext = [...host.querySelectorAll('label')]
+      .find((label) => label.textContent?.includes('Proyecto RivaStock'))
+      ?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(businessContext?.checked).toBe(false);
+    expect(projectContext?.checked).toBe(false);
+  });
+
   it('refreshes memory activity after the asynchronous extraction finishes', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-02T23:00:00Z'));
