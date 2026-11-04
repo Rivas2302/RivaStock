@@ -152,8 +152,8 @@ Los números y nombres de la maqueta son de ejemplo. Los hex de la maqueta son e
   - **Eliminar**, solo con `canDelete`. Confirma en una hoja inferior propia (“Se borra el producto y sus fotos. No se puede deshacer.”) y usa el mismo `handleDelete`. Reemplazá también `confirm()` en PC por un modal propio.
 - **Commit:** `feat(stock): mobile product detail`
 
-### [ ] I6 Ajustar stock con motivo (pantalla 5): base de datos
-**Estado 04/11:** el smoke PGlite pasa con 20 comprobaciones. La migración `20261104124859_mobile_stock_adjustments` está aplicada; producción confirma sus permisos y las guardas de suspensión. Backup previo verificado: 96 tablas / 14.235 filas y 789 objetos Storage. I6 sigue `[ ]` hasta el smoke transaccional con producto `[QA]` y `ROLLBACK`.
+### [x] I6 Ajustar stock con motivo (pantalla 5): base de datos
+**Estado 04/11:** migración `20261104124859_mobile_stock_adjustments` aplicada tras backup verificado (96 tablas / 14.235 filas; 789 objetos Storage). Smoke de producción ejecutado con el producto `[QA]` dentro de `BEGIN … ROLLBACK`: el RPC incrementó el stock y registró el comando dentro de la transacción; tras el rollback se confirmó que el stock original permaneció y que el comando de prueba no existe. PGlite pasa con 20 comprobaciones.
 **Requiere backup verificado antes de migrar.**
 
 Migración aditiva `adjust_product_stock`, `SECURITY DEFINER`, `SET search_path = public, pg_temp`. Firma:
@@ -190,8 +190,8 @@ Pruebas y cierre:
 - `src/lib/stockAdjustments.ts` con `adjustProductStock()`, tipado y con mensajes en castellano.
 - **Commit:** `feat(stock): stock adjustments with reason`
 
-### [ ] I7 Ajustar stock: hoja inferior
-**Estado local 04/11:** hoja inferior implementada y verificada con tests y Playwright local Android/iPhone. Queda abierta hasta completar el cierre de producción de I6/I9.
+### [x] I7 Ajustar stock: hoja inferior
+**Estado 04/11:** Playwright en producción, Chromium 390×844, verificó suma, resta y conteo con motivos; la ficha actualizó el stock tras cada operación. Restar por encima de la existencia mostró el resultado negativo y dejó deshabilitado «Guardar ajuste»; no se guardó el intento inválido. La hoja local también pasó Playwright Android/iPhone.
 - Se abre desde la ficha (y desde “⋯” → Ajustar en una fila larga si querés), con `&ajustar=1`.
 - Elementos de la hoja:
   - selector segmentado **Sumar | Restar | Contar**, con Sumar por defecto. “Contar” cambia el texto a “¿Cuántas unidades contaste?”;
@@ -223,7 +223,8 @@ Pruebas y cierre:
 - Al crear, se abre la ficha del producto nuevo. Al editar, se vuelve a la ficha.
 - **Commit:** `feat(stock): mobile product form`
 
-### [ ] I9 Cierre: pruebas y verificación en producción
+### [x] I9 Cierre: pruebas y verificación en producción
+**Estado 04/11:** cierre autenticado de producción terminado con el perfil persistente de Playwright. Se creó el producto `[QA]` desde la app, se ajustó, editó y eliminó por el flujo normal. El smoke de I6 quedó revertido; la búsqueda de Stock y las consultas de verificación confirman que no quedan el producto ni sus existencias. El flujo de borrar conserva cuatro filas en `inventory_stock_commands` como historial de movimientos; no las eliminé por SQL. Se probaron los destinos POS y Enviar fotos, y se guardaron capturas QA en `docs/design/mobile-home-stock/production/` con montos y nombre del titular tapados. Los tests locales ya cubren Android, iPhone/WebKit, 360×740, permisos, suspensión, módulos, contraste y PC sin cambios visuales. **Desvío de limpieza:** quedan esas cuatro filas históricas de auditoría por el diseño del ledger; no queda el producto ni archivos de Storage.
 - **Playwright** con viewport Android (390×844, Chromium) e iPhone (390×844, WebKit), más una pantalla chica de 360×740:
   - Inicio: Hoy, alerta, accesos filtrados por permisos y tira del mes;
   - Stock: buscar (también por código), chips, filtros en la URL, atrás desde la ficha conserva filtros y scroll, y “Ver más”;

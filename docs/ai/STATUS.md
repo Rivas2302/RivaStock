@@ -1,22 +1,21 @@
 # Estado de ejecución autónoma
-## 2026-11-04 — I7/I8 listas localmente; I9 espera despliegue y validación productiva
+## 2026-11-04 — I6–I9 cerradas con validación autenticada en producción
 
-- I7 agrega la hoja móvil de ajuste de stock con suma/resta/conteo, motivo, límites, titular e idempotencia; I8 agrega formulario móvil de alta/edición, carga y reordenamiento de fotos, validación/foco, opciones avanzadas y confirmación propia para cambios sin guardar y botón atrás.
-- `npm run lint` pasó; `npm test -- --maxWorkers=1` pasó **938/938 en 162 archivos** con variables Supabase ficticias solo en el proceso. Playwright móvil pasó **40 escenarios; 23 omitidos por proyecto; 0 fallidos**, con Android, iPhone/WebKit, 360×740, formularios, ajuste, roles, filtros y navegación.
-- `npm run build` y `npm run perf:check` pasaron. Gzip: entrada **210.216 B JS / 23.604 B CSS**, AIHub **246.646 B**, Stock **240.619 B** (límite 241.664 B), Knowledge **221.369 B JS / 25.395 B CSS**. Se usa `ink-subtle` en los textos móviles: contraste entre **6,61:1 y 10,61:1** en claro/oscuro sobre las cuatro superficies base; `themeContrast.test.ts` cubre AA en ambos temas.
-- Las capturas Playwright de Inicio, lista de Stock y editor a 1280×900 son idénticas píxel por píxel entre `e9cf831` y el cambio actual. El test desactiva transiciones para hacer estable la comparación. La versión PC no cambia.
-- El estado de GitHub para `e9cf831` fue Vercel `failure`. El build local reprodujo el error de sintaxis de un `\n` literal al final de `ProductEditorFields.tsx`; el commit `1bc0f04` quitó ese marcador. Vercel confirmó `success`; producción responde HTTP 200 y sirve `index-oELocYQ2.js` en vez del bundle anterior `index-D4nu-YLY.js`.
-- Comparé los planes con Desktop: `ACTION_PLAN.md` coincide; Desktop tiene una copia anterior de `MOBILE_HOME_STOCK_PLAN.md` que desmarca I1–I5/I8 y omite notas de estado ya respaldadas, sin cambios nuevos de alcance. Desktop no contiene `STATUS.md`, `OWNER_ACTIONS.md` ni `MENSAJE_PARA_RIVA.md`.
-- **I8 [x]** por criterios locales completos. **I6, I7 e I9 [ ]** hasta terminar el smoke transaccional y la validación/limpieza QA autenticada en producción. La migración I6 está aplicada; no hubo nuevas migraciones ni escrituras de datos.
-- Producción ya sirve el frontend actualizado. La validación autenticada sigue pendiente porque Chrome mantiene 16 procesos abiertos sin CDP y bloquea `%USERPROFILE%\rivastock-qa-profile`; después de que el dueño cierre Chrome, se creará el producto `[QA]` desde la app, se ejecutará el smoke solo dentro de `BEGIN … ROLLBACK`, y se probará y borrará desde la app.
+- `npm run lint`, `npm test -- --maxWorkers=1` (**938/938 en 162 archivos**), Playwright (**40 aprobados, 23 omitidos por configuración; 0 fallidos**), `npm run build` y `npm run perf:check` aprobaron antes del despliegue. El bundle Stock quedó en **240.619 B gzip**, bajo el límite de 241.664 B. Las capturas de Inicio, Stock y editor a 1280×900 coinciden píxel por píxel con la PC anterior; contraste AA en claro/oscuro.
+- Vercel reportó `success` para `1bc0f04`; producción responde HTTP 200 y sirve el bundle actualizado. La migración `20261104124859_mobile_stock_adjustments` está aplicada. El backup previo verificado es `%USERPROFILE%\rivastock-backups\20261104T145443Z`: 96 tablas / 14.235 filas y 789 objetos Storage.
+- Antes del cierre comparé planes con Desktop: `ACTION_PLAN.md` coincide; la copia Desktop de `MOBILE_HOME_STOCK_PLAN.md` es anterior y pierde marcas/notas ya respaldadas. Conservé el plan más reciente del worktree. Desktop no contiene `STATUS.md`, `OWNER_ACTIONS.md` ni `MENSAJE_PARA_RIVA.md`.
+- Con el perfil persistente de Playwright en Chromium 390×844 se creó desde la app `[QA] Producto móvil I9 20261104`. Producción verificó suma, resta y conteo; el caso bajo cero quedó bloqueado sin guardar. Se guardó una edición, se continuó editando y se descartó un cambio sin guardar. «Vender» abrió `/pos?producto=…` y «Enviar fotos» abrió `/fotos?producto=…`.
+- El borrado normal desde la app quitó el producto y sus existencias. La búsqueda de Stock devuelve cero coincidencias y SQL confirma que no quedan producto ni holdings. **Desvío de limpieza:** permanecen cuatro filas históricas en `inventory_stock_commands`, porque el ledger no tiene borrado por producto; no las eliminé por SQL. El producto no tenía fotos ni dejó objetos Storage.
+- Capturas sanitizadas de producción: `docs/design/mobile-home-stock/production/i9-product-detail.png` y `i9-stock-adjustment.png`. Se taparon precios y el nombre del titular.
+- I6, I7 e I9 quedan cerradas; no hubo migraciones en este turno. **Siguiente, por orden de Riva:** A1 antes de cualquier otro bloque; requiere que Riva deje abierto el Dashboard de Supabase en Chrome para la operación autenticada.
 
-## 2026-11-04 — I6 migración aplicada; smoke transaccional pendiente
+## 2026-11-04 — I6 migración y smoke transaccional verificados
 
 - Backup previo verificado en `C:\Users\USER\rivastock-backups\20261104T145443Z`: 96 tablas y 14.235 filas; todos los conteos exactos coinciden con el volcado (`table-counts.csv`). `schema.sql` 1.002.484 B, `data.sql` 42.404.221 B; Storage: 789 objetos / 146.594.486 B. La verificación de Postgres y Storage reportó `passed`.
 - `supabase migration list --linked` mostró una sola pendiente: `20261104124859_mobile_stock_adjustments`. El primer `db push` se detuvo antes de cambiar la base por el orden histórico; `db push --include-all` aplicó únicamente esa migración.
 - La consulta de producción verificó `SECURITY DEFINER`, `search_path=public, pg_temp`, ejecución permitida a `authenticated`, denegada a `anon`, y las tres guardas de suspensión activas. El smoke PGlite local terminó `TODO OK` con 20 comprobaciones.
-- La consulta encontró cero productos de stock `[QA]`. No alteré datos de productos; queda pendiente el smoke real dentro de `BEGIN … ROLLBACK` con un producto `[QA]` creado desde la app después del despliegue.
-- **I6 sigue `[ ]`** hasta cerrar ese smoke transaccional. No desplegué aún el frontend.
+- El smoke real con un producto `[QA]` creado desde la app pasó dentro de `BEGIN … ROLLBACK`; el stock se restauró y la clave idempotente de prueba no quedó persistida.
+- **I6 [x].** El frontend quedó desplegado y validado durante el cierre de I9.
 
 
 ## 2026-11-04 — I6/I7 listos localmente; backup bloquea migración y despliegue
