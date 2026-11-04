@@ -1,11 +1,12 @@
 # Estado de ejecución autónoma
 
-## 2026-11-03 21:03 ART — F4 `/plataforma`: cuotas y módulos listos, deploy pendiente
+## 2026-11-03 21:03 ART — F4 `/plataforma` desplegado y verificado
 
 - Ajusté `/plataforma` para presentar límites de almacenamiento con selector MB/GB; al guardar, convierte la cantidad a bytes para conservar el formato interno. Los controles muestran si el valor sigue al plan o tiene ajuste manual, y los módulos ahora se pueden restablecer a sus valores del plan.
 - Las cuentas sin Conocimientos ya no muestran su cuota; las cuentas sin IA no muestran el estado de la central ni su almacén. Las cuotas no exponen bytes en la interfaz.
 - Nuevos tests de interfaz para RivaStock y RivaStock IA, conversión a bytes y ajustes de módulos: **3/3**. Suite completa **828/828**, `npm run lint`, build y `npm run perf:check` aprobados.
-- **Pendiente:** commit, deploy Vercel y smoke de solo lectura en producción.
+- El commit `2c76a50` está en `main`; Vercel confirmó **success**. Playwright con el perfil persistente abrió `/plataforma` en producción: detectó controles MB/GB, sin rótulos en bytes ni errores de página. Los tests locales cubren la visibilidad según módulos tanto para RivaStock como para RivaStock IA.
+- **Desvío:** ninguno. **Siguiente:** F5, gestión segura del ciclo de vida de cuentas.
 
 ## 2026-11-03 20:52 ART — F3 suspensión en solo lectura desplegada
 
