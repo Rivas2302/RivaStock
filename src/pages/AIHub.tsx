@@ -37,6 +37,7 @@ import { formatBytes } from '../lib/knowledge/format';
 import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
 import type { PublicationContent } from '../lib/facebookPublications';
 import type { FacebookCopywritingProposal } from '../lib/facebookCopywriting';
+import { resolveFacebookCopywritingProduct } from '../lib/facebookCopywritingProduct';
 import type { Product } from '../types';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
@@ -235,21 +236,6 @@ export default function AIHub() {
     proposal: Pick<FacebookCopywritingProposal, 'title' | 'description' | 'category' | 'condition'>,
   ) => {
     if (!ownerUid || job.task_type !== 'fb_copywriting') return;
-    let snapshot: { name?: string; category?: string; price?: number } = {};
-    try {
-      const inputValue: unknown = JSON.parse(job.input);
-      if (inputValue && typeof inputValue === 'object' && 'product' in inputValue
-        && inputValue.product && typeof inputValue.product === 'object') {
-        snapshot = inputValue.product as typeof snapshot;
-      }
-    } catch {
-      setMobileTaskActionError('No pudimos identificar el producto de esta tarea.');
-      return;
-    }
-    if (!snapshot.name) {
-      setMobileTaskActionError('No pudimos identificar el producto de esta tarea.');
-      return;
-    }
     setOpeningMobileTaskPublication(true);
     setMobileTaskActionError('');
     try {
@@ -259,17 +245,14 @@ export default function AIHub() {
       ]);
       invalidateDbCache('products');
       const products = await db.list<Product>('products', ownerUid);
-      const normalize = (value: string) => value.trim().toLocaleLowerCase('es-AR');
-      const matches = products.filter((product) => normalize(product.name) === normalize(snapshot.name ?? '')
-        && normalize(product.category ?? '') === normalize(snapshot.category ?? '')
-        && (typeof snapshot.price !== 'number' || product.salePrice === snapshot.price));
-      if (matches.length !== 1) {
-        setMobileTaskActionError(matches.length > 1
+      const resolution = resolveFacebookCopywritingProduct(job.input, products);
+      if (resolution.kind !== 'match') {
+        setMobileTaskActionError(resolution.kind === 'ambiguous'
           ? 'Hay más de un producto que coincide con esta tarea. Abrí la publicación desde Buscar y enviar para elegirlo.'
           : 'El producto ya no está disponible. Copiá el resultado para usarlo en otra publicación.');
         return;
       }
-      const product = matches[0];
+      const product = resolution.product;
       const baseline = initialPublication(product);
       setMobileTaskPublication({
         jobId: job.id,

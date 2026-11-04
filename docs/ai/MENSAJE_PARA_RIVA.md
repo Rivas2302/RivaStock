@@ -1,6 +1,6 @@
-## Acción pendiente para cerrar H9 en producción
+## H9: perfil de validación disponible
 
-Cuando puedas, iniciá sesión en la ventana de Playwright con el perfil persistente `C:\Users\USER\rivastock-qa-profile` y dejala abierta en RivaStock. Las pruebas locales de Android, iPhone y escritorio ya pasaron; el smoke autenticado de H5/H9 y las capturas de producción siguen pendientes. No compartas tu contraseña. No se crearon datos `[QA]` de producción.
+El perfil persistente de Playwright `C:\Users\USER\rivastock-qa-profile` ya está autenticado en RivaStock. No hace falta iniciar sesión para continuar el smoke H9. Todavía no se crearon datos `[QA]` para esta verificación.
 
 F1 (emails) sigue preparada sin desplegar hasta que compartas un dominio remitente verificado.
 # Tanda 1 lista para revisar

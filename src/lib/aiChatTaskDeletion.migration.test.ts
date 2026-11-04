@@ -125,6 +125,7 @@ beforeAll(async () => {
     [OWNER, LEGACY_CHAT, LEGACY_CHAT_JOB],
   );
   await db.exec(readFileSync(new URL('20261104015507_ai_mobile_chat_previews_task_pagination.sql', MIGRATIONS), 'utf8'));
+  await db.exec(readFileSync(new URL('20261104140100_ai_copywriting_product_id_snapshot.sql', MIGRATIONS), 'utf8'));
 }, 60_000);
 
 beforeEach(async () => { await db.exec("BEGIN; RESET ROLE; SET test.uid = ''; "); });
@@ -363,14 +364,14 @@ describe('AI chat and task deletion migration', () => {
       'SELECT task_type, model_id, reasoning_effort, input FROM public.ai_jobs WHERE id = $1', [first.rows[0].result.job_id],
     );
     const input = JSON.parse(job.rows[0].input) as {
-      product: { name: string; category: string; description: string; price: number; stock: number; state: string };
+      product: { id: string; name: string; category: string; description: string; price: number; stock: number; state: string };
       business: { name: string; tone: string };
       condition: string;
       knowledge: Array<{ title: string; section_path: string; content: string }>;
     };
     expect(job.rows[0]).toMatchObject({ task_type: 'fb_copywriting', model_id: 'gpt-6.1-sol', reasoning_effort: 'medium' });
     expect(input).toMatchObject({
-      product: { name: 'QA Desk Lamp', category: 'Hogar', description: 'LED articulada', price: 25000, stock: 2, state: 'in_stock' },
+      product: { id: '50000000-0000-4000-8000-000000000001', name: 'QA Desk Lamp', category: 'Hogar', description: 'LED articulada', price: 25000, stock: 2, state: 'in_stock' },
       business: { name: 'QA Store', tone: 'Directo y cordial' },
       condition: 'good',
       knowledge: [{ title: 'QA lamp sheet', section_path: 'Care', content: 'Clean with a dry cloth.' }],

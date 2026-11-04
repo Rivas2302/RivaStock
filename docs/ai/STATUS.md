@@ -1,5 +1,16 @@
 # Estado de ejecución autónoma
 
+## 2026-11-04 — H7 detalle móvil: migración aplicada, frontend pendiente de producción
+
+- Comparé los planes antes de H7: `ACTION_PLAN.md` coincide con Desktop por SHA-256. Desktop tiene una copia anterior de `MOBILE_AI_UX_PLAN.md`: solo difieren las marcas H1–H6 y se quitó la nota de desvío de H5; los criterios de H7–H9 coinciden. Conservé las marcas respaldadas por las entradas de estado anteriores y el desvío documentado de H5.
+- Guardé `product.id` dentro del snapshot de las nuevas tareas de Redacción. La acción “Usar en publicación” y “Repetir con cambios” prefieren ese ID, por lo que dos productos con nombre/categoría/precio iguales ya no confunden el flujo. Las tareas antiguas siguen resolviéndose por snapshot cuando solo hay una coincidencia. El parser del Bridge descarta el metadato al componer el prompt; no cambia el worker ni la PC.
+- Backup previo verificado en `C:\Users\USER\rivastock-backups\20261104T092439Z`: **96 tablas / 14.023 filas**, conteos exactos coincidentes; `schema.sql` **1.002.458 B**, `data.sql` **40.765.498 B**; Storage **733 objetos / 143.061.033 B**, verificación aprobada.
+- La única migración de la tarea, `20261104140100_ai_copywriting_product_id_snapshot`, quedó aplicada en `RivaStock_Oficial`. `pg_get_functiondef` confirmó que la función contiene `product.id`; no se modificaron filas ni se crearon datos `[QA]`.
+- Verificación local final: `npm run lint`; **920/920 pruebas en 157 archivos**. El diff de la función confirma que solo agrega el ID. `npm run build` y `npm run perf:check` quedan para el cierre H9 según el ciclo del plan.
+- **H7 [ ]:** falta publicar la interfaz y verificar en producción que la tarea apunta al producto correcto cuando hay duplicados. El perfil persistente de Playwright ya está autenticado, así que H9 no espera una acción manual.
+- **H8 [ ] — Desvío vigente:** las RPC y el worker de las tareas Facebook no consumen el texto libre ni los toggles de contexto. La interfaz mantiene esos controles deshabilitados para esos dos tipos y explica qué datos sí recibe; no amplié la lógica de IA fuera del alcance del plan.
+- **Siguiente:** commit/push del H7; esperar Vercel y verificar el flujo con Playwright. Luego continuar H8/H9 y cerrar el bloque.
+
 ## 2026-11-04 — I3 Inicio móvil listo localmente; verificación de producción pendiente
 
 - La vista móvil sigue la referencia aprobada `docs/design/redesign/referencia/inicio-celular.html`: encabezado, saludo, resumen del día, seis accesos, atención, mes, mercadería, últimas ventas y exportación. Usa los tokens vigentes. `MobileHome` y sus acciones se cargan de forma diferida; el JSX de escritorio se mantiene en la rama existente.

@@ -36,6 +36,7 @@ interface MobileAITaskNewTaskProps {
 }
 
 interface ProductSnapshot {
+  id?: string;
   name?: string;
   category?: string;
   price?: number;
@@ -211,7 +212,13 @@ export default function MobileAITaskNewTask(props: MobileAITaskNewTaskProps) {
     if (!job || loadedRepeatId.current === job.id || productsLoading || products.length === 0) return;
     loadedRepeatId.current = job.id;
     const snapshot = inputSnapshot(job);
-    if (!snapshot?.name) return;
+    if (!snapshot) return;
+    if (snapshot.id) {
+      const product = products.find((candidate) => candidate.id === snapshot.id);
+      if (product) setSelectedProductId(product.id);
+      return;
+    }
+    if (!snapshot.name) return;
     const normalized = (value: string) => value.trim().toLocaleLowerCase('es-AR');
     const matches = products.filter((product) => normalized(product.name) === normalized(snapshot.name ?? '')
       && normalized(product.category ?? '') === normalized(snapshot.category ?? '')

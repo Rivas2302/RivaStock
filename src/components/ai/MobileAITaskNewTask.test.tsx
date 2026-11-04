@@ -197,4 +197,19 @@ describe('MobileAITaskNewTask', () => {
     await render(<MobileAITaskNewTask {...value}/>);
     expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe('Repetir este texto');
   });
+
+  it('repeats a Facebook task with its exact product when names are duplicated', async () => {
+    mocks.listProducts.mockResolvedValueOnce([PRODUCT, { ...PRODUCT, id: 'product-duplicate' }]);
+    const value = props();
+    value.repeatJob = job({
+      id: 'old-copywriting-task',
+      task_type: 'fb_copywriting',
+      input: JSON.stringify({ product: { id: PRODUCT.id, name: PRODUCT.name, category: PRODUCT.category, price: PRODUCT.salePrice } }),
+    });
+    await render(<MobileAITaskNewTask {...value}/>);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(host.querySelector('button[aria-label="Cambiar producto"]')).not.toBeNull();
+    expect(host.textContent).toContain(PRODUCT.name);
+  });
 });
