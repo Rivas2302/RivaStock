@@ -62,6 +62,15 @@ export interface AIChat {
   has_pending_job?: boolean;
 }
 
+export interface AIChatPage {
+  chats: AIChat[];
+  totalCount: number;
+  olderThan30DaysCount: number;
+  recentCutoff: string;
+  hasMore: boolean;
+  nextOffset: number;
+}
+
 export interface AIHistorySettings {
   retention_days: number | null;
   updated_at: string | null;
@@ -100,7 +109,7 @@ export interface AIJobPageCounts {
   knowledgeReview: number;
 }
 
-async function invoke<T>(body: Record<string, unknown>): Promise<T> {
+export async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai-bridge', { body });
   if (error) {
     let message = error.message || 'No se pudo conectar con el servicio de IA.';

@@ -376,24 +376,47 @@ serve(async (req) => {
   }
 
   if (action === 'chat_list') {
-  const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
       global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);
-    const { data, error } = await userClient.from('ai_chats')
-      .select('id, provider, title, last_message_preview, model_id, reasoning_effort, created_at, updated_at, last_message_at')
-      .order('last_message_at', { ascending: false }).limit(50);
+    const offset = body.offset === undefined ? 0 : body.offset;
+    if (!Number.isSafeInteger(offset) || Number(offset) < 0 || Number(offset) > 1_000_000) {
+      return jsonResponse({ error: 'La página de chats solicitada no es válida.' }, 400, origin);
+    }
+    const limit = Number.isSafeInteger(body.limit) && Number(body.limit) > 0
+      ? Math.min(Number(body.limit), 50) : 50;
+    const recentCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [{ data, error, count }, { count: olderCount, error: olderCountError }] = await Promise.all([
+      userClient.from('ai_chats')
+        .select('id, provider, title, last_message_preview, model_id, reasoning_effort, created_at, updated_at, last_message_at', { count: 'exact' })
+        .order('last_message_at', { ascending: false }).order('id', { ascending: true }).range(offset, offset + limit - 1),
+      userClient.from('ai_chats')
+        .select('id', { count: 'exact', head: true }).lt('last_message_at', recentCutoff),
+    ]);
     if (error) return safeDbError(error, 400, origin);
+    if (olderCountError) return safeDbError(olderCountError, 400, origin);
     const chats = data ?? [];
-    if (!chats.length) return jsonResponse({ chats }, 200, origin);
-    const { data: activeJobs, error: activeJobsError } = await serviceClient.from('ai_jobs')
-      .select('chat_id').eq('user_id', user.id).in('chat_id', chats.map((chat) => chat.id))
-      .in('status', ['pending', 'processing']);
-    if (activeJobsError) return safeDbError(activeJobsError, 400, origin);
-    const busyChatIds = new Set((activeJobs ?? []).map((job) => job.chat_id));
-    return jsonResponse({ chats: chats.map((chat) => ({ ...chat, has_pending_job: busyChatIds.has(chat.id) })) }, 200, origin);
+    let busyChatIds = new Set<string>();
+    if (chats.length) {
+      const { data: activeJobs, error: activeJobsError } = await serviceClient.from('ai_jobs')
+        .select('chat_id').eq('user_id', user.id).in('chat_id', chats.map((chat) => chat.id))
+        .in('status', ['pending', 'processing']);
+      if (activeJobsError) return safeDbError(activeJobsError, 400, origin);
+      busyChatIds = new Set((activeJobs ?? []).map((job) => job.chat_id));
+    }
+    const totalCount = count ?? 0;
+    const nextOffset = offset + chats.length;
+    return jsonResponse({
+      chats: chats.map((chat) => ({ ...chat, has_pending_job: busyChatIds.has(chat.id) })),
+      total_count: totalCount,
+      older_than_30_days_count: olderCount ?? 0,
+      recent_cutoff: recentCutoff,
+      has_more: nextOffset < totalCount,
+      next_offset: nextOffset,
+    }, 200, origin);
   }
 
   if (action === 'chat_delete') {

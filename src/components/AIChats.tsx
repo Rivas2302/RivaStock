@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { BookOpen, Database, Loader2, MessageSquare, MoreHorizontal, Plus, Send, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import {
   deleteAIChat,
@@ -16,6 +16,8 @@ import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 import { listAIMemoryJobActivity, undoAIMemoryEvent, type AIMemoryJobActivity } from '../lib/aiMemory';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import KnowledgeSources from './ai/KnowledgeSources';
+
+const MobileAIChatList = lazy(() => import('./ai/MobileAIChatList'));
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
   { id: 'codex', label: 'Codex — Mi PC' },
@@ -54,7 +56,9 @@ export default function AIChats({
 }) {
   const { canWrite: canWriteBusiness } = useBusinessWriteAccess();
   const [chats, setChats] = useState<AIChat[]>([]);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [mobileConversationOpen, setMobileConversationOpen] = useState(Boolean(initialChatId));
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth < 1024);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
   const [selectedChat, setSelectedChat] = useState<AIChat | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [jobs, setJobs] = useState<AIChatJob[]>([]);
@@ -78,26 +82,27 @@ export default function AIChats({
   const refreshChats = useCallback(async () => {
     const result = await getAIChats();
     setChats(result);
-    setSelectedChatId((current) => current && result.some((chat) => chat.id === current)
-      ? current : result[0]?.id ?? null);
+    setSelectedChatId((current) => result.some((chat) => chat.id === current)
+      ? current : initialChatId && result.some((chat) => chat.id === initialChatId)
+        ? initialChatId : result[0]?.id ?? null);
     return result;
-  }, []);
+  }, [initialChatId]);
 
   useEffect(() => {
     let mounted = true;
-    void getAIChats().then((result) => {
-      if (!mounted) return;
-      setChats(result);
-      setSelectedChatId((current) => current ?? (initialChatId && result.some((chat) => chat.id === initialChatId)
-        ? initialChatId : result[0]?.id ?? null));
-      setError('');
-    }).catch((err) => {
-      if (mounted) setError(err instanceof Error ? err.message : 'No se pudieron cargar los chats.');
-    }).finally(() => {
-      if (mounted) setLoadingChats(false);
-    });
-    return () => { mounted = false; };
-  }, []);
+    const update = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobileViewport(mobile);
+      if (mobile) return;
+      void refreshChats().then(() => {
+        return mounted && setError('');
+      }).catch((err) => mounted && setError(err instanceof Error ? err.message : 'No se pudieron cargar los chats.'))
+        .finally(() => mounted && setLoadingChats(false));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => { mounted = false; window.removeEventListener('resize', update); };
+  }, [refreshChats]);
 
   const hasPendingJob = jobs.some((job) => job.status === 'pending' || job.status === 'processing');
   const latestCompletedJob = jobs.filter((job) => job.status === 'completed').at(-1);
@@ -225,6 +230,7 @@ export default function AIChats({
 
   const startNewChat = () => {
     if (!canWriteBusiness) return;
+    setMobileConversationOpen(true);
     submissionRef.current = null;
     setSelectedChatId(null);
     setSelectedChat(null);
@@ -294,7 +300,7 @@ export default function AIChats({
       setDraft('');
       setSelectedChatId(result.chat_id);
       setChatRefreshKey((current) => current + 1);
-      await refreshChats();
+      if (!isMobileViewport) await refreshChats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
     } finally {
@@ -308,8 +314,18 @@ export default function AIChats({
     <section className="space-y-3">
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
 
-      <div className="grid min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]">
-        <aside className="flex min-h-72 flex-col border-b border-[var(--line)] p-3 lg:min-h-0 lg:border-b-0 lg:border-r">
+      {isMobileViewport && !mobileConversationOpen && <Suspense fallback={<div role="status" className="min-h-64 animate-pulse bg-[var(--surface-muted)]"/>}>
+        <MobileAIChatList
+          canWrite={canWriteBusiness}
+          onOpenChat={(chatId) => { setSelectedChatId(chatId); setMobileConversationOpen(true); }}
+          onNewChat={startNewChat}
+        />
+      </Suspense>}
+
+      {mobileConversationOpen && <button type="button" onClick={() => setMobileConversationOpen(false)} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-[var(--brand)] lg:hidden">← Volver a chats</button>}
+
+      <div className={`${mobileConversationOpen ? 'grid' : 'hidden lg:grid'} min-h-[40rem] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm lg:h-[calc(100dvh-19rem)] lg:min-h-[34rem] lg:grid-cols-[15rem_minmax(0,1fr)_16rem]`}>
+        <aside className="hidden min-h-72 flex-col border-b border-[var(--line)] p-3 lg:flex lg:min-h-0 lg:border-b-0 lg:border-r">
           <button type="button" onClick={startNewChat} disabled={!canWriteBusiness} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--action-bg)] px-4 py-3 text-sm font-bold text-[var(--action-ink)] hover:bg-[var(--action-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={16}/>Nuevo chat</button>
           <div className="mb-2 mt-5 flex items-center justify-between gap-2 px-1"><h3 className="text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Tus chats</h3>{loadingChats && <Loader2 size={14} className="animate-spin text-[var(--ink-muted)]"/>}</div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -359,7 +375,7 @@ export default function AIChats({
           </form>
         </div>
 
-        <aside className="space-y-5 border-t border-[var(--line)] p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
+        <aside className="hidden space-y-5 border-t border-[var(--line)] p-4 lg:block lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <section className="space-y-3"><div><h3 className="text-sm font-bold">Sesión</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">La configuración queda fija al crear el chat.</p></div>
             <label className="block space-y-1.5"><span className="text-xs font-semibold">Agente</span><select value={provider} disabled={Boolean(selectedChat)} onChange={(event) => setProvider(event.target.value as AIProviderId)} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2.5 text-sm text-[var(--ink)] disabled:opacity-70">{PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
             {provider === 'codex' && <>
