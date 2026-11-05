@@ -68,8 +68,8 @@
 - CashFlow, Ventas, Inicio y Clientes seleccionan columnas mínimas y usan paginación keyset. `listAllColumns` delega en el paginador existente `listAll` para evitar código duplicado.
 - Verificación local: lint, build, `perf:check`, suite **978/978** y las diez suites `e2e/facebook-*` **102/102**.
 - **Desvío de presupuesto:** K3 agrega controles de foreground y proyecciones de lectura; para que `perf:check` mida esos cambios se subieron los límites de AIHub 241→242 KiB y Sales 230→231 KiB (1 KiB cada uno). Tamaños medidos: AIHub **247.138 B** y Sales **235.713 B** gzip. No se alteró el límite global de entrada.
-- No hubo migraciones ni lecturas/escrituras de fotos en producción. K4/I14 están en `main`; producción respondió HTTP 200 a HEAD de los assets POS y Stock. **K3 aún no está desplegada** hasta el commit/push de este cierre.
-- **Siguiente:** commit/push/deploy de K3; después A1 según el orden vigente.
+- Commit `caa8686` quedó en `main` con Rivas2302. Producción respondió HTTP 200 para AIHub, Sales, POS y Stock; el manifiesto público de la extensión reporta **0.5.23**. No hubo migraciones ni lecturas/escrituras de fotos en producción.
+- **K3 [x]. Siguiente:** A1 según el orden vigente.
 ## 2026-11-04 — I10 listo localmente; smoke de producción pendiente
 
 - Copié la versión actualizada de `ACTION_PLAN.md` desde Desktop. I10 e I11 siguen `[ ]` hasta completar en producción el smoke requerido: abrir el formulario y cancelarlo sin registrar ventas.
