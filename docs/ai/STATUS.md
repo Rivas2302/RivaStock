@@ -21,16 +21,19 @@
 
 ## 2026-11-05 14:08 ART — K2 desplegado; validación de reposo
 
-- `73026a1 perf(bridge): replace idle queue polls with adaptive wakeups` quedó en `main`. La migración aditiva `20261105160634_bridge_pending_work_probe` está aplicada en producción y `ai-bridge` está ACTIVE v18 con `verify_jwt=false`.
+- Copié y comparé `ACTION_PLAN.md` de Desktop (05/11 00:05). Main ya tenía el mismo contenido; la copia de Desktop solo retrocedía K1 a `[ ]`. Conservé K1 `[x]` porque la medición ya está documentada. No había una ventana de Chrome del Dashboard abierta y no usé el navegador para Supabase.
+- `73026a1 perf(bridge): replace idle queue polls with adaptive wakeups` quedó en `main`. La migración aditiva `20261105160634_bridge_pending_work_probe` está aplicada en producción y `ai-bridge` estaba ACTIVE v18 con `verify_jwt=false` antes de K5.
 - El paquete AI Bridge 1.24.0 se instaló en la PC enlazada con el actualizador estándar. En la comprobación local quedó un único worker, lock presente, sin trabajo activo y heartbeat reciente. La producción mantiene dos dispositivos no revocados, uno con heartbeat dentro de 180 s y ninguno ocupado; el último heartbeat observado fue 2026-11-05 17:08:37 UTC.
 - La consulta combinada al worker respondió HTTP 200 con las ocho fuentes configuradas y todas vacías. El WebSocket autenticado recibió `Realtime subscription ready`; un wake privado sintético fue enviado. No había trabajo real pendiente para procesar, así que no afirmo una ejecución productiva de tareas, Conocimientos, memoria o supervisor. Los tests locales del Bridge pasaron 121/121; el test del monitor cubre flags y espera adaptativa. **K2 queda `[ ]` hasta comprobar procesamiento real con colas disponibles.**
 - Se midieron logs en producción sin Dashboard. Entre 16:30 y 17:05 UTC aparecieron 1.342 eventos `Boot`, 1.398 `Shutdown` y 2.681 `Log/info` en `function_logs`. Los Edge Functions escribían `key_mode` al cargar cada isolate; se reemplaza esa línea por la cabecera de respuesta `x-rivastock-key-mode` para conservar la verificación A1 sin emitir un evento de log por isolate.
 
-## 2026-11-05 14:17 ART — K5 en implementación; despliegue y medición pendientes
+## 2026-11-05 14:21 ART — K5 desplegado; medición diaria pendiente
 
-- Los Edge Functions con clave administrativa y `account-purge` exponen `key_mode` en `x-rivastock-key-mode`; se quitó el `console.info` de arranque. El Bridge no tiene logs de éxito dentro de los bucles de sondeo; mantiene errores y eventos de tarea importantes.
+- El commit `c9e54b2 perf(bridge): suppress routine Supabase logs` quedó en `main`. Quité el `console.info` que emitía `key_mode` al iniciar cada isolate y ahora esa información sale en la cabecera `x-rivastock-key-mode`; las funciones exponen la cabecera para CORS. El Bridge no registra sondeos exitosos; conserva errores y resultados de tareas importantes.
+- Desplegué por CLI las siete funciones afectadas sin abrir el Dashboard: `ai-bridge` v19, `automation` v12, `knowledge` v11, `platform-admin` v4, `account-purge` v2, `invite-collaborator` v20 y `delete-collaborator` v6. Se conservaron `verify_jwt=false` en las cinco funciones que ya lo tenían y `true` en invitación y borrado de colaborador.
+- Verificación de producción: las siete respuestas de `OPTIONS` incluyeron `x-rivastock-key-mode: secret` y `Access-Control-Expose-Headers`. `knowledge` y `account-purge` devolvieron 405 a `OPTIONS` como método no admitido, pero igualmente expusieron la cabecera; las otras cinco respondieron 200/204. No se hicieron operaciones con datos.
 - Verificación local: `npx vitest run src/lib/supabaseKeyMigration.test.ts` **18/18**; `npm run lint` y `git diff --check` pasaron. No hubo migración, así que K5 no necesitó backup.
-- **K5 sigue `[ ]`** hasta desplegar los Edge Functions y medir al día siguiente la reducción de eventos/pedidos de K2–K5. El requisito del plan es al menos 90 % menos pedidos por día; los eventos automáticos `Boot`/`Shutdown` de Supabase no los elimina el código de la app.
+- **K5 sigue `[ ]`** hasta medir al día siguiente los pedidos diarios luego de K2–K5 y confirmar la meta del plan (≥90 % de reducción). Los eventos automáticos `Boot`/`Shutdown` de Supabase no los elimina el código de la app. La Management API/MCP consultada no expone los totales de facturación; no puedo confirmar una nueva cifra de Egress o Log Ingestion sin la vista de uso.
 
 ---
 ## 2026-11-04 23:50 ART — A1 revalidada; sesión del Dashboard pendiente
