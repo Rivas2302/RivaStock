@@ -221,6 +221,48 @@ Hoy la app es una SPA sin metadatos Open Graph: un link del catálogo enviado po
 
 ---
 
+## 2d. Bloque K — Bajar el consumo de Supabase sin pagar (URGENTE, agregado el 05/11, va ANTES que todo)
+
+Riva vio en el Dashboard (05/11): **Egress 4,58 / 5 GB** y **Log Ingestion 2,33 / 1 GB** del plan Free. **Riva no va a pagar ningún plan:** toda la solución tiene que ser gratis. Superar la cuota da un período de gracia y después restricciones (la API responde 402), con un cliente en producción. Objetivo: llegar al fin del ciclo por debajo de 5 GB y que el consumo normal de un mes completo quede **por debajo del 50 %** de cada cuota.
+
+Causa más probable, vista en el código del 05/11 (verificala midiendo):
+- **El AI Bridge consulta Supabase sin parar, aunque no haya nada que hacer:** `supervisor.ts` cada 2 s, `knowledge/loop.ts` cada 2 s, `index.ts` cada 3 s, `central/on-demand.ts` cada 3 s, más heartbeats y sincronizaciones. Son unos 1,5 pedidos por segundo, **más de 100.000 por día**: cada pedido se registra en los logs y suma tráfico.
+- **Pantallas web con `setInterval`** de 5–10 s (Facebook, IA, Conocimientos) que siguen consultando con la pestaña en segundo plano.
+- **Páginas que bajan tablas enteras** con `db.listAll` (unas 19, por ejemplo `CashFlow.tsx` baja todo `cash_flow`, `sales` y `customer_transactions` cada vez que se abre).
+- **Backups que bajan todo Storage** (unos 146 MB) antes de cada migración.
+- **Fotos de productos** subidas sin `cacheControl` largo y listas que muestran la foto original en vez de la miniatura `.thumb.webp`.
+
+### [ ] K1 Medir (solo lectura, sin Dashboard)
+- Medí el consumo sin depender del navegador: estadísticas de `pg_stat_statements` (consultas más llamadas y filas devueltas), conteo de llamadas por RPC y función en la última hora, tamaño de las respuestas típicas y logs de la CLI o de la Management API si están disponibles. Registrá en `STATUS.md` un ranking de consumidores (pedidos por día y MB por día estimados) y, si la API la informa, la fecha de renovación del ciclo.
+- Si hace falta la vista de uso del Dashboard, pedile a Riva **una captura** de *Organization → Usage* (Egress por servicio y Log Ingestion). No la manejes con el navegador.
+
+### [ ] K2 Bridge en reposo: consultar poco cuando no hay trabajo
+- Un **solo sondeo combinado** (`bridge_pending_work` o equivalente, RPC nueva y aditiva) que responde en una consulta liviana si hay algo pendiente para cualquier loop (tareas, conocimientos, supervisor, pedidos bajo demanda, memoria). Los loops individuales solo consultan cuando ese sondeo dice que hay trabajo.
+- **Espera adaptativa:** con trabajo, cada 2–3 s; sin trabajo, sube de a poco hasta 60 s. Un pedido nuevo despierta al worker por **Supabase Realtime** (incluido en el plan Free) en un canal privado del dueño; si Realtime no está disponible, queda el sondeo de 60 s. Ninguna función pierde trabajo, solo tarda unos segundos más en arrancar cuando estaba quieto.
+- Heartbeat cada 2 minutos en vez de 20 s, y que la web considere al Bridge “Conectado” con ese margen. Sincronizaciones de 30–60 s pasan a 5–10 minutos o se disparan por evento.
+- Bridge nueva versión menor, instalada con la autorización §1.1.4. Verificá que tareas, Conocimientos, memoria y supervisor sigan respondiendo.
+
+### [ ] K3 Extensión y web
+- Extensión: alarma de cola a 1 minuto cuando no hay entregas pendientes y a 30 s solo mientras hay trabajo o un ensayo en curso. Sin consultas mientras la cola está pausada.
+- Web: todos los `setInterval` de consulta se **pausan con la pestaña oculta** (`document.visibilityState`) y usan 30 s como mínimo, salvo mientras hay una acción en curso que el usuario está mirando.
+- Páginas con `db.listAll`: traer solo lo necesario (paginado, rango de fechas, columnas justas) o totales calculados en SQL. Empezar por Flujo de caja, Ventas, Inicio y Clientes.
+
+### [ ] K4 Fotos y backups
+- Fotos nuevas con `cacheControl` de 1 año (los nombres ya son únicos); en listas y buscadores, siempre la miniatura `.thumb.webp`. Las fotos existentes se reetiquetan solo si se puede hacer **sin volver a descargarlas**; si no, quedan como están.
+- Backups: Storage **incremental** (solo objetos nuevos o cambiados, comparando la lista remota con el manifiesto local, sin descargar lo que ya está). Backup de Storage a lo sumo una vez por día, y nunca como paso de cada migración: para migrar alcanza con el backup de la base.
+- Mientras el egress del ciclo esté por encima del 80 %: nada de pruebas en producción que descarguen fotos, y los smoke tests usan la menor cantidad de pedidos posible.
+
+### [ ] K5 Logs propios
+- Edge Functions y worker: no registrar cada pedido exitoso, solo errores y eventos importantes. Nada de `console.log` por sondeo.
+- Verificar después de K2–K5 (al día siguiente) que los pedidos por día bajaron al menos un 90 % y registrar el antes y el después en `STATUS.md`.
+- **Commits:** uno por tarea, `perf(bridge|ext|web|storage): …`.
+
+**Orden:** K1 → K2 → K5 → K3 → K4, y recién después A1. Lo de K es todo gratis y reversible. Si en cualquier momento el uso del ciclo pasa el 95 %, avisá a Riva en el momento.
+
+**A1 sin Dashboard:** no hace falta el navegador. Saltá la credencial S3 (el backup de Storage usa la clave secreta nueva por la API de Storage) y hacé el resto de A1 con la Management API y la CLI como dice A1. Cerrá la ventana de Chrome del Dashboard.
+
+---
+
 ## 3. Bloque A — Seguridad y respaldo (primero)
 
 ### [ ] A1 Rotación de la clave `service_role` expuesta
