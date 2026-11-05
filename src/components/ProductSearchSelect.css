@@ -1,0 +1,11 @@
+.product-search-result-photo {
+  width: 44px;
+  height: 44px;
+}
+
+@media (min-width: 1024px) {
+  .product-search-result-photo {
+    width: 40px;
+    height: 40px;
+  }
+}

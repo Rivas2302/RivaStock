@@ -1,4 +1,12 @@
 # Estado de ejecución autónoma
+## 2026-11-04 — I10 listo localmente; smoke de producción pendiente
+
+- Copié la versión actualizada de `ACTION_PLAN.md` desde Desktop. I10 e I11 siguen `[ ]` hasta completar en producción el smoke requerido: abrir el formulario y cancelarlo sin registrar ventas.
+- I10 agrega miniaturas `.thumb.webp` con fallback único a la foto original y luego un ícono local, filas táctiles, ficha del producto seleccionado y visor con carrusel, Escape, X, toque afuera y botón Atrás. El selector conserva flechas y Enter.
+- Verificación local de I10: `npm run lint`; suite completa **949 pruebas en 166 archivos**; Playwright `e2e/sales-mobile.spec.ts` (**3 aprobadas, 3 omitidas** entre Chromium, Android e iPhone); `npm run build`; `npm run perf:check` aprobaron. Knowledge: **25.371 B gzip** (límite 25.395); Sales: **235.258 B JS gzip** (límite 235.520).
+- No hubo migraciones, backup ni escrituras en producción. Los E2E cancelan el formulario y no registran ventas. No se crearon productos QA reales.
+- **Siguiente:** publicar I10/I11 en `main`; después hacer smoke autenticado en producción y recién ahí marcar cada tarea `[x]`.
+
 ## 2026-11-04 — I6–I9 cerradas con validación autenticada en producción
 
 - `npm run lint`, `npm test -- --maxWorkers=1` (**938/938 en 162 archivos**), Playwright (**40 aprobados, 23 omitidos por configuración; 0 fallidos**), `npm run build` y `npm run perf:check` aprobaron antes del despliegue. El bundle Stock quedó en **240.619 B gzip**, bajo el límite de 241.664 B. Las capturas de Inicio, Stock y editor a 1280×900 coinciden píxel por píxel con la PC anterior; contraste AA en claro/oscuro.

@@ -315,6 +315,38 @@ Detalle y criterios de aceptación: `docs/ai/MOBILE_HOME_STOCK_PLAN.md` (I1–I9
 
 ---
 
+## 4c-bis. Tarea I10 — Foto del producto al elegirlo en Ventas y Presupuestos (pedido de Riva, 04/11)
+
+Pedido de Riva: “ver una previsualización en imagen para no errarle al producto” al cargar una venta desde el celular. Hoy el buscador de **Nueva Venta** muestra solo nombre, stock y precio.
+
+- **Cuándo:** después de I9 va A1 (seguridad, pendiente desde el 02/11). Si A1 queda esperando una acción del dueño, hacé I10 mientras tanto; si no, I10 va justo después de A1. Debe entrar a `main` **antes de que empiece J2** (después de J2, Codex no toca interfaz).
+- **Dónde:** `src/components/ProductSearchSelect.tsx` (lo usan `src/pages/Sales.tsx` y `src/pages/Quotes.tsx`, así que mejora los dos).
+
+### [ ] I10 Miniatura en la lista y vista previa del elegido
+1. **Miniatura en cada fila:** a la izquierda, cuadrada (44 px en celular, 40 px en PC), bordes redondeados, `object-cover`, `loading="lazy"`, `decoding="async"` y `width`/`height` fijos para que la lista no salte. Origen: primera foto de `getProductPhotoUrls(p)` pasada por `getProductThumbnailUrl()` (`src/lib/productPhotos.ts`).
+   - Si la miniatura `.thumb.webp` no existe (fotos viejas), `onError` prueba **una vez** la foto original; si también falla o el producto no tiene fotos, se muestra un ícono neutro de producto. **Nunca** usar fotos de relleno externas (picsum u otras).
+2. **Filas cómodas en celular:** altura táctil mínima de 56 px, y el nombre puede ocupar **hasta 2 líneas** en vez de cortarse con “…”. El stock, el titular y el precio se mantienen visibles.
+3. **Vista previa del producto elegido:** al seleccionar, debajo del buscador aparece una tarjeta compacta con la foto más grande (unos 96 px), nombre completo, titular si tiene, stock y precio, y un botón “Cambiar” que vuelve a abrir la búsqueda. Tocar la foto la abre ampliada en un visor simple, cerrable con la X, tocando afuera o con el botón atrás del celular. Si hay varias fotos, se pueden pasar.
+4. Respetar los tokens de color de la app y ambos temas (contraste AA), y navegación por teclado (flechas y Enter siguen funcionando en PC).
+5. **Rendimiento:** solo se cargan las miniaturas de las filas visibles (ya se pagina de a 50); `npm run perf:check` dentro del límite.
+6. **Tests:** unitario del orden de fuentes (miniatura → original → ícono) y de la vista previa; Playwright móvil (360×740, Android e iPhone) en Nueva Venta con producto con foto, sin foto y con miniatura rota, más una captura en PC 1280 px. No se crean ventas reales: en producción solo se abre el formulario y se cancela.
+- **Commit:** `feat(sales): product photos in the product picker and selection preview`
+
+---
+
+### [ ] I11 Descuento o recargo sin escribir el signo menos
+Pedido de Riva (04/11): en el celular, el teclado numérico no tiene el signo “−”, así que en **Nueva Venta** no puede cargar un descuento en “Ajuste (Descuento/Recargo)”. Hoy el campo es un `type="number"` que espera un número negativo para el descuento (`src/pages/Sales.tsx`, cerca de la línea 1185). En POS pasa lo mismo con el “Ajuste” global (`src/pages/POS.tsx`, cerca de la línea 575).
+1. Componente compartido `AdjustmentInput` con un selector de dos botones **[ Descuento | Recargo ]** (por defecto, **Descuento**) y un campo de **monto siempre positivo** (`inputMode="decimal"`, sin signo). El valor que recibe el formulario sigue siendo el mismo número con signo (descuento = negativo), así que **no cambian** el cálculo, las RPC ni los datos guardados.
+2. Debajo del campo, en una línea, el efecto: “Descuento: −$3.000” o “Recargo: +$3.000”. En el total, que se vea el desglose (subtotal, descuento o recargo, total).
+3. **Editar una venta existente** con ajuste negativo debe abrir con “Descuento” elegido y el monto en positivo. Con 0 o vacío, el ajuste es 0.
+4. Usarlo en Nueva Venta (`Sales.tsx`) y en el ajuste global de POS (`POS.tsx`). Buscá con `git grep` otros campos que dependan de escribir un número negativo (por ejemplo “Ajuste Manual” de cuenta corriente en `Customers.tsx`) y aplicá el mismo patrón si corresponde. Sacá los textos “Negativo = descuento”.
+5. Botones táctiles de 44 px como mínimo, tokens de la app, ambos temas, accesible (`role="radiogroup"` o `aria-pressed`) y teclado en PC.
+6. **Tests:** unitarios del componente (signo, edición de ajuste negativo, vacío → 0) y del total; Playwright móvil (Android e iPhone) cargando un descuento solo con el teclado numérico, sin registrar la venta (cancelar). En producción, solo abrir el formulario y cancelar.
+- **Cuándo:** junto con I10, en el mismo turno (antes de J2).
+- **Commit:** `fix(sales): discount/surcharge toggle so mobile keyboards can enter discounts`
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.
