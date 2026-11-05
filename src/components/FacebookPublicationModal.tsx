@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import type { Product } from '../types';
 import Modal from './Modal';
+import MoneyInput from './MoneyInput';
 import { composeGroupPublicationText, deviceConnected, facebookRpc, initialPublication, loadFacebookPublicationData, productPhotos, validatePublication, type FacebookDevice, type FacebookGroup, type FacebookPublication, type PublicationContent } from '../lib/facebookPublications';
 import { lastProductGroupUse, rankFacebookGroups, type FacebookGroupPerformance } from '../lib/facebookGroupSuggestions';
 import { formatCurrency } from '../lib/utils';
@@ -428,7 +429,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
                 <button type="button" onClick={applyCopywritingProposal} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">Aplicar al formulario</button>
               </section>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm">Precio<input className={inputClass} type="number" min="0.01" step="0.01" value={content.price} onChange={event=>update({price:Number(event.target.value)})}/></label>
+                <label className="block text-sm">Precio<MoneyInput className={`${inputClass} pl-9`} min="0.01" step="0.01" required value={content.price} onChange={event=>update({price:Number(event.target.value)})}/></label>
                 <label className="block text-sm">Condición<select aria-label="Condición" className={inputClass} value={content.condition} onChange={event=>{update({condition:event.target.value as typeof content.condition});if(actionRequest?.params.use_ai_copy){setConditionReviewed(true);setAiCopyApplied(false);}}}><option value="new">Nuevo</option><option value="like_new">Usado, como nuevo</option><option value="good">Usado, buen estado</option><option value="fair">Usado, estado aceptable</option></select></label>
                 <label className="block text-sm">Ubicación<input className={inputClass} maxLength={160} placeholder="Ciudad o localidad" value={content.location} onChange={event=>update({location:event.target.value})}/></label>
                 <label className="block text-sm">Categoría de Facebook<select aria-label="Categoría de Facebook" className={inputClass} value={content.category} onChange={event=>update({category:event.target.value})}><option value="">Elegí una categoría</option>{marketplaceCategories.map(category=><option key={category} value={category}>{category}</option>)}</select></label>

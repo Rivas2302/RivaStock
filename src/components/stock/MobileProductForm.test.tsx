@@ -109,7 +109,7 @@ describe('MobileProductForm', () => {
   it('keeps stock read-only while editing and routes stock changes through the adjustment action', async () => {
     const value = props({ product: PRODUCT, formData: PRODUCT });
     await render(<MobileProductForm {...value} />);
-    const stock = host.querySelector<HTMLInputElement>('input[type="number"][inputmode="numeric"]');
+    const stock = host.querySelector<HTMLInputElement>('input[readonly][inputmode="numeric"]');
     expect(stock?.readOnly).toBe(true);
     expect(host.textContent).not.toContain('¿Descartar los cambios?');
     const adjustButton = [...host.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Ajustar');

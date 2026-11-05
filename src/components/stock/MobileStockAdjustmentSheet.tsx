@@ -5,6 +5,7 @@ import { resolveIdempotencyIntent, type IdempotencyIntent } from '../../lib/idem
 import { beginSubmission, endSubmission } from '../../lib/submissionGuard';
 import type { AdjustProductStockInput, StockAdjustmentMode } from '../../lib/stockAdjustments';
 import BottomSheet from '../mobile/BottomSheet';
+import NumberField from '../NumberField';
 
 const REASONS = [
   'Ingresó mercadería',
@@ -182,14 +183,15 @@ export default function MobileStockAdjustmentSheet({
             disabled={!quantityValid || quantity <= (mode === 'count' ? 0 : 1)}
             className="inline-flex size-12 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface)] disabled:opacity-40"
           ><Minus size={19} aria-hidden="true" /></button>
-          <input
+          <NumberField
             id="mobile-stock-adjustment-quantity"
             aria-label={mode === 'count' ? 'Unidades contadas' : 'Cantidad'}
-            type="number"
             inputMode="numeric"
+            integer
             min={mode === 'count' ? 0 : 1}
             step="1"
             value={quantityText}
+            onDraftChange={setQuantityText}
             onChange={(event) => setQuantityText(event.target.value)}
             className="h-12 min-w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-center text-lg font-bold text-[var(--ink)]"
           />

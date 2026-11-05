@@ -14,6 +14,7 @@ import {
   TrendingUp, TrendingDown, Minus, CheckCircle2, RefreshCw
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import MoneyInput from '../components/MoneyInput';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 
@@ -638,14 +639,15 @@ export default function Customers() {
                 <p className="text-sm text-slate-500 dark:text-slate-400">{targetSaleId.current ? 'El cobro se aplicará a la venta seleccionada.' : 'El cobro se aplicará primero a las ventas pendientes más antiguas. El excedente quedará como saldo a favor.'} Solo el importe cobrado ingresará en Caja.</p>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Monto *</label>
-                  <input
-                    type="number"
+                  <MoneyInput
                     min="0.01"
                     step="0.01"
+                    required
+                    aria-label="Monto del cobro"
                     value={paymentAmount}
                     onChange={e => setPaymentAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                    className="w-full py-2.5 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                   />
                 </div>
                 <div>
@@ -716,14 +718,15 @@ export default function Customers() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Monto *</label>
-                  <input
-                    type="number"
+                  <MoneyInput
                     min="0.01"
                     step="0.01"
+                    required
+                    aria-label="Monto del ajuste"
                     value={adjAmount}
                     onChange={e => setAdjAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                    className="w-full py-2.5 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                   />
                 </div>
                 <div>

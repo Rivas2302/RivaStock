@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
+import NumberField from '../components/NumberField';
+import MoneyInput from '../components/MoneyInput';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 
@@ -712,9 +714,10 @@ export default function Quotes() {
                   placeholder="Buscar producto..."
                 />
               </div>
-              <input
-                type="number"
+              <NumberField
                 min="1"
+                integer
+                aria-label="Cantidad a agregar"
                 value={addQty}
                 onChange={e => setAddQty(Number(e.target.value))}
                 className="col-span-2 px-2 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none dark:text-white"
@@ -749,21 +752,22 @@ export default function Quotes() {
                       <tr key={idx}>
                         <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{item.productName}</td>
                         <td className="px-4 py-2">
-                          <input
-                            type="number"
+                          <NumberField
                             min="1"
+                            integer
+                            aria-label={`Cantidad de ${item.productName}`}
                             value={item.quantity}
                             onChange={e => handleUpdateItemQty(idx, Number(e.target.value))}
                             className="w-16 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none dark:text-white"
                           />
                         </td>
                         <td className="px-4 py-2">
-                          <input
-                            type="number"
+                          <MoneyInput
                             min="0"
+                            aria-label={`Precio unitario de ${item.productName}`}
                             value={item.unitPrice}
                             onChange={e => handleUpdateItemPrice(idx, Number(e.target.value))}
-                            className="w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none dark:text-white"
+                            className="w-24 text-center py-1 pr-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none dark:text-white"
                           />
                         </td>
                         <td className="px-4 py-2 text-right font-bold text-slate-900 dark:text-white">{formatCurrency(item.subtotal)}</td>
@@ -784,10 +788,10 @@ export default function Quotes() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Descuento (%)</label>
-              <input
-                type="number"
+              <NumberField
                 min="0"
                 max="100"
+                aria-label="Descuento porcentual"
                 value={formDiscount}
                 onChange={e => setFormDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"

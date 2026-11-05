@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { formatCurrency } from '../lib/utils';
+import MoneyInput from './MoneyInput';
 
 type AdjustmentMode = 'discount' | 'surcharge';
 
@@ -78,26 +79,23 @@ export default function AdjustmentInput({ value, onChange, label }: AdjustmentIn
           Recargo
         </button>
       </div>
-      <div className="relative">
-        <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)]">$</span>
-        <input
-          id={inputId}
-          type="text"
-          inputMode="decimal"
-          value={amount}
-          onChange={(event) => handleAmountChange(event.target.value)}
-          onBlur={() => {
-            if (/[.,]$/.test(amount)) {
-              const normalized = amount.slice(0, -1);
-              setAmount(normalized);
-              emitAmount(normalized);
-            }
-          }}
-          aria-label={`Monto de ${effectLabel.toLowerCase()}`}
-          autoComplete="off"
-          className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] py-2 pl-8 pr-3 text-[var(--ink)] outline-none focus-visible:outline-2 focus-visible:outline-[var(--brand)] focus:border-[var(--brand)]"
-        />
-      </div>
+      <MoneyInput
+        id={inputId}
+        aria-label={`Monto de ${effectLabel.toLowerCase()}`}
+        autoComplete="off"
+        value={amount}
+        min="0"
+        onChange={(event) => handleAmountChange(event.target.value)}
+        onDraftChange={handleAmountChange}
+        onBlur={() => {
+          if (/[.,]$/.test(amount)) {
+            const normalized = amount.slice(0, -1);
+            setAmount(normalized);
+            emitAmount(normalized);
+          }
+        }}
+        className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] py-2 pr-3 text-[var(--ink)] outline-none focus-visible:outline-2 focus-visible:outline-[var(--brand)] focus:border-[var(--brand)]"
+      />
       <p aria-live="polite" className="text-xs font-medium text-[var(--ink-muted)]">
         {effectLabel}: {effectSign}{formatCurrency(absoluteValue)}
       </p>

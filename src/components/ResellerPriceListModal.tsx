@@ -49,6 +49,8 @@ import {
 } from '../lib/resellerPricingAdvisor';
 import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
+import NumberField from './NumberField';
+import MoneyInput from './MoneyInput';
 import Modal from './Modal';
 
 interface ResellerPriceListModalProps {
@@ -692,21 +694,19 @@ export default function ResellerPriceListModal({
               <div className="grid grid-cols-2 gap-3">
                 <label className={cn('block', !['amount', 'both'].includes(minimumRule) && 'opacity-50')}>
                   <span className="mb-1 block text-xs font-semibold text-slate-500">Monto mínimo</span>
-                  <input
-                    type="number"
+                  <MoneyInput
                     min="0"
                     value={minimumOrderAmount}
                     disabled={!canWrite || !['amount', 'both'].includes(minimumRule)}
                     onChange={(event) => setMinimumOrderAmount(Number(event.target.value))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-3 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   />
                 </label>
                 <label className={cn('block', !['quantity', 'both'].includes(minimumRule) && 'opacity-50')}>
                   <span className="mb-1 block text-xs font-semibold text-slate-500">Unidades mínimas</span>
-                  <input
-                    type="number"
+                  <NumberField
                     min="0"
-                    step="1"
+                    integer
                     value={minimumOrderQuantity}
                     disabled={!canWrite || !['quantity', 'both'].includes(minimumRule)}
                     onChange={(event) => setMinimumOrderQuantity(Number(event.target.value))}
@@ -976,13 +976,12 @@ export default function ResellerPriceListModal({
                         {item?.pricingMode === 'fixed' ? 'Precio' : item?.pricingMode === 'discount' ? 'Descuento' : 'Precio calculado'}
                       </span>
                       {item?.pricingMode === 'fixed' ? (
-                        <input
-                          type="number"
+                        <MoneyInput
                           min="0"
                           value={item.fixedPrice ?? 0}
                           disabled={!canWrite}
                           onChange={(event) => updateItem(product.id, { fixedPrice: Number(event.target.value) })}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-3 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                         />
                       ) : item?.pricingMode === 'discount' ? (
                         <div className="relative">

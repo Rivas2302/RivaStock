@@ -5,6 +5,8 @@ import type { Category, InventoryHoldingDraft, InventoryOwner, PriceRange, Produ
 import { useMobileAppChrome } from '../../hooks/useMobileAppChrome';
 import { registerPopNavigationGuard } from '../../lib/mobileNavigationGuard';
 import { roundPrice } from '../../lib/utils';
+import NumberField from '../NumberField';
+import MoneyInput from '../MoneyInput';
 import './mobileProductForm.css';
 import {
   ProductEditorImageField,
@@ -445,15 +447,15 @@ export default function MobileProductForm({
                     <p className="col-span-2 font-medium">{owner?.name ?? 'Titular'}</p>
                     <label className="text-xs text-[var(--ink-subtle)]">
                       Stock
-                      <input type="number" min="0" value={draft.stock} readOnly={Boolean(product)} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      <NumberField min="0" integer value={draft.stock} readOnly={Boolean(product)} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
                     </label>
                     <label className="text-xs text-[var(--ink-subtle)]">
                       Mínimo
-                      <input type="number" min="0" value={draft.minStock} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, minStock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      <NumberField min="0" integer value={draft.minStock} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, minStock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
                     </label>
                     <label className="col-span-2 text-xs text-[var(--ink-subtle)]">
                       Costo de compra
-                      <input type="number" min="0" value={draft.purchaseCost} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, purchaseCost: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      <MoneyInput min="0" value={draft.purchaseCost} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, purchaseCost: Number(event.target.value) } : item))} className={`${inputClass} mt-1 pl-9`} />
                     </label>
                     {product && <button type="button" onClick={requestAdjustStock} className="col-span-2 min-h-11 rounded-xl border border-[var(--line)] font-semibold text-[var(--brand)]">Ajustar stock</button>}
                   </div>

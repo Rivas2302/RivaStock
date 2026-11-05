@@ -19,6 +19,7 @@ import {
 import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 import '../styles/business-redesign.css';
+import MoneyInput from '../components/MoneyInput';
 
 interface BatchResult {
   purchase: number;
@@ -121,16 +122,13 @@ export default function Calculator() {
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Compra</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
-                  type="number"
+              <MoneyInput
+                  min="0"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(Number(e.target.value))}
-                  className="w-full pl-8 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-lg font-bold"
+                  className="w-full pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white text-lg font-bold"
                   placeholder="0"
                 />
-              </div>
             </div>
 
             <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/50">

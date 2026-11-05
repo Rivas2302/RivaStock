@@ -27,6 +27,8 @@ import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { getExpenseCategories, matchesExpenseCategory } from '../lib/expenseCategories';
+import NumberField from '../components/NumberField';
+import MoneyInput from '../components/MoneyInput';
 
 const CASH_FLOW_COLUMNS = 'id,user_id,date,created_at,type,source,description,category,amount,payment_method,status,sale_id,financial_command_id,notes';
 const SETTLEMENT_SALE_COLUMNS = 'id,total,status';
@@ -632,12 +634,12 @@ export default function CashFlow() {
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Efectivo contado</label>
-            <input
+            <NumberField
               autoFocus
-              type="number"
               min="0"
               step="0.01"
               required
+              aria-label="Efectivo contado"
               value={countedCash}
               onChange={(event) => setCountedCash(event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
@@ -683,15 +685,14 @@ export default function CashFlow() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Monto</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
-                  type="number"
+              <div>
+                <MoneyInput
                   required
                   min="0"
+                  aria-label="Monto"
                   value={formData.amount}
                   onChange={(e) => setFormData(prev => ({ ...prev, amount: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                  className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                 />
               </div>
             </div>

@@ -1,5 +1,7 @@
 import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import DeferredMount from '../components/DeferredMount';
+import NumberField from '../components/NumberField';
+import MoneyInput from '../components/MoneyInput';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -1299,10 +1301,10 @@ export default function Stock() {
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Inicial</label>
-              <input 
-                type="number"
+              <NumberField
                 required
                 min="0"
+                integer
                 value={formData.stock}
                 onChange={(e) => setFormData(prev => ({ ...prev, stock: Number(e.target.value) }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
@@ -1311,15 +1313,13 @@ export default function Stock() {
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Compra</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
-                  type="number"
+              <div>
+                <MoneyInput
                   required
                   min="0"
                   value={formData.purchasePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                  className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>}
@@ -1327,19 +1327,18 @@ export default function Stock() {
             {creatingProductForReseller && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Costo del proveedor</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                  <input
-                    type="number"
+                <div>
+                  <MoneyInput
                     required
                     min="0.01"
                     step="0.01"
+                    aria-label="Costo del proveedor"
                     value={formData.catalogCost ?? 0}
                     onChange={(event) => setFormData((current) => ({
                       ...current,
                       catalogCost: Number(event.target.value),
                     }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-8 pr-4 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pr-4 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
               </div>
@@ -1363,10 +1362,11 @@ export default function Stock() {
                       {(['stock', 'purchaseCost', 'minStock'] as const).map((field) => (
                         <label key={field} className="text-xs text-slate-500 dark:text-slate-400">
                           {field === 'stock' ? 'Stock' : field === 'purchaseCost' ? 'Costo' : 'Mínimo'}
-                          <input
-                            type="number"
+                          <NumberField
                             min="0"
                             required
+                            integer={field !== 'purchaseCost'}
+                            aria-label={`${field === 'stock' ? 'Stock' : field === 'purchaseCost' ? 'Costo' : 'Mínimo'} de ${owner?.name ?? 'titular'}`}
                             value={draft[field]}
                             onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => (
                               itemIndex === index ? { ...item, [field]: Number(event.target.value) } : item
@@ -1410,25 +1410,23 @@ export default function Stock() {
                   Calcular Auto
                 </button>
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
-                  type="number"
+              <div>
+                <MoneyInput
                   required
                   min="0"
                   value={formData.salePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, salePrice: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
+                  className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
               </div>
             </div>
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Stock Mínimo (Alerta)</label>
-              <input 
-                type="number"
+              <NumberField
                 required
                 min="0"
+                integer
                 value={formData.minStock}
                 onChange={(e) => setFormData(prev => ({ ...prev, minStock: Number(e.target.value) }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
@@ -1653,8 +1651,7 @@ export default function Stock() {
               </label>
               <label className="text-sm text-slate-600 dark:text-slate-300">
                 Cantidad
-                <input
-                  type="number" min="1" required value={transfer.quantity}
+                <NumberField min="1" integer required aria-label="Cantidad a transferir" value={transfer.quantity}
                   onChange={(event) => setTransfer({ ...transfer, quantity: Number(event.target.value) })}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-800"
                 />

@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react';
 import { ImageUpload } from '../ImageUpload';
+import NumberField from '../NumberField';
 
 interface TextFieldProps {
   label: string;
@@ -43,21 +44,36 @@ export function ProductEditorTextField({
   return (
     <label className={wrapperClassName}>
       <span className={labelClassName}>{label}</span>
-      <input
-        ref={inputRef}
-        type={type}
-        inputMode={inputMode}
-        min={min}
-        step={step}
-        required={required}
-        readOnly={readOnly}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        aria-invalid={ariaInvalid}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={inputClassName}
-      />
+      {type === 'number' ? (
+        <NumberField
+          ref={inputRef as Ref<HTMLInputElement>}
+          inputMode={inputMode === 'numeric' ? 'numeric' : 'decimal'}
+          integer={inputMode === 'numeric' || step === 1}
+          min={min}
+          step={step}
+          required={required}
+          readOnly={readOnly}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={ariaInvalid}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={inputClassName}
+        />
+      ) : (
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode={inputMode === 'numeric' || inputMode === 'decimal' ? inputMode : undefined}
+          readOnly={readOnly}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={ariaInvalid}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={inputClassName}
+        />
+      )}
       {children}
     </label>
   );

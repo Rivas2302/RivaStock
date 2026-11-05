@@ -52,7 +52,8 @@ if (process.argv.includes('--check')) {
   // The warning-state tokens add 270 B gzip to shared CSS; the largest route is 25,213 B including Knowledge CSS.
   // K3 adds foreground-only polling and narrower paged reads. Keep a small
   // route-specific allowance for those controls while preserving the global budget.
-  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 242, 'src/pages/Stock.tsx': 236, 'src/pages/Sales.tsx': 231, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
+  // I12 adds shared number and money controls to Stock and Sales forms.
+  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 242, 'src/pages/Stock.tsx': 238, 'src/pages/Sales.tsx': 232, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
   for (const [route, data] of Object.entries(report)) {
     const jsBudget = (overrides[route] ?? 235) * 1024;
     if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 24.8 * 1024) {

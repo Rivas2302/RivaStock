@@ -15,6 +15,7 @@ import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import AdjustmentInput from '../components/AdjustmentInput';
 import ProductThumbnail from '../components/stock/ProductThumbnail';
+import NumberField from '../components/NumberField';
 import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
 import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHoldings';
 import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/attributedSales';
@@ -427,10 +428,10 @@ export default function POS() {
                     >
                       <Minus size={16} />
                     </button>
-                    <input
-                      type="number"
-                      inputMode="numeric"
+                    <NumberField
                       min={1}
+                      integer
+                      aria-label={`Cantidad de ${it.productName}`}
                       value={it.quantity}
                       onChange={(e) => cart.setItemQuantity(it.productId, Number(e.target.value))}
                       className="w-12 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1 text-sm dark:text-white"
