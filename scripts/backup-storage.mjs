@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -301,6 +301,11 @@ function summarizeManifest(manifest) {
   };
 }
 
+export function isStorageBackupFresh(generatedAt, now = Date.now()) {
+  const timestamp = Date.parse(generatedAt);
+  return Number.isFinite(timestamp) && timestamp <= now && now - timestamp < 24 * 60 * 60 * 1000;
+}
+
 async function verifyCompletedBackup(backupDir, manifest, remote) {
   if (JSON.stringify(manifest.buckets) !== JSON.stringify(remote.buckets)
     || inventorySignature(manifest.objects) !== inventorySignature(remote.objects)) return false;
@@ -310,6 +315,39 @@ async function verifyCompletedBackup(backupDir, manifest, remote) {
     if (!(await sameRemoteObjectExists(backupDir, remoteObject, savedObject))) return false;
   }
   return true;
+}
+
+async function findLatestCompletedBackup(backupRoot, excludedDir) {
+  const entries = await readdir(backupRoot, { withFileTypes: true });
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const directory = join(backupRoot, entry.name);
+    if (resolve(directory) === resolve(excludedDir)) continue;
+    const manifest = await loadManifest(join(directory, 'storage-manifest.json'));
+    if (manifest?.generatedAt && Number.isFinite(Date.parse(manifest.generatedAt))
+      && manifest.projectRef === projectRefFromEnvironment()) candidates.push({ directory, manifest });
+  }
+  candidates.sort((a, b) => Date.parse(b.manifest.generatedAt) - Date.parse(a.manifest.generatedAt));
+  for (const candidate of candidates) {
+    let valid = true;
+    for (const object of candidate.manifest.objects) {
+      if (!(await sameRemoteObjectExists(candidate.directory, object, object))) { valid = false; break; }
+    }
+    if (valid) return candidate;
+  }
+  return null;
+}
+
+async function materializeBackup(source, targetDir, manifest) {
+  for (const object of manifest.objects) {
+    const sourcePath = manifestPath(source, object.file);
+    const targetPath = manifestPath(targetDir, object.file);
+    await mkdir(dirname(targetPath), { recursive: true });
+    await copyFile(sourcePath, targetPath);
+    if (!(await sameRemoteObjectExists(targetDir, object, object))) throw new Error('storage-object-verification-failed');
+  }
+  await writeManifestAtomically(join(targetDir, 'storage-manifest.json'), manifest);
 }
 
 async function downloadObject(client, backupDir, object) {
@@ -330,21 +368,30 @@ export async function runStorageBackup({ backupDir: requestedPath = null, argv =
   const args = requestedPath ? { backupDir: requestedPath } : parseArguments(argv);
   if (args.help) return { help: true };
   const projectRef = projectRefFromEnvironment();
-  const { backupDir } = await getBackupDirectory(args.backupDir);
+  const { backupRoot, backupDir } = await getBackupDirectory(args.backupDir);
   const finalManifestPath = join(backupDir, 'storage-manifest.json');
   const partialManifestPath = join(backupDir, 'storage-manifest.partial.json');
+  if (existsSync(finalManifestPath)) {
+    const existing = await loadManifest(finalManifestPath);
+    if (!existing || existing.projectRef !== projectRef) throw new Error('completed-backup-invalid');
+    for (const object of existing.objects) {
+      if (!(await sameRemoteObjectExists(backupDir, object, object))) throw new Error('completed-backup-file-invalid');
+    }
+    return { backup: backupDir, ...summarizeManifest(existing) };
+  }
+
+  const previousBackup = await findLatestCompletedBackup(backupRoot, backupDir);
+  if (previousBackup && isStorageBackupFresh(previousBackup.manifest.generatedAt)) {
+    await materializeBackup(previousBackup.directory, backupDir, previousBackup.manifest);
+    return { backup: backupDir, reusedWithinDailyWindow: true, ...summarizeManifest(previousBackup.manifest) };
+  }
+
   const credentials = getStorageBackupCredentials(projectRef);
   const client = createStorageClient(projectRef, credentials);
   const remote = await listAllStorageObjects(client);
 
-  if (existsSync(finalManifestPath)) {
-    const existing = await loadManifest(finalManifestPath);
-    if (!existing || !(await verifyCompletedBackup(backupDir, existing, remote))) throw new Error('completed-backup-does-not-match-remote');
-    return { backup: backupDir, ...summarizeManifest(existing) };
-  }
-
   const partial = await loadManifest(partialManifestPath);
-  const priorByIdentity = manifestObjectsByIdentity(partial);
+  const priorByIdentity = manifestObjectsByIdentity(partial ?? previousBackup?.manifest);
   const savedObjects = [];
   const remoteKeys = new Set(remote.objects.map((object) => `${object.bucket}\0${object.path}`));
   await writeManifestAtomically(partialManifestPath, {
@@ -361,6 +408,13 @@ export async function runStorageBackup({ backupDir: requestedPath = null, argv =
       const identity = `${remoteObject.bucket}\0${remoteObject.path}`;
       const previous = priorByIdentity.get(identity);
       if (await sameRemoteObjectExists(backupDir, remoteObject, previous)) return { ...remoteObject, sha256: previous.sha256 };
+      if (previous && (await sameRemoteObjectExists(previousBackup.directory, remoteObject, previous))) {
+        const source = manifestPath(previousBackup.directory, previous.file);
+        const destination = manifestPath(backupDir, remoteObject.file);
+        await mkdir(dirname(destination), { recursive: true });
+        await copyFile(source, destination);
+        return { ...remoteObject, sha256: previous.sha256 };
+      }
       return downloadObject(client, backupDir, remoteObject);
     }));
     savedObjects.push(...completed);

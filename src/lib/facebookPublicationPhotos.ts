@@ -1,5 +1,6 @@
 import type { Product } from '../types';
 import { deleteFromStorage, uploadToStorage } from './db';
+import { PRODUCT_PHOTO_CACHE_CONTROL } from './productPhotos';
 import { supabase } from './supabase';
 
 const MAX_PHOTO_BYTES = 10_000_000;
@@ -38,7 +39,7 @@ async function uploadEmbeddedPhoto(dataUrl: string, ownerUid: string, productId:
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
   const fingerprint = Array.from(digest.slice(0, 12), byte => byte.toString(16).padStart(2, '0')).join('');
   const path = `${ownerUid}/products/${productId}/facebook-${fingerprint}.${getImageExtension(mimeType)}`;
-  return uploadToStorage(path, blob, mimeType);
+  return uploadToStorage(path, blob, mimeType, PRODUCT_PHOTO_CACHE_CONTROL);
 }
 
 export async function preparePublicationPhotos(product: Product, ownerUid: string): Promise<{

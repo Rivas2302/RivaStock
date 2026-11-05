@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Upload, X, Loader2 } from 'lucide-react';
 import { uploadToStorage, deleteFromStorage } from '../lib/db';
 import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
-import { getProductThumbnailPath, getProductThumbnailUrl } from '../lib/productPhotos';
+import { getProductThumbnailPath, getProductThumbnailUrl, PRODUCT_PHOTO_CACHE_CONTROL } from '../lib/productPhotos';
 import { assertStorageUploadAllowed, storageUploadDenialMessage } from '../lib/platformStorage';
 
 const MAX_IMAGES = 4;
@@ -80,9 +80,9 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         }
         await assertStorageUploadAllowed('assets', original.size + thumbnail.size);
         const path = `${ownerUid}/products/${productId}/${Date.now()}_${crypto.randomUUID()}_${index}.${imageFileExtension(original)}`;
-        const originalUrl = await uploadToStorage(path, original, original.type);
+        const originalUrl = await uploadToStorage(path, original, original.type, PRODUCT_PHOTO_CACHE_CONTROL);
         uploadedUrls.push(originalUrl);
-        await uploadToStorage(getProductThumbnailPath(path), thumbnail, thumbnail.type);
+        await uploadToStorage(getProductThumbnailPath(path), thumbnail, thumbnail.type, PRODUCT_PHOTO_CACHE_CONTROL);
       }
       const updated = [...images, ...uploadedUrls];
       setImages(updated);

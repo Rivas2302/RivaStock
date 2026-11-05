@@ -1,5 +1,7 @@
 import type { Product } from '../types';
 
+export const PRODUCT_PHOTO_CACHE_CONTROL = '31536000';
+
 export function getProductPhotoUrls(product: Pick<Product, 'images' | 'imageUrl'>): string[] {
   return [...new Set([...(product.images ?? []), product.imageUrl ?? ''].filter(Boolean))];
 }

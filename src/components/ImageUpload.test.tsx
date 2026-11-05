@@ -17,6 +17,7 @@ vi.mock('../lib/imageOptimization', () => ({
   optimizeUploadImage,
 }));
 vi.mock('../lib/productPhotos', () => ({
+  PRODUCT_PHOTO_CACHE_CONTROL: '31536000',
   getProductThumbnailPath: (path: string) => `thumbs/${path}`,
   getProductThumbnailUrl: (url: string) => `thumb:${url}`,
 }));
@@ -93,14 +94,17 @@ describe('ImageUpload storage guard', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    await vi.waitFor(() => expect(uploadToStorage).toHaveBeenCalledTimes(2));
 
     expect(optimizeUploadImage.mock.calls.map((call) => call[1])).toEqual([1600, 480]);
     expect(uploadToStorage).toHaveBeenCalledTimes(2);
     const originalPath = uploadToStorage.mock.calls[0][0] as string;
     expect(originalPath).toMatch(/^owner\/products\/product\/.+\.webp$/);
     expect(uploadToStorage.mock.calls[0][1]).toMatchObject({ type: 'image/webp' });
+    expect(uploadToStorage.mock.calls[0][3]).toBe('31536000');
     expect(uploadToStorage.mock.calls[1][0]).toBe(`thumbs/${originalPath}`);
     expect(uploadToStorage.mock.calls[1][1]).toMatchObject({ type: 'image/webp' });
+    expect(uploadToStorage.mock.calls[1][3]).toBe('31536000');
     expect(onChange).toHaveBeenCalledWith([`https://cdn.test/${originalPath}`]);
   });
 

@@ -736,10 +736,11 @@ export async function uploadToStorage(
   path: string,
   file: Blob,
   contentType?: string,
+  cacheControl?: string,
 ): Promise<string> {
   const { error } = await supabase.storage
     .from('assets')
-    .upload(path, file, { contentType, upsert: true });
+    .upload(path, file, { contentType, upsert: true, ...(cacheControl ? { cacheControl } : {}) });
 
   if (error) throw new Error(`[storage.upload:${path}] ${error.message}`);
 

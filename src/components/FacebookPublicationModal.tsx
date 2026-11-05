@@ -15,6 +15,7 @@ import PublicationHistory from './automations/PublicationHistory';
 import {publicationBlock,validateGroupSelection} from '../lib/facebookPublications';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 import { preparePublicationPhotos } from '../lib/facebookPublicationPhotos';
+import { PRODUCT_PHOTO_CACHE_CONTROL } from '../lib/productPhotos';
 import { createFacebookCopywritingJob, waitForFacebookCopywritingJob, type FacebookCopywritingProposal } from '../lib/facebookCopywriting';
 import { appendFacebookProductPhoto, createFacebookPhotoReviewJob, waitForFacebookPhotoReviewJob, type FacebookPhotoReview } from '../lib/facebookPhotoReview';
 import { enhanceFacebookPhoto, loadProductPhotoBlob, type FacebookPhotoCrop } from '../lib/facebookPhotoEnhancements';
@@ -273,7 +274,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     const enhanced = await enhanceFacebookPhoto(source, photoCrop);
     const extension = enhanced.mimeType === 'image/png' ? 'png' : enhanced.mimeType === 'image/webp' ? 'webp' : 'jpg';
     const path = `${ownerUid}/products/${publicationProduct.id}/facebook-enhanced-${crypto.randomUUID()}.${extension}`;
-    const newPhoto = await uploadToStorage(path, enhanced.blob, enhanced.mimeType);
+    const newPhoto = await uploadToStorage(path, enhanced.blob, enhanced.mimeType, PRODUCT_PHOTO_CACHE_CONTROL);
     let updatedPhotos: Awaited<ReturnType<typeof appendFacebookProductPhoto>>;
     try {
       updatedPhotos = await appendFacebookProductPhoto(publicationProduct.id, storedSourcePhoto, newPhoto);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inventorySignature,
+  isStorageBackupFresh,
   isPathInside,
   normalizeStorageEntry,
   safeObjectRelativePath,
@@ -48,5 +49,13 @@ describe('verified storage backup helpers', () => {
     expect(inventorySignature([item])).not.toBe(inventorySignature([{ ...item, size: 124 }]));
     expect(isPathInside('C:\\backups', 'C:\\backups\\storage\\file.blob')).toBe(true);
     expect(isPathInside('C:\\repo', 'C:\\backups')).toBe(false);
+  });
+
+  it('reuses a verified Storage backup only while it is less than one day old', () => {
+    const now = Date.parse('2026-11-05T12:00:00.000Z');
+    expect(isStorageBackupFresh('2026-11-04T12:00:01.000Z', now)).toBe(true);
+    expect(isStorageBackupFresh('2026-11-04T12:00:00.000Z', now)).toBe(false);
+    expect(isStorageBackupFresh('2026-11-05T12:00:01.000Z', now)).toBe(false);
+    expect(isStorageBackupFresh('invalid', now)).toBe(false);
   });
 });
