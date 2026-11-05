@@ -1,8 +1,8 @@
 # Supabase API key rotation — A1
 
 **Project:** `RivaStock_Oficial` (`nkfqhuqrgrpfufdymkcr`)
-**Updated:** 2026-11-04
-**Status:** implementation deployed; legacy-key deactivation remains open pending the extension refresh and a replacement for Storage's JWT-only admin authorization.
+**Updated:** 2026-11-05
+**Status:** S3 Storage migration and Bridge polling cutover are deployed; final legacy-key deactivation and post-cutover smoke are in progress.
 
 No API key values belong in this inventory. The project currently has a `default` publishable key and a `default` secret key; the Management API and CLI inventory exposed only their names, types, and IDs for this check.
 
@@ -62,3 +62,13 @@ The current [S3 authentication guide](https://supabase.com/docs/guides/storage/s
 - The local source inventory confirms `account-purge` is another admin-client consumer of the shared secret-first selector. `automation` and `knowledge` still pass the legacy service-role JWT only for Storage authorization; `scripts/backup-storage.mjs` remains the third Storage consumer.
 - Chrome opened the Supabase sign-in URL in the persistent QA profile and redirected to an Organizations dashboard page. The owner has not yet confirmed the Dashboard session. No API keys or S3 credentials were changed, no function was redeployed, and no migration or production data was modified.
 - **A1 remains open.** Keep both legacy keys enabled until Storage and the production extension no longer depend on them, then complete the authenticated smoke before disabling either key.
+
+## Recheck — 2026-11-05 19:55 ART
+
+- The owner provided S3 credentials in `%USERPROFILE%\rivastock-backups\storage-s3.env`. The file was read in memory only; values were not printed or copied into the repository. Since Supabase rejects function-secret names starting with `SUPABASE_`, the keys are stored in Edge Functions under `RIVASTOCK_S3_ACCESS_KEY_ID` and `RIVASTOCK_S3_SECRET_ACCESS_KEY`.
+- `scripts/backup-storage.mjs` now uses S3 with those credentials. The verified backup at `%USERPROFILE%\rivastock-backups\20261105T221056Z` contains all 96 public tables and 14,397 rows, plus 789 Storage objects (146,594,486 bytes); Postgres and Storage verification both passed. No migration was applied.
+- The S3 helper replaces privileged Storage operations in `automation`, `knowledge`, `platform-admin`, and `account-purge`. Those functions and `ai-bridge` were deployed as versions 14, 13, 6, 4, and 21 respectively; all are ACTIVE with `verify_jwt=false`. Safe requests returned `key_mode: secret`, and an authenticated `worker_pending_work` probe returned 200.
+- The production Facebook ZIP is 0.5.23; in-memory inspection confirmed its key-handling code uses only the publishable key. The active device sent a recent heartbeat.
+- AI Bridge 1.25.0 was installed from the repository package in the existing folder. `.env`, sessions, and the Startup shortcut were preserved; one worker is active and sends recent heartbeat. The worker now uses adaptive HTTPS polling (up to one minute while idle) instead of the Realtime WebSocket that required the legacy service-role JWT.
+- The production web bundle contains the publishable key and no legacy JWT. `invite-collaborator` v21 and `delete-collaborator` v7 were unchanged and remain deployed from the earlier secret-key migration.
+- The Management API currently reports the legacy pair enabled. Disable it only after the final authenticated web smoke is prepared; if any smoke fails, re-enable the pair immediately.

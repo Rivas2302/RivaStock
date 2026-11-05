@@ -146,7 +146,8 @@ test('KnowledgeClient only accepts signed original uploads from its own Supabase
     relative_path: '10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000002/v1/manual.pdf',
     sha256: 'a'.repeat(64), file_size: 100, mime_type: 'application/pdf',
     original_filename: 'manual.pdf', cache_path: cachePath,
-    upload_url: 'https://demo.supabase.co/storage/v1/object/upload/sign/' + cachePath + '?token=temporary',
+    upload_url: `https://demo.storage.supabase.co/storage/v1/s3/knowledge-cache/${cachePath}`
+      + '?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=test&X-Amz-Signature=test',
   };
   let payload: { requests: unknown[] } = { requests: [request] };
   globalThis.fetch = async () => new Response(JSON.stringify(payload), { status: 200 });

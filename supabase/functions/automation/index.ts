@@ -3,8 +3,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
 import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
@@ -120,7 +122,7 @@ async function signedUrls(
       && isTraceObjectPath(path, authData.user.id, body.trace_id as string));
   if (!paths.length) return jsonResponseWithCors({ screenshots: [] }, 200, origin);
 
-  const { data: urls, error: signedError } = await serviceClient.storage.from(TRACE_BUCKET).createSignedUrls(paths, 300);
+  const { data: urls, error: signedError } = await storageAdmin.from(TRACE_BUCKET).createSignedUrls(paths, 300);
   if (signedError || !urls) return errorResponse(undefined, origin);
   return jsonResponseWithCors({
     screenshots: urls.map((entry, index) => ({
@@ -142,7 +144,7 @@ async function cleanupExpiredTraces(serviceClient: ReturnType<typeof createClien
       && isTraceObjectPath(path, undefined, item.trace_id as string));
     if (paths.length !== item.screenshot_paths.length) continue;
     if (paths.length) {
-      const { error: removeError } = await serviceClient.storage.from(TRACE_BUCKET).remove(paths);
+      const { error: removeError } = await storageAdmin.from(TRACE_BUCKET).remove(paths);
       if (removeError) continue;
     }
     finalized.push(item.trace_id);
@@ -198,7 +200,7 @@ async function supervisorWorker(
         });
         return jsonResponseWithCors({ error: 'La captura de supervisión no está disponible.' }, 503, origin);
       }
-      const { data: signed, error: signedError } = await serviceClient.storage.from(TRACE_BUCKET)
+      const { data: signed, error: signedError } = await storageAdmin.from(TRACE_BUCKET)
         .createSignedUrl(data.screenshot_path, 120);
       if (signedError || !signed?.signedUrl || !/^https:\/\//i.test(signed.signedUrl)) {
         await serviceClient.rpc('fb_supervisor_worker', {
@@ -286,10 +288,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   const authorization = req.headers.get('authorization') ?? '';
   const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
-    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY, fetch, {
-      supabaseUrl: SUPABASE_URL,
-      legacyServiceRoleJwt: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    }) },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
   });
 
   if (body.action === 'supervisor_worker') return await supervisorWorker(body, req, serviceClient, origin);
@@ -371,7 +370,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           p_file_size: jpeg.byteLength,
         });
         if (!reserveError && reserved === true) {
-          const { error: uploadError } = await serviceClient.storage.from(TRACE_BUCKET).upload(objectPath, jpeg, {
+          const { error: uploadError } = await storageAdmin.from(TRACE_BUCKET).upload(objectPath, jpeg, {
             contentType: 'image/jpeg',
             cacheControl: '3600',
             upsert: false,
@@ -379,7 +378,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           if (!uploadError) {
             screenshotPath = objectPath;
           } else {
-            const { error: removeError } = await serviceClient.storage.from(TRACE_BUCKET).remove([objectPath]);
+            const { error: removeError } = await storageAdmin.from(TRACE_BUCKET).remove([objectPath]);
             if (!removeError) {
               await serviceClient.rpc('fb_trace_storage_release', {
                 p_user_id: identity.ownerUid,
@@ -409,7 +408,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
       });
       if (error || !isUuid(data)) {
         if (screenshotPath) {
-          const { error: removeError } = await serviceClient.storage.from(TRACE_BUCKET).remove([screenshotPath]);
+          const { error: removeError } = await storageAdmin.from(TRACE_BUCKET).remove([screenshotPath]);
           if (!removeError) {
             await serviceClient.rpc('fb_trace_storage_release', {
               p_user_id: identity.ownerUid,

@@ -23,7 +23,6 @@ import { runFacebookSupervisorLoop } from './automation/supervisor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { PendingWorkMonitor, type PendingWorkKey } from './workMonitor.ts';
-import { RealtimeWakeChannel } from './realtimeWake.ts';
 import { DEFAULT_CODEX_SECURITY, loadConfig, type AIProviderId, type CodexSecuritySettings } from './types.ts';
 
 const POLL_INTERVAL_MS = 3000;
@@ -41,7 +40,6 @@ let supervisorController: AbortController | null = null;
 let activeJobId: string | null = null;
 let lastWorkspaceSyncAt = 0;
 let workMonitor: PendingWorkMonitor | null = null;
-let realtimeWakeChannel: RealtimeWakeChannel | null = null;
 const memoryQueue = new MemoryTurnQueue(20, 6);
 let codexSecurity: CodexSecuritySettings = DEFAULT_CODEX_SECURITY;
 let heartbeatSequence = 0;
@@ -62,7 +60,6 @@ function stopBridge(): void {
   activeController?.abort();
   supervisorController?.abort();
   workMonitor?.stop();
-  realtimeWakeChannel?.stop();
 }
 
 process.on('SIGINT', stopBridge);
@@ -388,11 +385,6 @@ async function runWithInstanceLock(): Promise<void> {
       (error) => process.stderr.write(`[AI Bridge] No se pudo consultar la cola combinada: ${reportError(error instanceof Error ? error.message : 'Error de conexión.')}\n`),
     );
     workMonitor.start();
-    if (config.workerId) {
-      realtimeWakeChannel = new RealtimeWakeChannel(config.endpoint, config.token, workerId,
-        (source) => workMonitor?.wake(source));
-      realtimeWakeChannel.start();
-    }
     const monitor = workMonitor;
     const loops: Promise<void>[] = [run()];
     if (!config.knowledgeEnabled) {

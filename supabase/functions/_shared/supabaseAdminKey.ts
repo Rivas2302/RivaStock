@@ -60,24 +60,10 @@ export function withSupabaseAdminKeyMode(
 export function createSupabaseApiKeyFetch(
   apiKey: string,
   fetcher: typeof fetch = fetch,
-  storageAuth?: { supabaseUrl: string; legacyServiceRoleJwt: string },
 ): typeof fetch {
   return (input, init) => {
     const headers = new Headers(input instanceof Request ? input.headers : undefined);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-    if (storageAuth?.legacyServiceRoleJwt) {
-      try {
-        const requestUrl = new URL(input instanceof Request ? input.url : String(input));
-        const supabaseOrigin = new URL(storageAuth.supabaseUrl).origin;
-        if (requestUrl.origin === supabaseOrigin && requestUrl.pathname.startsWith('/storage/v1/')) {
-          headers.set('apikey', apiKey);
-          headers.set('Authorization', `Bearer ${storageAuth.legacyServiceRoleJwt}`);
-          return fetcher(input, { ...init, headers });
-        }
-      } catch {
-        // Fall through to opaque API key handling for invalid or relative URLs.
-      }
-    }
     return fetcher(input, {
       ...init,
       headers: headersWithoutOpaqueApiKeyBearer(headers, apiKey),

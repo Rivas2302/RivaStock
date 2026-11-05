@@ -3,37 +3,47 @@ import {
   inventorySignature,
   isStorageBackupFresh,
   isPathInside,
-  normalizeStorageEntry,
+  listAllStorageObjects,
+  normalizeS3Object,
+  parseS3Environment,
   safeObjectRelativePath,
-  selectStorageBackupCredentials,
+  selectS3Credentials,
 } from '../../scripts/backup-storage.mjs';
 
 describe('verified storage backup helpers', () => {
-  it('keeps the opaque API key and legacy Storage JWT separate in memory', () => {
-    const opaqueSecret = `sb_${'secret'}_fixture`;
-    const output = JSON.stringify([
-      { name: 'service_role', type: 'legacy', api_key: 'eyJ-fixture-storage-jwt' },
-      { name: 'secondary', type: 'secret', api_key: `sb_${'secret'}_secondary` },
-      { name: 'default', type: 'secret', api_key: opaqueSecret },
-    ]);
-
-    expect(selectStorageBackupCredentials(output)).toEqual({
-      apiKey: opaqueSecret,
-      legacyStorageJwt: 'eyJ-fixture-storage-jwt',
-    });
-    expect(() => selectStorageBackupCredentials(JSON.stringify([
-      { name: 'service_role', type: 'legacy', api_key: 'legacy-value' },
-    ]))).toThrow('secret-api-key-missing');
+  it('reads S3 variables and rejects missing server credentials without formatting their values', () => {
+    const values = parseS3Environment('SUPABASE_S3_ACCESS_KEY_ID="access-fixture"\nexport SUPABASE_S3_SECRET_ACCESS_KEY=secret-fixture # local only');
+    expect(selectS3Credentials(values)).toEqual({ accessKeyId: 'access-fixture', secretAccessKey: 'secret-fixture' });
+    expect(() => selectS3Credentials({})).toThrow('s3-credentials-missing');
   });
 
-  it('recognizes storage folders separately from objects and validates object sizes', () => {
-    expect(normalizeStorageEntry('assets', '', { id: null, name: 'products', metadata: null }))
-      .toEqual({ folder: 'products' });
-    expect(normalizeStorageEntry('assets', 'products', {
-      id: 'object-id', name: 'front.jpg', updated_at: '2026-11-02T00:00:00Z', metadata: { size: 123, eTag: 'etag' },
-    })).toMatchObject({ object: { bucket: 'assets', path: 'products/front.jpg', size: 123, etag: 'etag' } });
-    expect(() => normalizeStorageEntry('assets', '', { id: 'object-id', name: 'missing-size', metadata: {} }))
-      .toThrow('storage-object-size-missing');
+  it('normalizes S3 object metadata and rejects incomplete listings', () => {
+    expect(normalizeS3Object('assets', {
+      Key: 'products/front.jpg', LastModified: new Date('2026-11-02T00:00:00Z'), Size: 123, ETag: 'etag',
+    })).toMatchObject({ bucket: 'assets', path: 'products/front.jpg', size: 123, etag: 'etag' });
+    expect(() => normalizeS3Object('assets', { Key: 'missing-size' })).toThrow('storage-list-entry-invalid');
+  });
+
+  it('lists all S3 buckets and paginates objects with continuation tokens', async () => {
+    const seenTokens: Array<string | undefined> = [];
+    const client = {
+      async send(command: { constructor: { name: string }; input: Record<string, unknown> }) {
+        if (command.constructor.name === 'ListBucketsCommand') return { Buckets: [{ Name: 'assets' }, { Name: 'knowledge' }] };
+        seenTokens.push(command.input.ContinuationToken as string | undefined);
+        if (command.input.Bucket === 'knowledge') return { Contents: [], IsTruncated: false };
+        if (!command.input.ContinuationToken) return {
+          Contents: [{ Key: 'one.webp', Size: 4, ETag: 'one' }],
+          IsTruncated: true,
+          NextContinuationToken: 'next-page',
+        };
+        return { Contents: [{ Key: 'two.webp', Size: 8, ETag: 'two' }], IsTruncated: false };
+      },
+    };
+
+    const result = await listAllStorageObjects(client as never);
+    expect(result.buckets).toEqual(['assets', 'knowledge']);
+    expect(result.objects.map(({ path, size }) => [path, size])).toEqual([['one.webp', 4], ['two.webp', 8]]);
+    expect(seenTokens).toEqual([undefined, 'next-page', undefined]);
   });
 
   it('maps arbitrary object names to safe, bounded local paths while retaining the original route separately', () => {

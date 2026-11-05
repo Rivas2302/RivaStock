@@ -9,8 +9,10 @@ import {
   type CentralWorkerAction,
 } from './contract.ts';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts';
+import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
@@ -154,7 +156,7 @@ async function centralAction(
       if (!isRecord(value) || !isUuid(value.version_id) || !isCentralPath(value.relative_path, ownerUid)
         || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(value.sha256)
         || !isInteger(value.file_size, 1, 52_428_800)) continue;
-      const { data: signed, error: signError } = await serviceClient.storage.from('knowledge')
+      const { data: signed, error: signError } = await storageAdmin.from('knowledge')
         .createSignedUrl(value.relative_path, 120);
       if (signError || !signed?.signedUrl) return jsonResponse({ error: 'No se pudo preparar el original para la central.' }, 500);
       ready.push({ ...value, url: signed.signedUrl });
@@ -197,7 +199,7 @@ async function centralAction(
         && Array.isArray(value.version_ids) && value.version_ids.length > 0 && value.version_ids.length <= 1000
         && value.version_ids.every((id) => isUuid(id)) && isCentralPath(value.storage_path, ownerUid));
       if (!valid.length) continue;
-      const { error: removeError } = await serviceClient.storage.from('knowledge')
+      const { error: removeError } = await storageAdmin.from('knowledge')
         .remove([...new Set(valid.map((value) => value.storage_path as string))]);
       if (removeError) {
         console.error('[knowledge] Central storage purge failed.');
@@ -285,7 +287,7 @@ async function centralAction(
         });
         continue;
       }
-      const { data: signed, error: signedError } = await serviceClient.storage
+      const { data: signed, error: signedError } = await storageAdmin
         .from('knowledge-cache').createSignedUploadUrl(cachePath, { upsert: false });
       if (signedError || !signed?.signedUrl) {
         await rpc('knowledge_central_request_failed', {
@@ -327,7 +329,7 @@ async function centralAction(
         || (typeof value.cache_path === 'string' && isCachePath(value.cache_path, ownerUid, value.id as string)))) : [];
     const cachePaths = items.flatMap((item) => typeof item.cache_path === 'string' ? [item.cache_path] : []);
     if (cachePaths.length) {
-      const { error: removeError } = await serviceClient.storage.from('knowledge-cache').remove(cachePaths);
+      const { error: removeError } = await storageAdmin.from('knowledge-cache').remove(cachePaths);
       if (removeError) {
         console.error('[knowledge] On-demand cache cleanup failed.');
         return jsonResponse({ error: 'No se pudo limpiar la caché de originales.' }, 500);
@@ -371,7 +373,7 @@ async function ensureKnowledgeCacheCapacity(
 ): Promise<boolean> {
   const maximumBytes = 100 * 1024 * 1024;
   if (!isInteger(requiredBytes, 1, 52_428_800)) return false;
-  const bucket = serviceClient.storage.from('knowledge-cache');
+  const bucket = storageAdmin.from('knowledge-cache');
   const { data: folders, error: folderError } = await bucket.list(ownerUid, {
     limit: 1000, sortBy: { column: 'created_at', order: 'asc' },
   });
@@ -504,7 +506,7 @@ async function fileUrl(
   }
   if (!version?.storage_path) return jsonResponse({ error: 'La tarea no tiene un archivo para descargar.' }, 409);
 
-  const { data, error: storageError } = await serviceClient.storage.from('knowledge')
+      const { data, error: storageError } = await storageAdmin.from('knowledge')
     .createSignedUrl(version.storage_path, 120);
   if (storageError || !data?.signedUrl) {
     console.error('[knowledge] Signed URL creation failed.');
@@ -564,7 +566,7 @@ async function organizeImages(
   const allowed = requested.filter((image) => assetsByPath.has(image.path));
   if (!allowed.length) return jsonResponse({ images: [] });
 
-  const { data: signed, error: signedError } = await serviceClient.storage.from('knowledge')
+      const { data: signed, error: signedError } = await storageAdmin.from('knowledge')
     .createSignedUrls(allowed.map((image) => image.path), 120);
   if (signedError || !signed) {
     console.error('[knowledge] Organize image URL creation failed.');
@@ -603,10 +605,7 @@ serve(withSupabaseAdminKeyMode(async (req: Request) => {
 
   const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY, fetch, {
-      supabaseUrl: SUPABASE_URL,
-      legacyServiceRoleJwt: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    }) },
+    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
   });
   const ownerUid = await authorizeWorker(req, body, serviceClient);
   if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401);

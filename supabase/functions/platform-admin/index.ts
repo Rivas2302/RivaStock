@@ -8,9 +8,11 @@ import {
 } from '../_shared/supabaseAdminKey.ts';
 import { createPlatformAdminHandler, type PlatformAdminBackend } from '../_shared/platformAdminHandler.ts';
 import type { BusinessLimitOverrides, BusinessPlanCode, BusinessStatus } from '../_shared/platformAdminRules.ts';
+import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
+const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const STORAGE_PAGE_SIZE = 500;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
@@ -224,7 +226,7 @@ function createBackend(req: Request): PlatformAdminBackend {
         if (page.length < STORAGE_PAGE_SIZE) break;
       }
       const signedObjects = await withConcurrency(objects, 6, async (object) => {
-        const { data, error } = await adminClient.storage.from(object.bucket_id).createSignedUrl(object.object_name, 3600);
+        const { data, error } = await storageAdmin.from(object.bucket_id).createSignedUrl(object.object_name, 3600);
         if (error || !data?.signedUrl) throw new Error('platform-business-export-failed');
         return {
           bucket_id: object.bucket_id,

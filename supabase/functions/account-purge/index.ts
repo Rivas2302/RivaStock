@@ -2,8 +2,10 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createSupabaseApiKeyFetch, resolveSupabaseAdminKey, withSupabaseAdminKeyMode } from '../_shared/supabaseAdminKey.ts';
 import { createAccountPurgeHandler } from '../_shared/accountPurgeHandler.ts';
+import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const STORAGE_PAGE_SIZE = 500;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
@@ -36,7 +38,7 @@ serve(withSupabaseAdminKeyMode(createAccountPurgeHandler({
     return Array.isArray(data) ? data as Array<{ bucket_id: string; object_name: string }> : [];
   },
   async removeStorage(bucketId, paths) {
-    const { error } = await admin.storage.from(bucketId).remove(paths);
+    const { error } = await storageAdmin.from(bucketId).remove(paths);
     if (error) throw error;
   },
   async purgeDatabase(ownerUid) {

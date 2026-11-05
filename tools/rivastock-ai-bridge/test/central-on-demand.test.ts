@@ -58,7 +58,7 @@ test('on-demand serving verifies central bytes, uploads to a signed URL, then ma
         assert.equal(url, request.upload_url);
         assert.equal(init?.method, 'PUT');
         assert.equal(new Headers(init?.headers).get('content-type'), 'application/pdf');
-        assert.equal(new Headers(init?.headers).get('x-upsert'), 'false');
+        assert.equal(new Headers(init?.headers).has('x-upsert'), false);
         assert.deepEqual(Buffer.from(init?.body as Uint8Array), bytes);
         order.push('uploaded');
         return new Response(null, { status: 200 });

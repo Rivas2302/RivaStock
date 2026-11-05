@@ -28,7 +28,6 @@ export async function serveCentralRequests(options: {
         headers: {
           'content-type': request.mime_type,
           'cache-control': 'max-age=1800',
-          'x-upsert': 'false',
         },
         body: Buffer.from(bytes),
         signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),

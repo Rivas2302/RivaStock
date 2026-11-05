@@ -14,11 +14,6 @@ const ALLOWED_PROVIDERS = new Set(['mock', 'codex', 'claude']);
 const ALLOWED_CODEX_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra']);
 const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 const DEFAULT_ORIGINS = ['https://rivastock.vercel.app', 'http://localhost:5173'];
-const PENDING_WORK_WAKE_SOURCES = new Set([
-  'ai_jobs', 'ai_workspace_files', 'knowledge_index_jobs', 'knowledge_search_requests',
-  'fb_supervision_requests', 'knowledge_file_requests', 'knowledge_document_versions',
-  'knowledge_central_deletions', 'ai_memories', 'ai_chat_tombstones',
-]);
 
 function configuredOrigins(): Set<string> {
   const configured = Deno.env.get('AI_BRIDGE_ALLOWED_ORIGINS');
@@ -150,91 +145,11 @@ function safeDbError(error: { message?: string } | null, status = 400, origin?: 
   return jsonResponse({ error: 'No se pudo completar la operación de IA.' }, 500, origin);
 }
 
-async function bridgeEventsResponse(req: Request): Promise<Response> {
-  if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503);
-  const workerId = req.headers.get('x-rivastock-worker-id') ?? '';
-  const authorization = req.headers.get('authorization') ?? '';
-  const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!isUuid(workerId) || suppliedToken.length < 32 || suppliedToken.length > 256) {
-    return jsonResponse({ error: 'Conexión del AI Bridge inválida.' }, 401);
-  }
-  const realtimeJwt = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (!realtimeJwt) return jsonResponse({ error: 'Realtime no está configurado para el AI Bridge.' }, 503);
-
-  const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
-  });
-  const { data: ownerUid, error } = await serviceClient.rpc('ai_bridge_authorize_device', {
-    p_device_id: workerId,
-    p_token: suppliedToken,
-  });
-  if (error || !isUuid(ownerUid)) return jsonResponse({ error: 'Conexión del AI Bridge inválida.' }, 401);
-
-  const { socket, response } = Deno.upgradeWebSocket(req);
-  let channel: ReturnType<typeof serviceClient.channel> | null = null;
-  let keepAlive: number | null = null;
-  let closed = false;
-
-  const send = (payload: Record<string, string>) => {
-    if (!closed && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
-  };
-  const cleanup = () => {
-    if (closed) return;
-    closed = true;
-    if (keepAlive !== null) clearInterval(keepAlive);
-    if (channel) void serviceClient.removeChannel(channel).catch(() => undefined);
-  };
-
-  socket.onmessage = (event) => {
-    if (typeof event.data !== 'string' || event.data.length > 64) {
-      socket.close(1008, 'Invalid message');
-      return;
-    }
-    try {
-      const message = JSON.parse(event.data) as { type?: unknown };
-      if (message.type !== 'ping' && message.type !== 'pong') socket.close(1008, 'Invalid message');
-      else if (message.type === 'ping') send({ type: 'pong' });
-    } catch {
-      socket.close(1008, 'Invalid message');
-    }
-  };
-  socket.onclose = cleanup;
-  socket.onerror = cleanup;
-
-  void (async () => {
-    if (closed) return;
-
-    serviceClient.realtime.setAuth(realtimeJwt);
-    channel = serviceClient.channel(`bridge:${ownerUid}`, { config: { private: true } })
-      .on('broadcast', { event: 'pending_work' }, ({ payload }) => {
-        const source = typeof payload?.source === 'string' && PENDING_WORK_WAKE_SOURCES.has(payload.source)
-          ? payload.source : undefined;
-        send({ type: 'wake', ...(source ? { source } : {}) });
-      });
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') send({ type: 'ready' });
-      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        send({ type: 'degraded' });
-        socket.close(1013, 'Realtime unavailable');
-      }
-    });
-    keepAlive = setInterval(() => send({ type: 'ping' }), 25_000);
-  })().catch(() => {
-    if (!closed) {
-      send({ type: 'degraded' });
-      socket.close(1013, 'Realtime unavailable');
-    }
-  });
-
-  return response;
-}
-
 serve(withSupabaseAdminKeyMode(async (req) => {
   const origin = req.headers.get('origin');
   if (origin && !configuredOrigins().has(origin)) return jsonResponse({ error: 'Origen no permitido.' }, 403);
   if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
-    return bridgeEventsResponse(req);
+    return jsonResponse({ error: 'El worker usa sondeo seguro para detectar tareas.' }, 426, origin);
   }
   if (req.method === 'OPTIONS') return jsonResponse({}, 204, origin);
   if (req.method !== 'POST') return jsonResponse({ error: 'Método no permitido.' }, 405, origin);

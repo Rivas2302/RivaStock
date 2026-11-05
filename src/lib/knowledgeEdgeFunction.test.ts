@@ -60,7 +60,7 @@ describe('Knowledge Edge Function contract', () => {
     expect(functionSource).toContain("rpc('ai_memory_store_embeddings'");
   });
 
-  it('routes central worker actions through the paired-device boundary and uses Storage API for cloud purges', () => {
+  it('routes central worker actions through the paired-device boundary and uses server-side S3 for cloud purges', () => {
     for (const action of [
       'worker_central_next',
       'worker_central_stored',
@@ -72,7 +72,7 @@ describe('Knowledge Edge Function contract', () => {
       'worker_central_inventory_list',
       'worker_central_local_file',
     ]) expect(functionSource).toContain(action);
-    expect(functionSource).toContain("storage.from('knowledge')");
+    expect(functionSource).toContain("storageAdmin.from('knowledge')");
     expect(functionSource).toContain('.remove([...new Set(valid.map((value) => value.storage_path as string))])');
     expect(functionSource).not.toContain('DELETE FROM storage.objects');
   });

@@ -21,7 +21,7 @@ describe('automation Edge Function trace contract', () => {
     expect(edgeSource).toContain('function decodeJpeg(');
     expect(edgeSource).toContain('bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff');
     expect(edgeSource).toContain("rpc('fb_trace_storage_reserve'");
-    expect(edgeSource).toContain("storage.from(TRACE_BUCKET).upload(objectPath, jpeg");
+    expect(edgeSource).toContain("storageAdmin.from(TRACE_BUCKET).upload(objectPath, jpeg");
     expect(edgeSource).toContain("if (!removeError) {");
     expect(edgeSource).toContain("[automation] Screenshot cleanup failed.");
     expect(edgeSource).toContain('const MAX_SCREENSHOT_BYTES = 600_000');
@@ -34,7 +34,7 @@ describe('automation Edge Function trace contract', () => {
     const signing = edgeSource.indexOf('createSignedUrls(paths, 300)');
     expect(ownerCheck).toBeGreaterThanOrEqual(0);
     expect(signing).toBeGreaterThan(ownerCheck);
-    const removal = edgeSource.indexOf("storage.from(TRACE_BUCKET).remove(paths)");
+    const removal = edgeSource.indexOf("storageAdmin.from(TRACE_BUCKET).remove(paths)");
     const finalize = edgeSource.indexOf("rpc('fb_traces_cleanup_finalize'");
     expect(removal).toBeGreaterThanOrEqual(0);
     expect(finalize).toBeGreaterThan(removal);

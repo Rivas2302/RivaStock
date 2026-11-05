@@ -304,7 +304,8 @@ export class KnowledgeClient {
           'text/plain', 'text/markdown', 'text/x-markdown', 'image/png', 'image/jpeg', 'image/webp'].includes(value.mime_type)
         || typeof value.original_filename !== 'string' || value.original_filename.length > 255
         || typeof value.cache_path !== 'string' || !isCachePath(value.cache_path, value.relative_path, value.request_id)
-        || typeof value.upload_url !== 'string' || !isSignedStorageUploadUrl(value.upload_url, this.endpoint)) {
+        || typeof value.upload_url !== 'string'
+        || !isSignedStorageUploadUrl(value.upload_url, this.endpoint, value.cache_path)) {
         throw new Error('Una solicitud de original de la central tiene datos inválidos.');
       }
       return value as unknown as CentralOriginalRequest;
@@ -598,15 +599,18 @@ function isCachePath(path: string, relativePath: string, requestId: string): boo
     && new RegExp('^' + ownerId + '/' + requestId + '/[A-Za-z0-9._-]{1,120}$', 'i').test(path);
 }
 
-function isSignedStorageUploadUrl(value: string, endpoint: string): boolean {
+function isSignedStorageUploadUrl(value: string, endpoint: string, cachePath: string): boolean {
   try {
     const uploadUrl = new URL(value);
     const functionUrl = new URL(endpoint);
+    const projectRef = functionUrl.hostname.split('.')[0];
     return functionUrl.protocol === 'https:'
       && uploadUrl.protocol === 'https:'
-      && uploadUrl.origin === functionUrl.origin
-      && uploadUrl.pathname.startsWith('/storage/v1/object/upload/sign/')
-      && Boolean(uploadUrl.searchParams.get('token'));
+      && uploadUrl.hostname === `${projectRef}.storage.supabase.co`
+      && uploadUrl.pathname === `/storage/v1/s3/knowledge-cache/${cachePath}`
+      && uploadUrl.searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256'
+      && Boolean(uploadUrl.searchParams.get('X-Amz-Credential'))
+      && Boolean(uploadUrl.searchParams.get('X-Amz-Signature'));
   } catch {
     return false;
   }

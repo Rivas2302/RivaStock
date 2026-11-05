@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -6,7 +5,12 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createClient } from '@supabase/supabase-js';
+import {
+  GetObjectCommand,
+  ListBucketsCommand,
+  ListObjectsV2Command,
+  S3Client,
+} from '@aws-sdk/client-s3';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE_SIZE = 1000;
@@ -32,93 +36,43 @@ function projectRefFromEnvironment() {
   return projectRef;
 }
 
-function cliProcessSpec(binary, args) {
-  if (/\.(?:mjs|cjs|js)$/i.test(binary)) return { command: process.execPath, args: [binary, ...args], shell: false };
-  if (process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(binary)) return { command: binary, args, shell: true };
-  if (process.platform === 'win32' && /\.ps1$/i.test(binary)) {
-    return {
-      command: process.env.POWERSHELL_EXE || 'powershell.exe',
-      args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', binary, ...args],
-      shell: false,
-    };
-  }
-  return { command: binary, args, shell: false };
-}
-
-export function selectStorageBackupCredentials(output) {
-  let parsed;
-  try {
-    parsed = JSON.parse(output);
-  } catch {
-    throw new Error('api-key-list-invalid');
-  }
-  if (!Array.isArray(parsed)) throw new Error('api-key-list-invalid');
-  const secretKeys = parsed.filter((entry) => entry?.type === 'secret'
-    && typeof entry.api_key === 'string' && entry.api_key.startsWith('sb_secret_'));
-  const selected = secretKeys.find((entry) => entry.name === 'default') ?? secretKeys[0];
-  if (!selected) throw new Error('secret-api-key-missing');
-  const legacyServiceRole = parsed.find((entry) => entry?.name === 'service_role'
-    && typeof entry.api_key === 'string' && entry.api_key.startsWith('eyJ'));
-  if (!legacyServiceRole) throw new Error('legacy-storage-jwt-missing');
-  return { apiKey: selected.api_key, legacyStorageJwt: legacyServiceRole.api_key };
-}
-
-function safeStorageErrorCode(prefix, error) {
-  const status = Number(error?.status ?? error?.statusCode);
-  const code = typeof error?.code === 'string' && /^[a-z0-9_-]{1,40}$/i.test(error.code)
-    ? `-${error.code.toLowerCase()}`
-    : '';
-  return `${prefix}${Number.isInteger(status) && status > 0 ? `-${status}` : ''}${code}`;
-}
-
-function getStorageBackupCredentials(projectRef) {
-  let binary = process.env.SUPABASE_CLI_BIN || 'supabase';
-  let args = ['projects', 'api-keys', '--project-ref', projectRef, '--output', 'json'];
-  if (!process.env.SUPABASE_CLI_BIN && process.platform === 'win32') {
-    const appData = process.env.APPDATA || '';
-    const cmd = appData ? join(appData, 'npm', 'supabase.cmd') : '';
-    const ps1 = appData ? join(appData, 'npm', 'supabase.ps1') : '';
-    if (ps1 && existsSync(ps1)) binary = ps1;
-    else if (cmd && existsSync(cmd)) binary = cmd;
-    else binary = 'supabase.cmd';
-  }
-
-  const spec = cliProcessSpec(binary, args);
-  const result = spawnSync(spec.command, spec.args, {
-    cwd: ROOT,
-    env: process.env,
-    encoding: 'utf8',
-    windowsHide: true,
-    shell: spec.shell,
-    timeout: 60_000,
-    maxBuffer: 8 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  if (result.error || result.status !== 0) throw new Error('api-key-list-failed');
-  return selectStorageBackupCredentials(result.stdout || '');
-}
-
-function createStorageClient(projectRef, { apiKey, legacyStorageJwt }) {
-  const projectUrl = `https://${projectRef}.supabase.co`;
-  const fetchWithStorageJwt = (input, init) => {
-    const headers = new Headers(input instanceof Request ? input.headers : undefined);
-    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-    try {
-      const requestUrl = new URL(input instanceof Request ? input.url : String(input));
-      if (requestUrl.origin === projectUrl && requestUrl.pathname.startsWith('/storage/v1/')) {
-        headers.set('apikey', apiKey);
-        headers.set('Authorization', `Bearer ${legacyStorageJwt}`);
-        return fetch(input, { ...init, headers });
-      }
-    } catch {
-      // Use API key-only headers for invalid or relative URLs.
+export function parseS3Environment(text) {
+  const values = {};
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    let value = match[2];
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\s+#.*$/, '');
     }
-    if (headers.get('Authorization') === `Bearer ${apiKey}`) headers.delete('Authorization');
-    return fetch(input, { ...init, headers });
-  };
-  return createClient(projectUrl, apiKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { fetch: fetchWithStorageJwt },
+    values[match[1]] = value;
+  }
+  return values;
+}
+
+export function selectS3Credentials(environment) {
+  const accessKeyId = environment.SUPABASE_S3_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = environment.SUPABASE_S3_SECRET_ACCESS_KEY?.trim();
+  if (!accessKeyId || !secretAccessKey) throw new Error('s3-credentials-missing');
+  return { accessKeyId, secretAccessKey };
+}
+
+function s3Environment() {
+  const filePath = process.env.RIVASTOCK_S3_ENV_FILE
+    || join(process.env.USERPROFILE || homedir(), 'rivastock-backups', 'storage-s3.env');
+  let fromFile = {};
+  if (existsSync(filePath)) fromFile = parseS3Environment(readFileSync(filePath, 'utf8'));
+  return { ...fromFile, ...process.env };
+}
+
+export function createS3StorageClient(projectRef, environment = s3Environment()) {
+  return new S3Client({
+    region: environment.SUPABASE_S3_REGION || 'us-east-1',
+    endpoint: `https://${projectRef}.storage.supabase.co/storage/v1/s3`,
+    forcePathStyle: true,
+    credentials: selectS3Credentials(environment),
   });
 }
 
@@ -165,67 +119,48 @@ function safeObjectRelativePath(bucket, objectPath) {
   return join('storage', `~${Buffer.from(bucket).toString('base64url')}`, identity.slice(0, 2), `${identity}.blob`);
 }
 
-function normalizeStorageEntry(bucket, prefix, entry) {
-  if (!entry || typeof entry.name !== 'string' || !entry.name || entry.name.includes('/')
-    || entry.name === '.' || entry.name === '..') throw new Error('storage-list-entry-invalid');
-  const objectPath = prefix ? `${prefix}/${entry.name}` : entry.name;
-  const metadata = entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : null;
-  const isFolder = entry.id === null && metadata === null;
-  if (isFolder) return { folder: objectPath };
-  const size = Number(metadata?.size);
-  if (!Number.isSafeInteger(size) || size < 0) throw new Error('storage-object-size-missing');
+export function normalizeS3Object(bucket, entry) {
+  if (typeof bucket !== 'string' || !bucket || typeof entry?.Key !== 'string' || !entry.Key
+    || !Number.isSafeInteger(entry.Size) || entry.Size < 0) throw new Error('storage-list-entry-invalid');
   return {
-    object: {
-      bucket,
-      path: objectPath,
-      size,
-      updatedAt: typeof entry.updated_at === 'string' ? entry.updated_at : null,
-      etag: typeof metadata?.eTag === 'string' ? metadata.eTag : (typeof metadata?.etag === 'string' ? metadata.etag : null),
-      file: safeObjectRelativePath(bucket, objectPath).split(sep).join('/'),
-    },
+    bucket,
+    path: entry.Key,
+    size: entry.Size,
+    updatedAt: entry.LastModified instanceof Date ? entry.LastModified.toISOString() : null,
+    etag: typeof entry.ETag === 'string' ? entry.ETag : null,
+    file: safeObjectRelativePath(bucket, entry.Key).split(sep).join('/'),
   };
 }
 
-async function listStorageObjects(storage, bucket) {
+async function listStorageObjects(client, bucket) {
   const objects = [];
-  const pendingFolders = [''];
-  const visitedFolders = new Set();
-  while (pendingFolders.length) {
-    const prefix = pendingFolders.pop();
-    if (visitedFolders.has(prefix)) throw new Error('storage-folder-cycle');
-    visitedFolders.add(prefix);
-    let offset = 0;
-    while (true) {
-      const { data, error } = await storage.from(bucket).list(prefix, {
-        limit: PAGE_SIZE,
-        offset,
-        sortBy: { column: 'name', order: 'asc' },
-      });
-      if (error || !Array.isArray(data)) throw new Error('storage-list-failed');
-      for (const entry of data) {
-        const normalized = normalizeStorageEntry(bucket, prefix, entry);
-        if (normalized.folder) pendingFolders.push(normalized.folder);
-        else objects.push(normalized.object);
-      }
-      if (data.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
+  let continuationToken;
+  do {
+    const result = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      MaxKeys: PAGE_SIZE,
+      ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+    }));
+    for (const entry of result.Contents ?? []) {
+      objects.push(normalizeS3Object(bucket, entry));
     }
-  }
+    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    if (result.IsTruncated && !continuationToken) throw new Error('storage-list-continuation-missing');
+  } while (continuationToken);
   objects.sort((left, right) => left.path.localeCompare(right.path));
   if (new Set(objects.map((object) => object.path)).size !== objects.length) throw new Error('storage-duplicate-object');
   return objects;
 }
 
-async function listAllStorageObjects(client) {
-  const { data: buckets, error } = await client.storage.listBuckets();
-  if (error) throw new Error(safeStorageErrorCode('storage-bucket-list-failed', error));
-  if (!Array.isArray(buckets)) throw new Error('storage-bucket-list-invalid');
-  const names = buckets.map((bucket) => bucket?.name).filter((name) => typeof name === 'string' && name.length > 0);
+export async function listAllStorageObjects(client) {
+  const result = await client.send(new ListBucketsCommand({}));
+  const buckets = result.Buckets ?? [];
+  const names = buckets.map((bucket) => bucket?.Name).filter((name) => typeof name === 'string' && name.length > 0);
   if (names.length !== buckets.length || new Set(names).size !== names.length) throw new Error('storage-bucket-list-invalid');
   if (names.length === 0) throw new Error('storage-bucket-list-empty');
   names.sort((left, right) => left.localeCompare(right));
   const objects = [];
-  for (const bucket of names) objects.push(...await listStorageObjects(client.storage, bucket));
+  for (const bucket of names) objects.push(...await listStorageObjects(client, bucket));
   return { buckets: names, objects };
 }
 
@@ -324,7 +259,12 @@ async function findLatestCompletedBackup(backupRoot, excludedDir) {
     if (!entry.isDirectory()) continue;
     const directory = join(backupRoot, entry.name);
     if (resolve(directory) === resolve(excludedDir)) continue;
-    const manifest = await loadManifest(join(directory, 'storage-manifest.json'));
+    let manifest;
+    try {
+      manifest = await loadManifest(join(directory, 'storage-manifest.json'));
+    } catch {
+      continue;
+    }
     if (manifest?.generatedAt && Number.isFinite(Date.parse(manifest.generatedAt))
       && manifest.projectRef === projectRefFromEnvironment()) candidates.push({ directory, manifest });
   }
@@ -351,9 +291,9 @@ async function materializeBackup(source, targetDir, manifest) {
 }
 
 async function downloadObject(client, backupDir, object) {
-  const { data, error } = await client.storage.from(object.bucket).download(object.path);
-  if (error || !data) throw new Error('storage-object-download-failed');
-  const bytes = Buffer.from(await data.arrayBuffer());
+  const response = await client.send(new GetObjectCommand({ Bucket: object.bucket, Key: object.path }));
+  if (!response.Body) throw new Error('storage-object-download-failed');
+  const bytes = Buffer.from(await response.Body.transformToByteArray());
   if (bytes.byteLength !== object.size) throw new Error('storage-object-size-mismatch');
   const localPath = manifestPath(backupDir, object.file);
   await mkdir(dirname(localPath), { recursive: true });
@@ -386,9 +326,9 @@ export async function runStorageBackup({ backupDir: requestedPath = null, argv =
     return { backup: backupDir, reusedWithinDailyWindow: true, ...summarizeManifest(previousBackup.manifest) };
   }
 
-  const credentials = getStorageBackupCredentials(projectRef);
-  const client = createStorageClient(projectRef, credentials);
-  const remote = await listAllStorageObjects(client);
+  const client = createS3StorageClient(projectRef);
+  try {
+    const remote = await listAllStorageObjects(client);
 
   const partial = await loadManifest(partialManifestPath);
   const priorByIdentity = manifestObjectsByIdentity(partial ?? previousBackup?.manifest);
@@ -455,7 +395,10 @@ export async function runStorageBackup({ backupDir: requestedPath = null, argv =
     }
   }
   await rename(partialManifestPath, finalManifestPath);
-  return { backup: backupDir, ...summarizeManifest(manifest) };
+    return { backup: backupDir, ...summarizeManifest(manifest) };
+  } finally {
+    client.destroy();
+  }
 }
 
 function isMainModule() {
@@ -480,12 +423,9 @@ if (isMainModule()) {
 }
 
 export {
-  createStorageClient,
-  getStorageBackupCredentials,
   inventorySignature,
   isPathInside,
-  listAllStorageObjects,
-  normalizeStorageEntry,
+  listStorageObjects,
   projectRefFromEnvironment,
   safeObjectRelativePath,
 };

@@ -1227,3 +1227,13 @@
 
 Todos los bocetos usan tokens CSS de DESIGN.md, Hanken Grotesk, ejemplo en pesos, toggle claro/oscuro.
 Sin toque en src/, supabase/ ni extensions/.
+
+## 2026-11-05 — A1 Storage y Bridge en producción; corte legacy pendiente
+
+- Usé las credenciales S3 provistas fuera del repo y mantuve sus valores en memoria. El respaldo verificado está en `%USERPROFILE%\rivastock-backups\20261105T221056Z`: 96 tablas, 14.397 filas y 789 objetos (146.594.486 bytes); verificaciones de Postgres y Storage aprobadas. No se aplicó ninguna migración.
+- `backup-storage.mjs` y las operaciones Storage privilegiadas de `automation`, `knowledge`, `platform-admin` y `account-purge` ya usan S3. Deploys Supabase: `ai-bridge` v21, `automation` v14, `knowledge` v13, `platform-admin` v6 y `account-purge` v4; activos y `key_mode: secret`. `worker_pending_work` respondió 200.
+- AI Bridge 1.25.0 está instalado en el mismo directorio, con `.env`, sesiones y acceso directo de Inicio preservados. Verificados un único proceso y heartbeat reciente. Reemplaza el Realtime con sondeo HTTPS adaptativo, con demora de hasta 60 s cuando está inactivo.
+- Producción: bundle web usa `sb_publishable_` y no contiene JWT legacy; el ZIP Facebook 0.5.23 también usa solo la clave publicable. Dispositivo Facebook activo con heartbeat reciente.
+- Verificación local: lint aprobado; 984 pruebas del repo, 121 del Bridge, 3 de S3 en Deno y build aprobados. La primera ejecución concurrente agotó el timeout de una prueba; la suite completa repetida en forma aislada pasó.
+- La Management API confirma que el par legacy sigue habilitado. Todavía falta desactivarlo y completar el smoke autenticado de app, producto, Bridge y extensión; reactivarlo de inmediato si algo falla. **A1 continúa abierto hasta ese corte.**
+- **Siguiente:** cerrar A1 con el smoke de producción y después continuar C0 y los ensayos con G2 abierta. I15 queda disponible si alguna prueba en vivo espera una puerta. H8 diferida por pedido de Riva.
