@@ -43,4 +43,11 @@ describe('mobile stock primitives', () => {
     expect(host.querySelector('img')).toBeNull();
     expect(host.querySelector('svg[role="img"]')?.getAttribute('aria-label')).toBe('Sin imagen para Producto');
   });
+
+  it('loads the lazy thumbnail for Storage WebP photos', async () => {
+    await render(<ProductThumbnail product={{ name: 'Producto', images: ['https://project.supabase.co/storage/v1/object/public/assets/owner/products/p/photo.webp'] }} />);
+    const image = host.querySelector('img');
+    expect(image?.getAttribute('src')).toBe('https://project.supabase.co/storage/v1/object/public/assets/owner/products/p/photo.thumb.webp');
+    expect(image?.getAttribute('loading')).toBe('lazy');
+  });
 });

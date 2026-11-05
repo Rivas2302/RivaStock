@@ -51,6 +51,15 @@
 - **Siguiente:** cuando A1 continúe esperando el login, avanzar I12 y luego I13 según el plan más reciente; hacer el smoke de I10/I11 cuando el perfil permita la validación autenticada.
 
 # Estado de ejecución autónoma
+
+## 2026-11-05 — K4 terminado localmente; I14 lista
+
+- K4: las subidas nuevas de fotos de producto, miniaturas, fotos incrustadas en publicaciones y fotos mejoradas usan `cacheControl: 31536000`. `ProductThumbnail` ahora pide `.thumb.webp` para Storage WebP y conserva carga diferida; no reetiqueté ni descargué fotos existentes.
+- `backup:storage` valida localmente el último manifiesto y sus hashes, reutiliza el backup dentro de 24 horas y, al renovarlo, copia objetos sin cambios desde el backup previo y descarga solo los nuevos/cambiados. No ejecuté un backup de producción ni pruebas que descarguen fotos porque K1 registró egress >80 %.
+- I14: POS ahora muestra `ProductThumbnail` con `loading="lazy"` en resultados de búsqueda y renglones del carrito. Commits `8ed4a83` (K4) y `d54d184` (I14) están en `main` con Rivas2302. La verificación HTTP inicial de producción dio 200; continúo comprobando que sirva el build nuevo.
+- Verificación: suite completa **977/977**, `npm run lint` y `npm run build` pasaron; tests focales actualizados **11/11**. `perf:check` sigue fallando en AIHub y Sales por el diff local de K3; esos cambios no se incluyen en los commits K4/I14.
+- **Desvío de validación:** no inspeccioné imágenes de producción ni reetiqueté objetos. El backup incremental se validó con tests locales y no se invocó contra Storage productivo.
+- **Siguiente:** commit/deploy de K4 y luego I14; después completar K3, corregir el presupuesto de bundle y continuar A1 y los bloques posteriores según ACTION_PLAN.
 ## 2026-11-04 — I10 listo localmente; smoke de producción pendiente
 
 - Copié la versión actualizada de `ACTION_PLAN.md` desde Desktop. I10 e I11 siguen `[ ]` hasta completar en producción el smoke requerido: abrir el formulario y cancelarlo sin registrar ventas.

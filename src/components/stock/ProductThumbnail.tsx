@@ -1,6 +1,20 @@
 import { useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import type { Product } from '../../types';
+import { getProductThumbnailUrl } from '../../lib/productPhotos';
+
+function thumbnailSource(source: string | undefined): string | undefined {
+  if (!source) return undefined;
+  try {
+    const url = new URL(source);
+    if (url.pathname.includes('/storage/v1/object/') && /\.webp$/i.test(url.pathname)) {
+      return getProductThumbnailUrl(source);
+    }
+  } catch {
+    // Keep relative and legacy non-URL sources unchanged.
+  }
+  return source;
+}
 
 export interface ProductThumbnailProps {
   product: Pick<Product, 'name' | 'images' | 'imageUrl'>;
@@ -8,7 +22,7 @@ export interface ProductThumbnailProps {
 }
 
 export default function ProductThumbnail({ product, sizeClassName = 'size-10' }: ProductThumbnailProps) {
-  const imageUrl = product.images?.[0] ?? product.imageUrl;
+  const imageUrl = thumbnailSource(product.images?.[0] ?? product.imageUrl);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const showImage = Boolean(imageUrl) && failedUrl !== imageUrl;
 
