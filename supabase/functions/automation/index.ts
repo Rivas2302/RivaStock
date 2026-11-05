@@ -9,7 +9,6 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_SCREENSHOT_BYTES = 600_000;

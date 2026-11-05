@@ -9,7 +9,6 @@ const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const STORAGE_PAGE_SIZE = 500;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
 const admin = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },

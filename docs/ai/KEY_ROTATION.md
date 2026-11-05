@@ -2,9 +2,9 @@
 
 **Project:** `RivaStock_Oficial` (`nkfqhuqrgrpfufdymkcr`)
 **Updated:** 2026-11-05
-**Status:** S3 Storage migration and Bridge polling cutover are deployed; final legacy-key deactivation and post-cutover smoke are in progress.
+**Status as of 2026-11-05 20:23 ART:** S3 Storage migration and Bridge polling cutover are deployed. The web and all seven Edge Functions no longer contain a legacy-key fallback; production function versions are `ai-bridge` v22, `automation` v15, `knowledge` v14, `invite-collaborator` v22, `delete-collaborator` v8, `platform-admin` v7, and `account-purge` v5. The legacy pair remains enabled until the new frontend commit is deployed and the post-cutover smoke passes.
 
-No API key values belong in this inventory. The project currently has a `default` publishable key and a `default` secret key; the Management API and CLI inventory exposed only their names, types, and IDs for this check.
+No API key values belong in this inventory. The project has a `default` publishable key and a `default` secret key. The Management API and CLI inventory exposed only names, types, IDs, and enabled state for this check.
 
 ## Consumer inventory
 

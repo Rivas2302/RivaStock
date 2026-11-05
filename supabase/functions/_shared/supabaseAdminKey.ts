@@ -1,6 +1,6 @@
 import { headersWithoutOpaqueApiKeyBearer, SUPABASE_PUBLISHABLE_KEY } from './supabasePublicConfig.ts';
 
-export type SupabaseAdminKeyMode = 'secret' | 'legacy';
+export type SupabaseAdminKeyMode = 'secret';
 
 export interface SupabaseAdminKeySelection {
   key: string;
@@ -9,7 +9,6 @@ export interface SupabaseAdminKeySelection {
 
 export function resolveSupabaseAdminKey(
   secretKeysJson: string | null | undefined,
-  legacyServiceRoleKey: string | null | undefined,
 ): SupabaseAdminKeySelection {
   const configuredSecrets = parseSecretKeys(secretKeysJson);
   const secretKey = configuredSecrets.default
@@ -17,9 +16,6 @@ export function resolveSupabaseAdminKey(
     ?? '';
 
   if (secretKey) return { key: secretKey, mode: 'secret' };
-
-  const legacyKey = legacyServiceRoleKey?.trim() ?? '';
-  if (legacyKey) return { key: legacyKey, mode: 'legacy' };
 
   throw new Error('Supabase admin key is not configured.');
 }

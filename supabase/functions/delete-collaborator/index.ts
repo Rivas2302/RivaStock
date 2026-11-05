@@ -5,7 +5,6 @@ import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdm
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
 
 const CORS = {

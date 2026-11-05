@@ -12,36 +12,31 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe('Supabase key migration', () => {
-  it('selects the named default secret key before any legacy fallback', () => {
-    expect(resolveSupabaseAdminKey(
-      JSON.stringify({ other: 'secret-other', default: 'secret-default' }),
-      'legacy-service-role',
-    )).toEqual({ key: 'secret-default', mode: 'secret' });
+  it('selects the named default secret key', () => {
+    expect(resolveSupabaseAdminKey(JSON.stringify({ other: 'secret-other', default: 'secret-default' })))
+      .toEqual({ key: 'secret-default', mode: 'secret' });
   });
 
   it('uses the first configured secret when the default name is absent', () => {
-    expect(resolveSupabaseAdminKey(
-      JSON.stringify({ first: 'secret-first', empty: '' }),
-      'legacy-service-role',
-    )).toEqual({ key: 'secret-first', mode: 'secret' });
+    expect(resolveSupabaseAdminKey(JSON.stringify({ first: 'secret-first', empty: '' })))
+      .toEqual({ key: 'secret-first', mode: 'secret' });
   });
 
-  it('uses legacy service role only when no new secret is configured', () => {
-    expect(resolveSupabaseAdminKey('{"default":""}', 'legacy-service-role'))
-      .toEqual({ key: 'legacy-service-role', mode: 'legacy' });
+  it('rejects missing admin credentials without falling back to legacy keys', () => {
+    expect(() => resolveSupabaseAdminKey('{"default":""}')).toThrow('Supabase admin key is not configured.');
   });
 
   it('rejects malformed secrets JSON and missing admin credentials', () => {
     expect(parseSecretKeys('{')).toEqual({});
-    expect(() => resolveSupabaseAdminKey('{', '')).toThrow('Supabase admin key is not configured.');
+    expect(() => resolveSupabaseAdminKey('{')).toThrow('Supabase admin key is not configured.');
   });
 
-  it('prefers publishable environment key, then bundled key, then the legacy fallback', () => {
-    expect(resolveSupabasePublicKey(' sb_publishable_env ', 'sb_publishable_bundled', 'legacy-anon'))
+  it('prefers publishable environment key, then the bundled key, with no legacy fallback', () => {
+    expect(resolveSupabasePublicKey(' sb_publishable_env ', 'sb_publishable_bundled'))
       .toBe('sb_publishable_env');
-    expect(resolveSupabasePublicKey('', 'sb_publishable_bundled', 'legacy-anon'))
+    expect(resolveSupabasePublicKey('', 'sb_publishable_bundled'))
       .toBe('sb_publishable_bundled');
-    expect(resolveSupabasePublicKey('', '', 'legacy-anon')).toBe('legacy-anon');
+    expect(resolveSupabasePublicKey('', '')).toBe('');
   });
 
   it('removes only the opaque API-key bearer while preserving user JWT authorization', () => {
@@ -90,7 +85,7 @@ describe('Supabase key migration', () => {
     (functionName) => {
       const source = readFileSync(resolve(process.cwd(), `supabase/functions/${functionName}/index.ts`), 'utf8');
       expect(source).toContain("Deno.env.get('SUPABASE_SECRET_KEYS')");
-      expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
+      expect(source).not.toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
       expect(source).toContain('withSupabaseAdminKeyMode(');
       expect(source).not.toContain('logSupabaseAdminKeyMode');
       expect(source).not.toMatch(/createClient\(SUPABASE_URL,\s*SUPABASE_SERVICE_ROLE_KEY/);

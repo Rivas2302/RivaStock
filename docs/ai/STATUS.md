@@ -1,3 +1,11 @@
+## 2026-11-05 20:23 ART — A1: último fallback legacy eliminado; corte pendiente
+
+- Con las credenciales S3 provistas por Riva, el backup de Storage y las operaciones privilegiadas ya migraron. Quité de la web el fallback `VITE_SUPABASE_ANON_KEY` y de las siete Edge Functions el fallback `SUPABASE_SERVICE_ROLE_KEY`; ambos ahora fallan si falta la clave nueva, sin probar la legacy.
+- Desplegué `ai-bridge` v22, `automation` v15, `knowledge` v14, `platform-admin` v7, `account-purge` v5, `invite-collaborator` v22 y `delete-collaborator` v8. Se conservaron `verify_jwt=false` para ai-bridge, automation, knowledge, platform-admin y account-purge; invitación y borrado de colaborador siguen con JWT requerido.
+- La sesión persistente de Playwright está autenticada: navegación de solo lectura por Inicio, Stock, Ventas, Conocimientos y Automatizaciones renderizó sin formularios de login ni errores visibles. Al cambiar de ruta se abortaron consultas anteriores, como es esperable.
+- `npm run lint` y el test focal A1 **19/19** pasan; suite completa **986/986**. `npm run build` pasó, pero `npm run perf:check` sigue fallando en el presupuesto de `Knowledge.tsx` (desvío preexistente observado antes de esta poda de claves; requiere comparar con la línea base limpia).
+- El par de claves legacy sigue habilitado hasta desplegar el frontend sin fallback y repetir el smoke posterior al corte. **A1 aún no está cerrada.**
+
 ## 2026-11-05 12:51 ART — K1 medición inicial (solo lectura)
 
 - Uso informado por Riva: Egress **4,58/5 GB (91,6 %)** y Log Ingestion **2,33/1 GB (233 %)**. Avisé de inmediato que Log Ingestion ya excede la cuota. No abrí el Dashboard.

@@ -14,7 +14,6 @@ export const supabaseProjectUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPA
 export const supabasePublicApiKey = resolveSupabasePublicKey(
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined,
   SUPABASE_PUBLISHABLE_KEY,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
 );
 
 if (!supabaseProjectUrl || !supabasePublicApiKey) {
