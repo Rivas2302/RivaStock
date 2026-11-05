@@ -1,8 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { headersWithoutOpaqueApiKeyBearer, resolveSupabasePublicKey } from './supabasePublicConfig';
-import { createSupabaseApiKeyFetch, parseSecretKeys, resolveSupabaseAdminKey } from '../../supabase/functions/_shared/supabaseAdminKey';
+import { createSupabaseApiKeyFetch, parseSecretKeys, resolveSupabaseAdminKey, withSupabaseAdminKeyMode } from '../../supabase/functions/_shared/supabaseAdminKey';
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.(?:ts|tsx|js|mjs)$/.test(entry.name) ? [path] : [];
+  });
+}
 
 describe('Supabase key migration', () => {
   it('selects the named default secret key before any legacy fallback', () => {
@@ -86,14 +93,51 @@ describe('Supabase key migration', () => {
     expect(new Headers(seen[2].init?.headers).has('Authorization')).toBe(false);
   });
 
-  it.each(['ai-bridge', 'automation', 'knowledge', 'invite-collaborator', 'delete-collaborator', 'platform-admin'])(
-    '%s uses the shared secret selector and logs only key_mode',
+  it.each(['ai-bridge', 'automation', 'knowledge', 'invite-collaborator', 'delete-collaborator', 'platform-admin', 'account-purge'])(
+    '%s uses the shared secret selector and exposes key_mode without logging it',
     (functionName) => {
       const source = readFileSync(resolve(process.cwd(), `supabase/functions/${functionName}/index.ts`), 'utf8');
       expect(source).toContain("Deno.env.get('SUPABASE_SECRET_KEYS')");
       expect(source).toContain("Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')");
-      expect(source).toContain(`logSupabaseAdminKeyMode('${functionName}', SUPABASE_ADMIN_KEY_MODE)`);
+      expect(source).toContain('withSupabaseAdminKeyMode(');
+      expect(source).not.toContain('logSupabaseAdminKeyMode');
       expect(source).not.toMatch(/createClient\(SUPABASE_URL,\s*SUPABASE_SERVICE_ROLE_KEY/);
     },
   );
+  it('exposes the selected key mode as a response header without emitting a log', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const handler = withSupabaseAdminKeyMode(() => new Response('ok', {
+      headers: { 'Access-Control-Expose-Headers': 'x-request-id' },
+    }), 'secret');
+
+    try {
+      const response = await handler(new Request('https://example.test'));
+      expect(response.headers.get('x-rivastock-key-mode')).toBe('secret');
+      expect(response.headers.get('Access-Control-Expose-Headers')).toBe('x-request-id, x-rivastock-key-mode');
+      expect(await response.text()).toBe('ok');
+      expect(info).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('preserves the Realtime WebSocket upgrade response', async () => {
+    const upgradeResponse = new Response(null);
+    Object.defineProperty(upgradeResponse, 'status', { value: 101 });
+    const handler = withSupabaseAdminKeyMode(() => upgradeResponse, 'secret');
+
+    expect(await handler(new Request('https://example.test'))).toBe(upgradeResponse);
+  });
+  it('keeps routine Edge Function and worker polling logs out of production', () => {
+    const directories = [
+      resolve(process.cwd(), 'supabase/functions'),
+      resolve(process.cwd(), 'tools/rivastock-ai-bridge/src'),
+    ];
+    const routineLogCalls = directories.flatMap(sourceFiles).filter((file) => {
+      const source = readFileSync(file, 'utf8');
+      return /console\.(?:log|info|debug)\s*\(/.test(source);
+    });
+
+    expect(routineLogCalls).toEqual([]);
+  });
 });

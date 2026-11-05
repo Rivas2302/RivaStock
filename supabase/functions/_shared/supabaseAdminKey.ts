@@ -37,8 +37,24 @@ export function parseSecretKeys(value: string | null | undefined): Record<string
   }
 }
 
-export function logSupabaseAdminKeyMode(functionName: string, keyMode: SupabaseAdminKeyMode): void {
-  console.info(JSON.stringify({ event: 'supabase_admin_key_mode', function: functionName, key_mode: keyMode }));
+export function withSupabaseAdminKeyMode(
+  handler: (request: Request) => Response | Promise<Response>,
+  keyMode: SupabaseAdminKeyMode,
+): (request: Request) => Promise<Response> {
+  return async (request) => {
+    const response = await handler(request);
+    if (response.status === 101) return response;
+    const headers = new Headers(response.headers);
+    headers.set('x-rivastock-key-mode', keyMode);
+    const exposedHeaders = new Set((headers.get('Access-Control-Expose-Headers') ?? '').split(',').map((header) => header.trim()).filter(Boolean));
+    exposedHeaders.add('x-rivastock-key-mode');
+    headers.set('Access-Control-Expose-Headers', [...exposedHeaders].join(', '));
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  };
 }
 
 export function createSupabaseApiKeyFetch(

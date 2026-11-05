@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 import { hasReachedCollaboratorLimit } from '../_shared/platformAdminRules.ts';
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!;
@@ -8,7 +8,6 @@ const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupaba
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
-logSupabaseAdminKeyMode('invite-collaborator', SUPABASE_ADMIN_KEY_MODE);
 const APP_URL               = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
 
 const CORS = {
@@ -38,7 +37,7 @@ function isValidPermissions(p: unknown): p is Body['permissions'] {
   return true;
 }
 
-serve(async (req) => {
+serve(withSupabaseAdminKeyMode(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }),
@@ -267,4 +266,4 @@ serve(async (req) => {
 
   return new Response(JSON.stringify({ invitation_id: invitationId, status }),
     { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
-});
+}, SUPABASE_ADMIN_KEY_MODE));

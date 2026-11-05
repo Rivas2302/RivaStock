@@ -1,13 +1,12 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
-logSupabaseAdminKeyMode('delete-collaborator', SUPABASE_ADMIN_KEY_MODE);
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -22,7 +21,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-serve(async (req) => {
+serve(withSupabaseAdminKeyMode(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -60,4 +59,4 @@ serve(async (req) => {
   if (deleteErr) return json({ error: `Error al eliminar usuario: ${deleteErr.message}` }, 500);
 
   return json({ success: true });
-});
+}, SUPABASE_ADMIN_KEY_MODE));

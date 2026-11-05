@@ -2,14 +2,13 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } from '../_shared/workerAuth.ts';
 import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
-import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
-logSupabaseAdminKeyMode('automation', SUPABASE_ADMIN_KEY_MODE);
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_SCREENSHOT_BYTES = 600_000;
 const MAX_SUMMARY_BYTES = 20_480;
@@ -267,7 +266,7 @@ async function supervisorWorker(
   return jsonResponseWithCors(data as Record<string, unknown>, 200, origin);
 }
 
-serve(async (req) => {
+serve(withSupabaseAdminKeyMode(async (req) => {
   const origin = req.headers.get('origin');
   if (origin && !ALLOWED_ORIGINS.has(origin)) {
     return jsonResponseWithCors({ error: 'Origen no permitido.' }, 403, origin);
@@ -447,4 +446,4 @@ serve(async (req) => {
     console.error('[automation] Trace operation failed.');
     return errorResponse(undefined, origin);
   }
-});
+}, SUPABASE_ADMIN_KEY_MODE));

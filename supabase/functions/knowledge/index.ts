@@ -8,14 +8,13 @@ import {
   validateWorkerRetrieveRequest,
   type CentralWorkerAction,
 } from './contract.ts';
-import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts';
+import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
-logSupabaseAdminKeyMode('knowledge', SUPABASE_ADMIN_KEY_MODE);
 const MAX_BODY_BYTES = 1_048_576;
 const CENTRAL_ACTIONS = new Set<CentralWorkerAction>([
   'worker_central_next', 'worker_central_stored', 'worker_central_inventory', 'worker_central_inventory_list',
@@ -581,7 +580,7 @@ async function organizeImages(
   }) });
 }
 
-serve(async (req: Request) => {
+serve(withSupabaseAdminKeyMode(async (req: Request) => {
   if (req.headers.has('origin')) return jsonResponse({ error: 'Esta función solo acepta conexiones del worker.' }, 403);
   if (req.method !== 'POST') return jsonResponse({ error: 'Método no permitido.' }, 405);
 
@@ -745,4 +744,4 @@ serve(async (req: Request) => {
     console.error('[knowledge] Unexpected request failure.');
     return jsonResponse({ error: 'No se pudo completar la operación de Conocimientos.' }, 500);
   }
-});
+}, SUPABASE_ADMIN_KEY_MODE));

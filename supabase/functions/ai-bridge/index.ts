@@ -1,13 +1,12 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createSupabaseApiKeyFetch, logSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
 );
-logSupabaseAdminKeyMode('ai-bridge', SUPABASE_ADMIN_KEY_MODE);
 const AI_BRIDGE_TOKEN = Deno.env.get('AI_BRIDGE_TOKEN') ?? '';
 const AI_BRIDGE_OWNER_UID = Deno.env.get('AI_BRIDGE_OWNER_UID') ?? '';
 const MAX_BODY_BYTES = 16_384;
@@ -231,7 +230,7 @@ async function bridgeEventsResponse(req: Request): Promise<Response> {
   return response;
 }
 
-serve(async (req) => {
+serve(withSupabaseAdminKeyMode(async (req) => {
   const origin = req.headers.get('origin');
   if (origin && !configuredOrigins().has(origin)) return jsonResponse({ error: 'Origen no permitido.' }, 403);
   if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
@@ -757,4 +756,4 @@ serve(async (req) => {
   }
 
   return jsonResponse({ error: 'Operación no permitida.' }, 400, origin);
-});
+}, SUPABASE_ADMIN_KEY_MODE));

@@ -19,6 +19,20 @@
 - `pg_stat_statements` acumula desde **2026-04-28 21:18 UTC**. Principales llamadas desde ese reset: `ai_bridge_authorize_device` 435.308; `ai_bridge_worker` 182.504; `knowledge_worker` 111.194; `fb_supervisor_worker` 80.087; `business_limits` 42.069; `knowledge_central_next_requests` 40.985. No se interpretan como tasa horaria.
 - La consulta de organización informó el plan Free, pero no fecha de renovación; no encontré un endpoint documentado que entregue la fecha del ciclo. **K1 [x]**; el siguiente paso es K2.
 
+## 2026-11-05 14:08 ART — K2 desplegado; validación de reposo
+
+- `73026a1 perf(bridge): replace idle queue polls with adaptive wakeups` quedó en `main`. La migración aditiva `20261105160634_bridge_pending_work_probe` está aplicada en producción y `ai-bridge` está ACTIVE v18 con `verify_jwt=false`.
+- El paquete AI Bridge 1.24.0 se instaló en la PC enlazada con el actualizador estándar. En la comprobación local quedó un único worker, lock presente, sin trabajo activo y heartbeat reciente. La producción mantiene dos dispositivos no revocados, uno con heartbeat dentro de 180 s y ninguno ocupado; el último heartbeat observado fue 2026-11-05 17:08:37 UTC.
+- La consulta combinada al worker respondió HTTP 200 con las ocho fuentes configuradas y todas vacías. El WebSocket autenticado recibió `Realtime subscription ready`; un wake privado sintético fue enviado. No había trabajo real pendiente para procesar, así que no afirmo una ejecución productiva de tareas, Conocimientos, memoria o supervisor. Los tests locales del Bridge pasaron 121/121; el test del monitor cubre flags y espera adaptativa. **K2 queda `[ ]` hasta comprobar procesamiento real con colas disponibles.**
+- Se midieron logs en producción sin Dashboard. Entre 16:30 y 17:05 UTC aparecieron 1.342 eventos `Boot`, 1.398 `Shutdown` y 2.681 `Log/info` en `function_logs`. Los Edge Functions escribían `key_mode` al cargar cada isolate; se reemplaza esa línea por la cabecera de respuesta `x-rivastock-key-mode` para conservar la verificación A1 sin emitir un evento de log por isolate.
+
+## 2026-11-05 14:17 ART — K5 en implementación; despliegue y medición pendientes
+
+- Los Edge Functions con clave administrativa y `account-purge` exponen `key_mode` en `x-rivastock-key-mode`; se quitó el `console.info` de arranque. El Bridge no tiene logs de éxito dentro de los bucles de sondeo; mantiene errores y eventos de tarea importantes.
+- Verificación local: `npx vitest run src/lib/supabaseKeyMigration.test.ts` **18/18**; `npm run lint` y `git diff --check` pasaron. No hubo migración, así que K5 no necesitó backup.
+- **K5 sigue `[ ]`** hasta desplegar los Edge Functions y medir al día siguiente la reducción de eventos/pedidos de K2–K5. El requisito del plan es al menos 90 % menos pedidos por día; los eventos automáticos `Boot`/`Shutdown` de Supabase no los elimina el código de la app.
+
+---
 ## 2026-11-04 23:50 ART — A1 revalidada; sesión del Dashboard pendiente
 
 - La consulta de solo lectura a Supabase confirmó el proyecto `RivaStock_Oficial` `ACTIVE_HEALTHY` y las funciones activas: `ai-bridge` v17, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, `platform-admin` v3, `account-purge` v1 y `share` v2. Incorporé `account-purge` al inventario A1; no se leyeron valores de claves.
