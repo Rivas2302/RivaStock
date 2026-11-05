@@ -52,13 +52,14 @@
 
 # Estado de ejecución autónoma
 
-## 2026-11-05 — I12 implementada; despliegue pendiente
+## 2026-11-05 — I12 desplegada y verificada
 
 - Incorporé `NumberField` y `MoneyInput`: valor cero vacío con placeholder `0`, foco que selecciona el texto existente, coma decimal argentina, validación visible y confirmación de texto al salir del campo. Reemplacé los campos transaccionales de monto y cantidad en Caja, ventas, POS, presupuestos, clientes, ingresos, stock, productos móviles, transferencias, calculadora, listas de revendedores y formularios de publicaciones. `AdjustmentInput` de I11 ahora usa `MoneyInput`.
 - Quedan como inputs numéricos los controles donde cero tiene semántica propia y no son montos/cantidades transaccionales: rangos de precio y márgenes/configuración de `Settings`, cotas de filtro de `ProductPhotos`, límites de plan/retención/cuotas de `PlatformAdmin`, porcentajes y mínimos de descuento/margen de listas de revendedores, umbral/top_k de Conocimientos y memoria, y parámetros de ritmo de Facebook. La implementación numérica del formulario móvil de producto pasa por `NumberField` aunque el wrapper preserve `type="number"` como configuración.
 - Tests locales: `npm run lint`; `npm test -- --maxWorkers=4` (**982/982**, 170 archivos); E2E móvil Android+iPhone **2/2** para Gasto, Cierre de caja y Nueva Venta (cancelados, sin escrituras); build y `perf:check` aprobados. El primer run total sin límite de workers tuvo un timeout aislado de 5 s en una migración; el test aislado pasó y la suite completa pasó al limitar la concurrencia.
 - **Desvío de presupuesto:** los controles compartidos agregan código a Sales/Stock; los límites por ruta pasan de 231→232 KiB y 236→238 KiB respectivamente. La entrada global permanece en **210.459 B JS / 23.587 B CSS gzip**. `perf:check` pasó con esos topes específicos.
-- No hay migración ni backup requeridos. Falta publicar en `main`, esperar Vercel y comprobar los assets en producción. **I12 sigue `[ ]`; el próximo paso es desplegar este commit.**
+- Commit `26a2e75` quedó en `main`; GitHub muestra el check Vercel en `success`, y los assets versionados de Caja, Ventas, POS, NumberField y MoneyInput respondieron HTTP 200. La validación real con el perfil persistente de Playwright abrió y canceló Gasto, Cierre de caja y Nueva Venta en un viewport de 390×844: monto y efectivo contado aparecen vacíos como texto decimal; cantidad de venta es texto numérico y selecciona el valor completo al enfocar. No se guardó nada.
+- No hubo migración ni backup requeridos. **I12 [x]. Siguiente:** I13, rediseño móvil del Flujo de caja.
 
 ## 2026-11-05 — A1 parcial; Storage requiere una ruta de autenticación compatible
 

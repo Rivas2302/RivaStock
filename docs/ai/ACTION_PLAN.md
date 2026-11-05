@@ -389,7 +389,7 @@ Pedido de Riva (04/11): en el celular, el teclado numérico no tiene el signo �
 
 ---
 
-### [ ] I12 Campos de monto y cantidad que empiezan vacíos (bug de todo el sistema)
+### [x] I12 Campos de monto y cantidad que empiezan vacíos (bug de todo el sistema)
 Pedido de Riva (04/11): al cargar un monto (por ejemplo, Flujo de caja → Gasto → Monto), el campo muestra `0` y el cursor queda **después** del 0; hay que moverlo a mano. Causa: los `type="number"` están atados a un estado numérico que vale `0` (`value={formData.amount}`). Hay unos 52 campos así en 18 archivos (`git grep 'type="number"' -- src`).
 1. Componente compartido `NumberField` (y `MoneyInput` encima, con el `$`): guarda el texto que escribe la persona y solo lo convierte a número al guardar. Un valor `0` o vacío se muestra **vacío con placeholder “0”**. `type="text"` + `inputMode="decimal"` (o `numeric` para cantidades enteras), acepta coma decimal argentina, y al enfocar un campo que ya tiene valor **selecciona todo el texto** para reemplazarlo de una.
 2. Validación igual que hoy (requerido, mínimo, enteros), con mensaje visible en lugar de la validación nativa del navegador.
