@@ -14,6 +14,7 @@ import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
 import AdjustmentInput from '../components/AdjustmentInput';
+import ProductThumbnail from '../components/stock/ProductThumbnail';
 import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
 import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHoldings';
 import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/attributedSales';
@@ -330,13 +331,16 @@ export default function POS() {
                 }}
                 className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 border-b last:border-0 border-slate-100 dark:border-slate-800"
               >
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-900 dark:text-white text-sm truncate">{p.name}</p>
-                  <p className="text-[11px] text-slate-400">
-                    {!holdingsEnabled && getInventoryOwnerName(p, inventoryOwners)
-                      ? `${getInventoryOwnerName(p, inventoryOwners)} · `
-                      : ''}{p.category} · stock {visibleStockForProduct(p)}
-                  </p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProductThumbnail product={p} sizeClassName="size-10" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-white text-sm truncate">{p.name}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {!holdingsEnabled && getInventoryOwnerName(p, inventoryOwners)
+                        ? `${getInventoryOwnerName(p, inventoryOwners)} · `
+                        : ''}{p.category} · stock {visibleStockForProduct(p)}
+                    </p>
+                  </div>
                 </div>
                 <span className="text-sm font-semibold text-[#365fad] dark:text-[#9fb4df] ml-2 shrink-0">
                   {formatCurrency(roundPrice(p.salePrice))}
@@ -390,6 +394,7 @@ export default function POS() {
                 )}
               >
                 <div className="flex items-start gap-2">
+                  {prod && <ProductThumbnail product={prod} sizeClassName="size-10" />}
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
                       {it.productName}{!holdingsEnabled && prod && getInventoryOwnerName(prod, inventoryOwners)
