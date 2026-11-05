@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ProductSearchSelect from '../components/ProductSearchSelect';
+import AdjustmentInput from '../components/AdjustmentInput';
 import { motion } from 'motion/react';
 import {
   getSalesPageEditPlan,
@@ -51,6 +52,7 @@ import {
 } from '../lib/attributedSales';
 import { getInventoryHoldings } from '../lib/inventoryHoldings';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
+import { calculateSaleTotals } from '../lib/salesTotals';
 
 export default function Sales() {
   const {
@@ -369,12 +371,11 @@ export default function Sales() {
     }
   };
 
-  const calculateTotal = () => {
-    const qty = Number(formData.quantity) || 0;
-    const price = Number(formData.unitPrice) || 0;
-    const adj = Number(formData.adjustment) || 0;
-    return roundPrice((qty * price) + adj);
-  };
+  const saleTotals = calculateSaleTotals(
+    Number(formData.quantity) || 0,
+    Number(formData.unitPrice) || 0,
+    Number(formData.adjustment) || 0,
+  );
 
   const saleMutationDenialReason = (
     sale: Sale,
@@ -1180,22 +1181,11 @@ export default function Sales() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Ajuste (Descuento/Recargo)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                <input 
-                  type="number"
-                  value={formData.adjustment}
-                  onChange={(e) => setFormData(prev => ({ ...prev, adjustment: Number(e.target.value) }))}
-                  className="w-full pl-8 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-                  placeholder="Ej: -500 para descuento"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">Negativo = descuento | Positivo = recargo</p>
-            </div>
+            <AdjustmentInput
+              label="Ajuste (Descuento/Recargo)"
+              value={Number(formData.adjustment) || 0}
+              onChange={(adjustment) => setFormData(prev => ({ ...prev, adjustment }))}
+            />
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cliente (Opcional)</label>
@@ -1364,11 +1354,21 @@ export default function Sales() {
               </div>
             )}
 
-            <div className="md:col-span-2 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-bold text-slate-900 dark:text-white">Total a Cobrar:</span>
-                <span className="text-2xl font-black text-[#365fad] dark:text-indigo-400">
-                  {formatCurrency(calculateTotal())}
+            <div className="md:col-span-2 space-y-2 p-4 bg-[var(--surface-muted)] rounded-xl border border-[var(--line)]">
+              <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
+                <span>Subtotal</span>
+                <span>{formatCurrency(saleTotals.subtotal)}</span>
+              </div>
+              {saleTotals.adjustment !== 0 && (
+                <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
+                  <span>{saleTotals.adjustment < 0 ? 'Descuento' : 'Recargo'}</span>
+                  <span>{saleTotals.adjustment < 0 ? '−' : '+'}{formatCurrency(Math.abs(saleTotals.adjustment))}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-[var(--line)] pt-2">
+                <span className="text-lg font-bold text-[var(--ink)]">Total a Cobrar:</span>
+                <span className="text-2xl font-black text-[var(--brand)]">
+                  {formatCurrency(saleTotals.total)}
                 </span>
               </div>
             </div>

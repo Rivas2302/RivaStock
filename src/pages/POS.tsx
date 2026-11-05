@@ -13,6 +13,7 @@ import { showToast } from '../lib/toast';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import BarcodeScannerOverlay from '../components/BarcodeScannerOverlay';
+import AdjustmentInput from '../components/AdjustmentInput';
 import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
 import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHoldings';
 import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/attributedSales';
@@ -572,18 +573,11 @@ export default function POS() {
           </div>
         )}
 
-        {/* Global adjustment */}
-        <div className="flex items-center gap-2 text-xs">
-          <label className="text-slate-500 dark:text-slate-400 font-semibold">Ajuste</label>
-          <input
-            type="number"
-            value={cart.globalAdjustment}
-            onChange={(e) => cart.setGlobalAdjustment(Number(e.target.value))}
-            placeholder="0"
-            className="flex-1 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-right outline-none dark:text-white"
-          />
-          <span className="text-[10px] text-slate-400">negativo = descuento</span>
-        </div>
+        <AdjustmentInput
+          label="Ajuste global"
+          value={cart.globalAdjustment}
+          onChange={cart.setGlobalAdjustment}
+        />
 
         {/* Totals + Cobrar */}
         {holdingsEnabled && attributedPreview.error && (
@@ -596,10 +590,16 @@ export default function POS() {
             Venta mixta: el stock se registrara por titular dentro del mismo ticket.
           </p>
         )}
-        <div className="sticky bottom-0 -mx-3 px-3 py-2 flex items-center justify-between bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-          <div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
-            <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">
+        <div className="sticky bottom-0 -mx-3 px-3 py-2 flex items-center justify-between bg-[var(--surface)] border-t border-[var(--line)]">
+          <div className="min-w-0 flex-1 pr-2">
+            <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--ink-muted)]">
+              <span>Subtotal {formatCurrency(totals.linesSubtotal)}</span>
+              {cart.globalAdjustment !== 0 && (
+                <span>{cart.globalAdjustment < 0 ? 'Descuento' : 'Recargo'} {cart.globalAdjustment < 0 ? '−' : '+'}{formatCurrency(Math.abs(cart.globalAdjustment))}</span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[10px] text-[var(--ink-muted)] uppercase font-bold">Total</p>
+            <p className="text-2xl font-black text-[var(--ink)] leading-none">
               {formatCurrency(roundPrice(totals.total))}
             </p>
           </div>

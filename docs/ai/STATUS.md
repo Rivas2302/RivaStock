@@ -5,7 +5,15 @@
 - I10 agrega miniaturas `.thumb.webp` con fallback único a la foto original y luego un ícono local, filas táctiles, ficha del producto seleccionado y visor con carrusel, Escape, X, toque afuera y botón Atrás. El selector conserva flechas y Enter.
 - Verificación local de I10: `npm run lint`; suite completa **949 pruebas en 166 archivos**; Playwright `e2e/sales-mobile.spec.ts` (**3 aprobadas, 3 omitidas** entre Chromium, Android e iPhone); `npm run build`; `npm run perf:check` aprobaron. Knowledge: **25.371 B gzip** (límite 25.395); Sales: **235.258 B JS gzip** (límite 235.520).
 - No hubo migraciones, backup ni escrituras en producción. Los E2E cancelan el formulario y no registran ventas. No se crearon productos QA reales.
-- **Siguiente:** publicar I10/I11 en `main`; después hacer smoke autenticado en producción y recién ahí marcar cada tarea `[x]`.
+- **Commit local:** I10 quedó commiteada localmente. A1 sigue esperando que Riva complete el inicio de sesión en la ventana de Supabase; mientras tanto avanzo I11.
+
+## 2026-11-04 — I11 listo localmente; smoke de producción pendiente
+
+- Agregué `AdjustmentInput` para Nueva Venta y el ajuste global de POS. El monto se escribe siempre positivo con teclado decimal; Descuento (por defecto) emite valor negativo y Recargo positivo. Editar conserva el signo existente, y 0/vacío equivale a cero. El texto anterior que explicaba “negativo = descuento” desapareció.
+- Ventas y POS muestran subtotal, ajuste identificado y total. Conservé el cálculo monetario existente; `Customers.tsx` ya usaba controles Suma/Resta y monto positivo, así que no necesitó cambios.
+- Verificación local final: `npm run lint`; **950 pruebas en 166 archivos**; pruebas focales I11 **8/8**; Playwright conjunto I10/I11 **5 aprobadas, 4 omitidas** (Chromium, Android e iPhone); `npm run build`; `npm run perf:check` aprobaron. Sales: **235.266 B gzip JS** (límite 235.520); POS: **228.124 B**; entrada: **210.227 B JS / 23.587 B CSS**.
+- No hubo migraciones, backup ni escrituras en producción. Los E2E no cobran ni registran ventas. I11 sigue `[ ]` hasta el smoke autenticado de producción, que haré abriendo y cancelando los formularios.
+- **Commit local:** I11 queda listo para `fix(sales): discount/surcharge toggle so mobile keyboards can enter discounts`. A1 conserva prioridad y espera el login de Riva en el panel de Supabase.
 
 ## 2026-11-04 — I6–I9 cerradas con validación autenticada en producción
 
