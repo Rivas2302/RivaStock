@@ -1,3 +1,24 @@
+## 2026-11-05 12:51 ART — K1 medición inicial (solo lectura)
+
+- Uso informado por Riva: Egress **4,58/5 GB (91,6 %)** y Log Ingestion **2,33/1 GB (233 %)**. Avisé de inmediato que Log Ingestion ya excede la cuota. No abrí el Dashboard.
+- Ventana de medición de logs Supabase: **14:51:33–15:51:33 UTC**. Los bytes de respuesta se estiman desde `Content-Length`; el pronóstico por día multiplica esa hora por 24 y supone que la tasa no cambia.
+
+| Consumidor | Pedidos/h | Pedidos/día estimados | Respuesta/día estimada |
+|---|---:|---:|---:|
+| Fotos `assets` (GET) | 787 | 18.888 | **3.515,8 MB** |
+| Storage list (POST) | 694 | 16.656 | 23,7 MB |
+| RPC `ai_bridge_authorize_device` | 1.368 | 32.832 | 1,25 MB |
+| RPC `ai_bridge_worker` | 401 | 9.624 | 0,35 MB |
+| RPC `knowledge_worker` | 316 | 7.584 | 0,03 MB |
+| RPC `fb_supervisor_worker` | 312 | 7.488 | 0,03 MB |
+| RPC `knowledge_central_next_requests` | 225 | 5.400 | 0,01 MB |
+| `business_subscriptions` | 200 | 4.800 | 0,12 MB |
+
+- El GET típico de `assets` tuvo mediana de **88.276 B**. En la hora muestreada, las respuestas de fotos sumaron **146.492.258 B**; Storage `list` sumó **989.074 B**. La predicción lineal de solo fotos es 3,52 GB/día si esta hora se mantiene.
+- Invocaciones Edge Function/h: `knowledge` 627, `ai-bridge` 428, `automation` 310 y `account-purge` 4. Los workers emitieron 2.777 eventos `function_logs`/h: knowledge 1.286, ai-bridge 847, automation 632 y account-purge 12. El tamaño serializado estimado de filas de logs fue **15,56 MB/h**; no equivale al medidor facturado de Log Ingestion.
+- `pg_stat_statements` acumula desde **2026-04-28 21:18 UTC**. Principales llamadas desde ese reset: `ai_bridge_authorize_device` 435.308; `ai_bridge_worker` 182.504; `knowledge_worker` 111.194; `fb_supervisor_worker` 80.087; `business_limits` 42.069; `knowledge_central_next_requests` 40.985. No se interpretan como tasa horaria.
+- La consulta de organización informó el plan Free, pero no fecha de renovación; no encontré un endpoint documentado que entregue la fecha del ciclo. **K1 [x]**; el siguiente paso es K2.
+
 ## 2026-11-04 23:50 ART — A1 revalidada; sesión del Dashboard pendiente
 
 - La consulta de solo lectura a Supabase confirmó el proyecto `RivaStock_Oficial` `ACTIVE_HEALTHY` y las funciones activas: `ai-bridge` v17, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, `platform-admin` v3, `account-purge` v1 y `share` v2. Incorporé `account-purge` al inventario A1; no se leyeron valores de claves.

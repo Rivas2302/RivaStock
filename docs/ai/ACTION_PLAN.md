@@ -232,7 +232,7 @@ Causa más probable, vista en el código del 05/11 (verificala midiendo):
 - **Backups que bajan todo Storage** (unos 146 MB) antes de cada migración.
 - **Fotos de productos** subidas sin `cacheControl` largo y listas que muestran la foto original en vez de la miniatura `.thumb.webp`.
 
-### [ ] K1 Medir (solo lectura, sin Dashboard)
+### [x] K1 Medir (solo lectura, sin Dashboard)
 - Medí el consumo sin depender del navegador: estadísticas de `pg_stat_statements` (consultas más llamadas y filas devueltas), conteo de llamadas por RPC y función en la última hora, tamaño de las respuestas típicas y logs de la CLI o de la Management API si están disponibles. Registrá en `STATUS.md` un ranking de consumidores (pedidos por día y MB por día estimados) y, si la API la informa, la fecha de renovación del ciclo.
 - Si hace falta la vista de uso del Dashboard, pedile a Riva **una captura** de *Organization → Usage* (Egress por servicio y Log Ingestion). No la manejes con el navegador.
 
