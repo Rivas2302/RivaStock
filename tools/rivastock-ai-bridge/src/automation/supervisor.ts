@@ -18,6 +18,8 @@ export interface SupervisorLoopOptions {
   config: BridgeConfig;
   isStopping: () => boolean;
   log: (message: string) => void;
+  waitForWork?: () => Promise<boolean>;
+  onQueueDrained?: () => void;
   sleep?: (milliseconds: number) => Promise<void>;
   createProvider?: (provider: 'codex' | 'claude', config: BridgeConfig) => AIProvider;
   getCodexSecurity?: () => CodexSecuritySettings;
@@ -30,9 +32,11 @@ export interface SupervisorLoopOptions {
 export async function runFacebookSupervisorLoop(options: SupervisorLoopOptions): Promise<void> {
   const sleep = options.sleep ?? ((milliseconds: number) => delay(milliseconds));
   while (!options.isStopping()) {
+    if (options.waitForWork && !await options.waitForWork()) break;
     try {
       const task = await options.client.next(options.workerId);
       if (task) await processSupervisorTask(task, options);
+      else if (options.waitForWork) options.onQueueDrained?.();
       else await sleep(POLL_INTERVAL_MS);
     } catch (error) {
       if (options.isStopping()) break;

@@ -1,4 +1,5 @@
 import { DEFAULT_CODEX_SECURITY, type AIJob, type AIJobContext, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
+import { parsePendingWork, type PendingWork } from './workMonitor.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const CHAT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +24,11 @@ export class BridgeClient {
       supports_update_signal: true,
     });
     return { job: response.data, shouldStop: response.should_stop === true };
+  }
+
+  async pendingWork(workerId: string): Promise<PendingWork> {
+    const response = await this.post<{ work: unknown }>('worker_pending_work', { worker_id: workerId });
+    return parsePendingWork(response.work);
   }
 
   async start(workerId: string): Promise<void> {

@@ -57,6 +57,8 @@ export async function runKnowledgeOnDemandLoop(options: {
   store: Pick<CentralStore, 'readVerified'>;
   isStopping: () => boolean;
   log: (message: string) => void;
+  waitForWork?: (timeoutMs?: number) => Promise<boolean>;
+  onQueueDrained?: () => void;
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 }): Promise<void> {
@@ -65,22 +67,30 @@ export async function runKnowledgeOnDemandLoop(options: {
   let lastCleanupAt = 0;
 
   while (!options.isStopping()) {
+    const nowBeforeWait = now();
+    const work = options.waitForWork
+      ? await options.waitForWork(Math.min(60_000, Math.max(0, lastCleanupAt + CACHE_CLEANUP_INTERVAL_MS - nowBeforeWait)))
+      : true;
+    if (options.isStopping()) break;
     try {
       const current = now();
-      if (current - lastCleanupAt >= CACHE_CLEANUP_INTERVAL_MS) {
+      if (work || current - lastCleanupAt >= CACHE_CLEANUP_INTERVAL_MS) {
         const cleaned = await options.client.centralCacheCleanup(options.workerId);
         lastCleanupAt = current;
         if (cleaned) options.log('Se limpiaron ' + cleaned + ' solicitudes vencidas de originales.');
       }
-      await serveCentralRequests({
-        client: options.client,
-        workerId: options.workerId,
-        store: options.store,
-        log: options.log,
-      });
+      if (work) {
+        const completed = await serveCentralRequests({
+          client: options.client,
+          workerId: options.workerId,
+          store: options.store,
+          log: options.log,
+        });
+        if (completed === 0) options.onQueueDrained?.();
+      }
     } catch {
       options.log('No se pudieron revisar las solicitudes de originales bajo demanda.');
     }
-    if (!options.isStopping()) await sleep(REQUEST_INTERVAL_MS);
+    if (!options.waitForWork && !options.isStopping()) await sleep(REQUEST_INTERVAL_MS);
   }
 }

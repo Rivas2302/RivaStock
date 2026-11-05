@@ -39,6 +39,8 @@ beforeAll(async () => {
     if (file === '20261104015507_ai_mobile_chat_previews_task_pagination.sql') continue;
     // D1 spans production tables that this focused financial fixture does not create.
     if (file === '20261103170000_index_used_foreign_keys.sql') continue;
+    // The combined AI Bridge work probe has a dedicated migration contract fixture.
+    if (file === '20261105160634_bridge_pending_work_probe.sql') continue;
     if (file === '20261027020952_fb_run_traces.sql') {
       // The trace migration reuses Conocimientos' owner-only helper; this suite skips its vector-backed migration.
       await sql.exec(`CREATE OR REPLACE FUNCTION public.knowledge_owner_for(p_action text) RETURNS uuid

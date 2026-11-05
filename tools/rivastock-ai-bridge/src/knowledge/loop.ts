@@ -34,6 +34,8 @@ export interface KnowledgeLoopOptions {
   centralStore?: CentralStore;
   isStopping: () => boolean;
   log: (message: string) => void;
+  waitForWork?: () => Promise<boolean>;
+  onQueueDrained?: () => void;
   embedTexts?: (texts: string[], batchSize?: number) => Promise<number[][]>;
   embedQuery?: (query: string) => Promise<number[]>;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -44,10 +46,12 @@ export async function runKnowledgeLoop(options: KnowledgeLoopOptions): Promise<v
   const embedTexts = options.embedTexts ?? defaultEmbedTexts;
   const embedQuery = options.embedQuery ?? defaultEmbedQuery;
   while (!options.isStopping()) {
+    if (options.waitForWork && !await options.waitForWork()) break;
     try {
       const task = await options.client.next(options.workerId);
       if (!task) {
-        await sleep(POLL_INTERVAL_MS);
+        if (options.waitForWork) options.onQueueDrained?.();
+        else await sleep(POLL_INTERVAL_MS);
         continue;
       }
       if (task.kind === 'search') await handleSearch(task, options, embedQuery);

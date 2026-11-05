@@ -5,7 +5,7 @@ import { hashCentralBatch, inventoryCentral } from './inventory.ts';
 import { CentralStore } from './store.ts';
 import { transferCentralBatch } from './transfer.ts';
 
-const LOOP_INTERVAL_MS = 30_000;
+const LOOP_INTERVAL_MS = 5 * 60_000;
 const INVENTORY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const STATUS_INTERVAL_MS = 10 * 60 * 1000;
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
@@ -16,6 +16,8 @@ export async function runKnowledgeCentralLoop(options: {
   config: Pick<BridgeConfig, 'centralStoreDirectory' | 'centralMirrorDirectory'>;
   isStopping: () => boolean;
   log: (message: string) => void;
+  waitForWork?: (timeoutMs?: number) => Promise<boolean>;
+  onQueueDrained?: () => void;
   sleep?: (milliseconds: number) => Promise<void>;
   now?: () => number;
 }): Promise<void> {
@@ -32,6 +34,8 @@ export async function runKnowledgeCentralLoop(options: {
   let lastPurgeAt = 0;
 
   while (!options.isStopping()) {
+    const work = options.waitForWork ? await options.waitForWork(LOOP_INTERVAL_MS) : true;
+    if (options.isStopping()) break;
     try {
       const current = now();
       if (current - lastInventoryAt >= INVENTORY_INTERVAL_MS) {
@@ -58,21 +62,24 @@ export async function runKnowledgeCentralLoop(options: {
         if (purged) options.log(`Se liberaron ${purged} originales de la nube tras verificar la central.`);
       }
 
-      const deletions = await options.client.centralDeletions(options.workerId);
-      if (deletions.length) {
-        const completed: string[] = [];
-        for (const deletion of deletions) {
-          try {
-            await store.delete(deletion.relative_path);
-            completed.push(deletion.id);
-          } catch (error) {
-            options.log(`No se pudo eliminar ${deletion.relative_path} de la central: ${error instanceof Error ? error.message : 'error del sistema'}`);
+      if (work) {
+        const deletions = await options.client.centralDeletions(options.workerId);
+        if (deletions.length) {
+          const completed: string[] = [];
+          for (const deletion of deletions) {
+            try {
+              await store.delete(deletion.relative_path);
+              completed.push(deletion.id);
+            } catch (error) {
+              options.log(`No se pudo eliminar ${deletion.relative_path} de la central: ${error instanceof Error ? error.message : 'error del sistema'}`);
+            }
           }
+          if (completed.length) await options.client.centralDeletionsDone(options.workerId, completed);
         }
-        if (completed.length) await options.client.centralDeletionsDone(options.workerId, completed);
-      }
 
-      await transferCentralBatch({ client: options.client, workerId: options.workerId, store, log: options.log });
+        await transferCentralBatch({ client: options.client, workerId: options.workerId, store, log: options.log });
+        options.onQueueDrained?.();
+      }
 
       if (current - lastStatusAt >= STATUS_INTERVAL_MS) {
         const summary = await inventoryCentral({ client: options.client, workerId: options.workerId, store, log: options.log });
@@ -82,6 +89,6 @@ export async function runKnowledgeCentralLoop(options: {
     } catch (error) {
       options.log(`Almacén de la central no disponible: ${error instanceof Error ? error.message : 'error del servicio'}`);
     }
-    if (!options.isStopping()) await sleep(LOOP_INTERVAL_MS);
+    if (!options.waitForWork && !options.isStopping()) await sleep(LOOP_INTERVAL_MS);
   }
 }
