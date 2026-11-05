@@ -1,3 +1,11 @@
+## 2026-11-05 20:40 ART — A1 cerrado; corte de claves verificado
+
+- Vercel confirmó `success` para `f0c119f`. Antes del corte, el perfil persistente autenticado recorrió Inicio, Stock, Ventas, Conocimientos y Automatizaciones sin errores de consola ni respuesta; tras desactivar la pareja legacy, repetí el smoke: todas las rutas devolvieron HTTP 200, hubo 92 respuestas Supabase sin errores y no apareció login. La consulta de Stock completó 18 llamadas a `products`, RPC y Storage, sin fallos.
+- La Management API devolvió `enabled=false` para legacy `anon`/`service_role`. Luego del corte, las funciones `ai-bridge`, `automation` y `knowledge` respondieron con `key_mode: secret`; el probe de acción inválida fue solo lectura. `knowledge` rechaza OPTIONS/no-origin porque es worker-only, comportamiento esperado.
+- El AI Bridge quedó `idle`, sin tarea, con heartbeat dentro de cinco minutos. La extensión informó versión **0.5.23**, activa y con heartbeat reciente. Las claves legacy no se reactivaron.
+- `ACTION_PLAN.md` marca A1 `[x]`; inventario actualizado en `KEY_ROTATION.md` y se quitaron de `OWNER_ACTIONS.md` las acciones completadas. No se aplicó migración.
+- **Siguiente:** C0 necesita publicarse en **0.5.24** porque Riva ya instaló 0.5.23 y esa versión no incluye `self-reload`. Revalidar G2 y seguir el orden §5.2b; en paralelo continuar I15.2 si C0 o los ensayos esperan una puerta.
+
 ## 2026-11-05 20:31 ART — I15.1 Consulta rápida móvil
 
 - Comparé `ACTION_PLAN.md` con Desktop antes de empezar; SHA-256 coincide. Copié las ocho maquetas aprobadas de `docs/design/mobile-modules/` al worktree. I15 continúa abierto hasta completar los ocho módulos.

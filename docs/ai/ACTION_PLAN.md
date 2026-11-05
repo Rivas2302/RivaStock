@@ -265,7 +265,7 @@ Causa más probable, vista en el código del 05/11 (verificala midiendo):
 
 ## 3. Bloque A — Seguridad y respaldo (primero)
 
-### [ ] A1 Rotación de la clave `service_role` expuesta
+### [x] A1 Rotación de la clave `service_role` expuesta
 Contexto: una salida de la CLI mostró la `service_role` legacy completa; se considera comprometida (`OWNER_ACTIONS.md`). Desactivar las claves legacy desactiva también la `anon`, así que **todo** consumidor debe migrar antes a las claves nuevas. Guía oficial: <https://supabase.com/docs/guides/getting-started/api-keys>.
 
 1. **Inventario** (`docs/ai/KEY_ROTATION.md`): listar cada consumidor y qué clave usa, sin valores. Mínimo: Edge Functions `ai-bridge`, `automation`, `knowledge`, `invite-collaborator`, `delete-collaborator` (hoy leen `SUPABASE_SERVICE_ROLE_KEY`); frontend (`src/lib/supabase.ts`, `VITE_SUPABASE_ANON_KEY`); extensión de Facebook (`connect.js`, `pairing.js`); `.env` del AI Bridge; `scripts/migrate/*` (scripts históricos); cualquier otro que encuentre `git grep`.
@@ -278,6 +278,7 @@ Contexto: una salida de la CLI mostró la `service_role` legacy completa; se con
 7. **Inmediatamente después:** smoke completo (login en la web, una consulta de productos, `ai-bridge`, `automation` y `knowledge` responden, Bridge “Conectado”, extensión con heartbeat). **Si cualquier punto falla, reactivá las claves legacy en el momento**, documentá la causa, corregí y repetí. Nunca dejes producción caída por esta tarea.
 8. **Credencial temporal de la CLI (`cli_login_postgres`):** buscá en la documentación oficial de Supabase si esas credenciales vencen solas y cuándo. Si vencen, registralo en `KEY_ROTATION.md` y sacá la acción de `OWNER_ACTIONS.md`. Si no vencen o no está claro, verificá en el inventario que ningún consumidor use la contraseña de la base (las Edge Functions y la app usan claves, no la contraseña). Si nadie la usa, restablecé la contraseña de la base con la Management API sin imprimirla y documentá; si algo la usa, dejá en `OWNER_ACTIONS.md` un único paso exacto.
 - **Commit:** `fix(security): migrate backend and clients off legacy Supabase keys`
+- **Cierre verificado 2026-11-05:** la pareja legacy quedó deshabilitada por Management API después del deploy de `f0c119f`. El smoke inmediato autenticado recorrió Inicio, Stock, Ventas, Conocimientos y Automatizaciones (HTTP 200, 92 respuestas Supabase sin errores); el listado de productos consultó `products` y Storage sin fallos; `ai-bridge`, `automation` y `knowledge` respondieron con `key_mode: secret`; el Bridge quedó `idle` con heartbeat reciente y la extensión reportó 0.5.23 con heartbeat reciente. El `OPTIONS` de `knowledge` devuelve 403 por diseño worker-only; un POST de acción inválida alcanzó la función y devolvió 400 con `key_mode: secret`, sin escribir datos.
 
 ### [x] A2 Prevención de nuevas exposiciones
 - Agregá a `AGENTS.md` una sección “Secretos” con la regla de §1.2 y la lista de comandos prohibidos.
