@@ -61,13 +61,21 @@
 - Commit `26a2e75` quedó en `main`; GitHub muestra el check Vercel en `success`, y los assets versionados de Caja, Ventas, POS, NumberField y MoneyInput respondieron HTTP 200. La validación real con el perfil persistente de Playwright abrió y canceló Gasto, Cierre de caja y Nueva Venta en un viewport de 390×844: monto y efectivo contado aparecen vacíos como texto decimal; cantidad de venta es texto numérico y selecciona el valor completo al enfocar. No se guardó nada.
 - No hubo migración ni backup requeridos. **I12 [x]. Siguiente:** I13, rediseño móvil del Flujo de caja.
 
+## 2026-11-05 — I13 lista para desplegar; smoke de producción pendiente
+
+- Implementé la pantalla de Caja solo bajo 1024 px, con resumen efectivo/banco, cobros y gastos con pendientes, aviso a Ventas filtrado, acciones iguales, búsqueda, filtros por tipo/categoría, movimientos agrupados por día, neto diario y paginación de 12. Excel/PDF quedan en el menú de opciones.
+- Nuevo movimiento, cierre y detalle usan hojas inferiores accesibles; `MoneyInput` enfoca el monto al abrir, el cierre actualiza la diferencia en vivo, la eliminación tiene confirmación propia y el historial de navegación permite cerrar las hojas con el botón Atrás. Las entradas procedentes de una venta quedan protegidas y apuntan a Ventas.
+- La página conserva su render de escritorio sin cambios y selecciona el layout por `useIsMobile`. Ventas acepta `?status=Pendiente` para el aviso de cobros. No cambié cálculos, RPC ni esquemas.
+- Verificación local: `npm run lint`; suite **982/982** en 170 archivos; E2E Android+iPhone **2/2** a 360×740 (filtros, monto, fecha, desglose/diferencia, detalle, confirmación cancelada y botón Atrás); `npm run build`; `npm run perf:check` aprobados. Flujo de Caja quedó en **228.985 B JS gzip**, bajo el presupuesto de ruta.
+- No se escribieron datos ni se requirió migración/backup. **Pendiente:** publicar el commit, comprobar el despliegue y hacer lectura autenticada en producción. No capturé el antes/después de escritorio a 1280 px porque los procesos Chrome existentes mantienen ocupado el perfil persistente; el código de escritorio no se tocó.
+
 ## 2026-11-05 — A1 parcial; Storage requiere una ruta de autenticación compatible
 
 - K4, I14 y K3 ya están en `main` y verificados según las entradas siguientes. Comencé A1 sin abrir Dashboard, como indica la actualización del plan.
 - Inventario confirmado en `docs/ai/KEY_ROTATION.md`: las Edge Functions y la web ya usan claves nuevas; `automation`, `knowledge` y `scripts/backup-storage.mjs` aún envían el JWT legacy en `Authorization` para Storage. La extensión productiva también debía refrescarse tras publicar 0.5.23; no se desactivaron claves.
 - **Desvío:** la actualización del plan que propone usar `sb_secret_` en la API REST de Storage no coincide con la documentación vigente de Supabase: las claves `sb_` van en `apikey`, no en `Authorization: Bearer`; la autenticación de servidor de S3 requiere credenciales generadas en la configuración de Storage. No cambié el flujo ni deshabilité la pareja legacy porque el inventario demuestra consumidores activos y las pruebas previas registran que Storage rechaza el token opaco como JWT. Mantener legacy activo evita cortar uploads, downloads y backups.
-- La guía oficial confirma estas limitaciones: [API keys](https://supabase.com/docs/guides/getting-started/api-keys) y [S3 authentication](https://supabase.com/docs/guides/storage/s3/authentication). `cli_login_postgres` tiene contraseña temporal expirada y ningún consumidor de aplicación; no requiere reset. A1 queda abierta, sin una operación segura que pueda completar sin sustituir primero la autenticación de Storage.
-- No hubo llamadas de escritura, migraciones, cambios de clave ni despliegues de funciones. **Siguiente:** I12 (NumberField/MoneyInput globales), luego I13 según la secuencia solicitada.
+- La guía oficial confirma estas limitaciones: [API keys](https://supabase.com/docs/guides/getting-started/api-keys) y [S3 authentication](https://supabase.com/docs/guides/storage/s3/authentication). `cli_login_postgres` tiene contraseña temporal expirada y ningún consumidor de aplicación; no requiere reset. A1 queda abierta, sin una operación segura que pueda completar primero sin sustituir la autenticación de Storage.
+- No hubo llamadas de escritura, migraciones, cambios de clave ni despliegues de funciones. **Siguiente:** cerrar el smoke de I13 y seguir H8, G2 y Bloque C según el orden solicitado.
 
 ## 2026-11-05 — K4 e I14 desplegadas; K3 verificada
 

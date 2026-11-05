@@ -29,12 +29,15 @@ import Pagination from '../components/Pagination';
 import { getExpenseCategories, matchesExpenseCategory } from '../lib/expenseCategories';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCashFlowExperience from '../components/cashflow/MobileCashFlowExperience';
 
 const CASH_FLOW_COLUMNS = 'id,user_id,date,created_at,type,source,description,category,amount,payment_method,status,sale_id,financial_command_id,notes';
 const SETTLEMENT_SALE_COLUMNS = 'id,total,status';
 const SETTLEMENT_TRANSACTION_COLUMNS = 'id,customer_id,type,amount,related_sale_id';
 
 export default function CashFlow() {
+  const isMobile = useIsMobile();
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('caja', 'write');
   const [entries, setEntries] = useState<CashFlowEntry[]>([]);
@@ -183,6 +186,12 @@ export default function CashFlow() {
     }
     if (!confirm('¿Estás seguro de eliminar este registro?')) return;
     await db.delete('cash_flow', id);
+    fetchData();
+  };
+
+  const handleMobileDelete = async (entry: CashFlowEntry) => {
+    if (!canWrite || isSaleManagedEntry(entry)) return;
+    await db.delete('cash_flow', entry.id);
     fetchData();
   };
 
@@ -363,6 +372,44 @@ export default function CashFlow() {
   };
 
   if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
+
+  if (isMobile) return <MobileCashFlowExperience
+    entries={entries}
+    filteredEntries={filteredEntries}
+    expenseCategories={expenseCategories}
+    pendingSales={pendingSales}
+    totalCollected={totalCollected}
+    totalExpenses={totalExpenses}
+    totalPendingIncome={totalPendingIncome}
+    totalPendingExpenses={totalPendingExpenses}
+    availableCash={availableCash}
+    availableBank={availableBank}
+    canWrite={canWrite}
+    saving={saving}
+    exporting={exporting}
+    search={search}
+    onSearchChange={setSearch}
+    typeFilter={typeFilter}
+    onTypeFilterChange={setTypeFilter}
+    expenseCategory={expenseCategory}
+    onExpenseCategoryChange={setExpenseCategory}
+    currencySymbol={user?.currencySymbol}
+    formData={formData}
+    onFormDataChange={setFormData}
+    modalType={modalType}
+    onModalTypeChange={setModalType}
+    editingEntry={editingEntry}
+    onEditingEntryChange={setEditingEntry}
+    countedCash={countedCash}
+    onCountedCashChange={setCountedCash}
+    closingNotes={closingNotes}
+    onClosingNotesChange={setClosingNotes}
+    onSave={event => { void handleSave(event); }}
+    onCloseCash={event => { void handleCashClosing(event, availableCash); }}
+    onToggleStatus={entry => { void handleToggleStatus(entry); }}
+    onDelete={entry => { void handleMobileDelete(entry); }}
+    onExport={format => { void handleExport(format); }}
+  />;
 
   return (
     <div className="business-page operational-page space-y-6">

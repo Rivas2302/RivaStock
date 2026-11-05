@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { useAuth } from '../AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { db, callRpc } from '../lib/db';
@@ -75,6 +75,7 @@ export default function Sales() {
   const canWrite = usePermission('ventas', 'write');
   const canDelete = usePermission('ventas', 'delete');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
@@ -84,7 +85,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? 'all');
   const [ownerFilter, setOwnerFilter] = useState('all');
   const deferredSearch = useDeferredValue(search);
 
