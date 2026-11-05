@@ -413,6 +413,26 @@ Maqueta: `docs/design/mobile-cashflow/` (Main, Movimiento, CerrarCaja, Detalle).
 
 ---
 
+### [ ] I15 Ocho módulos en el celular — **maquetas aprobadas por Riva el 05/11**
+Maquetas: `docs/design/mobile-modules/` — `Ventas`, `ConsultaRapida`, `Reportes`, `Presupuestos`, `Clientes`, `Proveedores`, `Ingresos` y `Configuracion` (`.dc.html`). Hoy esas pantallas muestran tablas de PC achicadas: se cortan de costado y obligan a hacer zoom.
+- **Reglas comunes (igual que el Bloque I y que I13):** solo móvil (menos de 1024 px), con los tokens de color actuales; en PC no cambia nada (capturas antes/después a 1280 px). Componentes en `src/components/<módulo>/Mobile*.tsx` y la página decide por ancho. No cambian los cálculos, las RPC ni los datos. Touch ≥ 44 px, AA en ambos temas, el botón atrás del celular cierra hojas y menús, y nada de `confirm()` del navegador. Los textos de las maquetas son ejemplos: usar los datos reales.
+- **Fotos:** en toda lista de productos, `ProductThumbnail` con la miniatura `.thumb.webp` (I10/I14), con carga diferida. Sin foto → el cartel “Sin foto”. Nunca bajar la foto original en una lista (K4).
+- **Consumo de Supabase (K3):** ninguna pantalla nueva baja tablas enteras. Paginado de a 20–30 con “Ver más”, totales calculados en SQL o reutilizando los que ya existen, y nada de sondeos con la pestaña oculta.
+- **Por módulo, en este orden (un commit por módulo):**
+  1. **Consulta rápida** (`QuickPrice.tsx`): miniatura de 64 px en cada resultado, precio grande y stock con color (sin stock / queda 1 / hay varios). `fix(quick-price): product photos and mobile result cards`
+  2. **Ventas** (`Sales.tsx`): “Nueva venta” y “Modo POS” del mismo ancho; resumen del mes (vendido, cobrado, por cobrar) con selector de mes; chips de estado y de titular; tarjetas con foto agrupadas por día con el total del día; “Ticket de N” cuando la venta es parte de un ticket; al tocar una tarjeta, el detalle y las acciones que hoy tiene la tabla. Exportar va en “⋯”. `feat(sales): mobile sales list`
+  3. **Reportes** (`Reports.tsx`): chips de período (Hoy, 7 días, Este mes, Elegir fechas → Desde/Hasta); cuatro indicadores (ventas, operaciones, ticket promedio, por cobrar); gráfico de barras simple por día; ranking de productos y métodos de pago como barras horizontales; el detalle de ventas como lista de tarjetas con “Ver todas”, sin tabla ancha. `feat(reports): mobile reports`
+  4. **Presupuestos** (`Quotes.tsx`): tarjetas con número, estado, cliente, cantidad de productos, total y vencimiento; botones “Compartir” (WhatsApp con el link actual) y “Pasar a venta” (la conversión que ya existe); chips de estado. `feat(quotes): mobile quote cards`
+  5. **Clientes** (`Customers.tsx`): resumen de lo que te deben y botón “Cobrar”; chips Todos/Deben/Al día; filas con iniciales, teléfono, saldo (debe / a favor / al día) y botón de WhatsApp; al tocar, la ficha actual en pantalla completa. `feat(customers): mobile customer list`
+  6. **Proveedores** (`Suppliers.tsx`): indicadores (activos, categoría principal), chips de categoría y “Solo activos”, tarjetas con categoría, contacto, teléfono y condición, y botones WhatsApp, Llamar y Catálogo (Instagram/Facebook en el detalle). `feat(suppliers): mobile supplier cards`
+  7. **Ingresos de mercadería** (`Intake.tsx`): “Registrar ingreso” y “Escanear”; resumen del mes (invertido y unidades); lista con foto agrupada por fecha con cantidad, titular, proveedor, costo unitario y total. `feat(intake): mobile intake list`
+  8. **Configuración** (`Settings.tsx`): tarjeta del negocio arriba y menú por secciones (Ventas y catálogo, Equipo y datos, Apariencia, Zona de peligro); cada fila abre su subpantalla con los campos que ya existen. Interruptor de modo oscuro con el tamaño correcto. “Eliminar todos los datos” separado, en rojo, y con confirmación escribiendo el nombre del negocio. `feat(settings): mobile settings menu`
+- **Tests:** Playwright móvil (360×740, Android e iPhone) por módulo: abrir, filtrar, buscar, abrir el detalle y volver, sin escrituras reales. En producción, solo lectura o datos `[QA]` creados y borrados desde la app.
+- **Cuándo:** después de A1, C0 y los ensayos del Bloque C que esperan a la extensión 0.5.23. Si algo de eso queda esperando a Riva, avanzá con I15 mientras tanto. Va **antes de J2**.
+- **Coordinación con J:** Claude Code debe usar estas estructuras para el celular en sus tandas del rediseño y aplicar solo el estilo nuevo.
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.

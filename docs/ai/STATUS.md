@@ -1,3 +1,11 @@
+## 2026-11-05 20:31 ART — I15.1 Consulta rápida móvil
+
+- Comparé `ACTION_PLAN.md` con Desktop antes de empezar; SHA-256 coincide. Copié las ocho maquetas aprobadas de `docs/design/mobile-modules/` al worktree. I15 continúa abierto hasta completar los ocho módulos.
+- Consulta rápida muestra resultados móviles con miniatura de 64 px en carga diferida, precio destacado y stock por color (sin stock / queda 1 / disponibles). Seleccionar abre la ficha; “Volver a los resultados” conserva el filtro.
+- Verificación: `npm run lint`; test unitario **2/2**; Playwright Android y iPhone a viewport móvil **2/2**, con búsqueda, miniatura lazy, detalle y regreso. No hubo escrituras reales.
+- A1 ya está en `main` como `9318e38`; el check de Vercel sigue `pending`, por lo que falta el corte de claves legacy y el smoke posterior.
+- **Siguiente:** verificar Vercel y cerrar A1; luego continuar I15.2 Ventas. C0/ensayos de Facebook esperan que Chrome reporte heartbeat reciente (G2 está cerrada por ahora).
+
 ## 2026-11-05 20:23 ART — A1: último fallback legacy eliminado; corte pendiente
 
 - Con las credenciales S3 provistas por Riva, el backup de Storage y las operaciones privilegiadas ya migraron. Quité de la web el fallback `VITE_SUPABASE_ANON_KEY` y de las siete Edge Functions el fallback `SUPABASE_SERVICE_ROLE_KEY`; ambos ahora fallan si falta la clave nueva, sin probar la legacy.

@@ -18,6 +18,8 @@ import {
 } from '../lib/quickPriceLookup';
 import { formatCurrency, roundPrice } from '../lib/utils';
 import type { Product } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileQuickPrice from '../components/quick-price/MobileQuickPrice';
 
 export default function QuickPrice() {
   const navigate = useNavigate();
@@ -144,6 +146,12 @@ export default function QuickPrice() {
     setScannerOpen(false);
   };
 
+  const selectMobileProduct = (product: Product) => {
+    setSelectedProductId(product.id);
+    setSelectionUnavailable(false);
+    setUnknownCode(null);
+  };
+
   const handleScannedCode = (rawCode: string) => {
     const product = findProductByBarcode(visibleProducts, rawCode);
     setScannerOpen(false);
@@ -167,6 +175,34 @@ export default function QuickPrice() {
   const image = selectedProduct ? getProductImage(selectedProduct) : null;
   const sku = selectedProduct ? getProductSku(selectedProduct) : null;
   const variantModel = selectedProduct ? getProductVariantModel(selectedProduct) : null;
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return <>
+      <MobileQuickPrice
+        search={search}
+        onSearchChange={(value) => { setSearch(value); setUnknownCode(null); }}
+        results={searchResults}
+        selectedProduct={selectedProduct}
+        selectedImage={image}
+        stockFor={visibleStock}
+        onSelect={selectMobileProduct}
+        onBack={() => setSelectedProductId(null)}
+        onScan={scanAnother}
+        loading={loading}
+        error={loadError}
+        accessError={inventoryAccessError}
+        unknownCode={unknownCode}
+        selectionUnavailable={selectionUnavailable}
+      />
+      <BarcodeScannerOverlay
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleScannedCode}
+        title="Consultar precio"
+      />
+    </>;
+  }
 
   return (
     <div className="operational-page mx-auto max-w-5xl space-y-6">

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Reportes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 1420px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; position: relative; overflow: hidden">
+  <header style="padding: 18px 20px 6px; display: flex; align-items: center; gap: 10px">
+    
+    <div style="flex: 1; min-width: 0">
+      <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.3px">Reportes</h1>
+      <p style="margin: 2px 0 0; font-size: 13px; color: #A4A8B0">Cómo vienen tus ventas</p>
+    </div>
+    <button type="button" aria-label="Más opciones: exportar el reporte" style="flex: none; width: 44px; height: 44px; border-radius: 22px; border: 1px solid #383B42; background: #24262B; color: #ECEDEF; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+  </header>
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 10px 20px 16px; min-height: 0">
+    <div role="group" aria-label="Período del reporte" style="display: flex; gap: 8px; overflow: hidden; margin-right: -20px">
+      <button type="button" aria-pressed="false" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #383B42; background: #24262B; color: #C9CCD2; font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px">Hoy</button><button type="button" aria-pressed="true" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #9DB4EC; background: #2A3550; color: #ECEDEF; font-weight: 600; font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px">7 días</button><button type="button" aria-pressed="false" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #383B42; background: #24262B; color: #C9CCD2; font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px">Este mes</button><button type="button" aria-pressed="false" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #383B42; background: #24262B; color: #C9CCD2; font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px">Elegir fechas</button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #A4A8B0">Ventas</span><span style="font-size: 20px; font-weight: 700">$ 412.300</span><span style="font-size: 12px; color: #8FD6A8">+18 % vs. semana anterior</span></div>
+      <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #A4A8B0">Operaciones</span><span style="font-size: 20px; font-weight: 700">49</span><span style="font-size: 12px; color: #A4A8B0">ventas cobradas</span></div>
+      <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #A4A8B0">Ticket promedio</span><span style="font-size: 20px; font-weight: 700">$ 8.414</span></div>
+      <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #A4A8B0">Por cobrar</span><span style="font-size: 20px; font-weight: 700; color: #F3C47E">$ 145.800</span></div>
+    </div>
+    <section aria-labelledby="rep-dia" style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 id="rep-dia" style="margin: 0; font-size: 15px; font-weight: 700">Cobrado por día</h2><span style="font-size: 12px; color: #A4A8B0">Mejor día: martes</span></div>
+      <div role="img" aria-label="Gráfico de barras de lo cobrado cada día de la semana; el martes fue el día más alto" style="height: 130px; display: flex; align-items: flex-end; gap: 8px"><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 24px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Ju</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 60px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Vi</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 36px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Sá</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 84px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Do</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 52px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Lu</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 100px; border-radius: 6px 6px 2px 2px; background: #9DB4EC"></span><span style="font-size: 11px; color: #A4A8B0">Ma</span></div><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%"><span style="width: 100%; max-width: 30px; height: 76px; border-radius: 6px 6px 2px 2px; background: #44507A"></span><span style="font-size: 11px; color: #A4A8B0">Mi</span></div></div>
+    </section>
+    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 2px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 700; color: #C9CCD2">Productos más vendidos</h2><span style="font-size: 12px; color: #A4A8B0">por ingresos</span>
+    </div>
+    <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; display: flex; flex-direction: column">
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid #383B42">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span style="flex: none; width: 20px; font-size: 13px; font-weight: 700; color: #A4A8B0">1</span>
+          <span style="flex: 1; min-width: 0; font-size: 14px; font-weight: 600">Reloj smartwatch T800</span>
+          <span style="font-size: 14px; font-weight: 700">$ 111.000</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-left: 30px">
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #2C2E34; display: flex"><span style="width: 100%; border-radius: 3px; background: #9DB4EC"></span></span>
+          <span style="flex: none; font-size: 12px; color: #A4A8B0">6 u.</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid #383B42">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span style="flex: none; width: 20px; font-size: 13px; font-weight: 700; color: #A4A8B0">2</span>
+          <span style="flex: 1; min-width: 0; font-size: 14px; font-weight: 600">Auricular Sony</span>
+          <span style="font-size: 14px; font-weight: 700">$ 87.000</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-left: 30px">
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #2C2E34; display: flex"><span style="width: 78%; border-radius: 3px; background: #9DB4EC"></span></span>
+          <span style="flex: none; font-size: 12px; color: #A4A8B0">3 u.</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid #383B42">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span style="flex: none; width: 20px; font-size: 13px; font-weight: 700; color: #A4A8B0">3</span>
+          <span style="flex: 1; min-width: 0; font-size: 14px; font-weight: 600">Perfume Odyssey Dubai</span>
+          <span style="font-size: 14px; font-weight: 700">$ 84.000</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-left: 30px">
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #2C2E34; display: flex"><span style="width: 76%; border-radius: 3px; background: #9DB4EC"></span></span>
+          <span style="flex: none; font-size: 12px; color: #A4A8B0">2 u.</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span style="flex: none; width: 20px; font-size: 13px; font-weight: 700; color: #A4A8B0">4</span>
+          <span style="flex: 1; min-width: 0; font-size: 14px; font-weight: 600">Cargador Samsung 45 W</span>
+          <span style="font-size: 14px; font-weight: 700">$ 60.000</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-left: 30px">
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #2C2E34; display: flex"><span style="width: 54%; border-radius: 3px; background: #9DB4EC"></span></span>
+          <span style="flex: none; font-size: 12px; color: #A4A8B0">5 u.</span>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 2px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 700; color: #C9CCD2">Cómo te pagaron</h2>
+    </div>
+    <div style="background: #24262B; border: 1px solid #383B42; border-radius: 16px; display: flex; flex-direction: column">
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid #383B42">
+        <div style="display: flex; justify-content: space-between; font-size: 14px"><span>Efectivo</span><strong>$ 198.000 <span style="font-weight: 400; color: #A4A8B0">· 48%</span></strong></div>
+        <span style="height: 8px; border-radius: 4px; background: #2C2E34; display: flex"><span style="width: 48%; border-radius: 4px; background: #8FD6A8"></span></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-bottom: 1px solid #383B42">
+        <div style="display: flex; justify-content: space-between; font-size: 14px"><span>Transferencia</span><strong>$ 152.600 <span style="font-weight: 400; color: #A4A8B0">· 37%</span></strong></div>
+        <span style="height: 8px; border-radius: 4px; background: #2C2E34; display: flex"><span style="width: 37%; border-radius: 4px; background: #9DB4EC"></span></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px">
+        <div style="display: flex; justify-content: space-between; font-size: 14px"><span>Débito y crédito</span><strong>$ 61.700 <span style="font-weight: 400; color: #A4A8B0">· 15%</span></strong></div>
+        <span style="height: 8px; border-radius: 4px; background: #2C2E34; display: flex"><span style="width: 15%; border-radius: 4px; background: #F3C47E"></span></span>
+      </div>
+    </div>
+    <button type="button" style="height: 44px; border-radius: 14px; border: 1px solid #383B42; background: transparent; color: #9DB4EC; font: inherit; font-size: 14px; font-weight: 600">Ver las 49 ventas del período</button>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1420}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
