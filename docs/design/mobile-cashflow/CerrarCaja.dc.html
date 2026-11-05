@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cerrar caja</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+  <a href="Main.dc.html" aria-label="Cerrar sin guardar" style="position: absolute; inset: 0; background: rgba(8, 9, 11, 0.62)"></a>
+
+  <form aria-labelledby="cierre-titulo" style="position: absolute; left: 0; right: 0; bottom: 0; background: #24262B; border-radius: 22px 22px 0 0; padding: 10px 20px 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 -8px 24px rgba(0,0,0,0.35)">
+    <div aria-hidden="true" style="align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #44474F"></div>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <div style="flex: 1">
+        <h2 id="cierre-titulo" style="margin: 0; font-size: 20px; font-weight: 700">Cerrar caja</h2>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A4A8B0">Hoy, 04/11 · Último cierre: 03/11, coincidió</p>
+      </div>
+      <a href="Main.dc.html" aria-label="Cerrar" style="width: 44px; height: 44px; border-radius: 22px; background: #2C2E34; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </a>
+    </div>
+
+    <section aria-labelledby="esperado" style="background: #1C1D21; border: 1px solid #383B42; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <h3 id="esperado" style="margin: 0; font-size: 13px; font-weight: 700; color: #C9CCD2">Efectivo esperado</h3>
+        <span style="font-size: 24px; font-weight: 700">$ 142.387</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #A4A8B0">
+        <div style="display: flex; justify-content: space-between"><span>Entró en efectivo</span><span style="color: #8FD6A8">+$ 312.000</span></div>
+        <div style="display: flex; justify-content: space-between"><span>Salió en efectivo</span><span style="color: #F4A39A">−$ 169.613</span></div>
+      </div>
+    </section>
+
+    <label style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">¿Cuánto efectivo contaste?</span>
+      <span style="display: flex; align-items: center; gap: 6px; height: 64px; padding: 0 16px; border-radius: 16px; background: #1C1D21; border: 2px solid #9DB4EC">
+        <span aria-hidden="true" style="font-size: 26px; font-weight: 700; color: #A4A8B0">$</span>
+        <input type="text" inputmode="decimal" placeholder="0" aria-label="Efectivo contado" value="{{ counted }}" onChange="{{ onCounted }}" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: #ECEDEF; font: inherit; font-size: 28px; font-weight: 700">
+      </span>
+    </label>
+
+    <div aria-live="polite">
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; min-height: 48px; display: flex; align-items: center; padding: 0 14px; border-radius: 14px; background: #2C2E34; color: #A4A8B0; font-size: 14px">Escribí el monto y te muestro la diferencia.</p>
+      </sc-if>
+      <sc-if value="{{ isMatch }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 14px; background: #1F3A2B; color: #CFEEDB; font-size: 15px; font-weight: 600">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>
+          Coincide con lo esperado
+        </p>
+      </sc-if>
+      <sc-if value="{{ isShort }}" hint-placeholder-val="{{ true }}">
+        <p style="margin: 0; min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 14px; background: #3A2E1E; border: 1px solid #5C4523; color: #F3D9AE; font-size: 15px; font-weight: 600">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>
+          Faltan {{ diffText }}
+        </p>
+      </sc-if>
+      <sc-if value="{{ isOver }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 14px; background: #2A3550; border: 1px solid #44507A; color: #DCE5FA; font-size: 15px; font-weight: 600">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+          Sobran {{ diffText }}
+        </p>
+      </sc-if>
+    </div>
+
+    <label style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Observación <span style="font-weight: 400; color: #A4A8B0">(opcional)</span></span>
+      <input type="text" placeholder="Ej.: diferencia por cambio inicial" style="height: 48px; padding: 0 14px; border-radius: 14px; background: #1C1D21; border: 1px solid #383B42; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+    </label>
+
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; padding-top: 4px">
+      <a href="Main.dc.html" style="height: 52px; border-radius: 14px; border: 1px solid #44474F; color: #ECEDEF; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">Cancelar</a>
+      <a href="Main.dc.html" style="height: 52px; border-radius: 14px; background: #365FAD; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700">Confirmar cierre</a>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { counted: '141.887' };
+  }
+  renderVals() {
+    var expected = 142387;
+    var raw = String(this.state.counted || '').replace(/\./g, '').replace(',', '.');
+    var value = Number(raw);
+    var empty = raw.trim() === '' || !isFinite(value);
+    var diff = empty ? 0 : value - expected;
+    var abs = Math.abs(Math.round(diff));
+    var diffText = '$ ' + abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return {
+      isEmpty: empty,
+      isMatch: !empty && diff === 0,
+      isShort: !empty && diff < 0,
+      isOver: !empty && diff > 0,
+      diffText: diffText,
+      counted: this.state.counted,
+      onCounted: (e) => this.setState({ counted: e.target.value })
+    };
+  }
+}
+</script>
+</body>
+</html>

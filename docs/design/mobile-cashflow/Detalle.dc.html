@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Detalle del movimiento</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+  <a href="Main.dc.html" aria-label="Cerrar" style="position: absolute; inset: 0; background: rgba(8, 9, 11, 0.62)"></a>
+
+  <section aria-labelledby="det-titulo" style="position: absolute; left: 0; right: 0; bottom: 0; background: #24262B; border-radius: 22px 22px 0 0; padding: 10px 20px 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 -8px 24px rgba(0,0,0,0.35)">
+    <div aria-hidden="true" style="align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #44474F"></div>
+
+    <div style="display: flex; align-items: center; gap: 12px">
+      <span aria-hidden="true" style="flex: none; width: 48px; height: 48px; border-radius: 24px; background: #40252A; display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F4A39A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 9v8H9"/></svg></span>
+      <div style="flex: 1; min-width: 0">
+        <h2 id="det-titulo" style="margin: 0; font-size: 18px; font-weight: 700">Pago de luz</h2>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A4A8B0">Gasto · cargado a mano</p>
+      </div>
+      <a href="Main.dc.html" aria-label="Cerrar" style="width: 44px; height: 44px; border-radius: 22px; background: #2C2E34; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </a>
+    </div>
+
+    <p style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.5px; color: #F4A39A">−$ 38.400</p>
+
+    <dl style="margin: 0; background: #1C1D21; border: 1px solid #383B42; border-radius: 16px; display: flex; flex-direction: column">
+      <div style="display: flex; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #383B42"><dt style="color: #A4A8B0; font-size: 14px">Fecha</dt><dd style="margin: 0; font-size: 14px; font-weight: 600">04/11/2026</dd></div>
+      <div style="display: flex; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #383B42"><dt style="color: #A4A8B0; font-size: 14px">Categoría</dt><dd style="margin: 0; font-size: 14px; font-weight: 600">Servicios</dd></div>
+      <div style="display: flex; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #383B42"><dt style="color: #A4A8B0; font-size: 14px">Cómo se pagó</dt><dd style="margin: 0; font-size: 14px; font-weight: 600">Transferencia</dd></div>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 11px 16px"><dt style="color: #A4A8B0; font-size: 14px">Estado</dt><dd style="margin: 0"><span style="padding: 3px 10px; border-radius: 12px; background: #1F3A2B; color: #CFEEDB; font-size: 13px; font-weight: 600">Pagado</span></dd></div>
+    </dl>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <a href="Movimiento.dc.html" style="height: 52px; border-radius: 14px; background: #365FAD; color: #FFFFFF; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 700">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>
+          Editar
+        </a>
+        <button type="button" style="height: 52px; border-radius: 14px; border: 1px solid #44474F; background: transparent; color: #ECEDEF; font: inherit; font-size: 15px; font-weight: 600">Marcar pendiente</button>
+      </div>
+      <button type="button" style="height: 48px; border-radius: 14px; border: 1px solid #6A3A40; background: transparent; color: #F4A39A; font: inherit; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+        Eliminar movimiento
+      </button>
+    </div>
+
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

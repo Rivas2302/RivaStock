@@ -1,3 +1,11 @@
+## 2026-11-04 — I10/I11 desplegadas; smoke autenticado pendiente
+
+- I10 y I11 se publicaron directamente en `main`: I10 `3355823`, I11 `883118d`. Vercel reportó `success` para `883118d`.
+- Verificación local final: lint; **950 pruebas/166 archivos**; Playwright móvil y escritorio **5 aprobadas / 4 omitidas**; build y perf:check aprobados. El smoke de producción requiere abrir y cancelar Nueva Venta y POS con sesión autenticada; no se registró ninguna venta.
+- A1 sigue esperando que Riva complete el login en la ventana visible de Supabase. No se abrió otra ventana ni se cerró el perfil solicitado.
+- La comparación con Desktop encontró I12 e I13 agregadas después de I10/I11. Copié el plan maestro vigente y las cuatro maquetas HTML de `mobile-cashflow`; no están ejecutadas ni marcadas como terminadas.
+- **Siguiente:** cuando A1 continúe esperando el login, avanzar I12 y luego I13 según el plan más reciente; hacer el smoke de I10/I11 cuando el perfil permita la validación autenticada.
+
 # Estado de ejecución autónoma
 ## 2026-11-04 — I10 listo localmente; smoke de producción pendiente
 

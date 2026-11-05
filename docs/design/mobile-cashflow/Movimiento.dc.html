@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Nuevo gasto</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#9DB4EC;text-decoration:none}a:hover{color:#C3D2F5}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #1C1D21; color: #ECEDEF; font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+  <a href="Main.dc.html" aria-label="Cerrar sin guardar" style="position: absolute; inset: 0; background: rgba(8, 9, 11, 0.62)"></a>
+
+  <form aria-labelledby="mov-titulo" style="position: absolute; left: 0; right: 0; bottom: 0; top: 52px; background: #24262B; border-radius: 22px 22px 0 0; display: flex; flex-direction: column; box-shadow: 0 -8px 24px rgba(0,0,0,0.35)">
+    <div style="flex: none; padding: 10px 20px 0; display: flex; flex-direction: column; gap: 12px">
+      <div aria-hidden="true" style="align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #44474F"></div>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <h2 id="mov-titulo" style="flex: 1; margin: 0; font-size: 20px; font-weight: 700">Nuevo movimiento</h2>
+        <a href="Main.dc.html" aria-label="Cerrar" style="width: 44px; height: 44px; border-radius: 22px; background: #2C2E34; color: #ECEDEF; display: flex; align-items: center; justify-content: center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </a>
+      </div>
+      <div role="radiogroup" aria-label="Tipo de movimiento" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: #1C1D21; border: 1px solid #383B42">
+        <button type="button" role="radio" aria-checked="false" style="height: 44px; border: 0; border-radius: 10px; background: transparent; color: #C9CCD2; font: inherit; font-size: 15px; font-weight: 600">Ingreso</button>
+        <button type="button" role="radio" aria-checked="true" style="height: 44px; border: 0; border-radius: 10px; background: #40252A; color: #F8D3CD; font: inherit; font-size: 15px; font-weight: 700">Gasto</button>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px">
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Monto</span>
+        <span style="display: flex; align-items: center; gap: 6px; height: 64px; padding: 0 16px; border-radius: 16px; background: #1C1D21; border: 2px solid #9DB4EC">
+          <span aria-hidden="true" style="font-size: 26px; font-weight: 700; color: #A4A8B0">$</span>
+          <input type="text" inputmode="decimal" placeholder="0" aria-label="Monto del gasto" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: #ECEDEF; font: inherit; font-size: 28px; font-weight: 700">
+        </span>
+      </label>
+
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 700; color: #C9CCD2">Descripción</span>
+        <input type="text" placeholder="Ej: Pago de luz" style="height: 48px; padding: 0 14px; border-radius: 14px; background: #1C1D21; border: 1px solid #383B42; color: #ECEDEF; font: inherit; font-size: 15px; outline: none">
+      </label>
+
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #C9CCD2">Categoría</legend>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Mercadería</button>
+          <button type="button" aria-pressed="true" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #9DB4EC; background: #2A3550; color: #ECEDEF; font: inherit; font-size: 14px; font-weight: 600">Servicios</button>
+          <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Alquiler</button>
+          <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Sueldos</button>
+          <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Impuestos</button>
+          <button type="button" aria-pressed="false" style="height: 38px; padding: 0 14px; border-radius: 19px; border: 1px dashed #44474F; background: transparent; color: #9DB4EC; font: inherit; font-size: 14px">+ Otra</button>
+        </div>
+      </fieldset>
+
+      <fieldset style="margin: 0; padding: 0; border: 0">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #C9CCD2">Cómo se pagó</legend>
+        <div role="radiogroup" aria-label="Método de pago" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <button type="button" role="radio" aria-checked="false" style="height: 44px; border-radius: 12px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Efectivo</button>
+          <button type="button" role="radio" aria-checked="true" style="height: 44px; border-radius: 12px; border: 1px solid #9DB4EC; background: #2A3550; color: #ECEDEF; font: inherit; font-size: 14px; font-weight: 600">Transferencia</button>
+          <button type="button" role="radio" aria-checked="false" style="height: 44px; border-radius: 12px; border: 1px solid #383B42; background: #2C2E34; color: #C9CCD2; font: inherit; font-size: 14px">Otro</button>
+        </div>
+      </fieldset>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <fieldset style="margin: 0; padding: 0; border: 0">
+          <legend style="padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #C9CCD2">Estado</legend>
+          <div role="radiogroup" aria-label="Estado del pago" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 12px; background: #1C1D21; border: 1px solid #383B42">
+            <button type="button" role="radio" aria-checked="true" style="height: 40px; border: 0; border-radius: 9px; background: #2C2E34; color: #ECEDEF; font: inherit; font-size: 13px; font-weight: 700">Pagado</button>
+            <button type="button" role="radio" aria-checked="false" style="height: 40px; border: 0; border-radius: 9px; background: transparent; color: #C9CCD2; font: inherit; font-size: 13px">Pendiente</button>
+          </div>
+        </fieldset>
+        <div style="display: flex; flex-direction: column">
+          <span style="margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #C9CCD2">Fecha</span>
+          <button type="button" aria-label="Fecha: hoy, 04/11. Cambiar fecha" style="height: 48px; border-radius: 12px; border: 1px solid #383B42; background: #1C1D21; color: #ECEDEF; font: inherit; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A4A8B0" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+            Hoy, 04/11
+          </button>
+        </div>
+      </div>
+
+      <button type="button" style="align-self: flex-start; height: 40px; padding: 0 4px; border: 0; background: transparent; color: #9DB4EC; font: inherit; font-size: 14px; font-weight: 600">+ Agregar nota</button>
+    </div>
+
+    <div style="flex: none; padding: 12px 20px 18px; border-top: 1px solid #383B42; display: grid; grid-template-columns: 1fr 2fr; gap: 10px">
+      <a href="Main.dc.html" style="height: 52px; border-radius: 14px; border: 1px solid #44474F; color: #ECEDEF; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">Cancelar</a>
+      <a href="Main.dc.html" style="height: 52px; border-radius: 14px; background: #365FAD; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700">Guardar gasto</a>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -347,6 +347,30 @@ Pedido de Riva (04/11): en el celular, el teclado numérico no tiene el signo �
 
 ---
 
+### [ ] I12 Campos de monto y cantidad que empiezan vacíos (bug de todo el sistema)
+Pedido de Riva (04/11): al cargar un monto (por ejemplo, Flujo de caja → Gasto → Monto), el campo muestra `0` y el cursor queda **después** del 0; hay que moverlo a mano. Causa: los `type="number"` están atados a un estado numérico que vale `0` (`value={formData.amount}`). Hay unos 52 campos así en 18 archivos (`git grep 'type="number"' -- src`).
+1. Componente compartido `NumberField` (y `MoneyInput` encima, con el `$`): guarda el texto que escribe la persona y solo lo convierte a número al guardar. Un valor `0` o vacío se muestra **vacío con placeholder “0”**. `type="text"` + `inputMode="decimal"` (o `numeric` para cantidades enteras), acepta coma decimal argentina, y al enfocar un campo que ya tiene valor **selecciona todo el texto** para reemplazarlo de una.
+2. Validación igual que hoy (requerido, mínimo, enteros), con mensaje visible en lugar de la validación nativa del navegador.
+3. Reemplazar los campos de dinero y cantidad de todo `src/` (Flujo de caja, Cierre de caja, Ventas, POS, Presupuestos, Stock, Ingresos, Cuenta corriente, Calculadora, etc.). `AdjustmentInput` de I11 se arma sobre `MoneyInput`. Dejá fuera solo los campos donde el 0 tenga un significado propio y documentalo.
+4. **Tests:** unitarios del componente (vacío ↔ 0, coma decimal, seleccionar al enfocar, editar un valor existente) y Playwright móvil escribiendo un monto sin mover el cursor en Gasto, Nueva Venta y Cierre de caja. En producción, solo abrir formularios y cancelar.
+- **Cuándo:** junto con I10 e I11, en el mismo turno (antes de J2).
+- **Commit:** `fix(forms): number and money fields start empty and select on focus`
+
+### [ ] I13 Flujo de caja en el celular — **maqueta aprobada por Riva el 04/11**
+Maqueta: `docs/design/mobile-cashflow/` (Main, Movimiento, CerrarCaja, Detalle). Hoy la pantalla no es responsiva: los botones se salen de la pantalla y las tarjetas quedan cortadas.
+- Solo móvil (menos de 1024 px), con los tokens de color actuales; en PC no cambia nada (capturas antes/después a 1280 px). Mismo patrón que el Bloque I: componentes en `src/components/cashflow/` y la página decide por ancho.
+- **Pantalla principal:** saldo disponible con efectivo y banco, tarjetas de cobrado y gastado con sus pendientes, aviso de ventas por cobrar (abre Ventas filtrado por pendientes), tres acciones de igual tamaño (Ingreso, Gasto, Cerrar caja), buscador, filtros en chips (Todos, Ingresos, Gastos, Pendientes con contador; con Gastos aparece la categoría), lista de tarjetas agrupada por día con el neto del día, “Ver más” paginado. Excel y PDF en el menú “⋯”.
+- **Nuevo movimiento** (hoja inferior): selector Ingreso/Gasto, monto grande con `MoneyInput` (I12) enfocado al abrir, descripción, categorías frecuentes en chips (desde `getExpenseCategories`) más “Otra”, método y estado como botones, fecha con “Hoy” por defecto, nota opcional y botón fijo “Guardar gasto/ingreso”.
+- **Cerrar caja** (hoja): efectivo esperado con su desglose (entró/salió en efectivo), monto contado y diferencia en vivo (“Coincide”, “Faltan $ X” o “Sobran $ X”), observación, “Confirmar cierre”.
+- **Detalle** (hoja al tocar un movimiento): monto, fecha, categoría, método y estado; Editar, Marcar pendiente/pagado y Eliminar con confirmación propia (sin `confirm()` del navegador). Si el movimiento viene de una venta, en lugar de esos botones muestra “Ver la venta” y una línea que explica que se edita desde Ventas o Cuenta corriente.
+- No cambian los cálculos, las RPC ni los datos. Touch ≥ 44 px, AA en ambos temas, botón atrás del celular cierra las hojas.
+- **Tests:** Playwright móvil (360×740, Android e iPhone): navegar, filtrar, abrir cada hoja y cancelar. En producción solo lectura, o un movimiento `[QA]` creado y borrado desde la app.
+- **Coordinación con J:** Claude Code debe usar esta estructura para “Flujo de caja” celular en su Tanda 2 y aplicar solo el estilo nuevo.
+- **Cuándo:** después de I10, I11 e I12 (usa `MoneyInput` de I12) y antes de J2.
+- **Commit:** `feat(cashflow): mobile cash flow screen and sheets`
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.
