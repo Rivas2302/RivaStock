@@ -23,8 +23,8 @@ function persistentWorker(memory:any,request:any) {
   let listener:any;let startup:any;
   const alarms=new Map<string,unknown>();
   vi.stubGlobal('chrome',{
-    storage:{local:{get:async()=>({...memory}),set:async(value:any)=>Object.assign(memory,value),remove:async(key:string|string[])=>{for(const item of Array.isArray(key)?key:[key])delete memory[item];}}},
-    alarms:{get:async(name:string)=>alarms.get(name),create:async(name:string,options:any)=>{alarms.set(name,options)},onAlarm:{addListener:vi.fn()}},
+    storage:{onChanged:{addListener:vi.fn()},local:{get:async()=>({...memory}),set:async(value:any)=>Object.assign(memory,value),remove:async(key:string|string[])=>{for(const item of Array.isArray(key)?key:[key])delete memory[item];}}},
+    alarms:{get:async(name:string)=>alarms.get(name),create:async(name:string,options:any)=>{alarms.set(name,options)},clear:async(name:string)=>alarms.delete(name),onAlarm:{addListener:vi.fn()}},
     runtime:{id:'own',onInstalled:{addListener:vi.fn()},onStartup:{addListener:(callback:any)=>{startup=callback}},onMessage:{addListener:(callback:any)=>{listener=callback}}},
   });
   vi.stubGlobal('fetch',(url:any,options:any)=>(/\/(facebook_group_discovery|request_facebook_groups_if_due)$/).test(String(url))?Promise.resolve({ok:true,json:async()=>null}):request(url,options));
@@ -77,7 +77,7 @@ it('recreates a missing alarm and resumes on Chrome startup while preserving an 
   const worker=persistentWorker(memory,async(_url:any,options:any)=>{const op=JSON.parse(options.body).p_operation;operations.push(op);return {ok:true,json:async()=>op==='claim'?null:{connected:true}}});
   try {
     const {ensureQueueAlarm}=await import('../../extensions/facebook/worker.js');
-    await ensureQueueAlarm();expect(worker.alarms.get('rivastock-queue')).toEqual({periodInMinutes:0.5});
+    await ensureQueueAlarm();expect(worker.alarms.get('rivastock-queue')).toEqual({periodInMinutes:1});
     worker.startup();await vi.waitFor(()=>expect(operations).toContain('claim'));
     expect(memory.paused).toBe(false);
     memory.paused=true;operations.length=0;
@@ -125,7 +125,7 @@ it('applies a remote queue command once and resumes without overriding a later m
     await import('../../extensions/facebook/worker.js');
     await worker.poll();expect(memory.paused).toBe(true);expect(operations).not.toContain('claim');
     enabled=true;revision='two';await worker.poll();expect(memory.paused).toBe(false);expect(operations).toContain('claim');
-    operations.length=0;memory.paused=true;await worker.poll();expect(memory.paused).toBe(true);expect(operations).not.toContain('claim');
+    operations.length=0;memory.paused=true;await worker.poll();expect(memory.paused).toBe(true);expect(operations).toEqual(['heartbeat']);expect(operations).not.toContain('claim');
   } finally{vi.unstubAllGlobals();}
 });
 
@@ -135,8 +135,8 @@ it('heartbeats the linked account but never claims or submits while the queue is
   const storageSet=vi.fn(async () => {});
   const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'scoped-device-token'};
   vi.stubGlobal('chrome',{
-    storage:{local:{get:vi.fn(async () => ({connection})),set:storageSet}},
-    alarms:{onAlarm:{addListener:vi.fn()},create:vi.fn()},
+    storage:{onChanged:{addListener:vi.fn()},local:{get:vi.fn(async () => ({connection})),set:storageSet}},
+    alarms:{onAlarm:{addListener:vi.fn()},create:vi.fn(),clear:vi.fn(async()=>true)},
     runtime:{id:'own-extension',onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn(callback => {listener=callback;})}},
   });
   const request=vi.fn(async () => ({ok:true,json:async () => ({connected:true})}));
@@ -167,8 +167,8 @@ it('recovers a lost result acknowledgement without submitting to Facebook twice'
   const job={id:'delivery',content:{title:'Approved'},destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'}};
   let loseResult=true;
   vi.stubGlobal('chrome',{
-    storage:{local:{get:async () => ({...memory}),set:async (value:any) => Object.assign(memory,value),remove:async (key:string) => {delete memory[key]}}},
-    alarms:{onAlarm:{addListener:vi.fn()},create:vi.fn()},
+    storage:{onChanged:{addListener:vi.fn()},local:{get:async () => ({...memory}),set:async (value:any) => Object.assign(memory,value),remove:async (key:string) => {delete memory[key]}}},
+    alarms:{onAlarm:{addListener:vi.fn()},create:vi.fn(),clear:vi.fn(async()=>true)},
     runtime:{id:'own',onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:(callback:any) => {listener=callback}}},
   });
   vi.stubGlobal('fetch',async (_url:any,options:any) => {

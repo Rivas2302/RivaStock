@@ -17,7 +17,7 @@ async function fixture(handler:(args:any,memory:any)=>any){
  const connection={url:'https://test.supabase.co',key:'sb_publishable_test',token:'fixture-secret',deviceId:'pc'};
  const memory:any={connection,paused:false,workerProtocol:2};const operations:any[]=[];const requests:any[]=[];
  vi.stubGlobal('chrome',{
-  storage:{local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
+  storage:{onChanged:{addListener:vi.fn()},local:{get:async()=>structuredClone(memory),set:async(v:any)=>Object.assign(memory,v),remove:async(keys:any)=>{for(const k of Array.isArray(keys)?keys:[keys])delete memory[k];}},session:{remove:vi.fn()}},
   alarms:{get:async()=>({periodInMinutes:0.5}),create:vi.fn(),clear:vi.fn(),onAlarm:{addListener:vi.fn()}},permissions:{remove:vi.fn()},
   runtime:{id:'own',getManifest:()=>({version:'0.5.8'}),onInstalled:{addListener:vi.fn()},onStartup:{addListener:vi.fn()},onMessage:{addListener:vi.fn()}}
  });

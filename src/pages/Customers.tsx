@@ -17,6 +17,9 @@ import Modal from '../components/Modal';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 
+const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
+const CUSTOMER_LEDGER_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
+
 export default function Customers() {
   const [searchParams] = useSearchParams();
   const linkedCustomerId = searchParams.get('customer');
@@ -81,7 +84,7 @@ export default function Customers() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const c = await db.listAll<Customer>('customers', user.uid);
+      const c = await db.listAllColumns<Customer>('customers', user.uid, CUSTOMER_COLUMNS);
       setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
       setLoadError(null);
     } catch (err) {
@@ -97,7 +100,7 @@ export default function Customers() {
     let cancelled = false;
     (async () => {
       try {
-        const c = await db.listAll<Customer>('customers', user.uid);
+        const c = await db.listAllColumns<Customer>('customers', user.uid, CUSTOMER_COLUMNS);
         if (cancelled) return;
         setCustomers(c.sort((a, b) => a.name.localeCompare(b.name)));
         setLoadError(null);
@@ -124,7 +127,7 @@ export default function Customers() {
     setLedgerError(null);
     setLoadingTx(true);
     try {
-      const txs = await db.listAll<CustomerTransaction>('customer_transactions', user!.uid, [
+      const txs = await db.listAllColumns<CustomerTransaction>('customer_transactions', user!.uid, CUSTOMER_LEDGER_COLUMNS, [
         { field: 'customerId', value: customerId },
       ]);
       if (request !== transactionRequest.current || activeCustomerId.current !== customerId) return;

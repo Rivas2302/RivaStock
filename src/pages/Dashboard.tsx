@@ -38,6 +38,8 @@ const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
 const MobileHome = lazy(() => import('../components/mobile/MobileHome'));
 
 const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id,catalog_only';
+const DASHBOARD_SALE_COLUMNS = 'id,date,created_at,product_id,product_name,quantity,total,status,items';
+const DASHBOARD_CASH_FLOW_COLUMNS = 'id,date,type,amount,status,payment_method';
 
 export default function Dashboard() {
   const [exporting, setExporting] = useState(false);
@@ -103,9 +105,9 @@ export default function Dashboard() {
           orders: { loading: true, error: false },
         });
         const results = await Promise.allSettled([
-          db.list<Sale>('sales', user.uid),
-          db.list<CashFlowEntry>('cash_flow', user.uid),
-          db.list<Order>('orders', user.uid),
+          db.listAllColumns<Sale>('sales', user.uid, DASHBOARD_SALE_COLUMNS),
+          db.listAllColumns<CashFlowEntry>('cash_flow', user.uid, DASHBOARD_CASH_FLOW_COLUMNS),
+          db.listColumns<Order>('orders', user.uid, 'id'),
         ]);
         if (cancelled) return;
         if (results[0].status === 'fulfilled') setSales(results[0].value);
@@ -170,9 +172,9 @@ export default function Dashboard() {
     if (!user) return;
     setSourceStates((current) => ({ ...current, [source]: { loading: true, error: false } }));
     try {
-      if (source === 'sales') setSales(await db.list<Sale>('sales', user.uid));
-      if (source === 'cashFlow') setCashFlow(await db.list<CashFlowEntry>('cash_flow', user.uid));
-      if (source === 'orders') setOrders(await db.list<Order>('orders', user.uid));
+      if (source === 'sales') setSales(await db.listAllColumns<Sale>('sales', user.uid, DASHBOARD_SALE_COLUMNS));
+      if (source === 'cashFlow') setCashFlow(await db.listAllColumns<CashFlowEntry>('cash_flow', user.uid, DASHBOARD_CASH_FLOW_COLUMNS));
+      if (source === 'orders') setOrders(await db.listColumns<Order>('orders', user.uid, 'id'));
       setSourceStates((current) => ({ ...current, [source]: { loading: false, error: false } }));
     } catch (cause) {
       console.warn('Dashboard secondary fetch retry failed:', cause);

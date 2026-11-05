@@ -24,6 +24,7 @@ import { supabaseProjectUrl } from '../lib/supabase';
 import { CODEX_FUNCTION_MODELS, defaultAIFunctionSetting, getAIFunctionSetting, type AIFunctionProvider, type AIFunctionReasoningEffort, type AIFunctionSetting } from '../lib/aiFunctionSettings';
 import type { AIActionRequest } from '../lib/aiActions';
 import { FACEBOOK_MARKETPLACE_GROUP_SHARING_ENABLED, readFacebookGroupPublicationMode, resolveFacebookGroupPublicationMode, saveFacebookGroupPublicationMode, shouldShowFacebookGroupPublicationMode } from '../lib/facebookPublicationMode';
+import { startVisiblePolling } from '../lib/visiblePolling';
 
 function localDateTimeInput(date:Date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,16);}
 
@@ -102,8 +103,8 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       } catch (err) { if (active) { setError((err as Error).message); setReady(false); } }
     };
     void refresh();
-    const timer = setInterval(refresh, 10000);
-    return () => { active = false; clearInterval(timer); };
+    const stopPolling = startVisiblePolling(refresh, 30_000);
+    return () => { active = false; stopPolling(); };
   }, [product.id, ownerUid, actionRequest, initialDraftContent]);
   useEffect(() => {
     let active = true;

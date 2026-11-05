@@ -5,6 +5,7 @@ import {usePermission} from '../hooks/usePermission';
 import {supabase} from '../lib/supabase';
 import {connectFacebookComputer,facebookExtensionInfo} from '../lib/facebookConnection';
 import {deviceConnected,facebookRpc,type FacebookDevice} from '../lib/facebookPublications';
+import {startVisiblePolling} from '../lib/visiblePolling';
 
 export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>Promise<void>}>}) {
   const {isOwner}=useAuth();
@@ -33,9 +34,9 @@ export default function FacebookExtensionSettings({ref}:{ref?:Ref<{refresh:()=>P
       if(error)setError('No se pudo consultar la conexión de Facebook.');
       else {setDevices(data as FacebookDevice[]);setError('');}
     }
-    void refresh();const timer=setInterval(refresh,10000);
+    void refresh();const stopPolling=startVisiblePolling(refresh,30_000);
     const onFocus=()=>void refresh();window.addEventListener('focus',onFocus);
-    return ()=>{active=false;clearInterval(timer);window.removeEventListener('focus',onFocus);};
+    return ()=>{active=false;stopPolling();window.removeEventListener('focus',onFocus);};
   },[]);
   async function run(action:()=>Promise<void>) {
     setBusy(true);setError('');setNotice('');

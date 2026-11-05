@@ -14,8 +14,9 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
     const url=new URL(route.request().url());if(url.hostname==='127.0.0.1')return route.continue();if(url.hostname!=='rivastock-test.invalid')return route.abort();
     if(url.pathname.includes('/storage/'))return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII=','base64')});
     const name=url.pathname.split('/').pop()!;let data:unknown=[];
+    if(name==='my_business_plan')data={plan_code:'pro',plan_name:'RivaStock IA',status:'active',limits:{modules:{ai:true,knowledge:true,automation:true}}};
     if(name==='collaborators')data=role==='owner'?null:{id:'collaborator',owner_uid:owner,permissions:{stock:{read:role!=='denied',write:false,delete:false},config:{read:false,write:false,delete:false}}};
-    if(name==='get_owner_profile')data=[{id:owner,role:'admin',business_name:'Test',display_name:'Owner',email:'owner@test.invalid'}];
+    if(name==='get_owner_profile')data=[{id:owner,role:'admin',business_name:'Test',display_name:'Owner',email:'owner@test.invalid',onboarding_completed_at:'2026-01-01T00:00:00Z'}];
     if(name==='facebook_devices')data=[device];
     if(name==='inventory_operation_settings')data={holdings_enabled:false};
     if(name==='facebook_publications') {

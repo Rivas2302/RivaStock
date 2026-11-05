@@ -17,6 +17,7 @@ import {
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 import { listAIMemoryJobActivity, undoAIMemoryEvent, type AIMemoryJobActivity } from '../lib/aiMemory';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
+import { startVisiblePolling } from '../lib/visiblePolling';
 import KnowledgeSources from './ai/KnowledgeSources';
 
 const MobileAIChatList = lazy(() => import('./ai/MobileAIChatList'));
@@ -159,7 +160,6 @@ export default function AIChats({
     let mounted = true;
     let requestInFlight = false;
     let refreshRequested = false;
-    let timer: number | null = null;
     const load = async (): Promise<void> => {
       if (!mounted) return;
       if (requestInFlight) {
@@ -200,28 +200,19 @@ export default function AIChats({
         }
       }
     };
-    const schedulePoll = () => {
-      if (!hasPendingJob || !mounted || document.visibilityState !== 'visible' || timer !== null) return;
-      timer = window.setTimeout(() => {
-        timer = null;
-        void load().then(schedulePoll);
-      }, 2000);
-    };
     const refreshWhenVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (timer !== null) {
-        window.clearTimeout(timer);
-        timer = null;
-      }
-      void load().then(schedulePoll);
+      if (document.visibilityState === 'visible') void load();
     };
     setLoadingMessages(true);
-    void load().then(schedulePoll);
+    if (document.visibilityState === 'visible') void load();
+    const stopPolling = hasPendingJob
+      ? startVisiblePolling(() => load(), 5_000, { active: true })
+      : () => undefined;
     window.addEventListener('focus', refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       mounted = false;
-      if (timer !== null) window.clearTimeout(timer);
+      stopPolling();
       window.removeEventListener('focus', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
@@ -232,12 +223,11 @@ export default function AIChats({
     if (Date.now() - Date.parse(latestCompletedJob.created_at) > 10 * 60_000) return;
 
     let mounted = true;
-    let timer: number | null = null;
     const deadline = Date.now() + 60_000;
-    const poll = async (): Promise<void> => {
-      if (!mounted) return;
+    const poll = async (): Promise<boolean> => {
+      if (!mounted) return false;
       const activity = await listAIMemoryJobActivity([latestCompletedJob.id]).catch(() => ({}));
-      if (!mounted) return;
+      if (!mounted) return false;
       const next = activity[latestCompletedJob.id];
       if (next && (next.changes.length > 0 || next.used.length > 0)) {
         setJobMemoryActivity((current) => {
@@ -251,17 +241,14 @@ export default function AIChats({
             },
           };
         });
-        if (next.changes.length > 0) return;
+        if (next.changes.length > 0) return false;
       }
-      if (Date.now() < deadline) {
-        timer = window.setTimeout(() => void poll(), 3000);
-      }
+      return Date.now() < deadline;
     };
-
-    timer = window.setTimeout(() => void poll(), 1500);
+    const stopPolling = startVisiblePolling(poll, 3_000, { active: true });
     return () => {
       mounted = false;
-      if (timer !== null) window.clearTimeout(timer);
+      stopPolling();
     };
   }, [selectedChatId, loadingMessages, hasPendingJob, latestCompletedJob?.id, latestCompletedJob?.created_at, latestMemoryChangeCount]);
 

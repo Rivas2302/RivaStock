@@ -52,14 +52,24 @@
 
 # Estado de ejecución autónoma
 
-## 2026-11-05 — K4 terminado localmente; I14 lista
+## 2026-11-05 — K4 e I14 desplegadas; K3 verificada
 
 - K4: las subidas nuevas de fotos de producto, miniaturas, fotos incrustadas en publicaciones y fotos mejoradas usan `cacheControl: 31536000`. `ProductThumbnail` ahora pide `.thumb.webp` para Storage WebP y conserva carga diferida; no reetiqueté ni descargué fotos existentes.
 - `backup:storage` valida localmente el último manifiesto y sus hashes, reutiliza el backup dentro de 24 horas y, al renovarlo, copia objetos sin cambios desde el backup previo y descarga solo los nuevos/cambiados. No ejecuté un backup de producción ni pruebas que descarguen fotos porque K1 registró egress >80 %.
-- I14: POS ahora muestra `ProductThumbnail` con `loading="lazy"` en resultados de búsqueda y renglones del carrito. Commits `8ed4a83` (K4) y `d54d184` (I14) están en `main` con Rivas2302. La verificación HTTP inicial de producción dio 200; continúo comprobando que sirva el build nuevo.
+- I14: POS ahora muestra `ProductThumbnail` con `loading="lazy"` en resultados de búsqueda y renglones del carrito. Commits `8ed4a83` (K4) y `d54d184` (I14) están en `main` con Rivas2302; seguimiento K4 `d0b3632` también está en `main`. Producción respondió HTTP 200 a HEAD para los assets POS y Stock del build nuevo.
 - Verificación: suite completa **977/977**, `npm run lint` y `npm run build` pasaron; tests focales actualizados **11/11**. `perf:check` sigue fallando en AIHub y Sales por el diff local de K3; esos cambios no se incluyen en los commits K4/I14.
 - **Desvío de validación:** no inspeccioné imágenes de producción ni reetiqueté objetos. El backup incremental se validó con tests locales y no se invocó contra Storage productivo.
-- **Siguiente:** commit/deploy de K4 y luego I14; después completar K3, corregir el presupuesto de bundle y continuar A1 y los bloques posteriores según ACTION_PLAN.
+- **Siguiente:** publicar K3; después A1 y continuar los bloques posteriores según ACTION_PLAN.
+
+## 2026-11-05 — K3 verificado localmente; listo para publicar
+
+- Los sondeos web usan `startVisiblePolling`: no conservan temporizadores en pestañas ocultas, tienen 30 s mínimo en reposo y no solapan solicitudes; las tareas activas visibles conservan el intervalo corto. Los únicos `setInterval` restantes son relojes locales sin consultas de red.
+- La extensión pasa a 1 minuto en reposo, 30 s con trabajo/ensayo y elimina el sondeo de cola cuando está pausada. El paquete se versionó como **0.5.23**; `ownContentTrackers` sigue terminando su seguimiento cuando la cola está pausada.
+- CashFlow, Ventas, Inicio y Clientes seleccionan columnas mínimas y usan paginación keyset. `listAllColumns` delega en el paginador existente `listAll` para evitar código duplicado.
+- Verificación local: lint, build, `perf:check`, suite **978/978** y las diez suites `e2e/facebook-*` **102/102**.
+- **Desvío de presupuesto:** K3 agrega controles de foreground y proyecciones de lectura; para que `perf:check` mida esos cambios se subieron los límites de AIHub 241→242 KiB y Sales 230→231 KiB (1 KiB cada uno). Tamaños medidos: AIHub **247.138 B** y Sales **235.713 B** gzip. No se alteró el límite global de entrada.
+- No hubo migraciones ni lecturas/escrituras de fotos en producción. K4/I14 están en `main`; producción respondió HTTP 200 a HEAD de los assets POS y Stock. **K3 aún no está desplegada** hasta el commit/push de este cierre.
+- **Siguiente:** commit/push/deploy de K3; después A1 según el orden vigente.
 ## 2026-11-04 — I10 listo localmente; smoke de producción pendiente
 
 - Copié la versión actualizada de `ACTION_PLAN.md` desde Desktop. I10 e I11 siguen `[ ]` hasta completar en producción el smoke requerido: abrir el formulario y cancelarlo sin registrar ventas.

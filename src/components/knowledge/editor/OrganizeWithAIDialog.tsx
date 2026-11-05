@@ -14,6 +14,7 @@ import {
 } from '../../../lib/knowledge/api';
 import { buildNotesFromDraft, proposalToTiptap, validateProposal, type KnowledgeImageMap } from '../../../lib/knowledge/organize';
 import { removePaths, signedUrl, uploadAsset } from '../../../lib/knowledge/storage';
+import { startVisiblePolling } from '../../../lib/visiblePolling';
 
 const KnowledgeEditorPreview = lazy(() => import('./KnowledgeEditor'));
 const MAX_NOTES_LENGTH = 7500;
@@ -98,10 +99,10 @@ export default function OrganizeWithAIDialog({
   }, []);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
     void refreshBridgeState();
-    const interval = window.setInterval(() => void refreshBridgeState(), 10_000);
-    return () => window.clearInterval(interval);
-  }, [refreshBridgeState]);
+    return startVisiblePolling(() => refreshBridgeState(), 30_000);
+  }, [isOpen, refreshBridgeState]);
 
   useEffect(() => {
     if (!isOpen || initialProposal) return undefined;
@@ -152,33 +153,32 @@ export default function OrganizeWithAIDialog({
   useEffect(() => {
     if (!activeRequest || result?.proposalId === activeRequest.proposalId) return undefined;
     let cancelled = false;
-    let timer = 0;
-    const poll = async () => {
+    const poll = async (): Promise<boolean> => {
       try {
         const job = await getKnowledgeOrganizeJob(activeRequest.jobId);
-        if (cancelled) return;
+        if (cancelled) return false;
         setRequestState(job.status);
         if (job.status === 'failed') {
           setError(job.error || 'La tarea de organización falló.');
-          return;
+          return false;
         }
         if (job.status === 'completed') {
           if (!job.output) {
             setError('La tarea terminó sin una propuesta.');
             setRequestState('failed');
-            return;
+            return false;
           }
           setResult({ ...activeRequest, output: job.output });
-          return;
+          return false;
         }
       } catch (cause) {
-        if (cancelled) return;
+        if (cancelled) return false;
         setError(errorMessage(cause));
       }
-      if (!cancelled) timer = window.setTimeout(() => void poll(), 2000);
+      return !cancelled;
     };
-    void poll();
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    const stopPolling = startVisiblePolling(poll, 2_000, { active: true });
+    return () => { cancelled = true; stopPolling(); };
   }, [activeRequest, result?.proposalId]);
 
   const insertUploadedImage = async (file: File) => {

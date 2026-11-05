@@ -3,6 +3,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import { listKnowledgeIndexJobs } from '../../lib/knowledge/api';
 import { formatDate } from '../../lib/knowledge/format';
 import type { KnowledgeIndexJob, KnowledgeIndexJobReason, KnowledgeIndexJobStatus } from '../../lib/knowledge/types';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 const STATUS_LABELS: Record<KnowledgeIndexJobStatus, string> = {
   pending: 'En cola', processing: 'Procesando', completed: 'Completado', failed: 'Fallido', cancelled: 'Cancelado',
@@ -31,10 +32,7 @@ export default function KnowledgeIndexJobs() {
   const hasOpenJobs = jobs.some((job) => job.status === 'pending' || job.status === 'processing');
   useEffect(() => {
     if (!hasOpenJobs) return;
-    const timer = window.setInterval(() => {
-      if (window.document.visibilityState === 'visible') void refresh();
-    }, 5_000);
-    return () => window.clearInterval(timer);
+    return startVisiblePolling(() => refresh(), 5_000, { active: true });
   }, [hasOpenJobs, refresh]);
 
   return <section className="space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">

@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "vitest run src extensions/facebook/recorder.test.ts",
+    "test": "vitest run src extensions/facebook/recorder.test.ts extensions/facebook/polling-schedule.test.ts",
     "test:e2e": "playwright test",
     "verify": "npm run lint && npm test && npm run build && npm run check:no-secrets && npm run perf:check && npm audit",
     "backup:db": "node scripts/backup-db.mjs",

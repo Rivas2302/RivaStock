@@ -54,6 +54,12 @@ import { getInventoryHoldings } from '../lib/inventoryHoldings';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { calculateSaleTotals } from '../lib/salesTotals';
 
+const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_price,quantity,adjustment,total,status,payment_method,client,items,source';
+const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
+const CUSTOMER_TRANSACTION_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
+const SALE_ITEM_PROJECTION_COLUMNS = 'id,sale_id_snapshot,reversed_at';
+const SALE_ALLOCATION_PROJECTION_COLUMNS = 'id,sale_id_snapshot,sale_item_id,inventory_owner_id_snapshot,inventory_owner_name_snapshot,product_id_snapshot,product_name_snapshot,quantity,unit_price,discount_share,adjustment_share,revenue_share,cost_share,reversed_at';
+
 export default function Sales() {
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
@@ -231,12 +237,12 @@ export default function Sales() {
       salesResult, productsResult, customersResult, customerTransactionsResult,
       itemsResult, allocationsResult, holdingsResult,
     ] = await Promise.allSettled([
-      db.listAll<Sale>('sales', user.uid),
+      db.listAllColumns<Sale>('sales', user.uid, SALE_COLUMNS),
       db.list<Product>('products', user.uid),
-      db.listAll<Customer>('customers', user.uid),
-      db.listAll<CustomerTransaction>('customer_transactions', user.uid),
-      holdingsEnabled ? db.listAll<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
-      holdingsEnabled ? db.listAll<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+      db.listAllColumns<Customer>('customers', user.uid, CUSTOMER_COLUMNS),
+      db.listAllColumns<CustomerTransaction>('customer_transactions', user.uid, CUSTOMER_TRANSACTION_COLUMNS),
+      holdingsEnabled ? db.listAllColumns<SaleItemSnapshot>('sale_items', user.uid, SALE_ITEM_PROJECTION_COLUMNS) : Promise.resolve([]),
+      holdingsEnabled ? db.listAllColumns<SaleItemAllocation>('sale_item_allocations', user.uid, SALE_ALLOCATION_PROJECTION_COLUMNS) : Promise.resolve([]),
       holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
     ]);
 
@@ -304,12 +310,12 @@ export default function Sales() {
         salesResult, productsResult, customersResult, customerTransactionsResult,
         itemsResult, allocationsResult, holdingsResult,
       ] = await Promise.allSettled([
-        db.listAll<Sale>('sales', user.uid),
+        db.listAllColumns<Sale>('sales', user.uid, SALE_COLUMNS),
         db.list<Product>('products', user.uid),
-        db.listAll<Customer>('customers', user.uid),
-        db.listAll<CustomerTransaction>('customer_transactions', user.uid),
-        holdingsEnabled ? db.listAll<SaleItemSnapshot>('sale_items', user.uid) : Promise.resolve([]),
-        holdingsEnabled ? db.listAll<SaleItemAllocation>('sale_item_allocations', user.uid) : Promise.resolve([]),
+        db.listAllColumns<Customer>('customers', user.uid, CUSTOMER_COLUMNS),
+        db.listAllColumns<CustomerTransaction>('customer_transactions', user.uid, CUSTOMER_TRANSACTION_COLUMNS),
+        holdingsEnabled ? db.listAllColumns<SaleItemSnapshot>('sale_items', user.uid, SALE_ITEM_PROJECTION_COLUMNS) : Promise.resolve([]),
+        holdingsEnabled ? db.listAllColumns<SaleItemAllocation>('sale_item_allocations', user.uid, SALE_ALLOCATION_PROJECTION_COLUMNS) : Promise.resolve([]),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
       if (cancelled) return;

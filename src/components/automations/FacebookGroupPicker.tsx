@@ -5,6 +5,7 @@ import {supabase} from '../../lib/supabase';
 import {wakeFacebookGroups} from '../../lib/facebookConnection';
 import {facebookRpc,groupCompatibility,type FacebookDevice,type FacebookGroup} from '../../lib/facebookPublications';
 import {rankFacebookGroups,type FacebookGroupPerformance} from '../../lib/facebookGroupSuggestions';
+import {startVisiblePolling} from '../../lib/visiblePolling';
 
 type Sync={id?:string;device_id?:string;status:string;message:string|null;requested_at:string;finished_at:string|null};
 async function bounded<T>(action:PromiseLike<T>):Promise<T>{let timer:ReturnType<typeof setTimeout>;try{return await Promise.race([action,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('La consulta no respondió a tiempo. El pedido puede conservarse; volvé a consultar.')),15000);})]);}finally{clearTimeout(timer!);}}
@@ -16,13 +17,14 @@ export default function FacebookGroupPicker({groups,devices,selected,onChange,on
   const observed=useRef({key:'',since:performance.now()});
   const notified=useRef(new Set<string>());
   const requestKey=sync?.id??sync?.requested_at;
+  const syncInProgress=sync?.status==='requested'||sync?.status==='running';
   function receive(value:Sync|null){const key=(value?.id??value?.requested_at??'')+':'+(value?.message??'');if(observed.current.key!==key)observed.current={key,since:performance.now()};setSync(value);setNow(performance.now());}
   useEffect(()=>{let active=true;
     async function load(){const {data,error}=await bounded(supabase.from('facebook_group_sync').select('id,device_id,status,message,requested_at,finished_at').maybeSingle());if(!active)return;if(error){setError('No se pudo consultar la lectura de grupos. Verificá la conexión y la migración 0053.');return;}
       const value=data as Sync|null;receive(value);const marker=value?.finished_at??(value?.status==='running'&&value.message?.startsWith('Miembros consultados:')?`${value.id}:${value.message}`:'');if(marker&&seen.current!==marker){await bounded(refreshRef.current());if(active)seen.current=marker;}
     }
-    void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');});const timer=setInterval(()=>void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');}),5000);const clock=setInterval(()=>{if(active)setNow(performance.now());},1000);return()=>{active=false;clearInterval(timer);clearInterval(clock);};
-  },[ownerUid]);
+    void load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');});const stopPolling=startVisiblePolling(()=>load().catch(()=>{if(active)setError('No se pudieron actualizar los grupos.');}),syncInProgress?5000:30_000,{active:syncInProgress});const clock=setInterval(()=>{if(active)setNow(performance.now());},1000);return()=>{active=false;stopPolling();clearInterval(clock);};
+  },[ownerUid,syncInProgress]);
   useEffect(()=>{
     if(sync?.status!=='requested'||!sync.device_id||!canWrite)return;
     const key=`${ownerUid}:${sync.id??sync.requested_at}`;if(notified.current.has(key))return;notified.current.add(key);

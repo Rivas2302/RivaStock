@@ -11,6 +11,7 @@ import {
 } from '../../lib/knowledge/api';
 import { formatBytes, formatDate } from '../../lib/knowledge/format';
 import type { KnowledgeStats } from '../../lib/knowledge/types';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
@@ -62,10 +63,7 @@ export default function KnowledgeAdminSummary({ refreshKey }: { refreshKey: numb
 
   useEffect(() => { void refresh(); }, [refresh, refreshKey]);
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (window.document.visibilityState === 'visible') void getAIBridgeState().then((status) => setBridgeState(status.state)).catch(() => setBridgeState('offline'));
-    }, 30_000);
-    return () => window.clearInterval(timer);
+    return startVisiblePolling(() => getAIBridgeState().then((status) => setBridgeState(status.state)).catch(() => setBridgeState('offline')), 30_000);
   }, []);
 
   const storagePercent = stats && stats.storage_limit_bytes > 0

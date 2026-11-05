@@ -28,6 +28,10 @@ import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { getExpenseCategories, matchesExpenseCategory } from '../lib/expenseCategories';
 
+const CASH_FLOW_COLUMNS = 'id,user_id,date,created_at,type,source,description,category,amount,payment_method,status,sale_id,financial_command_id,notes';
+const SETTLEMENT_SALE_COLUMNS = 'id,total,status';
+const SETTLEMENT_TRANSACTION_COLUMNS = 'id,customer_id,type,amount,related_sale_id';
+
 export default function CashFlow() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('caja', 'write');
@@ -103,9 +107,9 @@ export default function CashFlow() {
 
   const loadFinancialData = async () => {
     const [cash, sales, transactions] = await Promise.all([
-      db.listAll<CashFlowEntry>('cash_flow', user!.uid),
-      db.listAll<Sale>('sales', user!.uid),
-      db.listAll<CustomerTransaction>('customer_transactions', user!.uid),
+      db.listAllColumns<CashFlowEntry>('cash_flow', user!.uid, CASH_FLOW_COLUMNS),
+      db.listAllColumns<Sale>('sales', user!.uid, SETTLEMENT_SALE_COLUMNS),
+      db.listAllColumns<CustomerTransaction>('customer_transactions', user!.uid, SETTLEMENT_TRANSACTION_COLUMNS),
     ]);
     const settlements = buildSaleSettlements(sales, transactions);
     // Receivables are not cash. Count only invoices without a pending cash row.

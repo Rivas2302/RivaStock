@@ -242,12 +242,12 @@ Causa más probable, vista en el código del 05/11 (verificala midiendo):
 - Heartbeat cada 2 minutos en vez de 20 s, y que la web considere al Bridge “Conectado” con ese margen. Sincronizaciones de 30–60 s pasan a 5–10 minutos o se disparan por evento.
 - Bridge nueva versión menor, instalada con la autorización §1.1.4. Verificá que tareas, Conocimientos, memoria y supervisor sigan respondiendo.
 
-### [ ] K3 Extensión y web
+### [x] K3 Extensión y web
 - Extensión: alarma de cola a 1 minuto cuando no hay entregas pendientes y a 30 s solo mientras hay trabajo o un ensayo en curso. Sin consultas mientras la cola está pausada.
 - Web: todos los `setInterval` de consulta se **pausan con la pestaña oculta** (`document.visibilityState`) y usan 30 s como mínimo, salvo mientras hay una acción en curso que el usuario está mirando.
 - Páginas con `db.listAll`: traer solo lo necesario (paginado, rango de fechas, columnas justas) o totales calculados en SQL. Empezar por Flujo de caja, Ventas, Inicio y Clientes.
 
-### [ ] K4 Fotos y backups
+### [x] K4 Fotos y backups
 - Fotos nuevas con `cacheControl` de 1 año (los nombres ya son únicos); en listas y buscadores, siempre la miniatura `.thumb.webp`. Las fotos existentes se reetiquetan solo si se puede hacer **sin volver a descargarlas**; si no, quedan como están.
 - Backups: Storage **incremental** (solo objetos nuevos o cambiados, comparando la lista remota con el manifiesto local, sin descargar lo que ya está). Backup de Storage a lo sumo una vez por día, y nunca como paso de cada migración: para migrar alcanza con el backup de la base.
 - Mientras el egress del ciclo esté por encima del 80 %: nada de pruebas en producción que descarguen fotos, y los smoke tests usan la menor cantidad de pedidos posible.
@@ -257,7 +257,7 @@ Causa más probable, vista en el código del 05/11 (verificala midiendo):
 - Verificar después de K2–K5 (al día siguiente) que los pedidos por día bajaron al menos un 90 % y registrar el antes y el después en `STATUS.md`.
 - **Commits:** uno por tarea, `perf(bridge|ext|web|storage): …`.
 
-**Orden:** K1 → K2 → K5 → K3 → K4, y recién después A1. Lo de K es todo gratis y reversible. Si en cualquier momento el uso del ciclo pasa el 95 %, avisá a Riva en el momento.
+**Orden vigente (ajuste de Riva, 05/11):** K1 → K2 → K5 → K4 → K3, y recién después A1. Lo de K es todo gratis y reversible. Si en cualquier momento el uso del ciclo pasa el 95 %, avisá a Riva en el momento.
 
 **A1 sin Dashboard:** no hace falta el navegador. Saltá la credencial S3 (el backup de Storage usa la clave secreta nueva por la API de Storage) y hacé el resto de A1 con la Management API y la CLI como dice A1. Cerrá la ventana de Chrome del Dashboard.
 

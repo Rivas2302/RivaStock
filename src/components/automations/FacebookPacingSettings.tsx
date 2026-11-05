@@ -2,6 +2,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {useAuth} from '../../AuthContext';
 import {acknowledgeFacebookPacingAlert,getFacebookPacingAlerts,getFacebookPacingPolicy,isFacebookPacingRisk,updateFacebookPacingPolicy,type FacebookPacingAlert,type FacebookPacingPolicy} from '../../lib/facebookPacing';
 import ExecutionTraceViewer from './ExecutionTraceViewer';
+import {startVisiblePolling} from '../../lib/visiblePolling';
 
 const fieldClass='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800';
 const numericFields:[keyof FacebookPacingPolicy,string,number,number][]=[
@@ -28,8 +29,8 @@ export default function FacebookPacingSettings(){
     void Promise.all([getFacebookPacingPolicy(),getFacebookPacingAlerts()]).then(([nextPolicy,nextAlerts])=>{
       if(active){setPolicy(nextPolicy);setAlerts(nextAlerts);}
     }).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:'No se pudo cargar el ritmo de publicación.');});
-    const timer=window.setInterval(()=>{void refreshAlerts().catch(()=>{});},10000);
-    return()=>{active=false;window.clearInterval(timer);};
+    const stopPolling=startVisiblePolling(()=>refreshAlerts().catch(()=>{}),30_000);
+    return()=>{active=false;stopPolling();};
   },[refreshAlerts]);
 
   async function save(event:React.FormEvent<HTMLFormElement>){

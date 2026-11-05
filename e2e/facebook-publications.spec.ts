@@ -20,7 +20,8 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
     if(url.pathname.includes('/storage/')) return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxXkAAAAASUVORK5CYII=','base64')});
     const name=url.pathname.split('/').pop();
     let data:unknown=[];
-    if(name==='get_owner_profile') data=[{id:owner,email:'test@test.invalid',role:'admin',business_name:'Test',display_name:'Owner'}];
+    if(name==='my_business_plan') data={plan_code:'pro',plan_name:'RivaStock IA',status:'active',limits:{modules:{ai:true,knowledge:true,automation:true}}};
+    if(name==='get_owner_profile') data=[{id:owner,email:'test@test.invalid',role:'admin',business_name:'Test',display_name:'Owner',onboarding_completed_at:'2026-01-01T00:00:00Z'}];
     if(name==='inventory_operation_settings') data=[{holdings_enabled:false}];
     if(name==='inventory_owners') data=[{id:owner,user_id:owner,name:'Primary',is_primary:true}];
     if(name==='inventory_owner_memberships') data=[{inventory_owner_id:owner,is_default:true,can_operate:true}];
@@ -40,8 +41,17 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
     const encode=(value:unknown) => btoa(JSON.stringify(value)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
     localStorage.setItem('rivastock-auth',JSON.stringify({access_token:`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,exp,role:'authenticated'})}.fixture`,refresh_token:'fixture',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id,email:'test@test.invalid',aud:'authenticated',app_metadata:{},user_metadata:{},created_at:new Date().toISOString()}}));
   },owner);
+  const openPublisher=async()=>{
+    if(mobile){
+      await page.getByRole('button',{name:'Abrir ficha de Silla de prueba'}).click();
+      await page.getByRole('button',{name:'Más acciones del producto'}).click();
+      await page.getByRole('button',{name:'Publicar en Facebook',exact:true}).click();
+      return;
+    }
+    await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
+  };
   await page.goto('/stock');
-  await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
+  await openPublisher();
   const dialog=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await expect(dialog).toBeVisible();
   expect(approvals).toHaveLength(0);
@@ -72,8 +82,14 @@ for(const mobile of [false,true]) test(`reviews, confirms and cancels Facebook q
   await dialog.getByRole('button',{name:'Cancelar envío pendiente'}).first().click();
   await expect(dialog.getByRole('article',{name:'Marketplace: Cancelado'})).toBeVisible();
   await dialog.getByRole('button',{name:'Cerrar',exact:true}).click();
-  await expect(page.getByText('Silla de prueba',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
+  if(mobile){
+    await expect(page.getByRole('heading',{name:'Silla de prueba'})).toBeVisible();
+    await page.getByRole('button',{name:'Más acciones del producto'}).click();
+    await page.getByRole('button',{name:'Publicar en Facebook',exact:true}).click();
+  }else{
+    await expect(page.getByText('Silla de prueba',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Publicar Silla de prueba en Facebook'}).click();
+  }
   if(mobile)await dialog.getByRole('button',{name:/Silla lista para Facebook/}).first().click();
   await expect(dialog.getByRole('article',{name:'Marketplace: Cancelado'})).toBeVisible();
   await expect(dialog).toHaveCSS('opacity','1');

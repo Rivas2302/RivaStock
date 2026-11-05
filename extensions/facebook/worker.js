@@ -5,6 +5,7 @@ import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
 import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
+import { queueAlarmPeriodMinutes, shouldSkipPausedQueuePoll } from './polling-schedule.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown});
 void flushTraceQueue();
 
@@ -91,14 +92,19 @@ export async function syncGroups(connection,background=false) {
   finally{if(!startedInBackground)readingGroups=false;}
 }
 export async function ensureQueueAlarm() {
-  const {connection}=await chrome.storage.local.get('connection');
-  if(!connection)return;
+  const state=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','pendingClaim','pendingRehearsalClaim','ownContentTrackers']);
+  const periodInMinutes=queueAlarmPeriodMinutes(state);
+  if(periodInMinutes===null){await chrome.alarms.clear('rivastock-queue');return;}
   const alarm=await chrome.alarms.get('rivastock-queue');
-  if(alarm?.periodInMinutes!==0.5)await chrome.alarms.create('rivastock-queue',{periodInMinutes:0.5});
+  if(alarm?.periodInMinutes!==periodInMinutes)await chrome.alarms.create('rivastock-queue',{periodInMinutes});
 }
 // MV3 alarms may disappear across browser sessions or extension updates.
-// Recreate them whenever the worker is loaded, without changing user pause.
+// Recreate them whenever the worker is loaded, respecting queue pause and active work.
 void ensureQueueAlarm().catch(()=>{});
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if(area==='local'&&['connection','paused','activeJob','activeRehearsal','pendingClaim','pendingRehearsalClaim','ownContentTrackers'].some(key=>key in changes))
+    void ensureQueueAlarm().catch(()=>{});
+});
 export async function rpc(config, name, args) {
   const response = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
     method: 'POST', headers: { apikey: config.key, ...(config.key.startsWith('ey') ? { Authorization: `Bearer ${config.key}` } : {}), 'Content-Type': 'application/json' },
@@ -491,9 +497,15 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
   if(polling||reviewingHistorical){pendingSignal=signal;return;}
   polling=true;const lifetime=globalThis.chrome;let heartbeatTimer;let drain=false;
   try{
-    const saved=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','lastIssue','status','queueCommandAt','pendingClaim','pendingRehearsalClaim','workerProtocol','serverFeatures']);
+    const saved=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','lastIssue','status','queueCommandAt','pendingClaim','pendingRehearsalClaim','ownContentTrackers','workerProtocol','serverFeatures']);
     let serverFeatures=saved.serverFeatures??[];
     const {connection,activeJob}=saved;if(!connection)return;
+    const hasInProgressWork=Boolean(activeJob||saved.activeRehearsal||saved.pendingClaim||saved.pendingRehearsalClaim||Object.keys(saved.ownContentTrackers??{}).length>0);
+    if(shouldSkipPausedQueuePoll(saved,signal)){
+      await chrome.alarms.clear('rivastock-queue');
+      await chrome.storage.local.set({status:'Conectada. Cola pausada.'});
+      return;
+    }
     let protocol=saved.workerProtocol??1;let heartbeat;
     // Upgrade only on an explicit V2 handshake. A missing endpoint is the only safe fallback.
     if(chrome.runtime.getManifest){
@@ -508,6 +520,11 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
       paused=!heartbeat.queue_enabled;await chrome.storage.local.set({paused,queueCommandAt:heartbeat.queue_command_at,status:paused?'Cola pausada desde RivaStock.':'Cola activa desde RivaStock.'});
       await workerRpc(connection,'heartbeat',{protocol,status:paused?'paused':'active'});
     }
+    if(paused!==false&&!hasInProgressWork){
+      await chrome.alarms.clear('rivastock-queue');
+      await chrome.storage.local.set({status:'Conectada. Cola pausada.'});
+      return;
+    }
     // Expiring our own in-flight attempt first would retire it without reconciling.
     if(protocol>=2&&!activeJob)try{await rpc(connection,'facebook_watchdog',{p_token:connection.token});}catch{}
     heartbeatTimer=setInterval(()=>{
@@ -519,7 +536,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
         else await workerRpc(connection,'heartbeat',{protocol});
         await chrome.storage.local.set({lastHeartbeat:Date.now()});
       })().catch(()=>{});
-    },20000);
+    },30_000);
     await flushPendingPostSubmitObservations(connection);
     if(activeJob){
       if(activeJob.deviceId!==connection.deviceId||activeJob.projectUrl!==connection.url){await chrome.storage.local.set({paused:true,status:'Hay un envío de otra conexión pendiente de revisar. No se ejecutó con esta cuenta.'});return;}
@@ -646,6 +663,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     const code=errorCode(error);await chrome.storage.local.set({lastErrorCode:code,status:code==='NETWORK_TEMPORARY'?'Sin conexión momentánea. Se reintentará automáticamente.':code==='DEVICE_REVOKED'||code==='TOKEN_EXPIRED'?'La vinculación venció o fue revocada. Revisá la conexión antes de continuar.':'La ejecución requiere revisión: '+code});
   }finally{
     clearInterval(heartbeatTimer);polling=false;const next=pendingSignal;pendingSignal=null;
+    void ensureQueueAlarm().catch(()=>{});
     if(next||(drain&&chain))setTimeout(()=>{if(globalThis.chrome===lifetime)void poll(next??{source:'drain',received:performance.now(),receivedAt:new Date().toISOString()},true);},0);
   }
 }
@@ -861,6 +879,6 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     return;
   }
   if (sender.id !== chrome.runtime.id || message.type !== 'poll') return;
-  void poll().then(() => reply({ done: true }));
+  void poll({source:'local',received:performance.now(),receivedAt:new Date().toISOString()}).then(() => reply({ done: true }));
   return true;
 });

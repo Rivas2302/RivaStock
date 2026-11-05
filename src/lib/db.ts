@@ -395,14 +395,18 @@ class SupabaseDB {
   }
 
   /** Financial totals must never silently stop at the server's row limit. */
-  async listAll<T>(collectionName: string, ownerUid: string, filters: { field: string; value: unknown }[] = []): Promise<T[]> {
+  async listAll<T>(collectionName: string, ownerUid: string, filters: { field: string; value: unknown }[] = [], columns = '*'): Promise<T[]> {
     const tbl = tableName(collectionName);
-    const key = cacheKey('listAll', collectionName, { ownerUid, filters });
+    const selectedColumns = columns.trim() || '*';
+    if (selectedColumns !== '*' && !selectedColumns.split(',').some((column) => column.trim() === 'id')) {
+      throw new Error(`db.listAll:${tbl} requires the id column for pagination.`);
+    }
+    const key = cacheKey('listAll', collectionName, { ownerUid, filters, columns: selectedColumns });
     return readWithCache(key, async () => {
       const rows: T[] = [];
       let cursor: string | undefined;
       for (;;) {
-        let query = supabase.from(tbl).select('*').eq('user_id', ownerUid)
+        let query = supabase.from(tbl).select(selectedColumns as '*').eq('user_id', ownerUid)
           .order('id', { ascending: true }).limit(500);
         for (const filter of filters) query = query.eq(colToDb(filter.field, false), filter.value as string);
         if (cursor) query = query.gt('id', cursor);
@@ -417,6 +421,20 @@ class SupabaseDB {
       }
       return rows;
     });
+  }
+
+  /** Read every row in stable pages while selecting only the fields a screen uses. */
+  async listAllColumns<T>(
+    collectionName: string,
+    ownerUid: string,
+    columns: string,
+    filters: { field: string; value: unknown }[] = [],
+  ): Promise<T[]> {
+    const selectedColumns = columns.trim();
+    if (!selectedColumns.split(',').some((column) => column.trim() === 'id')) {
+      throw new Error(`db.listAllColumns:${tableName(collectionName)} requires the id column for pagination.`);
+    }
+    return this.listAll<T>(collectionName, ownerUid, filters, selectedColumns);
   }
 
   async list<T>(collectionName: string, ownerUid?: string): Promise<T[]> {

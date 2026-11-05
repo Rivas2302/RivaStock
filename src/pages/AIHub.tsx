@@ -38,6 +38,7 @@ import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
 import type { PublicationContent } from '../lib/facebookPublications';
 import type { FacebookCopywritingProposal } from '../lib/facebookCopywriting';
 import { resolveFacebookCopywritingProduct } from '../lib/facebookCopywritingProduct';
+import { startVisiblePolling } from '../lib/visiblePolling';
 import type { Product } from '../types';
 
 const AIMemory = lazy(() => import('../components/AIMemory'));
@@ -339,7 +340,7 @@ export default function AIHub() {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => {
+    const stopPolling = startVisiblePolling(() => {
       void getAIBridgeState().then((status) => {
         if (!mounted) return;
         setBridgeStatus(status);
@@ -351,14 +352,14 @@ export default function AIHub() {
         }
       });
       void getCentralStatus().then(setCentralStatus).catch(() => setCentralStatus(null));
-    }, 10_000);
-    return () => { mounted = false; window.clearInterval(timer); };
+    }, 30_000);
+    return () => { mounted = false; stopPolling(); };
   }, [isOwner]);
 
   useEffect(() => {
     if (!activeJob || (activeJob.status !== 'pending' && activeJob.status !== 'processing')) return;
     let mounted = true;
-    const timer = window.setInterval(() => {
+    const stopPolling = startVisiblePolling(() => {
       void getAIJob(activeJob.id).then((job) => {
         if (!mounted) return;
         setActiveJob(job);
@@ -371,8 +372,8 @@ export default function AIHub() {
       }).catch((err) => {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo actualizar la tarea.');
       });
-    }, 2000);
-    return () => { mounted = false; window.clearInterval(timer); };
+    }, 2_000, { active: true });
+    return () => { mounted = false; stopPolling(); };
   }, [activeJob?.id, activeJob?.status, refreshRecent]);
 
   const mobileTaskUrlId = searchParams.get('task') ?? searchParams.get('repeat');

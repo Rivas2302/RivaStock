@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { supabase } from '../../lib/supabase';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 export default function AIActionNotification() {
   const { isOwner } = useAuth();
@@ -19,8 +20,8 @@ export default function AIActionNotification() {
       if (active && !error) setCount(pending ?? 0);
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 10_000);
-    return () => { active = false; window.clearInterval(timer); };
+    const stopPolling = startVisiblePolling(() => refresh(), 30_000);
+    return () => { active = false; stopPolling(); };
   }, [isOwner]);
 
   if (!isOwner || count === 0) return null;

@@ -5,6 +5,7 @@ import { usePermission } from '../../hooks/usePermission';
 import { db } from '../../lib/db';
 import { cancelAIAction, listPendingAIActions, type AIActionRequest } from '../../lib/aiActions';
 import type { Product } from '../../types';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 const FacebookPublicationModal = lazy(() => import('../FacebookPublicationModal'));
 
@@ -40,8 +41,7 @@ export default function AIActionInbox() {
       return;
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 10_000);
-    return () => window.clearInterval(timer);
+    return startVisiblePolling(() => refresh(), 30_000);
   }, [isOwner, refresh]);
 
   async function openReview(request: AIActionRequest) {

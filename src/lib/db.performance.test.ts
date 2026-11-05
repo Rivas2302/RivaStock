@@ -126,3 +126,32 @@ describe('recent paid sales query', () => {
     expect(calls).toContainEqual(['select', ['id,date,status,product_id,quantity,items']]);
   });
 });
+
+describe('selected-column financial pagination', () => {
+  it('pages every selected column with owner and filter scope on each request', async () => {
+    const calls: [string, unknown[]][] = [];
+    const batches = [[{ id: 'a', amount: 10 }], [{ id: 'b', amount: 20 }], []];
+    from.mockImplementation(() => {
+      const builder: Record<string, unknown> = {};
+      for (const method of ['select', 'eq', 'order', 'limit', 'gt']) {
+        builder[method] = (...args: unknown[]) => { calls.push([method, args]); return builder; };
+      }
+      builder.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: batches.shift(), error: null }).then(resolve);
+      return builder;
+    });
+
+    expect(await db.listAllColumns<{ id: string; amount: number }>(
+      'cash_flow', 'account', 'id,amount', [{ field: 'status', value: 'Pagado' }],
+    )).toEqual([{ id: 'a', amount: 10 }, { id: 'b', amount: 20 }]);
+    expect(calls.filter(([method, args]) => method === 'select' && args[0] === 'id,amount')).toHaveLength(3);
+    expect(calls.filter(([method, args]) => method === 'eq' && args[0] === 'user_id')).toHaveLength(3);
+    expect(calls.filter(([method, args]) => method === 'eq' && args[0] === 'status')).toHaveLength(3);
+    expect(calls).toContainEqual(['gt', ['id', 'a']]);
+    expect(calls).toContainEqual(['gt', ['id', 'b']]);
+  });
+
+  it('rejects selected-column queries without the pagination key', async () => {
+    await expect(db.listAllColumns('cash_flow', 'account', 'amount')).rejects.toThrow('requires the id column');
+    expect(from).not.toHaveBeenCalled();
+  });
+});

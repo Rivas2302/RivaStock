@@ -23,6 +23,7 @@ import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge
 import { showToast } from '../../lib/toast';
 import { KNOWLEDGE_STATUS_LABELS } from '../../lib/knowledge/format';
 import type { KnowledgeCategory, KnowledgeDocument, KnowledgeFolder, KnowledgeStatus, KnowledgeVersion } from '../../lib/knowledge/types';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 const KnowledgeEditor = lazy(() => import('./editor/KnowledgeEditor'));
 const OrganizeWithAIDialog = lazy(() => import('./editor/OrganizeWithAIDialog'));
@@ -294,8 +295,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   useEffect(() => {
     if (mode !== 'edit' || !documentId) return undefined;
     void refreshPendingProposals();
-    const interval = window.setInterval(() => void refreshPendingProposals(), 10_000);
-    return () => window.clearInterval(interval);
+    return startVisiblePolling(() => refreshPendingProposals(), 30_000);
   }, [documentId, mode, refreshPendingProposals]);
 
   const isReadOnly = !canWrite || document?.status === 'archived' || document?.status === 'deleting';

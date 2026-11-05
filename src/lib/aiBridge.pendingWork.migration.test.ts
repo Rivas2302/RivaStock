@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
-const migration = readFileSync('supabase/migrations/20261105160634_bridge_pending_work_probe.sql', 'utf8');
+const migration = readFileSync('supabase/migrations/20261105160634_bridge_pending_work_probe.sql', 'utf8').replace(/\r\n/g, '\n');
 const edgeFunction = readFileSync('supabase/functions/ai-bridge/index.ts', 'utf8');
 
 it('authenticates the combined queue probe in one service-only database call', () => {

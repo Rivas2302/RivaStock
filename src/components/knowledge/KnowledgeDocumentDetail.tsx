@@ -40,6 +40,7 @@ import { diffLines, type LineDiffCell, type LineDiffRow } from '../../lib/knowle
 import { toPlainText } from '../../lib/knowledge/editorContent';
 import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge/pdfBrowser';
 import PdfPreview from './PdfPreview';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -227,14 +228,9 @@ export default function KnowledgeDocumentDetail() {
         checking = false;
       }
     };
-    const onVisibilityChange = () => { if (window.document.visibilityState === 'visible') void refreshStatus(); };
-    const timer = window.setInterval(() => void refreshStatus(), 5_000);
-    window.document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
+    if (window.document.visibilityState === 'visible') void refreshStatus();
+    const stopPolling = startVisiblePolling(() => refreshStatus(), 5_000, { active: true });
+    return () => { active = false; stopPolling(); };
   }, [document?.index_status, documentId]);
 
   const currentVersion = useMemo(

@@ -13,6 +13,7 @@ import FacebookExtensionSettings from '../components/FacebookExtensionSettings';
 import FacebookGroupsSettings from '../components/automations/FacebookGroupsSettings';
 import RehearsalHistory from '../components/automations/RehearsalHistory';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
+import {startVisiblePolling} from '../lib/visiblePolling';
 const FacebookPublicationModal=lazy(()=>import('../components/FacebookPublicationModal'));
 const PublicationHistory=lazy(()=>import('../components/automations/PublicationHistory'));
 const FacebookGroupPerformancePanel=lazy(()=>import('../components/automations/FacebookGroupPerformancePanel'));
@@ -52,7 +53,7 @@ export default function Automations() {
     let active=true;setLoading(true);setPublications([]);
     if(!section.available){setLoading(false);return;}
     const load=async()=>{try{if(active)await refresh();}catch(error){if(active)setError((error as Error).message);}finally{if(active)setLoading(false);}};
-    void load();const timer=setInterval(()=>void load(),10000);return()=>{active=false;clearInterval(timer);};
+    void load();const stopPolling=startVisiblePolling(()=>void load(),30_000);return()=>{active=false;stopPolling();};
   },[refresh,section.available]);
   useEffect(()=>{
     let active=true;setProduct(null);

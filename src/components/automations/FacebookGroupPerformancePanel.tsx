@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { FacebookGroupPerformance } from '../../lib/facebookGroupSuggestions';
+import { startVisiblePolling } from '../../lib/visiblePolling';
 
 function approvalTime(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return 'Sin datos';
@@ -30,8 +31,8 @@ export default function FacebookGroupPerformancePanel() {
       finally { if (active) setLoading(false); }
     };
     void load();
-    const timer = setInterval(() => void load(), 30_000);
-    return () => { active = false; clearInterval(timer); };
+    const stopPolling = startVisiblePolling(() => load(), 30_000);
+    return () => { active = false; stopPolling(); };
   }, [refresh]);
 
   return <section aria-label="Rendimiento de grupos" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">

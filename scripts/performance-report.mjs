@@ -50,7 +50,9 @@ if (process.argv.includes('--check')) {
   // H4 added 496 B gzip of shared CSS. H6-H8 add 3,914 B gzip of mobile task orchestration to AIHub (H5: 242,257 B; current: 246,171 B).
   // Shared chunking adds 688 B gzip to Stock (H2 baseline: 240,617 B; current: 241,305 B).
   // The warning-state tokens add 270 B gzip to shared CSS; the largest route is 25,213 B including Knowledge CSS.
-  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 241, 'src/pages/Stock.tsx': 236, 'src/pages/Sales.tsx': 230, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
+  // K3 adds foreground-only polling and narrower paged reads. Keep a small
+  // route-specific allowance for those controls while preserving the global budget.
+  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 242, 'src/pages/Stock.tsx': 236, 'src/pages/Sales.tsx': 231, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
   for (const [route, data] of Object.entries(report)) {
     const jsBudget = (overrides[route] ?? 235) * 1024;
     if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 24.8 * 1024) {
