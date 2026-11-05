@@ -1,3 +1,9 @@
+## 2026-11-04 23:50 ART — A1 revalidada; sesión del Dashboard pendiente
+
+- La consulta de solo lectura a Supabase confirmó el proyecto `RivaStock_Oficial` `ACTIVE_HEALTHY` y las funciones activas: `ai-bridge` v17, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, `platform-admin` v3, `account-purge` v1 y `share` v2. Incorporé `account-purge` al inventario A1; no se leyeron valores de claves.
+- La ventana visible de Chrome usa `%USERPROFILE%\rivastock-qa-profile`. El enlace de Supabase redirigió a Organizations; espero que Riva confirme si la sesión está iniciada. No se generaron credenciales S3 ni se cambiaron o desactivaron claves.
+- Mientras A1 espera, repetí las pruebas locales focales de I10/I11 (16/16) y Playwright móvil/escritorio (5 aprobadas, 4 omitidas). El smoke autenticado de producción —abrir y cancelar los formularios— sigue pendiente; I10/I11 permanecen `[ ]`.
+
 ## 2026-11-04 — I10/I11 desplegadas; smoke autenticado pendiente
 
 - I10 y I11 se publicaron directamente en `main`: I10 `3355823`, I11 `883118d`. Vercel reportó `success` para `883118d`.

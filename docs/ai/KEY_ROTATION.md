@@ -1,7 +1,7 @@
 # Supabase API key rotation — A1
 
 **Project:** `RivaStock_Oficial` (`nkfqhuqrgrpfufdymkcr`)
-**Updated:** 2026-11-03
+**Updated:** 2026-11-04
 **Status:** implementation deployed; legacy-key deactivation remains open pending the extension refresh and a replacement for Storage's JWT-only admin authorization.
 
 No API key values belong in this inventory. The project currently has a `default` publishable key and a `default` secret key; the Management API and CLI inventory exposed only their names, types, and IDs for this check.
@@ -10,7 +10,7 @@ No API key values belong in this inventory. The project currently has a `default
 
 | Consumer | Previous key path | Migrated path | State |
 |---|---|---|---|
-| `ai-bridge`, `automation`, `knowledge`, `invite-collaborator`, `delete-collaborator`, `platform-admin` admin clients | Runtime `SUPABASE_SERVICE_ROLE_KEY` | Shared selector reads `SUPABASE_SECRET_KEYS.default`, or the first configured secret; legacy is a temporary fallback. Each function logs only `key_mode: "secret"` or `"legacy"`. New opaque keys are sent through `apikey`; user JWT authorization headers are preserved. `automation` and `knowledge` additionally use the legacy service-role JWT only for same-project `/storage/v1/` calls. | Deployed; latest inventory: `ai-bridge` v14, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, and `platform-admin` v2. `platform-admin` now includes the key-mode startup log; no authenticated request was made to observe that log. `automation` and `knowledge` retain `verify_jwt=false`. |
+| `ai-bridge`, `automation`, `knowledge`, `invite-collaborator`, `delete-collaborator`, `platform-admin`, `account-purge` admin clients | Runtime `SUPABASE_SERVICE_ROLE_KEY` | Shared selector reads `SUPABASE_SECRET_KEYS.default`, or the first configured secret; legacy is a temporary fallback. Each function logs only `key_mode: "secret"` or `"legacy"`. New opaque keys are sent through `apikey`; user JWT authorization headers are preserved. `automation` and `knowledge` additionally use the legacy service-role JWT only for same-project `/storage/v1/` calls. | Deployed; latest read-only function inventory: `ai-bridge` v17, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, `platform-admin` v3, and `account-purge` v1; all were ACTIVE. This confirms deployment state, not current `key_mode` log values. `automation` and `knowledge` retain `verify_jwt=false`. |
 | `share` public metadata function | Runtime `SUPABASE_PUBLISHABLE_KEY` | Uses the bundled public key for anonymous reads of `catalog_config`, the public product RPC, public profile currency, and public assets; it does not use an admin or legacy key. | Deployed v2; `verify_jwt=false`. |
 | User scoped clients in `ai-bridge`, `automation`, `invite-collaborator`, and `delete-collaborator` | Runtime `SUPABASE_ANON_KEY` | Shared bundled publishable key | Deployed; authenticated product read returned 200. |
 | Web client, Facebook pairing, collaborator calls | `VITE_SUPABASE_ANON_KEY` | `VITE_SUPABASE_PUBLISHABLE_KEY`, then bundled public constant, then the legacy env fallback during rollout | Commit `69ecadd` deployed; served bundle includes `sb_publishable_` and no legacy JWT. |
@@ -55,3 +55,10 @@ The current [S3 authentication guide](https://supabase.com/docs/guides/storage/s
 - Supabase's current S3 guide requires generating server-side credentials from Storage project settings; the Management API exposes Storage config and bucket operations, but no credential-generation operation. Do not try an undocumented endpoint.
 - The read-only `pg_roles` check confirmed the `cli_login_postgres` password has expired. Supabase's [official guidance](https://supabase.com/kb/troubleshooting/permission-denied-when-deleting-the-cli_login_postgres-role) says this temporary password expires within a few hundred seconds; the repository has no consumer of a database password, so no reset is needed.
 - **A1 remains open.** No API keys were disabled, no S3 credentials were created, and no migration, function deployment, or production data change occurred. Keep legacy keys enabled until Storage and the extension no longer depend on them.
+
+## Recheck — 2026-11-04 23:50 ART
+
+- A read-only Supabase project query reported `RivaStock_Oficial` as `ACTIVE_HEALTHY`. The Edge Function inventory showed `ai-bridge` v17, `automation` v11, `knowledge` v10, `invite-collaborator` v19, `delete-collaborator` v5, `platform-admin` v3, `account-purge` v1, and `share` v2 as ACTIVE. No API-key values were requested or emitted.
+- The local source inventory confirms `account-purge` is another admin-client consumer of the shared secret-first selector. `automation` and `knowledge` still pass the legacy service-role JWT only for Storage authorization; `scripts/backup-storage.mjs` remains the third Storage consumer.
+- Chrome opened the Supabase sign-in URL in the persistent QA profile and redirected to an Organizations dashboard page. The owner has not yet confirmed the Dashboard session. No API keys or S3 credentials were changed, no function was redeployed, and no migration or production data was modified.
+- **A1 remains open.** Keep both legacy keys enabled until Storage and the production extension no longer depend on them, then complete the authenticated smoke before disabling either key.
