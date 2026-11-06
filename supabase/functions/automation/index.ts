@@ -52,7 +52,7 @@ function jsonResponseWithCors(body: unknown, status = 200, origin?: string | nul
     'X-Content-Type-Options': 'nosniff',
     'Vary': 'Origin',
   });
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedAutomationOrigin(origin)) {
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Headers', 'authorization, x-client-info, apikey, content-type');
     headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
