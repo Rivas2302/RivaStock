@@ -22,10 +22,11 @@ export interface RankedFacebookGroup {
   score: number;
   daysSinceProductUse: number | null;
   blockedUntil: string | null;
+  excludedReason: string | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const REPEAT_GROUP_DAYS_DEFAULT = 7;
+const REPEAT_GROUP_DAYS_DEFAULT = 14;
 const STOP_WORDS = new Set(['con', 'del', 'las', 'los', 'para', 'por', 'una', 'uno', 'unos', 'unas', 'grupo', 'grupos', 'compra', 'venta']);
 
 export function estimateFacebookGroupMembers(value: string | null | undefined): number | null {
@@ -87,9 +88,10 @@ export function rankFacebookGroups(
   return groups.map(group => {
     const metrics = byId.get(group.id);
     const usedAt = lastProductUse.get(group.id);
+    const requiredRepeatDays = Math.max(repeatGroupDays, group.repeat_limit_days ?? 0);
     const daysSinceProductUse = usedAt ? Math.max(0, Math.floor((now - Date.parse(usedAt)) / DAY_MS)) : null;
-    const blockedUntil = usedAt && daysSinceProductUse !== null && daysSinceProductUse < repeatGroupDays
-      ? new Date(Date.parse(usedAt) + repeatGroupDays * DAY_MS).toISOString()
+    const blockedUntil = usedAt && daysSinceProductUse !== null && daysSinceProductUse < requiredRepeatDays
+      ? new Date(Date.parse(usedAt) + requiredRepeatDays * DAY_MS).toISOString()
       : null;
     const approval = metrics?.approval_rate_pct == null ? 0.5 : Math.max(0, Math.min(100, metrics.approval_rate_pct)) / 100;
     const members = estimateFacebookGroupMembers(metrics?.member_count_text ?? group.member_count_text);
@@ -99,8 +101,12 @@ export function rankFacebookGroups(
     const groupKeywords = new Set(categoryKeywords(group.name));
     const categoryMatch = keywords.length ? keywords.filter(word => groupKeywords.has(word)).length / keywords.length : 0.5;
     const score = Math.round(100 * (approval * 0.35 + audience * 0.15 + noRecentRejections * 0.2 + recency * 0.2 + categoryMatch * 0.1));
-    return { group, score, daysSinceProductUse, blockedUntil };
-  }).sort((left, right) => Number(Boolean(left.blockedUntil)) - Number(Boolean(right.blockedUntil))
+    const excludedReason = group.safety_paused
+      ? group.safety_pause_reason || 'Este grupo está pausado por seguridad.'
+      : group.allows_sales === false ? 'Las reglas detectadas del grupo no permiten ventas.' : null;
+    return { group, score, daysSinceProductUse, blockedUntil, excludedReason };
+  }).sort((left, right) => Number(Boolean(left.excludedReason)) - Number(Boolean(right.excludedReason))
+    || Number(Boolean(left.blockedUntil)) - Number(Boolean(right.blockedUntil))
     || right.score - left.score
     || left.group.name.localeCompare(right.group.name, 'es'));
 }

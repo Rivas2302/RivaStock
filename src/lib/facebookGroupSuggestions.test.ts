@@ -28,10 +28,24 @@ describe('Facebook group suggestions', () => {
     ]), now);
     expect(ranked.map(row => row.group.id)).toEqual(['large', 'small', 'repeat']);
     expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
-    expect(ranked[2].blockedUntil).toBe('2026-11-08T12:00:00.000Z');
+    expect(ranked[2].blockedUntil).toBe('2026-11-15T12:00:00.000Z');
     expect(rankFacebookGroups(groups, performance, 'Muebles', new Map([
       ['repeat', '2026-11-01T12:00:00Z'],
     ]), now)).toEqual(ranked);
+  });
+
+  it('enforces group rules and keeps safety-paused groups out of suggestions', () => {
+    const restricted = [
+      { ...groups[0], allows_sales: false, rules_summary: 'No se permiten publicaciones de venta.' },
+      { ...groups[1], repeat_limit_days: 30 },
+      { ...groups[2], safety_paused: true, safety_pause_reason: 'Dos publicaciones rechazadas en los últimos 30 días.' },
+    ];
+    const ranked = rankFacebookGroups(restricted, performance, 'Muebles', new Map([
+      ['small', '2026-11-01T12:00:00Z'],
+    ]), Date.parse('2026-11-03T12:00:00Z'));
+    expect(ranked.find(row => row.group.id === 'large')?.excludedReason).toContain('no permiten ventas');
+    expect(ranked.find(row => row.group.id === 'repeat')?.excludedReason).toContain('rechazadas');
+    expect(ranked.find(row => row.group.id === 'small')?.blockedUntil).toBe('2026-12-01T12:00:00.000Z');
   });
 
   it('uses the latest actual group usage from product publication history', () => {

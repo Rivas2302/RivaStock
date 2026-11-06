@@ -1,3 +1,9 @@
+# 2026-11-06 07:30 ART — T5.7: base de política de grupos, sigue abierta
+
+- T5.7: el ranking ahora usa 14 días como mínimo para repetir producto y excluye de la sugerencia/validación grupos con ventas prohibidas o pausa de seguridad; agrega cobertura focal para esas reglas. `npx vitest run src/lib/facebookGroupSuggestions.test.ts src/lib/facebookPublications.test.ts` (**16/16**) y `npm run lint` pasaron.
+- No apliqué migración ni desplegué esta base: aún faltan captura/guardado y resumen de reglas, pausa/reactivación automática de grupos y panel de salud. No marqué T5.7 como terminada.
+- Extensión 0.5.24 y pruebas en vivo siguen expresamente pendientes para cuando Riva vuelva; no hice ensayos ni publicaciones.
+
 # 2026-11-06 07:20 ART — E5 vuelve a consultar; backup diario verificado
 
 - Consulta de solo lectura a las 10:13 UTC: la versión `[QA] central-smoke` sigue local y verificada (166 B, 0 faltantes), pero `cloud_purged_at` continúa vacío y el objeto aún existe en Storage. La purga automática todavía no ocurrió; no borré nada manualmente.

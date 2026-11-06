@@ -78,3 +78,9 @@ it('rejects duplicate group identities, missing destinations and excessive selec
  expect(validateGroupSelection(groups,['missing'])).toContain('ya no está disponible');
  expect(validateGroupSelection(groups,Array(21).fill('a'))).toContain('20');
 });
+it('rejects groups that prohibit sales or are paused for safety',()=>{
+ const restricted={id:'restricted',name:'No ventas',url:'https://www.facebook.com/groups/789',mechanism:'group_direct' as const,allows_sales:false};
+ const paused={id:'paused',name:'Pausado',url:'https://www.facebook.com/groups/987',mechanism:'group_direct' as const,safety_paused:true,safety_pause_reason:'Dos rechazos recientes.'};
+ expect(validateGroupSelection([restricted],['restricted'])).toContain('no permiten ventas');
+ expect(validateGroupSelection([paused],['paused'])).toBe('Dos rechazos recientes.');
+});

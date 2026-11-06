@@ -23,7 +23,7 @@ export function composeGroupPublicationText(content: PublicationContent, copy: s
   const narrative = stripGroupMetadata(copy) || `${content.title}\n\n${content.description}`;
   return `${narrative}\n\nPrecio: ${formatCurrency(content.price).replace(/\s/g,'')}\nEstado: ${marketplaceConditions[content.condition]}\nUbicación: ${content.location}\nCategoría: ${content.category}`;
 }
-export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null; qa_publish_allowed?: boolean }
+export interface FacebookGroup { id: string; name: string; url: string; mechanism: 'group_direct'; member_count_text?: string|null; member_count_updated_at?: string|null; qa_publish_allowed?: boolean; rules_summary?:string|null; allows_sales?:boolean|null; allows_links?:boolean|null; repeat_limit_days?:number|null; requires_approval?:boolean|null; safety_paused?:boolean; safety_pause_reason?:string|null }
 export function groupCompatibility(group:FacebookGroup):string|null {
   if(group.mechanism!=='group_direct')return 'Este flujo de grupo no está implementado.';
   try{normalizeGroupUrl(group.url);return null;}catch{return 'Falta una URL válida del grupo. No se puede identificar el destino por su nombre.';}
@@ -31,7 +31,7 @@ export function groupCompatibility(group:FacebookGroup):string|null {
 export function validateGroupSelection(groups:FacebookGroup[],selected:string[],recentlyUsedGroupIds:string[]=[]):string|null {
   if(selected.length>20)return 'Podés elegir hasta 20 grupos.';
   const urls=new Set<string>();
-  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;if(recentlyUsedGroupIds.includes(id))return 'Este producto ya se usó en ese grupo durante los últimos 7 días. Elegí otro destino o esperá antes de repetir.';const url=normalizeGroupUrl(group.url);if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
+  for(const id of selected){const group=groups.find(item=>item.id===id);if(!group)return 'Un grupo seleccionado ya no está disponible. Actualizá y revisá los destinos.';const reason=groupCompatibility(group);if(reason)return reason;if(group.safety_paused)return group.safety_pause_reason||'Este grupo está pausado por seguridad.';if(group.allows_sales===false)return 'Las reglas detectadas del grupo no permiten ventas.';if(recentlyUsedGroupIds.includes(id))return 'Este producto ya se usó en ese grupo durante los últimos 14 días. Elegí otro destino o esperá antes de repetir.';const url=normalizeGroupUrl(group.url);if(urls.has(url))return 'El mismo grupo está seleccionado más de una vez. Revisá sus URLs.';urls.add(url);}
   return null;
 }
 export interface FacebookDevice { id: string; name: string; last_seen_at: string | null; revoked_at: string | null; queue_enabled?: boolean; queue_command_at?: string | null; execution_state?: 'active' | 'paused' | 'unknown'; current_activity?: string | null; worker_protocol?:number; extension_version?:string|null; last_error_code?:string|null }
