@@ -1,3 +1,10 @@
+## 2026-11-05 21:53 ART — I15.8 Configuración móvil
+
+- Completé el menú móvil por secciones y subpantallas reutilizando los campos actuales: negocio, catálogo, categorías, rangos, titulares, equipo, mantenimiento, apariencia y zona de peligro. El modo oscuro tiene un switch táctil de 44 px; Atrás del navegador y el botón de la app vuelven al menú. La eliminación móvil pide escribir el nombre exacto del negocio; los controles y la presentación de PC conservan su rama original.
+- Verificación: `npm run lint`; Playwright **3/3** escenarios aplicables (Android 360×740, iPhone 360×740 y Chromium 1280×900). Las pruebas recorren negocio, categorías, cambio de tema, Atrás, confirmación con nombre válido/incorrecto y aseguran que no se ejecuten escrituras. Capturé la pantalla desktop 1280×900 y la comparé visualmente con la línea base `f7cb06e`; no observé cambios de estructura o estilo de PC.
+- No hubo migraciones ni cambios de esquema. Los datos fueron fixtures; se canceló el flujo de borrado antes de ejecutar.
+- **Siguiente:** publicar I15.8 y verificar el deploy; luego sacar la captura I13 desde el commit anterior a `fcb64d3`, validar G2 en producción y continuar con C0/ensayos si las puertas lo permiten. H8 queda diferida por pedido de Riva.
+
 ## 2026-11-05 21:36 ART — I15.7 Ingresos móvil
 
 - Agregué acciones Registrar ingreso y Escanear, resumen mensual de inversión/unidades, búsqueda y tarjetas agrupadas por fecha con miniatura lazy, cantidad, titular, proveedor, costo unitario y total. La lista muestra 20 entradas y suma 20 con “Ver más”. Usa los datos y formularios actuales; PC conserva su historial tabular.

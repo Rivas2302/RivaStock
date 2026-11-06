@@ -41,6 +41,8 @@ import Modal from '../components/Modal';
 import CatalogQRModal from '../components/CatalogQRModal';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileSettingsMenu, { type MobileSettingsScreen } from '../components/settings/MobileSettingsMenu';
 
 type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo' | 'facebook';
 
@@ -50,11 +52,31 @@ function isTab(value: string): value is Tab {
   return (TABS as ReadonlyArray<string>).includes(value);
 }
 
+function mobileSettingsScreenTitle(screen: MobileSettingsScreen): string {
+  const titles: Record<MobileSettingsScreen, string> = {
+    business: 'Datos del negocio',
+    categories: 'Categorías',
+    prices: 'Rangos de precio',
+    catalog: 'Catálogo público',
+    owners: 'Titulares del inventario',
+    team: 'Equipo',
+    maintenance: 'Mantenimiento',
+    appearance: 'Apariencia',
+    danger: 'Zona de peligro',
+  };
+  return titles[screen];
+}
+
+function isMobileSettingsScreen(value: unknown): value is MobileSettingsScreen {
+  return ['business', 'categories', 'prices', 'catalog', 'owners', 'team', 'maintenance', 'appearance', 'danger'].includes(String(value));
+}
+
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const canWriteBusiness = !businessPlanLoading && !businessPlanError && businessPlan !== null && businessPlan.status !== 'suspended';
   const { theme, toggleTheme } = useTheme();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -62,6 +84,8 @@ export default function Settings() {
     if (tabFromQuery && isTab(tabFromQuery)) return tabFromQuery;
     return 'general';
   });
+  const [mobileSubscreen, setMobileSubscreen] = useState<MobileSettingsScreen | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState('');
   const automationAvailable = !businessPlanLoading && !businessPlanError
     && businessPlan?.limits.modules.automation === true;
 
@@ -73,6 +97,12 @@ export default function Settings() {
     );
     navigate('/', { replace: true });
   }, [activeTab, automationAvailable, businessPlanError, businessPlanLoading, navigate]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const screen = (location.state as { mobileSettingsScreen?: unknown } | null)?.mobileSettingsScreen;
+    setMobileSubscreen(isMobileSettingsScreen(screen) ? screen : null);
+  }, [isMobile, location.key, location.state]);
 
   const [loading, setLoading] = useState(true);
   
@@ -295,6 +325,19 @@ export default function Settings() {
   });
   const [deleteStep, setDeleteStep] = useState<'selection' | 'confirmation'>('selection');
 
+  const openMobileSettingsScreen = (tab: Tab, screen: MobileSettingsScreen) => {
+    setActiveTab(tab);
+    setMobileSubscreen(screen);
+    navigate(`${location.pathname}${location.search}${location.hash}`, { state: { ...(location.state ?? {}), mobileSettingsScreen: screen } });
+  };
+  const returnToMobileSettingsMenu = () => {
+    navigate(-1);
+    setMobileSubscreen(null);
+    setActiveTab('general');
+  };
+
+  const businessNameMatches = deleteConfirmationName.trim() === (user?.businessName ?? '').trim();
+
   const toggleModule = (module: string) => {
     if (module === 'all') {
       const allSelected = Object.values(selectedModules).every(Boolean);
@@ -369,7 +412,19 @@ export default function Settings() {
 
   return (
     <div className="settings-page space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {isMobile && mobileSubscreen === null ? <MobileSettingsMenu
+        businessName={businessName}
+        planName={businessPlan?.planName}
+        darkMode={theme === 'dark'}
+        onToggleDarkMode={handleToggleDarkMode}
+        onOpen={openMobileSettingsScreen}
+        isOwner={isOwner}
+      /> : <>
+      {isMobile && mobileSubscreen && <div className="mx-auto w-full max-w-xl px-4 pt-3">
+        <button type="button" onClick={returnToMobileSettingsMenu} className="min-h-11 text-sm font-semibold text-indigo-700 dark:text-indigo-300">‹ Volver a Configuración</button>
+        <h1 className="mt-1 text-2xl font-bold">{mobileSettingsScreenTitle(mobileSubscreen)}</h1>
+      </div>}
+      {!isMobile && <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Configuración</h2>
           <p className="text-slate-500 dark:text-slate-400">Personaliza tu experiencia y gestiona tu negocio</p>
@@ -377,11 +432,11 @@ export default function Settings() {
             <p className="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">Plan actual: {businessPlan.planName}</p>
           )}
         </div>
-      </div>
+      </div>}
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Tabs */}
-        <div className="settings-tabs lg:w-64 flex flex-row lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+        <div className={cn('settings-tabs lg:w-64 flex flex-row lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide', isMobile && 'hidden')}>
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -401,7 +456,7 @@ export default function Settings() {
 
         {/* Content Area */}
         <div className="settings-panel flex-1 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
-          <fieldset disabled={!canWriteBusiness} className="min-w-0 border-0 p-8 disabled:opacity-80">
+          <fieldset disabled={!canWriteBusiness} className={cn('min-w-0 border-0 disabled:opacity-80', isMobile ? 'p-4' : 'p-8')}>
             <AnimatePresence>
               {message && (
                 <motion.div
@@ -427,7 +482,7 @@ export default function Settings() {
                   exit={{ opacity: 0, x: -10 }}
                   className="space-y-8"
                 >
-                  <div>
+                  <div className={cn(isMobile && mobileSubscreen !== 'business' && 'hidden')}>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Información del Negocio</h3>
                     <div className="max-w-md space-y-4">
                       <div>
@@ -470,9 +525,9 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <div className="pt-8 border-t border-slate-100 dark:border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Apariencia</h3>
-                    <div className="flex items-center justify-between max-w-md p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                  <div className={cn('pt-8 border-t border-slate-100 dark:border-slate-800', isMobile && !['appearance', 'danger'].includes(mobileSubscreen ?? '') && 'hidden')}>
+                    <h3 className={cn('text-lg font-bold text-slate-900 dark:text-white mb-6', isMobile && mobileSubscreen !== 'appearance' && 'hidden')}>Apariencia</h3>
+                    <div className={cn('flex items-center justify-between max-w-md p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700', isMobile && mobileSubscreen !== 'appearance' && 'hidden')}>
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
                           {theme === 'dark' ? <Moon size={20} className="text-indigo-400" /> : <Sun size={20} className="text-amber-500" />}
@@ -496,16 +551,16 @@ export default function Settings() {
                       </button>
                     </div>
 
-                    <div className="pt-8 mt-8 border-t border-slate-200 dark:border-slate-800">
+                    <div className={cn('pt-8 mt-8 border-t border-slate-200 dark:border-slate-800', isMobile && mobileSubscreen !== 'danger' && 'hidden')}>
                       <h4 className="text-lg font-bold text-rose-600 dark:text-rose-400 mb-4">Zona de Peligro</h4>
-                      <div className="flex items-center justify-between max-w-md p-4 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border border-rose-100 dark:border-rose-900/30">
+                      <div className={cn('max-w-md p-4 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border border-rose-100 dark:border-rose-900/30', isMobile ? 'flex flex-col items-start gap-3' : 'flex items-center justify-between')}>
                         <div>
                           <p className="font-bold text-rose-900 dark:text-rose-400">Eliminar todos los datos</p>
-                          <p className="text-xs text-rose-600 dark:text-rose-500/70 mt-1">Esta acción no se puede deshacer.</p>
+                          <p className="text-xs text-rose-600 dark:text-rose-500/70 mt-1">{isMobile ? 'Esta acción es irreversible.' : 'Esta acción no se puede deshacer.'}</p>
                         </div>
                         <button 
-                          onClick={() => setIsDeleteDataModalOpen(true)}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition-colors"
+                          onClick={() => { setDeleteConfirmationName(''); setDeleteStep('selection'); setIsDeleteDataModalOpen(true); }}
+                          className={cn('px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition-colors', isMobile && 'min-h-11 w-full')}
                         >
                           Eliminar Datos
                         </button>
@@ -1264,7 +1319,7 @@ export default function Settings() {
       {/* Delete Data Modal */}
       <Modal
         isOpen={isDeleteDataModalOpen}
-        onClose={() => !isDeletingData && setIsDeleteDataModalOpen(false)}
+        onClose={() => { if (!isDeletingData) { setIsDeleteDataModalOpen(false); setDeleteConfirmationName(''); } }}
         title={deleteStep === 'selection' ? "Seleccionar datos a eliminar" : "Confirmar eliminación"}
       >
         {deleteStep === 'selection' ? (
@@ -1289,7 +1344,7 @@ export default function Settings() {
               ))}
             </div>
             <div className="flex gap-3 pt-4">
-              <button onClick={() => setIsDeleteDataModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
+              <button onClick={() => { setIsDeleteDataModalOpen(false); setDeleteConfirmationName(''); }} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
               <button onClick={() => setDeleteStep('confirmation')} disabled={!canWriteBusiness || !Object.values(selectedModules).some(Boolean)} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50">Continuar</button>
             </div>
           </div>
@@ -1298,9 +1353,13 @@ export default function Settings() {
             <div className="p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium">
               Esta acción es irreversible. Los datos seleccionados serán eliminados permanentemente.
             </div>
+            {isMobile && <label className="block space-y-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <span>Escribí el nombre del negocio para confirmar: <strong>{businessName}</strong></span>
+              <input autoComplete="off" value={deleteConfirmationName} onChange={(event) => setDeleteConfirmationName(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-800" />
+            </label>}
             <div className="flex gap-3">
-              <button onClick={() => setDeleteStep('selection')} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Volver</button>
-              <button onClick={handleDeleteSelectedData} disabled={!canWriteBusiness || isDeletingData} className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+              <button onClick={() => { setDeleteStep('selection'); setDeleteConfirmationName(''); }} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Volver</button>
+              <button onClick={handleDeleteSelectedData} disabled={!canWriteBusiness || isDeletingData || (isMobile && !businessNameMatches)} className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {isDeletingData ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Eliminando...</> : 'Borrar seleccionado'}
               </button>
             </div>
@@ -1315,6 +1374,7 @@ export default function Settings() {
           businessName={user?.businessName || 'Mi Tienda'}
         />
       )}
+      </>}
     </div>
   );
 }
