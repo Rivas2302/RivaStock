@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { useSuppliers } from '../hooks/useSuppliers';
-import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { Supplier } from '../types';
 import SupplierModal, { SupplierFormData } from '../components/SupplierModal';
@@ -12,13 +11,16 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import '../styles/business-redesign.css';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileSuppliers from '../components/suppliers/MobileSuppliers';
+import Modal from '../components/Modal';
 
 export default function Suppliers() {
   const {
     suppliers, loading, createSupplier,
     updateSupplier, deleteSupplier, toggleSupplierActive,
   } = useSuppliers();
-  const { user } = useAuth();
+  const isMobile = useIsMobile();
   const canWrite = usePermission('proveedores', 'write');
   const canDelete = usePermission('proveedores', 'delete');
 
@@ -29,6 +31,7 @@ export default function Suppliers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [saving, setSaving] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
@@ -96,6 +99,10 @@ export default function Suppliers() {
   };
 
   const handleDelete = async (s: Supplier) => {
+    if (isMobile) {
+      setSupplierToDelete(s);
+      return;
+    }
     if (!confirm(`¿Eliminar "${s.name}"?`)) return;
     try {
       await deleteSupplier(s.id);
@@ -139,6 +146,24 @@ export default function Suppliers() {
         )}
       </AnimatePresence>
 
+      {isMobile ? <MobileSuppliers
+        suppliers={suppliers}
+        categories={categories}
+        activeCount={stats.active}
+        topCategory={stats.topCategory}
+        categoryFilter={categoryFilter}
+        statusFilter={statusFilter}
+        search={search}
+        canWrite={canWrite}
+        canDelete={canDelete}
+        onCategoryFilter={setCategoryFilter}
+        onStatusFilter={setStatusFilter}
+        onSearch={setSearch}
+        onNew={openNew}
+        onEdit={openEdit}
+        onDelete={handleDelete}
+        onToggle={handleToggleActive}
+      /> : <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -310,6 +335,7 @@ export default function Suppliers() {
           </table>
         </div>
       </div>
+      </>}
 
       <SupplierModal
         isOpen={isModalOpen}
@@ -318,6 +344,10 @@ export default function Suppliers() {
         editingSupplier={editingSupplier}
         saving={saving}
       />
+
+      <Modal isOpen={Boolean(supplierToDelete)} onClose={() => setSupplierToDelete(null)} title="Eliminar proveedor" className="max-w-md">
+        {supplierToDelete && <div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">¿Querés eliminar "{supplierToDelete.name}"? Si tiene movimientos, el proveedor se desactivará.</p><div className="flex gap-3"><button type="button" onClick={() => setSupplierToDelete(null)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700">Cancelar</button><button type="button" onClick={async () => { try { await deleteSupplier(supplierToDelete.id); showMessage(supplierToDelete.isActive ? 'Proveedor eliminado' : 'Proveedor desactivado'); setSupplierToDelete(null); } catch (err) { showMessage(err instanceof Error ? err.message : 'Error al eliminar', 'error'); } }} className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 font-semibold text-white">Eliminar proveedor</button></div></div>}
+      </Modal>
     </div>
   );
 }

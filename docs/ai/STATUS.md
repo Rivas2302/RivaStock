@@ -1,3 +1,10 @@
+## 2026-11-05 21:48 ART — I15.6 Proveedores móvil
+
+- Agregué tarjetas móviles con resumen de activos/categoría principal, filtros de categoría y estado, búsqueda, condición de pago, acciones WhatsApp/llamar/catálogo, detalle con redes y menú para editar, activar/desactivar o eliminar. El borrado usa confirmación dentro de la app. La lista muestra 20 y “Ver más”; PC conserva su tabla.
+- Verificación: `npm run lint`; Playwright **3/3** aplicables en Android, iPhone y Chromium: resumen, filtros, búsqueda, enlaces, detalle/redes, diálogo de borrado sin `confirm()` nativo y tabla desktop. Tres ejecuciones se omitieron por proyecto no correspondiente. Datos sintéticos; sin escrituras.
+- No hubo migraciones ni cambios de esquema.
+- **Siguiente:** I15.7 Ingresos de mercadería.
+
 ## 2026-11-05 21:32 ART — I15.5 Clientes móvil
 
 - Agregué resumen de cuentas corrientes, acción Cobrar que filtra saldos pendientes, filtros Todos/Deben/Al día, búsqueda, filas con iniciales, teléfono, estado del saldo y acceso a WhatsApp. El toque abre la ficha en una hoja de pantalla completa; editar, borrar y confirmar cobros/reconciliación usan acciones de la app, sin `confirm()` del navegador en móvil. Muestra 20 clientes y agrega 20 más; reutiliza la lectura paginada existente.
