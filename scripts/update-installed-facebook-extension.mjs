@@ -101,13 +101,16 @@ export function extractVerifiedStoredArchive(archive, expectedFiles) {
 export function findChromeExtensionInstall(profileDirectories, extensionId, expectedName) {
   const found = [];
   for (const profileDirectory of profileDirectories) {
-    let preferences;
-    try { preferences = JSON.parse(profileDirectory.preferencesText); } catch { continue; }
-    const entry = preferences?.extensions?.settings?.[extensionId];
-    if (!entry || entry.state === 0 || typeof entry.path !== 'string' || entry.location !== 4) continue;
-    if (!isAbsolute(entry.path)) continue;
-    const extensionPath = resolve(entry.path);
-    found.push({ profileName: basename(profileDirectory.path), extensionPath, expectedName });
+    for (const preferencesText of [profileDirectory.preferencesText, profileDirectory.securePreferencesText]) {
+      let preferences;
+      try { preferences = JSON.parse(preferencesText); } catch { continue; }
+      const entry = preferences?.extensions?.settings?.[extensionId];
+      if (!entry || entry.state === 0 || typeof entry.path !== 'string' || entry.location !== 4) continue;
+      if (!isAbsolute(entry.path)) continue;
+      const extensionPath = resolve(entry.path);
+      if (found.some(item => item.profileName === basename(profileDirectory.path) && item.extensionPath === extensionPath)) continue;
+      found.push({ profileName: basename(profileDirectory.path), extensionPath, expectedName });
+    }
   }
   return found;
 }
@@ -135,9 +138,11 @@ async function listChromeProfiles() {
     for (const directory of directories) {
       if (!directory.isDirectory() || !/^(Default|Profile \d+)$/.test(directory.name)) continue;
       const profilePath = join(root, directory.name);
-      try {
-        profiles.push({ path: profilePath, preferencesText: await readFile(join(profilePath, 'Preferences'), 'utf8') });
-      } catch { /* Incomplete Chrome profiles are ignored. */ }
+      const [preferencesText, securePreferencesText] = await Promise.all([
+        readFile(join(profilePath, 'Preferences'), 'utf8').catch(() => null),
+        readFile(join(profilePath, 'Secure Preferences'), 'utf8').catch(() => null),
+      ]);
+      if (preferencesText || securePreferencesText) profiles.push({ path: profilePath, preferencesText, securePreferencesText });
     }
   }
   return profiles;

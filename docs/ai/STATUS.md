@@ -1512,3 +1512,9 @@ Sin toque en src/, supabase/ ni extensions/.
 - **D2 sigue [ ]:** verificación de solo lectura en producción a las 21:38 UTC: 1 objeto `knowledge-cache`, 166 B; 0 eliminaciones pendientes, 1 completada. No hice borrado directo. La tarea queda esperando que el flujo normal elimine el objeto huérfano.
 - **Facebook:** no abrí Facebook ni reactivé la cola ni inicié ensayos. El `facebook_warning` y el borrador potencial siguen siendo una puerta abierta solo por Riva en su Chrome normal.
 - `OWNER_ACTIONS.md` conserva tres acciones reales: revisar la advertencia/borrador en Chrome normal, crear el negocio de prueba para E9, y elegir productos/grupos para T6.1.
+## 2026-11-06 18:52 ART — I17 en producción; smoke móvil autenticado de I10/I11/I14
+
+- **I17 [x]:** commit `9210bda` quedó en `main` con Rivas2302; Vercel `success`. En el perfil persistente de pruebas, a 360×740: barra de cuatro enlaces + central, sin “Más”; panel único con 6 acciones, Configuración dentro de “Ir a” y navegación filtrada por permisos. Sin escrituras.
+- **I10/I11/I14:** smoke autenticado en producción desde la app, sin registrar ventas. En Nueva Venta el producto existente `Cable iPhone C` mostró su vista previa con imagen cargada; el selector aplicó Descuento y Recargo con monto positivo y el formulario se canceló. En POS cargó la miniatura en resultados y carrito, probó el descuento y retiró el producto del carrito. Todas las comprobaciones pasaron; no se guardó ninguna venta.
+- **I18** continúa implementada y probada localmente; pendiente de backup verificado antes de su migración y despliegue. **D2** sigue pendiente: hay un objeto `knowledge-cache` huérfano de 166 B sin fila de solicitud; el flujo normal completó una eliminación pero el objeto permanece. No lo borré por SQL.
+- **Facebook:** no se abrió Facebook, no se reactivó la cola ni se iniciaron ensayos. `facebook_warning` y el posible borrador siguen requiriendo revisión en Chrome normal por Riva.

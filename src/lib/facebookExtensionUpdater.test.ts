@@ -46,6 +46,19 @@ describe('Facebook extension updater', () => {
     ]);
   });
 
+  it('finds unpacked registrations stored in Chrome Secure Preferences', () => {
+    const profiles = [{
+      path: 'C:\\Chrome\\Default',
+      preferencesText: '{invalid',
+      securePreferencesText: JSON.stringify({ extensions: { settings: {
+        [extensionId]: { path: 'C:\\Users\\Riva\\Downloads\\rivastock-facebook', state: 1, location: 4 },
+      } } }),
+    }];
+    expect(findChromeExtensionInstall(profiles, extensionId, localManifest.name)).toEqual([
+      { profileName: 'Default', extensionPath: resolve('C:\\Users\\Riva\\Downloads\\rivastock-facebook'), expectedName: localManifest.name },
+    ]);
+  });
+
   it('creates a version-only update query and rejects SQL injection in the version', () => {
     const sql = buildRequiredVersionSql('0.5.24');
     expect(sql).toContain("'0.5.24'");

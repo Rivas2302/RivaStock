@@ -448,7 +448,7 @@ Maquetas: `docs/design/mobile-navigation/` — `MenuLateral`, `Mas`, **`BarraFlo
 
 ---
 
-### [ ] I17 Un solo menú en el celular — **pedido de Riva el 06/11, URGENTE (antes que lo demás)**
+### [x] I17 Un solo menú en el celular — **pedido de Riva el 06/11, URGENTE (antes que lo demás)**
 Riva no entiende por qué hay dos menús (el **+** con acciones y **Más** con secciones): deben ser **uno solo**. Maqueta: `docs/design/mobile-navigation/MenuUnico.dc.html`.
 - **Barra flotante:** Inicio · Stock · **+** · Ventas · **Consulta**. Se elimina la pestaña **Más** y su hoja.
 - **El + abre un único panel** “¿Qué querés hacer?”: arriba un buscador que filtra acciones y secciones a la vez; sección **Crear** con acciones rápidas en 2 columnas (Nueva venta, Modo POS, Registrar gasto, Cobro de cliente, Presupuesto, Ingreso de mercadería); separador; sección **Ir a** con todas las secciones en grilla de 4, en los mismos 5 grupos de I16 (Configuración dentro de Herramientas); abajo Configuración y Cerrar sesión. Scroll interno si no entra.
