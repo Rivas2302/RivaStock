@@ -207,7 +207,7 @@ Pedido de Riva: hoy se pierde mucho tiempo buscando la foto de un producto para 
 - **Prueba real opcional:** desde el celular de Riva, en un momento en que esté disponible, sin pedírselo especialmente.
 - **Commit:** `feat(stock): search and share product photos from the phone`
 
-### [ ] G2 Vista previa de los links del catálogo en WhatsApp y redes
+### [x] G2 Vista previa de los links del catálogo en WhatsApp y redes
 Hoy la app es una SPA sin metadatos Open Graph: un link del catálogo enviado por WhatsApp no muestra foto ni datos.
 - Función de Vercel (o middleware) para `/catalogo/:slug` y `/catalogo/:slug/:productId`:
   - lee los datos públicos con las mismas RPC del catálogo público (solo productos con `show_in_catalog`);
@@ -365,7 +365,7 @@ Pedido de Riva: “ver una previsualización en imagen para no errarle al produc
 - **Cuándo:** después de I9 va A1 (seguridad, pendiente desde el 02/11). Si A1 queda esperando una acción del dueño, hacé I10 mientras tanto; si no, I10 va justo después de A1. Debe entrar a `main` **antes de que empiece J2** (después de J2, Codex no toca interfaz).
 - **Dónde:** `src/components/ProductSearchSelect.tsx` (lo usan `src/pages/Sales.tsx` y `src/pages/Quotes.tsx`, así que mejora los dos).
 
-### [ ] I10 Miniatura en la lista y vista previa del elegido
+### [x] I10 Miniatura en la lista y vista previa del elegido
 1. **Miniatura en cada fila:** a la izquierda, cuadrada (44 px en celular, 40 px en PC), bordes redondeados, `object-cover`, `loading="lazy"`, `decoding="async"` y `width`/`height` fijos para que la lista no salte. Origen: primera foto de `getProductPhotoUrls(p)` pasada por `getProductThumbnailUrl()` (`src/lib/productPhotos.ts`).
    - Si la miniatura `.thumb.webp` no existe (fotos viejas), `onError` prueba **una vez** la foto original; si también falla o el producto no tiene fotos, se muestra un ícono neutro de producto. **Nunca** usar fotos de relleno externas (picsum u otras).
 2. **Filas cómodas en celular:** altura táctil mínima de 56 px, y el nombre puede ocupar **hasta 2 líneas** en vez de cortarse con “…”. El stock, el titular y el precio se mantienen visibles.
@@ -377,7 +377,7 @@ Pedido de Riva: “ver una previsualización en imagen para no errarle al produc
 
 ---
 
-### [ ] I11 Descuento o recargo sin escribir el signo menos
+### [x] I11 Descuento o recargo sin escribir el signo menos
 Pedido de Riva (04/11): en el celular, el teclado numérico no tiene el signo “−”, así que en **Nueva Venta** no puede cargar un descuento en “Ajuste (Descuento/Recargo)”. Hoy el campo es un `type="number"` que espera un número negativo para el descuento (`src/pages/Sales.tsx`, cerca de la línea 1185). En POS pasa lo mismo con el “Ajuste” global (`src/pages/POS.tsx`, cerca de la línea 575).
 1. Componente compartido `AdjustmentInput` con un selector de dos botones **[ Descuento | Recargo ]** (por defecto, **Descuento**) y un campo de **monto siempre positivo** (`inputMode="decimal"`, sin signo). El valor que recibe el formulario sigue siendo el mismo número con signo (descuento = negativo), así que **no cambian** el cálculo, las RPC ni los datos guardados.
 2. Debajo del campo, en una línea, el efecto: “Descuento: −$3.000” o “Recargo: +$3.000”. En el total, que se vea el desglose (subtotal, descuento o recargo, total).

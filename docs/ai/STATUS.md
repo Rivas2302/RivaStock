@@ -1,3 +1,12 @@
+# 2026-11-06 01:20 ART — I10/I11 smoke de producción aprobado; G2 cerrada
+
+- Validé I10 e I11 en `https://rivastock.vercel.app/ventas` con el perfil persistente autenticado de Playwright en Android e iPhone: Nueva Venta mostró miniatura y visor, aceptó un descuento y permitió cancelar; POS mostró la foto del producto en el carrito, aceptó el descuento y permitió quitar el ítem. No se registraron ventas.
+- Para respetar K4 con egress alto, Playwright interceptó imágenes de Storage y las sirvió desde el backup incremental verificado del día; no se solicitó ninguna imagen nueva a Storage. Las escrituras REST y RPC de venta fueron bloqueadas antes de salir del navegador. Smoke: I10/I11 pasaron, 0 errores de página, 0 escrituras; 62 recursos de imagen servidos desde el respaldo y ninguno faltante.
+- Verificación local: `src/components/ProductSearchSelect.test.tsx` + `src/components/AdjustmentInput.test.tsx` aprobaron 8/8; `e2e/sales-adjustment-mobile.spec.ts` aprobó Android e iPhone (2/2).
+- I10 e I11 cumplen sus criterios de implementación y prueba móvil; ambas quedan `[x]`.
+- G2 ya cumplía el criterio y estaba verificada en producción: `/p/...` responde 200 y expone `og:title`, canonical y `og:image` a los User-Agent de WhatsApp y `facebookexternalhit`; Vercel `success`, migración no requerida. La evidencia está asentada el 05/11; G2 queda `[x]`.
+- No se tocó la extensión ni se publicaron ensayos. Próximo: inventario D2 solo lectura y limpieza de QA elegible por la app; conservar el documento `central-smoke` hasta completar E5 después de las 10:06:19 UTC.
+
 # 2026-11-06 00:45 ART — I16 publicada
 
 - Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
