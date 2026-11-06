@@ -399,7 +399,7 @@ Pedido de Riva (04/11): al cargar un monto (por ejemplo, Flujo de caja → Gasto
 - **Cuándo:** junto con I10 e I11, en el mismo turno (antes de J2).
 - **Commit:** `fix(forms): number and money fields start empty and select on focus`
 
-### [ ] I13 Flujo de caja en el celular — **maqueta aprobada por Riva el 04/11**
+### [x] I13 Flujo de caja en el celular — **maqueta aprobada por Riva el 04/11**
 Maqueta: `docs/design/mobile-cashflow/` (Main, Movimiento, CerrarCaja, Detalle). Hoy la pantalla no es responsiva: los botones se salen de la pantalla y las tarjetas quedan cortadas.
 - Solo móvil (menos de 1024 px), con los tokens de color actuales; en PC no cambia nada (capturas antes/después a 1280 px). Mismo patrón que el Bloque I: componentes en `src/components/cashflow/` y la página decide por ancho.
 - **Pantalla principal:** saldo disponible con efectivo y banco, tarjetas de cobrado y gastado con sus pendientes, aviso de ventas por cobrar (abre Ventas filtrado por pendientes), tres acciones de igual tamaño (Ingreso, Gasto, Cerrar caja), buscador, filtros en chips (Todos, Ingresos, Gastos, Pendientes con contador; con Gastos aparece la categoría), lista de tarjetas agrupada por día con el neto del día, “Ver más” paginado. Excel y PDF en el menú “⋯”.
@@ -414,7 +414,7 @@ Maqueta: `docs/design/mobile-cashflow/` (Main, Movimiento, CerrarCaja, Detalle).
 
 ---
 
-### [ ] I15 Ocho módulos en el celular — **maquetas aprobadas por Riva el 05/11**
+### [x] I15 Ocho módulos en el celular — **maquetas aprobadas por Riva el 05/11**
 Maquetas: `docs/design/mobile-modules/` — `Ventas`, `ConsultaRapida`, `Reportes`, `Presupuestos`, `Clientes`, `Proveedores`, `Ingresos` y `Configuracion` (`.dc.html`). Hoy esas pantallas muestran tablas de PC achicadas: se cortan de costado y obligan a hacer zoom.
 - **Reglas comunes (igual que el Bloque I y que I13):** solo móvil (menos de 1024 px), con los tokens de color actuales; en PC no cambia nada (capturas antes/después a 1280 px). Componentes en `src/components/<módulo>/Mobile*.tsx` y la página decide por ancho. No cambian los cálculos, las RPC ni los datos. Touch ≥ 44 px, AA en ambos temas, el botón atrás del celular cierra hojas y menús, y nada de `confirm()` del navegador. Los textos de las maquetas son ejemplos: usar los datos reales.
 - **Fotos:** en toda lista de productos, `ProductThumbnail` con la miniatura `.thumb.webp` (I10/I14), con carga diferida. Sin foto → el cartel “Sin foto”. Nunca bajar la foto original en una lista (K4).

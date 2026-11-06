@@ -1,3 +1,10 @@
+## 2026-11-05 22:02 ART — I13 evidencias y cierre de I15
+
+- I15 quedó completo: los ocho commits de módulo, de Consulta rápida a Configuración, están en `main`; consulté los checks de Vercel para cada commit y los ocho figuran `success`, incluido `acb35f7`. El flujo de Configuración probó Android/iPhone a 360×740 y PC a 1280×900, sin escrituras. **I15 [x].**
+- Para cerrar I13 compilé localmente el commit pedido anterior a `fcb64d3` (`52f1da6`) y capturé la Caja de PC a 1280×900; también capturé la versión posterior. Ambos PNG tienen SHA-256 idéntico (`B6C962F7…B816AB9D5`), lo que confirma que el escritorio no cambió. Quedaron en `%USERPROFILE%\rivastock-qa-artifacts\I13\before-fcb64d3.png` y `after-fcb64d3.png`. El smoke móvil y deploy `fcb64d3` ya estaban verificados; **I13 [x].**
+- Comparé el `ACTION_PLAN.md` de Desktop antes de cerrar estas tareas. Desktop solo estaba atrasado en el cierre verificado de A1; conservé esa marca local más reciente.
+- **Siguiente:** integrar y publicar G2 con el camino de producción que Riva autorizó, luego comprobar con rastreadores reales; mantener C0/ensayos de Facebook sujetos a G2 y §5.2b. H8 sigue diferida.
+
 ## 2026-11-05 21:53 ART — I15.8 Configuración móvil
 
 - Completé el menú móvil por secciones y subpantallas reutilizando los campos actuales: negocio, catálogo, categorías, rangos, titulares, equipo, mantenimiento, apariencia y zona de peligro. El modo oscuro tiene un switch táctil de 44 px; Atrás del navegador y el botón de la app vuelven al menú. La eliminación móvil pide escribir el nombre exacto del negocio; los controles y la presentación de PC conservan su rama original.
@@ -141,7 +148,7 @@
 - La página conserva su render de escritorio sin cambios y selecciona el layout por `useIsMobile`. Ventas acepta `?status=Pendiente` para el aviso de cobros. No cambié cálculos, RPC ni esquemas.
 - Verificación local: `npm run lint`; suite **982/982** en 170 archivos; E2E Android+iPhone **2/2** a 360×740 (filtros, monto, fecha, desglose/diferencia, detalle, confirmación cancelada y botón Atrás); `npm run build`; `npm run perf:check` aprobados. Flujo de Caja quedó en **228.985 B JS gzip**, bajo el presupuesto de ruta.
 - Commit `fcb64d3` quedó en `main`; GitHub/Vercel reportó `success`. La página pública y el chunk `CashFlow-BtDUJr_p.js` responden HTTP 200. Luego abrí producción con Playwright y el perfil persistente autenticado, viewport 390×844: se mostró `mobile-cash-flow`, no hubo errores de página/red y solo se observaron las RPC de lectura `get_owner_profile`, `is_platform_admin` y `my_business_plan`; no hubo mutaciones.
-- El diff entre `fcb64d3^` y `fcb64d3` solo agrega imports, el selector móvil y el componente móvil; el JSX de escritorio existente no cambia. No se pudieron recuperar capturas previas a 1280 px, por lo que **I13 permanece `[ ]`** según el requisito literal de capturas antes/después. Desvío: smoke móvil autenticado completado después del despliegue; falta evidencia visual comparativa de escritorio.
+- En esa verificación inicial no se pudieron recuperar capturas previas a 1280 px, así que I13 quedó abierto. El 05/11 compilé `fcb64d3^`, generé la captura previa faltante y comprobé que coincide pixel por pixel con la captura posterior; el pendiente quedó resuelto y I13 se cerró en la entrada superior.
 
 ## 2026-11-05 — H8, G2 y Bloque C revalidados
 
