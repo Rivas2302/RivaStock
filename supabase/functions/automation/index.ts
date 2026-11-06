@@ -342,7 +342,19 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           p_summary: body.summary ?? {},
         });
       if (error || !isUuid(data)) {
-        console.error('[automation] Trace start RPC rejected.', { code: error?.code ?? 'invalid-trace-id' });
+        const safeReasons: Record<string, string> = {
+          'Trace owner and device are required': 'identity-missing',
+          'Active Facebook device does not belong to trace owner': 'device-owner-mismatch',
+          'Trace delivery and attempt do not match owner, device, or mechanism': 'delivery-mismatch',
+          'Rehearsal traces cannot reference a live delivery or attempt': 'rehearsal-live-reference',
+          'Invalid trace mode': 'invalid-mode',
+          'Rehearsal does not belong to this active device': 'rehearsal-owner-device-mismatch',
+          'Rehearsal is not active': 'rehearsal-not-running',
+        };
+        console.error('[automation] Trace start RPC rejected.', {
+          code: error?.code ?? 'invalid-trace-id',
+          reason: error?.message ? safeReasons[error.message] ?? 'unclassified-database-rejection' : 'invalid-trace-id',
+        });
         return errorResponse(undefined, origin);
       }
       await cleanupExpiredTraces(serviceClient);
