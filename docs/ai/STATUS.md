@@ -9,6 +9,7 @@
 
 - Consulta de solo lectura a las 10:13 UTC: la versión `[QA] central-smoke` sigue local y verificada (166 B, 0 faltantes), pero `cloud_purged_at` continúa vacío y el objeto aún existe en Storage. La purga automática todavía no ocurrió; no borré nada manualmente.
 - El backup ejecutado con `npm run backup:db -- --with-storage` quedó verificado en `%USERPROFILE%\rivastock-backups\20261106T101957Z`: 96 tablas / 14.403 filas, 789 objetos / 146.594.486 B, Postgres y Storage `verification: passed`. No hubo migración.
+- A las 10:34 UTC, `knowledge_central_purge_ready` devolvió el único archivo como elegible; el objeto seguía presente y `cloud_purged_at` vacío. La última verificación local fue a las 10:33 UTC; el loop de purga es horario. Esperar ese ciclo antes de probar apertura y limpiar el documento.
 - E5, E6 y D2 siguen abiertos hasta la purga natural, la apertura bajo demanda y la limpieza final por la app. No cambiar la fecha de gracia ni forzar la purga.
 
 # 2026-11-06 01:20 ART — I10/I11 smoke de producción aprobado; G2 cerrada
