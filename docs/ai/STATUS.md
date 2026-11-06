@@ -7,6 +7,12 @@
 - G2 ya cumplía el criterio y estaba verificada en producción: `/p/...` responde 200 y expone `og:title`, canonical y `og:image` a los User-Agent de WhatsApp y `facebookexternalhit`; Vercel `success`, migración no requerida. La evidencia está asentada el 05/11; G2 queda `[x]`.
 - No se tocó la extensión ni se publicaron ensayos. Próximo: inventario D2 solo lectura y limpieza de QA elegible por la app; conservar el documento `central-smoke` hasta completar E5 después de las 10:06:19 UTC.
 
+# 2026-11-06 01:30 ART — D2 limpieza parcial desde la app
+
+- La auditoría SQL de solo lectura encontró un chat `[QA] ok`, sus mensajes y una tarea `text_generation` vinculada, además de un recuerdo activo `[QA]`. Desde IA → Chats eliminé el chat con el flujo normal; su borrado retiró también mensajes, tarea y fuentes vinculadas. Desde IA → Memoria borré el recuerdo `[QA]` con su acción normal. Conteo posterior: **0** chats, mensajes, tareas o recuerdos que coincidan con `[QA]`.
+- No hay ensayos ni publicaciones Facebook `[QA]`, ni productos `[QA]`. Se conserva el documento `[QA] central-smoke` y su versión de 166 B para terminar E5; su versión está en la central, verificada, con purga programada para 2026-11-06 10:06:19 UTC. Siguen asociados sus chunks/fuentes/búsqueda de QA hasta terminar esa verificación.
+- También hay filas históricas en `knowledge_events`, `audit_events` e `inventory_product_commands` con referencias `[QA]`; son trazas operativas/auditoría, no hay flujo de borrado normal para ellas y no usé SQL de escritura. **D2 sigue `[ ]`** hasta E5, purga y auditoría final de retención.
+
 # 2026-11-06 00:45 ART — I16 publicada
 
 - Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
