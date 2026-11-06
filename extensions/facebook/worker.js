@@ -1,6 +1,6 @@
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
-import { discoverJoinedGroups, discoverGroupMembers } from './group-discovery.js';
+import { discoverJoinedGroups, discoverGroupMembers, discoverGroupRules } from './group-discovery.js';
 import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
@@ -76,8 +76,13 @@ export async function syncGroups(connection,background=false) {
             if(!next||next.offset<=members.offset)throw new Error('La lectura de miembros no avanzó. El progreso guardado se conserva.');
             members=next;
           }
+          const rulesQueue=await rpc(connection,'facebook_group_rules',{p_token:connection.token,p_operation:'targets',p_data:{}});
+          const capturedRules=await discoverGroupRules(rulesQueue?.groups);
+          for(const item of capturedRules){
+            await rpc(connection,'facebook_group_rules',{p_token:connection.token,p_operation:'submit',p_data:item});
+          }
           await chrome.storage.local.remove('groupDiscoveryIssue');
-          await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`Miembros consultados: ${members.total} de ${members.total} grupos${data?.partial?' · Listado parcial':''}.`,checkedAt:Date.now()}});
+          await chrome.storage.local.set({groupDiscovery:{phase:'done',message:`Miembros consultados: ${members.total} de ${members.total} grupos${data?.partial?' · Listado parcial':''}. Reglas visibles enviadas a revisión: ${capturedRules.length}.`,checkedAt:Date.now()}});
         }catch(error){await chrome.storage.local.set({groupDiscoveryIssue:error.message,groupDiscoveryIssueStage:'read',groupDiscovery:{phase:'error',message:error.message,checkedAt:Date.now()}});await rpc(connection,'facebook_group_discovery',{p_token:connection.token,p_operation:'error',p_request:request.id,p_data:{message:error.message}});}
         finally{clearInterval(pulse);}
       };

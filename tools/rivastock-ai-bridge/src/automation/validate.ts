@@ -50,6 +50,15 @@ export interface WarningClassification {
   confidence:number;
 }
 
+export interface GroupRulesSummary {
+  summary: string;
+  allows_sales: boolean | null;
+  allows_links: boolean | null;
+  repeat_limit_days: number | null;
+  requires_approval: boolean | null;
+  confidence: number;
+}
+
 const ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container', 'wait', 'reload', 'skip_destination', 'abort']);
 const ELEMENT_ACTIONS = new Set<SupervisorAction>(['click', 'type', 'select_option', 'scroll_container']);
 const BLOCKED = /\b(?:publicar(?: ahora)?|compartir ahora|publish(?: now)?|share now|send now|enviar ahora|cerrar sesi[oó]n|log\s*out|sign\s*out|settings|configuraci[oó]n|account settings)\b/i;
@@ -110,8 +119,8 @@ export function parseSupervisorOutput(
   output: string,
   dom: SupervisorDomSummary,
   intent: SupervisorIntent,
-  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning' = 'recover_step',
-): { decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification } | { error: string } {
+  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning' | 'summarize_group_rules' = 'recover_step',
+): { decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification | GroupRulesSummary } | { error: string } {
   const trimmed = output.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const json = fenced?.[1] ?? trimmed;
@@ -122,10 +131,28 @@ export function parseSupervisorOutput(
     if (validateSupervisedResultAssessment(parsed, dom)) return { decision: parsed };
   } else if (kind === 'classify_warning') {
     if (validateWarningClassification(parsed)) return { decision: parsed };
+  } else if (kind === 'summarize_group_rules') {
+    if (validateGroupRulesSummary(parsed)) return { decision: parsed };
   } else if (validateSupervisorDecision(parsed, dom, intent)) {
     return { decision: parsed };
   }
   return { error: 'La respuesta no cumple el contrato de decisión supervisada.' };
+}
+
+export function validateGroupRulesSummary(value: unknown): value is GroupRulesSummary {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const summary = value as Record<string, unknown>;
+  if (Object.keys(summary).length !== 6
+    || Object.keys(summary).some(key => !['summary', 'allows_sales', 'allows_links', 'repeat_limit_days', 'requires_approval', 'confidence'].includes(key))
+    || typeof summary.summary !== 'string' || !summary.summary.trim() || summary.summary.length > 500
+    || !(summary.allows_sales === null || typeof summary.allows_sales === 'boolean')
+    || !(summary.allows_links === null || typeof summary.allows_links === 'boolean')
+    || !(summary.requires_approval === null || typeof summary.requires_approval === 'boolean')
+    || !(summary.repeat_limit_days === null || Number.isSafeInteger(summary.repeat_limit_days))
+    || typeof summary.confidence !== 'number' || !Number.isFinite(summary.confidence)
+    || summary.confidence < 0.75 || summary.confidence > 1) return false;
+  const repeatDays = summary.repeat_limit_days;
+  return repeatDays === null || (typeof repeatDays === 'number' && repeatDays >= 1 && repeatDays <= 365);
 }
 
 export function validateWarningClassification(value:unknown):value is WarningClassification{

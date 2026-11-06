@@ -164,7 +164,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     if(block)throw new Error(block);
     if(publications.length&&!repeatOf)throw new Error('Elegí Preparar otra publicación para aprobar un nuevo envío.');
     const groupProblem=validateGroupSelection(groups,selectedGroups,recentlyUsedGroupIds);if(groupProblem)throw new Error(groupProblem);
-    const contentProblem = validatePublication(content, marketplace, selectedGroups, false);
+    const contentProblem = validatePublication(content, marketplace, selectedGroups, false, publicationProduct.salePrice);
     if (contentProblem) throw new Error(contentProblem);
     const prepared = await preparePublicationPhotos(publicationProduct, ownerUid ?? '');
     const preparedContent = { ...content, photos: content.photos.map(photo => prepared.replacements.get(photo) ?? photo) };
@@ -173,7 +173,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
       setContent(preparedContent);
       onProductUpdated?.(prepared.product);
     }
-    const problem = validatePublication(preparedContent, marketplace, selectedGroups);
+    const problem = validatePublication(preparedContent, marketplace, selectedGroups, true, publicationProduct.salePrice);
     if (problem) throw new Error(problem);
     const scheduledAt=scheduleMode==='scheduled'?new Date(scheduleLocal):null;
     if(scheduleMode==='scheduled'&&(!scheduledAt||!Number.isFinite(scheduledAt.getTime())||scheduledAt<=new Date()))throw new Error('Elegí una fecha y hora futuras para programar la publicación.');
@@ -225,7 +225,7 @@ export default function FacebookPublicationModal({ product, onClose, onApproved,
     const targetGroup=activeRehearsalTarget.groupId?groups.find(group=>group.id===activeRehearsalTarget.groupId):undefined;
     if(targetGroup&&!selectedGroups.includes(targetGroup.id))throw new Error('Volvé a seleccionar el grupo antes de iniciar el ensayo.');
     const rehearsalContent={...content,...(targetGroup?{groupText:groupPublicationText(content)}:{})};
-    const contentProblem=validatePublication(rehearsalContent,activeRehearsalTarget.mechanism==='marketplace',targetGroup?[targetGroup.id]:[],true);
+    const contentProblem=validatePublication(rehearsalContent,activeRehearsalTarget.mechanism==='marketplace',targetGroup?[targetGroup.id]:[],true,publicationProduct.salePrice);
     if(contentProblem)throw new Error(contentProblem);
     if(!devices.some(device=>deviceConnected(device)))throw new Error('Conectá la PC vinculada para procesar el ensayo.');
     const id=await facebookRpc<string>('request_facebook_rehearsal',{

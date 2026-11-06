@@ -1,4 +1,5 @@
 import { facebookFormAction, validateSupervisorDecision } from './form-actions.js';
+import { validateFacebookListingContent } from './publication-policy.js';
 import { openAutomationTab, closeAutomationTab } from './automation-tabs.js';
 import { resolveSupervisedResult } from './result-verification.js';
 export function validateFacebookDestination(destination) {
@@ -307,6 +308,8 @@ export const facebookAdapter = {
   },
   async prepare(job, config) {
     const started=performance.now();
+    const policyProblem=validateFacebookListingContent(job.content);
+    if(policyProblem)throw new Error(policyProblem);
     validateFacebookDestination(job.destination);
     const photos = await fetchPublicationPhotos(job.content, config.url);
     config.onTiming?.('photos_ms',performance.now()-started);

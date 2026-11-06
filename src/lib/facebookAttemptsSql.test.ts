@@ -10,7 +10,7 @@ beforeAll(async()=>{
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('test.uid',true),'')::uuid $$;
     CREATE TABLE profiles(id uuid PRIMARY KEY,created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[]);
+    CREATE TABLE products(id uuid PRIMARY KEY,user_id uuid,image_url text,images text[],sale_price numeric NOT NULL DEFAULT 1000);
     CREATE TABLE collaborators(user_uid uuid,owner_uid uuid,revoked boolean DEFAULT false,can_write boolean DEFAULT true);
     CREATE FUNCTION get_owner_uid(uuid) RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT coalesce((SELECT owner_uid FROM collaborators WHERE user_uid=$1 AND NOT revoked),$1) $$;
     CREATE FUNCTION has_permission(uuid,text,text) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$ SELECT CASE WHEN EXISTS(SELECT 1 FROM collaborators WHERE user_uid=$1 AND NOT revoked) THEN $3='read' OR (SELECT can_write FROM collaborators WHERE user_uid=$1 AND NOT revoked) ELSE true END $$;
@@ -19,7 +19,7 @@ beforeAll(async()=>{
     INSERT INTO profiles VALUES('${owner}'),('${other}');
     INSERT INTO collaborators(user_uid,owner_uid) VALUES('${staff}','${owner}');
     INSERT INTO products VALUES('${product}','${owner}','https://images.test/silla.jpg',ARRAY['https://images.test/silla.jpg']);`);
-  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261027020952_fb_run_traces.sql','20261102135148_fb_supervision.sql','20261102190000_fb_supervisor_contract.sql','20261102190001_fb_post_submit_observations.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql','20261103160000_fb_pacing_scheduling.sql','20261103180000_fb_marketplace_groups_six_arg_rpc.sql']) {
+  for (const migration of ['0049_facebook_publications.sql', '0050_facebook_device_renewal.sql', '0051_facebook_retry_preparation.sql', '0052_automations_publication_management.sql', '0053_facebook_group_discovery.sql', '0054_facebook_group_refresh_from_device.sql', '0055_facebook_group_members.sql', '0056_facebook_member_whitespace.sql', '0057_facebook_all_group_members.sql', '0058_facebook_dispatch_timing.sql', '0059_facebook_delivery_decisions.sql', '0060_facebook_attempt_schema.sql', '0061_facebook_attempt_dispatch.sql', '0062_facebook_attempt_recovery.sql','0063_facebook_diagnostic_contract.sql','0064_facebook_result_candidates.sql','0065_facebook_evidence_receipts.sql','0066_facebook_watchdog.sql','0067_facebook_orphan_cleanup.sql','0068_facebook_causal_gate.sql','0069_facebook_review_without_link.sql','0070_facebook_cancel_unauthorized.sql','0071_facebook_cron_watchdog.sql','0072_facebook_own_content_tracking.sql','20261027020952_fb_run_traces.sql','20261102135148_fb_supervision.sql','20261102190000_fb_supervisor_contract.sql','20261102190001_fb_post_submit_observations.sql','20261102200000_fb_marketplace_groups.sql','20261103120000_fb_group_performance.sql','20261103160000_fb_pacing_scheduling.sql','20261103180000_fb_marketplace_groups_six_arg_rpc.sql','20261106130047_facebook_low_risk_profile.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${migration}`, 'utf8'));
   }
 
@@ -43,6 +43,69 @@ async function approveV2(groups:string[],mode:'separate'|'marketplace_groups',ke
 async function worker(op:string,attempt:string|null=null,data:any={},delivery:string|null=null){await db.exec('SET ROLE anon');return (await db.query<{data:any}>('SELECT facebook_worker_v2($1,$2,$3,$4,$5::jsonb) AS data',[token,op,delivery,attempt,JSON.stringify(data)])).rows[0].data;}
 async function inspect(sql:string,args:any[]=[]){await db.exec('RESET ROLE');return db.query<any>(sql,args);}
  async function claim(enforcePacing=false){if(!enforcePacing)await inspect('UPDATE fb_pacing_policy SET next_allowed_at=NULL WHERE user_id=$1',[owner]);return worker('claim',null,{claimKey:crypto.randomUUID()});}
+it('queues bounded group rules for the authenticated Facebook device and applies only its strict summary',async()=>{
+ const target=await group('https://www.facebook.com/groups/rules');
+ await db.exec('SET ROLE anon');
+ const targets=(await db.query<{data:any}>('SELECT facebook_group_rules($1,$2,$3::jsonb) AS data',[token,'targets','{}'])).rows[0].data;
+ expect(targets.groups).toContainEqual({group_id:target,url:'https://www.facebook.com/groups/rules'});
+ const queued=(await db.query<{data:any}>('SELECT facebook_group_rules($1,$2,$3::jsonb) AS data',[token,'submit',JSON.stringify({group_id:target,rules_text:'Se permite vender. Esperar 21 días entre publicaciones.'})])).rows[0].data;
+ expect(queued.queued).toBe(true);
+ const request=(await inspect("SELECT id,trace_id,group_id,kind,intent,intent->>'group_rules_text' AS rules FROM fb_supervision_requests WHERE kind='summarize_group_rules'")).rows[0];
+ expect(request).toMatchObject({trace_id:null,group_id:target,kind:'summarize_group_rules',rules:'Se permite vender. Esperar 21 días entre publicaciones.'});
+ const decision={summary:'Se permiten ventas; esperar 21 días entre publicaciones.',allows_sales:true,allows_links:null,repeat_limit_days:21,requires_approval:null,confidence:0.92};
+ const context={controls:[],intent:request.intent};
+ expect((await inspect('SELECT fb_supervision_decision_valid($1::jsonb,$2::jsonb) AS valid',[JSON.stringify(decision),JSON.stringify(context)])).rows[0].valid).toBe(true);
+ await inspect("UPDATE fb_supervision_requests SET status='answered',decision=$2::jsonb,provider='codex',model_id='gpt-6-luna',reasoning_effort='low',answered_at=now() WHERE id=$1",[request.id,JSON.stringify(decision)]);
+ const saved=(await inspect('SELECT rules_summary,allows_sales,allows_links,repeat_limit_days,requires_approval,rules_checked_at IS NOT NULL AS checked FROM facebook_groups WHERE id=$1',[target])).rows[0];
+ expect(saved).toMatchObject({rules_summary:decision.summary,allows_sales:true,allows_links:null,repeat_limit_days:21,requires_approval:null,checked:true});
+});
+
+it('automatically pauses a group after two rejected results in 30 days and lets only its owner reactivate it',async()=>{
+ const target=await group('https://www.facebook.com/groups/safety');
+ const ids=['20000000-0000-4000-8000-000000000006','20000000-0000-4000-8000-000000000007'];
+ for(const id of ids)await inspect('INSERT INTO products(id,user_id,image_url,images) VALUES($1,$2,NULL,ARRAY[\'https://images.test/silla.jpg\']::text[])',[id,owner]);
+ const publications=[] as string[];
+ for(const id of ids)publications.push(await approveV2([target],'marketplace_groups',crypto.randomUUID(),null,content,id));
+ const deliveries=(await inspect("SELECT id FROM facebook_deliveries WHERE destination_key='marketplace' AND publication_id=ANY($1::uuid[]) ORDER BY id",[publications])).rows;
+ for(const delivery of deliveries)await inspect("UPDATE fb_delivery_group_results SET status='not_approved',checked_at=now() WHERE delivery_id=$1 AND group_id=$2",[delivery.id,target]);
+ expect((await inspect('SELECT safety_paused,safety_pause_reason FROM facebook_groups WHERE id=$1',[target])).rows[0]).toMatchObject({safety_paused:true,safety_pause_reason:'Dos publicaciones rechazadas o eliminadas en los últimos 30 días.'});
+ await actor(staff);
+ await expect(db.query('SELECT facebook_group_safety_reactivate($1)',[target])).rejects.toThrow();
+ await actor(owner);
+ expect((await db.query<{reactivated:boolean}>('SELECT facebook_group_safety_reactivate($1) AS reactivated',[target])).rows[0].reactivated).toBe(true);
+ expect((await inspect('SELECT safety_paused,safety_pause_reason FROM facebook_groups WHERE id=$1',[target])).rows[0]).toMatchObject({safety_paused:false,safety_pause_reason:null});
+});
+
+it('enforces captured sales rules, repeat limits above fourteen days, and account rejection caps',async()=>{
+ const target=await group('https://www.facebook.com/groups/rules-enforced');
+ await expect(approveV2([], 'separate',crypto.randomUUID(),null,{...content,price:999},product,true)).rejects.toThrow('precio actual del producto');
+ await inspect('UPDATE facebook_groups SET allows_sales=false WHERE id=$1',[target]);
+ await expect(approveV2([target],'marketplace_groups')).rejects.toThrow('Las reglas detectadas del grupo no permiten ventas');
+ await inspect('UPDATE facebook_groups SET allows_sales=true,repeat_limit_days=21 WHERE id=$1',[target]);
+ const first=await approveV2([target],'separate',crypto.randomUUID(),null,content,product,false);
+ await inspect("UPDATE facebook_deliveries SET status='submitted',submitted_at=now(),claimed_at=now() WHERE publication_id=$1",[first]);
+ await expect(approveV2([target],'marketplace_groups',crypto.randomUUID(),first)).rejects.toThrow('intervalo mínimo de 21 días');
+
+ const delivery=(await inspect("SELECT id FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='group_direct'",[first])).rows[0].id;
+ await inspect("UPDATE facebook_deliveries SET status='attention',issue='{}'::jsonb || jsonb_build_object('kind','facebook_not_approved'),updated_at=now() WHERE id=$1",[delivery]);
+ const locked=(await inspect('SELECT daily_marketplace_cap,daily_group_cap,health_lock_at IS NOT NULL AS locked FROM fb_pacing_policy WHERE user_id=$1',[owner])).rows[0];
+ expect(locked).toMatchObject({daily_marketplace_cap:2,daily_group_cap:7,locked:true});
+ await actor();
+ const health=(await db.query<{data:any}>('SELECT fb_account_health_get() AS data')).rows[0].data;
+ expect(health).toMatchObject({health_lock_active:true,group_posts_today:1,health:{rejected_30d:1,rejection_rate_pct:100}});
+ const reviewed=(await db.query<{data:any}>('SELECT fb_account_health_review() AS data')).rows[0].data;
+ expect(reviewed.health_lock_active).toBe(false);
+ expect((await inspect('SELECT daily_marketplace_cap,daily_group_cap FROM fb_pacing_policy WHERE user_id=$1',[owner])).rows[0]).toMatchObject({daily_marketplace_cap:5,daily_group_cap:15});
+});
+
+it('limits account health review and safety controls to the business owner',async()=>{
+ const target=await group('https://www.facebook.com/groups/owner-only');
+ await inspect('UPDATE facebook_groups SET safety_paused=true,safety_pause_reason=$2,safety_paused_at=now() WHERE id=$1',[target,'Two recent rejections.']);
+ await actor(staff);
+ await expect(db.query('SELECT fb_account_health_get()')).rejects.toThrow('Solo el dueño');
+ await expect(db.query('SELECT fb_account_health_review()')).rejects.toThrow('Solo el dueño');
+ await expect(db.query('SELECT facebook_group_safety_reactivate($1)',[target])).rejects.toThrow('Solo el dueño');
+});
 async function group(url='https://www.facebook.com/groups/123'){await actor();return (await db.query<{id:string}>("INSERT INTO facebook_groups(user_id,name,url) VALUES($1,'Group',$2) RETURNING id",[owner,url])).rows[0].id;}
 it('approves one Marketplace delivery with immutable targets and isolated per-group results',async()=>{
  const first=await group('https://www.facebook.com/groups/123');const second=await group('https://www.facebook.com/groups/456');
@@ -173,18 +236,14 @@ it('classifies inconclusive screenshots and pauses without automatically resumin
  await db.query('SELECT set_facebook_queue_enabled($1,true)',[device]);
  expect((await inspect('SELECT queue_enabled,queue_pause_reason,queue_pause_until FROM facebook_devices WHERE id=$1',[device])).rows[0]).toMatchObject({queue_enabled:true,queue_pause_reason:null,queue_pause_until:null});
 });
-it('keeps the same product from repeating in a group during the configured cooldown',async()=>{
+it('rejects another approval for the same product and group during the configured cooldown',async()=>{
  const target=await group('https://www.facebook.com/groups/321');
  const first=await approveV2([target],'separate',crypto.randomUUID(),null,content,product,false);
  const firstDelivery=(await inspect("SELECT id FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='group_direct'",[first])).rows[0].id;
  const firstAttempt=await claim();
  await worker('checkpoint',firstAttempt.attemptId);
  await worker('result',firstAttempt.attemptId,{status:'submitted',url:'https://www.facebook.com/groups/321/posts/987',message:'Submitted'},firstDelivery);
- const repeated=await approveV2([target],'separate',crypto.randomUUID(),first,content,product,false);
- const repeatedDelivery=(await inspect("SELECT id,status FROM facebook_deliveries WHERE publication_id=$1 AND destination->>'mechanism'='group_direct'",[repeated])).rows[0];
- expect(repeatedDelivery.status).toBe('pending');
- expect(await claim(true)).toBeNull();
- expect((await inspect('SELECT status FROM facebook_deliveries WHERE id=$1',[repeatedDelivery.id])).rows[0].status).toBe('pending');
+ await expect(approveV2([target],'separate',crypto.randomUUID(),first,content,product,false)).rejects.toThrow('intervalo mínimo de 14 días');
 });
 it('pauses conservatively when warning classification fails',async()=>{
  await approveV2([], 'separate');
@@ -550,7 +609,7 @@ it('the scheduled watchdog expires stale work of every owner without a device or
  await inspect("UPDATE facebook_delivery_attempts SET lease_expires_at=now()-interval '1 minute' WHERE id=$1",[a.attemptId]);
  const otherProduct='20000000-0000-4000-8000-000000000009';
  await inspect("INSERT INTO products VALUES($1,$2,'https://images.test/x.jpg',ARRAY['https://images.test/x.jpg'])",[otherProduct,other]);
- const pub=(await inspect("INSERT INTO facebook_publications(user_id,product_id,approved_by,intent_key,content) VALUES($1,$2,$1,gen_random_uuid(),'{}'::jsonb) RETURNING id",[other,otherProduct])).rows[0].id;
+ const pub=(await inspect("INSERT INTO facebook_publications(user_id,product_id,approved_by,intent_key,content) VALUES($1,$2,$1,gen_random_uuid(),jsonb_build_object('price',1000)) RETURNING id",[other,otherProduct])).rows[0].id;
  const legacy=(await inspect("INSERT INTO facebook_deliveries(publication_id,destination,destination_key,status,claimed_at) VALUES($1,'{\"mechanism\":\"marketplace\"}'::jsonb,'marketplace','running',now()-interval '10 minutes') RETURNING id",[pub])).rows[0].id;
  for(const role of ['anon','authenticated']){await db.exec('RESET ROLE;SET ROLE '+role);await expect(db.query('SELECT facebook_cron_watchdog()')).rejects.toThrow('permission denied');}
  await inspect('SELECT facebook_cron_watchdog()');

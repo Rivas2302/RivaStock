@@ -40,6 +40,6 @@ test('reports an existing local connection without secrets and preserves it afte
   const id=new URL(running.worker.url()).hostname;
   const status=await web.evaluate(id=>new Promise<any>(resolve=>(window as any).chrome.runtime.sendMessage(id,{type:'rivastock-connection-status',projectUrl:'https://test.supabase.co',deviceIds:['pc']},resolve)),id);
   expect(status).toMatchObject({hasConnection:true,matches:true,paused:true});expect(JSON.stringify(status)).not.toContain('fixture-token');
-  await expect.poll(()=>running.worker.evaluate(async()=>(await (globalThis as any).chrome.alarms.get('rivastock-queue'))?.periodInMinutes)).toBeUndefined();
+  await expect.poll(()=>running.worker.evaluate(async()=>(await (globalThis as any).chrome.alarms.get('rivastock-queue'))?.periodInMinutes)).toBe(15);
  }finally{await running.context.close();}
 });

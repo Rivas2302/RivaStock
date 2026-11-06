@@ -30,7 +30,7 @@ for(const mobile of [false,true]) test(`downloads extension from settings (${mob
     const encode=(value:unknown)=>btoa(JSON.stringify(value)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
     localStorage.setItem('rivastock-auth',JSON.stringify({access_token:`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,exp,role:'authenticated'})}.fixture`,refresh_token:'fixture',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id,email:'test@test.invalid',aud:'authenticated',app_metadata:{},user_metadata:{},created_at:new Date().toISOString()}}));
   },owner);
-  await page.goto('/config?tab=facebook');
+  await page.goto(mobile?'/automatizaciones?view=configuration':'/config?tab=facebook');
   await expect(page.getByRole('heading',{name:'Publicaciones en Facebook'})).toBeVisible();
   const setup=page.getByRole('dialog',{name:'Completá los datos de tu negocio'});
   if(await setup.isVisible()){

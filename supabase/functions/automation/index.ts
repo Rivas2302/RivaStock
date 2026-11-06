@@ -21,6 +21,7 @@ const SUPERVISOR_FUNCTION_KEYS: Record<string, string> = {
   review_content: 'fb_copywriting',
   review_photos: 'fb_photo_review',
   classify_warning: 'fb_supervisor_verify',
+  summarize_group_rules: 'fb_supervisor_verify',
 };
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -183,10 +184,18 @@ async function supervisorWorker(
     });
     if (error) return jsonResponseWithCors({ error: 'No se pudo consultar la cola del supervisor.' }, 503, origin);
     if (data === null) return jsonResponseWithCors({ task: null }, 200, origin);
-    if (!isRecord(data) || !isUuid(data.id) || !isUuid(data.trace_id)
-      || !isInteger(data.step_seq, 1, 10000) || !Object.hasOwn(SUPERVISOR_FUNCTION_KEYS, String(data.kind))
+    const kind = String(data?.kind ?? '');
+    const isGroupRules = kind === 'summarize_group_rules';
+    if (!isRecord(data) || !isUuid(data.id) || (!isGroupRules && !isUuid(data.trace_id))
+      || (isGroupRules && data.trace_id !== null) || !isInteger(data.step_seq, 1, 10000)
+      || !Object.hasOwn(SUPERVISOR_FUNCTION_KEYS, kind)
       || !isRecord(data.intent) || !validSummary(data.dom_summary)) {
       return jsonResponseWithCors({ error: 'La solicitud de supervisor no es válida.' }, 503, origin);
+    }
+    if (isGroupRules && (!isUuid(data.intent.group_id) || typeof data.intent.group_rules_text !== 'string'
+      || data.intent.group_rules_text.length > 6000 || typeof data.intent.group_rules_hash !== 'string'
+      || !/^[0-9a-f]{64}$/.test(data.intent.group_rules_hash))) {
+      return jsonResponseWithCors({ error: 'La solicitud de reglas del grupo no es válida.' }, 503, origin);
     }
 
     let screenshotUrl: string | null = null;

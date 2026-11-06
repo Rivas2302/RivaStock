@@ -48,6 +48,33 @@ export async function readGroupMembers(expectedUrl=location.href) {
   return null;
 }
 
+// Extract only a visible rules/about section from the requested group page.
+// This reads rendered public DOM and never inspects posts, cookies, or app state.
+export async function readGroupRules(expectedUrl=location.href) {
+  const pageUrl = new URL(location.href);
+  const expected = new URL(expectedUrl);
+  const canonical = path => path.replace(/\/$/,'').replace('/PicoVendedeTodo','/710102875717376');
+  if (pageUrl.origin !== 'https://www.facebook.com' || expected.origin !== pageUrl.origin
+    || !/^\/groups\/[A-Za-z0-9._-]+\/?$/.test(pageUrl.pathname)
+    || canonical(pageUrl.pathname) !== canonical(expected.pathname)) return null;
+  const visible = element => {
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0;
+  };
+  const heading = [...document.querySelectorAll('h1,h2,h3,[role="heading"]')]
+    .find(node => visible(node) && /^(?:reglas(?: del grupo)?|group rules|informaci[oó]n|about)$/i.test((node.innerText??node.textContent??'').trim()));
+  if (!heading) return null;
+  let section = heading.closest('[role="dialog"],section,[role="region"]') ?? heading.parentElement;
+  for (let level=0;section&&section!==document.body&&level<5;level++,section=section.parentElement) {
+    if (section.querySelector('[role="feed"],[role="article"],article')) continue;
+    const text=(section.innerText??'').replace(/\r/g,'').split('\n').map(line=>line.trim()).filter(Boolean);
+    const marker=text.findIndex(line=>/^(?:reglas(?: del grupo)?|group rules|informaci[oó]n|about)$/i.test(line));
+    const candidate=(marker>=0?text.slice(marker+1):text).join('\n').slice(0,6000).trim();
+    if(candidate.length>=10)return candidate;
+  }
+  return null;
+}
+
 export async function discoverGroupMembers(urls) {
   const counts=[];
   for(const url of [...new Set(urls)].slice(0,3)){
@@ -65,6 +92,27 @@ export async function discoverGroupMembers(urls) {
     finally{if(tab)await closeAutomationTab(tab.id);}
   }
   return counts;
+}
+
+export async function discoverGroupRules(targets) {
+  const results=[];
+  for(const target of (Array.isArray(targets)?targets:[]).slice(0,3)){
+    const groupId=typeof target?.group_id==='string'?target.group_id:'';
+    const url=typeof target?.url==='string'?target.url:'';
+    if(!/^[0-9a-f-]{36}$/i.test(groupId)||!/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9._-]+$/.test(url))continue;
+    let tab;
+    try{
+      tab=await openAutomationTab(url);
+      for(let attempt=0;attempt<20;attempt++){
+        if((await chrome.tabs.get(tab.id)).status==='complete')break;
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      const read=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readGroupRules,args:[url]});
+      results.push({group_id:groupId,rules_text:typeof read[0]?.result==='string'?read[0].result:''});
+    }catch{results.push({group_id:groupId,rules_text:''});}
+    finally{if(tab)await closeAutomationTab(tab.id);}
+  }
+  return results;
 }
 
 export async function discoverJoinedGroups(){

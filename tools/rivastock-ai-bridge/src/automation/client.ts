@@ -1,4 +1,4 @@
-import type { SupervisorDecision, SupervisedResultAssessment, WarningClassification, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
+import type { SupervisorDecision, SupervisedResultAssessment, WarningClassification, GroupRulesSummary, SupervisorDomSummary, SupervisorIntent } from './validate.ts';
 import type { CodexModelId, CodexReasoningEffort } from '../types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -14,9 +14,9 @@ export interface SupervisorSettings {
 
 export interface SupervisorTask {
   id: string;
-  trace_id: string;
+  trace_id: string | null;
   step_seq: number;
-  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning';
+  kind: 'recover_step' | 'verify_result' | 'review_content' | 'review_photos' | 'classify_warning' | 'summarize_group_rules';
   intent: SupervisorIntent;
   dom_summary: SupervisorDomSummary;
   screenshot_url: string | null;
@@ -25,7 +25,7 @@ export interface SupervisorTask {
 }
 
 export interface SupervisorDecisionRecord {
-  decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification;
+  decision: SupervisorDecision | SupervisedResultAssessment | WarningClassification | GroupRulesSummary;
   provider: 'codex' | 'claude';
   model_id: string;
   reasoning_effort: CodexReasoningEffort;
@@ -67,15 +67,22 @@ export class SupervisorClient {
 }
 
 function validateTask(value: unknown): SupervisorTask {
-  if (!isRecord(value) || !isUuid(value.id) || !isUuid(value.trace_id)
+  const groupRules = isRecord(value) && value.kind === 'summarize_group_rules';
+  if (!isRecord(value) || !isUuid(value.id) || (!groupRules && !isUuid(value.trace_id))
+    || (groupRules && value.trace_id !== null)
     || !Number.isSafeInteger(value.step_seq) || (value.step_seq as number) < 1 || (value.step_seq as number) > 10000
-    || !['recover_step', 'verify_result', 'review_content', 'review_photos', 'classify_warning'].includes(String(value.kind))
-    || !isRecord(value.intent) || byteLength(value.intent) > 8000
+    || !['recover_step', 'verify_result', 'review_content', 'review_photos', 'classify_warning', 'summarize_group_rules'].includes(String(value.kind))
+    || !isRecord(value.intent) || byteLength(value.intent) > (groupRules ? 30000 : 8000)
     || !isDomSummary(value.dom_summary) || byteLength(value.dom_summary) > 20480
     || (value.screenshot_url !== null && (typeof value.screenshot_url !== 'string' || !/^https:\/\//i.test(value.screenshot_url)))
     || typeof value.lease_expires_at !== 'string' || !Number.isFinite(Date.parse(value.lease_expires_at))
     || !isSettings(value.settings)) {
     throw new Error('El backend devolvió una solicitud de supervisión inválida.');
+  }
+  if (groupRules && (!isUuid(value.intent.group_id) || typeof value.intent.group_rules_text !== 'string'
+    || value.intent.group_rules_text.length > 6000 || typeof value.intent.group_rules_hash !== 'string'
+    || !/^[0-9a-f]{64}$/.test(value.intent.group_rules_hash))) {
+    throw new Error('La solicitud de reglas del grupo no es válida.');
   }
   return value as unknown as SupervisorTask;
 }

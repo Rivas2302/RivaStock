@@ -69,6 +69,9 @@ describe('automation Edge Function trace contract', () => {
     expect(edgeSource).toContain("'fb_supervisor_recover'");
     expect(edgeSource).toContain("'fb_supervisor_verify'");
     expect(edgeSource).toContain("'fb_photo_review'");
+    expect(edgeSource).toContain("summarize_group_rules: 'fb_supervisor_verify'");
+    expect(edgeSource).toContain("const isGroupRules = kind === 'summarize_group_rules'");
+    expect(edgeSource).toContain('data.trace_id !== null');
   });
 
   it('accepts only bounded post-submit observation payloads through the authenticated supervisor worker route', () => {

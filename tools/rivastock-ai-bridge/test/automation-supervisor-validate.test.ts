@@ -67,3 +67,13 @@ test('accepts only a strict warning classification with consistent category', ()
   assert.equal(validateWarningClassification({ ...warning, observation: ' '.repeat(2) }), false);
   assert.deepEqual(parseSupervisorOutput('not json', resultDom, {}, 'classify_warning'), { error: 'La respuesta no era un objeto JSON válido.' });
 });
+
+test('accepts conservative group-rule summaries with explicit unknown flags', () => {
+  const summary = { summary: 'No se detectaron reglas visibles sobre enlaces.', allows_sales: true, allows_links: null,
+    repeat_limit_days: null, requires_approval: null, confidence: 0.88 };
+  assert.deepEqual(parseSupervisorOutput(JSON.stringify(summary), resultDom, {}, 'summarize_group_rules'), { decision: summary });
+  assert.equal(parseSupervisorOutput(JSON.stringify({ ...summary, confidence: 0.74 }), resultDom, {}, 'summarize_group_rules').hasOwnProperty('decision'), false);
+  assert.equal(parseSupervisorOutput(JSON.stringify({ ...summary, allows_sales: 'yes' }), resultDom, {}, 'summarize_group_rules').hasOwnProperty('decision'), false);
+  assert.equal(parseSupervisorOutput(JSON.stringify({ ...summary, repeat_limit_days: 400 }), resultDom, {}, 'summarize_group_rules').hasOwnProperty('decision'), false);
+  assert.equal(parseSupervisorOutput(JSON.stringify({ ...summary, extra: true }), resultDom, {}, 'summarize_group_rules').hasOwnProperty('decision'), false);
+});

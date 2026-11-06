@@ -2,6 +2,7 @@ import type { Product } from '../types';
 import { supabase, supabaseProjectUrl } from './supabase';
 import { formatCurrency } from './utils';
 import { marketplaceConditions } from '../../extensions/facebook/marketplace-contract.js';
+import { validateFacebookListingContent } from '../../extensions/facebook/publication-policy.js';
 import type { FacebookGroupPerformance } from './facebookGroupSuggestions';
 
 export interface PublicationContent {
@@ -139,7 +140,7 @@ export function initialPublication(product: Product): PublicationContent {
   return { title: product.name, description: product.description ?? '', price: product.salePrice,
     photos: productPhotos(product).slice(0, 10), location: '', category: '', condition: 'new' };
 }
-export function validatePublication(content: PublicationContent, marketplace: boolean, groups: string[], requireHttps = true): string | null {
+export function validatePublication(content: PublicationContent, marketplace: boolean, groups: string[], requireHttps = true, expectedProductPrice?: number): string | null {
   if (!content.title.trim() || content.title.length > 100) return 'Ingresá un título de hasta 100 caracteres.';
   if (!content.description.trim() || content.description.length > 5000) return 'Ingresá una descripción de hasta 5000 caracteres.';
   if (!Number.isFinite(content.price) || content.price <= 0 || content.price > 999999999) return 'Ingresá un precio mayor a cero.';
@@ -150,6 +151,8 @@ export function validatePublication(content: PublicationContent, marketplace: bo
     const insecurePhoto=content.photos.findIndex(url=>!url.startsWith('https://'));
     if (insecurePhoto!==-1) return `La foto ${insecurePhoto+1} no tiene una dirección HTTPS compatible. Volvé a cargarla desde el editor del producto.`;
   }
+  const policyProblem=validateFacebookListingContent(content,expectedProductPrice);
+  if(policyProblem)return policyProblem;
   if (!marketplace && !groups.length) return 'Elegí Marketplace o al menos un grupo.';
   return null;
 }
@@ -176,7 +179,7 @@ export async function facebookRpc<T>(name: string, args: Record<string, unknown>
 export async function loadFacebookPublicationData(productId: string) {
   await refreshFacebookDeliveryStates();
   const results = await Promise.all([
-    supabase.from('facebook_groups').select('id,name,url,mechanism,member_count_text,member_count_updated_at').order('name'),
+    supabase.from('facebook_groups').select('id,name,url,mechanism,member_count_text,member_count_updated_at,rules_summary,allows_sales,allows_links,repeat_limit_days,requires_approval,safety_paused,safety_pause_reason').order('name'),
     supabase.from('facebook_devices').select('id,name,last_seen_at,revoked_at,queue_enabled,execution_state,current_activity,worker_protocol,extension_version,last_error_code').is('revoked_at', null),
     supabase.from('facebook_publications').select('id,product_id,repeat_of,content,approved_at,facebook_deliveries('+facebookDeliveryFields+')').eq('product_id', productId).order('approved_at', { ascending: false }).order('id',{ascending:false}),
     supabase.from('fb_group_performance').select('*').order('group_name'),

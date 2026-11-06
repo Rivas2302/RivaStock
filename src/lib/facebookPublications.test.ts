@@ -15,6 +15,8 @@ describe('Facebook publication preparation',() => {
     expect(validatePublication({...content,photos:[],location:'BA',category:'Muebles'},true,[])).toContain('1 y 10 fotos');
     expect(validatePublication({...content,location:'BA',category:'Muebles'},false,[])).toMatch('grupo');
     expect(validatePublication({...content,price:NaN},true,[])).toMatch('precio');
+    expect(validatePublication({...content,location:'BA',category:'Muebles'},true,[],true,1200)).toBeNull();
+    expect(validatePublication({...content,price:1201,location:'BA',category:'Muebles'},true,[],true,1200)).toContain('coincidir con el precio');
   });
   it('uses the reviewed group text override and appends exact product fields to an AI draft', () => {
     const content={...initialPublication(product),price:1200,condition:'good' as const,location:'Buenos Aires',category:'Hogar'};
@@ -26,6 +28,9 @@ describe('Facebook publication preparation',() => {
     expect(rebased).toContain('Precio: $1.500');
     expect(rebased).toContain('Ubicación: Rosario');
     expect(rebased.match(/Precio:/g)).toHaveLength(1);
+  });
+  it('blocks policy-violating copy in the extension before touching Facebook', async () => {
+    await expect(facebookAdapter.prepare({destination:{mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},content:{title:'CABLE USB CARGA RAPIDA',description:'',price:1200,photos:[]}}, {url:'https://example.supabase.co'})).rejects.toThrow('mayúsculas sostenidas');
   });
   it('restricts group destinations and detects a stale or revoked computer',() => {
     expect(normalizeGroupUrl('https://www.facebook.com/groups/123/?ref=test')).toBe('https://www.facebook.com/groups/123');
