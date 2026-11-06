@@ -29,12 +29,15 @@ import { getInventoryOwnerName } from '../lib/inventoryOwners';
 import { motion } from 'motion/react';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileIntakeList from '../components/intake/MobileIntakeList';
 
 export default function Intake() {
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,
   } = useAuth();
+  const isMobile = useIsMobile();
   const { owners: inventoryOwners } = useInventoryOwners(
     user?.uid,
     refetchToken,
@@ -288,6 +291,10 @@ export default function Intake() {
     i.productName.toLowerCase().includes(search.toLowerCase()) ||
     (i.supplier?.toLowerCase().includes(search.toLowerCase()))
   );
+  const currentMonth = todayString().slice(0, 7);
+  const monthlyIntakes = intakes.filter(intake => intake.date.startsWith(currentMonth));
+  const monthlyInvestment = monthlyIntakes.reduce((total, intake) => total + intake.purchasePrice * intake.quantity, 0);
+  const monthlyUnits = monthlyIntakes.reduce((total, intake) => total + intake.quantity, 0);
 
   if (inventoryAccessError) {
     return (
@@ -303,6 +310,17 @@ export default function Intake() {
 
   return (
     <div className="operational-page space-y-6">
+      {isMobile ? <MobileIntakeList
+        intakes={filteredIntakes}
+        products={products}
+        monthlyInvestment={monthlyInvestment}
+        monthlyUnits={monthlyUnits}
+        search={search}
+        canWrite={canWrite}
+        onSearch={setSearch}
+        onRegister={openModal}
+        onScan={() => setScannerOpen(true)}
+      /> : <>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ingresos de Mercadería</h2>
@@ -395,6 +413,7 @@ export default function Intake() {
           </table>
         </div>
       </div>
+      </>}
 
       {/* Add Modal */}
       <Modal

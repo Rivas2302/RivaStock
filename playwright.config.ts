@@ -14,12 +14,12 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'android-mobile-ai',
-      testMatch: /(ai|stock|sales(?:-adjustment)?|number-fields|cashflow|quick-price|reports|quotes|customers|suppliers)-mobile\.spec\.ts/,
+      testMatch: /(ai|stock|sales(?:-adjustment)?|number-fields|cashflow|quick-price|reports|quotes|customers|suppliers|intake)-mobile\.spec\.ts/,
       use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } },
     },
     {
       name: 'iphone-mobile-ai',
-      testMatch: /(ai|stock|sales(?:-adjustment)?|number-fields|cashflow|quick-price|reports|quotes|customers|suppliers)-mobile\.spec\.ts/,
+      testMatch: /(ai|stock|sales(?:-adjustment)?|number-fields|cashflow|quick-price|reports|quotes|customers|suppliers|intake)-mobile\.spec\.ts/,
       use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } },
     },
   ],

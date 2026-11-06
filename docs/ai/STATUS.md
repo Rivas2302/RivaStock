@@ -1,3 +1,10 @@
+## 2026-11-05 21:36 ART — I15.7 Ingresos móvil
+
+- Agregué acciones Registrar ingreso y Escanear, resumen mensual de inversión/unidades, búsqueda y tarjetas agrupadas por fecha con miniatura lazy, cantidad, titular, proveedor, costo unitario y total. La lista muestra 20 entradas y suma 20 con “Ver más”. Usa los datos y formularios actuales; PC conserva su historial tabular.
+- Verificación: `npm run lint`; Playwright **3/3** aplicables en Android, iPhone y Chromium: totales, agrupación, miniatura `.thumb.webp` diferida, búsqueda, apertura/cancelación del formulario sin guardar y tabla desktop. Tres ejecuciones se omitieron por proyecto no correspondiente. Fixtures QA; sin escrituras.
+- Sin migraciones ni cambios de esquema.
+- **Siguiente:** I15.8 Configuración. Vercel confirmó éxito para I15.5; I15.6 e I15.7 esperan checks.
+
 ## 2026-11-05 21:48 ART — I15.6 Proveedores móvil
 
 - Agregué tarjetas móviles con resumen de activos/categoría principal, filtros de categoría y estado, búsqueda, condición de pago, acciones WhatsApp/llamar/catálogo, detalle con redes y menú para editar, activar/desactivar o eliminar. El borrado usa confirmación dentro de la app. La lista muestra 20 y “Ver más”; PC conserva su tabla.
