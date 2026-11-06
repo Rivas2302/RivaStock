@@ -4,6 +4,7 @@ import { authorizeFacebookDevice, authorizeWorker, isUuid, readJsonLimited } fro
 import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
+import { isAllowedAutomationOrigin } from './origin.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
@@ -21,7 +22,6 @@ const SUPERVISOR_FUNCTION_KEYS: Record<string, string> = {
   review_photos: 'fb_photo_review',
   classify_warning: 'fb_supervisor_verify',
 };
-const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type JsonRecord = Record<string, unknown>;
@@ -269,7 +269,7 @@ async function supervisorWorker(
 
 serve(withSupabaseAdminKeyMode(async (req) => {
   const origin = req.headers.get('origin');
-  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+  if (!isAllowedAutomationOrigin(origin)) {
     return jsonResponseWithCors({ error: 'Origen no permitido.' }, 403, origin);
   }
   if (req.method === 'OPTIONS') return jsonResponseWithCors({}, 204, origin);
