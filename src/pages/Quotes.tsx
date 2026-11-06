@@ -18,6 +18,8 @@ import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileQuotes from '../components/quotes/MobileQuotes';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Borrador',
@@ -53,6 +55,7 @@ export default function Quotes() {
   const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
   const canWrite = usePermission('presupuestos', 'write');
   const canDelete = usePermission('presupuestos', 'delete');
+  const isMobile = useIsMobile();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -99,6 +102,7 @@ export default function Quotes() {
   // Convert modal
   const [isConvertOpen, setIsConvertOpen] = useState(false);
   const [convertingQuote, setConvertingQuote] = useState<Quote | null>(null);
+  const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null);
   const [convertMode, setConvertMode] = useState<'paid' | 'credit'>('paid');
   const [convertMethod, setConvertMethod] = useState<'Efectivo' | 'Transferencia' | 'Otro'>('Efectivo');
   const [savingConvert, setSavingConvert] = useState(false);
@@ -385,6 +389,16 @@ export default function Quotes() {
     fetchData();
   };
 
+  const handleMobileDelete = async (deleteLinkedSale: boolean) => {
+    if (!quoteToDelete) return;
+    if (deleteLinkedSale && quoteToDelete.convertedToSaleId) {
+      await callRpc('delete_sale', { p_sale_id: quoteToDelete.convertedToSaleId });
+    }
+    await db.delete('quotes', quoteToDelete.id);
+    setQuoteToDelete(null);
+    fetchData();
+  };
+
   const openShare = (q: Quote) => {
     setSharingQuote(q);
     setCopied(false);
@@ -439,6 +453,22 @@ export default function Quotes() {
 
   return (
     <div className="business-page operational-page space-y-6">
+      {isMobile ? <MobileQuotes
+        quotes={quotes}
+        filteredQuotes={filteredQuotes}
+        statusFilter={statusFilter}
+        search={search}
+        canWrite={canWrite}
+        canDelete={canDelete}
+        onSearch={setSearch}
+        onStatusFilter={setStatusFilter}
+        onNew={openNew}
+        onEdit={openEdit}
+        onShare={openShare}
+        onConvert={openConvert}
+        onDelete={setQuoteToDelete}
+        effectiveStatus={getEffectiveStatus}
+      /> : <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -587,6 +617,7 @@ export default function Quotes() {
           <Pagination {...pagination} />
         </div>
       </div>
+      </>}
 
       {/* Create/Edit Modal */}
       <Modal
@@ -917,6 +948,18 @@ export default function Quotes() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={Boolean(quoteToDelete)} onClose={() => setQuoteToDelete(null)} title="Eliminar presupuesto" className="max-w-md">
+        {quoteToDelete && <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">¿Querés eliminar el presupuesto {quoteToDelete.number} de {quoteToDelete.clientName}?</p>
+          {quoteToDelete.convertedToSaleId && <p className="text-sm text-amber-700 dark:text-amber-300">Este presupuesto ya se convirtió en una venta. También podés borrar esa venta.</p>}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={() => setQuoteToDelete(null)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Cancelar</button>
+            <button type="button" onClick={() => handleMobileDelete(false)} className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 font-semibold text-white">Eliminar presupuesto</button>
+            {quoteToDelete.convertedToSaleId && <button type="button" onClick={() => handleMobileDelete(true)} className="min-h-11 flex-1 rounded-xl bg-rose-800 px-4 font-semibold text-white">Eliminar también la venta</button>}
+          </div>
+        </div>}
       </Modal>
 
       {/* Convert Modal */}

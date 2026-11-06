@@ -1,4 +1,11 @@
-## 2026-11-05 23:55 ART — I15.3 Reportes móvil
+## 2026-11-05 21:21 ART — I15.4 Presupuestos móvil
+
+- Agregué tarjetas de presupuesto con número, cliente, estado, cantidad de productos, total y vencimiento; acciones para compartir y pasar a venta; chips de estado, búsqueda, resumen y carga progresiva de 20. El borrado móvil usa un diálogo de la app y permite elegir si también se borra la venta vinculada, sin `confirm()` del navegador. La tabla de PC queda en su rama actual.
+- Verificación: `npm run lint`; Playwright **3/3** aplicables en Android, iPhone y Chromium; el flujo móvil valida búsqueda, filtro, compartir, apertura del borrado sin confirmar, y ausencia de desborde. Tres ejecuciones se omitieron por proyecto no correspondiente. Fixtures sintéticos; no hubo escrituras.
+- Sin migraciones ni cambios de esquema. Código listo para publicar en un commit de módulo.
+- **Siguiente:** I15.5 Clientes. C0/ensayos siguen sujetos a G2 y §5.2b.
+
+## 2026-11-05 21:18 ART — I15.3 Reportes móvil
 
 - Agregué la vista móvil de Reportes con períodos Hoy/7 días/Este mes/fechas, cuatro indicadores, barras por día, ranking de productos, distribución de pagos, tarjetas de ventas y exportación Excel/PDF en `⋯`. Usa el RPC agregado existente y no introduce consultas; muestra cinco ventas y permite abrir el resto. En móvil inicia en 7 días; la vista de PC conserva el período inicial de 30 días y su tabla.
 - Verificación: `npm run lint`; Playwright **3/3** aplicables: Android e iPhone validaron filtros, indicadores, gráficos, detalle progresivo, menú de exportación y ancho sin desborde; Chromium validó analytics y tabla de PC. Tres ejecuciones se omitieron por proyecto no correspondiente. Datos sintéticos solo en mocks; sin escrituras reales.
