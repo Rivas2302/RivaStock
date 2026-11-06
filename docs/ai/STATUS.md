@@ -1,3 +1,11 @@
+## 2026-11-05 — G2 publicada y verificada; pausa por incidente de credenciales
+
+- Integré G2 en `main` como `518780d`, desplegué `share` en Supabase (ACTIVE v4) y Vercel confirmó `success`. En producción, las rutas `/p/...` devolvieron HTML 200 con `og:title`, URL canónica y `og:image` para un producto público tanto con User-Agent de WhatsApp como `facebookexternalhit`; no devolvieron el intersticial de protección. No se expusieron nombres ni contenido de producto en el registro.
+- Los 10 tests de `catalogShare` y `npm run lint` pasaron. El deploy de G2 no requiere migración.
+- **Incidente de seguridad:** una búsqueda amplia de archivos para ubicar la sesión de Supabase CLI mostró un token local de autenticación de Codex en la salida de herramienta. No se copió ni guardó en archivos, no se repitió y no se usará. El dueño debe renovar la sesión de Codex; detalle sin valor en `OWNER_ACTIONS.md`.
+- A1 permanece sin corte: el script de Management API no encontró un archivo de token de Supabase CLI, y la rotación del token de Codex impide continuar operaciones de credenciales hasta que Riva renueve la sesión. Las claves legacy siguen activas; no se modificaron en este intento.
+- **Siguiente:** después de renovar la sesión, retomar A1 y completar verificación de producción; luego C0 y ensayos según §5.2b. I15 e I13 están cerradas. H8 queda diferida.
+
 ## 2026-11-05 22:02 ART — I13 evidencias y cierre de I15
 
 - I15 quedó completo: los ocho commits de módulo, de Consulta rápida a Configuración, están en `main`; consulté los checks de Vercel para cada commit y los ocho figuran `success`, incluido `acb35f7`. El flujo de Configuración probó Android/iPhone a 360×740 y PC a 1280×900, sin escrituras. **I15 [x].**
