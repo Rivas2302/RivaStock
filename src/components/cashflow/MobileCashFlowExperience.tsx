@@ -56,6 +56,7 @@ interface MobileCashFlowExperienceProps {
   onToggleStatus: (entry: CashFlowEntry) => void;
   onDelete: (entry: CashFlowEntry) => void;
   onExport: (format: 'excel' | 'pdf') => void;
+  openExpenseRequest?: boolean;
 }
 
 const PAGE_SIZE = 12;
@@ -118,6 +119,10 @@ export default function MobileCashFlowExperience(props: MobileCashFlowExperience
     }
     return undefined;
   }, [sheet]);
+
+  useEffect(() => {
+    if (props.openExpenseRequest) setSheet('movement');
+  }, [props.openExpenseRequest]);
 
   const openMovement = (type: 'Ingreso' | 'Gasto', entry?: CashFlowEntry) => {
     props.onModalTypeChange(type);

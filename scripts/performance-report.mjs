@@ -53,10 +53,12 @@ if (process.argv.includes('--check')) {
   // K3 adds foreground-only polling and narrower paged reads. Keep a small
   // route-specific allowance for those controls while preserving the global budget.
   // I12 adds shared number and money controls to Stock and Sales forms.
-  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 242, 'src/pages/Stock.tsx': 238, 'src/pages/Sales.tsx': 232, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
+  // I16 adds query-driven quick actions to Sales; the route allowance includes that entry point.
+  // I16 also adds shared token-based navigation styles used by the Knowledge route shell.
+  const overrides = { 'index.html': 210, 'src/pages/AIHub.tsx': 242, 'src/pages/Stock.tsx': 238, 'src/pages/Sales.tsx': 235, 'src/pages/Dashboard.tsx': 220, 'src/pages/Reports.tsx': 330 };
   for (const [route, data] of Object.entries(report)) {
     const jsBudget = (overrides[route] ?? 235) * 1024;
-    if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 24.8 * 1024) {
+    if (data.gzipJsBytes > jsBudget || data.gzipCssBytes > 25.1 * 1024) {
       console.error(`Bundle budget exceeded: ${route}`);
       process.exitCode = 1;
     }

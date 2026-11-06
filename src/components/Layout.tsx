@@ -1,99 +1,25 @@
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useRef } from 'react';
-import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  ArrowDownCircle,
-  Wallet,
-  ClipboardList,
-  Calculator,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  ExternalLink,
-  FileText,
-  Users,
-  Building2,
-  BarChart3,
-  History,
-  ScanLine,
-  Images,
-  Zap,
-  Sparkles,
-} from 'lucide-react';
-import { useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
-import type { ModuleKey } from '../types';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
 import type { BusinessModuleKey } from '../lib/businessPlan';
 const BusinessSetupModal = lazy(() => import('./BusinessSetupModal'));
+const AppNavigation = lazy(() => import('./AppNavigation'));
 
 import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
-
-interface NavItem {
-  name: string;
-  path: string;
-  icon: typeof LayoutDashboard;
-  module: ModuleKey | null;
-  businessModule?: BusinessModuleKey;
-  ownerOnly?: boolean;
-}
-
-function isNavItemActive(itemPath: string, pathname: string): boolean {
-  return itemPath === '/' ? pathname === '/' : pathname === itemPath || pathname.startsWith(`${itemPath}/`);
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { name: 'Inicio', path: '/', icon: LayoutDashboard, module: null },
-  { name: 'Consulta rápida', path: '/consulta-rapida', icon: ScanLine, module: 'stock' },
-  { name: 'Stock', path: '/stock', icon: Package, module: 'stock' },
-  { name: 'Buscar y enviar', path: '/fotos', icon: Images, module: 'stock' },
-  { name: 'Ventas', path: '/ventas', icon: ShoppingCart, module: 'ventas' },
-  { name: 'Reportes', path: '/reportes', icon: BarChart3, module: 'ventas' },
-  { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
-  { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes' },
-  { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores' },
-  { name: 'Compras a proveedores', path: '/compras', icon: Package, module: 'proveedores' },
-  { name: 'Ingresos', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
-  { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },
-  { name: 'Pedidos', path: '/pedidos', icon: ClipboardList, module: 'pedidos' },
-  { name: 'Calculadora', path: '/calculadora', icon: Calculator, module: null },
-  { name: 'Trazabilidad', path: '/trazabilidad', icon: History, module: 'config' },
-  { name: 'Configuración', path: '/config', icon: Settings, module: 'config' },
-  { name: 'Automatizaciones', path: '/automatizaciones', icon: Zap, module: 'stock', businessModule: 'automation' },
-  { name: 'IA', path: '/ia', icon: Sparkles, module: null, businessModule: 'ai', ownerOnly: true },
-];
-
+import type { PermissionMatrix } from '../types';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
   const [mobileChrome, setMobileChrome] = useState({ hideHeader: false, hideBottomNav: false });
   const { plan, loading: planLoading, error: planError } = useBusinessPlan();
+  const businessCanWrite = !planLoading && !planError && Boolean(plan && plan.status !== 'suspended');
   const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
 
   const includedModules = !planLoading && !planError ? plan?.limits.modules : null;
-  const navItems = NAV_ITEMS.filter(it =>
-    (!it.ownerOnly || isOwner)
-    && (it.module === null || permissions[it.module]?.read === true)
-    && (!it.businessModule || includedModules?.[it.businessModule] === true)
-  );
-  const navGroups = [
-    { label: 'Operación', paths: ['/', '/consulta-rapida', '/stock', '/fotos', '/ventas', '/reportes', '/presupuestos'] },
-    { label: 'Relaciones', paths: ['/clientes', '/proveedores', '/compras'] },
-    { label: 'Gestión', paths: ['/ingresos', '/caja', '/pedidos', '/calculadora'] },
-    { label: 'Sistema', paths: ['/automatizaciones', '/ia', '/trazabilidad', '/config'] },
-  ].map((group) => ({
-    ...group,
-    items: navItems.filter((item) => group.paths.includes(item.path)),
-  })).filter((group) => group.items.length > 0);
-
   const displayName = isOwner
     ? (user?.displayName || authUser?.email || '')
     : (authUser?.email || '');
@@ -138,62 +64,20 @@ export default function Layout() {
 
   return (
     <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
-      {/* Desktop Sidebar */}
-      <aside className="app-sidebar hidden lg:flex flex-col w-64 text-white shrink-0">
-        <div className="p-6">
-          <h1 className="brand-mark text-2xl font-extrabold text-white">RivaStock</h1>
-          <p className="mt-1 text-xs text-slate-400">{user?.businessName}</p>
-        </div>
-        
-        <nav className="flex-1 min-h-0 px-4 pb-6 space-y-5 overflow-y-auto overscroll-contain">
-          {navGroups.map((group) => (
-            <div key={group.label} className="space-y-1">
-              <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                {group.label}
-              </p>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const isActive = isNavItemActive(item.path, location.pathname);
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={cn(
-                      "nav-item flex items-center gap-3 px-3 py-2 transition-colors group",
-                      isActive
-                        ? "nav-item-active text-white"
-                        : "text-slate-400 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <Icon size={19} strokeWidth={1.8} />
-                    <span className="font-medium">{item.name}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="p-4 mt-auto border-t border-slate-800 space-y-2 shrink-0">
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
-              {displayInitial}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-              <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="nav-item flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">Cerrar Sesión</span>
-          </button>
-        </div>
-      </aside>
+      <Suspense fallback={<div className="hidden w-64 shrink-0 lg:block" />}><AppNavigation
+        permissions={permissions as PermissionMatrix}
+        businessModules={includedModules ?? {}}
+        isOwner={isOwner}
+        canWrite={businessCanWrite}
+        businessName={user?.businessName ?? 'RivaStock'}
+        displayName={displayName}
+        displayInitial={displayInitial}
+        roleLabel={isOwner ? 'Propietario' : 'Colaborador'}
+        pathname={location.pathname}
+        hideBottomNav={mobileChrome.hideBottomNav}
+        loggingOut={loggingOut}
+        onLogout={handleLogout}
+      /></Suspense>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
@@ -208,108 +92,15 @@ export default function Layout() {
           </Suspense>
         )}
         {/* Mobile Header */}
-        {!mobileChrome.hideHeader && <header className="lg:hidden flex items-center justify-between p-4 bg-[#FCFAF5] dark:bg-[#202329] border-b border-[#DDD8CE] dark:border-slate-700 shrink-0">
-          <h1 className="brand-mark text-xl font-extrabold text-[#1D2026] dark:text-white">RivaStock</h1>
-          <button 
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 text-[#4E535D] dark:text-slate-300"
-          >
-            <Menu size={24} />
-          </button>
+        {!mobileChrome.hideHeader && <header className="lg:hidden flex items-center justify-between p-4 bg-[var(--surface)] border-b border-[var(--line)] shrink-0">
+          <h1 className="brand-mark text-xl font-extrabold text-[var(--ink)]">RivaStock</h1>
         </header>}
 
-        <div className="app-content flex-1 overflow-y-auto p-4 lg:p-8">
-          <Outlet context={{ setMobileChrome, menu: setIsMobileMenuOpen }} />
+        <div className={cn('app-content flex-1 overflow-y-auto p-4 lg:p-8', !mobileChrome.hideBottomNav && 'pb-32 lg:pb-8')}>
+          <Outlet context={{ setMobileChrome, menu: () => undefined }} />
         </div>
 
-        {/* Mobile Bottom Bar */}
-        {!mobileChrome.hideBottomNav && <nav className="lg:hidden flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#FCFAF5] dark:bg-[#202329] border-t border-[#DDD8CE] dark:border-slate-700 shrink-0">
-          {navItems.slice(0, 5).map((item) => {
-            const Icon = item.icon;
-            const isActive = isNavItemActive(item.path, location.pathname);
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex flex-col items-center gap-1 p-2 transition-colors",
-                  isActive ? "text-[#365FAD] dark:text-[#90A9DF]" : "text-slate-400"
-                )}
-              >
-                <Icon size={20} />
-                <span className="text-[10px] font-medium">{item.name}</span>
-              </Link>
-            );
-          })}
-        </nav>}
       </main>
-
-      {/* Mobile Menu Overlay */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              className="fixed inset-y-0 right-0 w-64 max-w-[85vw] app-sidebar text-white z-50 lg:hidden flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-            >
-              <div className="p-6 flex items-center justify-between">
-                <h1 className="text-xl font-bold text-indigo-400">Menú</h1>
-                <button onClick={() => setIsMobileMenuOpen(false)}>
-                  <X size={24} />
-                </button>
-              </div>
-              <nav className="flex-1 min-h-0 px-4 pb-6 space-y-1 overflow-y-auto overscroll-contain">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = isNavItemActive(item.path, location.pathname);
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={cn(
-                        "nav-item flex items-center gap-3 px-3 py-2 transition-colors",
-                        isActive ? "nav-item-active text-white" : "text-slate-400 hover:bg-white/5"
-                      )}
-                    >
-                      <Icon size={20} />
-                      <span className="font-medium">{item.name}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-              <div className="p-4 border-t border-slate-800 space-y-2 shrink-0">
-                <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-[#365FAD] flex items-center justify-center text-white text-sm font-bold shrink-0">
-                    {displayInitial}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-                    <p className="text-xs text-slate-500 truncate">{isOwner ? 'Propietario' : 'Colaborador'}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="nav-item flex items-center gap-3 w-full px-3 py-2 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
-                >
-                  <LogOut size={20} />
-                  <span className="font-medium">Cerrar Sesión</span>
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

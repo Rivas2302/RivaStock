@@ -1,3 +1,13 @@
+# 2026-11-06 00:36 ART — I16 implementada; publicación pendiente
+
+- Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
+- La navegación desktop tiene cinco grupos y búsqueda “Ir a…”. En móvil se agregó la barra flotante Inicio · Stock · + · Ventas · Más, con reemplazos cuando un módulo está oculto; las hojas muestran las acciones permitidas y sus destinos existentes. No se añadieron consultas a Supabase.
+- Los rótulos y descripciones de las hojas coinciden con las maquetas; se mantienen los tokens de tema, estado activo, botón atrás y filtros de permisos/módulos.
+- Verificación local: `npm run lint`, `npm test` (176 archivos, 1012 pruebas), `npm run build`, `npm run perf:check` y Playwright (Android, iPhone y Chromium escritorio a 1280 px: 3 pruebas aprobadas, 3 omitidas por proyecto). La captura posterior de escritorio se guarda en `test-results/mobile-navigation-desktop-1280.png`; no había una captura previa comparable en el worktree.
+- El presupuesto de rendimiento actualizado cubre el CSS compartido (25.1 KiB) y la entrada de Ventas (235 KiB), que suben por el nuevo menú y el deep link de acciones; `perf:check` pasa. El CSS móvil está separado del CSS inicial.
+- **I16 aún `[ ]`** hasta commit, deploy de Vercel y verificación en producción. Sin migraciones ni escrituras de datos.
+- **Siguiente:** publicar I16; luego retomar E5 en orden. Su backup verificado es obligatorio antes de crear/aplicar su migración. E6 espera la expiración de la gracia registrada de 72 h.
+
 # 2026-11-05 23:37 ART — C0 desplegado; validación en Chrome pendiente
 
 - A1 ya estaba cerrado antes de esta ejecución: Riva aportó `storage-s3.env` fuera del repo; las credenciales no se imprimieron ni copiaron. `KEY_ROTATION.md` registra el corte y el smoke posterior de las claves legacy. No hubo cambios de credenciales en esta tarea.
@@ -1339,3 +1349,4 @@ Sin toque en src/, supabase/ ni extensions/.
 - Verificación local: lint aprobado; 984 pruebas del repo, 121 del Bridge, 3 de S3 en Deno y build aprobados. La primera ejecución concurrente agotó el timeout de una prueba; la suite completa repetida en forma aislada pasó.
 - La Management API confirma que el par legacy sigue habilitado. Todavía falta desactivarlo y completar el smoke autenticado de app, producto, Bridge y extensión; reactivarlo de inmediato si algo falla. **A1 continúa abierto hasta ese corte.**
 - **Siguiente:** cerrar A1 con el smoke de producción y después continuar C0 y los ensayos con G2 abierta. I15 queda disponible si alguna prueba en vivo espera una puerta. H8 diferida por pedido de Riva.
+## 2026-11-06 00:36 ART — I16 implementada; publicación pendiente

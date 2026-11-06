@@ -11,12 +11,13 @@ interface MobileCustomersProps {
   onSearch: (value: string) => void;
   onNew: () => void;
   onOpen: (customer: Customer) => void;
+  initialBalanceFilter?: BalanceFilter;
 }
 
 type BalanceFilter = 'all' | 'owes' | 'clear';
 
-export default function MobileCustomers({ customers, search, canWrite, onSearch, onNew, onOpen }: MobileCustomersProps) {
-  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>('all');
+export default function MobileCustomers({ customers, search, canWrite, onSearch, onNew, onOpen, initialBalanceFilter = 'all' }: MobileCustomersProps) {
+  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>(initialBalanceFilter);
   const [visibleCount, setVisibleCount] = useState(20);
   useEffect(() => setVisibleCount(20), [search, balanceFilter]);
   const dueCustomers = customers.filter(customer => customer.currentBalance > 0);

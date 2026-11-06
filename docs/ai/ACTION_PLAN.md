@@ -434,6 +434,20 @@ Maquetas: `docs/design/mobile-modules/` — `Ventas`, `ConsultaRapida`, `Reporte
 
 ---
 
+### [ ] I16 Menú lateral y barra de abajo nuevos — **Riva eligió la opción B el 05/11**
+Maquetas: `docs/design/mobile-navigation/` — `MenuLateral`, `Mas`, **`BarraFlotante` y `BarraFlotanteAbierta`** (`.dc.html`). **Actualizado 05/11 23:40: Riva prefiere la barra FLOTANTE** (píldora separada de los bordes, con el + dentro). `BarraB` y `NuevoMenu` muestran el mismo contenido en versión pegada al borde: usá su contenido, pero con el estilo de las maquetas flotantes. `BarraA` fue descartada. El menú vive en `src/components/Layout.tsx` (lista `navItems` y grupos Operación/Relaciones/Gestión/Sistema).
+- **Barra de abajo flotante (solo móvil, menos de 1024 px):** Inicio · Stock · **botón + central** · Ventas · Más, dentro de una píldora flotante a 14 px de los costados y 16 px del borde inferior (más el área segura del celular), con sombra y bordes redondeados. El contenido de cada pantalla deja espacio abajo para que la barra no tape el último elemento. La sección activa se marca con una píldora detrás del ícono. El panel del + aparece como tarjeta flotante encima de la barra. Si el plan del negocio o los permisos ocultan Stock o Ventas, ese lugar lo ocupa el siguiente módulo permitido; el + y Más siempre están.
+- **Botón + (hoja `NuevoMenu`):** acciones de dos columnas, cada una lleva directo a la pantalla o formulario que ya existe: Nueva venta, Modo POS, Consultar precio (Consulta rápida), Enviar fotos (Buscar y enviar), Presupuesto (nuevo), Ingreso de mercadería (nuevo), Registrar gasto (hoja de Flujo de caja en modo Gasto) y Cobro de cliente (Clientes, con la acción de cobrar). Solo aparecen las acciones que el usuario tiene permitidas. El + se convierte en X mientras la hoja está abierta; se cierra tocando afuera, con la X o con el botón atrás.
+- **Más (hoja `Mas`):** todas las secciones como íconos en grilla de 4, en los mismos 5 grupos del menú lateral, más Configuración y Cerrar sesión abajo. Reemplaza al menú hamburguesa en el celular.
+- **Menú lateral (`MenuLateral`, para tablet y PC, y como respaldo):** los 5 grupos (Vender: Ventas, Presupuestos, Pedidos, Consulta rápida · Productos: Stock, Ingresos de mercadería, Buscar y enviar · Clientes y proveedores: Clientes, Proveedores, Compras a proveedores · Dinero: Flujo de caja, Reportes, Calculadora · Herramientas: Asistente IA, Automatizaciones, Trazabilidad), Inicio arriba, buscador “Ir a…” que filtra por nombre, sección activa resaltada, número de pedidos nuevos en Pedidos si el dato ya existe (si no, sin número), y abajo usuario, Configuración y Cerrar sesión. “Compras a proveedores” lleva un ícono propio (camión), distinto de Stock.
+- En PC, la barra lateral actual mantiene su lugar: solo se reordenan los grupos y se agregan el buscador, el ícono nuevo y la marca de la sección activa. Capturas antes/después a 1280 px.
+- Mismas reglas de I15: tokens actuales, touch ≥ 44 px, AA en ambos temas, permisos y módulos del plan respetados igual que hoy. Sin consultas nuevas a Supabase para armar el menú (usar lo que `Layout.tsx` ya tiene cargado).
+- **Tests:** unitarios de qué ítems y acciones aparecen según permisos y plan; Playwright móvil (360×740, Android e iPhone): abrir el +, ir a cada acción y volver; abrir Más y navegar; la sección activa se marca. Sin escrituras en producción.
+- **Cuándo:** junto con I15 (antes de J2). Si I15 ya está cerrada, hacela apenas puedas, antes de volver al Bloque C cuando C quede esperando a Riva.
+- **Commit:** `feat(nav): grouped menu, bottom bar with quick actions and more sheet`
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.

@@ -442,6 +442,7 @@ export default function Customers() {
         onSearch={setSearch}
         onNew={openNew}
         onOpen={openFicha}
+        initialBalanceFilter={searchParams.get('action') === 'collect' ? 'owes' : 'all'}
       /> : <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -78,7 +78,7 @@ export default function Sales() {
   const canWrite = usePermission('ventas', 'write');
   const canDelete = usePermission('ventas', 'delete');
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
@@ -120,6 +120,27 @@ export default function Sales() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+
+  const openNewSale = () => {
+    setEditingSale(null);
+    setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
+    setIsCreditSale(false);
+    setCreditSearch('');
+    setSelectedCustomer(null);
+    setShowNewCustInline(false);
+    setNewCustName('');
+    setNewCustPhone('');
+    setPreferredOwnerId('');
+    setIsModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'new' || !canWrite) return;
+    openNewSale();
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [canWrite, searchParams, setSearchParams]);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [preferredOwnerId, setPreferredOwnerId] = useState<string>('');
   const registerIntentRef = useRef<IdempotencyIntent | null>(null);
@@ -796,18 +817,7 @@ export default function Sales() {
       saving={saving}
       statusSavingSaleId={statusSavingSaleId}
       canMutateSale={sale => shouldRenderSalesMutationActions(holdingsEnabled, ticketHasFullOperableScope(sale))}
-      onCreate={() => {
-        setEditingSale(null);
-        setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
-        setIsCreditSale(false);
-        setCreditSearch('');
-        setSelectedCustomer(null);
-        setShowNewCustInline(false);
-        setNewCustName('');
-        setNewCustPhone('');
-        setPreferredOwnerId('');
-        setIsModalOpen(true);
-      }}
+      onCreate={openNewSale}
       onOpenPos={() => navigate('/pos')}
       onEdit={openSaleForEdit}
       onDelete={handleDelete}

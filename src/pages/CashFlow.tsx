@@ -31,12 +31,14 @@ import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCashFlowExperience from '../components/cashflow/MobileCashFlowExperience';
+import { useSearchParams } from 'react-router-dom';
 
 const CASH_FLOW_COLUMNS = 'id,user_id,date,created_at,type,source,description,category,amount,payment_method,status,sale_id,financial_command_id,notes';
 const SETTLEMENT_SALE_COLUMNS = 'id,total,status';
 const SETTLEMENT_TRANSACTION_COLUMNS = 'id,customer_id,type,amount,related_sale_id';
 
 export default function CashFlow() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('caja', 'write');
@@ -55,6 +57,7 @@ export default function CashFlow() {
   const [saving, setSaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CashFlowEntry | null>(null);
   const [modalType, setModalType] = useState<'Ingreso' | 'Gasto'>('Ingreso');
+  const [openMobileExpense, setOpenMobileExpense] = useState(false);
   const [isClosingOpen, setIsClosingOpen] = useState(false);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [countedCash, setCountedCash] = useState('');
@@ -81,6 +84,17 @@ export default function CashFlow() {
     });
     setEditingEntry(null);
   };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'expense' || !canWrite) return;
+    resetForm();
+    setModalType('Gasto');
+    if (isMobile) setOpenMobileExpense(true);
+    else setIsModalOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [canWrite, isMobile, searchParams, setSearchParams]);
 
   const handleCashClosing = async (event: React.FormEvent, expectedCash: number) => {
     event.preventDefault();
@@ -409,6 +423,7 @@ export default function CashFlow() {
     onToggleStatus={entry => { void handleToggleStatus(entry); }}
     onDelete={entry => { void handleMobileDelete(entry); }}
     onExport={format => { void handleExport(format); }}
+    openExpenseRequest={openMobileExpense}
   />;
 
   return (

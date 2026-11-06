@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileQuotes from '../components/quotes/MobileQuotes';
+import { useSearchParams } from 'react-router-dom';
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Borrador',
@@ -51,6 +52,7 @@ function addDays(days: number): string {
 }
 
 export default function Quotes() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, refetchToken } = useAuth();
   const { owners: inventoryOwners } = useInventoryOwners(user?.uid, refetchToken);
   const canWrite = usePermission('presupuestos', 'write');
@@ -212,6 +214,14 @@ export default function Quotes() {
     resetForm();
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'new' || !canWrite) return;
+    openNew();
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [canWrite, searchParams, setSearchParams]);
 
   const openEdit = (q: Quote) => {
     setEditingQuote(q);

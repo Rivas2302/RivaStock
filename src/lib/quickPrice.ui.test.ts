@@ -6,7 +6,7 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
 
 const page = readSource('src/pages/QuickPrice.tsx');
 const app = readSource('src/App.tsx');
-const layout = readSource('src/components/Layout.tsx');
+const layout = readSource('src/components/AppNavigation.tsx');
 const dashboard = readSource('src/pages/Dashboard.tsx');
 
 describe('quick price UI contract', () => {

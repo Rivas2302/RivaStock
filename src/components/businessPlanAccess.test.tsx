@@ -104,6 +104,7 @@ describe('business plan UI access', () => {
   it('shows IA and Automatizaciones for the internal plan', async () => {
     mocks.businessPlan = { plan: internalPlan, loading: false, error: null };
     await renderLayout();
+    await vi.waitFor(() => expect(host.querySelector('a[href="/ia"]')).not.toBeNull());
     expect(host.querySelector('a[href="/ia"]')).not.toBeNull();
     expect(host.querySelector('a[href="/automatizaciones"]')).not.toBeNull();
   });

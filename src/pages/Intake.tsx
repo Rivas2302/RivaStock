@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import Modal from '../components/Modal';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
@@ -33,6 +34,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import MobileIntakeList from '../components/intake/MobileIntakeList';
 
 export default function Intake() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,
@@ -204,6 +206,14 @@ export default function Intake() {
     setIsProductDropdownOpen(false);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'new' || !canWrite) return;
+    openModal();
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [canWrite, searchParams, setSearchParams]);
 
   const closeModal = () => {
     if (intakeSubmitInFlightRef.current) return;
