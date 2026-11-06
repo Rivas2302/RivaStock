@@ -19,6 +19,7 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
     if(name==='get_owner_profile')data=[{id:owner,role:'admin',business_name:'Test',display_name:'Owner',email:'owner@test.invalid',onboarding_completed_at:'2026-01-01T00:00:00Z'}];
     if(name==='facebook_devices')data=[device];
     if(name==='inventory_operation_settings')data={holdings_enabled:false};
+    if(name==='fb_pacing_policy_get')data={min_gap_seconds:720,jitter_pct:10,daily_marketplace_cap:5,daily_group_cap:15,max_groups_per_listing:20,repeat_group_days:7,quiet_hours_start:'23:00:00',quiet_hours_end:'08:00:00',timezone_name:'America/Argentina/Buenos_Aires',warmup_until:'2026-12-01',pause_on_warning_hours:48,next_allowed_at:null,updated_at:new Date().toISOString()};
     if(name==='facebook_publications') {
       const product=url.searchParams.get('product_id')?.replace('eq.','');
       let result=product?rows.filter(p=>p.product_id===product):rows;
@@ -27,18 +28,18 @@ async function fixture(page:Page,role:'owner'|'viewer'|'denied'='owner') {
     }
     if(name==='products') {
       const id=url.searchParams.get('id')?.replace('eq.','');const row=rows.find(p=>p.product_id===id);
-      const products=rows.map(row=>({id:row.product_id,user_id:owner,name:row.content.title,description:row.content.description,sale_price:1500,purchase_price:1000,stock:3,images:[photo],image_url:photo}));
-      products.push({id:'new-product',user_id:owner,name:'Producto nuevo',description:'Descripción nueva',sale_price:2000,purchase_price:1000,stock:2,images:[photo],image_url:photo});
+      const products=rows.map(row=>({id:row.product_id,user_id:owner,name:row.content.title,description:row.content.description,category:'Muebles',sale_price:1500,purchase_price:1000,stock:3,images:[photo],image_url:photo}));
+      products.push({id:'new-product',user_id:owner,name:'Producto nuevo',description:'Descripción nueva',category:'Muebles',sale_price:2000,purchase_price:1000,stock:2,images:[photo],image_url:photo});
       data=id?products.find(item=>item.id===id):products;
     }
-    if(['cancel_facebook_delivery','retry_facebook_preparation','review_facebook_delivery','set_facebook_queue_enabled','approve_facebook_publication','request_facebook_rehearsal'].includes(name)) {
+    if(['cancel_facebook_delivery','retry_facebook_preparation','review_facebook_delivery','set_facebook_queue_enabled','approve_facebook_publication_v2','request_facebook_rehearsal'].includes(name)) {
       const args=route.request().postDataJSON();calls.push({name,args});
       const delivery=rows.flatMap(p=>p.facebook_deliveries).find(d=>d.id===args.p_delivery);
       if(delivery&&name==='cancel_facebook_delivery')delivery.status='cancelled';
       if(delivery&&name==='retry_facebook_preparation')delivery.status='pending';
       if(delivery&&name==='review_facebook_delivery'){delivery.status=args.p_decision==='found'?'submitted':'cancelled';delivery.evidence_url=args.p_url;}
       if(name==='set_facebook_queue_enabled')device.queue_enabled=args.p_enabled;
-      if(name==='approve_facebook_publication'){data='new-publication';rows.push({id:'new-publication',product_id:args.p_product,approved_at:new Date().toISOString(),content:args.p_content,facebook_deliveries:[{id:'new-delivery',destination_key:'marketplace',status:'pending',submitted_at:null,destination:{name:'Marketplace',mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},evidence_url:null,message:null}]});}
+      if(name==='approve_facebook_publication_v2'){data='new-publication';rows.push({id:'new-publication',product_id:args.p_product,approved_at:new Date().toISOString(),content:args.p_content,facebook_deliveries:[{id:'new-delivery',destination_key:'marketplace',status:'pending',submitted_at:null,destination:{name:'Marketplace',mechanism:'marketplace',url:'https://www.facebook.com/marketplace/create/item'},evidence_url:null,message:null}]});}
       else if(name==='request_facebook_rehearsal')data='rehearsal-request';
       else data=null;
     }
@@ -68,7 +69,7 @@ for(const mobile of [false,true])test(`centralizes history, safe actions and fut
   await expect(unknown.getByRole('button',{name:'No la encontré; cerrar este intento'})).toBeDisabled();
   await unknown.getByRole('checkbox',{name:'Ya revisé el destino'}).check();
   await unknown.getByRole('button',{name:'No la encontré; cerrar este intento'}).click();
-  await expect.poll(()=>calls.filter(c=>c.name==='review_facebook_delivery').length).toBe(1);expect(calls.filter(c=>c.name==='approve_facebook_publication')).toHaveLength(0);
+  await expect.poll(()=>calls.filter(c=>c.name==='review_facebook_delivery').length).toBe(1);expect(calls.filter(c=>c.name==='approve_facebook_publication_v2')).toHaveLength(0);
   await backToHistory(page);
   const failed=await openPublication(page,'Preparación con error');
   await failed.getByRole('button',{name:'Reintentar preparación'}).click();
@@ -104,7 +105,7 @@ test('owner can request a rehearsal from Automations without approving a publica
     p_destination:{mechanism:'marketplace',name:'Marketplace',url:'https://www.facebook.com/marketplace/create/item'},
     p_content:{title:'Producto nuevo',location:'General Pico',category:'Muebles'},
   });
-  expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(0);
+  expect(calls.filter(call=>call.name==='approve_facebook_publication_v2')).toHaveLength(0);
 });
 
 test('owner can inspect rehearsal trace steps and enlarge a signed screenshot',async({page})=>{
@@ -150,8 +151,8 @@ test('requires a separate decision and approval before publishing again',async({
   await modal.getByRole('button',{name:'Preparar otra publicación'}).click();
   await expect(modal.getByRole('button',{name:'Confirmar nueva publicación'})).toBeDisabled();
   await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();await modal.getByRole('button',{name:'Confirmar nueva publicación'}).click();
-  await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication').length).toBe(1);
-  expect(calls.find(c=>c.name==='approve_facebook_publication')!.args.p_repeat_of).toBe('publication-0');
+  await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication_v2').length).toBe(1);
+  expect(calls.find(c=>c.name==='approve_facebook_publication_v2')!.args.p_repeat_of).toBe('publication-0');
 });
 
 test('hides mutating actions for viewers and denies navigation without Stock access',async({page})=>{
@@ -216,7 +217,7 @@ for(const mobile of [false,true])test(`starts publication from inventory (${mobi
   await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
   await expect(modal).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Ver publicación: Producto nuevo'})).toContainText('En cola');
-  expect(calls.filter(call=>call.name==='approve_facebook_publication')).toHaveLength(1);
+  expect(calls.filter(call=>call.name==='approve_facebook_publication_v2')).toHaveLength(1);
   await expect(page).toHaveURL(/automatizaciones/);
 });
 
@@ -290,7 +291,7 @@ for(const mobile of [false,true])test(`selects multiple group identities and per
   await modal.getByRole('textbox',{name:'Buscar grupos'}).scrollIntoViewIfNeeded();
   expect(await modal.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
   await page.screenshot({path:testInfo.outputPath(`group-selector-${mobile?'mobile':'desktop'}.png`)});
-  const response=page.waitForRequest('**/rpc/approve_facebook_publication');
+  const response=page.waitForRequest('**/rpc/approve_facebook_publication_v2');
   await modal.getByRole('button',{name:'Confirmar y publicar',exact:true}).click();
   const request=await response;expect(request.postDataJSON().p_groups).toEqual(['g1','g2']);expect(request.postDataJSON().p_marketplace).toBe(false);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -445,7 +446,7 @@ test('a failed preparation with an unsupported issue shows its cause and can be 
 
 test('a failed first approval does not lock the product',async({page})=>{
   await fixture(page);const intents:string[]=[];
-  await page.route('**/rest/v1/rpc/approve_facebook_publication',route=>{intents.push(route.request().postDataJSON().p_intent);return intents.length===1?route.fulfill({status:503,json:{message:'Conexión temporalmente no disponible'}}):route.fulfill({json:'new-publication'});});
+  await page.route('**/rest/v1/rpc/approve_facebook_publication_v2',route=>{intents.push(route.request().postDataJSON().p_intent);return intents.length===1?route.fulfill({status:503,json:{message:'Conexión temporalmente no disponible'}}):route.fulfill({json:'new-publication'});});
   await page.goto('/automatizaciones?product=new-product');
   const modal=page.getByRole('dialog',{name:FACEBOOK_MODAL});
   await modal.getByLabel('Ubicación',{exact:true}).fill('General Pico');
@@ -468,8 +469,8 @@ test('repeating a publication keeps only photos the product still has',async({pa
   await modal.getByRole('button',{name:'Preparar otra publicación'}).click();
   await modal.getByRole('checkbox',{name:'Revisé el contenido'}).check();
   await modal.getByRole('button',{name:'Confirmar nueva publicación'}).click();
-  await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication').length).toBe(1);
-  expect(calls.find(c=>c.name==='approve_facebook_publication')!.args.p_content.photos).toEqual([photo]);
+  await expect.poll(()=>calls.filter(c=>c.name==='approve_facebook_publication_v2').length).toBe(1);
+  expect(calls.find(c=>c.name==='approve_facebook_publication_v2')!.args.p_content.photos).toEqual([photo]);
 });
 
 test('the unknown-result counter covers every page and the cause is visible',async({page})=>{

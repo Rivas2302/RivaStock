@@ -1,4 +1,4 @@
-# 2026-11-05 23:25 ART — C0 publicado en base de datos; release 0.5.24 en preparación
+# 2026-11-05 23:37 ART — C0 desplegado; validación en Chrome pendiente
 
 - A1 ya estaba cerrado antes de esta ejecución: Riva aportó `storage-s3.env` fuera del repo; las credenciales no se imprimieron ni copiaron. `KEY_ROTATION.md` registra el corte y el smoke posterior de las claves legacy. No hubo cambios de credenciales en esta tarea.
 - Comparé `ACTION_PLAN.md` con Desktop: la copia del escritorio está desactualizada respecto de `main` y no contiene el cierre de A1/I15; conservé `main`. `I15` ya está cerrada en `main` con sus ocho maquetas y commits. H8 sigue diferida como pidió Riva.
@@ -6,8 +6,10 @@
 - Backup previo verificado fuera del repo en `%USERPROFILE%\rivastock-backups\20261106T014042Z`: schema y data no vacíos, 96 tablas/14.401 filas en `table-counts.csv`, Storage con cinco buckets y 789 objetos, sin marcador de backup incompleto. Reutilicé el backup diario ya verificado para respetar K4 (máximo uno por día).
 - Apliqué solo `20261106015756_facebook_extension_update_target.sql`. Verifiqué por CLI que figura aplicada, que `facebook_worker_v2` existe y que los targets del servidor son `0.5.24`. `supabase db push --dry-run` previo enumeró únicamente esta migración.
 - Verificación local: `npm run lint`, `npm run build`, tests dirigidos 34/34 y suite completa 1008/1008 (con `VITE_SUPABASE_URL` y clave publicable ficticias para el entorno de test). `npm run perf:check` sigue reportando sobrepresupuesto preexistente de Knowledge, Reports, Sales y Settings; C0 no modifica esas páginas.
+- Verificación de interfaz con fixtures: `e2e/facebook-rehearsal.spec.ts` + `e2e/facebook-extension.spec.ts` y los casos de ensayo de `e2e/automations.spec.ts` pasaron **10/10**; `e2e/automations.spec.ts` completo pasó **31/31**. Corregí fixtures viejos que omitían `products.category`, respondían la RPC anterior `approve_facebook_publication` en vez de `_v2`, y no daban una política para `fb_pacing_policy_get`. No hubo llamadas a datos productivos ni publicaciones.
 - Desvío pendiente de C0: la extensión 0.5.24 todavía no está publicada ni probada desde Chrome. El primer salto desde 0.5.23 necesita instalar/recargar 0.5.24 una vez; después probar que un target nuevo se recarga en idle y que no se recarga durante un ensayo o envío. Los ensayos del Bloque C requieren Chrome con sesión Facebook y permiso de capturas; no publicar contenido.
-- **Siguiente:** commit y push a `main`, esperar Vercel y verificar en producción el ZIP/JSON de 0.5.24; luego agrupar con Riva la instalación/recarga inicial y la sesión Facebook para completar C0 y los ensayos en vivo. Mantener H8 diferida.
+- El commit `8048655` quedó en `main` con Rivas2302 y Vercel reportó `success`. En producción, el JSON y ZIP de la extensión devolvieron HTTP 200; versión 0.5.24, 17 archivos, 261.296 bytes y SHA-256 coincidente. La base refleja un único dispositivo activo en 0.5.23 con heartbeat reciente; todavía no anuncia `self-reload` ni capturas, así que no ejecuté ensayos que no podrían cumplir evidencia.
+- **Pendiente por Riva:** instalar/recargar una vez 0.5.24, aceptar el permiso de capturas si aparece y dejar Chrome abierto con Facebook iniciado. Después verificaré desde producción la recarga segura y ejecutaré primero los ensayos pendientes en el orden §5.2. H8 sigue diferida.
 
 ## 2026-11-05 — G2 publicada y verificada; pausa por incidente de credenciales
 
