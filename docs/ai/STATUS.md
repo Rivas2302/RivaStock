@@ -1,3 +1,10 @@
+## 2026-11-05 23:55 ART — I15.3 Reportes móvil
+
+- Agregué la vista móvil de Reportes con períodos Hoy/7 días/Este mes/fechas, cuatro indicadores, barras por día, ranking de productos, distribución de pagos, tarjetas de ventas y exportación Excel/PDF en `⋯`. Usa el RPC agregado existente y no introduce consultas; muestra cinco ventas y permite abrir el resto. En móvil inicia en 7 días; la vista de PC conserva el período inicial de 30 días y su tabla.
+- Verificación: `npm run lint`; Playwright **3/3** aplicables: Android e iPhone validaron filtros, indicadores, gráficos, detalle progresivo, menú de exportación y ancho sin desborde; Chromium validó analytics y tabla de PC. Tres ejecuciones se omitieron por proyecto no correspondiente. Datos sintéticos solo en mocks; sin escrituras reales.
+- No hubo migraciones ni cambios de esquema. El trabajo de código está listo para publicar como un commit de este módulo.
+- **Siguiente:** I15.4 Presupuestos. C0 y ensayos de Facebook siguen esperando G2; mantener cerrado el código nuevo de extensión por §5.2b.
+
 ## 2026-11-05 21:09 ART — I15.2 Ventas móvil
 
 - Añadí el listado móvil según la maqueta: acciones Nueva venta/POS del mismo ancho, resumen mensual con selector, filtros de estado y titular, búsqueda, ventas agrupadas por día, miniatura `.thumb.webp` lazy, detalle expandible y ticket multiproducto. Exportación está en el menú `⋯`; borrar usa confirmación dentro de la app. La paginación incremental muestra 20 tarjetas y suma 20 con “Ver más”; no agrega consultas a Supabase. La pantalla de PC conserva su implementación.

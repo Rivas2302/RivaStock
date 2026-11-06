@@ -46,6 +46,8 @@ import {
   Legend,
 } from 'recharts';
 import '../styles/business-redesign.css';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileReports from '../components/reports/MobileReports';
 
 const PRESETS: { id: ReportRangePreset; label: string }[] = [
   { id: 'today',     label: 'Hoy' },
@@ -102,10 +104,12 @@ function rangeLabel(from: string, to: string): string {
 export default function Reports() {
   const { user } = useAuth();
   const canRead = usePermission('ventas', 'read');
+  const isMobile = useIsMobile();
 
   const [filters, setFilters] = useState<ReportFilters>(() => {
-    const r = resolvePresetRange('30d');
-    return { preset: '30d', from: r.from, to: r.to };
+    const initialPreset: ReportRangePreset = isMobile ? '7d' : '30d';
+    const r = resolvePresetRange(initialPreset);
+    return { preset: initialPreset, from: r.from, to: r.to };
   });
 
   const [report, setReport]       = useState<SalesReportData | null>(null);
@@ -248,6 +252,20 @@ export default function Reports() {
         <p className="text-sm mt-1">No tenés permiso para ver reportes de ventas.</p>
       </div>
     );
+  }
+
+  if (isMobile) {
+    return <MobileReports
+      filters={filters}
+      report={report}
+      loading={loading}
+      error={error}
+      exporting={exporting}
+      onPresetChange={handlePresetChange}
+      onCustomDate={handleCustomDate}
+      onExportExcel={handleExportExcel}
+      onExportPDF={handleExportPDF}
+    />;
   }
 
   return (
