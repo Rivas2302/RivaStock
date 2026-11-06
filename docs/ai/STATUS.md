@@ -11,6 +11,7 @@
 - Antes de continuar E comparé los planes del Escritorio: `ACTION_PLAN.md` solo deja I16 sin marcar, así que conservé las marcas ya verificadas en `main`; `MULTI_BUSINESS_EXECUTION_PLAN.md` solo reinicia E0–E4 y E7, cuyas evidencias de producción están en este registro. El smoke SQL pasó sus 27 comprobaciones y terminó en **TODO OK**.
 - Lectura de producción 2026-11-06 03:44 UTC: migraciones E4 y E5 aplicadas; la central reportó 166 B, 1 archivo local, 0 faltantes y heartbeat a las 03:31 UTC. La versión aún no venció su gracia (`purge_due=0`, `cloud_purged=0`). No se modificaron datos.
 - Prevalidación E5: `npm ci` restauró las dependencias desde los lockfiles; pasaron 41 pruebas web focales y 2 pruebas del worker de originales bajo demanda. No hubo cambios versionados por la reinstalación.
+- Preparación E6: el backup diario verificado `20261106T014042Z` contiene los cinco buckets, 789 objetos y el objeto `knowledge` de 166 B ya verificado en la central; comprobé que el archivo respaldado existe. No generé otro backup hoy por el límite de K4.
 - **Siguiente:** completar E5 al vencer la gracia de 72 h (2026-11-06 10:06:19 UTC), probar apertura bajo demanda y limpiar su QA desde la app. E6 requiere validar el backup de Storage y la versión actual del Bridge.
 
 # 2026-11-05 23:37 ART — C0 desplegado; validación en Chrome pendiente
