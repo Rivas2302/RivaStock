@@ -1,12 +1,13 @@
-# 2026-11-06 00:36 ART — I16 implementada; publicación pendiente
+# 2026-11-06 00:45 ART — I16 publicada
 
 - Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
 - La navegación desktop tiene cinco grupos y búsqueda “Ir a…”. En móvil se agregó la barra flotante Inicio · Stock · + · Ventas · Más, con reemplazos cuando un módulo está oculto; las hojas muestran las acciones permitidas y sus destinos existentes. No se añadieron consultas a Supabase.
 - Los rótulos y descripciones de las hojas coinciden con las maquetas; se mantienen los tokens de tema, estado activo, botón atrás y filtros de permisos/módulos.
-- Verificación local: `npm run lint`, `npm test` (176 archivos, 1012 pruebas), `npm run build`, `npm run perf:check` y Playwright (Android, iPhone y Chromium escritorio a 1280 px: 3 pruebas aprobadas, 3 omitidas por proyecto). La captura posterior de escritorio se guarda en `test-results/mobile-navigation-desktop-1280.png`; no había una captura previa comparable en el worktree.
+- Verificación local: `npm run lint`, `npm test` (176 archivos, 1012 pruebas), `npm run build`, `npm run perf:check` y Playwright (Android, iPhone y Chromium escritorio a 1280 px: 3 pruebas aprobadas, 3 omitidas por proyecto). Las capturas comparativas de escritorio a 1280×900 se generaron con el commit anterior y el actual en `test-results/mobile-navigation-desktop-before-1280.png` y `test-results/mobile-navigation-desktop-1280.png` (artefactos locales ignorados por Git).
 - El presupuesto de rendimiento actualizado cubre el CSS compartido (25.1 KiB) y la entrada de Ventas (235 KiB), que suben por el nuevo menú y el deep link de acciones; `perf:check` pasa. El CSS móvil está separado del CSS inicial.
-- **I16 aún `[ ]`** hasta commit, deploy de Vercel y verificación en producción. Sin migraciones ni escrituras de datos.
-- **Siguiente:** publicar I16; luego retomar E5 en orden. Su backup verificado es obligatorio antes de crear/aplicar su migración. E6 espera la expiración de la gracia registrada de 72 h.
+- Commit `27ff596` publicado directamente en `main` con Rivas2302; Vercel terminó en `success`. En producción, el bundle raíz, `AppNavigation` y la hoja de navegación devolvieron HTTP 200 y contienen los rótulos nuevos.
+- **I16 `[x]`**. Sin migraciones ni escrituras de datos. No hice validación autenticada en Chrome; la prueba automatizada de navegación no realiza escrituras.
+- **Siguiente:** completar E5 tras la gracia de 72 h (vence 2026-11-06 10:06:19 UTC), verificar apertura bajo demanda y limpiar su QA por la app. E6 requiere backup de Storage y Bridge actualizado.
 
 # 2026-11-05 23:37 ART — C0 desplegado; validación en Chrome pendiente
 
