@@ -17,6 +17,8 @@ import Modal from '../components/Modal';
 import MoneyInput from '../components/MoneyInput';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileCustomers from '../components/customers/MobileCustomers';
 
 const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
 const CUSTOMER_LEDGER_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
@@ -28,6 +30,7 @@ export default function Customers() {
   const openedLink = useRef<string | null>(null);
   const targetSaleId = useRef<string | null>(null);
   const { user, refetchToken } = useAuth();
+  const isMobile = useIsMobile();
   const canWrite = usePermission('clientes', 'write');
   const canDelete = usePermission('clientes', 'delete');
   const paymentIntent = useRef<IdempotencyIntent | null>(null);
@@ -52,6 +55,7 @@ export default function Customers() {
   // Ficha modal
   const [isFichaOpen, setIsFichaOpen] = useState(false);
   const [fichaCustomer, setFichaCustomer] = useState<Customer | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
@@ -63,7 +67,9 @@ export default function Customers() {
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | 'Otro'>('Efectivo');
   const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentExcessConfirmation, setPaymentExcessConfirmation] = useState(false);
   const [reconciling, setReconciling] = useState(false);
+  const [reconcileConfirmation, setReconcileConfirmation] = useState(false);
 
   // Adjustment form
   const [adjAmount, setAdjAmount] = useState('');
@@ -242,6 +248,14 @@ export default function Customers() {
 
   const handleDelete = async (c: Customer) => {
     if (!canDelete) return;
+    if (isMobile) {
+      if (c.currentBalance !== 0) {
+        showMessage('No podés eliminar un cliente con saldo pendiente.', 'error');
+        return;
+      }
+      setCustomerToDelete(c);
+      return;
+    }
     if (c.currentBalance !== 0) {
       alert('No podés eliminar un cliente con saldo pendiente.');
       return;
@@ -262,8 +276,13 @@ export default function Customers() {
       alert('Ingresá monto y nota.');
       return;
     }
-    if (!targetSaleId.current && amount > Math.max(0, fichaCustomer.currentBalance)
-      && !confirm('El cobro supera el saldo del cliente. El excedente quedará como saldo a favor. ¿Continuar?')) return;
+    if (!targetSaleId.current && amount > Math.max(0, fichaCustomer.currentBalance) && !paymentExcessConfirmation) {
+      if (isMobile) {
+        setPaymentExcessConfirmation(true);
+        return;
+      }
+      if (!confirm('El cobro supera el saldo del cliente. El excedente quedará como saldo a favor. ¿Continuar?')) return;
+    }
     mutationBusy.current = true;
     setSavingPayment(true);
     try {
@@ -290,6 +309,7 @@ export default function Customers() {
       setPaymentAmount('');
       setPaymentNote('');
       setPaymentMethod('Efectivo');
+      setPaymentExcessConfirmation(false);
       setFichaTab('history');
       showMessage('Pago registrado');
     } catch (error) {
@@ -333,9 +353,8 @@ export default function Customers() {
     }
   };
 
-  const handleReconcile = async () => {
+  const runReconcile = async () => {
     if (!fichaCustomer || !canWrite || mutationBusy.current) return;
-    if (!confirm('Se recalculará el saldo y los cobros sin venta asociada se aplicarán a las ventas pendientes más antiguas. No se generarán nuevos ingresos en Caja. ¿Continuar?')) return;
     mutationBusy.current = true;
     setReconciling(true);
     try {
@@ -349,6 +368,15 @@ export default function Customers() {
       mutationBusy.current = false;
       setReconciling(false);
     }
+  };
+
+  const handleReconcile = async () => {
+    if (isMobile) {
+      setReconcileConfirmation(true);
+      return;
+    }
+    if (!confirm('Se recalculará el saldo y los cobros sin venta asociada se aplicarán a las ventas pendientes más antiguas. No se generarán nuevos ingresos en Caja. ¿Continuar?')) return;
+    await runReconcile();
   };
 
   // Running balance for history table
@@ -407,6 +435,14 @@ export default function Customers() {
         )}
       </AnimatePresence>
 
+      {isMobile ? <MobileCustomers
+        customers={customers}
+        search={search}
+        canWrite={canWrite}
+        onSearch={setSearch}
+        onNew={openNew}
+        onOpen={openFicha}
+      /> : <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -511,6 +547,7 @@ export default function Customers() {
           <Pagination {...pagination} />
         </div>
       </div>
+      </>}
 
       {/* Create/Edit Modal */}
       <Modal
@@ -581,7 +618,7 @@ export default function Customers() {
         isOpen={isFichaOpen}
         onClose={() => { if (mutationBusy.current) return; activeCustomerId.current = null; transactionRequest.current++; setIsFichaOpen(false); }}
         title="Ficha del Cliente"
-        className="max-w-2xl"
+        className={isMobile ? 'max-w-xl h-[calc(100dvh-1rem)]' : 'max-w-2xl'}
       >
         {fichaCustomer && (
           <div className="space-y-5">
@@ -591,6 +628,8 @@ export default function Customers() {
                 <p className="font-black text-lg text-slate-900 dark:text-white">{fichaCustomer.name}</p>
                 {fichaCustomer.phone && <p className="text-sm text-slate-500">{fichaCustomer.phone}</p>}
                 {fichaCustomer.email && <p className="text-sm text-slate-500">{fichaCustomer.email}</p>}
+                {canWrite && <button type="button" onClick={() => { setIsFichaOpen(false); openEdit(fichaCustomer); }} className="mt-2 min-h-11 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-indigo-700 dark:border-slate-700 dark:text-indigo-300">Editar cliente</button>}
+                {canDelete && fichaCustomer.currentBalance === 0 && <button type="button" onClick={() => { setIsFichaOpen(false); handleDelete(fichaCustomer); }} className="ml-2 mt-2 min-h-11 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Eliminar</button>}
               </div>
               <div className="text-right">
                 <p className="text-xs text-slate-400 uppercase font-semibold tracking-wide">Saldo</p>
@@ -801,6 +840,21 @@ export default function Customers() {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={Boolean(customerToDelete)} onClose={() => setCustomerToDelete(null)} title="Eliminar cliente" className="max-w-md">
+        {customerToDelete && <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">¿Querés eliminar a {customerToDelete.name}? Esta acción no se puede deshacer.</p>
+          <div className="flex gap-3"><button type="button" onClick={() => setCustomerToDelete(null)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700">Cancelar</button><button type="button" onClick={async () => { try { await db.delete('customers', customerToDelete.id); setCustomerToDelete(null); await fetchData(); } catch (error) { showMessage(error instanceof Error ? error.message : 'No se pudo eliminar el cliente.', 'error'); } }} className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 font-semibold text-white">Eliminar cliente</button></div>
+        </div>}
+      </Modal>
+
+      <Modal isOpen={paymentExcessConfirmation} onClose={() => setPaymentExcessConfirmation(false)} title="Saldo a favor" className="max-w-md">
+        <div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">El cobro supera el saldo del cliente. El excedente quedará como saldo a favor. ¿Querés continuar?</p><div className="flex gap-3"><button type="button" onClick={() => setPaymentExcessConfirmation(false)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700">Cancelar</button><button type="button" onClick={() => { void handleRegisterPayment(); }} className="min-h-11 flex-1 rounded-xl bg-indigo-600 px-4 font-semibold text-white">Continuar</button></div></div>
+      </Modal>
+
+      <Modal isOpen={reconcileConfirmation} onClose={() => setReconcileConfirmation(false)} title="Reconciliar saldo" className="max-w-md">
+        <div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">Se recalculará el saldo y los cobros sin venta asociada se aplicarán a las ventas pendientes más antiguas. No se generarán nuevos ingresos en Caja. ¿Querés continuar?</p><div className="flex gap-3"><button type="button" onClick={() => setReconcileConfirmation(false)} className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 font-semibold dark:border-slate-700">Cancelar</button><button type="button" disabled={reconciling} onClick={() => { setReconcileConfirmation(false); void runReconcile(); }} className="min-h-11 flex-1 rounded-xl bg-indigo-600 px-4 font-semibold text-white disabled:opacity-50">Reconciliar</button></div></div>
       </Modal>
     </div>
   );

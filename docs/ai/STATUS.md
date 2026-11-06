@@ -1,3 +1,10 @@
+## 2026-11-05 21:32 ART — I15.5 Clientes móvil
+
+- Agregué resumen de cuentas corrientes, acción Cobrar que filtra saldos pendientes, filtros Todos/Deben/Al día, búsqueda, filas con iniciales, teléfono, estado del saldo y acceso a WhatsApp. El toque abre la ficha en una hoja de pantalla completa; editar, borrar y confirmar cobros/reconciliación usan acciones de la app, sin `confirm()` del navegador en móvil. Muestra 20 clientes y agrega 20 más; reutiliza la lectura paginada existente.
+- Verificación: `npm run lint`; Playwright **3/3** aplicables en Android, iPhone y Chromium: saldos, filtros, WhatsApp, ficha, diálogo de borrado, cero diálogos nativos y tabla desktop. Tres ejecuciones se omitieron por proyecto no correspondiente. Mocks QA; ninguna escritura real.
+- No hubo migraciones ni cambios de esquema.
+- **Siguiente:** I15.6 Proveedores. I15.3 e I15.4 ya están en main y Vercel confirmó éxito para I15.3.
+
 ## 2026-11-05 21:21 ART — I15.4 Presupuestos móvil
 
 - Agregué tarjetas de presupuesto con número, cliente, estado, cantidad de productos, total y vencimiento; acciones para compartir y pasar a venta; chips de estado, búsqueda, resumen y carga progresiva de 20. El borrado móvil usa un diálogo de la app y permite elegir si también se borra la venta vinculada, sin `confirm()` del navegador. La tabla de PC queda en su rama actual.
