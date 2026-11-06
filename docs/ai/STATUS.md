@@ -1,3 +1,10 @@
+## 2026-11-05 21:09 ART — I15.2 Ventas móvil
+
+- Añadí el listado móvil según la maqueta: acciones Nueva venta/POS del mismo ancho, resumen mensual con selector, filtros de estado y titular, búsqueda, ventas agrupadas por día, miniatura `.thumb.webp` lazy, detalle expandible y ticket multiproducto. Exportación está en el menú `⋯`; borrar usa confirmación dentro de la app. La paginación incremental muestra 20 tarjetas y suma 20 con “Ver más”; no agrega consultas a Supabase. La pantalla de PC conserva su implementación.
+- Verificación: `npm run lint`; Playwright **6/6** escenarios aplicables (Android, iPhone y desktop; los otros 6 casos se omiten en el proyecto no correspondiente). El flujo móvil cubre filtros, resumen, miniatura, detalle/volver y carga progresiva sin registrar ventas. La captura de Ventas a **1280×900** es byte a byte idéntica a la captura del commit anterior a I15.2.
+- No hubo escrituras reales ni cambios de esquema. La prueba de ventas usa fixtures `[QA]`. El único commit de este módulo es `feat(sales): mobile sales list`.
+- **Siguiente:** seguir I15.3 Reportes; C0/ensayos permanecen sujetos a G2 y al límite §5.2b: la extensión 0.5.23 aún no anuncia `self-reload` ni captura.
+
 ## 2026-11-05 20:40 ART — A1 cerrado; corte de claves verificado
 
 - Vercel confirmó `success` para `f0c119f`. Antes del corte, el perfil persistente autenticado recorrió Inicio, Stock, Ventas, Conocimientos y Automatizaciones sin errores de consola ni respuesta; tras desactivar la pareja legacy, repetí el smoke: todas las rutas devolvieron HTTP 200, hubo 92 respuestas Supabase sin errores y no apareció login. La consulta de Stock completó 18 llamadas a `products`, RPC y Storage, sin fallos.

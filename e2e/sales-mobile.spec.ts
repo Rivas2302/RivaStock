@@ -1,17 +1,74 @@
 import { expect, test } from '@playwright/test';
 import { mockSales } from './mock-sales';
 
+test('mobile sales list filters, summarizes, paginates and opens sale details without registering a sale', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Touch flows run on Android and iPhone projects.');
+  await mockSales(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/ventas');
+
+  const mobile = page.getByTestId('mobile-sales-list');
+  await expect(mobile).toBeVisible();
+  await expect(mobile.getByRole('heading', { name: 'Ventas' })).toBeVisible();
+  await expect(mobile.getByRole('button', { name: 'Nueva venta' })).toBeEnabled();
+  await expect(mobile.getByRole('button', { name: 'Modo POS' })).toBeEnabled();
+  await expect(mobile.getByText('Vendido este mes')).toBeVisible();
+  await expect(mobile.getByLabel('Resumen del mes').getByText(/15\.000/)).toBeVisible();
+
+  const actions = await Promise.all([
+    mobile.getByRole('button', { name: 'Nueva venta' }).boundingBox(),
+    mobile.getByRole('button', { name: 'Modo POS' }).boundingBox(),
+  ]);
+  expect(actions[0]?.width).toBeCloseTo(actions[1]?.width ?? 0, 0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await mobile.getByRole('button', { name: 'Pendientes · 1' }).click();
+  await expect(mobile.getByRole('button', { name: /Cable iPhone C/ })).toBeVisible();
+  await expect(mobile.getByRole('button', { name: /2 productos/ })).toHaveCount(0);
+  await mobile.getByRole('button', { name: 'Todas' }).click();
+
+  await mobile.getByRole('searchbox', { name: 'Buscar venta' }).fill('Cliente QA');
+  const ticket = mobile.getByRole('button', { name: /Ticket de 2/ });
+  await expect(ticket.locator('img')).toHaveAttribute('src', /camera-a\.thumb\.webp$/);
+  await ticket.click();
+  const detail = mobile.getByTestId('mobile-sale-detail');
+  await expect(detail).toContainText('Cámara WiFi');
+  await expect(detail).toContainText('Cable iPhone C');
+  await detail.getByRole('button', { name: /Volver a las ventas/ }).click();
+  await expect(detail).toHaveCount(0);
+
+  await mobile.getByRole('searchbox', { name: 'Buscar venta' }).fill('');
+  const moreSales = mobile.getByRole('button', { name: 'Ver más ventas' });
+  await expect(moreSales).toBeVisible();
+  const visibleCards = mobile.locator('article');
+  await expect(visibleCards).toHaveCount(20);
+  await moreSales.click();
+  await expect(visibleCards).toHaveCount(21);
+});
+
+test('desktop sales screen remains the table layout at 1280px', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Desktop layout is verified in Chromium.');
+  await mockSales(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/ventas');
+  await expect(page.getByTestId('mobile-sales-list')).toHaveCount(0);
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('table').getByText('Producto 21')).toBeVisible();
+  const screenshot = await page.screenshot({ path: testInfo.outputPath('desktop-sales-1280x900.png') });
+  await testInfo.attach('desktop-sales-1280x900', { body: screenshot, contentType: 'image/png' });
+});
+
 test('mobile sale picker previews photos, handles missing photos and never blocks product selection', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Touch flows run on Android and iPhone projects.');
   await mockSales(page);
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto('/ventas');
-  await page.getByRole('button', { name: 'Nueva Venta' }).click();
+  await page.getByRole('button', { name: /Nueva venta/i }).click();
 
   const search = page.getByPlaceholder('Buscar por nombre o categoría...');
   await search.fill('Cámara WiFi');
   const camera = page.getByRole('option').filter({ hasText: '[QA] Cámara WiFi' });
-  await expect(camera.locator('img')).toHaveAttribute('src', /camera-a\.webp$/);
+  await expect(camera.locator('img')).toHaveAttribute('src', /camera-a\.thumb\.webp$/);
   await camera.click();
   const preview = page.getByTestId('selected-product-preview');
   await expect(preview).toContainText('[QA] Cámara WiFi');

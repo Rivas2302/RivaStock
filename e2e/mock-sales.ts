@@ -42,6 +42,34 @@ function productsFixture() {
   ];
 }
 
+function salesFixture() {
+  const date = now.slice(0, 10);
+  const rows = [
+    {
+      id: 'ticket-today', user_id: OWNER_ID, date, created_at: now, product_id: 'camera',
+      product_name: 'Cámara WiFi', unit_price: 2500, quantity: 2, adjustment: 0, total: 4500,
+      status: 'Pagado', payment_method: 'Efectivo', client: 'Cliente QA', source: 'pos',
+      items: [
+        { productId: 'camera', productName: '[QA] Cámara WiFi', quantity: 1, price: 2500, discount: 0 },
+        { productId: 'cable', productName: '[QA] Cable iPhone C', quantity: 2, price: 1000, discount: 0 },
+      ],
+    },
+    {
+      id: 'pending-today', user_id: OWNER_ID, date, created_at: now, product_id: 'cable',
+      product_name: '[QA] Cable iPhone C', unit_price: 1000, quantity: 1, adjustment: 0, total: 1000,
+      status: 'Pendiente', payment_method: 'Efectivo', client: 'Cliente pendiente', source: 'manual',
+      items: [{ productId: 'cable', productName: '[QA] Cable iPhone C', quantity: 1, price: 1000, discount: 0 }],
+    },
+  ];
+  for (let index = 3; index <= 21; index += 1) rows.push({
+    id: `sale-${index}`, user_id: OWNER_ID, date, created_at: now, product_id: 'camera',
+    product_name: `Producto ${index}`, unit_price: 500, quantity: 1, adjustment: 0, total: 500,
+    status: 'Pagado', payment_method: 'Transferencia', client: '', source: 'manual',
+    items: [{ productId: 'camera', productName: `Producto ${index}`, quantity: 1, price: 500, discount: 0 }],
+  });
+  return rows;
+}
+
 export async function mockSales(page: Page) {
   const products = productsFixture();
   await page.route('**/*', async (route: Route) => {
@@ -71,10 +99,18 @@ export async function mockSales(page: Page) {
     if (path.startsWith('/rest/v1/')) {
       const table = path.replace('/rest/v1/', '');
       if (table === 'products') return route.fulfill({ json: products });
+      if (table === 'sales') {
+        const cursor = url.searchParams.get('id')?.replace(/^gt\./, '');
+        const rows = salesFixture().sort((left, right) => left.id.localeCompare(right.id));
+        return route.fulfill({ json: cursor ? rows.filter(row => row.id > cursor) : rows });
+      }
       if (table === 'profiles') return route.fulfill({ json: [{ id: OWNER_ID, business_name: 'Negocio QA', onboarding_completed_at: now }] });
       if (table === 'inventory_operation_settings') return route.fulfill({ json: { holdings_enabled: false } });
       if (table === 'collaborators') return route.fulfill({ json: [] });
       return route.fulfill({ json: [] });
+    }
+    if (path.endsWith('/camera-a.thumb.webp')) {
+      return route.fulfill({ status: 200, contentType: 'image/png', body: imagePng });
     }
     if (path.endsWith('.thumb.webp') || path.endsWith('/broken.webp')) {
       return route.fulfill({ status: 404, body: 'not found' });

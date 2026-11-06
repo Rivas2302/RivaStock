@@ -55,6 +55,8 @@ import {
 import { getInventoryHoldings } from '../lib/inventoryHoldings';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { calculateSaleTotals } from '../lib/salesTotals';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileSalesList from '../components/sales/MobileSalesList';
 
 const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_price,quantity,adjustment,total,status,payment_method,client,items,source';
 const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
@@ -63,6 +65,7 @@ const SALE_ITEM_PROJECTION_COLUMNS = 'id,sale_id_snapshot,reversed_at';
 const SALE_ALLOCATION_PROJECTION_COLUMNS = 'id,sale_id_snapshot,sale_item_id,inventory_owner_id_snapshot,inventory_owner_name_snapshot,product_id_snapshot,product_name_snapshot,quantity,unit_price,discount_share,adjustment_share,revenue_share,cost_share,reversed_at';
 
 export default function Sales() {
+  const isMobile = useIsMobile();
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,
@@ -124,6 +127,7 @@ export default function Sales() {
   const refundIntentRef = useRef<IdempotencyIntent | null>(null);
   const statusIntentRef = useRef<IdempotencyIntent | null>(null);
   const [statusSavingSaleId, setStatusSavingSaleId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(() => todayString().slice(0, 7));
   const renderCreationActions = shouldRenderSalesMutationActions(
     holdingsEnabled,
     operableInventoryOwnerIds.length > 0,
@@ -640,7 +644,7 @@ export default function Sales() {
     }
   };
 
-  const handleDelete = async (projection: OwnerSaleProjection) => {
+  const handleDelete = async (projection: OwnerSaleProjection, confirmed = false) => {
     const sale = sales.find((candidate) => candidate.id === projection.id);
     if (!sale) return;
     if (protectedSaleIds.has(sale.id)) {
@@ -652,7 +656,7 @@ export default function Sales() {
       alert(mutationDenial);
       return;
     }
-    if (!confirm(holdingsEnabled
+    if (!confirmed && !confirm(holdingsEnabled
       ? '¿Estás seguro de devolver esta venta y restaurar el stock atribuido?'
       : '¿Estás seguro de eliminar esta venta?')) return;
     try {
@@ -674,6 +678,40 @@ export default function Sales() {
       console.error('Error al eliminar venta:', error);
       alert(error instanceof Error ? error.message : 'Error al eliminar la venta.');
     }
+  };
+
+  const openSaleForEdit = (projection: OwnerSaleProjection) => {
+    const sale = sales.find((candidate) => candidate.id === projection.id);
+    if (!sale) return;
+    if (protectedSaleIds.has(sale.id)) {
+      alert('Esta venta tiene cobros de cuenta corriente registrados. No se puede reescribir su historial de pagos.');
+      return;
+    }
+    const editPlan = getSalesPageEditPlan(sale);
+    if ('reason' in editPlan) {
+      alert(editPlan.reason);
+      return;
+    }
+    const mutationDenial = saleMutationDenialReason(sale, projection);
+    if (mutationDenial) {
+      alert(mutationDenial);
+      return;
+    }
+    setEditingSale(sale);
+    setFormData(sale);
+    const ownerIds = [...new Set(
+      saleAllocations
+        .filter((allocation) => allocation.saleIdSnapshot === projection.id && !allocation.reversedAt)
+        .map((allocation) => allocation.inventoryOwnerIdSnapshot),
+    )];
+    const currentCustomerId = resolveAttributedSaleCustomerId(
+      sale.id,
+      null,
+      customerTransactions,
+    );
+    setSelectedCustomer(customers.find((customer) => customer.id === currentCustomerId) ?? null);
+    setPreferredOwnerId(ownerIds.length === 1 ? ownerIds[0] : '');
+    setIsModalOpen(true);
   };
 
   // Attribution changes only with the underlying dataset/scope, not each
@@ -714,11 +752,86 @@ export default function Sales() {
     return { filteredSales, totalCollected, totalPending, totalSold };
   }, [deferredSearch, projectedSales, statusFilter, settlements, sales]);
   const pagination = usePagination(filteredSales);
+  const monthOptions = useMemo(() => {
+    const months = new Set(projectedSales.map(sale => sale.date.slice(0, 7)).filter(Boolean));
+    months.add(todayString().slice(0, 7));
+    return [...months].sort((a, b) => b.localeCompare(a)).map(value => {
+      const [year, month] = value.split('-').map(Number);
+      return {
+        value,
+        label: new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' })
+          .format(new Date(year, month - 1, 1)),
+      };
+    });
+  }, [projectedSales]);
+  const monthlySummary = useMemo(() => {
+    let totalSold = 0;
+    let totalCollected = 0;
+    let totalPending = 0;
+    for (const sale of projectedSales) {
+      if (!sale.date.startsWith(selectedMonth)) continue;
+      totalSold += roundPrice(sale.total);
+      const settlement = settlements.get(sale.id);
+      if (!settlement) continue;
+      const fullTotal = settlement.total || sale.total;
+      const fraction = fullTotal > 0 ? sale.total / fullTotal : 0;
+      totalCollected += settlement.paid * fraction;
+      totalPending += settlement.pending * fraction;
+    }
+    return { totalSold, totalCollected, totalPending };
+  }, [projectedSales, selectedMonth, settlements]);
 
   if (loadError) return <div role="alert" className="p-6"><p>{loadError}</p><button onClick={fetchData}>Reintentar</button></div>;
 
   return (
-    <div className="operational-page space-y-6">
+    <>
+    {isMobile && <MobileSalesList
+      sales={filteredSales}
+      products={products}
+      inventoryOwners={inventoryOwners}
+      holdingsEnabled={holdingsEnabled}
+      canCreate={canWrite && !inventoryAccessError && renderCreationActions}
+      canWrite={canWrite}
+      canDelete={canDelete}
+      saving={saving}
+      statusSavingSaleId={statusSavingSaleId}
+      canMutateSale={sale => shouldRenderSalesMutationActions(holdingsEnabled, ticketHasFullOperableScope(sale))}
+      onCreate={() => {
+        setEditingSale(null);
+        setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
+        setIsCreditSale(false);
+        setCreditSearch('');
+        setSelectedCustomer(null);
+        setShowNewCustInline(false);
+        setNewCustName('');
+        setNewCustPhone('');
+        setPreferredOwnerId('');
+        setIsModalOpen(true);
+      }}
+      onOpenPos={() => navigate('/pos')}
+      onEdit={openSaleForEdit}
+      onDelete={handleDelete}
+      onToggleStatus={handleToggleStatus}
+      search={search}
+      onSearchChange={setSearch}
+      statusFilter={statusFilter}
+      onStatusFilterChange={setStatusFilter}
+      ownerFilter={ownerFilter}
+      onOwnerFilterChange={setOwnerFilter}
+      monthOptions={monthOptions}
+      selectedMonth={selectedMonth}
+      onSelectedMonthChange={setSelectedMonth}
+      totalSold={monthlySummary.totalSold}
+      totalCollected={monthlySummary.totalCollected}
+      totalPending={monthlySummary.totalPending}
+      formatAmount={amount => formatCurrency(roundPrice(amount))}
+      onExportExcel={handleExportExcel}
+      onExportPdf={handleExportPDF}
+      exporting={exporting}
+      loading={loading}
+      error={loadError}
+    />}
+    <div className={cn('operational-page space-y-6', isMobile && 'hidden')}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Ventas</h2>
@@ -999,41 +1112,7 @@ export default function Sales() {
                     ) ? (
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => {
-                          const sale = sales.find((candidate) => candidate.id === s.id);
-                          if (!sale) return;
-                          if (protectedSaleIds.has(sale.id)) {
-                            alert('Esta venta tiene cobros de cuenta corriente registrados. No se puede reescribir su historial de pagos.');
-                            return;
-                          }
-                          const editPlan = getSalesPageEditPlan(sale);
-                          if ('reason' in editPlan) {
-                            alert(editPlan.reason);
-                            return;
-                          }
-                          const mutationDenial = saleMutationDenialReason(sale, s);
-                          if (mutationDenial) {
-                            alert(mutationDenial);
-                            return;
-                          }
-                          setEditingSale(sale);
-                          setFormData(sale);
-                          const ownerIds = [...new Set(
-                            saleAllocations
-                              .filter((allocation) => allocation.saleIdSnapshot === s.id && !allocation.reversedAt)
-                              .map((allocation) => allocation.inventoryOwnerIdSnapshot),
-                          )];
-                          const currentCustomerId = resolveAttributedSaleCustomerId(
-                            sale.id,
-                            null,
-                            customerTransactions,
-                          );
-                          setSelectedCustomer(
-                            customers.find((customer) => customer.id === currentCustomerId) ?? null,
-                          );
-                          setPreferredOwnerId(ownerIds.length === 1 ? ownerIds[0] : '');
-                          setIsModalOpen(true);
-                        }}
+                        onClick={() => openSaleForEdit(s)}
                         disabled={!canWrite || Boolean(projectedSaleMutationDenialReason(s))}
                         title={!canWrite
                           ? 'Sin permiso'
@@ -1106,6 +1185,7 @@ export default function Sales() {
         </div>
       </div>
 
+    </div>
       {/* Add/Edit Modal */}
       <Modal 
         isOpen={isModalOpen} 
@@ -1456,6 +1536,6 @@ export default function Sales() {
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
