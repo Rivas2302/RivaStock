@@ -51,6 +51,7 @@ test('mobile quick actions and sections share one menu without creating data', a
   await expect(bar.getByRole('button', { name: 'Abrir menú' })).toBeVisible();
   await bar.getByRole('button', { name: 'Abrir menú' }).click();
   const menu = page.getByRole('dialog', { name: '¿Qué querés hacer?' });
+  await expect(menu.getByRole('searchbox', { name: 'Buscar acciones y secciones' })).not.toBeFocused();
   const create = menu.getByRole('region', { name: 'Crear' });
   const goTo = menu.getByRole('navigation', { name: 'Ir a' });
   await expect(create.getByRole('link')).toHaveCount(6);

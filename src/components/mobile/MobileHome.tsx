@@ -4,7 +4,6 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
-  Menu,
 
 } from 'lucide-react';
 import type { InventoryOwner, PermissionMatrix, Sale, UserProfile } from '../../types';
@@ -13,7 +12,7 @@ import type { RestockRecommendation } from '../../lib/stockIntelligence';
 import { getMobileQuickActions } from '../../lib/mobileQuickActions';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { useBusinessPlan } from '../../hooks/useBusinessPlan';
-import { useMobileAppChrome, useMobileAppMenu } from '../../hooks/useMobileAppChrome';
+import { useMobileAppChrome } from '../../hooks/useMobileAppChrome';
 import BottomSheet from './BottomSheet';
 
 export type DashboardDataSource = 'sales' | 'cashFlow' | 'orders';
@@ -207,7 +206,6 @@ export default function MobileHome({
 }: MobileHomeProps) {
   const { plan } = useBusinessPlan();
   const quickActions = getMobileQuickActions(permissions, isOwner, plan?.limits.modules ?? null);
-  const openMobileMenu = useMobileAppMenu();
   useMobileAppChrome({ hideHeader: true, hideBottomNav: false });
   const [businessSheetOpen, setBusinessSheetOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -291,14 +289,6 @@ export default function MobileHome({
         >
           <Bell aria-hidden="true" size={21} strokeWidth={1.8} />
           {attentionItems.length > 0 && <span aria-hidden="true" className="absolute mr-[-18px] mt-[-18px] size-2 rounded-full bg-[var(--warning-ink)]" />}
-        </button>
-        <button
-          type="button"
-          aria-label="Abrir menú completo"
-          onClick={openMobileMenu}
-          className="grid size-11 shrink-0 place-items-center rounded-full text-[var(--ink)]"
-        >
-          <Menu aria-hidden="true" size={22} strokeWidth={1.8} />
         </button>
       </header>
 

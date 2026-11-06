@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { LogOut, Plus, Search, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { matchesMobileNavigationSearch } from '../lib/mobileNavigation';
 import './MobileNavigation.css';
 
@@ -44,6 +45,7 @@ function isActive(path: string, pathname: string) {
 export default function MobileNavigation({ primaryItems, navItems, navGroups, quickActions, pathname, onLogout, loggingOut, displayName, displayInitial, roleLabel }: MobileNavigationProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const sheetHistoryRef = useRef(false);
 
@@ -104,7 +106,7 @@ export default function MobileNavigation({ primaryItems, navItems, navGroups, qu
             <h2 className="text-lg font-bold">¿Qué querés hacer?</h2>
             <button type="button" aria-label="Cerrar" onClick={closeSheet} className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-[var(--surface-muted)]"><X size={21} /></button>
           </div>
-          <label className="mb-5 flex min-h-12 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 focus-within:border-[var(--brand)]"><Search size={18} className="text-[var(--ink-muted)]"/><input autoFocus type="search" aria-label="Buscar acciones y secciones" placeholder="Buscar…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"/></label>
+          <label className="mb-5 flex min-h-12 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 focus-within:border-[var(--brand)]"><Search size={18} className="text-[var(--ink-muted)]"/><input autoFocus={!isMobile} type="search" aria-label="Buscar acciones y secciones" placeholder="Buscar…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"/></label>
           <div className="space-y-5">
             {quickActions.filter(action => matchesMobileNavigationSearch(`${action.label} ${action.description}`, search)).length > 0 && <section aria-label="Crear">
               <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">Crear</h3>

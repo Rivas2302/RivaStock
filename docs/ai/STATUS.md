@@ -1518,3 +1518,15 @@ Sin toque en src/, supabase/ ni extensions/.
 - **I10/I11/I14:** smoke autenticado en producción desde la app, sin registrar ventas. En Nueva Venta el producto existente `Cable iPhone C` mostró su vista previa con imagen cargada; el selector aplicó Descuento y Recargo con monto positivo y el formulario se canceló. En POS cargó la miniatura en resultados y carrito, probó el descuento y retiró el producto del carrito. Todas las comprobaciones pasaron; no se guardó ninguna venta.
 - **I18** continúa implementada y probada localmente; pendiente de backup verificado antes de su migración y despliegue. **D2** sigue pendiente: hay un objeto `knowledge-cache` huérfano de 166 B sin fila de solicitud; el flujo normal completó una eliminación pero el objeto permanece. No lo borré por SQL.
 - **Facebook:** no se abrió Facebook, no se reactivó la cola ni se iniciaron ensayos. `facebook_warning` y el posible borrador siguen requiriendo revisión en Chrome normal por Riva.
+## 2026-11-06 19:00 ART — cierre de C0 en main
+
+- La detección de instalaciones unpacked ahora revisa `Preferences` y `Secure Preferences` y deduplica perfil/ruta. Los 7 tests focales pasan. Commit `63b0fa9` en `main` con Rivas2302; Vercel `success`. No hubo migración ni cambios de datos.
+# 2026-11-06 20:06 ART — I17b en código; D2 objeto huérfano eliminado
+
+- Recopié `docs/ai/ACTION_PLAN.md` del Escritorio (88.032 bytes; 20:03 ART). Implementé I17b: la búsqueda del menú + no recibe foco al abrir en móvil y conserva `autoFocus` en PC; eliminé de Inicio móvil el botón superior sin acción `Abrir menú completo`.
+- Verificación local de I17b: `npm run lint` pasó; Vitest **13/13** (MobileHome y navegación); Playwright `navigation-mobile` **3 passed / 3 skipped** incluyendo viewport móvil. Falta publicar y hacer smoke autenticado de producción sin escrituras.
+- D2: con la autorización expresa de Riva, borré por S3 el único objeto huérfano de `knowledge-cache` de 166 B, comprobando el tamaño antes y un 404 después. Consulta posterior: **0 objetos / 0 B**. No se borraron filas SQL.
+- I18 e I19 siguen en desarrollo local. Las migraciones esperan un backup diario completo verificado; sigo con pantallas, lógica y pruebas mientras tanto.
+- Facebook, su extensión y automatización quedan fuera de esta sesión, según la indicación de Riva.
+
+\n

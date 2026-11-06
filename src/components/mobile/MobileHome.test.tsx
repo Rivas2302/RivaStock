@@ -175,7 +175,7 @@ describe('mobile home', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it('filters actions by permissions and exposes the complete menu trigger', async () => {
+  it('filters actions by permissions and does not show a redundant menu trigger', async () => {
     const permissions = {
       ...ALL_TRUE_PERMISSIONS,
       ventas: { ...ALL_TRUE_PERMISSIONS.ventas, write: false },
@@ -183,7 +183,7 @@ describe('mobile home', () => {
     await render({ ...baseProps, permissions, isPlatformAdmin: true });
     expect(host.querySelector('a[href="/pos"]')).toBeNull();
     expect(host.querySelector('a[href="/plataforma"]')).not.toBeNull();
-    await click(host.querySelector('button[aria-label="Abrir menú completo"]'));
-    expect(mocks.openMobileMenu).toHaveBeenCalledOnce();
+    expect(host.querySelector('button[aria-label="Abrir menú completo"]')).toBeNull();
+    expect(mocks.openMobileMenu).not.toHaveBeenCalled();
   });
 });

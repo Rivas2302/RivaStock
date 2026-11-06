@@ -69,4 +69,22 @@ describe('mobile single navigation menu', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Abrir menú"]')?.click(); });
     expect(host.querySelector('[aria-label="Buscar acciones y secciones"]')).not.toBeNull();
   });
+
+  it('does not focus the menu search on mobile until the user taps it', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 });
+    await render(<MemoryRouter><MobileNavigation primaryItems={[items[0], items[1], items[2], items[3]]} navItems={items} navGroups={groups} quickActions={actions} pathname="/" onLogout={vi.fn()} loggingOut={false} displayName="Riva" displayInitial="R" roleLabel="Propietario"/></MemoryRouter>);
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Abrir menú"]')?.click(); });
+    const search = host.querySelector<HTMLInputElement>('[aria-label="Buscar acciones y secciones"]');
+    expect(search).not.toBeNull();
+    expect(document.activeElement).not.toBe(search);
+    await act(async () => search?.focus());
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('keeps desktop menu search autofocus', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    await render(<MemoryRouter><MobileNavigation primaryItems={[items[0], items[1], items[2], items[3]]} navItems={items} navGroups={groups} quickActions={actions} pathname="/" onLogout={vi.fn()} loggingOut={false} displayName="Riva" displayInitial="R" roleLabel="Propietario"/></MemoryRouter>);
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Abrir menú"]')?.click(); });
+    expect(document.activeElement).toBe(host.querySelector('[aria-label="Buscar acciones y secciones"]'));
+  });
 });
