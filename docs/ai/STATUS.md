@@ -13,6 +13,14 @@
 - No hay ensayos ni publicaciones Facebook `[QA]`, ni productos `[QA]`. Se conserva el documento `[QA] central-smoke` y su versión de 166 B para terminar E5; su versión está en la central, verificada, con purga programada para 2026-11-06 10:06:19 UTC. Siguen asociados sus chunks/fuentes/búsqueda de QA hasta terminar esa verificación.
 - También hay filas históricas en `knowledge_events`, `audit_events` e `inventory_product_commands` con referencias `[QA]`; son trazas operativas/auditoría, no hay flujo de borrado normal para ellas y no usé SQL de escritura. **D2 sigue `[ ]`** hasta E5, purga y auditoría final de retención.
 
+# 2026-11-06 01:38 ART — Bloque C: código revisado sin ensayos
+
+- T2.4 ya tiene código y pruebas de fixture desplegadas: `e2e/facebook-supervision.spec.ts` pasó **4/4**, incluidos control renombrado, recuperación supervisada, reutilización de pista, `reload` y el rechazo de envío. No ejecuté nada contra Facebook. **T2.4 permanece `[ ]`** porque `skip_destination` conserva el desvío documentado: deja la entrega en `attention` y no existe un resultado seguro para omitirla en el worker.
+- T3.3 ya está implementada y desplegada (`463006f`); su flujo de fixture de revisión histórica pasó **1/1** en `e2e/facebook-extension.spec.ts` con `--grep candidate`. No reenvía ni marca éxito sin evidencia. La revisión de los desconocidos históricos reales sigue pendiente; T3.3 queda `[ ]`.
+- T6.1 ya tiene migraciones y controles de dueño publicados en Automatizaciones. No cambié los indicadores: la selección de productos y grupos sigue siendo decisión de Riva. T6.1 queda `[ ]`.
+- No hice ensayos ni publicaciones. T5.7 requiere agregar lectura de reglas a la extensión; §5.2b mantiene cerrado código nuevo de extensión mientras hay cuatro cierres esperando prueba en vivo, y Riva todavía no instaló 0.5.24. No inicié esa parte ni marqué la tarea.
+- **Siguiente:** terminar E5 al vencimiento de su gracia, completar E6 y E8 en orden; después retomar el código que siga permitido sin cambiar la extensión.
+
 # 2026-11-06 00:45 ART — I16 publicada
 
 - Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
