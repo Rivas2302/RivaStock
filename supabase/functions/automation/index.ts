@@ -341,7 +341,10 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           p_extension_version: body.extension_version,
           p_summary: body.summary ?? {},
         });
-      if (error || !isUuid(data)) return errorResponse(undefined, origin);
+      if (error || !isUuid(data)) {
+        console.error('[automation] Trace start RPC rejected.', { code: error?.code ?? 'invalid-trace-id' });
+        return errorResponse(undefined, origin);
+      }
       await cleanupExpiredTraces(serviceClient);
       return jsonResponseWithCors({ trace_id: data }, 201, origin);
     }
