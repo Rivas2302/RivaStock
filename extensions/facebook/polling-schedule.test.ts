@@ -13,8 +13,8 @@ describe('Facebook queue alarm cadence', () => {
     (key) => expect(queueAlarmPeriodMinutes({ ...connected, [key]: { id: 'work' } })).toBe(0.5),
   );
 
-  it('clears polling while the queue is paused and has no active work', () => {
-    expect(queueAlarmPeriodMinutes({ ...connected, paused: true })).toBeNull();
+  it('keeps a low-frequency update heartbeat while the queue is paused and idle', () => {
+    expect(queueAlarmPeriodMinutes({ ...connected, paused: true })).toBe(15);
   });
 
   it('keeps recovery polling for in-progress work when the queue is paused', () => {
@@ -29,7 +29,7 @@ describe('Facebook queue alarm cadence', () => {
     expect(queueAlarmPeriodMinutes({ paused: false })).toBeNull();
   });
 
-  it('skips alarm polling without making a backend request while paused and idle', () => {
+  it('skips claiming work while paused and idle', () => {
     expect(shouldSkipPausedQueuePoll({ ...connected, paused: true }, { source: 'alarm' })).toBe(true);
   });
 

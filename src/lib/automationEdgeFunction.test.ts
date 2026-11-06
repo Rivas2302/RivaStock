@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const edgeSource = readFileSync(new URL('../../supabase/functions/automation/index.ts', import.meta.url), 'utf8');
+const originSource = readFileSync(new URL('../../supabase/functions/automation/origin.ts', import.meta.url), 'utf8');
 const authSource = readFileSync(new URL('../../supabase/functions/_shared/workerAuth.ts', import.meta.url), 'utf8');
 const migrationSource = readFileSync(new URL('../../supabase/migrations/20261027022939_fb_traces_storage.sql', import.meta.url), 'utf8');
 
@@ -9,7 +10,10 @@ describe('automation Edge Function trace contract', () => {
   it('uses server-side Facebook device authorization and limits browser origins and request size', () => {
     expect(authSource).toContain("rpc('facebook_trace_authorize_device'");
     expect(migrationSource).toContain("PERFORM public.facebook_worker_v2(p_token, 'heartbeat'");
-    expect(edgeSource).toContain("new Set(['https://rivastock.vercel.app', 'http://localhost:5173'])");
+    expect(originSource).toContain("'https://rivastock.vercel.app'");
+    expect(originSource).toContain("'http://localhost:5173'");
+    expect(originSource).toContain("'chrome-extension://iplfoimfiigmoaihampblmibohekbbkj'");
+    expect(edgeSource).toContain("import { isAllowedAutomationOrigin } from './origin.ts'");
     expect(edgeSource).toContain("jsonResponseWithCors({ error: 'Origen no permitido.' }, 403, origin)");
     expect(edgeSource).toContain('const MAX_BODY_BYTES = 1_048_576');
     expect(edgeSource).toContain('const body = await readJsonLimited(req, MAX_BODY_BYTES)');

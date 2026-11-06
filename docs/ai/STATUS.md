@@ -1,3 +1,14 @@
+# 2026-11-05 23:25 ART — C0 publicado en base de datos; release 0.5.24 en preparación
+
+- A1 ya estaba cerrado antes de esta ejecución: Riva aportó `storage-s3.env` fuera del repo; las credenciales no se imprimieron ni copiaron. `KEY_ROTATION.md` registra el corte y el smoke posterior de las claves legacy. No hubo cambios de credenciales en esta tarea.
+- Comparé `ACTION_PLAN.md` con Desktop: la copia del escritorio está desactualizada respecto de `main` y no contiene el cierre de A1/I15; conservé `main`. `I15` ya está cerrada en `main` con sus ocho maquetas y commits. H8 sigue diferida como pidió Riva.
+- C0 apunta a **0.5.24** porque Riva ya instaló 0.5.23. Implementé `self-reload` condicionado al heartbeat del servidor y al estado idle local/remoto; la cola pausada conserva solo un heartbeat cada 15 minutos y no reclama trabajos. El paquete incluye únicamente los archivos permitidos y su hash publicado.
+- Backup previo verificado fuera del repo en `%USERPROFILE%\rivastock-backups\20261106T014042Z`: schema y data no vacíos, 96 tablas/14.401 filas en `table-counts.csv`, Storage con cinco buckets y 789 objetos, sin marcador de backup incompleto. Reutilicé el backup diario ya verificado para respetar K4 (máximo uno por día).
+- Apliqué solo `20261106015756_facebook_extension_update_target.sql`. Verifiqué por CLI que figura aplicada, que `facebook_worker_v2` existe y que los targets del servidor son `0.5.24`. `supabase db push --dry-run` previo enumeró únicamente esta migración.
+- Verificación local: `npm run lint`, `npm run build`, tests dirigidos 34/34 y suite completa 1008/1008 (con `VITE_SUPABASE_URL` y clave publicable ficticias para el entorno de test). `npm run perf:check` sigue reportando sobrepresupuesto preexistente de Knowledge, Reports, Sales y Settings; C0 no modifica esas páginas.
+- Desvío pendiente de C0: la extensión 0.5.24 todavía no está publicada ni probada desde Chrome. El primer salto desde 0.5.23 necesita instalar/recargar 0.5.24 una vez; después probar que un target nuevo se recarga en idle y que no se recarga durante un ensayo o envío. Los ensayos del Bloque C requieren Chrome con sesión Facebook y permiso de capturas; no publicar contenido.
+- **Siguiente:** commit y push a `main`, esperar Vercel y verificar en producción el ZIP/JSON de 0.5.24; luego agrupar con Riva la instalación/recarga inicial y la sesión Facebook para completar C0 y los ensayos en vivo. Mantener H8 diferida.
+
 ## 2026-11-05 — G2 publicada y verificada; pausa por incidente de credenciales
 
 - Integré G2 en `main` como `518780d`, desplegué `share` en Supabase (ACTIVE v4) y Vercel confirmó `success`. En producción, las rutas `/p/...` devolvieron HTML 200 con `og:title`, URL canónica y `og:image` para un producto público tanto con User-Agent de WhatsApp como `facebookexternalhit`; no devolvieron el intersticial de protección. No se expusieron nombres ni contenido de producto en el registro.

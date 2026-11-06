@@ -6,6 +6,7 @@ import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, step
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
 import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
 import { queueAlarmPeriodMinutes, shouldSkipPausedQueuePoll } from './polling-schedule.js';
+import { shouldReloadForServerTarget } from './extension-update.js';
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown});
 void flushTraceQueue();
 
@@ -14,7 +15,7 @@ let pendingSignal=null;
 let readingGroups = false;
 let reviewingHistorical = false;
 
-const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking'];
+const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking','self-reload'];
 const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
 let flushingPostSubmitObservations=false;
 function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.21';}}
@@ -501,11 +502,6 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     let serverFeatures=saved.serverFeatures??[];
     const {connection,activeJob}=saved;if(!connection)return;
     const hasInProgressWork=Boolean(activeJob||saved.activeRehearsal||saved.pendingClaim||saved.pendingRehearsalClaim||Object.keys(saved.ownContentTrackers??{}).length>0);
-    if(shouldSkipPausedQueuePoll(saved,signal)){
-      await chrome.alarms.clear('rivastock-queue');
-      await chrome.storage.local.set({status:'Conectada. Cola pausada.'});
-      return;
-    }
     let protocol=saved.workerProtocol??1;let heartbeat;
     // Upgrade only on an explicit V2 handshake. A missing endpoint is the only safe fallback.
     if(chrome.runtime.getManifest){
@@ -514,6 +510,20 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     }
     if(!heartbeat||protocol<2)heartbeat=await workerRpc(connection,'heartbeat',{protocol:1,status:saved.paused===false?'active':'paused',message:saved.status??null});
     if(heartbeat?.required_protocol>=2&&protocol<2)throw new Error('PROTOCOL_UNSUPPORTED');
+    if(shouldReloadForServerTarget({
+      requiredVersion:heartbeat?.required_extension_version,
+      installedVersion:extensionVersion(),
+      reloadSafe:heartbeat?.reload_safe,
+      localWorkInProgress:hasInProgressWork,
+    })) {
+      await chrome.storage.local.set({status:`Actualizando extensión a ${heartbeat.required_extension_version}…`});
+      chrome.runtime.reload();
+      return;
+    }
+    if(shouldSkipPausedQueuePoll(saved,signal)){
+      await chrome.storage.local.set({status:'Conectada. Cola pausada.'});
+      return;
+    }
     await chrome.storage.local.set({workerProtocol:protocol,lastErrorCode:null});
     let paused=saved.paused;
     if(heartbeat?.queue_command_at&&heartbeat.queue_command_at!==saved.queueCommandAt){

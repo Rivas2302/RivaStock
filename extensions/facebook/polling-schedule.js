@@ -1,6 +1,9 @@
 export function queueAlarmPeriodMinutes(state) {
   const inProgress = hasInProgressWork(state);
-  if (!state.connection || (state.paused !== false && !inProgress)) return null;
+  if (!state.connection) return null;
+  // Keep an inexpensive heartbeat while idle/paused so the service worker can
+  // receive a server-directed extension update without polling the job queue.
+  if (state.paused !== false && !inProgress) return 15;
   return inProgress ? 0.5 : 1;
 }
 
