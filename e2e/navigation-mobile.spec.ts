@@ -40,7 +40,7 @@ async function mockApp(page: Page) {
   return mutations;
 }
 
-test('mobile quick actions and More sheet navigate without creating data', async ({ page }, testInfo) => {
+test('mobile quick actions and sections share one menu without creating data', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Navigation interactions run in Android and iPhone projects.');
   const mutations = await mockApp(page);
   await page.setViewportSize({ width: 360, height: 740 });
@@ -48,55 +48,38 @@ test('mobile quick actions and More sheet navigate without creating data', async
 
   const bar = page.getByRole('navigation', { name: 'Navegación principal' });
   await expect(bar).toBeVisible();
-  await expect(bar.getByRole('button', { name: 'Acciones rápidas' })).toBeVisible();
-  await bar.getByRole('button', { name: 'Acciones rápidas' }).click();
-  await page.getByRole('dialog', { name: '¿Qué querés hacer?' }).getByRole('link', { name: 'Consultar precio' }).click();
-  await expect(page).toHaveURL(/\/consulta-rapida$/);
-  const quickDestinations = [
-    ['Nueva venta', /\/ventas(?:\?.*)?$/, 'dialog:Nueva Venta'],
-    ['Modo POS', /\/pos$/, 'heading:Modo POS'],
-    ['Consultar precio', /\/consulta-rapida$/, 'testid:mobile-quick-price'],
-    ['Enviar fotos', /\/fotos$/, 'heading:Buscar y enviar'],
-    ['Presupuesto', /\/presupuestos(?:\?.*)?$/, 'dialog:Nuevo Presupuesto'],
-    ['Ingreso de mercadería', /\/ingresos(?:\?.*)?$/, 'dialog:Registrar Ingreso de Mercadería'],
-    ['Registrar gasto', /\/caja(?:\?.*)?$/, 'expense:Nuevo movimiento'],
-    ['Cobro de cliente', /\/clientes\?action=collect$/, 'route:'],
-  ] as const;
-  for (const [label, destination, screen] of quickDestinations) {
-    await bar.getByRole('button', { name: 'Acciones rápidas' }).click();
-    const actionSheet = page.getByRole('dialog', { name: '¿Qué querés hacer?' });
-    await expect(actionSheet.getByRole('link', { name: 'Nueva venta' })).toBeVisible();
-    await expect(actionSheet.getByRole('link', { name: 'Registrar gasto' })).toBeVisible();
-    await actionSheet.getByRole('link', { name: label }).click();
+  await expect(bar.getByRole('button', { name: 'Abrir menú' })).toBeVisible();
+  await bar.getByRole('button', { name: 'Abrir menú' }).click();
+  const menu = page.getByRole('dialog', { name: '¿Qué querés hacer?' });
+  const create = menu.getByRole('region', { name: 'Crear' });
+  const goTo = menu.getByRole('navigation', { name: 'Ir a' });
+  await expect(create.getByRole('link')).toHaveCount(6);
+  await expect(goTo.getByRole('link', { name: 'Consulta rápida' })).toHaveCount(1);
+  await expect(goTo.getByRole('link', { name: 'Buscar y enviar' })).toHaveCount(1);
+  await expect(goTo.getByRole('link', { name: 'Configuración' })).toHaveCount(1);
+  await expect(menu.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
+  await expect(menu.getByText('Más', { exact: true })).toHaveCount(0);
+
+  for (const [label, destination] of [
+    ['Nueva venta', /\/ventas\?action=new$/],
+    ['Modo POS', /\/pos$/],
+    ['Registrar gasto', /\/caja\?action=expense$/],
+    ['Cobro de cliente', /\/clientes\?action=collect$/],
+    ['Presupuesto', /\/presupuestos\?action=new$/],
+    ['Ingreso de mercadería', /\/ingresos\?action=new$/],
+  ] as const) {
+    await create.getByRole('link', { name: label }).click();
     await expect(page).toHaveURL(destination);
-    const [kind, screenName] = screen.split(':');
-    if (kind === 'dialog') await expect(page.getByRole('dialog', { name: screenName })).toBeVisible();
-    if (kind === 'expense') {
-      const movementSheet = page.getByRole('dialog', { name: screenName });
-      await expect(movementSheet).toBeVisible();
-      await expect(movementSheet.getByRole('button', { name: 'Gasto', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    }
-    if (kind === 'text') await expect(page.getByText(screenName, { exact: false }).first()).toBeVisible();
-    if (kind === 'heading') await expect(page.getByRole('heading', { name: screenName }).last()).toBeVisible();
-    if (kind === 'testid') await expect(page.getByTestId(screenName)).toBeVisible();
-    await page.goBack();
-    if (label === 'Registrar gasto') {
-      await expect(page.getByRole('dialog', { name: 'Nuevo movimiento' })).toBeHidden();
-      await page.goBack();
-    }
-    await expect(page).toHaveURL(/\/(?:consulta-rapida)?$/);
-    await page.goto('/consulta-rapida');
+    await page.goto('/');
+    await bar.getByRole('button', { name: 'Abrir menú' }).click();
   }
 
-  await bar.getByRole('button', { name: 'Todas las secciones' }).click();
-  const more = page.getByRole('dialog', { name: 'Todas las secciones' });
-  await expect(more.getByRole('region', { name: 'Vender' })).toBeVisible();
-  await expect(more.getByRole('region', { name: 'Clientes y proveedores' })).toBeVisible();
-  await expect(more.getByRole('link', { name: 'Consulta rápida' })).toHaveAttribute('aria-current', 'page');
-  await more.getByRole('link', { name: 'Stock' }).click();
-  await expect(page).toHaveURL(/\/stock$/);
-  await bar.getByRole('button', { name: 'Todas las secciones' }).click();
-  await expect(page.getByRole('dialog', { name: 'Todas las secciones' }).getByRole('link', { name: 'Stock' })).toHaveAttribute('aria-current', 'page');
+  const search = menu.getByRole('searchbox', { name: 'Buscar acciones y secciones' });
+  await search.fill('consulta');
+  await expect(create.getByRole('link')).toHaveCount(0);
+  await expect(goTo.getByRole('link', { name: 'Consulta rápida' })).toHaveCount(1);
+  await goTo.getByRole('link', { name: 'Consulta rápida' }).click();
+  await expect(page).toHaveURL(/\/consulta-rapida$/);
   expect(mutations).toEqual([]);
 });
 

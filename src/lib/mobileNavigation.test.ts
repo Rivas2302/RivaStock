@@ -26,15 +26,17 @@ describe('mobile navigation visibility', () => {
       businessModules: {},
       isOwner: true,
     });
-    expect(actions.map(action => action.label)).toEqual(['Nueva venta', 'Modo POS', 'Consultar precio', 'Enviar fotos', 'Cobro de cliente']);
+    expect(actions.map(action => action.label)).toEqual(['Nueva venta', 'Modo POS', 'Cobro de cliente']);
   });
 
-  it('keeps Inicio, a permitted substitute and Más when Stock or Ventas are unavailable', () => {
+  it('fills the four navigation links with distinct permitted destinations', () => {
     const visible = getVisibleNavigation([
       items[0], items[2], { name: 'Clientes', path: '/clientes', module: 'clientes' as const },
-    ], { read: { ventas: true, clientes: true }, businessModules: {}, isOwner: true });
-    const [home, substitute, sales] = getMobilePrimaryItems(visible);
-    expect([home?.path, substitute?.path, sales?.path]).toEqual(['/', '/clientes', '/ventas']);
+      { name: 'Consulta rápida', path: '/consulta-rapida', module: 'stock' as const },
+    ], { read: { stock: true, ventas: true, clientes: true }, businessModules: {}, isOwner: true });
+    const primary = getMobilePrimaryItems(visible);
+    expect(primary.map(item => item?.path)).toEqual(['/', '/ventas', '/clientes', '/consulta-rapida']);
+    expect(new Set(primary.map(item => item?.path)).size).toBe(4);
   });
 
   it('uses the five approved navigation groups', () => {

@@ -1,3 +1,55 @@
+# 2026-11-06 17:46 ART — E8 instalador probado; puerta Facebook por advertencia
+
+- El smoke de solo lectura y heartbeat confirmó extensión **0.5.25**, reciente, pero producción reporta `queue_enabled=false` y `queue_pause_reason=facebook_warning`. Según §5.3 no reactivé la cola ni hice más ensayos. El ensayo anterior sigue sin prueba de descarte confirmado; revisión pendiente en Chrome normal.
+- E8: agregué una validación extraída del propio instalador PowerShell para SHA-256 correcto/alterado, archivo sin suma, rutas de almacén/respaldo iguales o anidadas, y Node existente/inexistente. **Encontró y corregí un error real:** `Test-SafeDistinctDirectories` no evaluaba las tres condiciones por el salto de línea de PowerShell; ahora rechaza rutas anidadas. Revisión focal `npm run test:bridge-installer`: **9/9**.
+- Estado local tras el cambio: `npm run lint` pasó; suite completa **180 archivos / 1.032 pruebas**; `npm run test:bridge-installer` **9/9**; `npm run build` y `npm run perf:check` pasaron (inicial **209.103 B gzip JS / 23.877 B CSS**). El paquete local generado es AI Bridge **1.25.0**. No subí commits ni desplegué: E8 aún requiere el backup verificado del siguiente día antes de sus dos migraciones.
+- **E8 [ ]**: la verificación local está completa. Pendientes: backup, migraciones aditivas, deploy, verificación del bundle y prueba de instalador/UI en otra cuenta/PC.
+- **Pendiente por puerta:** T1.6/T2.5/T4.1/T4.3/T4.4/T4.6/T5.6 siguen bloqueadas por la advertencia Facebook y el descarte no confirmado. No abrir Facebook en Playwright, no reactivar la cola.
+- **Siguiente:** continuar trabajo local que no dependa de la advertencia, y esperar expiración/limpieza de la caché E5 para cerrar D2.
+
+# 2026-11-06 17:32 ART — C0 y E5/E6 verificados; D2 pendiente; primer ensayo C fallido
+
+- **C0 [x]:** actualicé la carpeta unpacked de Chrome indicada por Riva (`rivastock-facebook (20)`) a **0.5.25** con el actualizador seguro. El ID se conservó; se hizo backup 0.5.24 fuera del repo. El Bridge/worker registró extensión **0.5.25**, target **0.5.25** y heartbeat reciente; no había trabajos activos durante el cambio. `findChromeExtensionInstall` ahora revisa `Secure Preferences` además de `Preferences`, con deduplicación por perfil/ruta; sus 7 tests focales pasaron.
+- **E5 [x]:** desde la app autenticada abrí “Ver original” para `[QA] central-smoke` tras la purga natural. La solicitud bajo demanda pasó a `ready` en **57 s** y la vista mostró el contenido original, incluido el código `LUNA-204`. No se usó acceso directo a datos para abrirlo.
+- **E6 [x]:** la copia del backup verificado del 06/11 cubría el original. La lectura de producción muestra **1/1 versiones en `local`**, 166 B movidos y hash verificado; hubo **1 fragmento** indexado antes y después. La copia de Storage se purgó naturalmente el 06/11 11:03 UTC y liberó **166 B** de nube. La apertura de prueba tardó 57 s (promedio y máximo, una muestra). No apliqué migraciones en esta sesión.
+- **D2 sigue [ ]:** eliminé `[QA] central-smoke` desde la Biblioteca, con confirmación por su título exacto. El inventario de solo lectura encontró cero documentos, chats, mensajes, tareas, recuerdos activos, ensayos `[QA]`, trazas `[QA]` y pasos `[QA]`. Queda 1 evento histórico de `ai_memory_events` y 1 búsqueda con referencia QA, conservados como auditoría; además, la caché temporal recién creada para E5 mantiene 1 objeto/166 B hasta las **20:58 UTC**. No hice borrados SQL. Rechequear tras la expiración y el ciclo normal de limpieza antes de cerrar D2.
+- **Bloque C:** el primer ensayo RPC de Marketplace con producto real `Cable Flux` y la extensión **0.5.25** terminó **fallido**, sin envío ni clic de publicar. La traza tuvo 18 pasos; detectó cambio en la carga/orden de fotos al validar e inició descarte, pero `draft_discarded=false` no certifica que el borrador se eliminó. Producción confirma `queue_enabled=false`, `queue_pause_reason=facebook_warning` y heartbeat reciente. No reactivé la cola ni hice más ensayos (§5.3). T1.6 y cierres dependientes siguen `[ ]`; Riva debe revisar el borrador y la advertencia desde Chrome normal.
+- No abrir Facebook en Playwright ni iniciar sesión allí. Riva confirmó su sesión de RivaStock en el perfil Playwright; se mantiene abierto.
+- **Siguiente:** completar el diagnóstico del fallo de fotos/limpieza sin tocar Facebook; continuar E8 y tareas independientes con backup verificado antes de migraciones. No hay despliegue ni migración en curso.
+
+# 2026-11-06 16:36 ART — Separación de sesiones para pruebas
+
+- Riva indicó que Facebook se usa exclusivamente en su Chrome normal con la extensión 0.5.24; la ventana automatizada de Playwright se usa solo para iniciar sesión y validar RivaStock. No abrir Facebook ni autenticar esa cuenta en Playwright. Los ensayos del Bloque C se solicitarán por RPC para que los procese la extensión del Chrome normal, siempre en modo ensayo.
+
+# 2026-11-06 16:34 ART — Perfil QA listo; sigue la puerta del dueño
+
+- Abrí de nuevo una ventana visible de Playwright con `%USERPROFILE%\rivastock-qa-profile` en `https://rivastock.vercel.app/ia/conocimientos`, con control Playwright remoto disponible. Está pendiente que Riva inicie sesión en esa ventana; no la cierro.
+- Para C0, el Bridge confirma extensión 0.5.24 y no hay trabajo activo, pero no se encontró una carpeta `unpacked` verificable en los perfiles Chrome estándar. No cambié el target ni forcé reload. Hace falta identificar desde Chrome la ruta exacta de la extensión cargada para que el actualizador la reemplace y confirme 0.5.25.
+- E8 quedó en dos commits locales de `main` (`a3c798f`, `2fbc33a`), sin push, migración aplicada ni deploy. Los dos cambios de esquema necesitan un backup verificado nuevo antes de cualquier aplicación; el backup diario de Storage de hoy ya se usó para T5.7.
+
+# 2026-11-06 16:30 ART — E8 local: aviso de central apagada
+
+- E8 suma un aviso rojo en `/plataforma` cuando una central lleva más de 2 h sin heartbeat durante 08:00–21:00 del huso del negocio. La zona horaria sale de `fb_pacing_policy` y usa `America/Argentina/Buenos_Aires` como valor predeterminado. La migración `20261106192406_e8_platform_central_offline_alert.sql` reemplaza el RPC de lectura de plataforma; permanece **sin aplicar**.
+- La guía `AI_BRIDGE_SETUP.md` ahora describe el instalador guiado. Verificación actual: `npm run lint`, build, `perf:check`, frontend **180 archivos / 1.031 tests**, Bridge **129/129**, `typecheck` y sintaxis PowerShell aprobados. Bundle inicial: **209.103 B gzip JS / 23.877 B CSS**.
+- E8 sigue abierta: faltan pruebas de instalador con hash correcto/alterado y carpetas reales, revisión de la zona horaria para negocios fuera de las opciones actuales de Facebook, backup nuevo verificado, aplicar las dos migraciones, deploy y validación en una segunda cuenta/PC.
+
+# 2026-11-06 16:22 ART — E8 local: telemetría del Bridge
+
+- E8: el heartbeat ahora puede reportar `on_ac_power` y `codex_enabled`; IA → Conexión muestra el aviso de batería y el aviso cuando Codex no está configurado. La lectura de corriente usa `GetSystemPowerStatus`, devuelve `null` si Windows no puede determinarla y no imprime datos locales. Se agregó la migración aditiva `20261106191314_e8_bridge_status_metadata.sql`; **no aplicada ni desplegada**.
+- Verificación local: lint, build, `perf:check`, Bridge `typecheck`, suite completa **129/129**, suite frontend **179 archivos / 1.028 pruebas** y parser de PowerShell aprobados. El escaneo de secretos del build no encontró patrones.
+- La ventana `rivastock-qa-profile` sigue abierta. Sin control accesible de Playwright no pude ejecutar la checklist autenticada E5/E6 ni eliminar el documento por la app. E5 sí tiene `cloud_purged_at` de purga natural; la apertura y limpieza siguen pendientes.
+- No apliqué la migración E8 porque hoy ya se usó el backup diario verificado para T5.7 y la regla de K4 limita Storage a un backup completo por día. E8 queda en local, abierto, hasta poder obtener el siguiente backup verificado y cerrar el resto del código.
+
+# 2026-11-06 16:12 ART — Avance de sesión: E5 purga y puertas pendientes
+
+- E5: consulta de solo lectura confirma que la única versión `[QA]` quedó purgada de Storage de forma natural a las **11:03:21 UTC** (`cloud_purged_at` presente). Falta probar desde la app que “Ver original” solicita el archivo a la central, abrirlo y luego eliminar el documento desde el flujo normal. D2 sigue pendiente de esa limpieza y auditoría final.
+- C0: la extensión conectada reporta **0.5.24** con heartbeat reciente; el servidor requiere 0.5.24 y no hay intentos, entregas ni ensayos activos. Producción publica 0.5.25. La carpeta identificada desde los perfiles Chrome estándar no contiene la extensión y `Preferences` no ofrece una instalación `unpacked` verificable. No cambié el target de versión: `chrome.runtime.reload()` sin reemplazar antes los archivos solo recargaría 0.5.24 y podría repetir el ciclo. Hace falta localizar la carpeta de instalación válida para correr el actualizador seguro.
+- K5: consulta de logs entre 18:50 y 19:11 UTC encontró **99 `function_logs`** (aprox. 282/h), frente a 909/h en la ventana anterior de 24 h. Es una señal preliminar de reducción, no suficiente para cerrar K5; incluye eventos del runtime y la muestra es de 21 minutos.
+- E8 en código local: instalador Windows sin Node previo, elección/validación de carpetas, restauración del almacén por huellas y lanzador con Node incluido. Parser de PowerShell, 2 pruebas del generador de instalador, 126 pruebas del Bridge y `typecheck` pasan. Sigue incompleta la señal de batería/IA en heartbeat y UI, aviso de central apagada, actualización de `AI_BRIDGE_SETUP.md` y la verificación completa del instalador. No migré ni desplegué E8.
+
+# 2026-11-06 16:02 ART — D2 inventario de solo lectura
+
+- Consulta agregada en producción encontró 1 documento Conocimientos `[QA]` y 1 versión asociada; 0 chats, mensajes, tareas, recuerdos, propuestas, ensayos, trazas o pasos de traza con `[QA]`. También aparecen 1 evento histórico de memoria y 1 búsqueda QA. No borré filas por SQL; la eliminación del documento debe hacerse desde la app después del smoke E5. Los eventos históricos no se alteran.
 # 2026-11-06 15:50 ART — K5: clasificación de reintentos de trazas
 
 - Logs de `RivaStock_Oficial` en 24 h: **21.682 `function_logs`** (6.963 Boot, 6.962 Shutdown, 6.963 info y 794 error). De los errores, **787** fueron `Trace start RPC rejected`; la razón segura más común fue `rehearsal-not-running` (**781**). SQL de solo lectura encontró 4 ensayos fallidos con `REHEARSAL_TRACE_MISSING` y sin traza. Son reintentos terminales de la extensión; no toqué sus datos.
@@ -1441,3 +1493,22 @@ Sin toque en src/, supabase/ ni extensions/.
 - La Management API confirma que el par legacy sigue habilitado. Todavía falta desactivarlo y completar el smoke autenticado de app, producto, Bridge y extensión; reactivarlo de inmediato si algo falla. **A1 continúa abierto hasta ese corte.**
 - **Siguiente:** cerrar A1 con el smoke de producción y después continuar C0 y los ensayos con G2 abierta. I15 queda disponible si alguna prueba en vivo espera una puerta. H8 diferida por pedido de Riva.
 ## 2026-11-06 00:36 ART — I16 implementada; publicación pendiente
+# 2026-11-06 18:25 ART — I17/I18 locales; entrega bloqueada por backup diario y puerta Facebook
+
+- **I17:** menú móvil único implementado localmente: barra con Inicio/3 destinos permitidos/+; panel único de Crear + Ir a con buscador conjunto, filtro de permisos/plan, sin enlaces repetidos ni pestaña Más. Configuración aparece una vez dentro de Herramientas; se eliminó el botón superior móvil sin acción. No marqué `[x]`: falta publicar y hacer smoke autenticado sin escrituras.
+- **I18:** personalización local del catálogo, temas estacionales programables, vista previa, portada WebP comprimida a ≤300 KB, selector de destacados/ofertas, secciones reordenables/visibles, controles WhatsApp y productos sin foto, y colores/resumen en el storefront. La migración aditiva `20261106210043_public_catalog_presentation.sql` agrega `catalog_config.presentation` y expone `createdAt` al RPC público con la misma proyección segura. No aplicada.
+- **Pruebas locales:** lint pasó; 30 pruebas focales pasaron; Playwright móvil 360×740 pasó 2/2 sin enviar pedidos. Capturas de referencia en `test-results/catalog-themes/{normal,christmas,children-day}.png` (fixtures interceptados, sin datos ni escrituras de producción). `perf:check` pasa con el presupuesto CSS de Knowledge en 25.3 KiB; bundle inicial medido en 209.127 B gzip JS / 24.044 B CSS. La suite completa pasó 1.046/1.046 pruebas.
+- **Puerta de migración:** el backup completo verificado de hoy es `%USERPROFILE%\rivastock-backups\20261106T101957Z`, pero es anterior a cambios de producción del día. K4 limita el backup completo de Storage a uno diario y ya se usó; no ejecuto la migración ni publico I18 hasta disponer de un backup verificado vigente que respete ese límite.
+- **D2:** la comprobación SQL de solo lectura ahora muestra 1 objeto en `knowledge-cache` (166 B), 0 eliminaciones pendientes y 1 eliminación completada. Sigue siendo un objeto huérfano de caché; no se borró por SQL y D2 queda abierto hasta que el flujo normal lo elimine.
+- **Facebook:** C0 conserva `[x]`, extensión 0.5.25 e ID intacto. No inicié más RPC de ensayo: producción mantiene `queue_enabled=false` y `queue_pause_reason=facebook_warning`; la advertencia y el borrador potencial del ensayo anterior siguen sin revisión/descarte confirmados en Chrome normal.
+- **Commits/deploy:** ninguno nuevo. `main` local mantiene dos commits E8 no publicados (`a3c798f`, `2fbc33a`); no los empujo mientras sus migraciones sigan sin backup vigente.
+- **Siguiente:** repetir suite completa; cerrar la limpieza D2 si el Bridge la completa; resolver I17/I18 cuando el backup permita una entrega segura; no reactivar Facebook hasta resolver la advertencia.
+
+## 2026-11-06 18:40 ART — validación local adicional de I17/I18; puertas de producción siguen cerradas
+
+- Suite Vitest: **1.046/1.046**, 182 archivos. `npm run lint`, `npm run build`, `npm run perf:check` y `git diff --check` pasan. Bundle inicial: **209.127 B gzip JS / 24.044 B CSS**; `perf:check` permite 25,3 KiB CSS en Knowledge por +95 B medidos.
+- Playwright local de `navigation-mobile` y `public-catalog`: **5/5** pasan; flujo móvil 360×740, temas Normal/Navidad/Día del Niño, sin enviar pedidos ni escrituras. La primera ejecución detectó que los selectores de `navigation-mobile.spec.ts` describían el menú anterior; se actualizaron a la barra + panel único y pasó Android/iPhone/Chromium.
+- **I17/I18 siguen [ ]**: las pruebas locales pasan, pero no están publicadas. No se aplicó `20261106210043_public_catalog_presentation.sql`: el backup verificado de Storage de hoy ya se consumió según K4. E8 también conserva dos commits locales sin push y espera backup fresco antes de migrar.
+- **D2 sigue [ ]:** verificación de solo lectura en producción a las 21:38 UTC: 1 objeto `knowledge-cache`, 166 B; 0 eliminaciones pendientes, 1 completada. No hice borrado directo. La tarea queda esperando que el flujo normal elimine el objeto huérfano.
+- **Facebook:** no abrí Facebook ni reactivé la cola ni inicié ensayos. El `facebook_warning` y el borrador potencial siguen siendo una puerta abierta solo por Riva en su Chrome normal.
+- `OWNER_ACTIONS.md` conserva tres acciones reales: revisar la advertencia/borrador en Chrome normal, crear el negocio de prueba para E9, y elegir productos/grupos para T6.1.

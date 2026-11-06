@@ -94,7 +94,6 @@ export default function AppNavigation(props: AppNavigationProps) {
         </section>)}
       </nav>
       <div className="p-4 mt-auto border-t border-slate-800 space-y-2 shrink-0">
-        {items.filter(item => item.path === '/config').map(item => { const Icon = item.icon; const active = props.pathname.startsWith('/config'); return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={cn('nav-item flex min-h-11 items-center gap-3 px-3 py-2 transition-colors', active ? 'nav-item-active text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white')}><Icon size={19} /><span className="font-medium">Configuración</span></Link>; })}
         <div className="flex items-center gap-3 px-3 py-2"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand)] text-sm font-bold text-white">{props.displayInitial}</div><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{props.displayName}</p><p className="truncate text-xs text-slate-500">{props.roleLabel}</p></div></div>
         <button type="button" onClick={props.onLogout} disabled={props.loggingOut} className="nav-item flex min-h-11 w-full items-center gap-3 px-3 py-2 text-slate-400 transition-colors hover:text-rose-300 disabled:opacity-50"><LogOut size={20} /><span className="font-medium">Cerrar sesión</span></button>
       </div>

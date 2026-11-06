@@ -448,6 +448,39 @@ Maquetas: `docs/design/mobile-navigation/` — `MenuLateral`, `Mas`, **`BarraFlo
 
 ---
 
+### [ ] I17 Un solo menú en el celular — **pedido de Riva el 06/11, URGENTE (antes que lo demás)**
+Riva no entiende por qué hay dos menús (el **+** con acciones y **Más** con secciones): deben ser **uno solo**. Maqueta: `docs/design/mobile-navigation/MenuUnico.dc.html`.
+- **Barra flotante:** Inicio · Stock · **+** · Ventas · **Consulta**. Se elimina la pestaña **Más** y su hoja.
+- **El + abre un único panel** “¿Qué querés hacer?”: arriba un buscador que filtra acciones y secciones a la vez; sección **Crear** con acciones rápidas en 2 columnas (Nueva venta, Modo POS, Registrar gasto, Cobro de cliente, Presupuesto, Ingreso de mercadería); separador; sección **Ir a** con todas las secciones en grilla de 4, en los mismos 5 grupos de I16 (Configuración dentro de Herramientas); abajo Configuración y Cerrar sesión. Scroll interno si no entra.
+- “Consultar precio” y “Enviar fotos” ya no se repiten en Crear: están en **Ir a** (y Consulta en la barra). Nada aparece dos veces en el panel.
+- Mismos filtros por permisos y plan que I16. Si Stock, Ventas o Consulta no están permitidos, su lugar lo ocupa el siguiente módulo permitido.
+- **Bug reportado por Riva (06/11):** en el celular, el ícono de menú (tres rayas) de arriba a la derecha del encabezado **no hace nada**. En móvil hay que **sacarlo**: el único menú es el panel del +. En tablet y PC la barra lateral sigue como está; si en algún ancho intermedio el ícono queda visible, tiene que abrir el menú lateral. Agregar un test que falle si hay un botón de menú visible que no abre nada.
+- Corregir el ícono de la pestaña **Más** que hoy muestra un ícono de “abrir enlace externo” (deja de existir con este cambio).
+- Tests: actualizar los de I16 (barra con 5 lugares, panel único, buscador, sin duplicados, permisos). Smoke de producción sin escrituras.
+- **Commit:** `feat(nav): single quick menu with create actions and sections`
+
+---
+
+### [ ] I18 Catálogo público nuevo, muy personalizable y con temas de temporada — **maquetas aprobadas por Riva el 06/11**
+Riva aprobó el rediseño ("Me gusta la maqueta!") y pidió que el catálogo sea **lo más personalizable posible** y que tenga **temas de temporada** (Día del Niño, Navidad, Año Nuevo, etc.). Maquetas: `docs/design/public-catalog/` — `Main` (Catálogo), `Producto`, `Carrito`, `Datos`, `Enviado`, `Revendedores`, **`Personalizar`**, **`TemaNavidad`**, **`TemaDiaNino`** (`.dc.html`). El catálogo vive en `src/pages/PublicCatalog.tsx` y `src/pages/PublicProductPage.tsx`; la configuración actual está en `src/pages/Settings.tsx` (color principal, banner, logo, mensaje de bienvenida, slug, mostrar precios/stock, pedidos online).
+- **Pantallas de cliente (estilo claro, fuente Inter):** inicio con portada, buscador grande, categorías en chips, secciones y grilla de 2 columnas con foto, precio y estado ("En stock", "Último", "Por encargo"); ficha de producto con galería, cantidad y botón "Agregar"; carrito como hoja con totales; formulario de datos (nombre, WhatsApp, entrega o retiro, notas) con validación clara; pantalla de pedido enviado con número de pedido y botón para escribir por WhatsApp; acceso de revendedores con código (lo que ya existe, con el nuevo estilo). Barra flotante de carrito abajo cuando hay productos. Todo lo que hoy funciona (código de revendedor, disponibilidad, mínimos, mostrar u ocultar precios y stock, enlaces a redes) tiene que seguir funcionando igual.
+- **Pantalla nueva "Personalizar catálogo" (dentro de la app, maqueta `Personalizar`):** reemplaza el bloque del catálogo en Configuración (o se abre desde ahí). Tiene **vista previa en vivo** arriba y estas opciones:
+  - **Tema:** Normal, Navidad, Día del Niño, Año Nuevo, Día de la Madre, Día del Padre, Vuelta a clases, Hot Sale y Personalizado. Cada tema define color de portada, color principal, texto de portada sugerido y un dibujo decorativo simple (SVG propio, sin emojis, sin personajes ni marcas registradas). "Personalizado" deja elegir todo a mano.
+  - **Programar el tema:** fecha desde y hasta. Se activa y se desactiva solo; al terminar vuelve al tema Normal. Se pueden dejar varios programados (ej.: Día del Niño en agosto y Navidad en diciembre) sin que se pisen; si se superponen, gana el más reciente.
+  - **Portada:** título, texto, foto propia (comprimida, ver abajo) y colores.
+  - **Secciones:** Destacados de la temporada, Ofertas, Categorías, Novedades y Todos los productos; cada una se puede **mostrar u ocultar y reordenar** (arrastrar en PC, flechas arriba/abajo en el celular). "Destacados de la temporada" usa productos que Riva marca a mano (o una categoría que elija).
+  - **Qué se muestra:** precios, stock, pedidos online, botón de WhatsApp en cada producto, productos sin foto (recomendado apagado). Mantener las opciones que ya existen y sumar las nuevas.
+  - Botones "Ver catálogo" (abre el catálogo público en otra pestaña) y "Guardar cambios".
+- **Datos:** guardar toda la personalización en **una sola configuración por negocio** (columna JSON en la tabla de configuración del catálogo que ya exista, con migración nueva y aditiva; sin borrar columnas viejas, que se siguen leyendo como valor inicial). Las reglas de seguridad (RLS) igual que la configuración actual: solo el dueño o colaboradores con permiso la editan; el catálogo público solo la lee. El tema activo se calcula en el navegador con la fecha del día; no hace falta ningún proceso programado.
+- **Cuidar Supabase (plan gratis, Bloque K):** la foto de portada se comprime antes de subir (máx. ~1600 px de ancho, WebP o JPG, menos de 300 KB) y se guarda una sola vez; los dibujos de los temas van dentro del código (sin descargas). El catálogo no debe hacer más consultas que hoy: la personalización viaja en la misma consulta de configuración.
+- **PC:** el mismo diseño adaptado a pantalla ancha (grilla de 4 a 5 columnas, carrito como panel lateral). No hace falta maqueta aparte: seguí las de celular.
+- Mismas reglas de I15: touch ≥ 44 px, contraste AA, textos en español rioplatense, sin romper links existentes (`/catalogo/<slug>` y fichas de producto).
+- **Tests:** unitarios de la elección del tema activo según fechas (sin tema, uno vigente, dos superpuestos, uno vencido) y del orden y visibilidad de secciones; Playwright móvil 360×740 del catálogo público de punta a punta (buscar, agregar, carrito, datos) **sin enviar pedidos reales** (usar el negocio de prueba o interceptar la llamada); captura del catálogo con tema Normal, Navidad y Día del Niño.
+- **Cuándo:** después de I17. Antes de volver al Bloque C cuando C quede esperando a Riva.
+- **Commit:** `feat(catalog): customizable public catalog with seasonal themes`
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.
@@ -467,7 +500,7 @@ Ajustes de este plan sobre el del publicador:
 - Los ensayos en vivo **no requieren manejar el navegador**: se crean por RPC y los toma la extensión instalada en la PC del dueño. Solo necesitan G2.
 - Las trazas se revisan con `scripts/automation-trace-dump.mjs` (T1.5): mirá cada captura antes de dar por buena una prueba.
 
-### [ ] C0 Actualización de la extensión sin intervención del dueño (antes de T1.4)
+### [x] C0 Actualización de la extensión sin intervención del dueño (antes de T1.4)
 Objetivo: que Riva instale la extensión **una sola vez más** y las versiones siguientes se apliquen solas.
 - Agregar a la extensión la capacidad `self-reload`: cuando el servidor indica en el heartbeat que hay una versión más nueva **y** no hay intento ni ensayo en curso, la extensión llama a `chrome.runtime.reload()`. En una extensión instalada “sin empaquetar”, esto relee los archivos de su carpeta.
 - Script `scripts/update-installed-facebook-extension.mjs`: ubica la carpeta de la extensión sin empaquetar del perfil de Chrome del dueño (leyendo la configuración del perfil, solo lectura), verifica que el ID y el `manifest.name` coinciden, reemplaza los archivos por los del ZIP publicado (verificando el SHA-256 de `rivastock-facebook-version.json`) conservando una copia de la versión anterior fuera del repo, y marca en el servidor que hay versión nueva para que la extensión se recargue.
