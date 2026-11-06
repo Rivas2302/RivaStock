@@ -5,6 +5,7 @@ import { isPostSubmitObservations } from '../_shared/facebookPostSubmit.ts';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 import { isAllowedAutomationOrigin } from './origin.ts';
+import { isInactiveRehearsalTraceStart } from './traceStartFailure.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
@@ -351,6 +352,9 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           p_summary: body.summary ?? {},
         });
       if (error || !isUuid(data)) {
+        if (body.mode === 'rehearsal' && isInactiveRehearsalTraceStart(error)) {
+          return jsonResponseWithCors({ error: 'El ensayo ya terminó; no se creó una traza.' }, 409, origin);
+        }
         const safeReasons: Record<string, string> = {
           'Trace owner and device are required': 'identity-missing',
           'Active Facebook device does not belong to trace owner': 'device-owner-mismatch',

@@ -1,3 +1,13 @@
+# 2026-11-06 15:50 ART — K5: clasificación de reintentos de trazas
+
+- Logs de `RivaStock_Oficial` en 24 h: **21.682 `function_logs`** (6.963 Boot, 6.962 Shutdown, 6.963 info y 794 error). De los errores, **787** fueron `Trace start RPC rejected`; la razón segura más común fue `rehearsal-not-running` (**781**). SQL de solo lectura encontró 4 ensayos fallidos con `REHEARSAL_TRACE_MISSING` y sin traza. Son reintentos terminales de la extensión; no toqué sus datos.
+- Corrección acotada: `automation` responde HTTP 409 sin registrar error interno cuando el RPC confirma que un ensayo ya no está activo. Otros rechazos continúan como errores. `automation` está ACTIVE **v21**, `verify_jwt=false`. Prueba focal **2/2** y `npm run lint` aprobados.
+- Es una reducción parcial de `function_logs`; no elimina los reintentos del worker antiguo ni los eventos Boot/Shutdown. Para dejar de reintentar la extensión necesita consumir el nuevo 409, pendiente de resolver C0. K5 sigue abierta; no afirmo una reducción medida después del deploy.
+# 2026-11-06 15:42 ART — T5.7 producción; C0 diagnóstico
+
+- El deploy de `5c942a5` terminó en Vercel `success`. La app de producción entrega los módulos de Automatizaciones, reglas de grupos y panel “Salud de la cuenta”; los assets verificados responden HTTP 200. Supabase tiene aplicada `20261106130047_facebook_low_risk_profile.sql` y `automation` ACTIVE v20, `verify_jwt=false`. Los criterios de T5.7 se verificaron por lectura de esquema/funciones y bundle publicado; falta el ensayo Facebook en vivo y por eso no cierro la validación integral.
+- **C0 bloqueada por la instalación local:** producción sirve extensión 0.5.25; el dispositivo conectado reportó 0.5.24 y no tiene intentos/ensayos activos. `node scripts/update-installed-facebook-extension.mjs` terminó con `extension-installation-not-found`: el instalador solo acepta una instalación unpacked reconocida en las preferencias del perfil y no encontró ninguna. No modificó archivos ni subió el target del servidor. No marqué C0 ni forcé `chrome.runtime.reload()` porque la extensión necesita releer una carpeta que el script no pudo identificar de forma segura.
+- La ventana persistente `rivastock-qa-profile` sigue abierta en la página de Conocimientos para completar E5/E6/D2 desde la app; la validación autenticada y la limpieza por flujo normal siguen pendientes. No ejecuté borrados SQL ni publiqué nada en Facebook.
 # 2026-11-06 15:27 ART — T5.7: migración y Edge Function en producción
 
 - Comparé `docs/ai/ACTION_PLAN.md` con Escritorio antes de esta entrega: la copia local está fechada **06/11 01:20 ART**, la del Escritorio **05/11 23:44 ART**. La copia del Escritorio revierte marcas ya verificadas de G2, I10, I11 e I16; conservé la versión local más nueva.
@@ -5,7 +15,7 @@
 - La previsualización de `supabase db push --linked --dry-run` enumeró únicamente `20261106130047_facebook_low_risk_profile.sql`. Se aplicó esa migración en `RivaStock_Oficial`; la lista de migraciones y las columnas, funciones y triggers críticos quedaron confirmados por consultas de solo lectura.
 - Desplegué `automation` **v20**, `ACTIVE`, conservando `verify_jwt=false`.
 - Verificación local: lint pasó; suite completa **178 archivos / 1.026 pruebas** pasó al proporcionar URL/clave ficticias solo en el proceso y limitar workers (la primera ejecución sin variables de prueba falló por URL ausente y agotó tiempos en pruebas PGlite). `npm run build` y el escaneo de secretos pasaron; `perf:check` pasó (entrada inicial 209.193 B gzip JS, 23.877 B CSS). Se generó el paquete local de extensión **0.5.25**.
-- Commit de código existente: `e3d6c5a`; aún no hice push ni deploy web. La ventana de Playwright con `rivastock-qa-profile` quedó abierta para iniciar sesión; la verificación de UI y de la captura de reglas con la extensión actual sigue pendiente. No se crearon publicaciones ni datos QA.
+- Commit de código `5c942a5` publicado en `main` con Rivas2302; Vercel está construyendo. La ventana de Playwright con `rivastock-qa-profile` quedó abierta para iniciar sesión; la verificación de UI y de la captura de reglas con la extensión actual sigue pendiente. No se crearon publicaciones ni datos QA.
 
 # 2026-11-06 14:21 ART — Medición de 24 h para K2/K5
 
