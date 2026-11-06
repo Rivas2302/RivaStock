@@ -21,6 +21,11 @@
 - No hice ensayos ni publicaciones. T5.7 requiere agregar lectura de reglas a la extensión; §5.2b mantiene cerrado código nuevo de extensión mientras hay cuatro cierres esperando prueba en vivo, y Riva todavía no instaló 0.5.24. No inicié esa parte ni marqué la tarea.
 - **Siguiente:** terminar E5 al vencimiento de su gracia, completar E6 y E8 en orden; después retomar el código que siga permitido sin cambiar la extensión.
 
+# 2026-11-06 07:07 ART — E5 venció; purga natural aún pendiente
+
+- La gracia de 72 h venció a las 07:06 ART. La consulta SQL de solo lectura encontró 1 versión local de 166 B con verificación reciente, 1 purga ya debida y 0 purgas registradas. El Bridge sigue idle con heartbeat reciente; espero su siguiente ciclo de purga automática. No eliminé manualmente el objeto ni cambié la fecha de purga.
+- **E5 sigue abierta** hasta que `cloud_purged_at` confirme la purga y pruebe la apertura bajo demanda desde la central. D2 conserva este documento para completar esa prueba.
+
 # 2026-11-06 00:45 ART — I16 publicada
 
 - Adopté únicamente I16 de `ACTION_PLAN.md` del Escritorio (06/11, menú agrupado y barra **flotante**); añadí sus siete maquetas en `docs/design/mobile-navigation/`. No reemplacé otras secciones del plan maestro.
