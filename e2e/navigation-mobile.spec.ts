@@ -14,7 +14,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page) {
+async function mockApp(page: Page, darkMode = false) {
   const mutations: string[] = [];
   await page.route('**/*', async route => {
     const request = route.request();
@@ -25,7 +25,7 @@ async function mockApp(page: Page) {
     if (url.pathname === '/auth/v1/user') return route.fulfill({ json: session().user });
     if (url.pathname.endsWith('/rpc/get_owner_profile')) return route.fulfill({ json: [{
       id: OWNER_ID, role: 'admin', business_name: 'Negocio de prueba', business_name_lower: 'negocio de prueba',
-      display_name: 'Dueño', currency_symbol: '$', catalog_slug: 'negocio-prueba', dark_mode: false,
+      display_name: 'Dueño', currency_symbol: '$', catalog_slug: 'negocio-prueba', dark_mode: darkMode,
       onboarding_completed_at: now, created_at: now,
     }] });
     if (url.pathname.endsWith('/rpc/is_platform_admin')) return route.fulfill({ json: false });
@@ -83,6 +83,51 @@ test('mobile quick actions and sections share one menu without creating data', a
   await expect(page).toHaveURL(/\/consulta-rapida$/);
   expect(mutations).toEqual([]);
 });
+
+for (const darkMode of [false, true]) {
+  const theme = darkMode ? 'dark' : 'light';
+
+  test(`opening a new product from the mobile plus menu stays responsive in ${theme} mode`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'chromium', 'Product form navigation runs in Android and iPhone projects.');
+    await mockApp(page, darkMode);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Abrir menú' }).click();
+    await page.getByRole('navigation', { name: 'Ir a' }).getByRole('link', { name: 'Stock' }).click();
+    await page.getByRole('button', { name: 'Agregar producto' }).last().click();
+    const form = page.getByTestId('mobile-product-form');
+    await expect(form).toBeVisible();
+    await form.getByLabel('Nombre').fill('Borrador de prueba');
+    await page.goBack();
+    await expect(page.getByText('¿Descartar los cambios?')).toBeVisible();
+    await page.getByRole('button', { name: 'Descartar', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page.getByText('Algo salió mal')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test(`opening a new product from the mobile Stock tab stays responsive in ${theme} mode`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'chromium', 'Product form navigation runs in Android and iPhone projects.');
+    await mockApp(page, darkMode);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto('/');
+    await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Stock' }).click();
+    await page.getByRole('button', { name: 'Agregar producto' }).last().click();
+    const form = page.getByTestId('mobile-product-form');
+    await expect(form).toBeVisible();
+    await form.getByLabel('Nombre').fill('Borrador de prueba');
+    await page.goBack();
+    await expect(page.getByText('¿Descartar los cambios?')).toBeVisible();
+    await page.getByRole('button', { name: 'Descartar', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page.getByText('Algo salió mal')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
 
 test('desktop navigation groups and search work at 1280px', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'Desktop navigation is checked in Chromium.');

@@ -461,7 +461,7 @@ Riva no entiende por qué hay dos menús (el **+** con acciones y **Más** con s
 
 ---
 
-### [ ] I17b Arreglo: el buscador del menú + no tiene que abrir el teclado solo — **pedido de Riva el 06/11, URGENTE**
+### [x] I17b Arreglo: el buscador del menú + no tiene que abrir el teclado solo (y se sacó el ícono de menú de Inicio, `fadd0e6`) — **pedido de Riva el 06/11, URGENTE**
 En el celular, al abrir el panel del **+** ("¿Qué querés hacer?") el buscador toma el foco y se abre el teclado, y tapa medio panel. **Sacar el foco automático en móvil:** el teclado solo se abre si Riva toca el buscador. En PC puede quedar con foco automático. Test que verifique que en móvil (360×740) el buscador no tiene foco al abrir el panel. Además, sacar de Inicio móvil el botón superior de tres rayas **"Abrir menú completo"** (`src/components/mobile/MobileHome.tsx`), que no hace nada; agregar un test que confirme que no aparece. Smoke en producción sin escrituras.
 - **Commit:** `fix(nav): do not autofocus quick menu search on mobile`
 
@@ -508,6 +508,27 @@ Idea de Riva: cuando va a hacerle un pedido a un proveedor, carga la lista de es
 - **Tests:** unitarios de margen + redondeo, cálculo de consolidado (solo pagados), cierre automático por hora; Playwright móvil del flujo del revendedor y del de Riva con datos de prueba.
 - **Cuándo:** después de I18.
 - **Commit:** `feat(resellers): supplier price lists and on-order rounds for resellers`
+
+---
+
+### [x] I19b Bucle al cargar un producto nuevo en el celular — **reportado por Riva el 06/11 21:00**
+En el celular, al cargar un **producto nuevo** aparece "Algo salió mal" con *Minified React error #185* (Maximum update depth exceeded). Empezó después de `9210bda`/`fadd0e6`. Sospecha: `navigateFromSheet` de `MobileNavigation.tsx` (`history.back()` + `navigate()` en `popstate`) chocando con `useUnsavedProductNavigationBlocker`/`registerPopNavigationGuard` de `MobileProductForm.tsx`; revisar también `useMobileAppChrome`. Reproducir en 360×740 por el menú **+** y por **Stock → Nuevo producto** (tema claro y oscuro), arreglar y agregar e2e que abra el formulario por los dos caminos, escriba, vuelva atrás y confirme que no hay pantalla de error, **sin guardar productos reales**. **Cuándo:** no interrumpir la tarea en curso; hacerlo **apenas termine** y antes de arrancar la siguiente.
+- **Commit:** `fix(stock): stop render loop when opening new product form on mobile`
+
+---
+
+### [ ] I20 Asistente IA en el celular: lista de chats nueva — **Riva eligió la opción B el 06/11**
+A Riva le parece "horrible" la pantalla de chats de IA en el celular: el botón flotante **Nuevo chat** choca con la barra flotante de abajo y los chats son rectángulos planos con tres puntitos sueltos. Maquetas: `docs/design/mobile-ai/` — **`OpcionB.dc.html` (la elegida)** y `Opciones.dc.html` (menú al mantener apretado). `Main.dc.html` es la opción A, descartada. Código: `src/components/ai/MobileAIChatList.tsx` y la pantalla de IA que lo contiene (título, "PC conectada", pestañas Chats/Tareas/Más).
+- **Encabezado:** ícono de IA, título **Asistente IA** y debajo el estado "● PC conectada" (verde; si no está conectada, en ámbar y tocable como hoy). A la derecha, botón **"+ Nuevo chat"** (píldora de 44 px). Debajo, las pestañas Chats/Tareas/Más como control segmentado redondeado.
+- **Se elimina el botón flotante** "Nuevo chat" de abajo. Nada puede quedar tapado por la barra flotante: dejar espacio abajo.
+- **Buscador** redondeado arriba de la lista.
+- **Chats como tarjetas** redondeadas (radio ~18 px, separadas 10 px) con ícono circular de color según el tema del chat (stock, ventas, publicaciones, presupuestos, clientes, caja; si no se puede deducir, ícono de IA), título, vista previa, hora o día, y **"Respondiendo…"** con puntitos animados cuando hay un trabajo pendiente (`has_pending_job`). Grupos: **Fijados**, Hoy, Esta semana, Anteriores.
+- **Sin el botón de tres puntitos.** Al **mantener apretado** un chat se abre una hoja desde abajo (maqueta `Opciones`) con **Fijar arriba**, **Cambiar nombre** y **Eliminar chat** (este último pide confirmación como hoy). Deslizar a la izquierda para eliminar puede quedar, pero con el estilo redondeado. Si "Fijar" o "Cambiar nombre" no existen todavía, agregarlos con migración aditiva (`pinned_at`, título editable) respetando RLS; si eso complica, dejarlos para después y mostrar solo Eliminar.
+- Estado vacío: ícono, texto "Todavía no tenés chats" y botón "Nuevo chat".
+- Mismas reglas de I15: touch ≥ 44 px, contraste AA en ambos temas, sin consultas nuevas en bucle.
+- **Tests:** unitarios de agrupación (fijados primero) y del menú al mantener apretado; Playwright móvil 360×740: el botón Nuevo chat no se superpone con la barra de abajo, abrir un chat, mantener apretado y cancelar. Sin borrar chats reales.
+- **Cuándo:** sin apuro (Riva, 06/11 21:04): después de terminar I18 e I19.
+- **Commit:** `feat(ai): mobile chat list redesign with cards and long-press menu`
 
 ---
 
