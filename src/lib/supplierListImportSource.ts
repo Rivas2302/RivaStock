@@ -1,9 +1,15 @@
 import { parseSupplierListRows, type SupplierListDraftRow } from './supplierListImport';
 import { supabase } from './supabase';
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
-const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
+export const MAX_SOURCE_BYTES = 50 * 1024 * 1024;
 const MAX_SOURCE_TEXT = 60_000;
-const MAX_SOURCE_ROWS = 500;
+export const MAX_SOURCE_ROWS = 3000;
+const MAX_PDF_PAGES = 300;
+const MAX_OCR_PAGES = 30;
+
+export type SupplierFileProgress = (page: number, total: number, warning?: string) => void;
 
 export interface SupplierCatalogSourceResult {
   source: 'woocommerce' | 'shopify' | 'jsonld' | 'text';
@@ -22,7 +28,7 @@ export interface SupplierCatalogSourceResult {
 export function parseSupplierListText(text: string): SupplierListDraftRow[] {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.length === 0) return [];
-  if (lines.length > MAX_SOURCE_ROWS + 1) throw new Error('La fuente supera el máximo de 500 filas por lista.');
+  if (lines.length > MAX_SOURCE_ROWS + 1) throw new Error('La fuente supera el máximo de 3000 filas por lista.');
 
   const matrix = lines.map(line => line.includes('\t') ? line.split('\t')
     : line.includes('|') ? line.split('|')
@@ -41,25 +47,73 @@ export function parseSupplierListText(text: string): SupplierListDraftRow[] {
   }));
 }
 
-export async function extractSupplierListFileText(file: File): Promise<string> {
-  if (file.size <= 0 || file.size > MAX_SOURCE_BYTES) throw new Error('El archivo debe tener contenido y pesar hasta 10 MB.');
+async function renderPdfPageToCanvas(documentProxy: PDFDocumentProxy, pageNumber: number): Promise<HTMLCanvasElement> {
+  const page = await documentProxy.getPage(pageNumber);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(2, 2400 / Math.max(baseViewport.width, baseViewport.height));
+  const viewport = page.getViewport({ scale });
+  const canvas = window.document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) throw new Error('Este navegador no permite leer páginas escaneadas.');
+  await page.render({ canvasContext: context, viewport }).promise;
+  return canvas;
+}
+
+export async function extractSupplierListFileText(file: File, onProgress?: SupplierFileProgress): Promise<string> {
+  if (file.size <= 0 || file.size > MAX_SOURCE_BYTES) throw new Error('El archivo debe tener contenido y pesar hasta 50 MB.');
   const extension = file.name.split('.').pop()?.toLocaleLowerCase('en-US');
   if (extension === 'pdf' || file.type === 'application/pdf') {
+    let loadingTask: { promise: Promise<PDFDocumentProxy>; destroy: () => Promise<void> } | undefined;
     try {
-      const { extractText, getDocumentProxy } = await import('unpdf');
-      const document = await getDocumentProxy(new Uint8Array(await file.arrayBuffer()));
-      try {
-        const result = await extractText(document, { mergePages: false });
-        const pages = Array.isArray(result.text) ? result.text : [result.text];
-        const text = pages.slice(0, 40).join('\n');
-        if (text.replace(/\s/g, '').length < 10) throw new Error('El PDF no contiene texto seleccionable. Usá una captura legible o una planilla.');
-        return text.slice(0, MAX_SOURCE_TEXT);
-      } finally {
-        await document.cleanup();
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+      loadingTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+      const documentProxy = await loadingTask.promise;
+      if (documentProxy.numPages > MAX_PDF_PAGES) {
+        throw new Error('El PDF supera el máximo de 300 páginas. Dividilo en archivos más chicos.');
       }
+      const pages: string[] = [];
+      let ocrWorker: { recognize: (image: HTMLCanvasElement) => Promise<{ data: { text: string } }>; terminate: () => Promise<unknown> } | undefined;
+      let ocrPages = 0;
+      let skippedScannedPages = false;
+      try {
+        for (let pageNumber = 1; pageNumber <= documentProxy.numPages; pageNumber++) {
+          const page = await documentProxy.getPage(pageNumber);
+          const content = await page.getTextContent();
+          const pageText = content.items.flatMap(item => 'str' in item ? [item.str] : []).join(' ').trim();
+          if (pageText.length >= 3) {
+            pages.push(pageText);
+          } else if (ocrPages < MAX_OCR_PAGES) {
+            ocrWorker ??= await (await import('tesseract.js')).createWorker('spa', 1);
+            const canvas = await renderPdfPageToCanvas(documentProxy, pageNumber);
+            try {
+              const result = await ocrWorker.recognize(canvas);
+              pages.push(result.data.text.trim());
+            } finally {
+              canvas.width = 0;
+              canvas.height = 0;
+            }
+            ocrPages++;
+          } else {
+            skippedScannedPages = true;
+          }
+          const warning = skippedScannedPages ? 'El PDF tiene más de 30 páginas escaneadas; se omitieron las páginas que superan el límite de OCR.' : undefined;
+          onProgress?.(pageNumber, documentProxy.numPages, warning);
+        }
+      } finally {
+        await ocrWorker?.terminate();
+      }
+      const text = pages.join('\n').trim();
+      if (text.replace(/\s/g, '').length < 10) throw new Error('El PDF no contiene texto legible. Usá una captura o una planilla.');
+      if (skippedScannedPages) onProgress?.(documentProxy.numPages, documentProxy.numPages, 'El PDF tiene más de 30 páginas escaneadas; se omitieron las páginas que superan el límite de OCR.');
+      return text.slice(0, MAX_SOURCE_TEXT);
     } catch (error) {
       if (error instanceof Error && /^(El|La|No)\s/.test(error.message)) throw error;
       throw new Error('No pudimos procesar el PDF. Revisá que esté completo y volvé a intentarlo.');
+    } finally {
+      await loadingTask?.destroy();
     }
   }
 

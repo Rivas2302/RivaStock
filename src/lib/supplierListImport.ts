@@ -47,7 +47,7 @@ function findColumn(headers: string[], aliases: string[]): number {
 
 export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow[] {
   if (matrix.length < 2) return [];
-  if (matrix.length > 501) throw new Error('La planilla supera el máximo de 500 filas por lista.');
+  if (matrix.length > 3001) throw new Error('La planilla supera el máximo de 3000 filas por lista.');
   const headers = (matrix[0] ?? []).map(normalizeHeader);
   const nameColumn = findColumn(headers, HEADER_ALIASES.name);
   const costColumn = findColumn(headers, HEADER_ALIASES.cost);

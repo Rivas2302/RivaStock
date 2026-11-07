@@ -31,9 +31,23 @@ describe('supplier list source extraction', () => {
     await expect(extractSupplierListFileText(file)).resolves.toContain('Taza térmica');
   });
 
+  it('reads selectable text from a 25 MB PDF and reports page progress', async () => {
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF();
+    pdf.text('Producto    Costo', 15, 20);
+    pdf.text('Taza térmica    2500', 15, 30);
+    const pdfBytes = new Uint8Array(pdf.output('arraybuffer'));
+    const padding = new Uint8Array(25 * 1024 * 1024 - pdfBytes.byteLength).fill(32);
+    const file = Object.assign(new Blob([pdfBytes, padding], { type: 'application/pdf' }), { name: 'lista-grande.pdf' }) as File;
+    const progress = vi.fn();
+    await expect(extractSupplierListFileText(file, progress)).resolves.toContain('Taza térmica');
+    expect(progress).toHaveBeenCalledWith(1, 1, undefined);
+  });
+
   it('rejects excessive source rows', () => {
-    expect(() => parseSupplierListText(Array.from({ length: 502 }, (_, index) => `Fila ${index}`).join('\n')))
-      .toThrow('500 filas');
+    expect(() => parseSupplierListText(Array.from({ length: 3002 }, (_, index) => `Fila ${index}`).join('\n')))
+      .toThrow('3000 filas');
+    expect(parseSupplierListText(Array.from({ length: 3000 }, (_, index) => `Fila ${index}`).join('\n'))).toHaveLength(3000);
   });
 
   it.each(['http://supplier.example/list', 'https://user:pass@supplier.example/list', 'https://192.168.1.12/list', 'https://catalog.local/list', 'https://supplier.example:8443/list'])

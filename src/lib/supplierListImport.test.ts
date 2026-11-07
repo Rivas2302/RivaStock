@@ -27,8 +27,8 @@ describe('supplier list import', () => {
 
   it('rejects zero-cost products and supplier lists over the database limit', () => {
     expect(parseSupplierListRows([['Producto', 'Costo'], ['Muestra', 0]])[0].error).toBe('Revisá el precio de costo.');
-    expect(() => parseSupplierListRows([['Producto', 'Costo'], ...Array.from({ length: 501 }, (_, index) => [`Producto ${index}`, 100])]))
-      .toThrow('500 filas');
+    expect(() => parseSupplierListRows([['Producto', 'Costo'], ...Array.from({ length: 3001 }, (_, index) => [`Producto ${index}`, 100])]))
+      .toThrow('3000 filas');
   });
 
   it('builds an AI instruction that treats imported content as data and keeps the IVA basis', () => {

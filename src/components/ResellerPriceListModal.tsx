@@ -147,6 +147,7 @@ export default function ResellerPriceListModal({
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
   const [supplierImportReading, setSupplierImportReading] = useState(false);
+  const [supplierImportProgress, setSupplierImportProgress] = useState<{ page: number; total: number; warning: string | null } | null>(null);
   const [supplierImportMargin, setSupplierImportMargin] = useState(25);
   const [supplierImportRounding, setSupplierImportRounding] = useState<SupplierPriceRounding>('none');
   const [supplierImportCategoryMargins, setSupplierImportCategoryMargins] = useState<Record<string, number>>({});
@@ -409,8 +410,13 @@ export default function ResellerPriceListModal({
 
   const handleSupplierImportFile = async (file?: File) => {
     if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      setError('El archivo debe pesar hasta 50 MB.');
+      return;
+    }
     setSupplierImportReading(true);
     setError(null);
+    setSupplierImportProgress(null);
     try {
       const extension = file.name.split('.').pop()?.toLocaleLowerCase('en-US');
       let rows: SupplierListDraftRow[];
@@ -423,9 +429,12 @@ export default function ResellerPriceListModal({
         if (!sheet) throw new Error('La planilla no tiene hojas para leer.');
         rows = parseSupplierListRows(XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as unknown[][]);
       } else {
+        setSupplierImportCurrency(null);
         setSupplierImportScreenshot(file.type.startsWith('image/') ? file : null);
         setSupplierImportPhotoFiles({});
-        rows = parseSupplierListText(await extractSupplierListFileText(file));
+        rows = parseSupplierListText(await extractSupplierListFileText(file, (page, total, warning) => {
+          setSupplierImportProgress({ page, total, warning: warning ?? null });
+        }));
       }
       if (rows.length === 0) throw new Error('No encontramos filas de productos en la planilla.');
       setSupplierImportRows(rows);
@@ -960,8 +969,10 @@ export default function ResellerPriceListModal({
                             {supplierImportFileName || 'Elegir archivo'}
                           </label>
                           <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700">Leer enlace</button></div>
-                          <p className="text-[11px] text-slate-500">La página debe permitir lectura desde el navegador (CORS). Se consulta sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
+                          <p className="text-[11px] text-slate-500">El enlace se consulta desde el servidor, sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
                           <p className="text-[11px] text-slate-500">Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR. El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».</p>
+                          {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
+                          {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           {supplierImportRows.length > 0 && <>
                             {supplierImportCurrency && <p className="rounded-lg bg-indigo-50 p-3 text-sm font-semibold text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">Moneda de origen: {supplierImportCurrency}. Revisá la cotización antes de importar; los costos se muestran en la moneda recibida.</p>}
                             <div className="grid gap-2 sm:grid-cols-2">
