@@ -1399,7 +1399,7 @@ export default function ResellerPriceListModal({
           )}
 
           <details role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Proveedores' : undefined} open={displayMode === 'page' ? pageTab === 'providers' : undefined} className={cn('group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl', displayMode === 'page' && pageTab !== 'providers' && 'hidden')}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
+            <summary className={cn('flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden', displayMode === 'page' && editingSupplierId && 'hidden')}>
               <div className="flex min-w-0 items-center gap-2">
                 <Building2 className="shrink-0 text-amber-700 dark:text-amber-300" size={20} />
                 <div className="min-w-0">
@@ -1412,10 +1412,10 @@ export default function ResellerPriceListModal({
               <ChevronDown className="shrink-0 text-amber-700 transition-transform group-open:rotate-180 dark:text-amber-300" size={20} aria-hidden="true" />
             </summary>
             <div className={cn('max-h-[min(60dvh,34rem)] space-y-3 overflow-y-auto border-t border-amber-200 p-3 dark:border-amber-900 sm:p-4', displayMode === 'page' && 'max-h-none overflow-visible')}>
-              <p className="text-sm leading-relaxed text-amber-950 dark:text-amber-100">
+              <p className={cn('text-sm leading-relaxed text-amber-950 dark:text-amber-100', displayMode === 'page' && editingSupplierId && 'hidden')}>
                 Armá una lista con los productos que conseguís en cada proveedor. Al habilitarla, todos se publican como “Por pedido”; al pausarla, se ocultan sin perder la selección.
               </p>
-              {visibleSuppliers.map((supplier) => {
+              {visibleSuppliers.filter(supplier => displayMode !== 'page' || !editingSupplierId || supplier.id === editingSupplierId).map((supplier) => {
                 const supplierList = supplierListBySupplierId.get(supplier.id);
                 const editing = editingSupplierId === supplier.id;
                 return (
@@ -1428,7 +1428,7 @@ export default function ResellerPriceListModal({
                           {!supplier.isActive && ' · Proveedor inactivo'}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 sm:flex">
+                      {!(displayMode === 'page' && editing) && <div className="grid grid-cols-2 gap-2 sm:flex">
                         <button
                           type="button"
                           onClick={() => openSupplierEditor(supplier.id)}
@@ -1450,12 +1450,16 @@ export default function ResellerPriceListModal({
                           <Power size={14} />
                           {supplierList?.enabled ? 'Pausar' : 'Habilitar'}
                         </button>
-                      </div>
+                      </div>}
                     </div>
 
                     {editing && (
                       <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                         <section aria-label="Importar lista del proveedor" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
+                          {displayMode === 'page' && <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h5 className="text-sm font-bold text-[var(--ink)]">{supplier.name} · Importar lista</h5>
+                            <button type="button" onClick={() => setEditingSupplierId(null)} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)]">Volver a proveedores</button>
+                          </div>}
                           {displayMode === 'page' && <nav aria-label="Pasos para importar" className="grid grid-cols-3 gap-2">
                             {([
                               [1, 'Importar'],
@@ -1595,6 +1599,8 @@ export default function ResellerPriceListModal({
                           </>}
                         </section>
                         {supplierList && <SupplierOrderRoundManager supplierListId={supplierList.id} supplierName={supplier.name} supplierPhone={supplier.phone} canWrite={canWrite}/>}
+                        {displayMode !== 'page' && (
+                          <>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <div className="relative min-w-0 flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -1619,7 +1625,7 @@ export default function ResellerPriceListModal({
                             <PackagePlus size={14} /> Crear para esta lista
                           </button>
                         </div>
-                        <div className={displayMode === 'page' ? 'grid gap-2 sm:grid-cols-2' : 'grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2'}>
+                        <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2">
                           {supplierDraftProducts.map((product) => (
                             <label key={product.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-2.5 text-sm dark:border-slate-700">
                               <input
@@ -1659,6 +1665,8 @@ export default function ResellerPriceListModal({
                             </button>
                           </div>
                         </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </article>

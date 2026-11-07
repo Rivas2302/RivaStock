@@ -4,6 +4,7 @@ const owner = '10000000-0000-4000-8000-000000000001';
 const now = new Date().toISOString();
 const priceList = { id: 'price-list-qa', user_id: owner, kind: 'reseller', default_discount_percent: 20, public_enabled: false, minimum_rule: 'none', minimum_order_amount: 0, minimum_order_quantity: 0 };
 const supplier = { id: 'supplier-qa', user_id: owner, name: '[QA] Mr Tecno', name_lower: '[qa] mr tecno', is_active: true };
+const secondarySupplier = { id: 'supplier-qa-secondary', user_id: owner, name: 'ZZ [QA] Otro proveedor', name_lower: 'zz [qa] otro proveedor', is_active: true };
 const supplierList = { id: 'supplier-list-qa', user_id: owner, price_list_id: priceList.id, supplier_id: supplier.id, enabled: false };
 
 function session() {
@@ -103,7 +104,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number } = {}) {
       if (table === 'price_lists') return route.fulfill({ json: [priceList] });
       if (table === 'reseller_supplier_lists') return route.fulfill({ json: [supplierList] });
       if (table === 'reseller_supplier_list_items') return route.fulfill({ json: supplierProductIds.map((product_id, sort_order) => ({ user_id: owner, supplier_list_id: supplierList.id, product_id, sort_order })) });
-      if (table === 'suppliers') return route.fulfill({ json: [supplier] });
+      if (table === 'suppliers') return route.fulfill({ json: [supplier, secondarySupplier] });
       if (table === 'inventory_operation_settings') return route.fulfill({ json: [{ holdings_enabled: false }] });
       if (table === 'inventory_owners') return route.fulfill({ json: [{ id: 'inventory-owner', user_id: owner, name: 'Principal', is_primary: true }] });
       if (table === 'inventory_owner_memberships') return route.fulfill({ json: [{ inventory_owner_id: 'inventory-owner', is_default: true, can_operate: true }] });
@@ -136,7 +137,7 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
   await expect(modal).toBeVisible();
   await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
@@ -167,7 +168,7 @@ test('bulk import button confirms and creates only products matching the active 
   await page.getByRole('button', { name: /Lista revendedores/ }).click();
   const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
   await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
@@ -188,7 +189,7 @@ test('a failed supplier image does not block other photos or product import', as
   await page.getByRole('button', { name: /Lista revendedores/ }).click();
   const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
   await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
@@ -215,7 +216,7 @@ test('supplier import previews load through the same-origin image proxy', async 
   await page.getByRole('button', { name: /Lista revendedores/ }).click();
   const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
   await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Buscar productos importados').waitFor();
@@ -243,6 +244,11 @@ test('reseller module separates summary, price list, providers and orders withou
   await tabs.getByRole('tab', { name: 'Proveedores' }).click();
   await expect(page.getByRole('heading', { name: 'Proveedores', level: 2 })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: 'Proveedores' })).toBeVisible();
+  await page.locator('article').filter({ hasText: '[QA] Mr Tecno' }).getByRole('button', { name: 'Importar lista' }).click();
+  await expect(page.getByRole('button', { name: 'Volver a proveedores' })).toBeVisible();
+  await expect(page.getByText('ZZ [QA] Otro proveedor')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Volver a proveedores' }).click();
+  await expect(page.getByText('ZZ [QA] Otro proveedor')).toBeVisible();
   await tabs.getByRole('tab', { name: 'Encargos' }).click();
   await expect(page.getByRole('tabpanel', { name: 'Encargos' })).toBeVisible();
   await expect(page.getByRole('tabpanel')).toHaveCount(1);
@@ -272,7 +278,8 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     await page.goto('/revendedores');
     const tabs = page.getByRole('tablist', { name: 'Secciones de Revendedores' });
     await tabs.getByRole('tab', { name: 'Proveedores' }).click();
-    await page.getByRole('button', { name: /Importar lista|Editar productos|Crear lista/ }).click();
+    await page.getByRole('button', { name: /Importar lista|Editar productos|Crear lista/ }).first().click();
+    await expect(page.getByRole('button', { name: 'Crear para esta lista' })).toHaveCount(0);
 
     const steps = page.getByRole('navigation', { name: 'Pasos para importar' });
     await expect(steps.getByRole('button', { name: '1. Importar' })).toHaveAttribute('aria-current', 'step');

@@ -1667,4 +1667,11 @@ Sin toque en src/, supabase/ ni extensions/.
 
 - El primer despliegue de `fetch-url` (v4) quedó brevemente con `verify_jwt=false` por un valor local heredado en `supabase/config.toml`. Se detectó inmediatamente y se volvió a desplegar como v5 con `verify_jwt=true`; la consulta agregada de logs no encontró solicitudes a `fetch-url` durante esa ventana.
 - Se corrigió `supabase/config.toml` a `verify_jwt=true`, alineándolo con producción. Verificado en Supabase: función ACTIVE v5 y JWT requerido. Esta corrección no modifica datos ni esquema.
-- I27 sigue abierta hasta completar la validación funcional de producción.
+- La frase anterior sobre I27 quedó desactualizada: su validación funcional de producción está cerrada en la entrada de cierre de I27.
+
+## 2026-11-07 — I28: corrección de ancho móvil antes del cierre
+
+- El smoke del despliegue `97aca48` mostró que el flujo de importación nuevo montaba debajo de sus pasos el selector de productos heredado del modal. En celulares, los nombres largos de ese selector producían desborde horizontal. Lo limité al modo modal; la página `/revendedores` conserva solo el flujo por pasos y el modal viejo mantiene su selector.
+- Agregué una regresión Playwright que comprueba que el selector heredado no aparece en la página I28, además de recorrer el importador a 360 y 1440 px.
+- Verificación local: `npm test` **1.142/1.142**, lint y build aprobados; Playwright de `e2e/supplier-list-import.spec.ts` **7/7**.
+- Despliegue y smoke de producción de esta corrección pendientes; I28 e I25 punto 1 no se marcan completos hasta terminar esa comprobación.
