@@ -17,31 +17,9 @@ import {
   Product
 } from '../types';
 import { formatCurrency, cn, slugify } from '../lib/utils';
-import {
-  Settings as SettingsIcon,
-  Plus,
-  Trash2,
-  Globe,
-  Palette,
-  LayoutGrid,
-  Tags,
-  DollarSign,
-  Moon,
-  Sun,
-  Copy,
-  ExternalLink,
-  Wrench,
-  AlertTriangle,
-  CheckCircle2,
-  QrCode,
-  Users,
-  ContactRound
-} from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound } from 'lucide-react';
 import Modal from '../components/Modal';
-import CatalogQRModal from '../components/CatalogQRModal';
 const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
-import { getCatalogShareUrl } from '../lib/catalogShare';
-import type { CatalogPresentation } from '../lib/catalogPresentation';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -76,9 +54,6 @@ function isMobileSettingsScreen(value: unknown): value is MobileSettingsScreen {
 
 export default function Settings() {
   const { user, updateUser, refetchToken, isOwner } = useAuth();
-  const catalogShareUrl = user?.catalogSlug
-    ? getCatalogShareUrl(window.location.origin, user.catalogSlug)
-    : '';
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const canWriteBusiness = !businessPlanLoading && !businessPlanError && businessPlan !== null && businessPlan.status !== 'suspended';
   const { theme, toggleTheme } = useTheme();
@@ -145,7 +120,6 @@ export default function Settings() {
   const [cleaning, setCleaning] = useState(false);
   const [diagReport, setDiagReport] = useState<DiagnosticReport | null>(null);
   const [cleanupResult, setCleanupResult] = useState<{ salesDeleted: number; cashFlowDeleted: number } | null>(null);
-  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
 
   const fetchData = async () => {
     if (!user) return;
@@ -322,22 +296,17 @@ export default function Settings() {
       fetchData();
     } catch (error) {
       console.error('handleUpdateCatalog failed', error);
+      throw error;
+      throw error;
     }
   };
 
-  const saveCatalogPresentation = async (presentation: CatalogPresentation) => {
-    if (!canWriteBusiness || !user || !catalogConfig) throw new Error('No se pudo verificar el permiso para editar el catálogo.');
-    await db.update<CatalogConfig>('catalog_configs', catalogConfig.id, {
-      presentation,
-      welcomeMessage: presentation.heroDescription,
-      bannerColor: presentation.heroColor,
-      primaryColor: presentation.accentColor,
-      bannerUrl: presentation.heroImageUrl,
-    });
-    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl !== presentation.heroImageUrl) {
-      await deleteFromStorage(catalogConfig.bannerUrl).catch(() => undefined);
-    }
-    await fetchData();
+
+  const uploadCatalogLogo = async (file: File) => {
+    if (!user) throw new Error('No se pudo verificar la sesión.');
+    if (file.size > 2 * 1024 * 1024) throw new Error('El logo debe pesar menos de 2 MB.');
+    const optimized = await optimizeUploadImage(file, 1024);
+    return uploadToStorage(`${user.uid}/logo/${crypto.randomUUID()}.webp`, optimized, 'image/webp');
   };
 
   const uploadCatalogCover = async (file: File) => {
@@ -744,371 +713,20 @@ export default function Settings() {
               )}
 
               {activeTab === 'catalog' && catalogConfig && (
-                <motion.div
-                  key="catalog"
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="space-y-8"
-                >
-                  <Suspense fallback={<div role="status" className="min-h-72 animate-pulse rounded-2xl bg-[var(--surface-muted)]"/>}>
+                <motion.div key="catalog" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                  <Suspense fallback={<div role="status" className="min-h-72 animate-pulse rounded-2xl bg-[var(--surface-muted)]" />}>
                     <CatalogCustomizer
                       config={catalogConfig}
                       categories={categories}
                       products={catalogProducts}
                       canEdit={canWriteBusiness}
-                      onSave={saveCatalogPresentation}
+                      onSave={handleUpdateCatalog}
                       onUploadCover={uploadCatalogCover}
+                      onUploadLogo={uploadCatalogLogo}
                     />
                   </Suspense>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Configuración del Catálogo</h3>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Estado:</span>
-                      <button 
-                        onClick={() => handleUpdateCatalog({ enabled: !catalogConfig.enabled })}
-                        className={cn(
-                          "px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all",
-                          catalogConfig.enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
-                        )}
-                      >
-                        {catalogConfig.enabled ? 'Activo' : 'Inactivo'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 space-y-6">
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Link del catálogo público</p>
-                      <div className="flex gap-2">
-                        <div className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-600 dark:text-slate-400 truncate">
-                          {catalogShareUrl}
-                        </div>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(catalogShareUrl);
-                            showMessage('URL copiada al portapapeles');
-                          }}
-                          className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                          title="Copiar link"
-                        >
-                          <Copy size={18} />
-                        </button>
-                        <button
-                          onClick={() => setIsQRModalOpen(true)}
-                          className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                          title="Ver QR del catálogo"
-                        >
-                          <QrCode size={18} />
-                        </button>
-                        <a
-                          href={`/catalogo/${user?.catalogSlug}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
-                          title="Ver catálogo"
-                        >
-                          <ExternalLink size={18} />
-                        </a>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Logo de la empresa</label>
-                        <div className="space-y-3">
-                          {catalogConfig.logoUrl && (
-                            <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
-                              <img src={catalogConfig.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if (catalogConfig.logoUrl && catalogConfig.logoUrl.includes('supabase')) {
-                                      await deleteFromStorage(catalogConfig.logoUrl);
-                                    }
-                                  } catch (e) {
-                                    console.error('Error al eliminar logo del almacenamiento:', e);
-                                  }
-                                  await handleUpdateCatalog({ logoUrl: null as any });
-                                  showMessage('Logo eliminado correctamente');
-                                }}
-                                className="absolute top-1 right-1 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                                title="Eliminar logo"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          )}
-                          
-                          <label className={cn(
-                            "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all",
-                            isUploadingLogo && "opacity-50 cursor-wait"
-                          )}>
-                            {isUploadingLogo ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-xs font-bold text-indigo-600">{Math.round(uploadProgress)}%</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                                <Plus size={18} />
-                                <span className="text-xs font-bold uppercase">{catalogConfig.logoUrl ? 'Cambiar Logo' : 'Subir Logo'}</span>
-                              </div>
-                            )}
-                            <input 
-                              type="file" 
-                              className="hidden" 
-                              accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                              disabled={isUploadingLogo}
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file || !user) return;
-
-                                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
-                                if (!allowedTypes.includes(file.type)) {
-                                  alert('Tipo de archivo no permitido. Usa JPG, PNG, WebP o SVG.');
-                                  return;
-                                }
-                                if (file.size > 2 * 1024 * 1024) {
-                                  alert('El archivo es demasiado grande. Máximo 2MB.');
-                                  return;
-                                }
-
-                                try {
-                                  setIsUploadingLogo(true);
-                                  setUploadProgress(50);
-                                  const url = await uploadToStorage(`${user.uid}/logo`, file, file.type);
-                                  setUploadProgress(100);
-                                  await handleUpdateCatalog({ logoUrl: url });
-                                  showMessage('Logo actualizado correctamente');
-                                } catch (error) {
-                                  console.error('Logo upload failed:', error);
-                                  alert('Error al subir el logo.');
-                                } finally {
-                                  setIsUploadingLogo(false);
-                                  setUploadProgress(0);
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Imagen de fondo del banner</label>
-                        <div className="space-y-3">
-                          {catalogConfig.bannerUrl && (
-                            <div className="relative w-full h-24 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
-                              <img src={catalogConfig.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl.includes('supabase')) {
-                                      await deleteFromStorage(catalogConfig.bannerUrl);
-                                    }
-                                  } catch (e) {
-                                    console.error('Error al eliminar banner del almacenamiento:', e);
-                                  }
-                                  await handleUpdateCatalog({ bannerUrl: null as any });
-                                  showMessage('Banner eliminado correctamente');
-                                }}
-                                className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                                title="Eliminar banner"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          )}
-                          
-                          <label className={cn(
-                            "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all",
-                            isUploadingBanner && "opacity-50 cursor-wait"
-                          )}>
-                            {isUploadingBanner ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-xs font-bold text-indigo-600">{Math.round(bannerUploadProgress)}%</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                                <Plus size={18} />
-                                <span className="text-xs font-bold uppercase">{catalogConfig.bannerUrl ? 'Cambiar Banner' : 'Subir Banner'}</span>
-                              </div>
-                            )}
-                            <input 
-                              type="file" 
-                              className="hidden" 
-                              accept="image/jpeg,image/png,image/webp"
-                              disabled={isUploadingBanner}
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file || !user) return;
-
-                                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-                                if (!allowedTypes.includes(file.type)) {
-                                  alert('Tipo de archivo no permitido. Usa JPG, PNG o WebP.');
-                                  return;
-                                }
-                                if (file.size > 4 * 1024 * 1024) {
-                                  alert('El archivo es demasiado grande. Máximo 4MB.');
-                                  return;
-                                }
-
-                                try {
-                                  setIsUploadingBanner(true);
-                                  setBannerUploadProgress(50);
-                                  const optimized = await optimizeUploadImage(file, 1920);
-                                  const url = await uploadToStorage(`${user.uid}/banner`, optimized, optimized.type);
-                                  setBannerUploadProgress(100);
-                                  await handleUpdateCatalog({ bannerUrl: url });
-                                  showMessage('Banner actualizado correctamente');
-                                } catch (error) {
-                                  console.error('Banner upload failed:', error);
-                                  alert('Error al subir el banner.');
-                                } finally {
-                                  setIsUploadingBanner(false);
-                                  setBannerUploadProgress(0);
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Instagram</label>
-                        <input 
-                          type="text"
-                          placeholder="https://instagram.com/tunegocio"
-                          value={catalogConfig.instagramUrl || ''}
-                          onChange={(e) => handleUpdateCatalog({ instagramUrl: e.target.value })}
-                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Facebook</label>
-                        <input 
-                          type="text"
-                          placeholder="https://facebook.com/tunegocio"
-                          value={catalogConfig.facebookUrl || ''}
-                          onChange={(e) => handleUpdateCatalog({ facebookUrl: e.target.value })}
-                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">WhatsApp</label>
-                        <input 
-                          type="text"
-                          placeholder="Ej: 5491112345678"
-                          value={catalogConfig.whatsappNumber || ''}
-                          onChange={(e) => handleUpdateCatalog({ whatsappNumber: e.target.value })}
-                          className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm"
-                        />
-                        <p className="text-[10px] text-slate-500 mt-1">Sin + ni espacios</p>
-                      </div>
-                    </div>
-                  </div>
-
-                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                      <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Identificador del Catálogo (Slug)</label>
-                      <div className="flex gap-2">
-                        <div className="flex-1 relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">/catalogo/</span>
-                          <input 
-                            type="text"
-                            value={catalogSlug}
-                            readOnly
-                            className="w-full pl-24 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white text-sm font-mono cursor-not-allowed"
-                          />
-                        </div>
-                      </div>
-                      <p className="mt-2 text-[10px] text-slate-500">Este es el nombre que aparecerá en tu URL. Se genera automáticamente.</p>
-                    </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <Palette size={18} className="text-indigo-600" />
-                        Apariencia
-                      </h4>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Color Principal</label>
-                        <div className="flex gap-3">
-                          {['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#000000'].map((color) => (
-                            <button
-                              key={color}
-                              onClick={() => handleUpdateCatalog({ primaryColor: color })}
-                              className={cn(
-                                "w-10 h-10 rounded-full border-4 transition-all",
-                                catalogConfig.primaryColor === color ? "border-slate-300 dark:border-slate-600 scale-110" : "border-transparent"
-                              )}
-                              style={{ backgroundColor: color }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Mensaje de Bienvenida</label>
-                        <textarea 
-                          value={catalogConfig.welcomeMessage}
-                          onChange={(e) => handleUpdateCatalog({ welcomeMessage: e.target.value })}
-                          className="w-full h-24 px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none dark:text-white resize-none text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <LayoutGrid size={18} className="text-indigo-600" />
-                        Opciones de Visualización
-                      </h4>
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={catalogConfig.showPrices}
-                            onChange={(e) => handleUpdateCatalog({ showPrices: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm font-medium dark:text-slate-300">Mostrar precios al público</span>
-                        </label>
-                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={catalogConfig.showStock}
-                            onChange={(e) => handleUpdateCatalog({ showStock: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm font-medium dark:text-slate-300">Mostrar stock disponible</span>
-                        </label>
-                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={catalogConfig.showStockQuantity ?? false}
-                            onChange={(e) => handleUpdateCatalog({ showStockQuantity: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm font-medium dark:text-slate-300">Ocultar cantidad disponible</span>
-                        </label>
-                        <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={catalogConfig.allowOrders}
-                            onChange={(e) => handleUpdateCatalog({ allowOrders: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm font-medium dark:text-slate-300">Permitir pedidos online</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
                 </motion.div>
               )}
-
               {activeTab === 'equipo' && isOwner && (
                 <motion.div
                   key="equipo"
@@ -1408,14 +1026,7 @@ export default function Settings() {
           </div>
         )}
       </Modal>
-      {catalogConfig && (
-        <CatalogQRModal
-          isOpen={isQRModalOpen}
-          onClose={() => setIsQRModalOpen(false)}
-          catalogUrl={catalogShareUrl}
-          businessName={user?.businessName || 'Mi Tienda'}
-        />
-      )}
+
       </>}
     </div>
   );

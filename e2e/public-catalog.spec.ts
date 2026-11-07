@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -27,7 +28,7 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
       sections: [{ id: 'featured', visible: false }, { id: 'offers', visible: true }, { id: 'categories', visible: true }, { id: 'new', visible: false }, { id: 'all', visible: true }],
       featuredProductIds: [], featuredCategoryId: null, offerProductIds: [PRODUCT_ID], offerDiscountPercentByProduct: { [PRODUCT_ID]: 20 }, offerEndsAt,
       ambience: { intensity: 'normal', animatedEffects: true, headerDecoration: true, productDecoration: true, countdown: true, announcementText: 'Envíos en General Pico', themedFont: true, welcomeCard: true },
-      showWhatsAppButton: true, showProductsWithoutPhoto: true,
+      showWhatsAppButton: true, showProductsWithoutPhoto: true, whatsappMessageTemplate: 'Hola, quiero {producto} por {precio}, cantidad {cantidad}. {link}',
     },
   };
 }
@@ -40,6 +41,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
     if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [fixtureConfig(theme, offerEndsAt)] });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
     if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: [product] });
+    if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: product });
     if (pathname.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
     if (pathname.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: Boolean(resellerRounds) } });
     if (resellerRounds && pathname.endsWith('/rpc/unlock_reseller_catalog')) {
@@ -74,9 +76,15 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   page.on('request', request => { if (request.url().includes('/rpc/create_public_catalog_order')) orderSubmitted = true; });
   await page.goto('/catalogo/qa-catalog');
   await expect(page.getByRole('heading', { name: 'Encontrá lo que buscás' })).toBeVisible();
-  await expect(page.getByText('−20%')).toBeVisible();
+  await expect(page.getByText('−20 %').first()).toBeVisible();
   await page.getByPlaceholder('Busca en nuestra colección...').fill('Cable');
   await expect(page.getByText('Cable USB-C').first()).toBeVisible();
+  const card = page.locator('.catalog-theme-card').last();
+  const cardBox = await card.boundingBox();
+  const addButton = card.getByRole('button', { name: 'Agregar Cable USB-C al carrito' });
+  const addBox = await addButton.boundingBox();
+  expect(cardBox && addBox && cardBox.x >= 0 && cardBox.x + cardBox.width <= 360 && addBox.x >= cardBox.x && addBox.x + addBox.width <= cardBox.x + cardBox.width, JSON.stringify({ cardBox, addBox })).toBe(true);
+  await expect(addButton).toBeVisible();
   await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
   await page.getByRole('button', { name: /Abrir carrito, 1 productos/ }).click();
   await expect(page.getByText(/6\.800/).first()).toBeVisible();
@@ -148,4 +156,59 @@ test('expired offers do not appear with a false discount or countdown', async ({
   await expect(page.getByRole('heading', { name: 'Ofertas relámpago' })).toHaveCount(0);
   await expect(page.getByText('−20%')).toHaveCount(0);
   await expect(page.getByText(/8\.500/).first()).toBeVisible();
+});
+
+test('product detail modal shares the G2 product URL and adds selected quantity', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Cable USB-C' }).last()).toBeVisible();
+  await expect(page.getByText('Descripción')).toBeVisible();
+  await expect(page.getByText('Productos relacionados')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Agregar una unidad' }).click();
+  await page.evaluate(() => { window.open = ((url?: string | URL) => { (window as Window & { __sharedUrl?: string }).__sharedUrl = String(url); return null; }) as typeof window.open; });
+  await page.getByRole('button', { name: 'WhatsApp', exact: true }).last().click();
+  const sharedUrl = await page.evaluate(() => (window as Window & { __sharedUrl?: string }).__sharedUrl ?? '');
+  expect(sharedUrl).toContain('wa.me/5491100000000');
+  expect(decodeURIComponent(sharedUrl)).toContain('Cable USB-C');
+  expect(decodeURIComponent(sharedUrl)).toContain('2');
+  expect(decodeURIComponent(sharedUrl)).toContain('/p/qa-catalog/');
+  await page.getByRole('button', { name: /Agregar al carrito/ }).click();
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toBeVisible();
+});
+
+test('direct product link returns to the catalog with its requested quantity in the cart', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page);
+  await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await page.getByRole('button', { name: 'Agregar una unidad' }).click();
+  await page.getByRole('button', { name: /Agregar al carrito/ }).click();
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
+});
+
+test('category labels and seasonal countdown meet automated contrast checks', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page, 'christmas');
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByTestId('public-catalog-hero')).toBeVisible();
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  const contrastFailures = results.violations.filter(violation => violation.id === 'color-contrast');
+  expect(contrastFailures, JSON.stringify(contrastFailures.map(item => item.nodes.map(node => node.html)), null, 2)).toHaveLength(0);
+});
+
+test('desktop catalog retains the MainPC grid and a usable cart entry point', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockCatalogApi(page, 'normal');
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByTestId('public-catalog-hero')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last()).toBeVisible();
+  const grid = page.locator('#catalog-section-all');
+  const gridBox = await grid.boundingBox();
+  expect(gridBox && gridBox.x + gridBox.width <= 1440).toBe(true);
+  await mkdir(resolve('test-results/catalog-i18b'), { recursive: true });
+  await page.screenshot({ path: resolve('test-results/catalog-i18b/main-pc.png'), fullPage: true });
 });

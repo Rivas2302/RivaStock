@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { defaultCatalogPresentation, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, moveCatalogSection, moveCatalogSectionToIndex, normalizeCatalogSections, type CatalogPresentation } from './catalogPresentation';
+import { defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, moveCatalogSection, moveCatalogSectionToIndex, normalizeCatalogSections, type CatalogPresentation } from './catalogPresentation';
 
 const presentation = (schedules: CatalogPresentation['schedules'], theme: CatalogPresentation['theme'] = 'christmas') => ({ theme, schedules });
 
@@ -64,6 +64,12 @@ describe('public catalog presentation', () => {
   it('defaults to enabled decorative controls with announcement text off', () => {
     const defaults = defaultCatalogPresentation();
     expect(defaults.ambience).toMatchObject({ animatedEffects: true, headerDecoration: true, productDecoration: true, announcementText: '' });
+  });
+
+  it('replaces WhatsApp variables with the product, price, share link, and quantity', () => {
+    expect(formatCatalogWhatsAppMessage('Quiero {producto}, {cantidad} por {precio}. {link}', {
+      product: 'Cable USB-C', price: '$ 8.500', link: 'https://rivastock.vercel.app/p/tienda/cable', quantity: 2,
+    })).toBe('Quiero Cable USB-C, 2 por $ 8.500. https://rivastock.vercel.app/p/tienda/cable');
   });
 
   it('shows an offer price only for a valid positive discount', () => {

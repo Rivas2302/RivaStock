@@ -75,7 +75,7 @@
 .catalog-bunting { position: absolute; top: 0; left: 0; width: 100%; height: 7rem; color: #e06b72; opacity: var(--seasonal-opacity); transform-origin: top center; animation: catalog-bunting-sway 4s ease-in-out infinite alternate; }
 .catalog-bunting svg { width: 100%; height: 100%; overflow: visible; fill: #f1c65a; stroke: currentColor; stroke-width: 2; }
 
-.catalog-countdown { margin: 0 auto; display: grid; width: fit-content; gap: .15rem; border: 1px solid currentColor; border-radius: 1rem; background: rgb(0 0 0 / .24); padding: .5rem .9rem; color: inherit; backdrop-filter: blur(8px); }
+.catalog-countdown { margin: 0 auto; display: grid; width: fit-content; gap: .15rem; border: 1px solid rgb(255 255 255 / .38); border-radius: 1rem; background: rgb(15 18 24 / .78); padding: .5rem .9rem; color: #fff; box-shadow: 0 8px 24px rgb(0 0 0 / .28); backdrop-filter: blur(10px); }
 .catalog-countdown__eyebrow { font-size: .65rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .catalog-countdown__time { font-size: 1rem; }
 .catalog-countdown__time b { font-variant-numeric: tabular-nums; }

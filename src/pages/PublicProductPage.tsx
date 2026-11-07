@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fromDb } from '../lib/db';
 import type { CatalogConfig, PublicCatalogProduct } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
-import { getPublicCatalogProduct } from '../lib/publicCatalog';
+import { getPublicCatalogProduct, getPublicCatalogProducts } from '../lib/publicCatalog';
 import { getCatalogShareUrl } from '../lib/catalogShare';
+import { defaultCatalogPresentation, formatCatalogWhatsAppMessage, getCatalogOfferPrice } from '../lib/catalogPresentation';
 import {
   ArrowLeft,
   Copy,
@@ -19,6 +20,7 @@ import {
 
 export default function PublicProductPage() {
   const { slug, productId } = useParams<{ slug: string; productId: string }>();
+  const navigate = useNavigate();
   const [product, setProduct] = useState<PublicCatalogProduct | null>(null);
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [inventoryOwnerName, setInventoryOwnerName] = useState('');
@@ -26,6 +28,8 @@ export default function PublicProductPage() {
   const [error, setError] = useState<string | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const [relatedProducts, setRelatedProducts] = useState<PublicCatalogProduct[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +44,7 @@ export default function PublicProductPage() {
         return;
       }
 
-      const [catalogRes, publicProduct, ownerLabels] = await Promise.all([
+      const [catalogRes, publicProduct, ownerLabels, catalogProducts] = await Promise.all([
         supabase
           .from('catalog_config')
           .select('*')
@@ -49,6 +53,7 @@ export default function PublicProductPage() {
           .limit(1),
         getPublicCatalogProduct(slug, productId),
         getPublicInventoryOwnerLabels(slug, productId),
+        getPublicCatalogProducts(slug),
       ]);
       if (cancelled) return;
 
@@ -63,6 +68,7 @@ export default function PublicProductPage() {
       setConfig(fromDb<CatalogConfig>(catalogRow));
       setProduct(publicProduct);
       setInventoryOwnerName(ownerLabels[0]?.inventoryOwnerName ?? '');
+      setRelatedProducts(catalogProducts.filter(row => row.id !== publicProduct.id && row.categoryId === publicProduct.categoryId).slice(0,4));
       setLoading(false);
     };
 
@@ -74,6 +80,14 @@ export default function PublicProductPage() {
     return () => { cancelled = true; };
   }, [slug, productId]);
 
+  const presentation = config ? { ...defaultCatalogPresentation(config), ...config.presentation } : null;
+  const offerEnd = presentation?.offerEndsAt ? Date.parse(presentation.offerEndsAt) : 0;
+  const offerDiscount = product && presentation && offerEnd > Date.now() && presentation.offerProductIds.includes(product.id)
+    ? presentation.offerDiscountPercentByProduct[product.id] ?? 0 : 0;
+  const displayedPrice = product
+    ? getCatalogOfferPrice(product.salePrice, offerDiscount) ?? roundPrice(product.salePrice)
+    : 0;
+
   const shareUrl = typeof window !== 'undefined' && slug && productId
     ? getCatalogShareUrl(window.location.origin, slug, productId)
     : typeof window !== 'undefined' ? window.location.href : '';
@@ -84,10 +98,16 @@ export default function PublicProductPage() {
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const handleAddToCart = () => {
+    if (!product || !slug || product.stock <= 0) return;
+    sessionStorage.setItem('catalog-add-request', JSON.stringify({ slug, productId: product.id, quantity }));
+    navigate(`/catalogo/${slug}`);
+  };
+
   const handleWhatsApp = () => {
     if (!product || !config) return;
-    const price = config.showPrices ? ` — ${formatCurrency(roundPrice(product.salePrice))}` : '';
-    const text = `¡Mirá este producto: *${product.name}*${price}!\n${shareUrl}`;
+    const price = config.showPrices ? formatCurrency(displayedPrice) : 'Consultar precio';
+    const text = formatCatalogWhatsAppMessage(presentation.whatsappMessageTemplate, { product: product.name, price, link: shareUrl, quantity });
     const num = config.whatsappNumber ? config.whatsappNumber : '';
     window.open(`https://wa.me/${num}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -244,7 +264,7 @@ export default function PublicProductPage() {
                 className="text-4xl font-black tracking-tighter"
                 style={{ color: accentColor }}
               >
-                {formatCurrency(roundPrice(product.salePrice))}
+                {formatCurrency(displayedPrice)}
               </p>
             )}
 
@@ -306,7 +326,24 @@ export default function PublicProductPage() {
             </div>
           </div>
         </div>
+        {relatedProducts.length > 0 && <section className="mt-8 border-t border-slate-100 pt-5">
+          <h2 className="mb-3 text-lg font-bold">Productos relacionados</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2">{relatedProducts.map(item => <Link key={item.id} to={`/catalogo/${slug}/${item.id}`} className="w-32 shrink-0 rounded-xl border border-slate-100 p-2">
+            <span className="block aspect-square overflow-hidden rounded-lg bg-slate-50">{(item.images?.[0] ?? item.imageUrl) && <img src={item.images?.[0] ?? item.imageUrl ?? ''} alt="" loading="lazy" className="size-full object-cover"/>}</span>
+            <span className="mt-2 block truncate text-sm font-semibold">{item.name}</span>
+            {config.showPrices && <span className="block text-sm font-bold">{formatCurrency(roundPrice(item.salePrice))}</span>}
+          </Link>)}</div>
+        </section>}
+        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+          <span className="flex-1 text-sm font-semibold">Cantidad</span>
+          <button type="button" aria-label="Quitar una unidad" onClick={() => setQuantity(value => Math.max(1, value - 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200" disabled={quantity <= 1}><span aria-hidden="true">−</span></button>
+          <span aria-live="polite" className="min-w-8 text-center font-bold">{quantity}</span>
+          <button type="button" aria-label="Agregar una unidad" onClick={() => setQuantity(value => Math.min(product.stock, value + 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200" disabled={quantity >= product.stock}><span aria-hidden="true">+</span></button>
+        </div>
       </main>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-8px_30px_rgba(15,23,42,.12)] backdrop-blur md:sticky md:bottom-0">
+        <div className="mx-auto flex max-w-5xl gap-2"><button type="button" onClick={handleWhatsApp} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button><button type="button" onClick={handleAddToCart} disabled={product.stock <= 0} className="min-h-12 flex-[1.4] rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-50"><ShoppingBag size={18} className="mr-2 inline"/>Agregar al carrito</button></div>
+      </div>
     </div>
   );
 }

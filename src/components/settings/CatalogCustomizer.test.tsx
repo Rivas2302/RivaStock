@@ -20,47 +20,41 @@ const product: Product = {
 describe('CatalogCustomizer', () => {
   let host: HTMLDivElement;
   let root: Root;
-
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    host = document.createElement('div');
-    document.body.append(host);
-    root = createRoot(host);
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
+  afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
-  afterEach(async () => {
-    await act(async () => root.unmount());
-    host.remove();
-  });
-
-  it('saves theme ambience, announcement, and only explicit offer discounts', async () => {
+  it('shows a compact catalog hub and saves offer mode changes with a success message', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()}/>));
-    const christmas = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Navidad'));
-    await act(async () => christmas?.click());
-    const animated = [...host.querySelectorAll('label')].find(label => label.textContent?.includes('Efectos animados en la pantalla'))?.querySelector('input');
-    await act(async () => animated?.click());
-    const announcement = host.querySelector<HTMLInputElement>('input[placeholder="Ej.: Envíos gratis en General Pico"]');
-    await act(async () => {
-      if (!announcement) throw new Error('Announcement field missing');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(announcement, 'Envíos gratis');
-      announcement.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    const includeOffer = host.querySelector<HTMLInputElement>('input[aria-label="Incluir Cable USB-C en Ofertas"]');
-    await act(async () => includeOffer?.click());
-    const discount = host.querySelector<HTMLInputElement>('input[aria-label="Descuento de Cable USB-C"]');
-    await act(async () => {
-      if (!discount) throw new Error('Discount field missing');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(discount, '20');
-      discount.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    expect(host.textContent).toContain('Tu link');
+    expect(host.textContent).toContain('Vista previa');
+    expect(host.textContent).toContain('Destacados y ofertas');
+    const openOffers = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Destacados y ofertas'));
+    await act(async () => openOffers?.click());
+    expect(host.textContent).toContain('Más vendidos');
+    const bestSelling = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Más vendidos');
+    await act(async () => bestSelling?.click());
     const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    expect(save?.disabled).toBe(false);
     await act(async () => save?.click());
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      theme: 'christmas',
-      ambience: expect.objectContaining({ animatedEffects: false, announcementText: 'Envíos gratis' }),
-      offerProductIds: ['product-1'],
-      offerDiscountPercentByProduct: { 'product-1': 20 },
-    }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ presentation: expect.objectContaining({ featuredMode: 'best_selling' }) }));
+    expect(host.textContent).toContain('Cambios guardados');
+  });
+
+  it('edits the WhatsApp template with preview variables and keeps save disabled when unchanged', async () => {
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={vi.fn().mockResolvedValue(undefined)} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    const saveInitially = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    expect(saveInitially?.disabled).toBe(true);
+    const openWhatsApp = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('WhatsApp y pedidos'));
+    await act(async () => openWhatsApp?.click());
+    expect(host.textContent).toContain('Cable USB-C');
+    expect(host.textContent).toContain('{producto}');
+    expect(host.textContent).toContain('{precio}');
+    expect(host.textContent).toContain('{link}');
+    expect(host.textContent).toContain('+ cantidad');
   });
 });

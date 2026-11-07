@@ -7,7 +7,7 @@ import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import { createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
 import { getCatalogShareUrl } from '../lib/catalogShare';
-import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
+import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 
 const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
@@ -116,6 +116,7 @@ export default function PublicCatalog() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedProductForLightbox, setSelectedProductForLightbox] = useState<PublicCatalogProduct | null>(null);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
+  const [detailQuantity, setDetailQuantity] = useState(1);
   const [isSuccess, setIsSuccess] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [lastSubmitAt, setLastSubmitAt] = useState<number>(0);
@@ -133,9 +134,13 @@ export default function PublicCatalog() {
       setShareCopied(true);
       setTimeout(() => { setShareCopied(false); setShareProductId(null); }, 2000);
     } else {
-      const price = config?.showPrices ? ` — ${formatCurrency(getDisplayedPrice(product))}` : '';
-      const text = `¡Mirá este producto: *${product.name}*${price}!\n${url}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      const text = formatCatalogWhatsAppMessage(presentation.whatsappMessageTemplate, {
+        product: product.name,
+        price: config?.showPrices ? formatCurrency(getDisplayedPrice(product)) : 'Consultar precio',
+        link: url,
+        quantity: detailQuantity,
+      });
+      window.open(`https://wa.me/${config?.whatsappNumber ?? ''}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
       setShareProductId(null);
     }
   };
@@ -301,6 +306,29 @@ useEffect(() => {
       return [...prev, { product: cartProduct, quantity: 1 }];
     });
   };
+
+  useEffect(() => {
+    if (!slug || products.length === 0 || channel !== 'retail') return;
+    const raw = sessionStorage.getItem('catalog-add-request');
+    if (!raw) return;
+    try {
+      const request = JSON.parse(raw) as { slug?: string; productId?: string; quantity?: number };
+      if (request.slug !== slug || !request.productId) return;
+      const product = products.find(item => item.id === request.productId);
+      if (!product || product.stock <= 0) return;
+      const quantity = Math.max(1, Math.min(product.stock, Math.floor(request.quantity ?? 1)));
+      const presentation = { ...defaultCatalogPresentation(config ?? undefined), ...config?.presentation };
+      const offerEnd = presentation.offerEndsAt ? Date.parse(presentation.offerEndsAt) : 0;
+      const discount = offerEnd > Date.now() && presentation.offerProductIds.includes(product.id)
+        ? presentation.offerDiscountPercentByProduct[product.id] ?? 0 : 0;
+      const offerPrice = getCatalogOfferPrice(product.salePrice, discount);
+      setCart([{ product: offerPrice === null ? product : { ...product, salePrice: offerPrice }, quantity }]);
+      setIsCartOpen(true);
+      sessionStorage.removeItem('catalog-add-request');
+    } catch {
+      sessionStorage.removeItem('catalog-add-request');
+    }
+  }, [slug, products, channel, config]);
 
   const removeFromCart = (productId: string) => {
     setCart(prev => prev.filter(item => item.product.id !== productId));
@@ -599,7 +627,9 @@ if (loading) {
   const heroTextTone = getCatalogHeroTextTone(heroColor);
   const heroTitle = scheduledThemeActive ? activeThemeConfig.title : presentation.heroTitle;
   const heroDescription = scheduledThemeActive ? activeThemeConfig.description : presentation.heroDescription;
-  const heroImageUrl = presentation.heroImageUrl || config.bannerUrl;
+  const heroImageUrl = activeTheme === 'normal' && presentation.useBusinessCover
+    ? presentation.heroImageUrl || config.bannerUrl
+    : null;
   const featuredProducts = products.filter(product => presentation.featuredProductIds.includes(product.id)
     || Boolean(presentation.featuredCategoryId && product.categoryId === presentation.featuredCategoryId));
   const heroSlides = [
@@ -634,7 +664,7 @@ if (loading) {
         const offerPrice = getCatalogOfferPrice(product.salePrice, discount);
         return <article key={product.id} className="w-40 shrink-0 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] sm:w-52">
           {product.images?.[0] || product.imageUrl ? <img src={product.images?.[0] ?? product.imageUrl} alt={product.name} loading="lazy" className="aspect-square w-full object-cover"/> : <div className="aspect-square bg-[var(--surface-muted)]"/>}
-          <div className="space-y-2 p-3"><h3 className="line-clamp-2 text-sm font-semibold">{product.name}</h3>{config.showPrices && <p className="font-bold">{offerPrice !== null ? <><span className="mr-2 text-xs font-medium text-[var(--ink-muted)] line-through">{formatCurrency(roundPrice(product.salePrice))}</span>{formatCurrency(offerPrice)} <span className="text-xs text-[var(--danger-ink)]">−{discount}%</span></> : formatCurrency(roundPrice(product.salePrice))}</p>}<button type="button" onClick={() => addToCart(product, offerPrice ?? undefined)} disabled={!isProductOrderable(product)} className="min-h-11 w-full rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: accentColor }}>Agregar</button></div>
+          <div className="space-y-2 p-3"><h3 className="line-clamp-2 text-sm font-semibold">{product.name}</h3>{config.showPrices && <p className="font-bold">{offerPrice !== null ? <><span className="mr-2 hidden text-xs font-medium text-[var(--ink-muted)] line-through sm:inline">{formatCurrency(roundPrice(product.salePrice))}</span>{formatCurrency(offerPrice)} <span className="hidden text-xs text-[var(--danger-ink)] sm:inline">−{discount}%</span></> : formatCurrency(roundPrice(product.salePrice))}</p>}<button type="button" onClick={() => addToCart(product, offerPrice ?? undefined)} disabled={!isProductOrderable(product)} className="min-h-11 w-full rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: accentColor }}>Agregar</button></div>
         </article>;
       })}
     </div>
@@ -1008,7 +1038,7 @@ if (loading) {
         {visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="flex gap-3 overflow-x-auto pb-2">
-            {[{ id: 'all', name: 'Todos' }, ...categories].map((category, index) => <button key={category.id} type="button" aria-pressed={activeCategory === category.id} onClick={() => setActiveCategory(category.id)} className={cn('flex min-w-[4.75rem] flex-col items-center gap-2 rounded-xl px-1 py-1 text-center text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]', activeCategory === category.id ? 'text-[var(--brand-strong)]' : darkMode ? 'text-white/70' : 'text-[var(--ink-subtle)]')}><span className="grid size-14 place-items-center rounded-full border-2 text-base font-black text-white shadow-sm" style={{ background: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))`, borderColor: activeCategory === category.id ? accentColor : 'transparent' }} aria-hidden="true">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span><span className="max-w-[4.75rem] truncate">{category.name}</span></button>)}
+            {[{ id: 'all', name: 'Todos' }, ...categories].map((category, index) => <button key={category.id} type="button" aria-pressed={activeCategory === category.id} onClick={() => setActiveCategory(category.id)} className={cn('flex min-w-[4.75rem] flex-col items-center gap-2 rounded-xl px-1 py-1 text-center text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]', activeCategory === category.id ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}><span className="grid size-14 place-items-center rounded-full border-2 text-base font-black text-white shadow-sm" style={{ background: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))`, borderColor: activeCategory === category.id ? accentColor : 'transparent' }} aria-hidden="true">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span><span className="max-w-[4.75rem] truncate">{category.name}</span></button>)}
           </div>
         </section>}
         {visibleSections.find(section => section.id === 'featured')?.visible && renderProductRail(CATALOG_SECTION_LABELS.featured, featuredProducts, 'featured')}
@@ -1027,13 +1057,13 @@ if (loading) {
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
                 className={cn(
-                  "catalog-theme-card group relative rounded-[2rem] border transition-all duration-500 flex flex-col overflow-hidden",
+                  "catalog-theme-card group relative min-w-0 rounded-2xl border transition-all duration-300 flex flex-col overflow-hidden sm:rounded-[2rem]",
                   darkMode 
                     ? "bg-[#141414] border-white/5 hover:border-white/20 hover:bg-[#1a1a1a]" 
                     : "bg-white border-slate-100 hover:border-slate-200 hover:shadow-2xl hover:shadow-slate-200/50"
                 )}
               >
-                <div className="aspect-square relative overflow-hidden p-6">
+                <div className="relative aspect-square overflow-hidden p-2 sm:p-6">
                   <div className={cn(
                     "w-full h-full rounded-2xl overflow-hidden relative",
                     darkMode ? "bg-white/5" : "bg-slate-50"
@@ -1041,7 +1071,7 @@ if (loading) {
                     {(product.images?.[0] ?? product.imageUrl) ? (
                       <div
                         className="w-full h-full cursor-pointer relative group/img"
-                        onClick={() => { setSelectedProductForLightbox(product); setLightboxImageIndex(0); }}
+                        onClick={() => { setSelectedProductForLightbox(product); setLightboxImageIndex(0); setDetailQuantity(1); }}
                       >
                         <img
                           src={product.images?.[0] ?? product.imageUrl}
@@ -1064,6 +1094,8 @@ if (loading) {
                   
                   {/* Badges */}
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
+                    {offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
+                    {Date.parse(product.createdAt) >= Date.now() - 30 * 24 * 60 * 60 * 1000 && <span className="w-fit rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">Nuevo</span>}
                     {config.showStock && config.showStockQuantity && product.stock <= 5 && product.stock > 0 && (
                       <span className="bg-rose-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
                         Últimas unidades
@@ -1081,8 +1113,8 @@ if (loading) {
                   </div>
                 </div>
 
-                <div className="px-8 pb-8 flex-1 flex flex-col">
-                  <div className="flex-1 space-y-3">
+                <div className="flex flex-1 flex-col px-3 pb-3 sm:px-8 sm:pb-8">
+                  <div className="flex-1 space-y-2 sm:space-y-3">
                     <div className="flex items-center justify-between">
                       <span className={cn(
                         "text-[10px] font-bold uppercase tracking-[0.2em]",
@@ -1099,12 +1131,12 @@ if (loading) {
                         </span>
                       )}
                     </div>
-                    <h3 className={cn(
-                      "text-xl font-bold tracking-tight leading-tight transition-colors",
+                    <button type="button" onClick={() => { setSelectedProductForLightbox(product); setLightboxImageIndex(0); setDetailQuantity(1); }} className={cn(
+                      "min-h-11 w-full text-left text-sm font-bold tracking-tight leading-tight transition-colors sm:text-xl",
                       darkMode ? "text-white group-hover:text-white" : "text-slate-900"
                     )}>
                       {product.name}
-                    </h3>
+                    </button>
                     {product.description && (
                       <p className={cn(
                         "text-sm line-clamp-2 font-medium leading-relaxed",
@@ -1124,11 +1156,11 @@ if (loading) {
                     )}
                   </div>
 
-                  <div className="flex items-end justify-between mt-6 relative">
-                    <div className="space-y-1">
+                  <div className="mt-3 flex min-w-0 flex-col gap-2 sm:mt-6 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="min-w-0 space-y-1">
                       {config.showPrices && (
                         <p className={cn(
-                          "text-2xl font-black tracking-tighter",
+                          "text-base font-black tracking-tight sm:text-2xl",
                           darkMode ? "text-white" : "text-slate-900"
                         )}>
                           {(() => {
@@ -1142,7 +1174,7 @@ if (loading) {
                       {config.showStock && (
                         <p className={cn(
                           "text-[10px] font-bold uppercase tracking-widest",
-                          darkMode ? "text-white/20" : "text-slate-400"
+                          darkMode ? "text-white/70" : "text-slate-600"
                         )}>
                           {channel === 'reseller' && product.availability === 'on_order'
                             ? 'Por pedido · demora a confirmar'
@@ -1151,79 +1183,7 @@ if (loading) {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {channel === 'retail' && presentation.showWhatsAppButton && config.whatsappNumber && <a href={`https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(`Hola, quiero consultar por ${product.name}`)}`} aria-label={`Consultar por WhatsApp: ${product.name}`} target="_blank" rel="noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white"><MessageCircle size={18}/></a>}
-                      {channel === 'retail' && <div className="relative">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setShareProductId(prev => prev === product.id ? null : product.id);
-                            setShareCopied(false);
-                          }}
-                          className={cn(
-                            "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                            darkMode
-                              ? "bg-white/10 hover:bg-white/20 text-white/60 hover:text-white"
-                              : "bg-slate-100 hover:bg-slate-200 text-slate-500"
-                          )}
-                          title="Compartir producto"
-                        >
-                          <Share2 size={18} />
-                        </button>
-
-                        {shareProductId === product.id && (
-                          <div
-                            className={cn(
-                              "absolute bottom-full right-0 mb-2 w-44 rounded-2xl shadow-2xl border overflow-hidden z-20",
-                              darkMode ? "bg-[#1a1a1a] border-white/10" : "bg-white border-slate-100"
-                            )}
-                          >
-                            <button
-                              onClick={() => handleShareProduct(product, 'copy')}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors",
-                                darkMode
-                                  ? "text-white hover:bg-white/5"
-                                  : "text-slate-700 hover:bg-slate-50"
-                              )}
-                            >
-                              {shareCopied ? (
-                                <Check size={15} className="text-emerald-500" />
-                              ) : (
-                                <Copy size={15} />
-                              )}
-                              {shareCopied ? 'Copiado' : 'Copiar link'}
-                            </button>
-                            <button
-                              onClick={() => handleShareProduct(product, 'whatsapp')}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors border-t",
-                                darkMode
-                                  ? "text-white hover:bg-white/5 border-white/5"
-                                  : "text-slate-700 hover:bg-slate-50 border-slate-100"
-                              )}
-                            >
-                              <MessageCircle size={15} className="text-emerald-500" />
-                              WhatsApp
-                            </button>
-                          </div>
-                        )}
-                      </div>}
-
-                      <button
-                        type="button"
-                        aria-label={`Agregar ${product.name} al carrito`}
-                        onClick={() => addToCart(product, getDisplayedPrice(product))}
-                        disabled={!isProductOrderable(product)}
-                        className={cn(
-                          "w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all active:scale-90 disabled:opacity-20 disabled:grayscale",
-                          isProductOrderable(product) ? "hover:scale-110 hover:shadow-indigo-500/40" : ""
-                        )}
-                        style={isProductOrderable(product) ? { backgroundColor: accentColor, boxShadow: `0 10px 30px -5px ${accentColor}80` } : {}}
-                      >
-                        <Plus size={28} />
-                      </button>
-                    </div>
+                    <button type="button" aria-label={`Agregar ${product.name} al carrito`} onClick={() => addToCart(product, getDisplayedPrice(product))} disabled={!isProductOrderable(product)} className="flex min-h-11 w-full shrink-0 items-center justify-center gap-1 rounded-xl px-2 text-xs font-bold text-white shadow-md disabled:opacity-50 sm:w-14 sm:rounded-full sm:text-base" style={isProductOrderable(product) ? { backgroundColor: accentColor } : {}}><Plus size={20}/><span className="sm:hidden">Agregar</span></button>
                   </div>
                 </div>
                 
@@ -1302,13 +1262,13 @@ if (loading) {
           <div className="text-center space-y-2">
             <p className={cn(
               "text-sm font-bold uppercase tracking-[0.3em]",
-              darkMode ? "text-white/20" : "text-slate-400"
+              darkMode ? "text-white/70" : "text-slate-600"
             )}>
               &copy; {new Date().getFullYear()} {businessName}
             </p>
             <p className={cn(
               "text-[10px] font-medium uppercase tracking-widest",
-              darkMode ? "text-white/10" : "text-slate-300"
+              darkMode ? "text-white/65" : "text-slate-600"
             )}>
               Premium Tech Experience
             </p>
@@ -1733,103 +1693,27 @@ if (loading) {
         )}
       </AnimatePresence>
 
-      {/* Lightbox Modal */}
+      {/* Product details */}
       <AnimatePresence>
-        {selectedProductForLightbox && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedProductForLightbox(null)}
-              className="fixed inset-0 bg-black/92 backdrop-blur-2xl"
-            />
-            
-            <button 
-              onClick={() => setSelectedProductForLightbox(null)}
-              className="fixed top-6 right-6 z-[110] p-3 rounded-full bg-white/5 hover:bg-white/10 text-white transition-all backdrop-blur-md border border-white/10"
-            >
-              <X size={24} />
-            </button>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="relative z-[105] max-w-5xl w-full flex flex-col items-center gap-8"
-            >
-              {(() => {
-                const imgs = selectedProductForLightbox.images?.length
-                  ? selectedProductForLightbox.images
-                  : selectedProductForLightbox.imageUrl
-                    ? [selectedProductForLightbox.imageUrl]
-                    : [];
-                const idx = Math.min(lightboxImageIndex, imgs.length - 1);
-                return (
-                  <>
-                    <div className="relative w-full">
-                      <div className="w-full aspect-square md:aspect-video max-h-[70vh] rounded-2xl overflow-hidden shadow-2xl border border-white/5 bg-white/5">
-                        <img
-                          src={imgs[idx]}
-                          alt={selectedProductForLightbox.name}
-                          className="w-full h-full object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      {imgs.length > 1 && (
-                        <>
-                          <button
-                            onClick={() => setLightboxImageIndex(i => (i - 1 + imgs.length) % imgs.length)}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
-                          >
-                            <ChevronLeft size={24} />
-                          </button>
-                          <button
-                            onClick={() => setLightboxImageIndex(i => (i + 1) % imgs.length)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
-                          >
-                            <ChevronRight size={24} />
-                          </button>
-                          <div className="flex gap-2 justify-center mt-4">
-                            {imgs.map((_, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setLightboxImageIndex(i)}
-                                className={cn(
-                                  "h-2 rounded-full transition-all",
-                                  i === idx ? "bg-white w-6" : "bg-white/30 w-2"
-                                )}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="text-center space-y-2 px-4">
-                      <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-                        {selectedProductForLightbox.name}
-                      </h2>
-                      {inventoryOwnerLabels[selectedProductForLightbox.id] && (
-                        <p className="text-xs font-bold uppercase tracking-widest text-white/50">
-                          {inventoryOwnerLabels[selectedProductForLightbox.id]}
-                        </p>
-                      )}
-                      {config.showPrices && (
-                        <p className="text-2xl md:text-3xl font-black tracking-tighter" style={{ color: accentColor }}>
-                          {formatCurrency(roundPrice(selectedProductForLightbox.salePrice))}
-                        </p>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-            </motion.div>
-          </div>
-        )}
+        {selectedProductForLightbox && (() => {
+          const product = selectedProductForLightbox;
+          const images = product.images?.length ? product.images : product.imageUrl ? [product.imageUrl] : [];
+          const related = products.filter(row => row.id !== product.id && row.categoryId === product.categoryId).slice(0, 4);
+          const price = getDisplayedPrice(product);
+          const close = () => setSelectedProductForLightbox(null);
+          const addSelected = () => { for (let index = 0; index < detailQuantity; index += 1) addToCart(product, price); close(); };
+          return <div className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
+            <button type="button" aria-label="Cerrar ficha del producto" onClick={close} className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
+            <section className={cn('relative z-10 flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-white text-slate-900')}>
+              <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
+              <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
+                <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
+                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{config.showStock&&<p className={`inline-flex min-h-9 items-center rounded-full px-3 text-sm font-bold ${product.stock>0?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}`}>{product.stock>0?(config.showStockQuantity?`Disponible · ${product.stock} unidades`:'Disponible'):'Sin stock'}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(product.availability==='on_order'?Number.MAX_SAFE_INTEGER:product.stock,value+1))} disabled={product.availability!=='on_order'&&detailQuantity>=product.stock} className="grid size-11 place-items-center rounded-xl border border-[var(--line)] disabled:opacity-50"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Compartir'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
+              </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>{setSelectedProductForLightbox(row);setLightboxImageIndex(0);setDetailQuantity(1);}} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
+            </section>
+          </div>;
+        })()}
       </AnimatePresence>
-
       {/* Success Modal */}
       <AnimatePresence>
         {isSuccess && (

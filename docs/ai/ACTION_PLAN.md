@@ -533,6 +533,30 @@ A Riva le parece "horrible" la pantalla de chats de IA en el celular: el botón 
 
 ---
 
+### [x] I18b Correcciones del catálogo público y rediseño de su configuración — **pedido de Riva el 07/11 09:28 (con capturas)**
+Riva probó I18 en producción desde el celular y encontró estos problemas. Además pidió **rediseñar completamente** la pantalla de configuración del catálogo porque en el celular se ve muy mal. Maquetas nuevas en `docs/design/public-catalog/`: **`ConfigCatalogo`**, **`ConfigOfertas`** y **`ConfigWhatsApp`**. También valen las que ya estaban: `Main`, `Producto`, `Carrito`, `Personalizar` y `MainPC`.
+
+**Catálogo público (lo que ve el cliente):**
+1. **Tarjetas de producto:** los botones quedan recortados (precio + WhatsApp + compartir no entran y se salen de la tarjeta) y **no hay botón para comprar**. Tienen que quedar como en la maqueta `Main`: foto, etiqueta (Último / Nuevo / -X %), nombre, precio y un botón **+ / Agregar** bien visible que suma al carrito. El WhatsApp y el compartir pasan a la ficha del producto (o quedan como íconos chicos que no rompan el diseño). Nada puede salirse de la tarjeta a 360 px.
+2. **Ficha del producto:** hoy al tocar un producto se abre **solo la foto**, sin nada más. Tiene que ser la ficha de la maqueta `Producto`: galería, nombre, precio, estado de stock, descripción, cantidad, botón grande **Agregar al carrito**, botón de WhatsApp y compartir, y productos relacionados. Vale tanto para el catálogo como para `/catalogo/:slug/:productId`.
+3. **Tema claro, categorías:** los nombres de las categorías casi no se leen (texto gris claro sobre fondo claro). Contraste AA en los dos temas.
+4. **Tema claro, cuenta regresiva:** no se ve (texto oscuro sobre la portada oscura). Tiene que verse bien en los dos temas y sobre cualquier foto de portada (fondo propio semitransparente).
+5. **Portada con tema:** cuando hay un tema activo (ej. Navidad), la portada sigue mostrando el banner propio del negocio y el tema se nota poco. El tema tiene que mandar como en las maquetas (`TemaNavidad`, etc.): portada del tema, colores, adornos y tarjetas decoradas. El banner propio se usa solo si Riva lo elige en Personalizar ("usar mi foto de portada").
+6. **WhatsApp:** el botón del producto manda solo "Hola, quiero consultar por {nombre}". Tiene que mandar el **nombre, el precio y el link del producto** con vista previa (foto, nombre y precio). Usar `getCatalogShareUrl` de `src/lib/catalogShare.ts` (la vista previa de G2), no el link pelado. Mensaje editable por Riva con variables `{producto}`, `{precio}`, `{link}`, `{cantidad}` (maqueta `ConfigWhatsApp`).
+7. En general, el catálogo publicado se parece poco a la maqueta `Main` (más llamativo: portada grande, categorías en círculos de color, ofertas con cuenta regresiva, "Los más pedidos", banner de revendedores, barra flotante del carrito). Revisarlo contra la maqueta pantalla por pantalla, en celular y en PC (`MainPC`, `CarritoPC`).
+
+**Configuración del catálogo (dentro de la app), rediseño completo:**
+8. Reemplazar la pantalla actual por la de la maqueta **`ConfigCatalogo`**: arriba el estado (activo/inactivo), el link con **Copiar / Compartir / Abrir**, una vista previa chica del catálogo, y abajo una **lista de secciones** que abren cada una su pantalla: Tema y ambientación (maqueta `Personalizar`), Portada, Secciones, **Destacados y ofertas** (maqueta `ConfigOfertas`), Qué se muestra, **WhatsApp y pedidos** (maqueta `ConfigWhatsApp`), Revendedores y Datos del negocio. Nada de formularios largos con todo junto.
+9. **Destacados y ofertas:** hoy son listas largas de casillas con nombres y un campo "Hasta" vacío sin explicación. Pasar a: elegir el modo (A mano / Más vendidos / Una categoría), los elegidos como chips con foto que se quitan con una X, buscador para agregar; ofertas con producto + descuento con − / + y precio nuevo calculado, y fecha y hora de fin con selector nativo y texto "Terminan el".
+10. **Guardar:** hoy no aparece ningún aviso. Mostrar un aviso verde **"Cambios guardados"** (y uno rojo con el motivo si falla). Botón Guardar fijo abajo, deshabilitado si no hay cambios, y aviso si querés salir sin guardar.
+11. Todo responsive a 360 px: nada cortado ni fuera de los bordes, touch ≥ 44 px, contraste AA. En PC, la misma estructura en dos columnas (lista a la izquierda, sección abierta a la derecha).
+
+- **Tests:** Playwright móvil 360×740 y PC 1440: tarjeta con botón Agregar visible y sin desbordes, ficha completa, agregar al carrito desde tarjeta y ficha, contraste de categorías y cuenta regresiva en tema claro (axe), mensaje de WhatsApp con nombre, precio y link de vista previa, aviso "Cambios guardados". Sin pedidos ni mensajes reales.
+- **Cuándo:** es lo próximo, antes que cualquier otra cosa.
+- **Commit:** `fix(catalog): product cards, detail page, light theme contrast and redesigned catalog settings`
+
+---
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.

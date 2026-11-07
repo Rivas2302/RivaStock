@@ -1,156 +1,139 @@
-import { useState } from 'react';
-import { ArrowDown, ArrowUp, ImagePlus, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronRight, Copy, ExternalLink, ImagePlus, MessageCircle, Plus, Share2, Sparkles, Trash2 } from 'lucide-react';
 import type { CatalogConfig, Category, Product } from '../../types';
-import { cn } from '../../lib/utils';
+import { formatCurrency, roundPrice } from '../../lib/utils';
+import { getCatalogShareUrl } from '../../lib/catalogShare';
 import {
   CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation,
-  getActiveCatalogTheme, moveCatalogSection, moveCatalogSectionToIndex, normalizeCatalogSections,
-  type CatalogPresentation, type CatalogThemeId,
+  formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogOfferPrice, moveCatalogSection,
+  normalizeCatalogSections, type CatalogPresentation, type CatalogThemeId,
 } from '../../lib/catalogPresentation';
 
-interface CatalogCustomizerProps {
+type SectionId = 'theme' | 'cover' | 'sections' | 'offers' | 'display' | 'whatsapp' | 'resellers' | 'business';
+interface Props {
   config: CatalogConfig;
   categories: Category[];
   products: Product[];
   canEdit: boolean;
-  onSave: (presentation: CatalogPresentation) => Promise<void>;
+  onSave: (updates: Partial<CatalogConfig>) => Promise<void>;
   onUploadCover: (file: File) => Promise<string>;
+  onUploadLogo: (file: File) => Promise<string>;
 }
 
-export default function CatalogCustomizer({ config, categories, products, canEdit, onSave, onUploadCover }: CatalogCustomizerProps) {
-  const [draft, setDraft] = useState<CatalogPresentation>(() => {
-    const defaults = defaultCatalogPresentation(config);
-    return {
-      ...defaults,
-      ...config.presentation,
-      sections: normalizeCatalogSections(config.presentation?.sections),
-      schedules: config.presentation?.schedules ?? [],
-      featuredProductIds: config.presentation?.featuredProductIds ?? defaults.featuredProductIds,
-      offerProductIds: config.presentation?.offerProductIds ?? defaults.offerProductIds,
-      offerDiscountPercentByProduct: config.presentation?.offerDiscountPercentByProduct ?? defaults.offerDiscountPercentByProduct,
-      ambience: { ...defaults.ambience, ...config.presentation?.ambience },
-    };
-  });
+const GROUPS: Array<{ title: string; items: Array<{ id: SectionId; title: string; subtitle: string }> }> = [
+  { title: 'Cómo se ve', items: [
+    { id: 'theme', title: 'Tema y ambientación', subtitle: 'Colores, temporada y efectos' },
+    { id: 'cover', title: 'Portada', subtitle: 'Título, texto, foto y colores' },
+    { id: 'sections', title: 'Secciones', subtitle: 'Orden y contenido del catálogo' },
+  ] },
+  { title: 'Productos', items: [
+    { id: 'offers', title: 'Destacados y ofertas', subtitle: 'Productos, descuentos y vigencia' },
+    { id: 'display', title: 'Qué se muestra', subtitle: 'Precios, stock y fotos' },
+  ] },
+  { title: 'Pedidos', items: [
+    { id: 'whatsapp', title: 'WhatsApp y pedidos online', subtitle: 'Número, mensaje y vista previa del link' },
+    { id: 'resellers', title: 'Revendedores', subtitle: 'Acceso y listas por encargo' },
+    { id: 'business', title: 'Datos del negocio', subtitle: 'Nombre, logo y redes' },
+  ] },
+];
+
+function normalize(config: CatalogConfig): CatalogPresentation {
+  const defaults = defaultCatalogPresentation(config);
+  return {
+    ...defaults, ...config.presentation,
+    sections: normalizeCatalogSections(config.presentation?.sections),
+    schedules: config.presentation?.schedules ?? [],
+    featuredProductIds: config.presentation?.featuredProductIds ?? [],
+    offerProductIds: config.presentation?.offerProductIds ?? [],
+    offerDiscountPercentByProduct: config.presentation?.offerDiscountPercentByProduct ?? {},
+    ambience: { ...defaults.ambience, ...config.presentation?.ambience },
+    whatsappMessageTemplate: config.presentation?.whatsappMessageTemplate ?? defaults.whatsappMessageTemplate,
+  };
+}
+
+export default function CatalogCustomizer({ config, categories, products, canEdit, onSave, onUploadCover, onUploadLogo }: Props) {
+  const [draftConfig, setDraftConfig] = useState(config);
+  const [draft, setDraft] = useState(() => normalize(config));
+  const [section, setSection] = useState<SectionId | null>(null);
+  const [search, setSearch] = useState('');
   const [scheduleTheme, setScheduleTheme] = useState<CatalogThemeId>('christmas');
   const [scheduleStart, setScheduleStart] = useState('');
   const [scheduleEnd, setScheduleEnd] = useState('');
   const [saving, setSaving] = useState(false);
-  const [draggedSection, setDraggedSection] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const baseline = useMemo(() => JSON.stringify({
+    config: [config.enabled, config.whatsappNumber, config.allowOrders, config.showPrices, config.showStock, config.showStockQuantity, config.businessName, config.tagline, config.aboutText],
+    presentation: normalize(config),
+  }), [config]);
+  const current = JSON.stringify({
+    config: [draftConfig.enabled, draftConfig.whatsappNumber, draftConfig.allowOrders, draftConfig.showPrices, draftConfig.showStock, draftConfig.showStockQuantity, draftConfig.businessName, draftConfig.tagline, draftConfig.aboutText],
+    presentation: draft,
+  });
+  const dirty = baseline !== current;
   const activeTheme = getActiveCatalogTheme(draft);
-  const theme = CATALOG_THEME_OPTIONS.find(option => option.id === activeTheme) ?? CATALOG_THEME_OPTIONS[0];
+  const theme = CATALOG_THEME_OPTIONS.find(item => item.id === activeTheme) ?? CATALOG_THEME_OPTIONS[0];
+  const publicUrl = getCatalogShareUrl(window.location.origin, config.slug);
+  const filteredProducts = products.filter(product => product.name.toLocaleLowerCase('es-AR').includes(search.toLocaleLowerCase('es-AR')));
+  const photo = (product: Product) => product.images?.[0] ?? product.imageUrl ?? '';
 
-  const update = (changes: Partial<CatalogPresentation>) => setDraft(current => ({ ...current, ...changes }));
-  const addSchedule = () => {
-    if (!scheduleStart || !scheduleEnd || scheduleEnd < scheduleStart) {
-      setError('Elegí un período válido para programar el tema.');
-      return;
-    }
-    update({ schedules: [...draft.schedules, { id: crypto.randomUUID(), theme: scheduleTheme, startDate: scheduleStart, endDate: scheduleEnd }] });
-    setError('');
-  };
+  useEffect(() => {
+    const confirmExit = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
+    window.addEventListener('beforeunload', confirmExit);
+    return () => window.removeEventListener('beforeunload', confirmExit);
+  }, [dirty]);
 
+  const update = (changes: Partial<CatalogPresentation>) => { setDraft(value => ({ ...value, ...changes })); setSaved(false); };
+  const updateConfig = (changes: Partial<CatalogConfig>) => { setDraftConfig(value => ({ ...value, ...changes })); setSaved(false); };
+  const back = () => { if (dirty && !window.confirm('Tenés cambios sin guardar. ¿Descartarlos y salir?')) return; setDraft(normalize(config)); setDraftConfig(config); setSection(null); setError(''); setSaved(false); };
   const save = async () => {
-    setSaving(true);
-    setError('');
-    try { await onSave(draft); }
-    catch { setError('No pudimos guardar la personalización. Intentá de nuevo.'); }
+    if (!dirty || saving || !canEdit) return;
+    setSaving(true); setSaved(false); setError('');
+    try {
+      await onSave({ ...draftConfig, presentation: draft, welcomeMessage: draft.heroDescription, bannerColor: draft.heroColor, primaryColor: draft.accentColor, bannerUrl: draft.useBusinessCover ? draft.heroImageUrl || config.bannerUrl : null });
+      setSaved(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No pudimos guardar los cambios. Intentá de nuevo.'); }
     finally { setSaving(false); }
   };
+  const addProduct = (target: 'featured' | 'offer', id: string) => {
+    const key = target === 'featured' ? 'featuredProductIds' : 'offerProductIds';
+    if (draft[key].includes(id)) return;
+    update({ [key]: [...draft[key], id] });
+    if (target === 'offer' && !draft.offerDiscountPercentByProduct[id]) update({ offerDiscountPercentByProduct: { ...draft.offerDiscountPercentByProduct, [id]: 10 } });
+  };
+  const removeProduct = (target: 'featured' | 'offer', id: string) => target === 'featured'
+    ? update({ featuredProductIds: draft.featuredProductIds.filter(value => value !== id) })
+    : update({ offerProductIds: draft.offerProductIds.filter(value => value !== id) });
+  const sectionTitle = GROUPS.flatMap(group => group.items).find(item => item.id === section)?.title ?? 'Tu catálogo';
 
-  return <section aria-labelledby="catalog-customizer-title" className="space-y-5 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-[var(--ink)] sm:p-6">
-    <header>
-      <h3 id="catalog-customizer-title" className="text-lg font-bold">Personalizar catálogo</h3>
-      <p className="mt-1 text-sm text-[var(--ink-muted)]">Diseñá la portada y el orden de lo que ven tus clientes.</p>
+  return <section aria-label="Configuración del catálogo" className="relative min-h-[calc(100dvh-8rem)] pb-28 text-[var(--ink)]">
+    <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)]/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      {section && <button type="button" aria-label="Volver a configuración del catálogo" onClick={back} className="grid size-11 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface-raised)]"><ArrowLeft size={19}/></button>}
+      <div className="min-w-0 flex-1"><h2 className="truncate text-xl font-bold">{section ? sectionTitle : 'Tu catálogo'}</h2><p className="text-sm text-[var(--ink-muted)]">{section ? 'Configurá esta parte del catálogo' : 'Lo que ven tus clientes'}</p></div>
+      {!section && <button type="button" role="switch" aria-label="Catálogo activo" aria-checked={draftConfig.enabled} onClick={() => updateConfig({ enabled: !draftConfig.enabled })} disabled={!canEdit} className={`h-8 w-14 rounded-full p-1 ${draftConfig.enabled ? 'bg-[var(--brand)]' : 'bg-[var(--line-strong)]'}`}><span className={`block size-6 rounded-full bg-white transition-transform ${draftConfig.enabled ? 'translate-x-6' : ''}`}/></button>}
     </header>
 
-    <div data-testid="catalog-live-preview" className="relative isolate overflow-hidden rounded-2xl p-5 text-white sm:p-7" style={{ backgroundColor: draft.heroColor }}>
-      {draft.heroImageUrl && <img src={draft.heroImageUrl} alt="" className="absolute inset-0 -z-10 h-full w-full object-cover"/>}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-slate-950/70 via-slate-950/30 to-transparent"/>
-      <svg aria-hidden="true" viewBox="0 0 120 120" className="pointer-events-none absolute -right-3 -top-4 -z-10 h-36 w-36 opacity-20" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="60" cy="60" r="38"/><path d="M60 8v104M8 60h104M24 24l72 72m0-72L24 96"/></svg>
-      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-white/75">Vista previa · {theme.label}</p>
-      <h4 className="mt-4 max-w-xl text-2xl font-extrabold sm:text-4xl">{draft.heroTitle || config.businessName}</h4>
-      <p className="mt-2 max-w-xl text-sm text-white/85 sm:text-base">{draft.heroDescription}</p>
-      <span className="mt-5 inline-flex rounded-full px-4 py-2 text-sm font-bold text-white" style={{ backgroundColor: draft.accentColor }}>Ver productos</span>
-    </div>
-
-    <section aria-label="Tema" className="space-y-3">
-      <h4 className="font-semibold">Tema</h4>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        {CATALOG_THEME_OPTIONS.map(option => <button key={option.id} type="button" aria-pressed={draft.theme === option.id} onClick={() => update({ theme: option.id, heroColor: option.heroColor, accentColor: option.accentColor, heroTitle: option.title, heroDescription: option.description })} className={cn('min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold', draft.theme === option.id ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--line)] hover:bg-[var(--surface-muted)]')}><span className="mr-2 inline-block size-3 rounded-full align-middle" style={{ background: option.accentColor }}/>{option.label}</button>)}
+    {!section ? <div className="grid gap-5 lg:grid-cols-[minmax(250px,.9fr)_minmax(400px,1.2fr)]">
+      <div className="space-y-4 lg:order-2">
+        <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4"><div className="flex min-w-0 items-center gap-2"><div className="min-w-0 flex-1"><p className="text-xs text-[var(--ink-muted)]">Tu link</p><p className="truncate text-sm font-semibold">{publicUrl.replace(/^https?:\/\//, '')}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${draftConfig.enabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-[var(--surface-muted)] text-[var(--ink-muted)]'}`}>{draftConfig.enabled ? '● Activo' : 'Inactivo'}</span></div><div className="mt-3 grid grid-cols-3 gap-2"><button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={15}/>Copiar</button><button type="button" onClick={() => { if (navigator.share) void navigator.share({ title: draftConfig.businessName, url: publicUrl }); else void navigator.clipboard.writeText(publicUrl); }} className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[var(--line)] text-sm font-semibold"><Share2 size={15}/>Compartir</button><a href={publicUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[var(--line)] text-sm font-semibold"><ExternalLink size={15}/>Abrir</a></div></div>
+        <a href={publicUrl} target="_blank" rel="noreferrer" aria-label="Ver vista previa del catálogo" className="relative flex h-36 overflow-hidden rounded-2xl border border-[var(--line)] bg-cover bg-center p-4 text-white" style={{ backgroundColor: draft.heroColor, backgroundImage: draft.useBusinessCover && (draft.heroImageUrl || config.bannerUrl) ? `linear-gradient(90deg,rgba(0,0,0,.68),rgba(0,0,0,.08)),url(${draft.heroImageUrl || config.bannerUrl})` : undefined }}><span className="my-auto min-w-0"><span className="block text-xs font-semibold uppercase tracking-wider text-white/80">Vista previa · {theme.label}</span><span className="mt-1 block truncate text-xl font-black">{draft.heroTitle || draftConfig.businessName}</span><span className="block truncate text-sm text-white/80">{draft.heroDescription}</span></span><span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-3 py-1.5 text-xs font-bold"><ExternalLink size={14}/>Ver</span></a>
       </div>
-    </section>
-
-    <section aria-label="Programar tema" className="space-y-3 rounded-xl border border-[var(--line)] p-4">
-      <div><h4 className="font-semibold">Programar tema</h4><p className="text-xs text-[var(--ink-muted)]">Si coinciden dos fechas, se usa el tema que empieza más tarde. Al terminar, vuelve a Normal.</p></div>
-      <div className="grid gap-2 sm:grid-cols-4">
-        <label className="text-xs font-medium">Tema<select value={scheduleTheme} onChange={event => setScheduleTheme(event.target.value as CatalogThemeId)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2 text-sm">{CATALOG_THEME_OPTIONS.filter(option => option.id !== 'custom').map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-        <label className="text-xs font-medium">Desde<input type="date" value={scheduleStart} onChange={event => setScheduleStart(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2 text-sm"/></label>
-        <label className="text-xs font-medium">Hasta<input type="date" value={scheduleEnd} onChange={event => setScheduleEnd(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2 text-sm"/></label>
-        <button type="button" onClick={addSchedule} className="mt-auto inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[var(--action-bg)] px-3 text-sm font-semibold text-[var(--action-ink)]"><Plus size={17}/>Agregar fecha</button>
+      <div className="space-y-5 lg:order-1">{GROUPS.map(group => <section key={group.title} aria-label={group.title} className="space-y-2"><h3 className="px-1 text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{group.title}</h3><div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)]">{group.items.map((item,index) => <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex min-h-[66px] w-full items-center gap-3 px-3 text-left ${index ? 'border-t border-[var(--line)]' : ''}`}><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-strong)]">{item.id === 'whatsapp' ? <MessageCircle size={19}/> : item.id === 'theme' ? <Sparkles size={19}/> : <span className="text-lg font-bold">{item.title.slice(0,1)}</span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-[var(--ink-muted)]">{item.subtitle}</span></span><ChevronRight size={18} className="shrink-0 text-[var(--ink-muted)]"/></button>)}</div></section>)}</div>
+    </div> : <div className="grid gap-5 lg:grid-cols-[minmax(220px,.75fr)_minmax(420px,1.25fr)]">
+      <nav aria-label="Secciones de configuración" className="hidden space-y-1 lg:block">{GROUPS.flatMap(group=>group.items).map(item=><button key={item.id} type="button" onClick={()=>setSection(item.id)} className={`min-h-12 w-full rounded-xl px-3 text-left text-sm font-semibold ${section===item.id?'bg-[var(--brand-soft)] text-[var(--brand-strong)]':'hover:bg-[var(--surface-muted)]'}`}>{item.title}</button>)}</nav>
+      <div className="min-w-0 space-y-4">
+        {section==='theme'&&<><p className="text-sm text-[var(--ink-muted)]">Elegí un tema y su ambientación; la temporada aporta sus colores y adornos.</p><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{CATALOG_THEME_OPTIONS.map(item=><button key={item.id} type="button" aria-pressed={draft.theme===item.id} onClick={()=>update({theme:item.id,heroColor:item.heroColor,accentColor:item.accentColor,heroTitle:item.title,heroDescription:item.description})} className={`min-h-12 rounded-xl border px-3 text-left text-sm font-semibold ${draft.theme===item.id?'border-[var(--brand)] bg-[var(--brand-soft)]':'border-[var(--line)]'}`}><span className="mr-2 inline-block size-3 rounded-full" style={{background:item.accentColor}}/>{item.label}</button>)}</div><label className="block text-sm font-semibold">Intensidad<select value={draft.ambience.intensity} onChange={event=>update({ambience:{...draft.ambience,intensity:event.target.value as CatalogPresentation['ambience']['intensity']}})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"><option value="soft">Suave</option><option value="normal">Normal</option><option value="party">Fiesta</option></select></label><label className="block text-sm font-semibold">Texto de la cinta de anuncios<input value={draft.ambience.announcementText} maxLength={120} onChange={event=>update({ambience:{...draft.ambience,announcementText:event.target.value}})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label><div className="grid gap-2 sm:grid-cols-2">{([['animatedEffects','Efectos animados'],['headerDecoration','Adorno del encabezado'],['productDecoration','Decoración de productos'],['countdown','Cuenta regresiva'],['themedFont','Tipografía del tema'],['welcomeCard','Cartel de bienvenida']] as const).map(([key,label])=><label key={key} className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 text-sm font-medium"><input type="checkbox" checked={draft.ambience[key]} onChange={event=>update({ambience:{...draft.ambience,[key]:event.target.checked}})} className="size-5 accent-[var(--brand)]"/>{label}</label>)}</div><div className="grid grid-cols-3 gap-2"><select aria-label="Programar tema" value={scheduleTheme} onChange={event=>setScheduleTheme(event.target.value as CatalogThemeId)} className="min-h-11 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-2">{CATALOG_THEME_OPTIONS.filter(item=>item.id!=='normal'&&item.id!=='custom').map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select><input aria-label="Tema desde" type="date" value={scheduleStart} onChange={event=>setScheduleStart(event.target.value)} className="min-h-11 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-2"/><input aria-label="Tema hasta" type="date" value={scheduleEnd} onChange={event=>setScheduleEnd(event.target.value)} className="min-h-11 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-2"/></div><button type="button" onClick={()=>{if(!scheduleStart||!scheduleEnd||scheduleEnd<scheduleStart){setError('Elegí un período válido para programar el tema.');return;}update({schedules:[...draft.schedules,{id:crypto.randomUUID(),theme:scheduleTheme,startDate:scheduleStart,endDate:scheduleEnd}]});setError('');}} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">+ Agregar fecha</button>{draft.schedules.map(item=><div key={item.id} className="flex min-h-12 items-center border-b border-[var(--line)] text-sm"><span className="flex-1">{item.theme} · {item.startDate} al {item.endDate}</span><button type="button" aria-label="Eliminar tema programado" onClick={()=>update({schedules:draft.schedules.filter(row=>row.id!==item.id)})} className="grid size-11 place-items-center"><Trash2 size={17}/></button></div>)}</>}
+        {section==='cover'&&<div className="space-y-4"><label className="block text-sm font-semibold">Título<input value={draft.heroTitle} maxLength={90} onChange={event=>update({heroTitle:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label><label className="block text-sm font-semibold">Descripción<textarea value={draft.heroDescription} maxLength={240} onChange={event=>update({heroDescription:event.target.value})} className="mt-1 min-h-24 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/></label><div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold">Color de portada<input type="color" value={draft.heroColor} onChange={event=>update({heroColor:event.target.value})} className="mt-1 h-12 w-full rounded-lg border border-[var(--line)] p-1"/></label><label className="text-sm font-semibold">Color principal<input type="color" value={draft.accentColor} onChange={event=>update({accentColor:event.target.value})} className="mt-1 h-12 w-full rounded-lg border border-[var(--line)] p-1"/></label></div><label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 text-sm font-semibold"><input type="checkbox" checked={draft.useBusinessCover} onChange={event=>update({useBusinessCover:event.target.checked})} className="size-5 accent-[var(--brand)]"/>Usar mi foto de portada</label><label className="flex min-h-12 items-center gap-2 rounded-xl border border-dashed border-[var(--line)] px-3 text-sm font-semibold"><ImagePlus size={18}/>{draft.heroImageUrl||config.bannerUrl?'Cambiar foto de portada':'Subir foto de portada'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={!canEdit} className="sr-only" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{update({heroImageUrl:await onUploadCover(file),useBusinessCover:true});setError('');}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo subir la portada.');}finally{event.target.value='';}}}/></label></div>}
+        {section==='sections'&&<div className="space-y-2"><p className="text-sm text-[var(--ink-muted)]">Activá y ordená las secciones que ven tus clientes.</p>{draft.sections.map((row,index)=><div key={row.id} className="flex min-h-[58px] items-center gap-2 border-b border-[var(--line)]"><input type="checkbox" aria-label={`Mostrar ${CATALOG_SECTION_LABELS[row.id]}`} checked={row.visible} onChange={event=>update({sections:draft.sections.map(item=>item.id===row.id?{...item,visible:event.target.checked}:item)})} className="size-5 accent-[var(--brand)]"/><span className="min-w-0 flex-1 text-sm font-semibold">{CATALOG_SECTION_LABELS[row.id]}</span><button type="button" aria-label={`Subir ${CATALOG_SECTION_LABELS[row.id]}`} disabled={!index} onClick={()=>update({sections:moveCatalogSection(draft.sections,row.id,-1)})} className="grid size-11 place-items-center"><ArrowUp size={17}/></button><button type="button" aria-label={`Bajar ${CATALOG_SECTION_LABELS[row.id]}`} disabled={index===draft.sections.length-1} onClick={()=>update({sections:moveCatalogSection(draft.sections,row.id,1)})} className="grid size-11 place-items-center"><ArrowDown size={17}/></button></div>)}</div>}
+        {section==='offers'&&<div className="space-y-5"><fieldset className="space-y-3"><legend className="mb-2 text-sm font-semibold">Productos destacados</legend><div className="grid grid-cols-3 gap-2">{(['manual','best_selling','category'] as const).map(mode=><button key={mode} type="button" aria-pressed={draft.featuredMode===mode} onClick={()=>update({featuredMode:mode})} className={`min-h-11 rounded-xl border px-2 text-xs font-semibold ${draft.featuredMode===mode?'border-[var(--brand)] bg-[var(--brand-soft)]':'border-[var(--line)]'}`}>{mode==='manual'?'A mano':mode==='best_selling'?'Más vendidos':'Una categoría'}</button>)}</div>{draft.featuredMode==='category'?<select aria-label="Categoría destacada" value={draft.featuredCategoryId??''} onChange={event=>update({featuredCategoryId:event.target.value||null})} className="min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3">{categories.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>:<><input aria-label="Buscar productos destacados" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar y agregar producto" className="min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/><div className="flex flex-wrap gap-2">{draft.featuredProductIds.map(id=>{const product=products.find(item=>item.id===id);return product&&<span key={id} className="flex items-center gap-2 rounded-full border border-[var(--line)] py-1 pl-1 pr-2 text-xs font-semibold"><span className="size-8 overflow-hidden rounded-full bg-[var(--surface-muted)]">{photo(product)&&<img src={photo(product)} alt="" className="size-full object-cover"/>}</span>{product.name}<button type="button" aria-label={`Quitar ${product.name} de destacados`} onClick={()=>removeProduct('featured',id)} className="grid size-8 place-items-center"><Trash2 size={14}/></button></span>;})}</div><div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--line)]">{filteredProducts.map(product=><button key={product.id} type="button" onClick={()=>addProduct('featured',product.id)} disabled={draft.featuredProductIds.includes(product.id)} className="flex min-h-12 w-full items-center gap-2 border-b border-[var(--line)] px-2 text-left text-sm disabled:opacity-50"><span className="size-9 overflow-hidden rounded-lg bg-[var(--surface-muted)]">{photo(product)&&<img src={photo(product)} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="flex-1 truncate">{product.name}</span><Plus size={17}/></button>)}</div></>}</fieldset><fieldset className="space-y-3"><legend className="text-sm font-semibold">Ofertas</legend><label className="block text-sm font-medium">Terminan el<input aria-label="Terminan el" type="datetime-local" value={draft.offerEndsAt?.slice(0,16)??''} onChange={event=>update({offerEndsAt:event.target.value?new Date(event.target.value).toISOString():null})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label><input aria-label="Buscar productos en oferta" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar producto en oferta" className="min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/><div className="overflow-hidden rounded-xl border border-[var(--line)]">{draft.offerProductIds.map(id=>{const product=products.find(item=>item.id===id);if(!product)return null;const discount=draft.offerDiscountPercentByProduct[id]??10;const sale=getCatalogOfferPrice(product.salePrice,discount)??roundPrice(product.salePrice);return <div key={id} className="space-y-2 border-b border-[var(--line)] p-3"><div className="flex items-center gap-2"><span className="size-12 overflow-hidden rounded-xl bg-[var(--surface-muted)]">{photo(product)&&<img src={photo(product)} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{product.name}</span><span className="text-xs text-[var(--ink-muted)]"><s>{formatCurrency(roundPrice(product.salePrice))}</s> → <b className="text-[var(--danger-ink)]">{formatCurrency(sale)}</b></span></span><button type="button" aria-label={`Quitar oferta de ${product.name}`} onClick={()=>removeProduct('offer',id)} className="grid size-11 place-items-center"><Trash2 size={17}/></button></div><div className="flex items-center gap-2"><span className="flex-1 text-sm">Descuento</span><button type="button" aria-label={`Bajar descuento de ${product.name}`} onClick={()=>update({offerDiscountPercentByProduct:{...draft.offerDiscountPercentByProduct,[id]:Math.max(1,discount-1)}})} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]">−</button><span className="min-w-16 text-center font-bold">{discount} %</span><button type="button" aria-label={`Subir descuento de ${product.name}`} onClick={()=>update({offerDiscountPercentByProduct:{...draft.offerDiscountPercentByProduct,[id]:Math.min(90,discount+1)}})} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]">+</button></div></div>;})}{filteredProducts.filter(product=>!draft.offerProductIds.includes(product.id)).slice(0,10).map(product=><button key={product.id} type="button" onClick={()=>addProduct('offer',product.id)} className="flex min-h-12 w-full items-center gap-2 border-b border-[var(--line)] px-3 text-left text-sm"><span className="flex-1 truncate">{product.name}</span><Plus size={17}/></button>)}</div></fieldset></div>}
+        {section==='display'&&<div className="space-y-2">{([['showPrices','Mostrar precios'],['showStock','Mostrar disponibilidad'],['showStockQuantity','Mostrar cantidad disponible']] as const).map(([key,label])=><label key={key} className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={draftConfig[key]} onChange={event=>updateConfig({[key]:event.target.checked})} className="size-5 accent-[var(--brand)]"/>{label}</label>)}<label className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={draft.showProductsWithoutPhoto} onChange={event=>update({showProductsWithoutPhoto:event.target.checked})} className="size-5 accent-[var(--brand)]"/>Mostrar productos sin foto</label></div>}
+        {section==='whatsapp'&&<div className="space-y-4"><div className="rounded-2xl bg-emerald-950 p-4 text-white"><p className="mb-2 text-xs text-emerald-200">Así le llega a tu cliente</p><div className="ml-auto max-w-[290px] rounded-2xl bg-emerald-800 p-3 text-sm"><div className="mb-2 overflow-hidden rounded-lg bg-emerald-900 p-2"><div className="aspect-video overflow-hidden rounded bg-gradient-to-br from-indigo-400 to-fuchsia-500">{products[0]&&photo(products[0])&&<img src={photo(products[0])} alt="" className="size-full object-cover"/>}</div><p className="mt-2 font-bold">{products[0]?.name??'Nombre del producto'} · {formatCurrency(products[0]?.salePrice??0)}</p><p className="text-xs text-emerald-200">{draftConfig.businessName} · rivastock.vercel.app</p></div>{formatCatalogWhatsAppMessage(draft.whatsappMessageTemplate,{product:products[0]?.name??'Producto',price:formatCurrency(products[0]?.salePrice??0),link:getCatalogShareUrl(window.location.origin,config.slug,products[0]?.id),quantity:1})}</div></div><label className="block text-sm font-semibold">Número de WhatsApp<input type="tel" value={draftConfig.whatsappNumber??''} onChange={event=>updateConfig({whatsappNumber:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label><label className="block text-sm font-semibold">Mensaje al consultar un producto<textarea rows={4} value={draft.whatsappMessageTemplate} onChange={event=>update({whatsappMessageTemplate:event.target.value})} className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/></label><div className="flex flex-wrap gap-2">{[['{producto}','+ producto'],['{precio}','+ precio'],['{link}','+ link'],['{cantidad}','+ cantidad']].map(([value,label])=><button key={value} type="button" onClick={()=>update({whatsappMessageTemplate:`${draft.whatsappMessageTemplate} ${value}`})} className="min-h-10 rounded-full border border-[var(--line)] px-3 text-sm">{label}</button>)}</div>{([['allowOrders','Pedidos online'],['whatsapp','Botón de WhatsApp en cada producto']] as const).map(([key,label])=><label key={key} className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={key==='allowOrders'?draftConfig.allowOrders:draft.showWhatsAppButton} onChange={event=>key==='allowOrders'?updateConfig({allowOrders:event.target.checked}):update({showWhatsAppButton:event.target.checked})} className="size-5 accent-[var(--brand)]"/>{label}</label>)}</div>}
+        {section==='resellers'&&<div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4"><h3 className="font-semibold">Acceso para revendedores</h3><p className="mt-2 text-sm text-[var(--ink-muted)]">Los códigos y las listas por encargo se administran desde Revendedores.</p><a href="/revendedores" className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">Abrir Revendedores <ExternalLink size={15} className="ml-2"/></a></div>}
+        {section==='business'&&<div className="space-y-4">{([['businessName','Nombre del negocio'],['tagline','Frase corta'],['aboutText','Acerca del negocio']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}{key==='aboutText'?<textarea value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-28 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/>:<input value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/>}</label>)}<div className="flex items-center gap-3"><span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)]">{draftConfig.logoUrl?<img src={draftConfig.logoUrl} alt="Logo del negocio" className="size-full object-cover"/>:<ImagePlus size={22}/>}</span><label className="flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded-xl border border-dashed border-[var(--line)] px-3 text-sm font-semibold">{draftConfig.logoUrl?'Cambiar logo':'Subir logo'}<input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" disabled={!canEdit} className="sr-only" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{updateConfig({logoUrl:await onUploadLogo(file)});}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo subir el logo.');}finally{event.target.value='';}}}/></label></div>{([['instagramUrl','Instagram'],['facebookUrl','Facebook']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}<input type="url" value={draftConfig[key]??''} placeholder="https://" onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label>)}</div>}
       </div>
-      {draft.schedules.map(schedule => <div key={schedule.id} className="flex min-h-11 items-center justify-between gap-3 border-t border-[var(--line)] pt-2 text-sm"><span>{CATALOG_THEME_OPTIONS.find(option => option.id === schedule.theme)?.label}: {schedule.startDate} al {schedule.endDate}</span><button type="button" aria-label={`Eliminar tema programado ${schedule.startDate}`} onClick={() => update({ schedules: draft.schedules.filter(item => item.id !== schedule.id) })} className="flex size-11 items-center justify-center rounded-lg text-[var(--danger-ink)]"><Trash2 size={17}/></button></div>)}
-    </section>
-
-    <section aria-label="Ambientación del tema" className="space-y-3 rounded-xl border border-[var(--line)] p-4">
-      <div><h4 className="font-semibold">Ambientación del tema</h4><p className="text-xs text-[var(--ink-muted)]">Los efectos son decorativos, livianos y no bloquean los toques.</p></div>
-      <label className="block max-w-sm text-sm font-medium">Intensidad<select value={draft.ambience.intensity} onChange={event => update({ ambience: { ...draft.ambience, intensity: event.target.value as CatalogPresentation['ambience']['intensity'] } })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3"><option value="soft">Suave</option><option value="normal">Normal</option><option value="party">Fiesta</option></select></label>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {([
-          ['animatedEffects', 'Efectos animados en la pantalla'],
-          ['headerDecoration', 'Adorno debajo del encabezado'],
-          ['productDecoration', 'Decoración en las tarjetas'],
-          ['countdown', 'Cuenta regresiva del tema'],
-          ['themedFont', 'Tipografía del tema'],
-          ['welcomeCard', 'Cartel de bienvenida'],
-        ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 text-sm font-medium"><input type="checkbox" checked={draft.ambience[key]} onChange={event => update({ ambience: { ...draft.ambience, [key]: event.target.checked } })} className="size-5 accent-[var(--brand)]"/>{label}</label>)}
-      </div>
-      <label className="block text-sm font-medium">Texto de la cinta de anuncios<input value={draft.ambience.announcementText} maxLength={120} onChange={event => update({ ambience: { ...draft.ambience, announcementText: event.target.value } })} placeholder="Ej.: Envíos gratis en General Pico" className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3"/></label>
-    </section>
-
-    <div className="grid gap-4 md:grid-cols-2">
-      <label className="text-sm font-medium">Título de portada<input value={draft.heroTitle} maxLength={90} onChange={event => update({ heroTitle: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3"/></label>
-      <label className="text-sm font-medium">Texto de portada<textarea value={draft.heroDescription} maxLength={240} onChange={event => update({ heroDescription: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2"/></label>
-      <label className="text-sm font-medium">Color de portada<input type="color" value={draft.heroColor} onChange={event => update({ heroColor: event.target.value })} className="mt-1 block h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1"/></label>
-      <label className="text-sm font-medium">Color principal<input type="color" value={draft.accentColor} onChange={event => update({ accentColor: event.target.value })} className="mt-1 block h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1"/></label>
-    </div>
-    <label className={cn('flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-[var(--line-strong)] px-3 text-sm font-semibold hover:bg-[var(--surface-muted)]', canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-60')}><ImagePlus size={18}/> {draft.heroImageUrl ? 'Cambiar foto de portada' : 'Subir foto de portada'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={!canEdit} className="sr-only" onChange={async event => { const file = event.target.files?.[0]; if (!file) return; try { update({ heroImageUrl: await onUploadCover(file) }); setError(''); } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo subir la portada.'); } finally { event.target.value = ''; } }}/></label>
-
-    <section aria-label="Secciones del catálogo" className="space-y-2">
-      <h4 className="font-semibold">Secciones del catálogo</h4>
-      {draft.sections.map((section, index) => <div key={section.id} draggable={canEdit} onDragStart={event => { setDraggedSection(section.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', section.id); }} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const source = event.dataTransfer.getData('text/plain') || draggedSection; if (source) update({ sections: moveCatalogSectionToIndex(draft.sections, source as CatalogPresentation['sections'][number]['id'], index) }); setDraggedSection(null); }} onDragEnd={() => setDraggedSection(null)} className={cn('flex min-h-12 items-center gap-2 border-b border-[var(--line)]', canEdit && 'cursor-grab active:cursor-grabbing', draggedSection === section.id && 'opacity-50')}>
-        <input type="checkbox" aria-label={`Mostrar ${CATALOG_SECTION_LABELS[section.id]}`} checked={section.visible} onChange={event => update({ sections: draft.sections.map(item => item.id === section.id ? { ...item, visible: event.target.checked } : item) })} className="size-5" style={{ accentColor: 'var(--brand)' }}/>
-        <span className="min-w-0 flex-1 text-sm font-medium">{CATALOG_SECTION_LABELS[section.id]}</span>
-        <button type="button" aria-label={`Subir ${CATALOG_SECTION_LABELS[section.id]}`} disabled={index === 0} onClick={() => update({ sections: moveCatalogSection(draft.sections, section.id, -1) })} className="flex size-11 items-center justify-center rounded-lg disabled:opacity-30"><ArrowUp size={17}/></button>
-        <button type="button" aria-label={`Bajar ${CATALOG_SECTION_LABELS[section.id]}`} disabled={index === draft.sections.length - 1} onClick={() => update({ sections: moveCatalogSection(draft.sections, section.id, 1) })} className="flex size-11 items-center justify-center rounded-lg disabled:opacity-30"><ArrowDown size={17}/></button>
-      </div>)}
-    </section>
-
-    <div className="grid gap-3 sm:grid-cols-2">
-      <label className="text-sm font-medium">Productos destacados<select value={draft.featuredCategoryId ?? ''} onChange={event => update({ featuredCategoryId: event.target.value || null })} className="mt-1 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3"><option value="">Elegir manualmente</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-      {!draft.featuredCategoryId && <fieldset className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-[var(--line)] p-2"><legend className="px-1 text-xs font-medium">Elegí productos destacados</legend>{products.map(product => <label key={product.id} className="flex min-h-10 items-center gap-2 px-2 text-sm"><input type="checkbox" checked={draft.featuredProductIds.includes(product.id)} onChange={event => update({ featuredProductIds: event.target.checked ? [...draft.featuredProductIds, product.id] : draft.featuredProductIds.filter(id => id !== product.id) })} className="size-4" style={{ accentColor: 'var(--brand)' }}/><span className="truncate">{product.name}</span></label>)}{products.length === 0 && <p className="px-2 text-xs text-[var(--ink-muted)]">No hay productos disponibles.</p>}</fieldset>}
-    </div>
-    <section aria-label="Ofertas" className="space-y-2 rounded-xl border border-[var(--line)] p-3">
-      <label className="block max-w-sm text-sm font-medium">Hasta<input type="datetime-local" value={draft.offerEndsAt ?? ''} onChange={event => update({ offerEndsAt: event.target.value || null })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3"/></label>
-      <fieldset className="max-h-56 space-y-1 overflow-y-auto"><legend className="px-1 text-sm font-semibold">Ofertas con descuento</legend>{products.map(product => {
-        const selected = draft.offerProductIds?.includes(product.id) ?? false;
-        return <div key={product.id} className="flex min-h-11 items-center gap-2 px-2 text-sm">
-          <input type="checkbox" aria-label={`Incluir ${product.name} en Ofertas`} checked={selected} onChange={event => update({ offerProductIds: event.target.checked ? [...(draft.offerProductIds ?? []), product.id] : (draft.offerProductIds ?? []).filter(id => id !== product.id) })} className="size-4" style={{ accentColor: 'var(--brand)' }}/>
-          <span className="min-w-0 flex-1 truncate">{product.name}</span>
-          {selected && <label className="flex items-center gap-1 text-xs">Descuento %<input aria-label={`Descuento de ${product.name}` } type="number" min="1" max="90" value={draft.offerDiscountPercentByProduct[product.id] ?? ''} onChange={event => update({ offerDiscountPercentByProduct: { ...draft.offerDiscountPercentByProduct, [product.id]: Number(event.target.value) } })} className="min-h-10 w-16 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2"/></label>}
-        </div>;
-      })}</fieldset>
-      <p className="text-xs text-[var(--ink-muted)]">La sección aparece solo si el descuento es válido y la oferta todavía no venció.</p>
-    </section>
-    <div className="space-y-2">
-      {[['showWhatsAppButton', 'Botón de WhatsApp en cada producto'], ['showProductsWithoutPhoto', 'Mostrar productos sin foto']].map(([key, label]) => <label key={key} className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] px-3 text-sm font-medium"><input type="checkbox" checked={draft[key as 'showWhatsAppButton' | 'showProductsWithoutPhoto']} onChange={event => update({ [key]: event.target.checked })} className="size-5 accent-[var(--brand)]"/>{label}</label>)}
-      <p className="text-xs text-[var(--ink-muted)]">Los precios, stock y pedidos online siguen usando los controles existentes del catálogo.</p>
-    </div>
-
-    {error && <p role="alert" className="text-sm font-medium text-[var(--danger-ink)]">{error}</p>}
-    <div className="flex flex-col-reverse gap-2 border-t border-[var(--line)] pt-4 sm:flex-row sm:justify-end">
-      <a href={`/catalogo/${config.slug}`} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center rounded-xl border border-[var(--line)] px-5 text-sm font-semibold">Ver catálogo</a>
-      <button type="button" onClick={() => void save()} disabled={saving || !canEdit} className="min-h-12 rounded-xl bg-[var(--action-bg)] px-6 text-sm font-bold text-[var(--action-ink)] disabled:opacity-60">{saving ? 'Guardando…' : 'Guardar cambios'}</button>
-    </div>
+    </div>}
+    {error&&<p role="alert" className="fixed bottom-24 left-4 right-4 z-40 rounded-xl bg-rose-950 px-4 py-3 text-sm font-semibold text-white sm:left-auto sm:right-6 sm:max-w-lg">{error}</p>}
+    {saved&&<p role="status" className="fixed bottom-24 left-4 right-4 z-40 flex min-h-12 items-center gap-2 rounded-xl bg-emerald-950 px-4 py-3 text-sm font-semibold text-emerald-100 sm:left-auto sm:right-6 sm:max-w-lg"><Check size={18}/>Cambios guardados</p>}
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:sticky sm:mt-6 sm:rounded-xl sm:border sm:px-6"><button type="button" onClick={()=>void save()} disabled={!dirty||saving||!canEdit} className="min-h-[54px] w-full rounded-2xl bg-[var(--action-bg)] px-5 text-base font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-45">{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }

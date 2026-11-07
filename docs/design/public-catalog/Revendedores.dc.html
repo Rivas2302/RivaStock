@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revendedores</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2B4E96;text-decoration:none}a:hover{color:#1E3F86}
+</style>
+</helmet>
+<div style="width: 390px; height: 1240px; box-sizing: border-box; background: #F4F5F7; color: #15171C; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; position: relative; overflow: hidden">
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 68px; padding: 0 16px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #E1E4EA; display: flex; align-items: center; gap: 10px; z-index: 2">
+    <span aria-hidden="true" style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: {{accent}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800">R</span><span style="display: flex; flex-direction: column"><span style="font-size: 16px; font-weight: 800; letter-spacing: -0.2px">RivaTech</span><span style="font-size: 12px; color: #5B616D">Tecnología y regalos</span></span><span style="flex: 1"></span>
+    <a href="Carrito.dc.html" aria-label="Ver carrito, 3 productos" style="position: relative; flex: none; width: 44px; height: 44px; border-radius: 22px; background: #EEF0F3; color: #15171C; display: flex; align-items: center; justify-content: center"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 11h10.2L20 8H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></svg><span style="position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: {{accent}}; color: #FFFFFF; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span></a>
+  </header>
+  <main style="position: absolute; left: 0; right: 0; top: 68px; bottom: 0; overflow: hidden; display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 120px">
+    <section aria-label="Canal revendedores" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; background: #1C2433; color: #FFFFFF">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 15px">Precios para revendedores</strong><span style="font-size: 13px; color: #C9D3E6">Hola, Distribuidora Norte</span></span>
+      <a href="Main.dc.html" style="flex: none; height: 36px; padding: 0 12px; border-radius: 18px; background: rgba(255,255,255,0.14); color: #FFFFFF; display: flex; align-items: center; font-size: 13px; font-weight: 600">Salir</a>
+    </section>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; background: #FDF0DC; color: #8A5300">
+      <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 700"><span>Pedido mínimo $ 150.000</span><span>Te faltan $ 62.200</span></div>
+      <span style="height: 8px; border-radius: 4px; background: #F4D9AC; display: flex"><span style="width: 59%; border-radius: 4px; background: #8A5300"></span></span>
+    </div>
+    <div role="group" aria-label="Disponibilidad" style="display: flex; gap: 8px; overflow: hidden; margin-right: -16px"><button type="button" aria-pressed="true" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 0; background: {{accent}}; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 700">Todos · 128</button><button type="button" aria-pressed="false" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #E1E4EA; background: #FFFFFF; color: #353A44; font: inherit; font-size: 14px">En stock · 96</button><button type="button" aria-pressed="false" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid #E1E4EA; background: #FFFFFF; color: #353A44; font: inherit; font-size: 14px">Por pedido · 32</button></div>
+    <details style="padding: 12px 14px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E1E4EA; font-size: 14px; color: #353A44"><summary style="font-weight: 600; color: #15171C">¿Qué significa «Por pedido»?</summary><p style="margin: 8px 0 0">Lo pedimos al proveedor cuando confirmás. La demora habitual se informa al confirmar el pedido.</p></details>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px"><article style="background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 18px; padding: 8px; display: flex; flex-direction: column; gap: 8px">
+        <a href="Producto.dc.html" style="display: flex; flex-direction: column; gap: 8px; color: #15171C"><span role="img" aria-label="Foto del producto" style="display: flex; width: 100%;  aspect-ratio: 1 / 1; border-radius: 12px; background: #E4ECFA; align-items: center; justify-content: center"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#3B4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 14v-2a7 7 0 0 1 14 0v2"/><rect x="4" y="14" width="4" height="6" rx="1.5"/><rect x="16" y="14" width="4" height="6" rx="1.5"/></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+            <span style="font-size: 14px; font-weight: 600; line-height: 1.25; min-height: 35px">Auricular Sony inalámbrico</span>
+            <span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><span style="font-size: 16px; font-weight: 800">$ 21.000</span><span style="flex: none; padding: 3px 8px; border-radius: 10px; background: #E3F4EA; color: #1B6B3E; font-size: 12px; font-weight: 600">En stock</span></span>
+          </span>
+        </a>
+        <button type="button" aria-label="Agregar Auricular Sony inalámbrico al carrito" style="height: 40px; border-radius: 12px; border: 0; background: #EAF0FB; color: #1E3F86; font: inherit; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Agregar</button>
+      </article><article style="background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 18px; padding: 8px; display: flex; flex-direction: column; gap: 8px">
+        <a href="Producto.dc.html" style="display: flex; flex-direction: column; gap: 8px; color: #15171C"><span role="img" aria-label="Foto del producto" style="display: flex; width: 100%;  aspect-ratio: 1 / 1; border-radius: 12px; background: #E3F2EA; align-items: center; justify-content: center"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#3B4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6V3h6v3M9 18v3h6v-3"/></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+            <span style="font-size: 14px; font-weight: 600; line-height: 1.25; min-height: 35px">Reloj smartwatch T800</span>
+            <span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><span style="font-size: 16px; font-weight: 800">$ 13.500</span><span style="flex: none; padding: 3px 8px; border-radius: 10px; background: #EAF0FB; color: #1E3F86; font-size: 12px; font-weight: 600">Por pedido</span></span>
+          </span>
+        </a>
+        <button type="button" aria-label="Agregar Reloj smartwatch T800 al carrito" style="height: 40px; border-radius: 12px; border: 0; background: #EAF0FB; color: #1E3F86; font: inherit; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Agregar</button>
+      </article><article style="background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 18px; padding: 8px; display: flex; flex-direction: column; gap: 8px">
+        <a href="Producto.dc.html" style="display: flex; flex-direction: column; gap: 8px; color: #15171C"><span role="img" aria-label="Foto del producto" style="display: flex; width: 100%;  aspect-ratio: 1 / 1; border-radius: 12px; background: #F7E8EF; align-items: center; justify-content: center"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#3B4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="9" width="12" height="12" rx="3"/><path d="M10 9V6h4v3M9 3h6"/></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+            <span style="font-size: 14px; font-weight: 600; line-height: 1.25; min-height: 35px">Perfume Odyssey Dubai Chocolat</span>
+            <span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><span style="font-size: 16px; font-weight: 800">$ 33.000</span><span style="flex: none; padding: 3px 8px; border-radius: 10px; background: #E3F4EA; color: #1B6B3E; font-size: 12px; font-weight: 600">En stock</span></span>
+          </span>
+        </a>
+        <button type="button" aria-label="Agregar Perfume Odyssey Dubai Chocolat al carrito" style="height: 40px; border-radius: 12px; border: 0; background: #EAF0FB; color: #1E3F86; font: inherit; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Agregar</button>
+      </article><article style="background: #FFFFFF; border: 1px solid #E1E4EA; border-radius: 18px; padding: 8px; display: flex; flex-direction: column; gap: 8px">
+        <a href="Producto.dc.html" style="display: flex; flex-direction: column; gap: 8px; color: #15171C"><span role="img" aria-label="Foto del producto" style="display: flex; width: 100%;  aspect-ratio: 1 / 1; border-radius: 12px; background: #ECE8F8; align-items: center; justify-content: center"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#3B4250" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="8" width="10" height="13" rx="2"/><path d="M10 8V4M14 8V4M12 12l-1.5 3h3L12 18"/></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+            <span style="font-size: 14px; font-weight: 600; line-height: 1.25; min-height: 35px">Cargador Samsung 45 W</span>
+            <span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><span style="font-size: 16px; font-weight: 800">$ 8.400</span><span style="flex: none; padding: 3px 8px; border-radius: 10px; background: #EAF0FB; color: #1E3F86; font-size: 12px; font-weight: 600">Por pedido</span></span>
+          </span>
+        </a>
+        <button type="button" aria-label="Agregar Cargador Samsung 45 W al carrito" style="height: 40px; border-radius: 12px; border: 0; background: #EAF0FB; color: #1E3F86; font: inherit; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Agregar</button>
+      </article></div>
+  </main>
+  <a href="Carrito.dc.html" style="position: absolute; left: 16px; right: 16px; bottom: 20px; height: 60px; padding: 0 8px 0 18px; border-radius: 30px; background: #15171C; color: #FFFFFF; display: flex; align-items: center; gap: 12px; box-shadow: 0 12px 28px rgba(21,23,28,0.35)">
+    <span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 12px; color: #C9CCD2">3 productos · precio revendedor</span><span style="font-size: 16px; font-weight: 800">$ 87.800</span></span>
+    <span style="height: 44px; padding: 0 18px; border-radius: 22px; background: {{accent}}; display: flex; align-items: center; font-size: 15px; font-weight: 700">Ver carrito</span>
+  </a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#365FAD","options":["#365FAD","#0F766E","#B4232C","#1F2937"]},"$preview":{"width":390,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#365FAD' };
+  }
+}
+</script>
+</body>
+</html>
