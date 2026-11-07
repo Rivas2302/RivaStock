@@ -1,0 +1,113 @@
+.catalog-announcement {
+  position: absolute;
+  top: 5rem;
+  z-index: 48;
+  display: flex;
+  min-height: 2rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: .25rem 1rem;
+  background: var(--brand-strong);
+  color: var(--action-ink);
+  font-size: .75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.catalog-announcement__track { display: flex; width: max-content; min-width: 100%; justify-content: space-around; gap: 6rem; animation: catalog-announcement-scroll 28s linear infinite; }
+.catalog-announcement__track span { flex: 0 0 auto; }
+
+.catalog-theme-effects {
+  position: fixed;
+  z-index: 25;
+  inset: 5rem 0 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.catalog-theme-effects--soft { --seasonal-opacity: .35; --seasonal-speed: 18s; }
+.catalog-theme-effects--normal { --seasonal-opacity: .62; --seasonal-speed: 12s; }
+.catalog-theme-effects--party { --seasonal-opacity: .9; --seasonal-speed: 7s; }
+
+.catalog-theme-particle {
+  position: absolute;
+  top: -1.5rem;
+  left: calc((var(--particle-index) * 7.31%) + 1%);
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  opacity: var(--seasonal-opacity);
+  animation: catalog-seasonal-fall var(--seasonal-speed) linear infinite;
+  animation-delay: calc(var(--particle-index) * -.9s);
+}
+
+.catalog-theme-effects--christmas .catalog-theme-particle { background: #fff; box-shadow: 0 0 .4rem #fff; }
+.catalog-theme-effects--children-day .catalog-theme-particle { width: .6rem; height: .35rem; border-radius: .1rem; background: hsl(calc(var(--particle-index) * 27), 80%, 62%); }
+.catalog-theme-effects--new-year .catalog-theme-particle { width: .35rem; height: .7rem; border-radius: .05rem; background: #e6c76d; }
+.catalog-theme-effects--mothers-day .catalog-theme-particle { background: #d986a5; border-radius: 100% 0 100% 0; }
+.catalog-theme-effects--fathers-day .catalog-theme-particle { background: #7ba4b8; border-radius: .1rem; }
+.catalog-theme-effects--back-to-school .catalog-theme-particle { width: .3rem; height: .8rem; background: #e0b34a; border-radius: .1rem; }
+.catalog-theme-effects--hot-sale .catalog-theme-particle { background: #f48448; border-radius: 100% 0 100% 0; }
+
+.catalog-header-decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2rem;
+  opacity: var(--seasonal-opacity, .75);
+}
+.catalog-header-decoration svg { display: block; width: 100%; height: 100%; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2; }
+.catalog-header-decoration--christmas { color: #b23a48; }
+.catalog-header-decoration--christmas circle { fill: #e7c76d; stroke: #fff0a6; animation: catalog-light-twinkle 1.8s ease-in-out infinite alternate; }
+.catalog-header-decoration--children-day { color: #6b55a1; }
+.catalog-header-decoration--children-day path:not(:first-child) { fill: #f2b548; stroke: #e06b72; stroke-width: 4; }
+.catalog-header-decoration--new-year { color: #c6a44b; }
+.catalog-header-decoration--new-year circle { fill: #f1d98b; stroke: #f1d98b; }
+.catalog-header-decoration__line { display: block; width: 100%; height: .2rem; background: linear-gradient(90deg, transparent, var(--brand-strong), transparent); }
+
+.catalog-fireworks { position: absolute; top: 8vh; right: 5vw; width: 10rem; color: #e8c96c; opacity: var(--seasonal-opacity); }
+.catalog-fireworks svg { position: absolute; width: 100%; animation: catalog-firework-burst 3.8s ease-out infinite; }
+.catalog-fireworks svg + svg { top: 12rem; right: 48vw; transform: scale(.72); animation-delay: -1.8s; }
+.catalog-fireworks circle { fill: none; stroke: currentColor; stroke-dasharray: 200; stroke-dashoffset: 200; }
+.catalog-fireworks path { fill: none; stroke: currentColor; stroke-width: 2; }
+.catalog-bunting { position: absolute; top: 0; left: 0; width: 100%; height: 7rem; color: #e06b72; opacity: var(--seasonal-opacity); transform-origin: top center; animation: catalog-bunting-sway 4s ease-in-out infinite alternate; }
+.catalog-bunting svg { width: 100%; height: 100%; overflow: visible; fill: #f1c65a; stroke: currentColor; stroke-width: 2; }
+
+.catalog-countdown { margin: 0 auto; display: grid; width: fit-content; gap: .15rem; border: 1px solid currentColor; border-radius: 1rem; background: rgb(0 0 0 / .24); padding: .5rem .9rem; color: inherit; backdrop-filter: blur(8px); }
+.catalog-countdown__eyebrow { font-size: .65rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.catalog-countdown__time { font-size: 1rem; }
+.catalog-countdown__time b { font-variant-numeric: tabular-nums; }
+
+.catalog-theme-card::after { position: absolute; z-index: 2; right: .8rem; bottom: .8rem; width: 1.25rem; height: 1.25rem; content: ''; pointer-events: none; opacity: .8; }
+.catalog-product-decorations.catalog-theme--christmas .catalog-theme-card::after { border: 2px solid #b23a48; border-radius: 50% 50% 45% 45%; background: #f1d58b; box-shadow: 0 -.35rem 0 -.2rem #b23a48; }
+.catalog-product-decorations.catalog-theme--children-day .catalog-theme-card::after { background: #f1c65a; clip-path: polygon(50% 0, 61% 34%, 98% 35%, 68% 57%, 80% 94%, 50% 72%, 20% 94%, 32% 57%, 2% 35%, 39% 34%); }
+.catalog-product-decorations.catalog-theme--new-year .catalog-theme-card { border-color: rgb(198 164 75 / .65); box-shadow: inset 0 0 0 1px rgb(198 164 75 / .14); }
+.catalog-product-decorations.catalog-theme--mothers-day .catalog-theme-card::after { border-radius: 100% 0 100% 0; background: #d986a5; transform: rotate(-20deg); }
+.catalog-product-decorations.catalog-theme--fathers-day .catalog-theme-card::after { border-radius: .2rem; background: #7ba4b8; clip-path: polygon(50% 0, 100% 25%, 80% 100%, 20% 100%, 0 25%); }
+.catalog-product-decorations.catalog-theme--back-to-school .catalog-theme-card::after { border-radius: .15rem; background: repeating-linear-gradient(0deg, #e0b34a 0 3px, #fff0 3px 6px); }
+.catalog-product-decorations.catalog-theme--hot-sale .catalog-theme-card::after { border-radius: 100% 0 100% 100%; background: #f48448; transform: rotate(-45deg); }
+
+.catalog-theme-font--christmas h2, .catalog-theme-font--christmas h3 { font-family: Georgia, serif; }
+.catalog-theme-font--children-day h2, .catalog-theme-font--children-day h3 { font-family: 'Trebuchet MS', sans-serif; }
+.catalog-theme-font--new-year h2, .catalog-theme-font--new-year h3 { font-family: Georgia, serif; }
+.catalog-floating-whatsapp { animation: catalog-whatsapp-pulse 2.8s ease-in-out infinite; }
+@keyframes catalog-whatsapp-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+
+@keyframes catalog-seasonal-fall { to { transform: translate3d(2rem, 105vh, 0) rotate(360deg); } }
+@keyframes catalog-announcement-scroll { to { transform: translateX(-50%); } }
+@keyframes catalog-light-twinkle { from { opacity: .45; } to { opacity: 1; } }
+@keyframes catalog-firework-burst { 0%, 18% { opacity: 0; transform: scale(.35); } 35% { opacity: 1; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.2); } }
+@keyframes catalog-bunting-sway { from { transform: rotate(-1deg); } to { transform: rotate(1deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-theme-effects *, .catalog-theme-effects *::before, .catalog-theme-effects *::after { animation: none !important; transition: none !important; }
+  .catalog-announcement__track { animation: none !important; }
+  .catalog-floating-whatsapp { animation: none !important; }
+}
+
+.catalog-theme-effects[data-animated="false"] .catalog-theme-particle,
+.catalog-theme-effects[data-animated="false"] .catalog-fireworks,
+.catalog-theme-effects[data-animated="false"] .catalog-bunting,
+.catalog-theme-effects[data-animated="false"] .catalog-header-decoration circle { animation: none !important; }

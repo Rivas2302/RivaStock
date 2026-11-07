@@ -2,7 +2,7 @@ import { useRef, useState, type Dispatch, type FormEvent, type SetStateAction } 
 import type { Location, NavigateFunction } from 'react-router-dom';
 import type { InventoryHolding, InventoryHoldingDraft, InventoryOwner, Product, UserProfile } from '../types';
 import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
-import { db } from '../lib/db';
+import { db, deleteFromStorage } from '../lib/db';
 import {
   buildHoldingDrafts,
   saveProductWithHoldings,
@@ -11,11 +11,14 @@ import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempot
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { DUPLICATE_DETECTION_WINDOW_MS } from '../lib/constants';
 import { normalizeBarcode } from '../lib/barcode';
+import { uploadSupplierListProductPhoto } from '../lib/supplierListPhotos';
+import { getProductThumbnailUrl } from '../lib/productPhotos';
 import { showToast } from '../lib/toast';
 import {
   addProductToResellerPriceList,
   promoteResellerCatalogProduct,
   saveResellerSupplierList,
+  saveResellerSupplierListWithPricing,
 } from '../lib/priceLists';
 
 interface Options {
@@ -75,6 +78,7 @@ export default function useProductEditor({
       promoteToStock?: boolean;
       returnToResellerList?: boolean;
       supplierContext?: SupplierProductCreationContext;
+      initialDraft?: SupplierProductCreationContext['initialDraft'];
     },
   ) => {
     const promoteToStock = Boolean(product?.catalogOnly && options?.promoteToStock);
@@ -85,11 +89,13 @@ export default function useProductEditor({
       minStock: promoteToStock ? 2 : product.minStock,
     } : {
       id: crypto.randomUUID(),
-      name: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
-      purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2,
+      name: options?.initialDraft?.name ?? '',
+      categoryId: categories.find(category => category.name.toLocaleLowerCase('es-AR') === options?.initialDraft?.category?.toLocaleLowerCase('es-AR'))?.id ?? '',
+      category: options?.initialDraft?.category ?? '',
+      purchasePrice: 0, salePrice: options?.initialDraft?.listBasePrice ?? 0, stock: 0, minStock: 2,
       showInCatalog: !forReseller, notes: '', images: [], barcode,
       catalogOnly: forReseller,
-      catalogCost: forReseller ? 0 : null,
+      catalogCost: options?.initialDraft?.supplierCost ?? (forReseller ? 0 : null),
       inventoryOwnerId: primaryOwner?.id,
       ownerUid: user?.uid ?? '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
@@ -135,6 +141,7 @@ export default function useProductEditor({
     if (!user || inventoryAccessError || isUploadingImage) return;
     if (!beginSubmission(productSubmitInFlightRef)) return;
     setSaving(true);
+    let pendingSupplierPhotoUrl: string | null = null;
 
     try {
       let savedProduct: Product | null = null;
@@ -162,8 +169,18 @@ export default function useProductEditor({
         }
       }
 
+      const productId = editingProduct?.id ?? formData.id ?? crypto.randomUUID();
+      if (creatingProductForReseller && supplierProductCreationContext?.initialDraft?.photoFile) {
+        pendingSupplierPhotoUrl = await uploadSupplierListProductPhoto(
+          supplierProductCreationContext.initialDraft.photoFile,
+          user.uid,
+          productId,
+        );
+      }
       const productData = {
         ...formData,
+        id: productId,
+        images: pendingSupplierPhotoUrl ? [...(formData.images ?? []), pendingSupplierPhotoUrl] : (formData.images ?? []),
         barcode: normalizedBarcode || undefined,
         inventoryOwnerId: formData.inventoryOwnerId || primaryOwner?.id,
         ownerUid: user.uid,
@@ -236,14 +253,32 @@ export default function useProductEditor({
         setProducts((previous) => [...previous, savedProduct as Product]);
       }
 
+      // The product now owns this uploaded object; later UI failures must not orphan its image.
+      if (savedProduct) pendingSupplierPhotoUrl = null;
+
       if (creatingProductForReseller && savedProduct && !editingProduct) {
         try {
           if (supplierProductCreationContext) {
-            await saveResellerSupplierList({
-              priceListId: supplierProductCreationContext.priceListId,
-              supplierId: supplierProductCreationContext.supplierId,
-              productIds: [...supplierProductCreationContext.productIds, savedProduct.id],
-            });
+            const productIds = [...supplierProductCreationContext.productIds, savedProduct.id];
+            if (supplierProductCreationContext.initialDraft) {
+              await saveResellerSupplierListWithPricing({
+                priceListId: supplierProductCreationContext.priceListId,
+                supplierId: supplierProductCreationContext.supplierId,
+                productIds,
+                price: {
+                  productId: savedProduct.id,
+                  supplierCost: supplierProductCreationContext.initialDraft.supplierCost,
+                  marginPercent: supplierProductCreationContext.initialDraft.marginPercent,
+                  roundingStep: supplierProductCreationContext.initialDraft.roundingStep,
+                },
+              });
+            } else {
+              await saveResellerSupplierList({
+                priceListId: supplierProductCreationContext.priceListId,
+                supplierId: supplierProductCreationContext.supplierId,
+                productIds,
+              });
+            }
             showToast('Producto creado exclusivamente para la lista del proveedor.', 'success');
           } else {
             await addProductToResellerPriceList(savedProduct.id, 'on_order');
@@ -282,6 +317,9 @@ export default function useProductEditor({
       if (returnToResellerList) setResellerPriceListOpen(true);
       setReturnToResellerList(false);
     } catch (error) {
+      if (pendingSupplierPhotoUrl) {
+        await Promise.allSettled([pendingSupplierPhotoUrl, getProductThumbnailUrl(pendingSupplierPhotoUrl)].map(deleteFromStorage));
+      }
       console.error('[Stock] save product error:', error);
       showToast(error instanceof Error ? error.message : 'No se pudo guardar el producto.', 'error');
     } finally {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fitImageDimensions, hasPngAnimation, imageFileExtension, optimizeUploadImage } from './imageOptimization';
+import { fitImageDimensions, hasPngAnimation, imageFileExtension, optimizeCatalogCover, optimizeUploadImage } from './imageOptimization';
 
 afterEach(() => vi.unstubAllGlobals());
 describe('image upload optimization', () => {
@@ -66,6 +66,22 @@ describe('image upload optimization', () => {
     vi.stubGlobal('createImageBitmap', decode);
     expect(await optimizeUploadImage(file)).toBe(file);
     expect(decode).not.toHaveBeenCalled();
+  });
+  it('compresses a catalog cover under the configured 300 KB ceiling', async () => {
+    const file = new File([new Uint8Array(900_000)], 'cover.png', { type: 'image/png' });
+    const close = vi.fn();
+    let calls = 0;
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }), toBlob: (fn: (blob: Blob) => void) => {
+      calls += 1;
+      fn(new Blob([new Uint8Array(calls === 1 ? 350_000 : 250_000)], { type: 'image/webp' }));
+    } };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4000, height: 2000, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+    const optimized = await optimizeCatalogCover(file);
+    expect(optimized.type).toBe('image/webp');
+    expect(optimized.size).toBeLessThanOrEqual(300_000);
+    expect(close).toHaveBeenCalledOnce();
+    expect(canvas.width).toBe(0);
   });
   it('preserves animated WebP and APNG rather than flattening frames', async () => {
     const decode = vi.fn();

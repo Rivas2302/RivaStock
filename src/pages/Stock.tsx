@@ -843,6 +843,7 @@ export default function Stock() {
               forReseller: true,
               returnToResellerList: true,
               supplierContext: context,
+              initialDraft: context?.initialDraft,
             });
           }}
           onEditCatalogProduct={(product) => {

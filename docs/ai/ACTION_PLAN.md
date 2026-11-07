@@ -506,6 +506,7 @@ Idea de Riva: cuando va a hacerle un pedido a un proveedor, carga la lista de es
 - **Cuidar Supabase:** sin consultas nuevas en bucle; las listas se leen una vez por pantalla; miniaturas comprimidas; nada de descargar fotos grandes de los proveedores.
 - **Seguridad:** RLS para que cada revendedor vea solo las rondas a las que tiene acceso y solo sus propios pedidos. Nunca enviar pedidos reales al proveedor ni mensajes de WhatsApp reales en los tests.
 - **Tests:** unitarios de margen + redondeo, cálculo de consolidado (solo pagados), cierre automático por hora; Playwright móvil del flujo del revendedor y del de Riva con datos de prueba.
+- **Ajuste aprobado por Riva el 06/11:** en Revisar, cada producto permite elegir una foto del celular o recortar manualmente una parte de la captura subida. El recorte automático queda como mejora posterior.
 - **Cuándo:** después de I18.
 - **Commit:** `feat(resellers): supplier price lists and on-order rounds for resellers`
 
@@ -517,7 +518,7 @@ En el celular, al cargar un **producto nuevo** aparece "Algo salió mal" con *Mi
 
 ---
 
-### [ ] I20 Asistente IA en el celular: lista de chats nueva — **Riva eligió la opción B el 06/11**
+### [x] I20 Asistente IA en el celular: lista de chats nueva — **Riva eligió la opción B el 06/11**
 A Riva le parece "horrible" la pantalla de chats de IA en el celular: el botón flotante **Nuevo chat** choca con la barra flotante de abajo y los chats son rectángulos planos con tres puntitos sueltos. Maquetas: `docs/design/mobile-ai/` — **`OpcionB.dc.html` (la elegida)** y `Opciones.dc.html` (menú al mantener apretado). `Main.dc.html` es la opción A, descartada. Código: `src/components/ai/MobileAIChatList.tsx` y la pantalla de IA que lo contiene (título, "PC conectada", pestañas Chats/Tareas/Más).
 - **Encabezado:** ícono de IA, título **Asistente IA** y debajo el estado "● PC conectada" (verde; si no está conectada, en ámbar y tocable como hoy). A la derecha, botón **"+ Nuevo chat"** (píldora de 44 px). Debajo, las pestañas Chats/Tareas/Más como control segmentado redondeado.
 - **Se elimina el botón flotante** "Nuevo chat" de abajo. Nada puede quedar tapado por la barra flotante: dejar espacio abajo.

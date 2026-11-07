@@ -4,6 +4,10 @@ import type {
   PriceListAvailability,
   PriceListItem,
   Product,
+  ResellerSupplierOrderRound,
+  ResellerSupplierRoundOrder,
+  ResellerSupplierRoundOrderStatus,
+  ResellerSupplierRoundStatus,
   ResellerSupplierList,
 } from '../types';
 import { db, fromDb, invalidateDbCache } from './db';
@@ -124,6 +128,37 @@ export async function saveResellerSupplierList(input: {
   };
 }
 
+export async function saveResellerSupplierListWithPricing(input: {
+  priceListId: string;
+  supplierId: string;
+  productIds: string[];
+  price: {
+    productId: string;
+    supplierCost: number;
+    marginPercent: number;
+    roundingStep: 0 | 100 | 500;
+  };
+}): Promise<ResellerSupplierList> {
+  const productIds = Array.from(new Set(input.productIds));
+  const { data, error } = await supabase.rpc('save_reseller_supplier_list_with_pricing', {
+    p_list_id: input.priceListId,
+    p_supplier_id: input.supplierId,
+    p_product_ids: productIds,
+    p_prices: [{
+      productId: input.price.productId,
+      supplierCost: input.price.supplierCost,
+      marginPercent: input.price.marginPercent,
+      roundingStep: input.price.roundingStep,
+    }],
+  });
+  if (error) throw new Error(`[save_reseller_supplier_list_with_pricing] ${error.message}`);
+  invalidateDbCache('price_list_items', 'reseller_supplier_lists', 'reseller_supplier_list_items');
+  return {
+    ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(data as Record<string, unknown>),
+    productIds,
+  };
+}
+
 export async function toggleResellerSupplierList(
   supplierListId: string,
   enabled: boolean,
@@ -138,6 +173,97 @@ export async function toggleResellerSupplierList(
     ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(data as Record<string, unknown>),
     productIds: [],
   };
+}
+
+export async function loadResellerSupplierRounds(supplierListId: string): Promise<ResellerSupplierOrderRound[]> {
+  const { data: roundRows, error: roundError } = await supabase
+    .from('reseller_supplier_order_rounds')
+    .select('*')
+    .eq('supplier_list_id', supplierListId)
+    .order('closes_at', { ascending: false })
+    .limit(20);
+  if (roundError) throw new Error(`[load_reseller_supplier_order_rounds] ${roundError.message}`);
+
+  const roundIds = (roundRows ?? []).map(row => String(row.id));
+  const { data: orderRows, error: orderError } = roundIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from('reseller_supplier_round_orders')
+      .select('*')
+      .in('round_id', roundIds)
+      .order('created_at', { ascending: false })
+      .limit(500);
+  if (orderError) throw new Error(`[load_reseller_supplier_round_orders] ${orderError.message}`);
+
+  const ordersByRound = new Map<string, ResellerSupplierRoundOrder[]>();
+  for (const row of orderRows ?? []) {
+    const order = fromDb<ResellerSupplierRoundOrder>(row as Record<string, unknown>);
+    order.supplierTotal = Number(order.supplierTotal ?? 0);
+    order.resellerTotal = Number(order.resellerTotal ?? 0);
+    order.profit = Number(order.profit ?? 0);
+    order.itemsSnapshot = (order.itemsSnapshot ?? []).map(item => ({
+      ...item,
+      quantity: Number(item.quantity),
+      supplierUnitCost: Number(item.supplierUnitCost),
+      resellerUnitPrice: Number(item.resellerUnitPrice),
+    }));
+    ordersByRound.set(order.roundId, [...(ordersByRound.get(order.roundId) ?? []), order]);
+  }
+
+  return (roundRows ?? []).map(row => {
+    const round = fromDb<Omit<ResellerSupplierOrderRound, 'orders'>>(row as Record<string, unknown>);
+    return {
+      ...round,
+      minimumOrderAmount: Number(round.minimumOrderAmount ?? 0),
+      orders: ordersByRound.get(round.id) ?? [],
+    };
+  });
+}
+
+export async function createResellerSupplierOrderRound(input: {
+  supplierListId: string;
+  closesAt: string;
+  minimumOrderAmount: number;
+  audienceName: string;
+  audienceCode: string;
+}): Promise<ResellerSupplierOrderRound> {
+  const { data, error } = await supabase.rpc('create_reseller_supplier_order_round', {
+    p_supplier_list_id: input.supplierListId,
+    p_closes_at: input.closesAt,
+    p_minimum_order_amount: Math.max(0, input.minimumOrderAmount),
+    p_audience_name: input.audienceName.trim(),
+    p_audience_code: input.audienceCode.trim(),
+  });
+  if (error) throw new Error(`[create_reseller_supplier_order_round] ${error.message}`);
+  return { ...fromDb<Omit<ResellerSupplierOrderRound, 'orders'>>(data as Record<string, unknown>), orders: [] };
+}
+
+export async function setResellerSupplierOrderRoundStatus(
+  roundId: string,
+  status: Extract<ResellerSupplierRoundStatus, 'open' | 'closed'>,
+): Promise<ResellerSupplierOrderRound> {
+  const { data, error } = await supabase.rpc('set_reseller_supplier_order_round_status', {
+    p_round_id: roundId,
+    p_status: status,
+  });
+  if (error) throw new Error(`[set_reseller_supplier_order_round_status] ${error.message}`);
+  return { ...fromDb<Omit<ResellerSupplierOrderRound, 'orders'>>(data as Record<string, unknown>), orders: [] };
+}
+
+export async function setResellerSupplierRoundOrderStatus(
+  roundOrderId: string,
+  status: ResellerSupplierRoundOrderStatus,
+): Promise<ResellerSupplierRoundOrder> {
+  const { data, error } = await supabase.rpc('set_reseller_supplier_round_order_status', {
+    p_round_order_id: roundOrderId,
+    p_status: status,
+  });
+  if (error) throw new Error(`[set_reseller_supplier_round_order_status] ${error.message}`);
+  const order = fromDb<ResellerSupplierRoundOrder>(data as Record<string, unknown>);
+  order.supplierTotal = Number(order.supplierTotal ?? 0);
+  order.resellerTotal = Number(order.resellerTotal ?? 0);
+  order.profit = Number(order.profit ?? 0);
+  return order;
 }
 
 export async function promoteResellerCatalogProduct(productId: string): Promise<Product> {

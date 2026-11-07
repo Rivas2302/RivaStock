@@ -25,7 +25,7 @@ describe('public reseller catalog on-order disclosure', () => {
 
   it('keeps the reseller grid and notices compact on mobile', () => {
     expect(catalog).toContain('px-4 py-12 sm:px-6 sm:py-24');
-    expect(catalog).toContain('grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-10');
+    expect(catalog).toContain('grid grid-cols-2 gap-3 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4');
   });
 
   it('offers explicit stock and on-order filters to reseller buyers', () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
@@ -8,7 +8,7 @@ import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import { getProductPhotoStorageUrls } from '../lib/productPhotos';
-import { optimizeUploadImage } from '../lib/imageOptimization';
+import { optimizeCatalogCover, optimizeUploadImage } from '../lib/imageOptimization';
 import {
   Category,
   PriceRange,
@@ -39,7 +39,9 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import CatalogQRModal from '../components/CatalogQRModal';
+const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
 import { getCatalogShareUrl } from '../lib/catalogShare';
+import type { CatalogPresentation } from '../lib/catalogPresentation';
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -112,6 +114,7 @@ export default function Settings() {
   
   // Data states
   const [categories, setCategories] = useState<Category[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [priceRanges, setPriceRanges] = useState<PriceRange[]>([]);
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig | null>(null);
 
@@ -147,11 +150,14 @@ export default function Settings() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [cat, pr, ccList] = await Promise.all([
+      const [cat, pr, ccList, catalogItems] = await Promise.all([
         db.list<Category>('categories', user.uid),
         db.list<PriceRange>('price_ranges', user.uid),
         db.list<CatalogConfig>('catalog_configs', user.uid),
+        db.list<Product>('products', user.uid),
       ]);
+
+      setCatalogProducts(catalogItems);
 
       let cc = ccList[0] || null;
 
@@ -317,6 +323,28 @@ export default function Settings() {
     } catch (error) {
       console.error('handleUpdateCatalog failed', error);
     }
+  };
+
+  const saveCatalogPresentation = async (presentation: CatalogPresentation) => {
+    if (!canWriteBusiness || !user || !catalogConfig) throw new Error('No se pudo verificar el permiso para editar el catálogo.');
+    await db.update<CatalogConfig>('catalog_configs', catalogConfig.id, {
+      presentation,
+      welcomeMessage: presentation.heroDescription,
+      bannerColor: presentation.heroColor,
+      primaryColor: presentation.accentColor,
+      bannerUrl: presentation.heroImageUrl,
+    });
+    if (catalogConfig.bannerUrl && catalogConfig.bannerUrl !== presentation.heroImageUrl) {
+      await deleteFromStorage(catalogConfig.bannerUrl).catch(() => undefined);
+    }
+    await fetchData();
+  };
+
+  const uploadCatalogCover = async (file: File) => {
+    if (!user) throw new Error('No se pudo verificar la sesión.');
+    const optimized = await optimizeCatalogCover(file);
+    if (optimized.size > 300_000) throw new Error('La portada debe pesar menos de 300 KB.');
+    return uploadToStorage(`${user.uid}/catalog-cover/${crypto.randomUUID()}.webp`, optimized, 'image/webp');
   };
 
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
@@ -723,6 +751,16 @@ export default function Settings() {
                   exit={{ opacity: 0, x: -10 }}
                   className="space-y-8"
                 >
+                  <Suspense fallback={<div role="status" className="min-h-72 animate-pulse rounded-2xl bg-[var(--surface-muted)]"/>}>
+                    <CatalogCustomizer
+                      config={catalogConfig}
+                      categories={categories}
+                      products={catalogProducts}
+                      canEdit={canWriteBusiness}
+                      onSave={saveCatalogPresentation}
+                      onUploadCover={uploadCatalogCover}
+                    />
+                  </Suspense>
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">Configuración del Catálogo</h3>
                     <div className="flex items-center gap-3">

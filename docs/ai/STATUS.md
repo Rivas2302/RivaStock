@@ -1,3 +1,21 @@
+# 2026-11-06 23:56 ART — I20 desplegado; foto manual de I19 lista; backup diario verificado
+
+- **I17b smoke de producción:** perfil persistente autenticado, viewport 390×844. El menú + no enfoca el buscador y no aparece “Abrir menú completo”.
+- **I20:** `53f0a60` está en producción con Vercel `success`. Smoke autenticado en `/ia?view=chats`: PC conectada, botón Nuevo chat encima de la barra inferior, pestañas visibles, sin botón flotante fijo y sin errores de página. Las pruebas móviles locales cubrieron abrir chat y mantener apretado/cancelar sin borrar datos reales. Queda documentado como cerrado.
+- **I19 fotos:** Revisar ahora permite elegir una foto de galería/cámara o recortar manualmente la captura subida. El archivo pasa a WebP, se guardan original y miniatura en `assets` y se limpia el Storage si falla la miniatura o el guardado del producto. El recorte automático queda como mejora posterior. Pruebas focalizadas **10/10**; `npm run lint` pasó.
+- **Backup diario:** el estado seguro de `run-daily-backup.ps1` indica `2026-11-06 / passed`; el log registra `20261106T063007Z`, 96 tablas, 14.403 filas, 789 objetos y 146.594.486 bytes. El runner verificó archivos, tamaños y hashes de Storage. No repetí el backup completo de 146 MB durante el mismo día.
+- No se aplicaron migraciones ni se publicó código de I19/I18 todavía. Próximo paso: integrar estas pantallas en la entrega, validar los dos cambios de esquema, usar el backup diario verificado y desplegar/smoke I18 e I19.
+
+# 2026-11-07 00:08 ART — I18/I19 preparados; aguardando backup diario del 07/11
+
+- I19 foto manual: en Revisar cada producto acepta imagen de galería/cámara o recorte de la captura importada. El recorte produce WebP y se almacena mediante el flujo de `assets` con miniatura; los fallos limpian los objetos y el guardado fallido también elimina la foto. Recorte automático queda anotado como mejora posterior.
+- I20 opción B quedó en producción (`53f0a60`, Vercel `success`). Smoke autenticado en viewport móvil: encabezado y estado de PC, botón de chat por encima de la barra, pestañas y cuatro controles de chat, sin botón flotante. Abrí y cancelé la hoja de mantener apretado; cero solicitudes de borrado y cero errores de página. Las pruebas locales también cubren abrir un chat.
+- Local I18/I19 + I20: `npm run lint` pasó, **79 pruebas unitarias** focalizadas pasaron, **5 e2e** de catálogo pasaron, build pasó y `npm run perf:check` pasó. El chunk grande de pdfjs es lazy para OCR de PDF y no integra la carga inicial.
+- Backup diario del **06/11** verificado por el runner: 96 tablas/14.403 filas y 789 objetos/146.594.486 bytes. La fecha local cambió a 07/11; espero el próximo backup diario antes de aplicar I18/I19.
+- `supabase migration list --linked` muestra dos migraciones E8 anteriores que siguen pendientes además de las I18/I19. No usar `db push` porque aplicaría cambios ajenos; aplicar selectivamente solo `20261106210043_public_catalog_presentation` y `20261106221500_reseller_supplier_order_rounds` después del backup del 07/11, y verificar luego las cuatro entradas.
+- Inspección de esquema de producción (solo `information_schema`): `catalog_config.presentation` aún falta; las tablas y columnas base de 0044, precios, productos, proveedores y pedidos que requieren I19 sí existen.
+- Entrega I18/I19 preparada en un commit local; todavía no se pusheó ni se aplicó esquema.
+
 # 2026-11-06 17:46 ART — E8 instalador probado; puerta Facebook por advertencia
 
 - El smoke de solo lectura y heartbeat confirmó extensión **0.5.25**, reciente, pero producción reporta `queue_enabled=false` y `queue_pause_reason=facebook_warning`. Según §5.3 no reactivé la cola ni hice más ensayos. El ensayo anterior sigue sin prueba de descarte confirmado; revisión pendiente en Chrome normal.

@@ -181,6 +181,49 @@ export interface ResellerSupplierList {
   updatedAt: string;
 }
 
+export type ResellerSupplierRoundStatus = 'draft' | 'open' | 'closed';
+export type ResellerSupplierRoundOrderStatus = 'received' | 'payment_coordinated' | 'paid' | 'sent_to_supplier' | 'ready';
+
+export interface ResellerSupplierOrderRound {
+  id: string;
+  ownerUid: string;
+  supplierListId: string;
+  audienceName: string;
+  audienceCodeHash?: string | null;
+  closesAt: string;
+  minimumOrderAmount: number;
+  status: ResellerSupplierRoundStatus;
+  createdAt: string;
+  updatedAt: string;
+  orders: ResellerSupplierRoundOrder[];
+}
+
+export interface ResellerSupplierRoundOrder {
+  id: string;
+  ownerUid: string;
+  roundId: string;
+  orderId: string;
+  resellerName: string;
+  resellerPhone: string;
+  status: ResellerSupplierRoundOrderStatus;
+  itemsSnapshot: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    supplierUnitCost: number;
+    resellerUnitPrice: number;
+  }>;
+  supplierTotal: number;
+  resellerTotal: number;
+  profit: number;
+  paidAt: string | null;
+  paymentCoordinatedAt: string | null;
+  supplierSentAt: string | null;
+  readyAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Sale {
   id: string;
   date: string;
@@ -393,6 +436,16 @@ export interface PublicResellerCatalog {
   products: PublicCatalogProduct[];
 }
 
+export interface PublicResellerSupplierRound {
+  id: string;
+  supplierListId: string;
+  supplierName: string;
+  audienceName: string;
+  closesAt: string;
+  minimumOrderAmount: number;
+  products: Array<Pick<PublicCatalogProduct, 'id' | 'name' | 'categoryId' | 'category' | 'salePrice' | 'imageUrl' | 'images'>>;
+}
+
 export interface CatalogConfig {
   id: string;
   ownerUid: string;
@@ -418,6 +471,7 @@ export interface CatalogConfig {
   allowOrders: boolean;
   layout: 'Grid' | 'List';
   fontStyle: 'Modern' | 'Classic' | 'Rounded';
+  presentation?: import('./lib/catalogPresentation').CatalogPresentation;
   updatedAt?: string;
 }
 

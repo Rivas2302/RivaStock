@@ -57,6 +57,38 @@ export async function optimizeUploadImage(
   }
 }
 
+export async function optimizeCatalogCover(file: File, maxBytes = 300_000): Promise<File> {
+  if (file.size <= maxBytes && !CONVERTIBLE_TYPES.has(file.type)) return file;
+  if (!CONVERTIBLE_TYPES.has(file.type) || typeof createImageBitmap !== 'function') {
+    if (file.size <= maxBytes) return file;
+    throw new Error('Este navegador no puede comprimir la portada. Probá con una imagen más liviana.');
+  }
+  const bitmap = await createImageBitmap(file);
+  let canvas: HTMLCanvasElement | undefined;
+  try {
+    for (const maxEdge of [1600, 1440, 1280, 1120, 960, 800]) {
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+      const dimensions = fitImageDimensions(bitmap.width, bitmap.height, maxEdge);
+      canvas = document.createElement('canvas');
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('No se pudo preparar la portada.');
+      context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
+      for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+        const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+        if (blob?.type === 'image/webp' && blob.size <= maxBytes) {
+          return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp', lastModified: file.lastModified });
+        }
+      }
+    }
+    throw new Error('La portada supera 300 KB incluso comprimida. Elegí una imagen más simple.');
+  } finally {
+    bitmap.close();
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+  }
+}
+
 export function imageFileExtension(file: Pick<File, 'type' | 'name'>): string {
   if (file.type === 'image/jpeg' || file.type === 'image/jpg') return 'jpg';
   if (file.type === 'image/png') return 'png';

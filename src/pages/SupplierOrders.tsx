@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Package, FileText, Truck, Check, Pencil, Search, ExternalLink } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { usePermission } from '../hooks/usePermission';
@@ -22,6 +23,8 @@ const errorMessage = (error: unknown) => {
 };
 
 export default function SupplierOrders() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('proveedores', 'write');
   const { suppliers } = useSuppliers();
@@ -47,6 +50,26 @@ export default function SupplierOrders() {
     return () => { if (document) URL.revokeObjectURL(document.url); };
   }, [document]);
   const loadSequence = useRef(0);
+
+  useEffect(() => {
+    const state = location.state as { supplierOrderPrefill?: { supplierName?: unknown; reference?: unknown; notes?: unknown } } | null;
+    const prefill = state?.supplierOrderPrefill;
+    if (!canWrite || !prefill || typeof prefill.supplierName !== 'string' || !prefill.supplierName.trim()) return;
+    draftId.current = crypto.randomUUID();
+    setEditing(null);
+    setForm({
+      supplier_name: prefill.supplierName.slice(0, 160),
+      ordered_on: todayString(),
+      reference: typeof prefill.reference === 'string' ? prefill.reference.slice(0, 160) : '',
+      tracking_number: '',
+      status: 'pending',
+      notes: typeof prefill.notes === 'string' ? prefill.notes.slice(0, 4000) : '',
+    });
+    setFile(null);
+    setFormError('');
+    setFormOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [canWrite, location.pathname, location.state, navigate]);
 
   const refresh = useCallback(async () => {
     const sequence = ++loadSequence.current;

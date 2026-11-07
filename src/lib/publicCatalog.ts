@@ -2,6 +2,7 @@ import type {
   CatalogChannel,
   PublicCatalogProduct,
   PublicResellerCatalog,
+  PublicResellerSupplierRound,
 } from '../types';
 import { supabase } from './supabase';
 
@@ -21,7 +22,7 @@ const normalizePublicProduct = (payload: PublicProductPayload): PublicCatalogPro
   showInCatalog: true,
   description: payload.description,
   ownerUid: '',
-  createdAt: '',
+  createdAt: payload.createdAt ?? '',
   updatedAt: '',
   availability: payload.availability ?? 'out_of_stock',
 });
@@ -64,6 +65,44 @@ export async function unlockResellerCatalog(slug: string, accessCode: string): P
     minimumOrderQuantity: Number(payload.minimumOrderQuantity ?? 0),
     products: (payload.products ?? []).map(normalizePublicProduct),
   };
+}
+
+export async function getPublicResellerSupplierRounds(
+  slug: string,
+  accessCode: string,
+): Promise<PublicResellerSupplierRound[]> {
+  const { data, error } = await supabase.rpc('get_public_reseller_supplier_rounds', {
+    p_slug: slug,
+    p_access_code: accessCode,
+  });
+  if (error) throw new Error(`[get_public_reseller_supplier_rounds] ${error.message}`);
+  return (Array.isArray(data) ? data : []).map(value => {
+    const round = value as PublicResellerSupplierRound;
+    return {
+      ...round,
+      minimumOrderAmount: Number(round.minimumOrderAmount ?? 0),
+      products: (round.products ?? []).map(product => ({ ...product, salePrice: Number(product.salePrice ?? 0), images: product.images ?? [] })),
+    };
+  });
+}
+
+export async function createPublicResellerSupplierRoundOrder(input: {
+  slug: string;
+  accessCode: string;
+  roundId: string;
+  customer: PublicOrderInput['customer'];
+  items: PublicOrderInput['items'];
+}): Promise<{ id: string; total: number; closesAt: string }> {
+  const { data, error } = await supabase.rpc('create_public_reseller_supplier_round_order', {
+    p_slug: input.slug,
+    p_access_code: input.accessCode,
+    p_round_id: input.roundId,
+    p_customer: input.customer,
+    p_items: input.items,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { id: string; total: number; closesAt: string };
+  return { ...result, total: Number(result.total) };
 }
 
 interface PublicOrderInput {
