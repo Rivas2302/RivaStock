@@ -92,6 +92,30 @@ export function buildSupplierListAiPrompt(rows: SupplierListDraftRow[], includes
   ].join('\n');
 }
 
+export function buildSupplierListAiBatches(
+  rows: SupplierListDraftRow[],
+  includesTax: boolean,
+  maxCharacters = 7_000,
+): SupplierListDraftRow[][] {
+  const batches: SupplierListDraftRow[][] = [];
+  let current: SupplierListDraftRow[] = [];
+  for (const row of rows) {
+    const candidate = [...current, row];
+    if (buildSupplierListAiPrompt(candidate, includesTax).length >= maxCharacters) {
+      if (current.length === 0) throw new Error(`La fila ${row.sourceRow} es demasiado larga para revisarla con IA.`);
+      batches.push(current);
+      current = [row];
+      if (buildSupplierListAiPrompt(current, includesTax).length >= maxCharacters) {
+        throw new Error(`La fila ${row.sourceRow} es demasiado larga para revisarla con IA.`);
+      }
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
+
 export function parseSupplierListAiOutput(output: string, sourceRows: SupplierListDraftRow[]): SupplierListDraftRow[] {
   const json = output.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const parsed = JSON.parse(json) as { items?: Array<Partial<SupplierListDraftRow>> };

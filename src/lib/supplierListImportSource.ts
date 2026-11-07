@@ -26,7 +26,12 @@ export interface SupplierCatalogSourceResult {
 }
 
 export function parseSupplierListText(text: string): SupplierListDraftRow[] {
-  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const sourceLines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const noise = /^(?:ir al contenido|saltar al contenido|men[uú]|inicio|home|productos|categor[ií]as|buscar|buscador|mi cuenta|iniciar sesi[oó]n|registrarse|carrito|mi carrito|checkout|finalizar compra|contacto|ayuda|preguntas frecuentes|pol[ií]tica de privacidad|t[eé]rminos y condiciones|todos los derechos reservados|volver arriba|compartir|facebook|instagram|whatsapp|newsletter|suscribirme)$/i;
+  const lines = sourceLines.filter(line => {
+    const normalized = line.replace(/\s+/g, ' ');
+    return !noise.test(normalized) && !/^©\s*\d{4}/i.test(normalized);
+  });
   if (lines.length === 0) return [];
   if (lines.length > MAX_SOURCE_ROWS + 1) throw new Error('La fuente supera el máximo de 3000 filas por lista.');
 
@@ -37,14 +42,53 @@ export function parseSupplierListText(text: string): SupplierListDraftRow[] {
     return parseSupplierListRows(matrix);
   }
 
-  return lines.map((line, index) => ({
-    sourceRow: index + 1,
-    name: line.slice(0, 240),
-    supplierCost: null,
-    category: '',
-    imageUrl: null,
-    error: 'La IA debe revisar el costo de esta fila.',
-  }));
+  const pricePattern = /(?<![\p{L}\d])(?:(?:USD|US\$|\$)\s*)?(\d{1,3}(?:[.,\s]\d{3})+(?:[,.]\d{1,2})?|\d{4,}(?:[,.]\d{1,2})?|\d{1,3}[,.]\d{1,2})/iu;
+  const parsed: SupplierListDraftRow[] = [];
+  let pendingName: string | null = null;
+  let sourceRow = 1;
+  for (const line of lines) {
+    const match = line.match(pricePattern);
+    if (!match) {
+      if (pendingName) parsed.push({ sourceRow: sourceRow++, name: pendingName.slice(0, 240), supplierCost: null, category: '', imageUrl: null, error: 'La IA debe revisar el costo de esta fila.' });
+      pendingName = line;
+      continue;
+    }
+    const supplierCost = parseTextPrice(match[1]);
+    const inlineName = `${line.slice(0, match.index)} ${line.slice((match.index ?? 0) + match[0].length)}`
+      .replace(/[|–—,:;\-]+/g, ' ').trim();
+    if (pendingName && inlineName) {
+      parsed.push({ sourceRow: sourceRow++, name: pendingName.slice(0, 240), supplierCost: null, category: '', imageUrl: null, error: 'La IA debe revisar el costo de esta fila.' });
+      pendingName = null;
+    }
+    const name = inlineName || pendingName || '';
+    if (!name && supplierCost === null) continue;
+    parsed.push({
+      sourceRow: sourceRow++, name: name.slice(0, 240), supplierCost, category: '', imageUrl: null,
+      error: !name ? 'Falta el nombre del producto.'
+        : supplierCost === null || supplierCost <= 0 ? 'Revisá el precio de costo.' : null,
+    });
+    pendingName = null;
+  }
+  if (pendingName) parsed.push({ sourceRow, name: pendingName.slice(0, 240), supplierCost: null, category: '', imageUrl: null, error: 'La IA debe revisar el costo de esta fila.' });
+  return parsed.slice(0, MAX_SOURCE_ROWS);
+}
+
+function parseTextPrice(value: string): number | null {
+  const raw = value.trim().replace(/\s/g, '');
+  if (!raw) return null;
+  const comma = raw.lastIndexOf(',');
+  const dot = raw.lastIndexOf('.');
+  let normalized = raw;
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? ',' : '.';
+    normalized = raw.replace(decimal === ',' ? /\./g : /,/g, '').replace(decimal, '.');
+  } else if (comma >= 0) {
+    normalized = raw.replace(/\./g, '').replace(',', '.');
+  } else if (dot >= 0 && /^\d{1,3}(?:\.\d{3})+$/.test(raw)) {
+    normalized = raw.replace(/\./g, '');
+  }
+  const price = Number(normalized);
+  return Number.isFinite(price) && price >= 0 ? price : null;
 }
 
 async function renderPdfPageToCanvas(documentProxy: PDFDocumentProxy, pageNumber: number): Promise<HTMLCanvasElement> {

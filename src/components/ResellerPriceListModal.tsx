@@ -50,7 +50,7 @@ import {
 import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
-import { buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
+import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, parseSupplierListText } from '../lib/supplierListImportSource';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from '../lib/resellerSupplierRounds';
 import NumberField from './NumberField';
@@ -147,6 +147,7 @@ export default function ResellerPriceListModal({
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
   const [supplierImportReading, setSupplierImportReading] = useState(false);
+  const [supplierImportAiStatus, setSupplierImportAiStatus] = useState<string | null>(null);
   const [supplierImportProgress, setSupplierImportProgress] = useState<{ page: number; total: number; warning: string | null } | null>(null);
   const [supplierImportMargin, setSupplierImportMargin] = useState(25);
   const [supplierImportRounding, setSupplierImportRounding] = useState<SupplierPriceRounding>('none');
@@ -481,28 +482,39 @@ export default function ResellerPriceListModal({
 
   const handleReadSupplierImportWithAI = async () => {
     if (supplierImportRows.length === 0 || supplierImportReading || supplierImportIncludesTax === null) return;
+    const uncertainRows = supplierImportRows.filter(row => row.error !== null);
+    if (uncertainRows.length === 0) {
+      setSupplierImportAiStatus('No hay filas dudosas para revisar con IA.');
+      return;
+    }
     setSupplierImportReading(true);
-    setError(null);
+    setSupplierImportAiStatus(null);
     try {
-      const idempotencyKey = crypto.randomUUID();
-      const job = await createAIJob(
-        buildSupplierListAiPrompt(supplierImportRows, supplierImportIncludesTax),
-        'codex',
-        idempotencyKey,
-        { includeBusinessContext: false, includeProjectContext: false, modelId: 'gpt-6-luna', reasoningEffort: 'low' },
-      );
-      const deadline = Date.now() + 120_000;
-      let current = job;
-      while ((current.status === 'pending' || current.status === 'processing') && Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 1_500));
-        current = await getAIJob(job.id);
+      const batches = buildSupplierListAiBatches(uncertainRows, supplierImportIncludesTax);
+      const revisedRows = new Map<number, SupplierListDraftRow>();
+      for (let index = 0; index < batches.length; index++) {
+        setSupplierImportAiStatus(`Revisando con IA: tanda ${index + 1} de ${batches.length}…`);
+        const job = await createAIJob(
+          buildSupplierListAiPrompt(batches[index], supplierImportIncludesTax),
+          'codex',
+          crypto.randomUUID(),
+          { includeBusinessContext: false, includeProjectContext: false, modelId: 'gpt-6-luna', reasoningEffort: 'low' },
+        );
+        const deadline = Date.now() + 120_000;
+        let current = job;
+        while ((current.status === 'pending' || current.status === 'processing') && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 1_500));
+          current = await getAIJob(job.id);
+        }
+        if (current.status !== 'completed' || !current.output) {
+          throw new Error(current.error || 'La central de IA no respondió a tiempo.');
+        }
+        for (const row of parseSupplierListAiOutput(current.output, batches[index])) revisedRows.set(row.sourceRow, row);
       }
-      if (current.status !== 'completed' || !current.output) {
-        throw new Error(current.error || 'La lectura con IA no terminó. Revisá que la central esté conectada e intentá de nuevo.');
-      }
-      setSupplierImportRows(parseSupplierListAiOutput(current.output, supplierImportRows));
+      setSupplierImportRows(rows => rows.map(row => revisedRows.get(row.sourceRow) ?? row));
+      setSupplierImportAiStatus(`La IA revisó ${revisedRows.size} filas dudosas.`);
     } catch (readError) {
-      setError(readError instanceof Error ? readError.message : 'No pudimos leer la planilla con IA.');
+      setSupplierImportAiStatus(`La central de IA no está disponible. La lista ya leída se conserva; podés revisar y corregir las filas manualmente. ${readError instanceof Error ? readError.message : ''}`.trim());
     } finally {
       setSupplierImportReading(false);
     }
@@ -1000,6 +1012,7 @@ export default function ResellerPriceListModal({
                               })}
                             </div>}
                             <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
+                            {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
                             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos de la planilla con Codex en la central vinculada. Las capturas automáticas se incorporarán más adelante; por ahora podés elegir cada foto o recortarla a mano.</p>
                             <div className="max-h-72 space-y-2 overflow-y-auto" aria-label="Productos importados">
                               {supplierImportRows.map(row => <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">

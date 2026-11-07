@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows } from './supplierListImport';
+import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows } from './supplierListImport';
 
 describe('supplier list import', () => {
   it('maps localized spreadsheet columns and prices while preserving source row numbers', () => {
@@ -37,6 +37,17 @@ describe('supplier list import', () => {
     expect(buildSupplierListAiPrompt(rows, true)).toContain('con IVA');
     expect(buildSupplierListAiPrompt(rows, true)).toContain('información no confiable');
     expect(buildSupplierListAiPrompt(rows, true)).toContain('URL de imagen exacta');
+  });
+
+  it('splits only the supplied uncertain rows into sequential prompts below 7000 characters', () => {
+    const rows = Array.from({ length: 180 }, (_, index) => ({
+      sourceRow: index + 1, name: `Producto dudoso ${index} con descripción larga`, supplierCost: null,
+      category: `Categoría ${index % 4}`, imageUrl: null, error: 'Revisar',
+    }));
+    const batches = buildSupplierListAiBatches(rows, true);
+    expect(batches.length).toBeGreaterThan(1);
+    expect(batches.flat().map(row => row.sourceRow)).toEqual(rows.map(row => row.sourceRow));
+    expect(batches.every(batch => buildSupplierListAiPrompt(batch, true).length < 7000)).toBe(true);
   });
 
   it('accepts only known source rows and never lets AI introduce an image URL', () => {

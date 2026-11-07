@@ -16,6 +16,18 @@ describe('supplier list source extraction', () => {
     ]);
   });
 
+  it('parses localized prices, joins neighboring name and price lines, and removes navigation noise', () => {
+    expect(parseSupplierListText([
+      'Ir al contenido', 'Menú', 'LAMPARA SOLAR', 'USD 15,30',
+      'Cable iPhone C — $ 12.345,67', 'Adaptador 12345.00', 'C91015 Cargador USB', 'Carrito', 'Todos los derechos reservados',
+    ].join('\n'))).toMatchObject([
+      { sourceRow: 1, name: 'LAMPARA SOLAR', supplierCost: 15.3, error: null },
+      { sourceRow: 2, name: 'Cable iPhone C', supplierCost: 12345.67, error: null },
+      { sourceRow: 3, name: 'Adaptador', supplierCost: 12345, error: null },
+      { sourceRow: 4, name: 'C91015 Cargador USB', supplierCost: null, error: 'La IA debe revisar el costo de esta fila.' },
+    ]);
+  });
+
   it('maps tabular PDF or page text to known columns', () => {
     expect(parseSupplierListText('Producto\tCosto\tCategoría\nTaza\t2.500\tHogar')).toMatchObject([
       { sourceRow: 2, name: 'Taza', supplierCost: 2500, category: 'Hogar', error: null },
