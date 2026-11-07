@@ -1,6 +1,7 @@
 import type { Product } from '../types';
 import type { SupplierListDraftRow } from './supplierListImport';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from './resellerSupplierRounds';
+import { isSupplierManagedPhotoUrl } from './supplierCatalogPhoto';
 
 export type SupplierImportAction = 'new' | 'updated' | 'unchanged' | 'review';
 
@@ -57,7 +58,7 @@ export function planSupplierImport(input: {
       && Number(existingProduct.catalogCost ?? 0) === cost
       && existingProduct.salePrice === suggested
       && existingProduct.category === row.category
-      && (!row.imageUrl || existingProduct.imageUrl === row.imageUrl);
+      && (!row.imageUrl || existingProduct.imageUrl === row.imageUrl || isSupplierManagedPhotoUrl(existingProduct.imageUrl));
     return { row, action: unchanged ? 'unchanged' : 'updated', existingProduct, supplierCostLocal: cost, suggestedSalePrice: suggested };
   });
 }

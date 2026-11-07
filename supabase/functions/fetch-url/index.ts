@@ -6,13 +6,15 @@ import {
   SUPPLIER_PAGE_MAX_BYTES,
   validateSupplierPageUrl,
 } from '../_shared/supplierUrlProxy.ts';
-import { readSupplierCatalog } from '../_shared/supplierCatalog.ts';
+import { fetchSupplierCatalogImage, readLimitedSupplierImage, readSupplierCatalog } from '../_shared/supplierCatalog.ts';
 
 const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 8;
+const IMAGE_RATE_LIMIT = 120;
 const FETCH_TIMEOUT_MS = 10_000;
 const rateLimit = createInMemoryRateLimiter(RATE_LIMIT, RATE_WINDOW_MS);
+const imageRateLimit = createInMemoryRateLimiter(IMAGE_RATE_LIMIT, RATE_WINDOW_MS);
 
 function jsonResponse(body: unknown, status: number, origin: string | null): Response {
   const headers = new Headers({
@@ -54,12 +56,6 @@ Deno.serve(async request => {
   if (origin && !ALLOWED_ORIGINS.has(origin)) return jsonResponse({ error: 'Origen no permitido.' }, 403, origin);
 
   const rateKey = await getRateKey(request);
-  if (!rateLimit(rateKey)) {
-    const response = jsonResponse({ error: 'Llegaste al límite de consultas. Probá de nuevo en un minuto.' }, 429, origin);
-    response.headers.set('Retry-After', '60');
-    return response;
-  }
-
   let body: unknown;
   try {
     const raw = await request.text();
@@ -72,6 +68,13 @@ Deno.serve(async request => {
   const rawUrl = (body as { url?: unknown } | null)?.url;
   const mode = (body as { mode?: unknown } | null)?.mode;
   if (typeof rawUrl !== 'string') return jsonResponse({ error: 'Enviá un enlace HTTPS válido.' }, 400, origin);
+
+  const limiter = mode === 'image' ? imageRateLimit : rateLimit;
+  if (!limiter(rateKey)) {
+    const response = jsonResponse({ error: 'Llegaste al límite de consultas. Probá de nuevo en un minuto.' }, 429, origin);
+    response.headers.set('Retry-After', '60');
+    return response;
+  }
 
   let url: URL;
   try {
@@ -93,6 +96,49 @@ Deno.serve(async request => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No pudimos procesar el catálogo.';
       return jsonResponse({ error: message }, 422, origin);
+    }
+  }
+
+  if (mode === 'image') {
+    const sourceOriginValue = (body as { sourceOrigin?: unknown } | null)?.sourceOrigin;
+    let imageUrl: URL;
+    let sourceOrigin: string;
+    try {
+      imageUrl = validateSupplierPageUrl(rawUrl);
+      sourceOrigin = new URL(String(sourceOriginValue)).origin;
+      if (imageUrl.origin !== sourceOrigin) throw new Error('origin mismatch');
+    } catch {
+      return jsonResponse({ error: 'La foto debe pertenecer al mismo sitio del proveedor.' }, 422, origin);
+    }
+    try {
+      const { response, url: finalUrl } = await fetchSupplierCatalogImage(imageUrl.href, (hostname, type) => Deno.resolveDns(hostname, type));
+      if (finalUrl.origin !== sourceOrigin || !response.ok) {
+        await response.body?.cancel();
+        return jsonResponse({ error: 'No pudimos descargar la foto del proveedor.' }, 422, origin);
+      }
+      const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+        await response.body?.cancel();
+        return jsonResponse({ error: 'El proveedor devolvió un formato de foto no permitido.' }, 415, origin);
+      }
+      const length = Number(response.headers.get('content-length') ?? 0);
+      if (Number.isFinite(length) && length > 5 * 1024 * 1024) {
+        await response.body?.cancel();
+        return jsonResponse({ error: 'La foto del proveedor supera 5 MB.' }, 413, origin);
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = await readLimitedSupplierImage(response);
+      } catch (error) {
+        const oversized = error instanceof Error && error.message.includes('5 MB');
+        return jsonResponse({ error: oversized ? 'La foto del proveedor supera 5 MB.' : 'No pudimos descargar la foto del proveedor.' }, oversized ? 413 : 422, origin);
+      }
+      if (!bytes.length) return jsonResponse({ error: 'No pudimos descargar la foto del proveedor.' }, 422, origin);
+      let binary = '';
+      for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      return jsonResponse({ mimeType: contentType, base64: btoa(binary) }, 200, origin);
+    } catch {
+      return jsonResponse({ error: 'No pudimos descargar la foto del proveedor.' }, 422, origin);
     }
   }
 

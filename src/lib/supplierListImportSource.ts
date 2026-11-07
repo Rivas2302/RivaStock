@@ -238,3 +238,33 @@ export async function extractSupplierListCatalog(rawUrl: string): Promise<Suppli
   }
   return data;
 }
+
+export async function fetchSupplierCatalogImage(rawImageUrl: string, rawSupplierUrl: string): Promise<File> {
+  const imageUrl = validateSupplierPageUrl(rawImageUrl);
+  const supplierUrl = validateSupplierPageUrl(rawSupplierUrl);
+  if (imageUrl.origin !== supplierUrl.origin) throw new Error('La foto debe pertenecer al mismo sitio del proveedor.');
+  let data: { base64?: unknown; mimeType?: unknown; error?: unknown } | null;
+  let error: Error | null;
+  try {
+    ({ data, error } = await supabase.functions.invoke('fetch-url', {
+      body: { url: imageUrl.href, sourceOrigin: supplierUrl.origin, mode: 'image' },
+    }));
+  } catch {
+    throw new Error('No pudimos descargar la foto del proveedor.');
+  }
+  if (error) {
+    if (typeof data?.error === 'string') throw new Error(data.error);
+    throw new Error('No pudimos descargar la foto del proveedor.');
+  }
+  const mimeType = typeof data?.mimeType === 'string' ? data.mimeType : '';
+  const base64 = typeof data?.base64 === 'string' ? data.base64 : '';
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) || !base64 || base64.length > 7_000_000) {
+    throw new Error('El proveedor devolvió una foto que no podemos usar.');
+  }
+  const binary = atob(base64);
+  if (binary.length > 5 * 1024 * 1024) throw new Error('La foto del proveedor supera 5 MB.');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/png' ? 'png' : 'webp';
+  return new File([bytes], `supplier-photo.${extension}`, { type: mimeType });
+}

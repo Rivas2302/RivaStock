@@ -16,11 +16,12 @@ function session() {
   };
 }
 
-async function mockApp(page: Page) {
+async function mockApp(page: Page, options: { failImageIndex?: number } = {}) {
   const products: Record<string, unknown>[] = [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
   let supplierProductIds: string[] = [];
   let changedCatalog = false;
+  let failedImageIndex = options.failImageIndex;
   const sourceCosts: number[] = [];
   const pricingCalls: unknown[][] = [];
 
@@ -36,12 +37,23 @@ async function mockApp(page: Page) {
         'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
         'access-control-allow-methods': 'POST, OPTIONS',
       } });
+      const requestBody = route.request().postDataJSON() as { mode?: string; url?: string };
+      if (requestBody.mode === 'image') {
+        const imageIndex = Number(requestBody.url?.match(/photo-(\d+)\.jpg/)?.[1] ?? 0);
+        if (imageIndex === failedImageIndex) {
+          return route.fulfill({ status: 422, json: { error: 'No pudimos descargar la foto del proveedor.' } });
+        }
+        return route.fulfill({ json: {
+          mimeType: 'image/png',
+          base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+        } });
+      }
       sourceCosts.push(changedCatalog ? 8.75 : 7.75);
       return route.fulfill({ json: {
         source: 'woocommerce', currency: 'USD', items: [
-          { code: '1015', name: 'Lámpara solar', price: changedCatalog ? 8.75 : 7.75, category: 'Iluminación', imageUrl: null, url: 'https://mrtecno.com.ar/productos/1015' },
-          { code: 'C91015', name: 'Cable iPhone C', price: 3.5, category: 'Cargadores', imageUrl: null, url: 'https://mrtecno.com.ar/productos/c91015' },
-          { code: 'YH88214N', name: 'Cargador USB', price: 2.25, category: 'Cargadores', imageUrl: null, url: 'https://mrtecno.com.ar/productos/yh88214n' },
+          { code: '1015', name: 'Lámpara solar', price: changedCatalog ? 8.75 : 7.75, category: 'Iluminación', imageUrl: 'https://mrtecno.com.ar/wp-content/uploads/photo-1.jpg', url: 'https://mrtecno.com.ar/productos/1015' },
+          { code: 'C91015', name: 'Cable iPhone C', price: 3.5, category: 'Cargadores', imageUrl: 'https://mrtecno.com.ar/wp-content/uploads/photo-2.jpg', url: 'https://mrtecno.com.ar/productos/c91015' },
+          { code: 'YH88214N', name: 'Cargador USB', price: 2.25, category: 'Cargadores', imageUrl: 'https://mrtecno.com.ar/wp-content/uploads/photo-3.jpg', url: 'https://mrtecno.com.ar/productos/yh88214n' },
         ],
       } });
     }
@@ -50,6 +62,7 @@ async function mockApp(page: Page) {
       if (rpc === 'get_owner_profile') return route.fulfill({ json: [{ id: owner, role: 'admin', business_name: 'Negocio QA', display_name: 'Dueño QA', currency_symbol: '$', dark_mode: false, onboarding_completed_at: now, created_at: now }] });
       if (rpc === 'is_platform_admin') return route.fulfill({ json: false });
       if (rpc === 'my_business_plan') return route.fulfill({ json: { plan_code: 'base', plan_name: 'RivaStock', status: 'active', limits: { modules: { ai: false, knowledge: false, automation: false } } } });
+      if (rpc === 'storage_upload_check') return route.fulfill({ json: { allowed: true } });
       if (rpc === 'save_reseller_supplier_list') {
         supplierProductIds = (route.request().postDataJSON() as { p_product_ids: string[] }).p_product_ids;
         return route.fulfill({ json: supplierList });
@@ -97,11 +110,16 @@ async function mockApp(page: Page) {
       if (table === 'collaborators') return route.fulfill({ json: [] });
       return route.fulfill({ json: [] });
     }
+    if (path.startsWith('/storage/v1/object/assets/')) return route.fulfill({ status: 200, json: { Key: path } });
     return route.fulfill({ json: [] });
   });
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
-  return { products, pricingCalls, sourceCosts, changeCatalog: () => { changedCatalog = true; } };
+  return {
+    products, pricingCalls, sourceCosts,
+    changeCatalog: () => { changedCatalog = true; },
+    failImagesAt: (index?: number) => { failedImageIndex = index; },
+  };
 }
 
 test('supplier catalog import reviews three fixture pages, bulk adds, then updates by SKU on reimport', async ({ page }) => {
@@ -124,7 +142,8 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
   await expect(modal.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
-  await modal.getByRole('button', { name: 'Agregar los 3 listos' }).click();
+  await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(1);
 
@@ -132,7 +151,7 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await expect(modal.getByText('3 productos · 0 listos · 0 para revisar')).toHaveCount(0);
   await expect(modal.getByText(/0 nuevos · 1 actualizados · 2 sin cambios/)).toBeVisible();
-  await modal.getByRole('button', { name: 'Agregar los 3 listos' }).click();
+  await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
@@ -154,8 +173,36 @@ test('bulk import button confirms and creates only products matching the active 
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
   await modal.getByLabel('Buscar productos importados').fill('Lámpara solar');
-  await expect(modal.getByRole('button', { name: 'Agregar los 1 listos de "Lámpara solar"' })).toBeVisible();
-  await modal.getByRole('button', { name: 'Agregar los 1 listos de "Lámpara solar"' }).click();
+  await expect(modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' }).click();
   await expect.poll(() => products.length).toBe(1);
   expect(products[0].name).toBe('Lámpara solar');
+});
+
+test('a failed supplier image does not block other photos or product import', async ({ page }) => {
+  const { products, failImagesAt } = await mockApp(page, { failImageIndex: 2 });
+  page.on('dialog', dialog => dialog.accept());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
+  await page.getByRole('button', { name: /Lista revendedores/ }).click();
+  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
+  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await expect.poll(() => products.length).toBe(3);
+  await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(2);
+  await expect(modal.getByText(/1 foto no se pudo copiar/)).toBeVisible();
+  await expect(modal.getByRole('status', { name: 'Producto sin foto' })).toBeVisible();
+
+  failImagesAt();
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(3);
+  await expect(modal.getByText(/foto no se pudo copiar/)).toHaveCount(0);
 });

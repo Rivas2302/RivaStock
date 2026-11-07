@@ -236,9 +236,11 @@ async function fetchValidated(
   rawUrl: string,
   resolveDns: DnsResolver,
   fetcher: typeof fetch,
+  expectedOrigin?: string,
 ): Promise<{ response: Response; url: URL }> {
   let url = validateSupplierPageUrl(rawUrl);
   for (let redirectCount = 0; ; redirectCount++) {
+    if (expectedOrigin && url.origin !== expectedOrigin) throw new UnsafeSupplierRedirectError();
     await assertPublicDns(url.hostname, resolveDns);
     const response = await fetcher(url, {
       method: 'GET',
@@ -255,9 +257,49 @@ async function fetchValidated(
     if (redirectCount >= MAX_REDIRECTS) throw new Error('El sitio redirige demasiadas veces.');
     const location = response.headers.get('location');
     if (!location) throw new Error('El sitio devolvió una redirección sin destino.');
-    try { url = validateSupplierPageUrl(new URL(location, url).href); }
+    try {
+      url = validateSupplierPageUrl(new URL(location, url).href);
+      if (expectedOrigin && url.origin !== expectedOrigin) throw new UnsafeSupplierRedirectError();
+    }
     catch { throw new UnsafeSupplierRedirectError(); }
   }
+}
+
+export async function fetchSupplierCatalogImage(
+  rawUrl: string,
+  resolveDns: DnsResolver,
+  fetcher: typeof fetch = fetch,
+): Promise<{ response: Response; url: URL }> {
+  const sourceUrl = validateSupplierPageUrl(rawUrl);
+  return fetchValidated(rawUrl, resolveDns, fetcher, sourceUrl.origin);
+}
+
+export async function readLimitedSupplierImage(response: Response, maxBytes = 5 * 1024 * 1024): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error('La foto del proveedor supera 5 MB.');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
 }
 
 async function fetchJsonPage(

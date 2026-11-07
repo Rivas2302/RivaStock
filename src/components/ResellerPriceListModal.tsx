@@ -55,9 +55,13 @@ import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
-import { extractSupplierListCatalog, extractSupplierListFileText, parseSupplierListText } from '../lib/supplierListImportSource';
+import { extractSupplierListCatalog, extractSupplierListFileText, fetchSupplierCatalogImage, parseSupplierListText } from '../lib/supplierListImportSource';
 import type { SupplierPriceRounding } from '../lib/resellerSupplierRounds';
 import { planSupplierImport } from '../lib/supplierImportReview';
+import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
+import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
+import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
+import { assertStorageUploadAllowed } from '../lib/platformStorage';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
 import Modal from './Modal';
@@ -161,6 +165,10 @@ export default function ResellerPriceListModal({
   const [supplierImportCategoryFilter, setSupplierImportCategoryFilter] = useState('');
   const [supplierImportPage, setSupplierImportPage] = useState(0);
   const [supplierImportBatchProgress, setSupplierImportBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [supplierImportPhotoProgress, setSupplierImportPhotoProgress] = useState<{ done: number; total: number } | null>(null);
+  const [supplierImportOnlyPhotos, setSupplierImportOnlyPhotos] = useState(true);
+  const [supplierImportPhotoFailures, setSupplierImportPhotoFailures] = useState(0);
+  const [supplierImportPhotoFailedRows, setSupplierImportPhotoFailedRows] = useState<number[]>([]);
   const [supplierImportProductIdsByRow, setSupplierImportProductIdsByRow] = useState<Record<number, string>>({});
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
@@ -458,6 +466,9 @@ export default function ResellerPriceListModal({
       if (rows.length === 0) throw new Error('No encontramos filas de productos en la planilla.');
       setSupplierImportRows(rows);
       setSupplierImportFileName(file.name);
+      setSupplierImportOnlyPhotos(true);
+      setSupplierImportPhotoFailures(0);
+      setSupplierImportPhotoFailedRows([]);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer la planilla.');
     } finally {
@@ -516,6 +527,9 @@ export default function ResellerPriceListModal({
       setSupplierImportRows(rows);
       setSupplierImportCurrency(catalog.currency);
       setSupplierImportFileName(supplierImportPageUrl.trim());
+      setSupplierImportOnlyPhotos(true);
+      setSupplierImportPhotoFailures(0);
+      setSupplierImportPhotoFailedRows([]);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer esa página.');
     } finally {
@@ -590,11 +604,22 @@ export default function ResellerPriceListModal({
     return supplierImportReview.filter(entry => (
       (!supplierImportCategoryFilter || entry.row.category === supplierImportCategoryFilter)
       && (!query || `${entry.row.name} ${entry.row.sourceCode ?? ''} ${entry.row.category}`.toLocaleLowerCase('es-AR').includes(query))
+      && (!supplierImportOnlyPhotos || Boolean(
+        supplierImportPhotoFiles[entry.row.sourceRow]
+        || getSupplierCatalogImageUrl(entry.row.imageUrl, supplierImportPageUrl)
+        || hasProductPhoto(entry.existingProduct),
+      ))
     ));
-  }, [supplierImportCategoryFilter, supplierImportReview, supplierImportSearch]);
+  }, [supplierImportCategoryFilter, supplierImportOnlyPhotos, supplierImportPageUrl, supplierImportPhotoFiles, supplierImportReview, supplierImportSearch]);
   const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
   const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
   const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => entry.action !== 'review').length;
+  const supplierImportWithPhotoCount = supplierImportReview.filter(entry => Boolean(
+    supplierImportPhotoFiles[entry.row.sourceRow]
+    || (getSupplierCatalogImageUrl(entry.row.imageUrl, supplierImportPageUrl) && !supplierImportPhotoFailedRows.includes(entry.row.sourceRow))
+    || hasProductPhoto(entry.existingProduct),
+  )).length;
+  const supplierImportWithoutPhotoCount = supplierImportReview.length - supplierImportWithPhotoCount;
   const supplierImportFilterLabel = [supplierImportSearch.trim(), supplierImportCategoryFilter].filter(Boolean).join(' · ');
 
   const handleAddSupplierImportBatch = async () => {
@@ -602,11 +627,28 @@ export default function ResellerPriceListModal({
     const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
     if (ready.length === 0) return;
     const filterText = supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : '';
-    if (!window.confirm(`Vas a agregar ${ready.length} producto${ready.length === 1 ? '' : 's'}${filterText}. ¿Querés continuar?`)) return;
+    const photoTargets: Array<{ entry: typeof ready[number]; file?: File; sourceUrl?: string }> = ready.flatMap(entry => {
+      const file = supplierImportPhotoFiles[entry.row.sourceRow];
+      if (file) return [{ entry, file, sourceUrl: undefined as string | undefined }];
+      const sourceUrl = getSupplierCatalogImageUrl(entry.row.imageUrl, supplierImportPageUrl);
+      return sourceUrl && shouldReplaceWithSupplierPhoto(entry.existingProduct, supplierImportPageUrl)
+        ? [{ entry, sourceUrl }]
+        : [];
+    });
+    const buttonPhotoLabel = supplierImportOnlyPhotos ? ' con foto' : '';
+    if (!window.confirm(`Vas a agregar ${ready.length} producto${ready.length === 1 ? '' : 's'}${buttonPhotoLabel}${filterText}. ¿Querés continuar?`)) return;
     setSupplierSaving(true);
     setError(null);
     setSupplierImportBatchProgress({ done: 0, total: ready.length });
+    setSupplierImportPhotoProgress(photoTargets.length ? { done: 0, total: photoTargets.length } : null);
+    setSupplierImportPhotoFailures(0);
+    setSupplierImportPhotoFailedRows([]);
     try {
+      if (photoTargets.length) {
+        // Each original is capped at 60 KB and each thumbnail at 30 KB.
+        // Reserve the upper bound before any product or category is written.
+        await assertStorageUploadAllowed('assets', photoTargets.length * 90_000);
+      }
       const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase('es-AR'), category]));
       const newCategories: Category[] = [];
       for (const entry of ready) {
@@ -630,6 +672,7 @@ export default function ResellerPriceListModal({
       }));
 
       const updatedProducts: Product[] = [];
+      const productsById = new Map<string, Product>();
       for (let start = 0; start < ready.length; start += 50) {
         const batch = ready.slice(start, start + 50);
         const createRows: Product[] = [];
@@ -650,7 +693,7 @@ export default function ResellerPriceListModal({
             salePrice: entry.suggestedSalePrice ?? 0,
             stock: existing?.stock ?? 0,
             minStock: existing?.minStock ?? 0,
-            imageUrl: entry.row.imageUrl ?? existing?.imageUrl,
+            imageUrl: existing?.imageUrl,
             images: existing?.images ?? [],
             showInCatalog: existing?.showInCatalog ?? false,
             catalogOnly: true,
@@ -667,18 +710,50 @@ export default function ResellerPriceListModal({
             .insert(createRows.map(product => toDb(product as unknown as Record<string, unknown>)))
             .select('*');
           if (insertError) throw new Error(`No se pudo guardar una tanda de productos: ${insertError.message}`);
-          updatedProducts.push(...(data ?? []).map(row => fromDb<Product>(row as Record<string, unknown>)));
+          const inserted = (data ?? []).map(row => fromDb<Product>(row as Record<string, unknown>));
+          updatedProducts.push(...inserted);
+          inserted.forEach(product => productsById.set(product.id, product));
         }
         for (let index = 0; index < updateRows.length; index += 10) {
           const saved = await Promise.all(updateRows.slice(index, index + 10).map(product => db.update<Product>('products', product.id, product)));
           updatedProducts.push(...saved);
-        }
-        if (updatedProducts.length) {
-          onProductsImported(updatedProducts);
-          setSupplierDraftProductIds(current => Array.from(new Set([...current, ...updatedProducts.map(product => product.id)])));
+          saved.forEach(product => productsById.set(product.id, product));
         }
         setSupplierImportBatchProgress({ done: Math.min(start + batch.length, ready.length), total: ready.length });
       }
+
+      for (const entry of ready) {
+        const id = resolvedIds.get(entry.row.sourceRow)!;
+        if (!productsById.has(id) && entry.existingProduct) productsById.set(id, entry.existingProduct);
+      }
+      if (updatedProducts.length) {
+        onProductsImported(updatedProducts);
+        setSupplierDraftProductIds(current => Array.from(new Set([...current, ...updatedProducts.map(product => product.id)])));
+      }
+
+      const photoUpdatedProducts: Product[] = [];
+      const failedPhotoRows: number[] = [];
+      const photoFailures = await processSupplierPhotoBatch(photoTargets, async target => {
+        const id = resolvedIds.get(target.entry.row.sourceRow)!;
+        const currentProduct = productsById.get(id);
+        if (!currentProduct) throw new Error('No se encontró el producto importado.');
+        const sourceUrl = target.sourceUrl;
+        const file = target.file ?? (sourceUrl ? await fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl) : null);
+        if (!file) throw new Error('No se encontró una foto válida.');
+        const prepared = await prepareSupplierCatalogPhoto(file);
+        const photoUrl = await uploadPreparedSupplierCatalogPhoto(prepared, ownerUid, id, sourceUrl);
+        const updated = target.file
+          ? withImportedProductPhoto(currentProduct, photoUrl, undefined, true)
+          : withImportedProductPhoto(currentProduct, photoUrl, supplierImportPageUrl);
+        const saved = await db.update<Product>('products', id, updated);
+        productsById.set(id, saved);
+        photoUpdatedProducts.push(saved);
+      }, (done, total) => setSupplierImportPhotoProgress({ done, total }), target => {
+        failedPhotoRows.push(target.entry.row.sourceRow);
+      });
+      if (photoUpdatedProducts.length) onProductsImported(photoUpdatedProducts);
+      setSupplierImportPhotoFailures(photoFailures);
+      setSupplierImportPhotoFailedRows(failedPhotoRows);
 
       const allProductIds = Array.from(new Set([...supplierDraftProductIds, ...ready.map(entry => resolvedIds.get(entry.row.sourceRow)!)]));
       const savedSupplierList = await saveResellerSupplierList({ priceListId: list.id, supplierId: editingSupplierId, productIds: allProductIds });
@@ -1146,12 +1221,21 @@ export default function ResellerPriceListModal({
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
+                            <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--ink)] sm:flex-row sm:items-center sm:justify-between">
+                              <p>{supplierImportWithPhotoCount} con foto · {supplierImportWithoutPhotoCount} sin foto</p>
+                              <label className="flex min-h-10 cursor-pointer items-center gap-2 font-semibold">
+                                <input type="checkbox" checked={supplierImportOnlyPhotos} onChange={event => { setSupplierImportOnlyPhotos(event.target.checked); setSupplierImportPage(0); }} className="size-4 accent-[var(--brand)]"/>
+                                Solo con foto
+                              </label>
+                            </div>
                             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
+                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
+                            {supplierImportPhotoProgress && <div><progress aria-label="Progreso de fotos" max={supplierImportPhotoProgress.total || 1} value={supplierImportPhotoProgress.done} className="h-2 w-full"/><p role="status" className="text-xs text-slate-600 dark:text-slate-300">Fotos {supplierImportPhotoProgress.done} de {supplierImportPhotoProgress.total}</p></div>}
+                            {supplierImportPhotoFailures > 0 && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportPhotoFailures} foto{supplierImportPhotoFailures === 1 ? '' : 's'} {supplierImportPhotoFailures === 1 ? 'no se pudo copiar' : 'no se pudieron copiar'}. Podés reintentar la importación.</p>}
                             <div className="flex items-center justify-between text-xs"><span>Mostrando {supplierImportFiltered.length ? supplierImportPage * 50 + 1 : 0}–{Math.min((supplierImportPage + 1) * 50, supplierImportFiltered.length)} de {supplierImportFiltered.length}</span><span className="flex gap-2"><button type="button" disabled={supplierImportPage === 0} onClick={() => setSupplierImportPage(page => Math.max(0, page - 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Anterior</button><span className="self-center">{supplierImportPage + 1}/{supplierImportPageCount}</span><button type="button" disabled={supplierImportPage + 1 >= supplierImportPageCount} onClick={() => setSupplierImportPage(page => Math.min(supplierImportPageCount - 1, page + 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Siguiente</button></span></div>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="text-xs font-semibold">¿Los precios incluyen IVA?
@@ -1181,7 +1265,11 @@ export default function ResellerPriceListModal({
                             {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
                             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos de la planilla con Codex en la central vinculada. Las capturas automáticas se incorporarán más adelante; por ahora podés elegir cada foto o recortarla a mano.</p>
                             <div className="max-h-[34rem] space-y-2 overflow-y-auto" aria-label="Productos importados">
-                              {supplierImportPageRows.map(entry => { const row = entry.row; return <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
+                              {supplierImportPageRows.map(entry => { const row = entry.row; const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl); const hasPhoto = Boolean(supplierImportPhotoFiles[row.sourceRow] || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow))); const previewCandidate = sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0]; const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null; return <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
+                                  <div className="flex items-center gap-2 sm:w-24 sm:flex-col sm:items-start">
+                                    {previewUrl ? <img src={previewUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover"/> : <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">Sin foto</span>}
+                                    <span role="status" aria-label={hasPhoto ? 'Producto con foto' : 'Producto sin foto'} className="text-[10px] font-semibold text-[var(--ink-muted)]">{hasPhoto ? 'Con foto' : 'Sin foto'}</span>
+                                  </div>
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
@@ -1190,7 +1278,7 @@ export default function ResellerPriceListModal({
                                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
                                   {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
                                   {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
-                                  <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => setSupplierImportPhotoFiles(current => { const next = { ...current }; if (file) next[row.sourceRow] = file; else delete next[row.sourceRow]; return next; })}/></div>
+                                  <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => { setSupplierImportPhotoFiles(current => { const next = { ...current }; if (file) next[row.sourceRow] = file; else delete next[row.sourceRow]; return next; }); setSupplierImportPhotoFailedRows(current => current.filter(sourceRow => sourceRow !== row.sourceRow)); }}/></div>
                                 </div>
                               </article>; })}
                             </div>

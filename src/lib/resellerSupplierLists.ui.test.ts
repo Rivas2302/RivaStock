@@ -37,7 +37,8 @@ describe('reseller supplier lists UI', () => {
     expect(modal).toContain('supplierImportBatchProgress');
     expect(modal).toContain('initialDraft');
     expect(modal).toContain('recortarla a mano');
-    expect(modal).toContain('imageUrl: entry.row.imageUrl ?? existing?.imageUrl');
+    expect(modal).toContain('imageUrl: existing?.imageUrl');
+    expect(modal).not.toContain('imageUrl: entry.row.imageUrl');
     expect(modal).toContain('roundingStep');
   });
 

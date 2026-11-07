@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fitImageDimensions, hasPngAnimation, imageFileExtension, optimizeCatalogCover, optimizeUploadImage } from './imageOptimization';
+import { fitImageDimensions, hasPngAnimation, imageFileExtension, optimizeCatalogCover, optimizeSupplierCatalogPhoto, optimizeUploadImage } from './imageOptimization';
 
 afterEach(() => vi.unstubAllGlobals());
 describe('image upload optimization', () => {
@@ -82,6 +82,25 @@ describe('image upload optimization', () => {
     expect(optimized.size).toBeLessThanOrEqual(300_000);
     expect(close).toHaveBeenCalledOnce();
     expect(canvas.width).toBe(0);
+  });
+  it('compresses a supplier photo to genuine WebP within the 60 KB limit', async () => {
+    const file = new File([new Uint8Array(200_000)], 'supplier.jpg', { type: 'image/jpeg' });
+    const close = vi.fn();
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }), toBlob: (fn: (blob: Blob) => void) => fn(new Blob([new Uint8Array(58_000)], { type: 'image/webp' })) };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 1200, height: 900, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+
+    const optimized = await optimizeSupplierCatalogPhoto(file);
+
+    expect(optimized.type).toBe('image/webp');
+    expect(optimized.size).toBeLessThanOrEqual(60_000);
+    expect(optimized.name).toBe('supplier.webp');
+    expect(close).toHaveBeenCalledOnce();
+    expect(canvas.width).toBe(0);
+  });
+  it('rejects supplier formats that are not JPEG, PNG or WebP', async () => {
+    const file = new File(['gif'], 'supplier.gif', { type: 'image/gif' });
+    await expect(optimizeSupplierCatalogPhoto(file)).rejects.toThrow();
   });
   it('preserves animated WebP and APNG rather than flattening frames', async () => {
     const decode = vi.fn();

@@ -89,6 +89,40 @@ export async function optimizeCatalogCover(file: File, maxBytes = 300_000): Prom
   }
 }
 
+export async function optimizeSupplierCatalogPhoto(file: File, maxEdge = 400, maxBytes = 60_000): Promise<File> {
+  if (!CONVERTIBLE_TYPES.has(file.type) || typeof createImageBitmap !== 'function') {
+    throw new Error('Este navegador no puede preparar la foto WebP del proveedor.');
+  }
+  const bitmap = await createImageBitmap(file);
+  let canvas: HTMLCanvasElement | undefined;
+  try {
+    for (const edge of [maxEdge, 360, 320, 280, 240, 200].filter((value, index, all) => value <= maxEdge && all.indexOf(value) === index)) {
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+      const dimensions = fitImageDimensions(bitmap.width, bitmap.height, edge);
+      canvas = document.createElement('canvas');
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('No se pudo preparar la foto del proveedor.');
+      context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
+      for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]) {
+        const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+        if (blob?.type === 'image/webp' && blob.size > 0 && blob.size <= maxBytes) {
+          return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp', lastModified: file.lastModified });
+        }
+      }
+    }
+    throw new Error('La foto sigue pesando más de 60 KB después de comprimirla.');
+  } finally {
+    bitmap.close();
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+  }
+}
+
+export async function optimizeSupplierCatalogThumbnail(file: File, maxEdge = 200, maxBytes = 30_000): Promise<File> {
+  return optimizeSupplierCatalogPhoto(file, maxEdge, maxBytes);
+}
+
 export function imageFileExtension(file: Pick<File, 'type' | 'name'>): string {
   if (file.type === 'image/jpeg' || file.type === 'image/jpg') return 'jpg';
   if (file.type === 'image/png') return 'png';

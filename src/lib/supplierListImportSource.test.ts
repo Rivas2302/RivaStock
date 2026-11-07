@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractSupplierListCatalog, extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from './supplierListImportSource';
+import { extractSupplierListCatalog, extractSupplierListFileText, extractSupplierListPageText, fetchSupplierCatalogImage, parseSupplierListText } from './supplierListImportSource';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const tesseractWorkerMock = vi.hoisted(() => ({
@@ -127,6 +127,24 @@ describe('supplier list source extraction', () => {
       source: 'woocommerce', currency: 'USD', items: [{ code: 'SKU-1', price: 7.75 }],
     });
     expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/catalog', mode: 'catalog' } });
+  });
+
+  it('downloads a same-origin supplier image through the protected proxy', async () => {
+    invokeMock.mockResolvedValue({ data: { mimeType: 'image/jpeg', base64: 'AQID' }, error: null });
+    const image = await fetchSupplierCatalogImage('https://supplier.com/images/one.jpg', 'https://supplier.com/catalog');
+    expect(image.type).toBe('image/jpeg');
+    expect(image.size).toBe(3);
+    expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: {
+      url: 'https://supplier.com/images/one.jpg', sourceOrigin: 'https://supplier.com', mode: 'image',
+    } });
+    await expect(fetchSupplierCatalogImage('https://cdn.supplier.com/image.jpg', 'https://supplier.com/catalog'))
+      .rejects.toThrow('mismo sitio');
+  });
+
+  it('rejects image responses with formats outside the photo allowlist', async () => {
+    invokeMock.mockResolvedValue({ data: { mimeType: 'image/svg+xml', base64: 'PHN2Zy8+' }, error: null });
+    await expect(fetchSupplierCatalogImage('https://supplier.com/images/icon.svg', 'https://supplier.com/catalog'))
+      .rejects.toThrow('foto que no podemos usar');
   });
 
   it('shows a Spanish fallback when the server cannot read a supplier page', async () => {
