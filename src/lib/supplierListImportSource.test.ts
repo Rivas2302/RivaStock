@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from './supplierListImportSource';
+import { extractSupplierListCatalog, extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from './supplierListImportSource';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock('./supabase', () => ({ supabase: { functions: { invoke: invokeMock } } }));
@@ -46,6 +46,17 @@ describe('supplier list source extraction', () => {
     invokeMock.mockResolvedValue({ data: { text: 'Producto\tCosto\nTaza\t2500' }, error: null });
     await expect(extractSupplierListPageText('https://supplier.com/list')).resolves.toContain('Taza');
     expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/list' } });
+  });
+
+  it('requests structured catalog mode and preserves source currency and product codes', async () => {
+    invokeMock.mockResolvedValue({ data: {
+      source: 'woocommerce', currency: 'USD',
+      items: [{ code: 'SKU-1', name: 'Cable', price: 7.75, category: 'Accesorios', imageUrl: null, url: null }],
+    }, error: null });
+    await expect(extractSupplierListCatalog('https://supplier.com/catalog')).resolves.toMatchObject({
+      source: 'woocommerce', currency: 'USD', items: [{ code: 'SKU-1', price: 7.75 }],
+    });
+    expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/catalog', mode: 'catalog' } });
   });
 
   it('shows a Spanish fallback when the server cannot read a supplier page', async () => {

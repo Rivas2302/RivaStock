@@ -6,6 +6,7 @@ import {
   SUPPLIER_PAGE_MAX_BYTES,
   validateSupplierPageUrl,
 } from '../_shared/supplierUrlProxy.ts';
+import { readSupplierCatalog } from '../_shared/supplierCatalog.ts';
 
 const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const RATE_WINDOW_MS = 60_000;
@@ -69,6 +70,7 @@ Deno.serve(async request => {
   }
 
   const rawUrl = (body as { url?: unknown } | null)?.url;
+  const mode = (body as { mode?: unknown } | null)?.mode;
   if (typeof rawUrl !== 'string') return jsonResponse({ error: 'Enviá un enlace HTTPS válido.' }, 400, origin);
 
   let url: URL;
@@ -79,6 +81,19 @@ Deno.serve(async request => {
     await Promise.race([dnsCheck, dnsTimeout]);
   } catch {
     return jsonResponse({ error: 'El enlace debe apuntar a un sitio HTTPS público y disponible.' }, 422, origin);
+  }
+
+  if (mode === 'catalog') {
+    try {
+      const catalog = await readSupplierCatalog(
+        url.href,
+        (hostname, type) => Deno.resolveDns(hostname, type),
+      );
+      return jsonResponse(catalog, 200, origin);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No pudimos procesar el catálogo.';
+      return jsonResponse({ error: message }, 422, origin);
+    }
   }
 
   let response: Response;

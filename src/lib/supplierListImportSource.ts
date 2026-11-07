@@ -5,6 +5,20 @@ const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const MAX_SOURCE_TEXT = 60_000;
 const MAX_SOURCE_ROWS = 500;
 
+export interface SupplierCatalogSourceResult {
+  source: 'woocommerce' | 'shopify' | 'jsonld' | 'text';
+  currency: string | null;
+  items: Array<{
+    code: string | null;
+    name: string;
+    price: number | null;
+    category: string;
+    imageUrl: string | null;
+    url: string | null;
+  }>;
+  text?: string;
+}
+
 export function parseSupplierListText(text: string): SupplierListDraftRow[] {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (lines.length === 0) return [];
@@ -101,4 +115,25 @@ export async function extractSupplierListPageText(rawUrl: string): Promise<strin
   }
   if (typeof data?.text !== 'string') throw new Error('No encontramos texto para revisar en esa página.');
   return data.text.slice(0, MAX_SOURCE_TEXT);
+}
+
+export async function extractSupplierListCatalog(rawUrl: string): Promise<SupplierCatalogSourceResult> {
+  const url = validateSupplierPageUrl(rawUrl);
+  let data: SupplierCatalogSourceResult & { error?: unknown } | null;
+  let error: Error | null;
+  try {
+    ({ data, error } = await supabase.functions.invoke('fetch-url', { body: { url: url.href, mode: 'catalog' } }));
+  } catch {
+    throw new Error('No pudimos leer el catálogo. Probá de nuevo o subí una planilla.');
+  }
+  if (error) {
+    const message = typeof data?.error === 'string' ? data.error : '';
+    if (message) throw new Error(message);
+    if (error.message.includes('429')) throw new Error('Llegaste al límite de consultas. Probá de nuevo en un minuto.');
+    throw new Error('No pudimos leer ese catálogo. Podés subir una planilla o una captura.');
+  }
+  if (!data || !['woocommerce', 'shopify', 'jsonld', 'text'].includes(data.source)) {
+    throw new Error('No encontramos productos en ese catálogo.');
+  }
+  return data;
 }

@@ -1,6 +1,8 @@
 export interface SupplierListDraftRow {
   sourceRow: number;
   name: string;
+  sourceCode?: string | null;
+  sourceCurrency?: string | null;
   supplierCost: number | null;
   category: string;
   marginPercent?: number;

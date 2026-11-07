@@ -51,7 +51,7 @@ import { showToast } from '../lib/toast';
 import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
-import { extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from '../lib/supplierListImportSource';
+import { extractSupplierListCatalog, extractSupplierListFileText, parseSupplierListText } from '../lib/supplierListImportSource';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from '../lib/resellerSupplierRounds';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
@@ -143,6 +143,7 @@ export default function ResellerPriceListModal({
   const [supplierImportPhotoFiles, setSupplierImportPhotoFiles] = useState<Record<number, File>>({});
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
+  const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
   const [supplierImportReading, setSupplierImportReading] = useState(false);
@@ -443,10 +444,24 @@ export default function ResellerPriceListModal({
     try {
       setSupplierImportScreenshot(null);
       setSupplierImportPhotoFiles({});
-      const text = await extractSupplierListPageText(supplierImportPageUrl);
-      const rows = parseSupplierListText(text);
+      const catalog = await extractSupplierListCatalog(supplierImportPageUrl);
+      const rows = catalog.items.length > 0
+        ? catalog.items.map((item, index) => ({
+          sourceRow: index + 1,
+          sourceCode: item.code,
+          sourceCurrency: catalog.currency,
+          name: item.name,
+          supplierCost: item.price,
+          category: item.category,
+          imageUrl: item.imageUrl,
+          error: !item.name ? 'Falta el nombre del producto.'
+            : item.price === null || item.price <= 0 ? 'Sin precio, revisar.'
+              : null,
+        }))
+        : parseSupplierListText(catalog.text ?? '');
       if (rows.length === 0) throw new Error('No encontramos texto para revisar en esa página.');
       setSupplierImportRows(rows);
+      setSupplierImportCurrency(catalog.currency);
       setSupplierImportFileName(supplierImportPageUrl.trim());
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer esa página.');
@@ -948,6 +963,7 @@ export default function ResellerPriceListModal({
                           <p className="text-[11px] text-slate-500">La página debe permitir lectura desde el navegador (CORS). Se consulta sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
                           <p className="text-[11px] text-slate-500">Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR. El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».</p>
                           {supplierImportRows.length > 0 && <>
+                            {supplierImportCurrency && <p className="rounded-lg bg-indigo-50 p-3 text-sm font-semibold text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">Moneda de origen: {supplierImportCurrency}. Revisá la cotización antes de importar; los costos se muestran en la moneda recibida.</p>}
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="text-xs font-semibold">¿Los precios incluyen IVA?
                                 <select aria-label="Los precios incluyen IVA" value={supplierImportIncludesTax === null ? '' : String(supplierImportIncludesTax)} onChange={event => setSupplierImportIncludesTax(event.target.value === '' ? null : event.target.value === 'true')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950">
