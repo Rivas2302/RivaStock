@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from './supplierListImportSource';
 
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock('./supabase', () => ({ supabase: { functions: { invoke: invokeMock } } }));
+
 describe('supplier list source extraction', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    invokeMock.mockReset();
+  });
   it('turns unstructured PDF or OCR text into rows for AI review', () => {
     expect(parseSupplierListText('Vaso térmico acero\nBotella deportiva 750 ml')).toMatchObject([
       { sourceRow: 1, name: 'Vaso térmico acero', supplierCost: null, error: 'La IA debe revisar el costo de esta fila.' },
@@ -30,25 +36,21 @@ describe('supplier list source extraction', () => {
       .toThrow('500 filas');
   });
 
-  it.each(['http://supplier.example/list', 'https://user:pass@supplier.example/list', 'https://192.168.1.12/list', 'https://catalog.local/list'])
+  it.each(['http://supplier.example/list', 'https://user:pass@supplier.example/list', 'https://192.168.1.12/list', 'https://catalog.local/list', 'https://supplier.example:8443/list'])
     ('rejects unsafe supplier page URL %s before making a request', async url => {
       await expect(extractSupplierListPageText(url)).rejects.toThrow();
+      expect(invokeMock).not.toHaveBeenCalled();
     });
 
-  it('reads public text pages without sending cookies', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('Producto\tCosto\nTaza\t2500', {
-      headers: { 'content-type': 'text/plain' },
-    }));
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(extractSupplierListPageText('https://supplier.example/list')).resolves.toContain('Taza');
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'omit', mode: 'cors', referrerPolicy: 'no-referrer' });
+  it('reads a public supplier page through the server proxy without forwarding page credentials', async () => {
+    invokeMock.mockResolvedValue({ data: { text: 'Producto\tCosto\nTaza\t2500' }, error: null });
+    await expect(extractSupplierListPageText('https://supplier.com/list')).resolves.toContain('Taza');
+    expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/list' } });
   });
 
-  it('rejects supplier pages above the two megabyte read limit', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('x'.repeat(2 * 1024 * 1024 + 1), {
-      headers: { 'content-type': 'text/plain' },
-    }));
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(extractSupplierListPageText('https://supplier.example/list')).rejects.toThrow('2 MB');
+  it('shows a Spanish fallback when the server cannot read a supplier page', async () => {
+    invokeMock.mockResolvedValue({ data: null, error: new Error('Function returned 502') });
+    await expect(extractSupplierListPageText('https://supplier.com/list')).rejects.toThrow('No pudimos leer ese sitio');
   });
+
 });

@@ -1,4 +1,5 @@
 import { parseSupplierListRows, type SupplierListDraftRow } from './supplierListImport';
+import { supabase } from './supabase';
 
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const MAX_SOURCE_TEXT = 60_000;
@@ -72,11 +73,12 @@ function validateSupplierPageUrl(rawUrl: string): URL {
   let url: URL;
   try { url = new URL(rawUrl.trim()); }
   catch { throw new Error('Ingresá un enlace HTTPS válido.'); }
-  const host = url.hostname.toLocaleLowerCase('en-US');
-  const localHost = host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')
-    || host === '::1' || host === '127.0.0.1' || host.startsWith('10.') || host.startsWith('192.168.')
-    || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-  if (url.protocol !== 'https:' || url.username || url.password || localHost) {
+  const hostname = url.hostname.toLocaleLowerCase('en-US').replace(/^\[|\]$/g, '');
+  const localSuffixes = ['.localhost', '.local', '.internal', '.test', '.invalid', '.example'];
+  const numericHost = hostname.includes(':') || /^\d+(?:\.\d+){0,3}$/.test(hostname);
+  if (url.protocol !== 'https:' || url.username || url.password || url.port
+    || hostname === 'localhost' || localSuffixes.some(suffix => hostname.endsWith(suffix))
+    || numericHost || !hostname.includes('.')) {
     throw new Error('El enlace debe ser HTTPS y apuntar a un sitio público.');
   }
   return url;
@@ -84,54 +86,19 @@ function validateSupplierPageUrl(rawUrl: string): URL {
 
 export async function extractSupplierListPageText(rawUrl: string): Promise<string> {
   const url = validateSupplierPageUrl(rawUrl);
-  let response: Response;
+  let data: { text?: unknown; error?: unknown } | null;
+  let error: Error | null;
   try {
-    response = await fetch(url, {
-      credentials: 'omit',
-      mode: 'cors',
-      redirect: 'follow',
-      referrerPolicy: 'no-referrer',
-      signal: AbortSignal.timeout(12_000),
-      headers: { Accept: 'text/html,text/plain;q=0.9' },
-    });
+    ({ data, error } = await supabase.functions.invoke('fetch-url', { body: { url: url.href } }));
   } catch {
-    throw new Error('No pudimos leer el enlace. El sitio debe permitir lectura desde el navegador (CORS).');
+    throw new Error('No pudimos leer el enlace. Probá de nuevo o subí una captura o planilla.');
   }
-  if (!response.ok) throw new Error(`El sitio respondió ${response.status}.`);
-  if (response.url) validateSupplierPageUrl(response.url);
-  const contentLength = Number(response.headers.get('content-length') ?? 0);
-  if (contentLength > 2 * 1024 * 1024) throw new Error('La página supera el límite de 2 MB.');
-  const source = await readLimitedResponseText(response, 2 * 1024 * 1024);
-  if (/text\/html/i.test(response.headers.get('content-type') ?? '')) {
-    const document = new DOMParser().parseFromString(source, 'text/html');
-    document.querySelectorAll('script,style,nav,header,footer,form,iframe,svg').forEach(element => element.remove());
-    const tables = Array.from(document.querySelectorAll('table')).flatMap(table => Array.from(table.querySelectorAll('tr'))
-      .map(row => Array.from(row.querySelectorAll('th,td')).map(cell => cell.textContent?.trim() ?? '').join('\t')));
-    const pageText = tables.length > 1 ? tables.join('\n') : (document.body.innerText || document.body.textContent || '');
-    return pageText.split(/\r?\n/).map(line => line.trim()).filter(Boolean).join('\n').slice(0, MAX_SOURCE_TEXT);
+  if (error) {
+    const message = typeof data?.error === 'string' ? data.error : '';
+    if (message) throw new Error(message);
+    if (error.message.includes('429')) throw new Error('Llegaste al límite de consultas. Probá de nuevo en un minuto.');
+    throw new Error('No pudimos leer ese sitio. Podés subir una captura o planilla.');
   }
-  return source.trim().slice(0, MAX_SOURCE_TEXT);
-}
-
-async function readLimitedResponseText(response: Response, maximumBytes: number): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return (await response.text()).slice(0, maximumBytes);
-  const decoder = new TextDecoder();
-  let byteCount = 0;
-  let text = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      byteCount += value.byteLength;
-      if (byteCount > maximumBytes) {
-        await reader.cancel();
-        throw new Error('La página supera el límite de 2 MB.');
-      }
-      text += decoder.decode(value, { stream: true });
-    }
-    return text + decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
+  if (typeof data?.text !== 'string') throw new Error('No encontramos texto para revisar en esa página.');
+  return data.text.slice(0, MAX_SOURCE_TEXT);
 }
