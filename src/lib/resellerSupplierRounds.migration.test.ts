@@ -6,6 +6,14 @@ const migration = readFileSync(
   resolve(process.cwd(), 'supabase/migrations/20261106221500_reseller_supplier_order_rounds.sql'),
   'utf8',
 );
+const codeFix = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20261107121255_fix_supplier_round_audience_order_code.sql'),
+  'utf8',
+);
+
+const roundOrderCodeFix = codeFix.match(
+  /CREATE OR REPLACE FUNCTION public\.create_public_reseller_supplier_round_order\([\s\S]*?\n\$\$;/,
+)?.[0] ?? '';
 
 describe('reseller supplier order rounds migration', () => {
   it('keeps rounds and order snapshots scoped to the business owner', () => {
@@ -50,5 +58,26 @@ describe('reseller supplier order rounds migration', () => {
     expect(migration).toContain("NULLIF(btrim(catalog.whatsapp_number), '') IS NOT NULL");
     expect(migration.toLocaleLowerCase()).not.toContain('alias');
     expect(migration.toLocaleLowerCase()).not.toContain('cbu');
+  });
+
+  it('accepts a round audience code only for the explicitly requested round order', () => {
+    expect(roundOrderCodeFix).not.toBe('');
+    expect(roundOrderCodeFix).toMatch(/WHERE id = p_round_id AND user_id = v_catalog_owner/);
+    expect(roundOrderCodeFix).toContain('v_round.audience_code_hash = v_code_hash');
+    expect(roundOrderCodeFix).toContain('v_round_code_matches := v_round.audience_code_hash IS NOT NULL');
+    expect(roundOrderCodeFix).toContain('AND supplier_list_id = v_supplier_list.id');
+    expect(roundOrderCodeFix).toContain('AND price_list_id = v_list.id');
+    expect(roundOrderCodeFix).toContain("INSERT INTO reseller_supplier_round_orders (");
+    expect(roundOrderCodeFix).not.toContain('create_public_catalog_order(');
+  });
+
+  it('rejects wrong and other-round codes without widening general reseller access', () => {
+    expect(roundOrderCodeFix).toContain('IF NOT v_list_code_matches AND NOT v_round_code_matches THEN');
+    expect(roundOrderCodeFix).toMatch(/v_round_code_matches := v_round\.audience_code_hash IS NOT NULL\s+AND v_round\.audience_code_hash = v_code_hash/);
+    expect(roundOrderCodeFix).toMatch(/WHERE id = p_round_id AND user_id = v_catalog_owner[\s\S]*?IF v_round\.id IS NULL OR v_round\.status <> 'open'/);
+    expect(roundOrderCodeFix).not.toContain('OR EXISTS (SELECT 1 FROM reseller_supplier_order_rounds');
+    expect(codeFix).toMatch(/^\s*--[\s\S]*CREATE OR REPLACE FUNCTION/);
+    expect(codeFix).not.toMatch(/^\s*(?:CREATE TABLE|ALTER TABLE|DROP (?:TABLE|FUNCTION)|DELETE FROM)\b/im);
+    expect(codeFix).not.toContain('public.create_public_catalog_order(');
   });
 });

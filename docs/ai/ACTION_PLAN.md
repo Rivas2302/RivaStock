@@ -493,7 +493,7 @@ Riva aprobó el rediseño y pidió: **(1)** que el catálogo sea **mucho más ll
 
 ---
 
-### [x] I19 Listas de proveedores y pedidos por encargo para revendedores — **maquetas aprobadas por Riva el 06/11**
+### [x] I19 Listas de proveedores y pedidos por encargo para revendedores — **maquetas aprobadas por Riva el 06/11; smoke de producción cerrado el 07/11 tras corregir el código de ronda**
 Idea de Riva: cuando va a hacerle un pedido a un proveedor, carga la lista de ese proveedor (con fotos), le suma su %, la publica para **sus revendedores de General Pico** como productos **por encargo** (sin stock), ellos piden por la web antes de una hora de cierre, **pagan todo antes** y Riva hace **un solo pedido** al proveedor. Maquetas: `docs/design/supplier-lists/` — `Main`, `Importar`, `Revisar`, `AbrirPedido`, `Cierre`, `RevCatalogo`, `RevPago` (`.dc.html`).
 - **Reusar lo que ya existe** antes de crear cosas nuevas: tablas `reseller_supplier_lists` y `reseller_supplier_list_items` (migración 0044), `price_lists` / `price_list_items` con `availability = on_order`, productos `catalogOnly`, reglas comerciales (mínimos), código de acceso de revendedor, `ResellerPriceListModal.tsx`, `src/lib/priceLists.ts`, `publicCatalogAvailability.ts` y "Compras a proveedores" (`SupplierOrders.tsx`). Documentar en el PR qué se reusó y qué se agregó.
 - **1 · Listas de proveedores (`Main`):** lista por proveedor con estado (Borrador, Abierta hasta…, Cerrada), cantidad de productos, margen y accesos rápidos.

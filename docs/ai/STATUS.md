@@ -1,12 +1,15 @@
-# 2026-11-07 03:50 ART — I18/I19 desplegadas; verificaciones de producción completadas
+# 2026-11-07 09:21 ART — I19 corregida y smoke de producción cerrado
 
 - **Backup diario verificado:** `%USERPROFILE%\rivastock-backups\20261107T063007Z`; 96 tablas, 14.934 filas, 827 objetos de Storage y 149.360.281 bytes. `backup-state.json` indica `2026-11-07 / passed`; 831 archivos, ninguno vacío.
 - **Migraciones selectivas aplicadas** en `RivaStock_Oficial`: `public_catalog_presentation` y `reseller_supplier_order_rounds`. Verifiqué la columna `catalog_config.presentation`, las tres tablas de I19, siete funciones y las políticas RLS. Las dos migraciones E8 anteriores siguen fuera del push.
 - **Deploy:** `23a6e00` está en `main`; `git pull --rebase origin main` pasó antes del push. Vercel indicó `success` y la UI de producción cargó las pantallas de catálogo y listas de proveedor.
-- **Smokes autenticados:** I17b e I19b ya estaban verificados en producción; I20 se verificó en móvil. Para esta entrega revisé Personalizar catálogo, temas Normal/Navidad/Día del Niño/Año Nuevo y vista previa; también abrí Lista revendedores, su editor e importación. No hubo errores de página ni escrituras de negocio; solo RPCs de lectura de autenticación y plan.
-- Local I18/I19: lint, 79 pruebas focales, build, `perf:check` y Playwright de catálogo 5/5 pasaron. El flujo de margen/redondeo, rondas y pedidos está cubierto por tests locales.
-- **Desvío de smoke I19:** no creé una ronda/pedido QA en producción porque la app no ofrece una acción normal para borrar rondas. Verifiqué el editor y el importador sin guardar. El selector de foto/cámara y el recorte manual están cubiertos por tests locales; el recorte automático queda como mejora posterior.
-- I18 e I19 quedan marcadas `[x]`. No toqué Facebook, su extensión ni automatización.
+- **Smokes I18:** en PC y móvil, Configuración → Catálogo Público → Personalizar catálogo mostró los temas Normal/Navidad/Día del Niño/Año Nuevo y la vista previa. El catálogo público abrió en ambos tamaños. La pasada final tuvo cero errores de página/consola y cero solicitudes fallidas.
+- **Hallazgo inicial I19:** el primer pedido de prueba reveló HTTP 400 `Codigo de acceso invalido`: el RPC de pedido general volvía a exigir el código global. No dejó pedido; cerré la ronda y limpié sus filas exactas, restaurando la fila de precios afectada desde el backup. La corrección y smoke completo siguen debajo.
+- **Corrección autorizada:** backup fresco `%USERPROFILE%\rivastock-backups\20261107T121012Z` verificado (`passed`: 99 tablas/14.934 filas, 827 objetos/149.360.281 bytes). Apliqué `20261107121255_fix_supplier_round_audience_order_code.sql`, solo `CREATE OR REPLACE FUNCTION`; Supabase registró versión `20261107121631`. La función valida el `round_id` solicitado y productos de esa lista, y no reenvía el código de ronda al RPC del catálogo general.
+- **Pruebas de acceso:** Vitest focal pasó **6/6**. Una transacción de producción confirmó que el código correcto devuelve un pedido y que el código equivocado, el código de otra ronda, `unlock_reseller_catalog` y el RPC general de pedidos rechazan el código de ronda. La transacción terminó en `ROLLBACK` y no dejó filas.
+- **Smoke real I19:** el catálogo móvil mostró solo la ronda A al ingresar su código; envié un pedido `[QA]` por 2 unidades (total $71.400), marqué pagado, cerré la ronda y confirmé el pedido consolidado con su línea. Cerré también la ronda B.
+- **Limpieza QA:** eliminé por IDs exactos el pedido, rondas y lista de prueba; restauré desde el backup la fila preexistente de `price_list_items`. Verificación: 0 filas de prueba y fila restaurada. No se creó ningún proveedor ni producto QA.
+- `npm run lint` y Vitest focal pasaron después de la corrección (**6/6**). Vercel para `23a6e00`: `success`; la corrección es solo SQL y tests, sin cambios de frontend. I18 e I19 están verificadas. No apliqué migraciones E8, no usé `db push` y no toqué Facebook, su extensión ni automatización.
 
 # 2026-11-07 00:08 ART — I18/I19 preparados; aguardando backup diario del 07/11
 
