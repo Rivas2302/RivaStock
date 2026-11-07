@@ -557,7 +557,7 @@ Riva probó I18 en producción desde el celular y encontró estos problemas. Ade
 
 ---
 
-### [x] I21 Proxy para leer listas de proveedores desde URL — **pedido de Riva el 07/11**
+### [ ] I21 Proxy para leer listas de proveedores desde URL — **pedido de Riva el 07/11**
 
 Hoy al pegar el link de la página de un proveedor aparece el error "No pudimos leer el enlace. El sitio debe permitir lectura desde el navegador (CORS)". Es una limitación de los navegadores: no pueden leer HTML de sitios externos directamente.
 
@@ -596,13 +596,73 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 **Notificación por email de nuevo pedido (nuevo feature):**
 6. Cuando un cliente completa un pedido desde el catálogo público, enviar un **email de notificación al dueño del negocio** (el email registrado en la cuenta de Supabase Auth del propietario del catálogo). El email debe incluir: nombre del cliente, teléfono, email, dirección, nota, lista de productos con cantidades y precios, y total. Implementar como Edge Function de Supabase (`send-order-notification`) o como acción en la función existente de creación de pedidos. Usar Resend (ya configurado en el proyecto) o el SMTP de Supabase si Resend no está disponible. No enviar email de prueba; disparar solo en producción cuando `NODE_ENV !== 'test'`.
 
-7. [x] **Compresión de PDF grande antes de subir:** si el archivo elegido es un PDF que supera 10 MB, comprimirlo en el cliente (usando `pdf-lib` o `pdfjs-dist` para reducir resolución de imágenes embebidas) antes de subirlo a Supabase Storage. El usuario no hace nada extra — elige el archivo y la app lo procesa sola. Mostrar un indicador "Comprimiendo..." mientras trabaja. Si después de comprimir sigue superando 10 MB, subirlo igual hasta 50 MB (ajustar el límite de validación y Storage de `SupplierOrders.tsx` de 10 MB a 50 MB).
+7. **Compresión de PDF grande antes de subir:** si el archivo elegido es un PDF que supera 10 MB, comprimirlo en el cliente (usando `pdf-lib` o `pdfjs-dist` para reducir resolución de imágenes embebidas) antes de subirlo a Supabase Storage. El usuario no hace nada extra — elige el archivo y la app lo procesa sola. Mostrar un indicador "Comprimiendo..." mientras trabaja. Si después de comprimir sigue superando 10 MB, subirlo igual hasta 50 MB (ajustar el límite de validación de `SupplierListPhotoPicker.tsx` de 10 MB a 50 MB).
 
 - **Tests:** Playwright móvil 360: sin chip "PRINCIPAL", sin badge "Últimas unidades", sin texto de stock en tarjetas, agregar al carrito funciona aunque stock sea 0. Revisar botón "Convertir en Venta" visible en modo oscuro. Email: smoke manual desde catálogo de prueba (verificar que llega, no contar como venta real). PDF >10 MB: sube sin error.
 - **Cuándo:** es lo próximo, antes de cualquier otra cosa.
 - **Commit:** `fix(catalog): remove internal badges, lift stock restriction, fix convert-to-sale button; feat(orders): email notification on new order`
 
 ---
+
+### [ ] I23 Correcciones catálogo (ronda 3) — **pedido de Riva el 07/11 12:57 (con capturas)**
+
+1. **Toggle "Mostrar productos sin stock":** agregar en la sección "Qué se muestra" de la configuración del catálogo (`CatalogCustomizer.tsx`) un nuevo toggle `showOutOfStock` (default: `false`). Cuando está desactivado, los productos con `stock <= 0` y `availability !== 'on_order'` no aparecen en la grilla ni son accesibles por URL directa. Cuando está activado, se muestran con el badge "AGOTADO" pero se pueden agregar al carrito igual (ya resuelto en I22). Si el dueño quiere ofrecer un producto sin stock, lo marca como "por pedido" desde la app.
+2. **"Disponible · X unidades" en la ficha:** `PublicProductPage.tsx` sigue mostrando la cantidad de stock ("Disponible · 1 unidades", "Sin stock"). Quitarlo — mismo criterio que las tarjetas en I22: no mostrar stock ni cantidad al cliente.
+3. **Cuadrado en categorías:** el badge/chip de categorías en las tarjetas sigue mostrando un rectángulo en vez del círculo de la maqueta. Revisar el CSS — probablemente falta `rounded-full` o hay un contenedor padre que corta el `border-radius`. Verificar en móvil 360 px.
+4. **Más espacio debajo de productos relacionados:** en la ficha del producto (`PublicProductPage.tsx`), la sección "Productos relacionados" queda muy pegada al borde inferior. Agregar `pb-8` o `mb-8` al contenedor de esa sección.
+
+- **Tests:** Playwright móvil 360: productos con stock 0 no aparecen en la grilla, ficha sin texto de stock, categorías circulares sin rectángulo, productos relacionados con padding inferior visible.
+- **Cuándo:** es lo próximo, antes de cualquier otra cosa.
+- **Commit:** `fix(catalog): hide out-of-stock products, remove stock text from detail, fix category shape, add related products spacing`
+
+---
+
+### [ ] I24 Importar lista del proveedor: que funcione de punta a punta — **pedido de Riva el 07/11 14:46 (prioridad máxima)**
+
+**Objetivo de Riva:** pegar el enlace (o subir el PDF) del proveedor, revisar y agregar todo de una. Hoy **no funciona ninguna de las dos vías**. Diagnóstico verificado en `origin/main` (`edf48a9`):
+
+| Síntoma | Causa real |
+|---|---|
+| «Elegí un proveedor e ingresá una instrucción de hasta 8000 caracteres» al tocar **Leer lista con IA** | `buildSupplierListAiPrompt` (`src/lib/supplierListImport.ts`) manda **todas las filas en un solo pedido** a `ai-bridge`, que rechaza todo lo que supere 8000 caracteres (`supabase/functions/ai-bridge/index.ts:389`). Una página o un PDF real siempre lo supera. |
+| El enlace de Mr Tecno trae basura («Ir al contenido») sin precios | El proxy `fetch-url` convierte la portada en texto plano y `parseSupplierListText` hace **una fila por línea**. Además descarta las fotos (`<img>`). No es un problema de JavaScript. |
+| PDF grande del proveedor falla | `extractSupplierListFileText` sigue limitado a **10 MB** y 40 páginas (`src/lib/supplierListImportSource.ts`). La compresión de I22 se hizo en **Pedidos a proveedores** (`SupplierOrders.tsx`), que es otra pantalla. Para importar no hace falta comprimir: el PDF se lee en el navegador y no se sube. |
+| Aunque lea bien, agregar es inviable | Cada fila abre el alta de producto **de a una** («Crear y agregar»). Con cientos de productos no se puede usar. |
+
+**Dato clave:** `mrtecno.com.ar` es WooCommerce y expone la **Store API pública**: `/wp-json/wc/store/v1/products?per_page=100&page=N` devuelve nombre, código, precio (`prices.price` + `currency_minor_unit`), moneda (`currency_code`, hoy **USD**), categorías e imágenes, sin login ni IA. La portada responde a veces con un desafío anti-bots («One moment, please…»); la API no.
+**Verificado 07/11 15:15:** la API guarda los precios **en dólares** y la web los muestra en pesos convirtiendo con la cotización del proveedor. Ejemplo: `1015 – LAMPARA SOLAR` → API `price: "775"`, `currency_code: "USD"`, `minor_unit: 2` (= USD 7,75); la web muestra **$12.400,00** → cotización de Mr Tecno ≈ **1600**. Hay productos con `price: "0"` (ej. `C91015`): marcarlos «Sin precio, revisar», nunca importarlos con costo 0. Los nombres vienen con entidades HTML (`&#8211;`): decodificarlas. El código del producto viene en `sku` (ej. `1015`, `YH88214N`): usarlo para reimportar sin duplicar.
+
+**Fase 1 — Lectura estructurada por enlace (sin IA)**
+1. En `fetch-url` agregar un modo `catalog`: con la URL pegada (cualquier página del sitio), probar en orden:
+   a) **WooCommerce Store API** del mismo dominio, paginando en el servidor hasta 30 páginas × 100 (cortar cuando venga vacía).
+   b) **Shopify** `/products.json?limit=250&page=N` del mismo dominio.
+   c) **JSON-LD** `Product`/`ItemList`/`Offer` dentro del HTML.
+   d) Si nada aplica: el texto visible actual (Fase 3 lo procesa).
+   Devolver `{ source: 'woocommerce'|'shopify'|'jsonld'|'text', currency, items:[{ code, name, price, category, imageUrl, url }] }`.
+2. Mantener las protecciones actuales (solo HTTPS, DNS público, sin cookies, límite de bytes, rate limit). Aceptar `application/json` solo para esos endpoints. Permitir hasta 3 redirecciones **revalidando DNS en cada salto** (hoy cualquier redirección falla con «El sitio redirige»). El rate limit cuenta 1 por importación, no por página.
+3. Tests con fixtures de WooCommerce, Shopify, JSON-LD, desafío anti-bots (debe dar un mensaje claro) y SSRF (redirect a IP privada).
+
+**Fase 2 — PDF y planillas grandes**
+1. Importación: límite **50 MB**, todas las páginas hasta 300, con progreso «Leyendo página X de Y». Sin rasterizar (se pierde el texto).
+2. PDF escaneado (sin texto): renderizar páginas con `pdfjs-dist` y pasarlas por el OCR que ya existe (tesseract), con progreso y límite de 30 páginas; avisar si es más largo.
+3. Subir `MAX_SOURCE_ROWS` a 3000 (Excel y PDF).
+
+**Fase 3 — Texto suelto: parser propio + IA solo para lo dudoso**
+1. Parser determinístico antes de la IA: detectar precios (`$ 12.345,67`, `USD 15,30`, `12345.00`), unir nombre y precio aunque estén en líneas vecinas, descartar ruido de navegación (menú, «Ir al contenido», carrito, footer).
+2. **Leer lista con IA** solo manda las filas que quedaron con error, **en tandas de menos de 7000 caracteres** (varias tareas en secuencia, con «Revisando con IA: tanda 2 de 5») y une los resultados. Nunca un pedido mayor a 8000.
+3. Si la central de IA no responde, el resto de la lista igual se puede usar; mensaje claro de que la IA está desconectada.
+
+**Fase 4 — Revisión y alta masiva**
+1. Moneda: si la fuente viene en **USD**, mostrarlo arriba y pedir **cotización** (campo numérico, se recuerda la última usada) para convertir el costo a pesos. Nunca mezclar monedas en silencio.
+2. Resumen arriba: «312 productos · 298 listos · 14 para revisar», filtro por categoría, buscador, y lista compacta paginada (no una tarjeta grande por fila).
+3. Botón **«Agregar los 298 listos»**: crea en lote los productos **por pedido** de ese proveedor con costo, margen, redondeo, categoría y precio calculado, con barra de progreso, por tandas, reintentable.
+4. **Reimportar actualiza, no duplica:** si ya existe un producto de ese proveedor con el mismo código (`barcode`) o el mismo nombre normalizado, actualizar costo y precio. Mostrar «Nuevos / Actualizados / Sin cambios» antes de confirmar.
+5. Fotos: guardar la URL de imagen de la fuente solo si vino de la fuente (nunca inventada). Si se descargan, que sea vía el proxy y comprimidas a WebP ~400 px < 60 KB (como pide el Bloque I). Si es muy costoso, dejarlo para después y avisar.
+
+**Verificación obligatoria (no cerrar sin esto)**
+- Playwright con fixtures: enlace WooCommerce → 3 páginas → revisión → alta masiva → reimportación que actualiza.
+- **Prueba real en producción** después del deploy, con `https://mrtecno.com.ar/` en modo solo lectura: llegar a la pantalla de revisión con productos, precios en USD y categorías. **No** confirmar el alta masiva en la base real sin OK de Riva.
+- PDF de prueba de 25 MB con texto y uno escaneado.
+- Confirmar que Vercel desplegó el commit (estado **Current**). Si GitHub no dispara el deploy, avisar a Riva en vez de dar por cerrado.
 
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 

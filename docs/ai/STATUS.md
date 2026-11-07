@@ -4,7 +4,7 @@
 - Quité la disponibilidad y el conteo de unidades de la ficha pública, redondeé el chip de categoría y agregué 32 px debajo de productos relacionados.
 - No requiere migración: `catalog_config.show_out_of_stock` ya existe desde `0001_init.sql`.
 - **Verificación local:** `npm run lint`, `npm run build`, `npm test -- --maxWorkers=2` (192 archivos / 1.115 pruebas) y `npm run test:e2e -- e2e/public-catalog.spec.ts` (13/13, Chromium a 360 px y PC) pasaron. La suite usó variables Supabase ficticias para inicializar módulos; no se leyeron ni usaron credenciales reales. El test comprueba toggle/default, ocultamiento y compra, excepción `on_order`, ruta directa, chip circular sin recorte, ausencia de texto de stock y espacio inferior.
-- Commit y verificación del despliegue en Vercel pendientes.
+- Commit `edf48a9` ya está en `origin/main` tras `git pull --rebase origin main`. **Deploy pendiente:** GitHub todavía no informa checks de Vercel para ese SHA y `rivastock.vercel.app` sirve `/assets/index-WCO-CXTd.js`, que apunta al chunk antiguo `PublicCatalog-O43hs2ld.js`; no contiene I23. Dejé I23 sin marcar. Instalé Vercel CLI 65.12.1 mediante `npx` y ejecuté `vercel --prod`; falló porque no hay credenciales locales (`No existing credentials found`). Evité otro push solo de documentación.
 
 # 2026-11-07 — I22 ítem 7: compresión de PDF antes de subir
 
@@ -1617,3 +1617,14 @@ Sin toque en src/, supabase/ ni extensions/.
 - Publicación: `0e0e9f2` está en `main`; producción responde HTTP 200 y sirve la versión corregida. En Playwright móvil (390×844), la burbuja de categoría mide 56×56 px con radio circular; la ficha tiene Agregar al carrito visible dentro de la primera pantalla y el flujo agrega el producto al carrito sin enviar el pedido. Consola sin errores.
 - Comparación visual terminada: Main, Producto, Carrito y MainPC se revisaron contra sus maquetas en producción. Navidad se comparó con el fixture de tema local porque el catálogo real no tiene Navidad activa; no cambié la configuración de producción. ConfigCatalogo se revisó en producción; ConfigOfertas y ConfigWhatsApp quedaron cubiertas por el código y tests focales.
 - Verificación local: Playwright de catálogo **9/9**, Vitest focal **16/16**, lint, build y `git diff --check` aprobados. Capturas de producción: `%TEMP%\rivastock-i18b-production\{main-mobile-viewport,product-mobile-viewport,cart-mobile-viewport,main-pc}.png`.
+
+## 2026-11-07 — I24 implementación completa; publicación web pendiente
+
+- Se copiaron al worktree las instrucciones vigentes de `ACTION_PLAN.md` del Escritorio. I24 sigue sin marcar como cerrada hasta completar el deploy y la revisión real de solo lectura.
+- Fases 1–4 implementadas en cuatro commits locales: `ec779d5` (catálogo estructurado), `7a7250b` (PDF/planillas grandes), `3b8fe70` (parser y revisión IA por tandas) y `fb5f381` (revisión, alta masiva y reimportación).
+- Backup previo a la migración: `%USERPROFILE%\rivastock-backups\20261107T190412Z`, verificación `passed`: 100 tablas / 15.031 filas y 827 objetos / 149.360.281 bytes.
+- Migración selectiva `20261107190825_supplier_import_bulk_limit` aplicada a `RivaStock_Oficial`; solo reemplaza las funciones de guardado de listas/precios y eleva el límite de 500 a 3.000. Se confirmó en el historial remoto. No se usó `db push` ni se tocaron migraciones E8.
+- Edge Function `fetch-url` desplegada como versión 2, `ACTIVE`, `verify_jwt=true`; incorpora modo de catálogo manteniendo DNS público, HTTPS, límite de bytes, redirecciones revalidadas y un solo rate limit por importación.
+- Verificación local: `npm run lint` pasó; suite Vitest completa **194 archivos / 1.128 pruebas aprobadas**; Playwright de importación **1/1**; las pruebas focales del módulo **34/34**. Incluye PDF seleccionable de 25 MB y prueba unitaria del camino OCR de un PDF escaneado (render + llamada al OCR con el motor aislado en el test).
+- `npm run build` pasó. `npm run perf:check` sigue fallando por el presupuesto del bundle de `src/pages/Knowledge.tsx`, que I24 no modifica; los bundles de entrada y la pantalla AIHub no son el fallo señalado.
+- Pendiente: rebase/push de los commits a `main`, verificar que Vercel quede `Current` y hacer el recorrido real de Mr Tecno hasta la revisión, sin confirmar altas ni escribir productos de producción. No se generaron datos QA en producción.
