@@ -1672,6 +1672,7 @@ Sin toque en src/, supabase/ ni extensions/.
 ## 2026-11-07 — I28: corrección de ancho móvil antes del cierre
 
 - El smoke del despliegue `97aca48` mostró que el flujo de importación nuevo montaba debajo de sus pasos el selector de productos heredado del modal. En celulares, los nombres largos de ese selector producían desborde horizontal. Lo limité al modo modal; la página `/revendedores` conserva solo el flujo por pasos y el modal viejo mantiene su selector.
-- Agregué una regresión Playwright que comprueba que el selector heredado no aparece en la página I28, además de recorrer el importador a 360 y 1440 px.
-- Verificación local: `npm test` **1.142/1.142**, lint y build aprobados; Playwright de `e2e/supplier-list-import.spec.ts` **7/7**.
-- Despliegue y smoke de producción de esta corrección pendientes; I28 e I25 punto 1 no se marcan completos hasta terminar esa comprobación.
+- `a0ffcd9` quedó en `main` y Vercel informó `success`. El smoke autenticado usó la tarjeta real de Mr Tecno y leyó `https://mrtecno.com.ar/productos/`: cotización detectada **1.600** a partir de 3 productos; HM352, USD 6,25, mostró costo local **$10.000**; 1.400 productos importados en la revisión, **1.393 con foto / 7 sin foto**. La acción mostró 867 listos con foto. No se confirmó el alta y no hubo escrituras de productos, categorías o listas; consola y errores de página vacíos.
+- La revisión visual posterior detectó un segundo overflow dentro de `.app-content`: los campos de búsqueda y categoría de la revisión tenían ancho intrínseco mayor que el contenedor. Se limitaron con `min-w-0`/`w-full` y la regresión Playwright ahora mide el scroll horizontal del contenedor de la app a 360 px.
+- Verificación local antes del segundo ajuste: `npm test` **1.142/1.142**, lint y build aprobados; Playwright de `e2e/supplier-list-import.spec.ts` **7/7**. Tras el ajuste, lint/build y Playwright focal **7/7** pasaron.
+- Despliegue y smoke de producción del ajuste del overflow pendientes; I28 e I25 punto 1 no se marcan completos hasta terminar esa comprobación.

@@ -295,6 +295,9 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     await page.getByLabel('Buscar productos importados').fill('Lámpara solar');
     await expect(page.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
     await expect(page.getByLabel('Productos importados', { exact: true })).toBeVisible();
+    if (width === 360) {
+      await expect.poll(() => page.locator('.app-content').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    }
     const before = products.length;
     await page.getByTestId('supplier-import-add-filtered').click();
     await expect.poll(() => products.length).toBe(before + 1);
