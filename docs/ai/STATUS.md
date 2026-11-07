@@ -1,4 +1,4 @@
-# 2026-11-07 15:47 ART — I22 catálogo/pedidos en curso
+# 2026-11-07 15:55 ART — I22 desplegado; email pendiente de remitente verificado
 
 - Leí I22 de la copia más reciente de `ACTION_PLAN.md`. Quité del catálogo público el chip de inventario, “Últimas unidades” y el texto de stock en tarjetas; permití cantidades retail de hasta 9.999 aunque el inventario esté en cero, tanto en las pantallas como en el RPC. El límite de stock para revendedores se conserva. El botón “Convertir en Venta” ahora es azul y legible en modo oscuro.
 - Agregué el email de notificación al propietario para pedidos retail, revendedor y rondas. El destinatario se obtiene de Auth desde servidor; la función no acepta email del navegador, incluye datos del pedido en HTML/texto, escapa contenido, deduplica por pedido y nunca registra PII. Solo admite producción y falla cerrada si no hay remitente verificado.
@@ -7,7 +7,9 @@
 - Desplegué `send-order-notification` v1 en `RivaStock_Oficial`, `verify_jwt=false`; el handler valida origen/entorno, resuelve destinatario de Auth y usa la clave idempotente `public-order/<id>`. Probe de producción devolvió `503 email_not_configured` antes de leer un pedido o llamar a Resend; no se envió email ni se creó pedido.
 - **Bloqueo de email:** `RESEND_API_KEY` existe, pero no está configurado `RESEND_FROM_EMAIL` y no hay dominio verificado conocido. No usé `onboarding@resend.dev` ni mandé correo de prueba. I22 queda `[ ]` hasta configurar remitente verificado y completar el smoke manual con pedido `[QA]`, verificar la llegada y eliminarlo desde la app.
 - Verificación local: `npm run lint` pasó; `npm test -- --maxWorkers=2` con URL/clave fixture `*.invalid` pasó **191 archivos / 1.091 pruebas**; Playwright móvil/PC `e2e/public-catalog.spec.ts` pasó **11/11**; `deno check` del Edge Function pasó; `npm run build` pasó. `npm run perf:check` reportó que ya excede el presupuesto `src/pages/Knowledge.tsx`, sin relación con I22; no modifiqué ese módulo.
-- **Pendiente antes del cierre:** commit, pull/rebase y push a `main`, deploy de Vercel, smoke del catálogo público y del botón de pedidos en producción. Mantener I22 sin `[x]` hasta completar también el smoke de email.
+- Commit `04dbbd0` quedó en `main`; Vercel marcó el deploy como `success`.
+- **Smoke de producción:** en viewport móvil 360 px, catálogo `rivatech-2`, la tarjeta sin stock quedó agregable; no apareció `PRINCIPAL`, `Últimas unidades`, `Disponible` ni `Stock:`. El carrito mostró cantidad 1; el detalle dejó subir a 2 y agregar. No envié el pedido. Consola, errores de página y solicitudes fallidas: cero. El botón azul en modo oscuro quedó cubierto por prueba JSDOM; no hice acciones en pedidos reales.
+- I22 sigue `[ ]` solo por el smoke de email: falta un remitente verificado. No se generó pedido QA ni se envió email; el endpoint ya está publicado y bloquea el remitente sandbox.
 
 # 2026-11-07 09:21 ART — I19 corregida y smoke de producción cerrado
 
