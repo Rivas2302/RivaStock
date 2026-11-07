@@ -206,3 +206,22 @@ test('a failed supplier image does not block other photos or product import', as
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(3);
   await expect(modal.getByText(/foto no se pudo copiar/)).toHaveCount(0);
 });
+
+test('supplier import previews load through the same-origin image proxy', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
+  await page.getByRole('button', { name: /Lista revendedores/ }).click();
+  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
+  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Buscar productos importados').waitFor();
+
+  const preview = modal.getByTestId('supplier-import-photo-preview').first();
+  await preview.scrollIntoViewIfNeeded();
+  await expect.poll(async () => modal.getByTestId('supplier-import-photo-image').first().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(1);
+  await expect(modal.getByText(/\d+ con foto · \d+ sin foto/)).toBeVisible();
+});

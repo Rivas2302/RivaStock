@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   Building2,
@@ -115,6 +115,71 @@ const buildDraftItem = (product: Product, list: PriceList, index: number): Price
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 });
+
+function SupplierImportPhotoPreview({
+  sourceUrl,
+  supplierUrl,
+  onFailure,
+}: {
+  sourceUrl: string;
+  supplierUrl: string;
+  onFailure: () => void;
+}) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const onFailureRef = useRef(onFailure);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => { onFailureRef.current = onFailure; }, [onFailure]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let active = true;
+    let requested = false;
+    let objectUrl: string | null = null;
+    const load = async () => {
+      if (requested) return;
+      requested = true;
+      try {
+        const image = await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+        objectUrl = URL.createObjectURL(image);
+        if (active) setPreviewUrl(objectUrl);
+        else URL.revokeObjectURL(objectUrl);
+      } catch {
+        if (active) {
+          setFailed(true);
+          onFailureRef.current();
+        }
+      }
+    };
+    if (typeof IntersectionObserver === 'undefined') void load();
+    else {
+      const observer = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          observer.disconnect();
+          void load();
+        }
+      }, { rootMargin: '80px' });
+      observer.observe(container);
+      return () => {
+        active = false;
+        observer.disconnect();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+    }
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [sourceUrl, supplierUrl]);
+
+  return (
+    <span ref={containerRef} data-testid="supplier-import-photo-preview" className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">
+      {previewUrl ? <img data-testid="supplier-import-photo-image" src={previewUrl} alt="" className="size-full object-cover" /> : failed ? 'Sin foto' : 'Cargando foto'}
+    </span>
+  );
+}
 
 export default function ResellerPriceListModal({
   isOpen,
@@ -1267,7 +1332,11 @@ export default function ResellerPriceListModal({
                             <div className="max-h-[34rem] space-y-2 overflow-y-auto" aria-label="Productos importados">
                               {supplierImportPageRows.map(entry => { const row = entry.row; const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl); const hasPhoto = Boolean(supplierImportPhotoFiles[row.sourceRow] || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow))); const previewCandidate = sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0]; const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null; return <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
                                   <div className="flex items-center gap-2 sm:w-24 sm:flex-col sm:items-start">
-                                    {previewUrl ? <img src={previewUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover"/> : <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">Sin foto</span>}
+                                    {previewUrl && sourceImageUrl
+                                      ? <SupplierImportPhotoPreview sourceUrl={sourceImageUrl} supplierUrl={supplierImportPageUrl} onFailure={() => setSupplierImportPhotoFailedRows(current => current.includes(row.sourceRow) ? current : [...current, row.sourceRow])} />
+                                      : previewUrl
+                                        ? <img src={previewUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover"/>
+                                        : <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">Sin foto</span>}
                                     <span role="status" aria-label={hasPhoto ? 'Producto con foto' : 'Producto sin foto'} className="text-[10px] font-semibold text-[var(--ink-muted)]">{hasPhoto ? 'Con foto' : 'Sin foto'}</span>
                                   </div>
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">

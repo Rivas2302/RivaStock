@@ -685,7 +685,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
    - Respetar los permisos actuales (`canWrite`, roles) y que las rutas viejas no se rompan.
    - Tests: navegación al módulo, que Stock ya no muestre los botones y que importar lista siga funcionando desde la página nueva.
 
-### [ ] I26 Cotización del proveedor detectada automáticamente — **pedido de Riva el 07/11 17:18 (después de I25)**
+### [x] I26 Cotización del proveedor detectada automáticamente — **pedido de Riva el 07/11 17:18 (después de I25)**
 
 **Problema:** Mr Tecno guarda los precios en USD (Store API) y su web los muestra en pesos con su propia cotización. Riva ve en la revisión «Costo (USD) 6,25» mientras en la web ve **$10.000** (`HM352`: 6,25 × 1.600 = 10.000). Tiene que cargar la cotización a mano y actualizarla cada vez que el proveedor la cambie.
 

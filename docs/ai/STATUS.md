@@ -1646,6 +1646,17 @@ Sin toque en src/, supabase/ ni extensions/.
 - Lectura de solo consulta en producción: **0** productos tienen `image_url` o elementos de `images` con URL remota de Mr Tecno; el paso de migrar registros previos no tiene objetivos.
 - I27 queda abierta: falta desplegar `fetch-url` y la web, verificar Vercel `Current`, y probar en producción el contador/miniaturas y HM352 sin confirmar el alta masiva. No se crearon ni modificaron productos de producción.
 
+### I26 — verificación de solo lectura en producción
+
+- Vercel confirmó `success` para `62abea9`. En el importador real de Mr Tecno se detectó cotización **1.600** comparando tres productos; HM352 mostró **USD 6,25 → $10.000**.
+- La revisión reportó **1.393 con foto / 7 sin foto** sobre 1.400 productos. Con búsqueda «joystick» la lista mostrada tuvo 24 filas y el botón indicó 10 productos listos con foto; la confirmación pidió exactamente esos 10. Se canceló y no hubo escrituras de productos o categorías ni errores de consola.
+- I26 queda cerrada según la prueba solicitada. El tipo de cambio de Mr Tecno quedó guardado por el flujo previsto de cotización por proveedor.
+
+### I27 — corrección de miniaturas de proveedores
+
+- En la revisión de producción, el navegador no pudo cargar directamente imágenes de `mrtecno.com.ar` bajo la CSP actual. No se amplió la CSP: las miniaturas ahora obtienen las imágenes mediante `fetch-url` autenticado, con el mismo control de origen, y las muestran desde un object URL local. La fila pasa a «Sin foto» si el proxy no logra obtenerla.
+- Se agregó cobertura Playwright del proxy de miniaturas. `e2e/supplier-list-import.spec.ts`: 4/4; lint y build pasaron. El smoke de producción con miniaturas queda pendiente del deploy de esta corrección.
+
 ### I27 — corrección de autenticación de fetch-url (seguimiento)
 
 - El primer despliegue de `fetch-url` (v4) quedó brevemente con `verify_jwt=false` por un valor local heredado en `supabase/config.toml`. Se detectó inmediatamente y se volvió a desplegar como v5 con `verify_jwt=true`; la consulta agregada de logs no encontró solicitudes a `fetch-url` durante esa ventana.
