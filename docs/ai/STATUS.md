@@ -1,10 +1,12 @@
-# 2026-11-06 23:56 ART — I20 desplegado; foto manual de I19 lista; backup diario verificado
+# 2026-11-07 03:50 ART — I18/I19 desplegadas; verificaciones de producción completadas
 
-- **I17b smoke de producción:** perfil persistente autenticado, viewport 390×844. El menú + no enfoca el buscador y no aparece “Abrir menú completo”.
-- **I20:** `53f0a60` está en producción con Vercel `success`. Smoke autenticado en `/ia?view=chats`: PC conectada, botón Nuevo chat encima de la barra inferior, pestañas visibles, sin botón flotante fijo y sin errores de página. Las pruebas móviles locales cubrieron abrir chat y mantener apretado/cancelar sin borrar datos reales. Queda documentado como cerrado.
-- **I19 fotos:** Revisar ahora permite elegir una foto de galería/cámara o recortar manualmente la captura subida. El archivo pasa a WebP, se guardan original y miniatura en `assets` y se limpia el Storage si falla la miniatura o el guardado del producto. El recorte automático queda como mejora posterior. Pruebas focalizadas **10/10**; `npm run lint` pasó.
-- **Backup diario:** el estado seguro de `run-daily-backup.ps1` indica `2026-11-06 / passed`; el log registra `20261106T063007Z`, 96 tablas, 14.403 filas, 789 objetos y 146.594.486 bytes. El runner verificó archivos, tamaños y hashes de Storage. No repetí el backup completo de 146 MB durante el mismo día.
-- No se aplicaron migraciones ni se publicó código de I19/I18 todavía. Próximo paso: integrar estas pantallas en la entrega, validar los dos cambios de esquema, usar el backup diario verificado y desplegar/smoke I18 e I19.
+- **Backup diario verificado:** `%USERPROFILE%\rivastock-backups\20261107T063007Z`; 96 tablas, 14.934 filas, 827 objetos de Storage y 149.360.281 bytes. `backup-state.json` indica `2026-11-07 / passed`; 831 archivos, ninguno vacío.
+- **Migraciones selectivas aplicadas** en `RivaStock_Oficial`: `public_catalog_presentation` y `reseller_supplier_order_rounds`. Verifiqué la columna `catalog_config.presentation`, las tres tablas de I19, siete funciones y las políticas RLS. Las dos migraciones E8 anteriores siguen fuera del push.
+- **Deploy:** `23a6e00` está en `main`; `git pull --rebase origin main` pasó antes del push. Vercel indicó `success` y la UI de producción cargó las pantallas de catálogo y listas de proveedor.
+- **Smokes autenticados:** I17b e I19b ya estaban verificados en producción; I20 se verificó en móvil. Para esta entrega revisé Personalizar catálogo, temas Normal/Navidad/Día del Niño/Año Nuevo y vista previa; también abrí Lista revendedores, su editor e importación. No hubo errores de página ni escrituras de negocio; solo RPCs de lectura de autenticación y plan.
+- Local I18/I19: lint, 79 pruebas focales, build, `perf:check` y Playwright de catálogo 5/5 pasaron. El flujo de margen/redondeo, rondas y pedidos está cubierto por tests locales.
+- **Desvío de smoke I19:** no creé una ronda/pedido QA en producción porque la app no ofrece una acción normal para borrar rondas. Verifiqué el editor y el importador sin guardar. El selector de foto/cámara y el recorte manual están cubiertos por tests locales; el recorte automático queda como mejora posterior.
+- I18 e I19 quedan marcadas `[x]`. No toqué Facebook, su extensión ni automatización.
 
 # 2026-11-07 00:08 ART — I18/I19 preparados; aguardando backup diario del 07/11
 
@@ -1553,3 +1555,13 @@ Sin toque en src/, supabase/ ni extensions/.
   - I20, opción B: copié `docs/design/mobile-ai/OpcionB.dc.html`; rehice el encabezado móvil, pasé Nuevo chat al encabezado, eliminé el botón flotante y los tres puntos, añadí tarjetas con iconos por tema, estado “Respondiendo…”, grupos Hoy/Esta semana/Anteriores y hoja de acciones solo para eliminar por pulsación larga. No hay `pinned_at` ni título editable; se difieren sin migración, como permite el plan.
   - Verificación local del worktree limpio: lint aprobado, Vitest focal **29/29**, Playwright de chats **6/6**, `npx vite build` y `npm run perf:check` aprobados. También pasó Playwright de I19b/I17b: **10 aprobados, 2 saltados** (desktop).
   - I20 sigue `[ ]` hasta publicar y hacer smoke móvil en producción. No apliqué migraciones; I18/I19 esperan backup diario verificado.
+
+## 2026-11-07 — I18/I19 migradas y desplegadas; validación de producción
+
+- **Backup diario verificado:** `%USERPROFILE%\rivastock-backups\20261107T063007Z`; 96 tablas, 14.934 filas, 827 objetos de Storage (149.360.281 bytes). Estado `passed`, cero archivos vacíos; `schema.sql`, `data.sql`, `storage-manifest.json` y `table-counts.csv` presentes y no vacíos.
+- **Migraciones selectivas aplicadas** a `RivaStock_Oficial`: `public_catalog_presentation` y `reseller_supplier_order_rounds`. `catalog_config.presentation`, tres tablas I19, siete funciones y sus políticas RLS aparecen en producción. No se ejecutó `db push`; las migraciones E8 pendientes permanecen sin aplicar.
+- **Deploy:** commit `23a6e00` pusheado a `main` tras `git pull --rebase origin main`; Vercel informó `success`. La UI de producción cargó las pantallas del commit.
+- **Smokes de producción sin escritura:** I17b e I19b ya habían pasado con el perfil persistente; I20 se verificó en móvil. En esta entrega se abrió Personalizar catálogo con Normal/Navidad/Día del Niño/Año Nuevo y vista previa; se abrió Lista revendedores y el editor de lista/importación. Sin errores de página ni escrituras de negocio; solo RPC de lectura de autenticación/plan.
+- **Verificación local:** lint, 79 pruebas focales, build, `perf:check` y Playwright de catálogo 5/5 pasaron antes del deploy. I19 cubre margen/redondeo, rondas y pedidos en tests locales.
+- **Desvío de smoke I19:** no se creó una ronda o pedido QA en producción porque la UI no ofrece un flujo normal para borrar rondas; se verificó el editor/importador sin guardar. El selector de foto/recorte manual queda cubierto por pruebas locales; el recorte automático sigue como mejora posterior.
+- I18 e I19 se marcaron `[x]` al quedar desplegadas y verificadas. No se tocó Facebook, su extensión ni su automatización.
