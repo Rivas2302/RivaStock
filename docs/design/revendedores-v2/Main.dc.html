@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revendedores · Resumen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 40px 48px 72px; box-sizing: border-box">
+    <div style="max-width: 1120px; margin: 0 auto">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div>
+          <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Revendedores</h1>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7">Tu lista de precios, tus proveedores y los encargos de tus revendedores.</p>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Ver como revendedor</button>
+          <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: #5FC2A5; color: #0E2A22; font: 600 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Compartir catálogo</button>
+        </div>
+      </header>
+
+      <nav aria-label="Secciones de Revendedores" style="display: flex; gap: 4px; margin-top: 28px; border-bottom: 1px solid #262626; overflow-x: auto">
+        <a href="Main.dc.html" aria-current="page" style="padding: 10px 12px; font-size: 14px; font-weight: 600; color: #F2F2F2; text-decoration: none; border-bottom: 2px solid #F2F2F2; margin-bottom: -1px; white-space: nowrap">Resumen</a>
+        <a href="ListaPrecios.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Lista de precios</a>
+        <a href="Proveedores.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Proveedores</a>
+        <a href="Encargos.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Encargos</a>
+        <a href="Ajustes.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Ajustes</a>
+      </nav>
+
+      <section aria-labelledby="cat" style="padding: 32px 0; border-bottom: 1px solid #262626; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <h2 id="cat" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Tu catálogo para revendedores</h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; color: #A7A7A7">
+            <span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Publicado</span>
+            <span>Compra mínima $ 50.000</span>
+            <span>Código de acceso configurado</span>
+            <span>15 % de descuento general</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; background: #202020; border-radius: 8px; padding: 6px 6px 6px 14px">
+          <span style="font-size: 13px; color: #A7A7A7">rivastock.vercel.app/catalogo/rivatech-2</span>
+          <button type="button" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: #2B2B2B; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Copiar enlace</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="atender" style="padding: 32px 0; border-bottom: 1px solid #262626">
+        <h2 id="atender" style="margin: 0 0 16px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Para atender</h2>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: center; gap: 12px; background: #202020; border-radius: 10px; padding: 14px 16px">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #E0A84A; flex: none"></span>
+            <p style="margin: 0; flex: 1; font-size: 14px">Mr Tecno: leíste 1.400 productos y todavía no agregaste ninguno.</p>
+            <a href="Revisar.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Seguir</a>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; background: #202020; border-radius: 10px; padding: 14px 16px">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #E0A84A; flex: none"></span>
+            <p style="margin: 0; flex: 1; font-size: 14px">7 precios dejan tu margen por debajo del 25 % que pusiste como mínimo.</p>
+            <a href="ListaPrecios.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Revisar</a>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; background: #202020; border-radius: 10px; padding: 14px 16px">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #F07B6E; flex: none"></span>
+            <p style="margin: 0; flex: 1; font-size: 14px">3 productos no tienen costo cargado: no se puede calcular su ganancia.</p>
+            <a href="ListaPrecios.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Completar</a>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="lista" style="padding: 32px 0; border-bottom: 1px solid #262626">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 20px">
+          <h2 id="lista" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Lista de precios</h2>
+          <a href="ListaPrecios.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Ver lista</a>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; color: #A7A7A7">En la lista</span>
+            <span style="font-size: 26px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1">190 <span style="font-size: 15px; font-weight: 400; color: #A7A7A7; letter-spacing: 0">de 463</span></span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; color: #A7A7A7">Precio saludable</span>
+            <span style="font-size: 26px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1">180</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; color: #A7A7A7">Para revisar</span>
+            <span style="font-size: 26px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; color: #E0A84A">7</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; color: #A7A7A7">Sin costo</span>
+            <span style="font-size: 26px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; color: #F07B6E">3</span>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="prov" style="padding: 32px 0; border-bottom: 1px solid #262626">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px">
+          <h2 id="prov" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Proveedores</h2>
+          <a href="Proveedores.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Ver todos</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; min-height: 64px; border-bottom: 1px solid #262626">
+          <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; display: grid; place-items: center; font-weight: 600; font-size: 15px">MT</span>
+          <div style="flex: 1; min-width: 0">
+            <p style="margin: 0; font-size: 15px; font-weight: 600">Mr Tecno</p>
+            <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">1.400 productos leídos · 0 agregados · cotización 1.600 · leída hoy</p>
+          </div>
+          <a href="Revisar.dc.html" style="font-size: 14px; font-weight: 600; text-decoration: none">Seguir importando</a>
+        </div>
+      </section>
+
+      <section aria-labelledby="enc" style="padding: 32px 0">
+        <h2 id="enc" style="margin: 0 0 16px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Encargos</h2>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; background: #181818; border-radius: 10px; padding: 20px">
+          <div>
+            <p style="margin: 0; font-size: 15px; font-weight: 600">No hay encargos abiertos</p>
+            <p style="margin: 4px 0 0; font-size: 14px; color: #A7A7A7">Cuando abras uno, tus revendedores piden hasta la hora de cierre y vos hacés un solo pedido al proveedor.</p>
+          </div>
+          <a href="Encargos.dc.html" style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 8px; background: #F2F2F2; color: #121212; font-size: 14px; font-weight: 600; text-decoration: none">Abrir encargo</a>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

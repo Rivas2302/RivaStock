@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revendedores · Lista de precios</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 40px 48px 72px; box-sizing: border-box">
+    <div style="max-width: 1120px; margin: 0 auto">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div>
+          <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Revendedores</h1>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7">Lo que ven tus revendedores y a qué precio. Los cambios se guardan solos.</p>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Ver PDF</button>
+          <button type="button" aria-label="Más acciones: descargar PDF, crear producto por pedido" style="height: 38px; width: 38px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 600 16px 'Hanken Grotesk', sans-serif; cursor: pointer">⋯</button>
+          <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: #F2F2F2; color: #121212; font: 600 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Agregar productos</button>
+        </div>
+      </header>
+
+      <nav aria-label="Secciones de Revendedores" style="display: flex; gap: 4px; margin-top: 28px; border-bottom: 1px solid #262626; overflow-x: auto">
+        <a href="Main.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Resumen</a>
+        <a href="ListaPrecios.dc.html" aria-current="page" style="padding: 10px 12px; font-size: 14px; font-weight: 600; color: #F2F2F2; text-decoration: none; border-bottom: 2px solid #F2F2F2; margin-bottom: -1px; white-space: nowrap">Lista de precios</a>
+        <a href="Proveedores.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Proveedores</a>
+        <a href="Encargos.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Encargos</a>
+        <a href="Ajustes.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Ajustes</a>
+      </nav>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 28px">
+        <label style="flex: 1 1 280px; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border-radius: 8px; background: #202020">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar producto</span>
+          <input type="search" placeholder="Buscar producto o código" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #F2F2F2; font: 400 14px 'Hanken Grotesk', sans-serif; outline: none">
+        </label>
+        <div role="group" aria-label="Origen" style="display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #202020">
+          <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: #121212; color: #F2F2F2; font: 600 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(0,0,0,.4); cursor: pointer">Todos</button>
+          <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Mi stock</button>
+          <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Mr Tecno</button>
+        </div>
+      </div>
+
+      <div role="group" aria-label="Filtrar por estado" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px">
+        <sc-for list="{{ chips }}" as="chip" hint-placeholder-count="6">
+          <button type="button" aria-pressed="{{ chip.pressed }}" onClick="{{ chip.pick }}" style="{{ chip.style }}">{{ chip.label }}</button>
+        </sc-for>
+      </div>
+
+      <div style="margin-top: 20px; overflow-x: auto">
+        <table style="width: 100%; min-width: 860px; border-collapse: collapse; font-size: 14px">
+          <thead>
+            <tr style="border-bottom: 1px solid #262626">
+              <th scope="col" style="width: 44px; padding: 10px 0; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">En lista</th>
+              <th scope="col" style="padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Producto</th>
+              <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Costo</th>
+              <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Minorista</th>
+              <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Revendedor</th>
+              <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Ganás</th>
+              <th scope="col" style="padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Estado</th>
+              <th scope="col" style="padding: 10px 0; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Acciones</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 14px 0; vertical-align: middle"><input type="checkbox" checked aria-label="Perfume Odyssey Dubai Chocolat en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px">
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+                  <div><p style="margin: 0; font-weight: 600">Perfume Odyssey Dubai Chocolat</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mi stock · Perfumes · 1 en stock</p></div>
+                </div>
+              </td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 19.800</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 42.000</td>
+              <td style="padding: 14px 8px; text-align: right; font-weight: 600">$ 35.700</td>
+              <td style="padding: 14px 8px; text-align: right">$ 15.900 <span style="color: #A7A7A7">· 44,5 %</span></td>
+              <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Saludable</span></td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" aria-expanded="true" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Cerrar</button></td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td colspan="8" style="padding: 0 0 18px 44px">
+                <div style="display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: flex-end; background: #181818; border-radius: 10px; padding: 16px">
+                  <div style="display: flex; flex-direction: column; gap: 8px">
+                    <span style="font-size: 12px; color: #A7A7A7">Precio para revendedores</span>
+                    <div role="group" aria-label="Regla de precio" style="display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #202020">
+                      <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: #121212; color: #F2F2F2; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Descuento general 15 %</button>
+                      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Otro descuento</button>
+                      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Precio fijo</button>
+                    </div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 8px">
+                    <span style="font-size: 12px; color: #A7A7A7">Disponibilidad</span>
+                    <div role="group" aria-label="Disponibilidad" style="display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #202020">
+                      <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: #121212; color: #F2F2F2; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Disponible</button>
+                      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Por pedido</button>
+                    </div>
+                  </div>
+                  <p style="margin: 0; flex: 1 1 260px; font-size: 13px; color: #A7A7A7; line-height: 1.5">Tu margen queda en 44,5 % y el revendedor ahorra 15 %. Podrías darle hasta 37 % de descuento sin bajar de tu mínimo del 25 %.</p>
+                </div>
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td style="padding: 14px 0"><input type="checkbox" aria-label="Auricular Sony en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span><div><p style="margin: 0; font-weight: 600; color: #A7A7A7">Auricular Sony</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mi stock · Auriculares · No está en la lista</p></div></div></td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 14.400</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 29.000</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 24.650</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 10.250 · 41,6 %</td>
+              <td style="padding: 14px 8px; color: #A7A7A7">—</td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Editar</button></td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td style="padding: 14px 0"><input type="checkbox" checked aria-label="Juego de fútbol Spiderman en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span><div><p style="margin: 0; font-weight: 600">Juego de fútbol Spiderman + pelota e inflador</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mi stock · Juguetes · 3 en stock</p></div></div></td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 9.900</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 17.000</td>
+              <td style="padding: 14px 8px; text-align: right; font-weight: 600">$ 14.450</td>
+              <td style="padding: 14px 8px; text-align: right">$ 4.550 <span style="color: #A7A7A7">· 31,5 %</span></td>
+              <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Saludable</span></td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Editar</button></td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td style="padding: 14px 0"><input type="checkbox" checked aria-label="Set sonajero en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span><div><p style="margin: 0; font-weight: 600">Set sonajero x6 piezas</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mi stock · Juguetes · 1 en stock</p></div></div></td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 4.100</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 9.000</td>
+              <td style="padding: 14px 8px; text-align: right; font-weight: 600">$ 7.650</td>
+              <td style="padding: 14px 8px; text-align: right">$ 3.550 <span style="color: #A7A7A7">· 46,4 %</span></td>
+              <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Saludable</span></td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Editar</button></td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td style="padding: 14px 0"><input type="checkbox" checked aria-label="Cabezal Samsung 65W Duo en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span><div><p style="margin: 0; font-weight: 600">Cabezal Samsung 65W Duo</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mi stock · Cargadores · <span style="color: #E0A84A">Sin stock: se ofrece por pedido</span></p></div></div></td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 5.300</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 10.600</td>
+              <td style="padding: 14px 8px; text-align: right; font-weight: 600">$ 9.010</td>
+              <td style="padding: 14px 8px; text-align: right">$ 3.710 <span style="color: #A7A7A7">· 41,2 %</span></td>
+              <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Saludable</span></td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Editar</button></td>
+            </tr>
+            <tr style="border-bottom: 1px solid #262626">
+              <td style="padding: 14px 0"><input type="checkbox" checked aria-label="Joystick Xbox 360 en la lista" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+              <td style="padding: 14px 8px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: #2B2B2B; flex: none"></span><div><p style="margin: 0; font-weight: 600">D06203 – Joystick Xbox 360 2.4G con cable</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Mr Tecno · Joysticks · Por pedido</p></div></div></td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">$ 17.600</td>
+              <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">—</td>
+              <td style="padding: 14px 8px; text-align: right; font-weight: 600">$ 21.120</td>
+              <td style="padding: 14px 8px; text-align: right">$ 3.520 <span style="color: #A7A7A7">· 16,7 %</span></td>
+              <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #E0A84A"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #E0A84A"></span>Para revisar</span></td>
+              <td style="padding: 14px 0; text-align: right"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Editar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 13px; color: #A7A7A7">
+        <span>Mostrando 1–6 de 190 en la lista</span>
+        <span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Cambios guardados</span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1340}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'lista' };
+  }
+  renderVals() {
+    const defs = [
+      { id: 'todos', label: 'Todos · 463' },
+      { id: 'lista', label: 'En la lista · 190' },
+      { id: 'sanos', label: 'Saludables · 180' },
+      { id: 'revisar', label: 'Para revisar · 7' },
+      { id: 'perdida', label: 'Con pérdida · 0' },
+      { id: 'sincosto', label: 'Sin costo · 3' }
+    ];
+    const base = 'height: 32px; padding: 0 14px; border-radius: 999px; border: 0; font: 500 13px Hanken Grotesk, sans-serif; cursor: pointer;';
+    return {
+      chips: defs.map((d) => {
+        const on = this.state.picked === d.id;
+        return {
+          label: d.label,
+          pressed: on ? 'true' : 'false',
+          style: base + (on ? ' background: #5FC2A5; color: #0E2A22; font-weight: 600;' : ' background: #202020; color: #A7A7A7;'),
+          pick: () => this.setState({ picked: d.id })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

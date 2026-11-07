@@ -664,6 +664,85 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 - PDF de prueba de 25 MB con texto y uno escaneado.
 - Confirmar que Vercel desplegó el commit (estado **Current**). Si GitHub no dispara el deploy, avisar a Riva en vez de dar por cerrado.
 
+### ⚠️ Orden de ejecución actualizado — **Riva, 07/11 17:23: «priorizá esto, así dejamos listo este listado»**
+
+1. **I26** (cotización automática) + el arreglo urgente de abajo.
+2. **I27** (fotos guardadas en RivaStock, «Solo con foto» por defecto).
+3. **I25 punto 1** (cuadrado en las categorías).
+4. **I28** (módulo Revendedores rediseñado con las maquetas aprobadas). **Reemplaza a I25 punto 2.**
+
+**Arreglo urgente (va con I26):** el botón «Agregar los N listos» **ignora el buscador y el filtro de categoría**. Con «joystick» la lista muestra 24 productos y el botón sigue diciendo «Agregar los 874 listos». Tiene que agregar **solo lo que está filtrado** («Agregar los 24 listos de "joystick"») y, antes de crear, pedir confirmación con el número exacto. Test e2e: filtro → botón con el número filtrado → solo se crean esos.
+
+### [ ] I25 Categorías sin cuadrado + Lista de revendedores como módulo propio — **pedido de Riva el 07/11 15:25 (después de I24)**
+
+1. **Cuadrado en las categorías del catálogo (I23 no lo resolvió).** En `src/pages/PublicCatalog.tsx` (~línea 1049) cada categoría es un `<button>` con `rounded-xl` y outline de foco cuadrado, y adentro un círculo con `border-2` **transparente** sobre un fondo degradé. Eso produce: (a) un recuadro alrededor del ícono al tocar o seleccionar en el celular (resaltado del toque y foco del botón), y (b) un anillo de otro color en el borde del círculo, porque el degradé se repite debajo del borde transparente. Corregir:
+   - Botón sin fondo ni recuadro visible: `[-webkit-tap-highlight-color:transparent]`, sin `rounded-xl` y con el foco de teclado dibujado como **anillo circular sobre el círculo**, no sobre el botón.
+   - Círculo: `background-origin: border-box` (o sin borde y la categoría activa marcada con `ring-2 ring-offset-2` circular).
+   - Verificar con capturas de Playwright a 360 px y 1440 px, en tema oscuro y claro, con una categoría **seleccionada**, otra **sin seleccionar** y una con **foco de teclado**. Adjuntar las capturas en el resumen.
+2. **Lista de revendedores fuera de Stock.** Hoy «Lista revendedores» y «Ver lista de precios» están en la cabecera de **Gestión de Stock**. Riva quiere un módulo aparte:
+   - Nueva entrada **«Revendedores»** en el menú principal (y en la barra móvil si corresponde), con su propia página y ruta (ej. `/revendedores`), que muestre lo que hoy abre `ResellerPriceListModal` como pantalla completa, no como ventana emergente: configuración, listas por proveedor, importar lista, productos y PDF.
+   - Quitar esos botones de la cabecera de Stock. Desde Stock solo queda, como mucho, un enlace chico «Ver en Revendedores».
+   - Respetar los permisos actuales (`canWrite`, roles) y que las rutas viejas no se rompan.
+   - Tests: navegación al módulo, que Stock ya no muestre los botones y que importar lista siga funcionando desde la página nueva.
+
+### [ ] I26 Cotización del proveedor detectada automáticamente — **pedido de Riva el 07/11 17:18 (después de I25)**
+
+**Problema:** Mr Tecno guarda los precios en USD (Store API) y su web los muestra en pesos con su propia cotización. Riva ve en la revisión «Costo (USD) 6,25» mientras en la web ve **$10.000** (`HM352`: 6,25 × 1.600 = 10.000). Tiene que cargar la cotización a mano y actualizarla cada vez que el proveedor la cambie.
+
+**Qué hacer:**
+1. En `fetch-url` (modo `catalog`), cuando la fuente venga en una moneda distinta de ARS, **detectar la cotización del proveedor**:
+   - Primero probar si la Store API acepta la moneda local (ej. `&currency=ARS`, que usan algunos plugins de multimoneda). Si devuelve ARS, usar esos precios directamente.
+   - Si no, tomar **3 productos con precio > 0**, abrir su `permalink` y leer el precio que muestra la web (JSON-LD `Offer.price` + `priceCurrency`, o `.woocommerce-Price-amount`). Cotización = precio en pesos ÷ precio en USD. Aceptarla solo si los 3 coinciden con una diferencia menor al 1 %; usar la mediana.
+   - Devolver `{ detectedRate, rateSource: 'store_api'|'product_pages'|null, sampleCodes }`. Respetar el rate limit: estas lecturas cuentan dentro de la misma importación.
+2. En la revisión:
+   - Mostrar arriba «Cotización de Mr Tecno detectada: **1.600** (leída de 3 productos)», con el campo editable por si Riva quiere usar otra.
+   - **Mostrar el costo en pesos** como valor principal (igual que la web del proveedor) y el USD chico al lado.
+   - Si no se pudo detectar (por ejemplo, por el desafío anti-bots), usar la **última cotización guardada para ese proveedor** y avisarlo. Si no hay ninguna, pedirla como hoy.
+3. Guardar la cotización **por proveedor** en la base (no solo en `localStorage`), para que sea la misma en el celular y en la PC. Si hace falta una migración, aplicar solo esa.
+4. Al reimportar, recalcular con la cotización detectada en ese momento. Así «Actualizados» refleja también los cambios de cotización del proveedor.
+
+**Verificación:** tests con fixtures (API en USD + página del producto en ARS, API que acepta `currency=ARS`, páginas bloqueadas, valores que no coinciden). Prueba real en producción con `https://mrtecno.com.ar/productos/`: tiene que detectar ≈ 1.600 y mostrar `HM352` con costo **$10.000**. Sin confirmar el alta masiva. Confirmar que Vercel quede **Current**.
+
+### [ ] I27 Fotos en la importación del proveedor — **pedido de Riva el 07/11 17:19 («No me sirve sin foto»)**
+
+**Estado actual (verificado en `origin/main`):** el alta masiva de I24 guarda en `imageUrl` la **URL remota del proveedor** (ej. `https://mrtecno.com.ar/wp-content/uploads/...jpeg`), sin copiarla. En una muestra de la Store API de Mr Tecno, ~75 % de los productos trae foto y ~25 % no (ej. `HM352`, que tampoco tiene foto en la web del proveedor).
+
+**Qué hacer:**
+1. **Copiar las fotos a RivaStock** en vez de enlazarlas: descargarlas vía `fetch-url` (modo imagen: solo `image/jpeg|png|webp`, mismo dominio de la fuente, límite de 5 MB, DNS público), comprimirlas en el navegador a **WebP ~400 px de menos de 60 KB** (como pide el Bloque I) y subirlas al Storage de productos. Para ~1.000 fotos son ~60 MB del 1 GB gratis: chequear el espacio libre antes y avisar si no alcanza.
+2. Hacerlo **dentro del alta masiva**, por tandas, con progreso («Fotos 120 de 874»). Si una foto falla, el producto se crea igual y queda en la lista «Sin foto», reintentable.
+3. **Filtro «Solo con foto», activado por defecto**, en la revisión: el botón pasa a «Agregar los N listos con foto». Los productos sin foto quedan aparte, con la opción de agregarles foto a mano (Elegir foto, Cámara o Recortar captura, que ya existen) o de incluirlos igual si Riva lo decide.
+4. Al reimportar: si el proveedor cambió la foto (otra URL), actualizarla. Si el producto ya tiene una foto cargada a mano por Riva, **no pisarla**.
+5. Migrar los productos ya importados con URL remota de Mr Tecno: copiar sus fotos al Storage, para que no dependan del proveedor.
+6. Nunca inventar ni generar fotos.
+
+**Verificación:** tests con fixtures (foto ok, foto caída, tipo no permitido, redirect a otro dominio). Prueba real en producción con Mr Tecno: la revisión tiene que mostrar las miniaturas y el contador «con foto / sin foto». Sin confirmar el alta masiva sin OK de Riva. Vercel **Current**.
+
+### [ ] I28 Rediseño del módulo Revendedores con las maquetas aprobadas — **pedido de Riva el 07/11 17:23 («es un quilombo este módulo, muy poca estructura»)**
+
+**Problema:** I19 se implementó metido dentro de `ResellerPriceListModal` (una ventana emergente encima de Stock), **sin seguir las maquetas aprobadas** el 06/11 (`docs/design/supplier-lists/`: `Main`, `Importar`, `Revisar`, `AbrirPedido`, `Cierre`, `RevCatalogo`, `RevPago`). Resultado, según las capturas de Riva: doble barra de scroll, la URL repetida dos veces, la configuración (IVA, margen, redondeo) **debajo** de la lista y del botón de agregar, más de 30 campos «Margen para CATEGORÍA» todos en 20 %, y un pie «190 productos incluidos / Guardar lista» que no se entiende a qué se refiere.
+
+**Maquetas APROBADAS por Riva el 07/11 17:44:** https://claude.ai/artifact/XDr9Vt3CJsZja6r1zEeUKd — módulo con 5 pestañas (Resumen, Lista de precios, Proveedores, Encargos, Ajustes), importación en 3 pasos (Importar → Precios → Revisar y agregar) y versión celular, con los colores y la letra de `DESIGN.md`. Copia en el repo: **`docs/design/revendedores-v2/`** (ver `LEEME.md`; el link es privado de Riva). Reemplazan a las de `docs/design/supplier-lists/` donde se contradigan. Reproducir textos, orden, jerarquía y comportamiento (filtros, botón que cuenta solo lo filtrado, aviso de margen en Precios, «Solo con foto»).
+**Excepción de Riva — el menú NO se toca:** en el celular la barra inferior y el menú quedan **exactamente como están hoy**; en la PC solo se agrega la entrada «Revendedores» (grupo Relaciones) sin reordenar ni renombrar el resto. El menú lateral y la barra inferior de las maquetas son ilustrativos; la reorganización del menú es la tarea futura 4e.
+Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de programar**; sí adjuntarlas en el resumen final (360 px y 1440 px, cada pestaña y cada paso).
+
+**Qué hacer:**
+1. **Módulo propio** «Revendedores» en el menú (lo que pedía I25 punto 2): página completa en `/revendedores`, sin modal. Sacar los botones de la cabecera de Stock.
+2. Estructura de las maquetas, **en pasos claros** y con una sola acción principal por pantalla:
+   - **Inicio:** tarjetas por proveedor (estado, cantidad de productos, margen, última importación, cotización) y «Nuevo proveedor».
+   - **Paso 1 · Importar:** elegir la forma (Enlace / PDF / Planilla / Fotos), una sola vez el campo, con progreso.
+   - **Paso 2 · Precios:** moneda y cotización, IVA, **margen general** y redondeo **antes** de ver los productos. Los márgenes por categoría van **plegados** («Márgenes por categoría (opcional)») y solo muestran las categorías que el usuario cambió, con «+ Otra categoría».
+   - **Paso 3 · Revisar:** lista compacta con miniatura, nombre, costo en pesos, tu precio y estado (Listo / Sin foto / Revisar), buscador y filtros arriba, y el botón fijo abajo «Agregar N productos» que respeta el filtro.
+   - **Paso 4 · Publicar / Abrir pedido:** lo de `AbrirPedido` y `Cierre` que ya existe, sin cambiar la lógica.
+3. **Mismo diseño visual del resto de la app** (tema claro y oscuro, sin colores chillones, poca información por pantalla). Móvil primero: 360 px sin scroll horizontal ni scroll dentro de scroll.
+4. **No cambiar la lógica** de importación, precios, rondas ni pedidos que ya funciona: solo reorganizar y reutilizar los componentes.
+5. Comparar cada pantalla contra las maquetas aprobadas antes de cerrar.
+
+**Verificación:** Playwright 360 px y 1440 px de punta a punta (importar → precios → revisar → agregar filtrados) sin crear productos reales, capturas de cada paso en tema claro y oscuro, y rutas viejas que no se rompan.
+
+## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
+
+Riva no está conforme con la estructura general de la app (qué va en cada módulo, menú y navegación). Hay que revisarla **con él** antes de tocar nada: inventario de pantallas y menús, propuesta de reorganización y recién después ejecución. No empezar sin su OK. Relacionado: Bloque J (rediseño visual) e I25 (Revendedores como módulo propio).
+
 ## 4d. Bloque J — Rediseño visual completo (lo ejecuta Claude Code)
 
 Detalle: `docs/ai/REDESIGN_PLAN.md`. Sistema visual: `DESIGN.md` y `PRODUCT.md` en la raíz.

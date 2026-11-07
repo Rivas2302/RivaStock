@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mr Tecno · Precios</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <div style="flex: 1; padding: 32px 48px 48px; box-sizing: border-box">
+      <div style="max-width: 880px; margin: 0 auto">
+
+        <nav aria-label="Ubicación" style="font-size: 13px; color: #A7A7A7"><a href="Proveedores.dc.html" style="color: #A7A7A7; text-decoration: none">Revendedores · Proveedores</a> <span aria-hidden="true">/</span> Mr Tecno</nav>
+        <h1 style="margin: 10px 0 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Tus precios para Mr Tecno</h1>
+
+        <ol aria-label="Pasos" style="display: flex; flex-wrap: wrap; gap: 8px 28px; list-style: none; margin: 24px 0 0; padding: 0 0 18px; border-bottom: 1px solid #262626; font-size: 14px">
+          <li style="display: flex; align-items: center; gap: 10px; color: #A7A7A7"><span style="width: 24px; height: 24px; border-radius: 999px; background: #2B2B2B; color: #7DD3B8; display: grid; place-items: center; font-size: 13px">✓</span>Importar</li>
+          <li aria-current="step" style="display: flex; align-items: center; gap: 10px; font-weight: 600"><span style="width: 24px; height: 24px; border-radius: 999px; background: #F2F2F2; color: #121212; display: grid; place-items: center; font-size: 13px">2</span>Precios</li>
+          <li style="display: flex; align-items: center; gap: 10px; color: #A7A7A7"><span style="width: 24px; height: 24px; border-radius: 999px; border: 1px solid #333333; display: grid; place-items: center; font-size: 13px">3</span>Revisar y agregar</li>
+        </ol>
+
+        <section aria-labelledby="moneda" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px 40px; padding: 28px 0; border-bottom: 1px solid #262626">
+          <div>
+            <h2 id="moneda" style="margin: 0; font-size: 17px; font-weight: 600">Moneda e IVA</h2>
+            <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Mr Tecno publica en dólares. Pasamos todo a pesos con su cotización, igual que su página.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 20px">
+            <label style="display: flex; flex-direction: column; gap: 6px">
+              <span style="font-size: 13px; color: #A7A7A7">Cotización (detectada hoy)</span>
+              <span style="display: flex; align-items: center; gap: 8px; height: 42px; width: 180px; padding: 0 14px; border-radius: 8px; background: #202020; box-sizing: border-box"><span style="color: #A7A7A7">$</span><input type="text" inputmode="decimal" value="1.600" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #F2F2F2; font: 600 15px 'Hanken Grotesk', sans-serif; outline: none"></span>
+            </label>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <span style="font-size: 13px; color: #A7A7A7">Los precios del proveedor</span>
+              <div role="group" aria-label="IVA" style="display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #202020">
+                <button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 0; background: #121212; color: #F2F2F2; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Incluyen IVA</button>
+                <button type="button" aria-pressed="false" style="height: 36px; padding: 0 14px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Sin IVA</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="margen" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px 40px; padding: 28px 0; border-bottom: 1px solid #262626">
+          <div>
+            <h2 id="margen" style="margin: 0; font-size: 17px; font-weight: 600">Cuánto le sumás</h2>
+            <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Se suma sobre el costo y vale para toda la lista.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+              <sc-for list="{{ marginChips }}" as="c" hint-placeholder-count="4">
+                <button type="button" aria-pressed="{{ c.pressed }}" onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.label }}</button>
+              </sc-for>
+              <div style="display: flex; align-items: center; gap: 4px; background: #202020; border-radius: 999px; padding: 3px; margin-left: 4px">
+                <button type="button" aria-label="Bajar un punto" onClick="{{ minus }}" style="width: 32px; height: 32px; border-radius: 999px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">−</button>
+                <span style="min-width: 52px; text-align: center; font-size: 14px; font-weight: 600">{{ marginLabel }}</span>
+                <button type="button" aria-label="Subir un punto" onClick="{{ plus }}" style="width: 32px; height: 32px; border-radius: 999px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">+</button>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <span style="font-size: 13px; color: #A7A7A7">Redondeo</span>
+              <div role="group" aria-label="Redondeo" style="display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #202020; width: fit-content">
+                <sc-for list="{{ roundChips }}" as="r" hint-placeholder-count="3">
+                  <button type="button" aria-pressed="{{ r.pressed }}" onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="background: #181818; border-radius: 10px; padding: 16px">
+              <p style="margin: 0; font-size: 12px; color: #A7A7A7">Ejemplo con HM352 – Humificador LED estilo fuego (USD 6,25)</p>
+              <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px">
+                <div><p style="margin: 0; font-size: 12px; color: #A7A7A7">Te cuesta</p><p style="margin: 2px 0 0; font-size: 19px; font-weight: 500">$ 10.000</p></div>
+                <div><p style="margin: 0; font-size: 12px; color: #A7A7A7">Precio revendedor</p><p style="margin: 2px 0 0; font-size: 19px; font-weight: 600">{{ price }}</p></div>
+                <div><p style="margin: 0; font-size: 12px; color: #A7A7A7">Público sugerido</p><p style="margin: 2px 0 0; font-size: 19px; font-weight: 500; color: #A7A7A7">{{ publicPrice }}</p></div>
+              </div>
+              <p style="{{ noteStyle }}">{{ note }}</p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="cat" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px 40px; padding: 28px 0">
+          <div>
+            <h2 id="cat" style="margin: 0; font-size: 17px; font-weight: 600">Excepciones por categoría</h2>
+            <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Opcional. Solo si alguna categoría lleva otro margen.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #262626">
+              <span style="font-size: 15px">Joysticks</span>
+              <span style="display: flex; align-items: center; gap: 12px"><span style="font-size: 15px; font-weight: 600">35 %</span><button type="button" aria-label="Quitar excepción de Joysticks" style="width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; color: #A7A7A7; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">×</button></span>
+            </div>
+            <button type="button" style="align-self: flex-start; height: 36px; padding: 0 14px; border-radius: 8px; border: 1px dashed #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">+ Otra categoría</button>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <div style="position: sticky; bottom: 0; border-top: 1px solid #262626; background: #121212; padding: 14px 48px">
+      <div style="max-width: 880px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 12px">
+        <a href="Importar.dc.html" style="font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none">Atrás</a>
+        <a href="Revisar.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 8px; background: #F2F2F2; color: #121212; font-size: 14px; font-weight: 600; text-decoration: none">Seguir: revisar productos</a>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1220}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { margin: 20, round: 0 };
+  }
+  renderVals() {
+    const fmt = (n) => '$ ' + Math.round(n).toLocaleString('es-AR');
+    const cost = 10000;
+    const m = this.state.margin;
+    const step = this.state.round;
+    let price = cost * (1 + m / 100);
+    if (step > 0) price = Math.ceil(price / step) * step;
+    const pub = price / 0.85;
+    const realMargin = (price - cost) / price * 100;
+    const needed = Math.ceil((1 / (1 - 0.25) - 1) * 100);
+    const low = realMargin < 25;
+    const chipBase = 'height: 38px; padding: 0 16px; border-radius: 999px; border: 0; font: 500 14px Hanken Grotesk, sans-serif; cursor: pointer;';
+    const segBase = 'height: 32px; padding: 0 12px; border-radius: 6px; border: 0; font: 500 13px Hanken Grotesk, sans-serif; cursor: pointer;';
+    return {
+      marginLabel: m + ' %',
+      minus: () => this.setState({ margin: Math.max(0, m - 1) }),
+      plus: () => this.setState({ margin: m + 1 }),
+      marginChips: [20, 25, 30, 40].map((v) => ({
+        label: v + ' %',
+        pressed: v === m ? 'true' : 'false',
+        style: chipBase + (v === m ? ' background: #5FC2A5; color: #0E2A22; font-weight: 600;' : ' background: #202020; color: #F2F2F2;'),
+        pick: () => this.setState({ margin: v })
+      })),
+      roundChips: [{ v: 0, l: 'Exacto' }, { v: 100, l: 'A $ 100' }, { v: 500, l: 'A $ 500' }].map((r) => ({
+        label: r.l,
+        pressed: r.v === step ? 'true' : 'false',
+        style: segBase + (r.v === step ? ' background: #121212; color: #F2F2F2; font-weight: 600;' : ' background: transparent; color: #A7A7A7;'),
+        pick: () => this.setState({ round: r.v })
+      })),
+      price: fmt(price),
+      publicPrice: fmt(pub),
+      note: low
+        ? 'Ganás ' + fmt(price - cost) + ', que es ' + realMargin.toFixed(1).replace('.', ',') + ' % del precio: queda por debajo de tu mínimo del 25 %. Para llegar necesitás sumar ' + needed + ' % sobre el costo.'
+        : 'Ganás ' + fmt(price - cost) + ', que es ' + realMargin.toFixed(1).replace('.', ',') + ' % del precio. Está dentro de tu mínimo del 25 %.',
+      noteStyle: 'margin: 14px 0 0; font-size: 13px; line-height: 1.5; color: ' + (low ? '#E0A84A' : '#7DD3B8') + ';'
+    };
+  }
+}
+</script>
+</body>
+</html>

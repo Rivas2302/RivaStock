@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revendedores · Encargos</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 40px 48px 72px; box-sizing: border-box">
+    <div style="max-width: 1120px; margin: 0 auto">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div>
+          <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Revendedores</h1>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7">Tus revendedores piden y pagan antes del cierre; vos hacés un solo pedido al proveedor.</p>
+        </div>
+        <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: #F2F2F2; color: #121212; font: 600 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Abrir encargo</button>
+      </header>
+
+      <nav aria-label="Secciones de Revendedores" style="display: flex; gap: 4px; margin-top: 28px; border-bottom: 1px solid #262626; overflow-x: auto">
+        <a href="Main.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Resumen</a>
+        <a href="ListaPrecios.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Lista de precios</a>
+        <a href="Proveedores.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Proveedores</a>
+        <a href="Encargos.dc.html" aria-current="page" style="padding: 10px 12px; font-size: 14px; font-weight: 600; color: #F2F2F2; text-decoration: none; border-bottom: 2px solid #F2F2F2; margin-bottom: -1px; white-space: nowrap">Encargos</a>
+        <a href="Ajustes.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Ajustes</a>
+      </nav>
+
+      <p style="margin: 20px 0 0; font-size: 13px; color: #E0A84A">Datos de ejemplo: todavía no abriste ningún encargo.</p>
+
+      <section aria-labelledby="abierto" style="padding: 24px 0 32px; border-bottom: 1px solid #262626">
+        <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px">
+          <div>
+            <h2 id="abierto" style="margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em">Mr Tecno · abierto</h2>
+            <p style="margin: 4px 0 0; font-size: 14px; color: #A7A7A7">Cierra el jueves a las 20:00 · lo ven todos los que tienen el código · mínimo $ 50.000</p>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Avisar por WhatsApp</button>
+            <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F07B6E; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Cerrar ahora</button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-top: 24px">
+          <div><p style="margin: 0; font-size: 13px; color: #A7A7A7">Cobrado (3 pagados)</p><p style="margin: 4px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.03em"><span style="font-size: 15px; font-weight: 400; opacity: .55; vertical-align: 0.36em">$</span> 186.400</p></div>
+          <div><p style="margin: 0; font-size: 13px; color: #A7A7A7">Sin pagar (2)</p><p style="margin: 4px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.03em; color: #E0A84A"><span style="font-size: 15px; font-weight: 400; opacity: .55; vertical-align: 0.36em">$</span> 74.300</p></div>
+          <div><p style="margin: 0; font-size: 13px; color: #A7A7A7">Le pagás al proveedor</p><p style="margin: 4px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.03em"><span style="font-size: 15px; font-weight: 400; opacity: .55; vertical-align: 0.36em">$</span> 155.300</p></div>
+          <div><p style="margin: 0; font-size: 13px; color: #A7A7A7">Tu ganancia</p><p style="margin: 4px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.03em; color: #7DD3B8"><span style="font-size: 15px; font-weight: 400; opacity: .55; vertical-align: 0.36em">$</span> 31.100</p></div>
+        </div>
+
+        <h3 style="margin: 32px 0 4px; font-size: 15px; font-weight: 600">Pedidos de revendedores</h3>
+        <p style="margin: 0 0 8px; font-size: 13px; color: #A7A7A7">El pago se coordina por WhatsApp. Marcás cada pedido como pagado a mano.</p>
+        <div style="overflow-x: auto">
+          <table style="width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px">
+            <thead>
+              <tr style="border-bottom: 1px solid #262626">
+                <th scope="col" style="padding: 10px 8px 10px 0; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Revendedor</th>
+                <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Productos</th>
+                <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Total</th>
+                <th scope="col" style="padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Estado</th>
+                <th scope="col" style="padding: 10px 0; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom: 1px solid #262626">
+                <td style="padding: 14px 8px 14px 0; font-weight: 600">[Revendedor A]</td>
+                <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">4</td>
+                <td style="padding: 14px 8px; text-align: right">$ 82.900</td>
+                <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Pagado</span></td>
+                <td style="padding: 14px 0; text-align: right"><a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none">Ver pedido</a></td>
+              </tr>
+              <tr style="border-bottom: 1px solid #262626">
+                <td style="padding: 14px 8px 14px 0; font-weight: 600">[Revendedor B]</td>
+                <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">3</td>
+                <td style="padding: 14px 8px; text-align: right">$ 51.200</td>
+                <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Pagado</span></td>
+                <td style="padding: 14px 0; text-align: right"><a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none">Ver pedido</a></td>
+              </tr>
+              <tr style="border-bottom: 1px solid #262626">
+                <td style="padding: 14px 8px 14px 0; font-weight: 600">[Revendedor C]</td>
+                <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">2</td>
+                <td style="padding: 14px 8px; text-align: right">$ 52.300</td>
+                <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #7DD3B8"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #5FC2A5"></span>Pagado</span></td>
+                <td style="padding: 14px 0; text-align: right"><a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none">Ver pedido</a></td>
+              </tr>
+              <tr style="border-bottom: 1px solid #262626">
+                <td style="padding: 14px 8px 14px 0; font-weight: 600">[Revendedor D]</td>
+                <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">2</td>
+                <td style="padding: 14px 8px; text-align: right">$ 41.800</td>
+                <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #E0A84A"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #E0A84A"></span>Sin pagar</span></td>
+                <td style="padding: 14px 0; text-align: right; white-space: nowrap"><a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none; margin-right: 16px">Escribirle</a><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Marcar pagado</button></td>
+              </tr>
+              <tr style="border-bottom: 1px solid #262626">
+                <td style="padding: 14px 8px 14px 0; font-weight: 600">[Revendedor E]</td>
+                <td style="padding: 14px 8px; text-align: right; color: #A7A7A7">1</td>
+                <td style="padding: 14px 8px; text-align: right">$ 32.500</td>
+                <td style="padding: 14px 8px"><span style="display: inline-flex; align-items: center; gap: 8px; color: #E0A84A"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #E0A84A"></span>Sin pagar</span></td>
+                <td style="padding: 14px 0; text-align: right; white-space: nowrap"><a href="#" style="font-size: 14px; font-weight: 600; text-decoration: none; margin-right: 16px">Escribirle</a><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Marcar pagado</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; background: #181818; border-radius: 10px; padding: 18px 20px">
+          <div>
+            <p style="margin: 0; font-size: 15px; font-weight: 600">Pedido al proveedor</p>
+            <p style="margin: 4px 0 0; font-size: 13px; color: #A7A7A7">Solo con los pedidos pagados · 9 productos · $ 155.300</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <button type="button" style="height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Descargar PDF</button>
+            <button type="button" style="height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Crear compra</button>
+            <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: #5FC2A5; color: #0E2A22; font: 600 14px 'Hanken Grotesk', sans-serif; cursor: pointer">Enviar por WhatsApp</button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="cerrados" style="padding: 32px 0">
+        <h2 id="cerrados" style="margin: 0 0 8px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Cerrados</h2>
+        <p style="margin: 0; font-size: 14px; color: #A7A7A7">Acá quedan los encargos anteriores, con el reparto por revendedor para cuando llega la mercadería.</p>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

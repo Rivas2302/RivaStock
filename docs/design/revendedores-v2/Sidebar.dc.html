@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Menú lateral</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav aria-label="Menú principal" style="width: 248px; min-height: 960px; box-sizing: border-box; padding: 20px 12px; display: flex; flex-direction: column; gap: 20px; background: #181818; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif">
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 0 8px">
+    <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.02em">RivaStock</span>
+    <button type="button" style="display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #2B2B2B; background: #202020; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">RIVATECH <span aria-hidden="true" style="color: #A7A7A7">⌄</span></button>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 8px 6px; font-size: 12px; color: #A7A7A7">Operación</span>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Inicio</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Stock</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Ventas</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Pedidos del catálogo</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Caja</a>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 8px 6px; font-size: 12px; color: #A7A7A7">Relaciones</span>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Clientes</a>
+    <a href="Main.dc.html" aria-current="page" style="display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 8px; background: #2B2B2B; font-size: 14px; font-weight: 600; color: #F2F2F2; text-decoration: none">Revendedores <span style="font-size: 11px; font-weight: 600; color: #0E2A22; background: #5FC2A5; border-radius: 999px; padding: 2px 8px">Nuevo</span></a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Proveedores</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Compras a proveedores</a>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 8px 6px; font-size: 12px; color: #A7A7A7">Gestión</span>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Reportes</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Presupuestos</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Ingresos de mercadería</a>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 8px 6px; font-size: 12px; color: #A7A7A7">Sistema</span>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Asistente IA</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Automatizaciones</a>
+    <a href="#" style="padding: 8px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #F2F2F2; text-decoration: none">Configuración</a>
+  </div>
+
+  <p style="margin: auto 8px 0; font-size: 12px; color: #A7A7A7; line-height: 1.4">El menú completo se revisa más adelante, en la reorganización de la app.</p>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":248,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

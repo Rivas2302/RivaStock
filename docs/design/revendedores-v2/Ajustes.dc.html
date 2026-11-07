@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revendedores · Ajustes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 40px 48px 72px; box-sizing: border-box">
+    <div style="max-width: 1120px; margin: 0 auto">
+
+      <header>
+        <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Revendedores</h1>
+        <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7">Reglas que se aplican a toda la lista. Se guardan solas.</p>
+      </header>
+
+      <nav aria-label="Secciones de Revendedores" style="display: flex; gap: 4px; margin-top: 28px; border-bottom: 1px solid #262626; overflow-x: auto">
+        <a href="Main.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Resumen</a>
+        <a href="ListaPrecios.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Lista de precios</a>
+        <a href="Proveedores.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Proveedores</a>
+        <a href="Encargos.dc.html" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none; white-space: nowrap">Encargos</a>
+        <a href="Ajustes.dc.html" aria-current="page" style="padding: 10px 12px; font-size: 14px; font-weight: 600; color: #F2F2F2; text-decoration: none; border-bottom: 2px solid #F2F2F2; margin-bottom: -1px; white-space: nowrap">Ajustes</a>
+      </nav>
+
+      <section aria-labelledby="pub" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 24px 48px; padding: 32px 0; border-bottom: 1px solid #262626">
+        <div>
+          <h2 id="pub" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Publicación y acceso</h2>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Quién puede ver la pestaña Revendedores de tu catálogo.</p>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #262626">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Catálogo para revendedores publicado</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Si lo apagás, la pestaña deja de verse.</p></div>
+            <button type="button" role="switch" aria-checked="true" aria-label="Catálogo para revendedores publicado" style="width: 36px; height: 22px; border-radius: 999px; border: 0; background: #5FC2A5; position: relative; cursor: pointer; flex: none"><span aria-hidden="true" style="position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 999px; background: #0E2A22"></span></button>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #262626">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Código de acceso</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Configurado. Se lo pasás a cada revendedor.</p></div>
+            <button type="button" style="height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Cambiar código</button>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Lista en PDF</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Para mandar por WhatsApp a quien no usa el catálogo.</p></div>
+            <div style="display: flex; gap: 8px"><button type="button" style="height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Ver</button><button type="button" style="height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Descargar</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="precios" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 24px 48px; padding: 32px 0; border-bottom: 1px solid #262626">
+        <div>
+          <h2 id="precios" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Precios</h2>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Cómo se calcula el precio para revendedores y cuándo te avisamos que conviene revisarlo.</p>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #262626">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Descuento general</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Sobre tu precio minorista. Cada producto puede tener otro.</p></div>
+            <div style="display: flex; align-items: center; gap: 4px; background: #202020; border-radius: 8px; padding: 3px">
+              <button type="button" aria-label="Bajar descuento general" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">−</button>
+              <span style="min-width: 56px; text-align: center; font-size: 15px; font-weight: 600">15 %</span>
+              <button type="button" aria-label="Subir descuento general" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">+</button>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #262626">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Tu margen mínimo</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Si un precio te deja menos, aparece en «Para revisar».</p></div>
+            <div style="display: flex; align-items: center; gap: 4px; background: #202020; border-radius: 8px; padding: 3px">
+              <button type="button" aria-label="Bajar margen mínimo" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">−</button>
+              <span style="min-width: 56px; text-align: center; font-size: 15px; font-weight: 600">25 %</span>
+              <button type="button" aria-label="Subir margen mínimo" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">+</button>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0">
+            <div><p style="margin: 0; font-size: 15px; font-weight: 500">Descuento atractivo</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">Lo mínimo que el revendedor tiene que ahorrar para que le convenga.</p></div>
+            <div style="display: flex; align-items: center; gap: 4px; background: #202020; border-radius: 8px; padding: 3px">
+              <button type="button" aria-label="Bajar descuento atractivo" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">−</button>
+              <span style="min-width: 56px; text-align: center; font-size: 15px; font-weight: 600">15 %</span>
+              <button type="button" aria-label="Subir descuento atractivo" style="width: 32px; height: 32px; border-radius: 6px; border: 0; background: transparent; color: #F2F2F2; font: 500 16px 'Hanken Grotesk', sans-serif; cursor: pointer">+</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="minima" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 24px 48px; padding: 32px 0">
+        <div>
+          <h2 id="minima" style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em">Compra mínima</h2>
+          <p style="margin: 6px 0 0; font-size: 14px; color: #A7A7A7; line-height: 1.5">Lo mínimo que tiene que pedir un revendedor. Cada encargo puede tener otro.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px">
+          <div role="group" aria-label="Tipo de compra mínima" style="display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 8px; background: #202020; width: fit-content">
+            <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Sin mínimo</button>
+            <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: #121212; color: #F2F2F2; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Monto</button>
+            <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Cantidad</button>
+            <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif; cursor: pointer">Monto y cantidad</button>
+          </div>
+          <label style="display: flex; flex-direction: column; gap: 6px; max-width: 280px">
+            <span style="font-size: 13px; color: #A7A7A7">Monto mínimo</span>
+            <span style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 8px; background: #202020"><span style="color: #A7A7A7">$</span><input type="text" inputmode="numeric" value="50.000" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #F2F2F2; font: 500 15px 'Hanken Grotesk', sans-serif; outline: none"></span>
+          </label>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Celular · Mr Tecno · Revisar y agregar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; display: flex; flex-direction: column; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums; overflow: hidden">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 14px 12px 0">
+    <a href="MovilResumen.dc.html" aria-label="Volver" style="width: 44px; height: 44px; display: grid; place-items: center; color: #F2F2F2; text-decoration: none"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <div>
+      <p style="margin: 0; font-size: 17px; font-weight: 600">Mr Tecno</p>
+      <p style="margin: 1px 0 0; font-size: 12px; color: #A7A7A7">Paso 3 de 3 · Revisar y agregar</p>
+    </div>
+  </header>
+
+  <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 14px 20px 0">
+    <span style="height: 3px; border-radius: 999px; background: #A7A7A7"></span>
+    <span style="height: 3px; border-radius: 999px; background: #A7A7A7"></span>
+    <span style="height: 3px; border-radius: 999px; background: #F2F2F2"></span>
+  </div>
+
+  <div style="padding: 16px 20px 0; display: flex; flex-direction: column; gap: 12px">
+    <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 8px; background: #F2F2F2">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#121212" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar</span>
+      <input type="search" placeholder="Buscar nombre o código" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #121212; font: 500 15px 'Hanken Grotesk', sans-serif; outline: none">
+    </label>
+    <div role="group" aria-label="Filtrar por estado" style="display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px; padding: 0 20px">
+      <button type="button" aria-pressed="false" style="flex: none; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: #202020; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif">Todos · 1.400</button>
+      <button type="button" aria-pressed="true" style="flex: none; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: #5FC2A5; color: #0E2A22; font: 600 13px 'Hanken Grotesk', sans-serif">Listos · 874</button>
+      <button type="button" aria-pressed="false" style="flex: none; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: #202020; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif">Para revisar · 526</button>
+      <button type="button" aria-pressed="false" style="flex: none; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: #202020; color: #A7A7A7; font: 500 13px 'Hanken Grotesk', sans-serif">Sin foto</button>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px">
+      <span>Solo con foto</span>
+      <button type="button" role="switch" aria-checked="true" aria-label="Solo con foto" style="position: relative; width: 36px; height: 22px; border-radius: 999px; border: 0; background: #5FC2A5"><span aria-hidden="true" style="position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 999px; background: #0E2A22"></span></button>
+    </div>
+  </div>
+
+  <ul style="list-style: none; margin: 12px 0 0; padding: 0 20px; flex: 1; overflow: hidden">
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" checked aria-label="Elegir Joystick Xbox 360" style="width: 20px; height: 20px; accent-color: #5FC2A5; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Joystick Xbox 360 2.4G con cable</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">D06203 · $ 17.600 → <span style="color: #F2F2F2; font-weight: 600">$ 23.760</span></p>
+      </div>
+    </li>
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" checked aria-label="Elegir Zapatero 4 niveles negro" style="width: 20px; height: 20px; accent-color: #5FC2A5; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Zapatero 4 niveles negro</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">YH88214N · $ 4.720 → <span style="color: #F2F2F2; font-weight: 600">$ 5.664</span></p>
+      </div>
+    </li>
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" checked aria-label="Elegir Zapatero 4 niveles blanco" style="width: 20px; height: 20px; accent-color: #5FC2A5; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Zapatero 4 niveles blanco</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">YH88214B · $ 4.720 → <span style="color: #F2F2F2; font-weight: 600">$ 5.664</span></p>
+      </div>
+    </li>
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" checked aria-label="Elegir Zapatero 5 niveles negro" style="width: 20px; height: 20px; accent-color: #5FC2A5; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Zapatero 5 niveles negro</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">YH88215N · $ 5.840 → <span style="color: #F2F2F2; font-weight: 600">$ 7.008</span></p>
+      </div>
+    </li>
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" checked aria-label="Elegir Lámpara solar" style="width: 20px; height: 20px; accent-color: #5FC2A5; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Lámpara solar</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">1015 · $ 12.400 → <span style="color: #F2F2F2; font-weight: 600">$ 14.880</span></p>
+      </div>
+    </li>
+    <li style="display: flex; align-items: center; gap: 12px; min-height: 76px; border-bottom: 1px solid #262626">
+      <input type="checkbox" disabled aria-label="Joystick PS2 sin precio" style="width: 20px; height: 20px; flex: none">
+      <span aria-hidden="true" style="width: 52px; height: 52px; border-radius: 6px; background: #2B2B2B; flex: none"></span>
+      <div style="flex: 1; min-width: 0">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Joystick PS2</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: #F07B6E">JOYPS2 · Sin precio en la tienda</p>
+      </div>
+    </li>
+    <li style="padding: 16px 0; text-align: center"><button type="button" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 1px solid #333333; background: transparent; color: #F2F2F2; font: 500 14px 'Hanken Grotesk', sans-serif">Ver más</button></li>
+  </ul>
+
+  <div style="border-top: 1px solid #262626; background: #121212; padding: 12px 20px 26px; display: flex; flex-direction: column; gap: 8px">
+    <p style="margin: 0; font-size: 12px; color: #A7A7A7; text-align: center">Se agregan solo los que estás viendo. Antes de crear te muestra el número exacto.</p>
+    <button type="button" style="height: 50px; border-radius: 8px; border: 0; background: #5FC2A5; color: #0E2A22; font: 600 16px 'Hanken Grotesk', sans-serif">Agregar los listos con foto</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

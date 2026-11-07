@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mr Tecno · Revisar y agregar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121212}
+a{color:#7DD3B8}a:hover{color:#5FC2A5}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums">
+  <div style="flex: 0 0 248px; background: #181818; border-right: 1px solid #262626">
+    <dc-import name="Sidebar" hint-size="248px,960px"></dc-import>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <div style="flex: 1; padding: 32px 48px 32px; box-sizing: border-box">
+      <div style="max-width: 1040px; margin: 0 auto">
+
+        <nav aria-label="Ubicación" style="font-size: 13px; color: #A7A7A7"><a href="Proveedores.dc.html" style="color: #A7A7A7; text-decoration: none">Revendedores · Proveedores</a> <span aria-hidden="true">/</span> Mr Tecno</nav>
+        <h1 style="margin: 10px 0 0; font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Revisá y agregá</h1>
+
+        <ol aria-label="Pasos" style="display: flex; flex-wrap: wrap; gap: 8px 28px; list-style: none; margin: 24px 0 0; padding: 0 0 18px; border-bottom: 1px solid #262626; font-size: 14px">
+          <li style="display: flex; align-items: center; gap: 10px; color: #A7A7A7"><span style="width: 24px; height: 24px; border-radius: 999px; background: #2B2B2B; color: #7DD3B8; display: grid; place-items: center; font-size: 13px">✓</span>Importar</li>
+          <li style="display: flex; align-items: center; gap: 10px; color: #A7A7A7"><span style="width: 24px; height: 24px; border-radius: 999px; background: #2B2B2B; color: #7DD3B8; display: grid; place-items: center; font-size: 13px">✓</span>Precios · 20 % · cotización 1.600</li>
+          <li aria-current="step" style="display: flex; align-items: center; gap: 10px; font-weight: 600"><span style="width: 24px; height: 24px; border-radius: 999px; background: #F2F2F2; color: #121212; display: grid; place-items: center; font-size: 13px">3</span>Revisar y agregar</li>
+        </ol>
+
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px">
+          <label style="flex: 1 1 280px; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border-radius: 8px; background: #202020">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+            <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar en la lista de Mr Tecno</span>
+            <input type="search" value="{{ q }}" onChange="{{ onQ }}" placeholder="Buscar nombre o código (probá «joystick» o «copas»)" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #F2F2F2; font: 400 14px 'Hanken Grotesk', sans-serif; outline: none">
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer">
+            <button type="button" role="switch" aria-checked="{{ photoChecked }}" onClick="{{ togglePhoto }}" aria-label="Solo con foto" style="{{ switchStyle }}"><span aria-hidden="true" style="{{ knobStyle }}"></span></button>
+            Solo con foto
+          </label>
+        </div>
+
+        <div role="group" aria-label="Filtrar por estado" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px">
+          <sc-for list="{{ chips }}" as="chip" hint-placeholder-count="4">
+            <button type="button" aria-pressed="{{ chip.pressed }}" onClick="{{ chip.pick }}" style="{{ chip.style }}">{{ chip.label }}</button>
+          </sc-for>
+        </div>
+
+        <div style="margin-top: 16px; overflow-x: auto">
+          <table style="width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px">
+            <thead>
+              <tr style="border-bottom: 1px solid #262626">
+                <th scope="col" style="width: 40px; padding: 10px 0; text-align: left"><input type="checkbox" checked="{{ allChecked }}" onChange="{{ toggleAll }}" aria-label="Elegir todos los visibles" style="width: 18px; height: 18px; accent-color: #5FC2A5"></th>
+                <th scope="col" style="padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Producto</th>
+                <th scope="col" style="padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Categoría</th>
+                <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Te cuesta</th>
+                <th scope="col" style="padding: 10px 8px; text-align: right; font-size: 12px; font-weight: 400; color: #A7A7A7">Precio revendedor</th>
+                <th scope="col" style="padding: 10px 0 10px 8px; text-align: left; font-size: 12px; font-weight: 400; color: #A7A7A7">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+                <tr style="border-bottom: 1px solid #262626">
+                  <td style="padding: 12px 0"><input type="checkbox" checked="{{ r.checked }}" disabled="{{ r.disabled }}" onChange="{{ r.toggle }}" aria-label="Elegir {{ r.name }}" style="width: 18px; height: 18px; accent-color: #5FC2A5"></td>
+                  <td style="padding: 12px 8px">
+                    <div style="display: flex; align-items: center; gap: 12px">
+                      <span aria-hidden="true" style="{{ r.thumbStyle }}">{{ r.thumbText }}</span>
+                      <div style="min-width: 0"><p style="margin: 0; font-weight: 600">{{ r.name }}</p><p style="margin: 2px 0 0; font-size: 13px; color: #A7A7A7">{{ r.code }}</p></div>
+                    </div>
+                  </td>
+                  <td style="padding: 12px 8px; color: #A7A7A7">{{ r.cat }}</td>
+                  <td style="padding: 12px 8px; text-align: right"><span>{{ r.cost }}</span><br><span style="font-size: 12px; color: #A7A7A7">{{ r.usd }}</span></td>
+                  <td style="padding: 12px 8px; text-align: right; font-weight: 600">{{ r.price }}</td>
+                  <td style="padding: 12px 0 12px 8px"><span style="{{ r.statusStyle }}"><span aria-hidden="true" style="{{ r.dotStyle }}"></span>{{ r.status }}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+          <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 24px 0; font-size: 14px; color: #A7A7A7">No hay productos con ese filtro.</p>
+          </sc-if>
+        </div>
+        <p style="margin: 14px 0 0; font-size: 13px; color: #A7A7A7">Muestra de la lista real de Mr Tecno. En la app se ven de a 50, con «Ver más».</p>
+
+      </div>
+    </div>
+
+    <div style="position: sticky; bottom: 0; border-top: 1px solid #262626; background: #121212; padding: 14px 48px">
+      <div style="max-width: 1040px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+        <a href="Precios.dc.html" style="font-size: 14px; font-weight: 500; color: #A7A7A7; text-decoration: none">Atrás</a>
+        <div style="display: flex; align-items: center; gap: 16px">
+          <span style="font-size: 13px; color: #A7A7A7">{{ summary }}</span>
+          <button type="button" disabled="{{ noneSelected }}" style="{{ addStyle }}">{{ addLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1420}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { q: '', filter: 'todos', onlyPhoto: true, off: {} };
+  }
+  renderVals() {
+    const fmt = (n) => '$ ' + Math.round(n).toLocaleString('es-AR');
+    const data = [
+      { id: 'D06203', name: 'Joystick Xbox 360 2.4G con cable', cat: 'Joysticks', usd: 11, photo: true, m: 35 },
+      { id: 'JOYPS2', name: 'Joystick PS2', cat: 'Joysticks', usd: 0, photo: true, m: 35 },
+      { id: 'YH88214N', name: 'Zapatero 4 niveles negro', cat: 'Bazar y accesorios', usd: 2.95, photo: true, m: 20 },
+      { id: 'YH88214B', name: 'Zapatero 4 niveles blanco', cat: 'Bazar y accesorios', usd: 2.95, photo: true, m: 20 },
+      { id: 'YH88215N', name: 'Zapatero 5 niveles negro', cat: 'Bazar y accesorios', usd: 3.65, photo: true, m: 20 },
+      { id: '1015', name: 'Lámpara solar', cat: 'Iluminación', usd: 7.75, photo: true, m: 20 },
+      { id: 'HM352', name: 'Humificador LED estilo fuego', cat: 'Bazar y accesorios', usd: 6.25, photo: false, m: 20 },
+      { id: '88964', name: 'Set x 6 copas Diamonds 620 ml', cat: 'Bazar y accesorios', usd: 14.6, photo: false, m: 20 },
+      { id: '88948', name: 'Set x 6 copas Crystal Laurel 582 ml', cat: 'Bazar y accesorios', usd: 13.05, photo: false, m: 20 },
+      { id: '88914', name: 'Set x 6 copas 623 ml', cat: 'Bazar y accesorios', usd: 15.3, photo: false, m: 20 },
+      { id: 'C91015', name: 'Cascada luz LED cálido 16 tiras', cat: 'Iluminación', usd: 0, photo: false, m: 20 }
+    ];
+    const s = this.state;
+    const q = s.q.trim().toLowerCase();
+    const statusOf = (d) => d.usd <= 0 ? 'sinprecio' : (!d.photo ? 'sinfoto' : 'listo');
+    const visible = data.filter((d) => {
+      if (q && (d.name + ' ' + d.id).toLowerCase().indexOf(q) === -1) return false;
+      if (s.onlyPhoto && !d.photo) return false;
+      const st = statusOf(d);
+      if (s.filter === 'listos' && st !== 'listo') return false;
+      if (s.filter === 'revisar' && st === 'listo') return false;
+      if (s.filter === 'sinfoto' && d.photo) return false;
+      return true;
+    });
+    const ready = visible.filter((d) => statusOf(d) === 'listo');
+    const selected = ready.filter((d) => !s.off[d.id]);
+    const n = selected.length;
+    const chipBase = 'height: 32px; padding: 0 14px; border-radius: 999px; border: 0; font: 500 13px Hanken Grotesk, sans-serif; cursor: pointer;';
+    const chipDefs = [
+      { id: 'todos', label: 'Todos · 1.400' },
+      { id: 'listos', label: 'Listos · 874' },
+      { id: 'revisar', label: 'Para revisar · 526' },
+      { id: 'sinfoto', label: 'Sin foto' }
+    ];
+    const meta = {
+      listo: { label: 'Listo', color: '#7DD3B8', dot: '#5FC2A5' },
+      sinfoto: { label: 'Sin foto', color: '#E0A84A', dot: '#E0A84A' },
+      sinprecio: { label: 'Sin precio', color: '#F07B6E', dot: '#F07B6E' }
+    };
+    return {
+      q: s.q,
+      onQ: (e) => this.setState({ q: e.target.value }),
+      photoChecked: s.onlyPhoto ? 'true' : 'false',
+      togglePhoto: () => this.setState({ onlyPhoto: !s.onlyPhoto }),
+      switchStyle: 'position: relative; width: 36px; height: 22px; border-radius: 999px; border: 0; cursor: pointer; flex: none; background: ' + (s.onlyPhoto ? '#5FC2A5' : '#2B2B2B') + ';',
+      knobStyle: 'position: absolute; top: 3px; width: 16px; height: 16px; border-radius: 999px; ' + (s.onlyPhoto ? 'right: 3px; background: #0E2A22;' : 'left: 3px; background: #A7A7A7;'),
+      chips: chipDefs.map((c) => ({
+        label: c.label,
+        pressed: s.filter === c.id ? 'true' : 'false',
+        style: chipBase + (s.filter === c.id ? ' background: #5FC2A5; color: #0E2A22; font-weight: 600;' : ' background: #202020; color: #A7A7A7;'),
+        pick: () => this.setState({ filter: c.id })
+      })),
+      allChecked: ready.length > 0 && n === ready.length,
+      toggleAll: () => {
+        const off = Object.assign({}, s.off);
+        const turnOn = n !== ready.length;
+        ready.forEach((d) => { off[d.id] = !turnOn; });
+        this.setState({ off: off });
+      },
+      rows: visible.map((d) => {
+        const st = statusOf(d);
+        const cost = d.usd * 1600;
+        const mt = meta[st];
+        return {
+          name: d.name,
+          code: d.id + (d.m !== 20 ? ' · margen de la categoría ' + d.m + ' %' : ''),
+          cat: d.cat,
+          cost: d.usd > 0 ? fmt(cost) : '—',
+          usd: d.usd > 0 ? 'USD ' + d.usd.toFixed(2).replace('.', ',') : 'sin precio en la tienda',
+          price: d.usd > 0 ? fmt(cost * (1 + d.m / 100)) : '—',
+          status: mt.label,
+          statusStyle: 'display: inline-flex; align-items: center; gap: 8px; color: ' + mt.color + ';',
+          dotStyle: 'width: 8px; height: 8px; border-radius: 999px; background: ' + mt.dot + ';',
+          thumbStyle: d.photo
+            ? 'width: 44px; height: 44px; border-radius: 6px; background: #2B2B2B; flex: none; display: grid; place-items: center; font-size: 10px; color: #A7A7A7;'
+            : 'width: 42px; height: 42px; border-radius: 6px; border: 1px dashed #4A4A4A; flex: none; display: grid; place-items: center; font-size: 10px; color: #A7A7A7; text-align: center; line-height: 1.1;',
+          thumbText: d.photo ? 'foto' : 'sin foto',
+          checked: st === 'listo' && !s.off[d.id],
+          disabled: st !== 'listo',
+          toggle: () => { const off = Object.assign({}, s.off); off[d.id] = !off[d.id]; this.setState({ off: off }); }
+        };
+      }),
+      empty: visible.length === 0,
+      summary: q ? 'Filtrado por «' + s.q + '»' : (s.onlyPhoto ? 'Solo productos con foto' : 'Todos los productos'),
+      noneSelected: n === 0,
+      addLabel: n === 0 ? 'Elegí productos para agregar' : 'Agregar ' + n + (n === 1 ? ' producto' : ' productos'),
+      addStyle: 'height: 40px; padding: 0 18px; border-radius: 8px; border: 0; font: 600 14px Hanken Grotesk, sans-serif; cursor: pointer; ' + (n === 0 ? 'background: #2B2B2B; color: #A7A7A7;' : 'background: #5FC2A5; color: #0E2A22;')
+    };
+  }
+}
+</script>
+</body>
+</html>
