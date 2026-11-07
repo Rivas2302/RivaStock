@@ -177,6 +177,16 @@ export async function saveResellerSupplierListPricingBatch(
   return Number(data ?? 0);
 }
 
+export async function saveSupplierCatalogExchangeRate(supplierId: string, ownerUid: string, rate: number): Promise<void> {
+  if (!Number.isFinite(rate) || rate <= 0) throw new Error('La cotización debe ser mayor a cero.');
+  const { error } = await supabase.from('suppliers')
+    .update({ catalog_exchange_rate: rate })
+    .eq('id', supplierId)
+    .eq('user_id', ownerUid);
+  if (error) throw new Error(`[save_supplier_catalog_exchange_rate] ${error.message}`);
+  invalidateDbCache('suppliers');
+}
+
 export async function toggleResellerSupplierList(
   supplierListId: string,
   enabled: boolean,

@@ -36,6 +36,7 @@ import {
   saveResellerPriceList,
   saveResellerSupplierList,
   saveResellerSupplierListPricingBatch,
+  saveSupplierCatalogExchangeRate,
   toggleResellerSupplierList,
 } from '../lib/priceLists';
 import { db, fromDb, toDb } from '../lib/db';
@@ -152,6 +153,7 @@ export default function ResellerPriceListModal({
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
   const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
+  const [supplierImportRateNotice, setSupplierImportRateNotice] = useState<string | null>(null);
   const [supplierImportUsdRate, setSupplierImportUsdRate] = useState(() => {
     try { return Number(localStorage.getItem('rivastock:supplier-import-usd-rate')) || 0; } catch { return 0; }
   });
@@ -471,6 +473,31 @@ export default function ResellerPriceListModal({
       setSupplierImportScreenshot(null);
       setSupplierImportPhotoFiles({});
       const catalog = await extractSupplierListCatalog(supplierImportPageUrl);
+      const selectedSupplier = suppliers.find(supplier => supplier.id === editingSupplierId);
+      const rememberedRate = Number(selectedSupplier?.catalogExchangeRate ?? 0);
+      if (catalog.currency?.toUpperCase() === 'USD') {
+        if (catalog.detectedRate && catalog.rateSource === 'product_pages') {
+          setSupplierImportUsdRate(catalog.detectedRate);
+          setSupplierImportRateNotice(`Cotización de ${selectedSupplier?.name ?? 'el proveedor'} detectada: ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(catalog.detectedRate)} (leída de ${catalog.sampleCodes?.length ?? 3} productos).`);
+          try { localStorage.setItem('rivastock:supplier-import-usd-rate', String(catalog.detectedRate)); } catch { /* Browser storage is optional. */ }
+          if (selectedSupplier && editingSupplierId) {
+            await saveSupplierCatalogExchangeRate(editingSupplierId, ownerUid, catalog.detectedRate);
+            setSuppliers(current => current.map(supplier => supplier.id === editingSupplierId
+              ? { ...supplier, catalogExchangeRate: catalog.detectedRate }
+              : supplier));
+          }
+        } else if (rememberedRate > 0) {
+          setSupplierImportUsdRate(rememberedRate);
+          setSupplierImportRateNotice(`No pudimos detectar la cotización actual. Se usa la última guardada para ${selectedSupplier?.name ?? 'este proveedor'}: ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(rememberedRate)}.`);
+        } else {
+          setSupplierImportUsdRate(0);
+          setSupplierImportRateNotice('No pudimos detectar la cotización. Ingresala para calcular los costos en pesos.');
+        }
+      } else if (catalog.currency?.toUpperCase() === 'ARS' && catalog.rateSource === 'store_api') {
+        setSupplierImportRateNotice('El proveedor devolvió precios en pesos argentinos; no hace falta convertirlos.');
+      } else {
+        setSupplierImportRateNotice(null);
+      }
       const rows = catalog.items.length > 0
         ? catalog.items.map((item, index) => ({
           sourceRow: index + 1,
@@ -567,11 +594,15 @@ export default function ResellerPriceListModal({
   }, [supplierImportCategoryFilter, supplierImportReview, supplierImportSearch]);
   const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
   const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
+  const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => entry.action !== 'review').length;
+  const supplierImportFilterLabel = [supplierImportSearch.trim(), supplierImportCategoryFilter].filter(Boolean).join(' · ');
 
   const handleAddSupplierImportBatch = async () => {
     if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
-    const ready = supplierImportReview.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
+    const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
     if (ready.length === 0) return;
+    const filterText = supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : '';
+    if (!window.confirm(`Vas a agregar ${ready.length} producto${ready.length === 1 ? '' : 's'}${filterText}. ¿Querés continuar?`)) return;
     setSupplierSaving(true);
     setError(null);
     setSupplierImportBatchProgress({ done: 0, total: ready.length });
@@ -668,6 +699,19 @@ export default function ResellerPriceListModal({
       setError(importError instanceof Error ? importError.message : 'No pudimos completar la importación. Podés reintentar; los productos ya guardados se conservan.');
     } finally {
       setSupplierSaving(false);
+    }
+  };
+
+  const persistSupplierImportRate = async (rate: number) => {
+    if (!editingSupplierId || !Number.isFinite(rate) || rate <= 0) return;
+    try {
+      await saveSupplierCatalogExchangeRate(editingSupplierId, ownerUid, rate);
+      setSuppliers(current => current.map(supplier => supplier.id === editingSupplierId
+        ? { ...supplier, catalogExchangeRate: rate }
+        : supplier));
+      setSupplierImportRateNotice(`Cotización guardada para ${suppliers.find(supplier => supplier.id === editingSupplierId)?.name ?? 'el proveedor'}.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No pudimos guardar la cotización.');
     }
   };
 
@@ -1097,8 +1141,8 @@ export default function ResellerPriceListModal({
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           {supplierImportRows.length > 0 && <>
-                            {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950 dark:bg-indigo-950 dark:text-indigo-100"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
-                              <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} className="mt-1 min-h-10 w-full rounded-lg border border-indigo-200 bg-white px-3 text-sm text-slate-900 dark:border-indigo-800 dark:bg-slate-900 dark:text-white" placeholder="Ingresá la cotización"/>
+                            {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm text-[var(--ink)]"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportRateNotice && <p aria-live="polite" className="text-xs text-[var(--ink-muted)]">{supplierImportRateNotice}</p>}{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
+                              <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} onBlur={event => { const rate = Number(event.currentTarget.value); if (rate > 0) void persistSupplierImportRate(rate); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" placeholder="Ingresá la cotización"/>
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
@@ -1106,7 +1150,7 @@ export default function ResellerPriceListModal({
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos`}</button>
+                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
                             <div className="flex items-center justify-between text-xs"><span>Mostrando {supplierImportFiltered.length ? supplierImportPage * 50 + 1 : 0}–{Math.min((supplierImportPage + 1) * 50, supplierImportFiltered.length)} de {supplierImportFiltered.length}</span><span className="flex gap-2"><button type="button" disabled={supplierImportPage === 0} onClick={() => setSupplierImportPage(page => Math.max(0, page - 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Anterior</button><span className="self-center">{supplierImportPage + 1}/{supplierImportPageCount}</span><button type="button" disabled={supplierImportPage + 1 >= supplierImportPageCount} onClick={() => setSupplierImportPage(page => Math.min(supplierImportPageCount - 1, page + 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Siguiente</button></span></div>
                             <div className="grid gap-2 sm:grid-cols-2">
@@ -1141,7 +1185,7 @@ export default function ResellerPriceListModal({
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
-                                  <label className="text-[11px] font-semibold text-slate-500">Costo{row.sourceCurrency ? ` (${row.sourceCurrency})` : ''}<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
+                                  <div><label className="text-[11px] font-semibold text-slate-500">Costo de origen{row.sourceCurrency ? ` (${row.sourceCurrency})` : ''}<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>{row.sourceCurrency?.toUpperCase() === 'USD' && <p className="mt-1 text-sm font-bold text-[var(--ink)]">Costo en pesos: {entry.supplierCostLocal === null ? '—' : formatCurrency(entry.supplierCostLocal)} <span className="text-xs font-normal text-[var(--ink-muted)]">(USD {row.supplierCost?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span></p>}</div>
                                   <label className="text-[11px] font-semibold text-slate-500">Margen del producto<input aria-label={`Margen de fila ${row.sourceRow}`} type="number" min="0" step="0.1" value={row.marginPercent ?? ''} placeholder={`${getSupplierImportMargin(row)}%`} onChange={event => updateSupplierImportRow(row.sourceRow, { marginPercent: event.target.value === '' ? undefined : Math.max(0, Number(event.target.value) || 0) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
                                   {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}

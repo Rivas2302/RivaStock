@@ -30,7 +30,9 @@ describe('reseller supplier lists UI', () => {
     expect(modal).toContain('Leer lista con IA');
     expect(modal).toContain("'gpt-6-luna'");
     expect(modal).toContain('¿Los precios incluyen IVA?');
-    expect(modal).toContain('Agregar los ${supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos');
+    expect(modal).toContain('supplierImportFilteredReadyCount');
+    expect(modal).toContain('window.confirm');
+    expect(modal).toContain('Agregar los ${supplierImportFilteredReadyCount} listos');
     expect(modal).toContain('planSupplierImport');
     expect(modal).toContain('supplierImportBatchProgress');
     expect(modal).toContain('initialDraft');

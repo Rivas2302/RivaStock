@@ -22,6 +22,9 @@ export interface SupplierCatalogSourceResult {
     imageUrl: string | null;
     url: string | null;
   }>;
+  detectedRate?: number | null;
+  rateSource?: 'store_api' | 'product_pages' | null;
+  sampleCodes?: string[];
   text?: string;
 }
 

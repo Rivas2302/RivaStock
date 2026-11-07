@@ -21,6 +21,9 @@ export interface SupplierCatalogResult {
   source: SupplierCatalogSource;
   currency: string | null;
   items: SupplierCatalogItem[];
+  detectedRate?: number | null;
+  rateSource?: 'store_api' | 'product_pages' | null;
+  sampleCodes?: string[];
   text?: string;
 }
 
@@ -289,21 +292,87 @@ async function readWooCommerce(
   origin: string,
   resolveDns: DnsResolver,
   fetcher: typeof fetch,
+  requestedCurrency?: string,
 ): Promise<{ currency: string | null; items: SupplierCatalogItem[] } | null> {
   const endpoint = new URL('/wp-json/wc/store/v1/products', origin);
   const items: SupplierCatalogItem[] = [];
   let currency: string | null = null;
   for (let page = 1; page <= API_MAX_PAGES; page++) {
-    const payload = await fetchJsonPage(withPage(endpoint, page, 100).href, origin, resolveDns, fetcher);
+    const pageUrl = withPage(endpoint, page, 100);
+    if (requestedCurrency) pageUrl.searchParams.set('currency', requestedCurrency);
+    const payload = await fetchJsonPage(pageUrl.href, origin, resolveDns, fetcher);
     if (!Array.isArray(payload)) return page === 1 ? null : { currency, items: normalizeItems(items) };
     if (payload.length === 0) break;
     const parsed = parseWooProducts(payload, origin);
+    if (requestedCurrency && parsed.currency !== requestedCurrency) {
+      return { currency: parsed.currency, items: [] };
+    }
     if (parsed.currency && currency && currency !== parsed.currency) return null;
     currency = parsed.currency ?? currency;
     items.push(...parsed.items);
     if (payload.length < 100 || items.length >= MAX_ITEMS) break;
   }
   return items.length ? { currency, items: normalizeItems(items) } : null;
+}
+
+function parseLocalizedSupplierPrice(raw: string): number | null {
+  let value = raw.replace(/[^\d.,\s]/g, '').replace(/\s/g, '');
+  if (!value) return null;
+  const comma = value.lastIndexOf(',');
+  const dot = value.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? ',' : '.';
+    value = value.replace(decimal === ',' ? /\./g : /,/g, '').replace(decimal, '.');
+  } else if (comma >= 0) value = value.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(?:\.\d{3})+$/.test(value)) value = value.replace(/\./g, '');
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function extractLocalPrice(html: string, pageUrl: string): number | null {
+  const jsonLd = parseJsonLdProducts(html, pageUrl);
+  if (jsonLd.currency === 'ARS') {
+    const price = jsonLd.items.find(item => item.price && item.price > 0)?.price;
+    if (price) return price;
+  }
+  const amount = html.match(/<[^>]*class=["'][^"']*woocommerce-Price-amount[^"']*["'][^>]*>[\s\S]*?<bdi[^>]*>([\s\S]*?)<\/bdi>/i)?.[1]
+    ?? html.match(/<[^>]*class=["'][^"']*woocommerce-Price-amount[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i)?.[1];
+  if (!amount) return null;
+  const currency = amount.match(/<[^>]*class=["'][^"']*woocommerce-Price-currencySymbol[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i)?.[1]
+    ?.replace(/<[^>]+>/g, '').replace(/&nbsp;|&#160;/gi, ' ').trim();
+  if (currency && !['$', 'ARS', 'AR$'].includes(currency.toUpperCase())) return null;
+  return parseLocalizedSupplierPrice(amount.replace(/<[^>]+>/g, '').replace(/&nbsp;|&#160;/gi, ' '));
+}
+
+async function detectWooRate(
+  origin: string,
+  items: SupplierCatalogItem[],
+  resolveDns: DnsResolver,
+  fetcher: typeof fetch,
+): Promise<{ rate: number | null; sampleCodes: string[] }> {
+  const samples = items.filter(item => item.price && item.price > 0 && item.url)
+    .slice(0, 3);
+  if (samples.length !== 3) return { rate: null, sampleCodes: samples.map(item => item.code).filter((code): code is string => Boolean(code)) };
+  const ratios: number[] = [];
+  for (const sample of samples) {
+    try {
+      const { response, url } = await fetchValidated(sample.url!, resolveDns, fetcher);
+      if (url.origin !== origin || !response.ok) { await response.body?.cancel(); return { rate: null, sampleCodes: [] }; }
+      const type = response.headers.get('content-type') ?? '';
+      if (!/^text\/html(?:\s*;|$)/i.test(type)) { await response.body?.cancel(); return { rate: null, sampleCodes: [] }; }
+      const html = await readLimitedResponseText(response);
+      if (isSupplierBotChallenge(html)) return { rate: null, sampleCodes: [] };
+      const localPrice = extractLocalPrice(html, url.href);
+      if (!localPrice) return { rate: null, sampleCodes: [] };
+      ratios.push(localPrice / sample.price!);
+    } catch {
+      return { rate: null, sampleCodes: [] };
+    }
+  }
+  const sorted = [...ratios].sort((a, b) => a - b);
+  const median = sorted[1];
+  if (ratios.some(rate => Math.abs(rate - median) / median >= 0.01)) return { rate: null, sampleCodes: [] };
+  return { rate: Math.round(median * 100) / 100, sampleCodes: samples.map(item => item.code).filter((code): code is string => Boolean(code)) };
 }
 
 async function readShopify(
@@ -346,7 +415,18 @@ export async function readSupplierCatalog(
   ] as const) {
     try {
       const catalog = await read(origin, resolveDns, fetcher);
-      if (catalog?.items.length) return { source, currency: catalog.currency, items: catalog.items };
+      if (!catalog?.items.length) continue;
+      if (source === 'woocommerce' && catalog.currency && catalog.currency !== 'ARS') {
+        try {
+          const localCatalog = await readWooCommerce(origin, resolveDns, fetcher, 'ARS');
+          if (localCatalog?.items.length && localCatalog.currency === 'ARS') {
+            return { source, currency: 'ARS', items: localCatalog.items, detectedRate: null, rateSource: 'store_api', sampleCodes: [] };
+          }
+        } catch { /* A currency override is optional; keep the default catalog. */ }
+        const detected = await detectWooRate(origin, catalog.items, resolveDns, fetcher);
+        return { source, currency: catalog.currency, items: catalog.items, detectedRate: detected.rate, rateSource: detected.rate ? 'product_pages' : null, sampleCodes: detected.sampleCodes };
+      }
+      return { source, currency: catalog.currency, items: catalog.items, detectedRate: null, rateSource: null, sampleCodes: [] };
     } catch (error) {
       if (error instanceof UnsafeSupplierRedirectError) throw error;
       // Unavailable API endpoints fall through to the next supported source.

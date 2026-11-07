@@ -591,6 +591,7 @@ export interface Supplier {
   notes?: string;
   paymentTerms?: string;
   catalogUrl?: string;
+  catalogExchangeRate?: number | null;
   facebookUrl?: string;
   instagramUrl?: string;
   isActive: boolean;

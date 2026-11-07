@@ -109,6 +109,7 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
   page.on('console', message => { if (message.type() === 'error') pageErrors.push(message.text()); });
   const { products, pricingCalls, sourceCosts, changeCatalog } = await mockApp(page);
+  page.on('dialog', dialog => dialog.accept());
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/stock');
   await page.getByRole('button', { name: 'Más acciones de stock' }).click();
@@ -136,4 +137,25 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
   await expect(modal.getByText(/0 nuevos · 0 actualizados · 3 sin cambios/)).toBeVisible();
+});
+
+test('bulk import button confirms and creates only products matching the active search filter', async ({ page }) => {
+  const { products } = await mockApp(page);
+  page.on('dialog', dialog => dialog.accept());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
+  await page.getByRole('button', { name: /Lista revendedores/ }).click();
+  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
+  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
+  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).click();
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await modal.getByLabel('Buscar productos importados').fill('Lámpara solar');
+  await expect(modal.getByRole('button', { name: 'Agregar los 1 listos de "Lámpara solar"' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 1 listos de "Lámpara solar"' }).click();
+  await expect.poll(() => products.length).toBe(1);
+  expect(products[0].name).toBe('Lámpara solar');
 });
