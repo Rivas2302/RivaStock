@@ -533,7 +533,7 @@ A Riva le parece "horrible" la pantalla de chats de IA en el celular: el botón 
 
 ---
 
-### [x] I18b Correcciones del catálogo público y rediseño de su configuración — **pedido de Riva el 07/11 09:28 (con capturas)**
+### [ ] I18b Correcciones del catálogo público y rediseño de su configuración — **pedido de Riva el 07/11 09:28 (con capturas)**
 Riva probó I18 en producción desde el celular y encontró estos problemas. Además pidió **rediseñar completamente** la pantalla de configuración del catálogo porque en el celular se ve muy mal. Maquetas nuevas en `docs/design/public-catalog/`: **`ConfigCatalogo`**, **`ConfigOfertas`** y **`ConfigWhatsApp`**. También valen las que ya estaban: `Main`, `Producto`, `Carrito`, `Personalizar` y `MainPC`.
 
 **Catálogo público (lo que ve el cliente):**
@@ -554,6 +554,51 @@ Riva probó I18 en producción desde el celular y encontró estos problemas. Ade
 - **Tests:** Playwright móvil 360×740 y PC 1440: tarjeta con botón Agregar visible y sin desbordes, ficha completa, agregar al carrito desde tarjeta y ficha, contraste de categorías y cuenta regresiva en tema claro (axe), mensaje de WhatsApp con nombre, precio y link de vista previa, aviso "Cambios guardados". Sin pedidos ni mensajes reales.
 - **Cuándo:** es lo próximo, antes que cualquier otra cosa.
 - **Commit:** `fix(catalog): product cards, detail page, light theme contrast and redesigned catalog settings`
+
+---
+
+### [ ] I21 Proxy para leer listas de proveedores desde URL — **pedido de Riva el 07/11**
+
+Hoy al pegar el link de la página de un proveedor aparece el error "No pudimos leer el enlace. El sitio debe permitir lectura desde el navegador (CORS)". Es una limitación de los navegadores: no pueden leer HTML de sitios externos directamente.
+
+**Solución:** crear una **Edge Function en Supabase** (o función en Vercel) que actúe de proxy. La app le pasa la URL, el servidor busca la página y devuelve el texto plano. Sin restricciones CORS porque el fetch lo hace el servidor, no el navegador.
+
+**Flujo:**
+1. Usuario pega el link del proveedor en "Importar lista del proveedor".
+2. La app llama al proxy (`/functions/v1/fetch-url?url=...`).
+3. El proxy busca la página, extrae el texto visible y lo devuelve.
+4. La IA procesa ese texto para identificar productos, precios y categorías, igual que hace hoy con las capturas.
+
+**Consideraciones:**
+- Algunos sitios bloquean bots por User-Agent: el proxy puede enviar un UA de navegador normal.
+- Si el sitio requiere login, el proxy no puede acceder (en ese caso el usuario sube capturas o Excel como hoy).
+- La función tiene que ser pública (no requiere auth) pero con rate limiting básico para no abusar.
+- No guardar ni loguear el contenido de las páginas externas.
+
+- **Cuándo:** sin apuro, después de I18b.
+- **Commit:** `feat(suppliers): server-side proxy for reading supplier price list URLs`
+
+---
+
+### [ ] I22 Correcciones catálogo (ronda 2) y notificación por email de pedidos — **pedido de Riva el 07/11 12:09 (con capturas)**
+
+Riva probó el catálogo después de I18b y reporta los siguientes problemas:
+
+**Catálogo público (`PublicCatalog.tsx`, `PublicProductPage.tsx`):**
+1. **Chip "PRINCIPAL" en las tarjetas:** aparece un badge feo con texto "PRINCIPAL" en cada tarjeta. Es el `inventoryOwnerLabels[product.id]` que se muestra sin querer en el catálogo público. Quitarlo del catálogo — ese chip es para uso interno, no para los clientes.
+2. **Badge "Últimas unidades":** Riva no quiere ese badge. Quitarlo (`config.showStock && config.showStockQuantity && product.stock <= 5` → eliminar el `<span>` entero).
+3. **Texto "DISPONIBLE · X unidades" / "Stock: X":** Riva no quiere que se muestre la cantidad disponible ni el texto de stock en las tarjetas. Quitar el bloque `{config.showStock && (<p>...)}` de las tarjetas, o al menos no mostrar la cantidad numérica ni la palabra "DISPONIBLE".
+4. **"No hay más stock disponible.":** el toast que aparece al intentar agregar más del stock disponible. Riva quiere que se pueda hacer el pedido sin esa restricción — si el cliente pide más unidades de las que hay en stock, dejarlo pasar igual (no bloquear). Cambiar `isProductOrderable` para que siempre devuelva `true` en canal retail, y quitar el bloqueo en `addToCart` que muestra ese mensaje.
+
+**Pedidos (`Orders.tsx`):**
+5. **Botón "Convertir en Venta" no se ve:** el botón tiene `bg-slate-900 dark:bg-white dark:text-slate-900` — en modo oscuro queda blanco sobre fondo oscuro y casi no se distingue. Usar un color de acento bien visible (ej. `bg-blue-600 text-white hover:bg-blue-700`) independientemente del tema.
+
+**Notificación por email de nuevo pedido (nuevo feature):**
+6. Cuando un cliente completa un pedido desde el catálogo público, enviar un **email de notificación al dueño del negocio** (el email registrado en la cuenta de Supabase Auth del propietario del catálogo). El email debe incluir: nombre del cliente, teléfono, email, dirección, nota, lista de productos con cantidades y precios, y total. Implementar como Edge Function de Supabase (`send-order-notification`) o como acción en la función existente de creación de pedidos. Usar Resend (ya configurado en el proyecto) o el SMTP de Supabase si Resend no está disponible. No enviar email de prueba; disparar solo en producción cuando `NODE_ENV !== 'test'`.
+
+- **Tests:** Playwright móvil 360: sin chip "PRINCIPAL", sin badge "Últimas unidades", sin texto de stock en tarjetas, agregar al carrito funciona aunque stock sea 0. Revisar botón "Convertir en Venta" visible en modo oscuro. Email: smoke manual desde catálogo de prueba (verificar que llega, no contar como venta real).
+- **Cuándo:** es lo próximo, antes de cualquier otra cosa.
+- **Commit:** `fix(catalog): remove internal badges, lift stock restriction, fix convert-to-sale button; feat(orders): email notification on new order`
 
 ---
 

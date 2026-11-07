@@ -4,8 +4,7 @@ import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
-import { createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
@@ -75,7 +74,6 @@ export default function PublicCatalog() {
   const [products, setProducts] = useState<PublicCatalogProduct[]>([]);
   const [retailProducts, setRetailProducts] = useState<PublicCatalogProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [inventoryOwnerLabels, setInventoryOwnerLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
@@ -246,11 +244,10 @@ useEffect(() => {
         setConfig(foundConfig);
 
         // 2. Fetch products and categories concurrently via Supabase
-        const [allProducts, cats, ownerLabels, hasResellerCatalog] = await withTimeout(
+        const [allProducts, cats, hasResellerCatalog] = await withTimeout(
           Promise.all([
             getPublicCatalogProducts(slug),
             db.list<Category>('categories', foundConfig.ownerUid),
-            getPublicInventoryOwnerLabels(slug),
             getResellerCatalogStatus(slug),
           ]),
           'load products+categories',
@@ -261,7 +258,6 @@ useEffect(() => {
         setRetailProducts(allProducts);
         setCategories(cats);
         setResellerAvailable(hasResellerCatalog);
-        setInventoryOwnerLabels(Object.fromEntries(ownerLabels.map((label) => [label.productId, label.inventoryOwnerName])));
       } catch (err) {
         if (cancelled) return;
         console.error('[catalog] init failed:', err);
@@ -282,7 +278,7 @@ useEffect(() => {
   const isProductOrderable = (product: PublicCatalogProduct): boolean => (
     channel === 'reseller'
       ? product.availability === 'on_order' || product.stock > 0
-      : product.stock > 0
+      : true
   );
 
   const addToCart = (product: PublicCatalogProduct, effectivePrice?: number) => {
@@ -292,7 +288,7 @@ useEffect(() => {
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        if (product.availability !== 'on_order' && existing.quantity >= product.stock) {
+        if (channel === 'reseller' && product.availability !== 'on_order' && existing.quantity >= product.stock) {
           setMessage('No hay más stock disponible.');
           setTimeout(() => setMessage(null), 2500);
           return prev;
@@ -315,8 +311,8 @@ useEffect(() => {
       const request = JSON.parse(raw) as { slug?: string; productId?: string; quantity?: number };
       if (request.slug !== slug || !request.productId) return;
       const product = products.find(item => item.id === request.productId);
-      if (!product || product.stock <= 0) return;
-      const quantity = Math.max(1, Math.min(product.stock, Math.floor(request.quantity ?? 1)));
+      if (!product) return;
+      const quantity = Math.max(1, Math.min(9999, Math.floor(request.quantity ?? 1)));
       const presentation = { ...defaultCatalogPresentation(config ?? undefined), ...config?.presentation };
       const offerEnd = presentation.offerEndsAt ? Date.parse(presentation.offerEndsAt) : 0;
       const discount = offerEnd > Date.now() && presentation.offerProductIds.includes(product.id)
@@ -337,9 +333,9 @@ useEffect(() => {
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.product.id !== productId) return item;
-      const max = item.product.availability === 'on_order'
-        ? Number.MAX_SAFE_INTEGER
-        : item.product.stock;
+      const max = channel === 'reseller' && item.product.availability !== 'on_order'
+        ? item.product.stock
+        : 9999;
       const newQty = Math.min(max, Math.max(1, item.quantity + delta));
       return { ...item, quantity: newQty };
     }));
@@ -495,14 +491,22 @@ useEffect(() => {
       };
       const items = cart.map(item => ({ productId: item.product.id, quantity: item.quantity }));
       const activeRound = supplierRounds.find(round => round.id === selectedSupplierRoundId);
+      let createdOrderId: string;
       if (channel === 'reseller' && activeRound) {
         const result = await createPublicResellerSupplierRoundOrder({
           slug: slug ?? '', accessCode: resellerAccessCode, roundId: activeRound.id, customer, items,
         });
+        createdOrderId = result.id;
         setRoundOrderReceipt({ ...result, itemsSummary: cart.map(item => `${item.quantity} × ${item.product.name}`) });
       } else {
-        await createPublicCatalogOrder({ slug: slug ?? '', channel, accessCode: channel === 'reseller' ? resellerAccessCode : '', customer, items });
+        const result = await createPublicCatalogOrder({ slug: slug ?? '', channel, accessCode: channel === 'reseller' ? resellerAccessCode : '', customer, items });
+        createdOrderId = result.id;
         setRoundOrderReceipt(null);
+      }
+      try {
+        await notifyPublicOrderOwner(createdOrderId);
+      } catch {
+        console.error('[checkout] order notification unavailable');
       }
       invalidateDbCache('orders');
       setLastSubmitAt(Date.now());
@@ -1096,11 +1100,6 @@ if (loading) {
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
                     {offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
                     {Date.parse(product.createdAt) >= Date.now() - 30 * 24 * 60 * 60 * 1000 && <span className="w-fit rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">Nuevo</span>}
-                    {config.showStock && config.showStockQuantity && product.stock <= 5 && product.stock > 0 && (
-                      <span className="bg-rose-500/90 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
-                        Últimas unidades
-                      </span>
-                    )}
                     {channel === 'reseller' && product.availability === 'on_order' ? (
                       <span className="rounded-full bg-amber-500/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl backdrop-blur-md">
                         Por pedido · sin stock inmediato
@@ -1122,14 +1121,6 @@ if (loading) {
                       )}>
                         {categories.find(c => c.id === product.categoryId)?.name || 'General'}
                       </span>
-                      {inventoryOwnerLabels[product.id] && (
-                        <span className={cn(
-                          "rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
-                          darkMode ? "bg-white/10 text-white/60" : "bg-amber-50 text-amber-700",
-                        )}>
-                          {inventoryOwnerLabels[product.id]}
-                        </span>
-                      )}
                     </div>
                     <button type="button" onClick={() => { setSelectedProductForLightbox(product); setLightboxImageIndex(0); setDetailQuantity(1); }} className={cn(
                       "min-h-11 w-full text-left text-sm font-bold tracking-tight leading-tight transition-colors sm:text-xl",
@@ -1169,16 +1160,6 @@ if (loading) {
                               ? <>{offerPrice !== roundPrice(product.salePrice) && <span className="mr-2 text-sm font-medium text-slate-400 line-through">{formatCurrency(roundPrice(product.salePrice))}</span>}{formatCurrency(offerPrice)}</>
                               : formatCurrency(roundPrice(product.salePrice));
                           })()}
-                        </p>
-                      )}
-                      {config.showStock && (
-                        <p className={cn(
-                          "text-[10px] font-bold uppercase tracking-widest",
-                          darkMode ? "text-white/70" : "text-slate-600"
-                        )}>
-                          {channel === 'reseller' && product.availability === 'on_order'
-                            ? 'Por pedido · demora a confirmar'
-                            : config.showStockQuantity ? 'Disponible' : `Stock: ${product.stock}`}
                         </p>
                       )}
                     </div>
@@ -1708,7 +1689,7 @@ if (loading) {
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
               <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
                 <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
-                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{config.showStock&&<p className={`inline-flex min-h-9 items-center rounded-full px-3 text-sm font-bold ${product.stock>0?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}`}>{product.stock>0?(config.showStockQuantity?`Disponible · ${product.stock} unidades`:'Disponible'):'Sin stock'}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(product.availability==='on_order'?Number.MAX_SAFE_INTEGER:product.stock,value+1))} disabled={product.availability!=='on_order'&&detailQuantity>=product.stock} className="grid size-11 place-items-center rounded-xl border border-[var(--line)] disabled:opacity-50"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Compartir'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
+                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{config.showStock&&<p className={`inline-flex min-h-9 items-center rounded-full px-3 text-sm font-bold ${product.stock>0?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}`}>{product.stock>0?(config.showStockQuantity?`Disponible · ${product.stock} unidades`:'Disponible'):'Sin stock'}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Compartir'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
               </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>{setSelectedProductForLightbox(row);setLightboxImageIndex(0);setDetailQuantity(1);}} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
               <footer className="grid shrink-0 gap-2 border-t border-[var(--line)] bg-[var(--surface-raised)] p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:hidden">
                 <button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button>

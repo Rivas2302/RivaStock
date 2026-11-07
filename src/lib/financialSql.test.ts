@@ -15,7 +15,9 @@ beforeAll(async () => {
   sql = new PGlite({ extensions: { pgcrypto } });
   await sql.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-    CREATE SCHEMA auth; CREATE SCHEMA storage; CREATE EXTENSION pgcrypto;
+    CREATE SCHEMA auth; CREATE SCHEMA storage; CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto;
+    CREATE FUNCTION extensions.digest(text, text) RETURNS bytea LANGUAGE sql IMMUTABLE
+      AS $$ SELECT public.digest($1, $2) $$;
     CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;

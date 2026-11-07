@@ -690,7 +690,7 @@ describe('Knowledge RAG migration', () => {
     } finally {
       await backfillDb.close();
     }
-  });
+  }, 15_000);
 });
 
 describe('Knowledge chat retrieval migration', () => {

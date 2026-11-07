@@ -2,3 +2,6 @@ project_id = "nkfqhuqrgrpfufdymkcr"
 
 [functions.share]
 verify_jwt = false
+
+[functions.send-order-notification]
+verify_jwt = false

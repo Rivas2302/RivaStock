@@ -33,15 +33,16 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
+  const catalogProduct = { ...product, ...productOverrides };
   await page.route('**/rest/v1/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
     if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [fixtureConfig(theme, offerEndsAt)] });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
-    if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: [product] });
-    if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: product });
+    if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: [catalogProduct] });
+    if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: catalogProduct });
     if (pathname.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
     if (pathname.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: Boolean(resellerRounds) } });
     if (resellerRounds && pathname.endsWith('/rpc/unlock_reseller_catalog')) {
@@ -95,6 +96,33 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
   await expect(page.getByRole('heading', { name: 'Finalizar Pedido' })).toBeVisible();
   expect(orderSubmitted).toBe(false);
+});
+
+test('retail cards hide internal and stock labels and accept more than zero stock', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });
+  await page.goto('/catalogo/qa-catalog');
+  const addButton = page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last();
+  await expect(addButton).toBeVisible();
+  await expect(page.getByText('PRINCIPAL', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Últimas unidades', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/^(Disponible|Stock:)/)).toHaveCount(0);
+  await addButton.click();
+  await addButton.click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
+  await expect(page.getByText('No hay más stock disponible.')).toHaveCount(0);
+});
+
+test('direct product route adds an out-of-stock product and requested quantity', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });
+  await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await page.getByRole('button', { name: 'Agregar una unidad' }).click();
+  await expect(page.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Agregar al carrito' }).click();
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
 });
 
 test('reseller order round uses only its supplier products and directs payment to WhatsApp', async ({ page }) => {

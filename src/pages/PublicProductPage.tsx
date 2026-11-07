@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 import { fromDb } from '../lib/db';
 import type { CatalogConfig, PublicCatalogProduct } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { getPublicInventoryOwnerLabels } from '../lib/inventoryOwners';
 import { getPublicCatalogProduct, getPublicCatalogProducts } from '../lib/publicCatalog';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { defaultCatalogPresentation, formatCatalogWhatsAppMessage, getCatalogOfferPrice } from '../lib/catalogPresentation';
@@ -23,7 +22,6 @@ export default function PublicProductPage() {
   const navigate = useNavigate();
   const [product, setProduct] = useState<PublicCatalogProduct | null>(null);
   const [config, setConfig] = useState<CatalogConfig | null>(null);
-  const [inventoryOwnerName, setInventoryOwnerName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
@@ -44,7 +42,7 @@ export default function PublicProductPage() {
         return;
       }
 
-      const [catalogRes, publicProduct, ownerLabels, catalogProducts] = await Promise.all([
+      const [catalogRes, publicProduct, catalogProducts] = await Promise.all([
         supabase
           .from('catalog_config')
           .select('*')
@@ -52,7 +50,6 @@ export default function PublicProductPage() {
           .eq('enabled', true)
           .limit(1),
         getPublicCatalogProduct(slug, productId),
-        getPublicInventoryOwnerLabels(slug, productId),
         getPublicCatalogProducts(slug),
       ]);
       if (cancelled) return;
@@ -67,7 +64,6 @@ export default function PublicProductPage() {
 
       setConfig(fromDb<CatalogConfig>(catalogRow));
       setProduct(publicProduct);
-      setInventoryOwnerName(ownerLabels[0]?.inventoryOwnerName ?? '');
       setRelatedProducts(catalogProducts.filter(row => row.id !== publicProduct.id && row.categoryId === publicProduct.categoryId).slice(0,4));
       setLoading(false);
     };
@@ -99,7 +95,7 @@ export default function PublicProductPage() {
   };
 
   const handleAddToCart = () => {
-    if (!product || !slug || product.stock <= 0) return;
+    if (!product || !slug) return;
     sessionStorage.setItem('catalog-add-request', JSON.stringify({ slug, productId: product.id, quantity }));
     navigate(`/catalogo/${slug}`);
   };
@@ -249,11 +245,6 @@ export default function PublicProductPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
                 {product.category}
               </p>
-              {inventoryOwnerName && (
-                <p className="mb-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                  {inventoryOwnerName}
-                </p>
-              )}
               <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
                 {product.name}
               </h1>
@@ -338,11 +329,11 @@ export default function PublicProductPage() {
           <span className="flex-1 text-sm font-semibold">Cantidad</span>
           <button type="button" aria-label="Quitar una unidad" onClick={() => setQuantity(value => Math.max(1, value - 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200" disabled={quantity <= 1}><span aria-hidden="true">−</span></button>
           <span aria-live="polite" className="min-w-8 text-center font-bold">{quantity}</span>
-          <button type="button" aria-label="Agregar una unidad" onClick={() => setQuantity(value => Math.min(product.stock, value + 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200" disabled={quantity >= product.stock}><span aria-hidden="true">+</span></button>
+          <button type="button" aria-label="Agregar una unidad" onClick={() => setQuantity(value => Math.min(9999, value + 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200"><span aria-hidden="true">+</span></button>
         </div>
       </main>
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-8px_30px_rgba(15,23,42,.12)] backdrop-blur md:sticky md:bottom-0">
-        <div className="mx-auto flex max-w-5xl gap-2"><button type="button" onClick={handleWhatsApp} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button><button type="button" onClick={handleAddToCart} disabled={product.stock <= 0} className="min-h-12 flex-[1.4] rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white disabled:opacity-50"><ShoppingBag size={18} className="mr-2 inline"/>Agregar al carrito</button></div>
+        <div className="mx-auto flex max-w-5xl gap-2"><button type="button" onClick={handleWhatsApp} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button><button type="button" onClick={handleAddToCart} className="min-h-12 flex-[1.4] rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"><ShoppingBag size={18} className="mr-2 inline"/>Agregar al carrito</button></div>
       </div>
     </div>
   );

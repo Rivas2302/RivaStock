@@ -226,7 +226,7 @@ export default function Orders() {
                   onClick={() => handleConvertToSale(order)}
                   disabled={!canWrite}
                   title={!canWrite ? 'Sin permiso' : undefined}
-                  className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ArrowRight size={18} />
                   Convertir en Venta

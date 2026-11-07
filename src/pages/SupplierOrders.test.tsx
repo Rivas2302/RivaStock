@@ -22,6 +22,7 @@ vi.mock('../AuthContext', () => ({
 }));
 vi.mock('../hooks/usePermission', () => ({ usePermission: () => true }));
 vi.mock('../hooks/useSuppliers', () => ({ useSuppliers: () => ({ suppliers: [] }) }));
+vi.mock('react-router-dom', () => ({ useLocation: () => ({ pathname: '/proveedores/pedidos' }), useNavigate: () => vi.fn() }));
 vi.mock('../components/Modal', () => ({
   default: ({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) =>
     isOpen ? <div role="dialog">{children}</div> : null,

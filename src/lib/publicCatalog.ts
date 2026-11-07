@@ -5,6 +5,7 @@ import type {
   PublicResellerSupplierRound,
 } from '../types';
 import { supabase } from './supabase';
+import { shouldNotifyPublicOrderOwner } from './publicCatalogNotification';
 
 type PublicProductPayload = Partial<PublicCatalogProduct> & Pick<PublicCatalogProduct, 'id' | 'name'>;
 
@@ -134,4 +135,10 @@ export async function createPublicCatalogOrder(input: PublicOrderInput): Promise
   if (error) throw new Error(error.message);
   const result = data as { id: string; total: number; channel: CatalogChannel };
   return { ...result, total: Number(result.total) };
+}
+
+export async function notifyPublicOrderOwner(orderId: string): Promise<void> {
+  if (typeof window === 'undefined' || !shouldNotifyPublicOrderOwner(window.location.hostname)) return;
+  const { error } = await supabase.functions.invoke('send-order-notification', { body: { orderId } });
+  if (error) throw new Error('Order notification is unavailable.');
 }
