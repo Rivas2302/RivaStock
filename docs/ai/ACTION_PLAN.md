@@ -617,7 +617,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 ---
 
-### [ ] I24 Importar lista del proveedor: que funcione de punta a punta — **pedido de Riva el 07/11 14:46 (prioridad máxima)**
+### [x] I24 Importar lista del proveedor: que funcione de punta a punta — **pedido de Riva el 07/11 14:46 (prioridad máxima)**
 
 **Objetivo de Riva:** pegar el enlace (o subir el PDF) del proveedor, revisar y agregar todo de una. Hoy **no funciona ninguna de las dos vías**. Diagnóstico verificado en `origin/main` (`edf48a9`):
 

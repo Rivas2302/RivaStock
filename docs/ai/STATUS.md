@@ -1628,3 +1628,11 @@ Sin toque en src/, supabase/ ni extensions/.
 - Verificación local: `npm run lint` pasó; suite Vitest completa **194 archivos / 1.128 pruebas aprobadas**; Playwright de importación **1/1**; las pruebas focales del módulo **34/34**. Incluye PDF seleccionable de 25 MB y prueba unitaria del camino OCR de un PDF escaneado (render + llamada al OCR con el motor aislado en el test).
 - `npm run build` pasó. `npm run perf:check` sigue fallando por el presupuesto del bundle de `src/pages/Knowledge.tsx`, que I24 no modifica; los bundles de entrada y la pantalla AIHub no son el fallo señalado.
 - Pendiente: rebase/push de los commits a `main`, verificar que Vercel quede `Current` y hacer el recorrido real de Mr Tecno hasta la revisión, sin confirmar altas ni escribir productos de producción. No se generaron datos QA en producción.
+
+## 2026-11-07 — I24 cerrada y verificada
+
+- Los commits de implementación de I24 quedaron en `origin/main` hasta `83bad5c`; el plan y este cierre se actualizaron después de la verificación de producción.
+- GitHub reportó el check de Vercel como `success`. En la app de producción, el bundle de `ResellerPriceListModal` contiene el importador nuevo y cargó sin errores de consola.
+- Prueba real de solo lectura en `https://mrtecno.com.ar/productos/`: el proxy devolvió 1.400 productos; se mostró moneda USD, se aplicó cotización 1.600 ARS/USD y quedaron 874 productos listos y 526 para revisar, con filtro por categorías. No se confirmó “Agregar”, no se guardó la lista ni se crearon productos QA.
+- Verificación OCR real adicional en navegador con un PDF escaneado de 2.019.347 bytes: Tesseract reconoció `LAMPARA SOLAR` y `USD 15,30`. También quedó el test unitario que verifica renderizado y llamada al OCR; el PDF seleccionable de 25 MB pasó en la suite.
+- I24 cerrada. La única verificación auxiliar que sigue fuera del umbral es `npm run perf:check`, que falla por el presupuesto histórico de `src/pages/Knowledge.tsx`; I24 no toca esa pantalla. No bloqueó build, lint, pruebas ni deploy.
