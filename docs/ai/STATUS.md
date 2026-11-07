@@ -1655,7 +1655,13 @@ Sin toque en src/, supabase/ ni extensions/.
 ### I27 — corrección de miniaturas de proveedores
 
 - En la revisión de producción, el navegador no pudo cargar directamente imágenes de `mrtecno.com.ar` bajo la CSP actual. No se amplió la CSP: las miniaturas ahora obtienen las imágenes mediante `fetch-url` autenticado, con el mismo control de origen, y las muestran desde un object URL local. La fila pasa a «Sin foto» si el proxy no logra obtenerla.
-- Se agregó cobertura Playwright del proxy de miniaturas. `e2e/supplier-list-import.spec.ts`: 4/4; lint y build pasaron. El smoke de producción con miniaturas queda pendiente del deploy de esta corrección.
+- Se agregó cobertura Playwright del proxy de miniaturas. `e2e/supplier-list-import.spec.ts`: 4/4; lint y build pasaron. El commit `d110298` quedó `success` en Vercel.
+- Smoke autenticado en producción tras el deploy: 1.393 con foto / 7 sin foto; cotización 1.600; tres respuestas HTTP 200 de `fetch-url`, la miniatura muestreada decodificó a 964 px y no hubo errores de consola. No se confirmó el alta masiva ni se escribieron productos.
+- I27 cerrada. El proxy solo acepta el host del proveedor y mantiene `verify_jwt=true`; CSP no se amplió.
+
+### I25 punto 1 — implementación local
+
+- Se quitó el resaltado cuadrado del botón de categoría y el foco/selección se dibujan como anillos circulares sobre el chip; el padre no recorta el foco. Playwright comprobó 360 y 1440 px, claro/oscuro, estado seleccionado, sin seleccionar y foco de teclado. El deploy y las capturas de producción siguen pendientes.
 
 ### I27 — corrección de autenticación de fetch-url (seguimiento)
 

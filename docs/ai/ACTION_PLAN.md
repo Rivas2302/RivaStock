@@ -703,7 +703,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Verificación:** tests con fixtures (API en USD + página del producto en ARS, API que acepta `currency=ARS`, páginas bloqueadas, valores que no coinciden). Prueba real en producción con `https://mrtecno.com.ar/productos/`: tiene que detectar ≈ 1.600 y mostrar `HM352` con costo **$10.000**. Sin confirmar el alta masiva. Confirmar que Vercel quede **Current**.
 
-### [ ] I27 Fotos en la importación del proveedor — **pedido de Riva el 07/11 17:19 («No me sirve sin foto»)**
+### [x] I27 Fotos en la importación del proveedor — **pedido de Riva el 07/11 17:19 («No me sirve sin foto»)**
 
 **Estado actual (verificado en `origin/main`):** el alta masiva de I24 guarda en `imageUrl` la **URL remota del proveedor** (ej. `https://mrtecno.com.ar/wp-content/uploads/...jpeg`), sin copiarla. En una muestra de la Store API de Mr Tecno, ~75 % de los productos trae foto y ~25 % no (ej. `HM352`, que tampoco tiene foto en la web del proveedor).
 

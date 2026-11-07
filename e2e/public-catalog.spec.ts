@@ -276,3 +276,43 @@ test('desktop catalog retains the MainPC grid and a usable cart entry point', as
   await mkdir(resolve('test-results/catalog-i18b'), { recursive: true });
   await page.screenshot({ path: resolve('test-results/catalog-i18b/main-pc.png'), fullPage: true });
 });
+
+test('category chips stay circular on mobile and desktop in light and dark mode', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mkdir(resolve('test-results/i25-categories'), { recursive: true });
+
+  for (const viewport of [{ width: 360, height: 740 }, { width: 1440, height: 900 }]) {
+    for (const darkMode of [false, true]) {
+      await page.setViewportSize(viewport);
+      await page.addInitScript((dark) => localStorage.setItem('catalog-dark-mode', String(dark)), darkMode);
+      await mockCatalogApi(page);
+      await page.goto('/catalogo/qa-catalog');
+
+      const allCategories = page.getByRole('button', { name: 'Todos', exact: true });
+      const cableCategory = page.getByRole('button', { name: 'Cables', exact: true });
+      await expect(allCategories).toBeVisible();
+      await expect(cableCategory).toHaveAttribute('aria-pressed', 'false');
+      await cableCategory.click();
+      await expect(cableCategory).toHaveAttribute('aria-pressed', 'true');
+
+      await page.keyboard.press('Shift+Tab');
+      await expect(allCategories).toBeFocused();
+      const chipGeometry = await page.locator('button[aria-pressed="true"] > span[aria-hidden="true"]')
+        .evaluate(element => ({ borderRadius: Number.parseFloat(getComputedStyle(element).borderRadius), bounds: element.getBoundingClientRect().toJSON() }));
+      expect(chipGeometry.borderRadius).toBeGreaterThanOrEqual(chipGeometry.bounds.height / 2);
+      expect(Math.abs(chipGeometry.bounds.width - chipGeometry.bounds.height)).toBeLessThanOrEqual(1);
+      const focusedGeometry = await allCategories.locator('span[aria-hidden="true"]').evaluate(element => ({
+        borderRadius: Number.parseFloat(getComputedStyle(element).borderRadius),
+        shadow: getComputedStyle(element).boxShadow,
+      }));
+      expect(focusedGeometry.borderRadius).toBeGreaterThanOrEqual(28);
+      expect(focusedGeometry.shadow).not.toBe('none');
+
+      const theme = darkMode ? 'dark' : 'light';
+      await page.screenshot({
+        path: resolve(`test-results/i25-categories/categories-${viewport.width}-${theme}.png`),
+        fullPage: true,
+      });
+    }
+  }
+});
