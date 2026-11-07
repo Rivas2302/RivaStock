@@ -16,7 +16,10 @@ describe('supplier order workflow', () => {
   it('checks PDF contents and size before uploading', async () => {
     await expect(validateOrderPdf(new File(['%PDF-1.7\n'], 'pedido.pdf'))).resolves.toBeUndefined();
     await expect(validateOrderPdf(new File(['<html>'], 'pedido.pdf'))).rejects.toThrow('PDF válido');
-    await expect(validateOrderPdf(new File(['%PDF-'], 'pedido.html'))).rejects.toThrow('10 MB');
-    await expect(validateOrderPdf(new File(['%PDF-', new Uint8Array(10485760)], 'pedido.pdf'))).rejects.toThrow('10 MB');
+    await expect(validateOrderPdf(new File(['%PDF-'], 'pedido.html'))).rejects.toThrow('50 MB');
+    const fileAtLimit = { name: 'pedido.pdf', size: 50 * 1024 * 1024, slice: () => ({ text: async () => '%PDF-' }) } as File;
+    const oversized = { ...fileAtLimit, size: 50 * 1024 * 1024 + 1 } as File;
+    await expect(validateOrderPdf(fileAtLimit)).resolves.toBeUndefined();
+    await expect(validateOrderPdf(oversized)).rejects.toThrow('50 MB');
   });
 });

@@ -20,8 +20,8 @@ export function sortSupplierOrders(orders: SupplierOrder[]): SupplierOrder[] {
     || a.ordered_on.localeCompare(b.ordered_on) || a.created_at.localeCompare(b.created_at));
 }
 export async function validateOrderPdf(file: File): Promise<void> {
-  if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 10 * 1024 * 1024) {
-    throw new Error('Adjunta un PDF de hasta 10 MB.');
+  if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 50 * 1024 * 1024) {
+    throw new Error('Adjunta un PDF de hasta 50 MB.');
   }
   if (await file.slice(0, 5).text() !== '%PDF-') throw new Error('El archivo no es un PDF válido.');
 }

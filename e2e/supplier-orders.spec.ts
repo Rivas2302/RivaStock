@@ -7,6 +7,7 @@ test.use({ channel: 'chromium' });
 const pdf = new jsPDF();
 pdf.text('Supplier order fixture', 20, 20);
 const pdfBytes = Buffer.from(pdf.output('arraybuffer'));
+const largePdfBytes = Buffer.concat([pdfBytes, Buffer.alloc(10 * 1024 * 1024 + 1 - pdfBytes.length, 0x20)]);
 
 const deployment = JSON.parse(readFileSync('vercel.json', 'utf8'));
 const productionCsp = deployment.headers.flatMap((rule: {headers: {key: string; value: string}[]}) => rule.headers).find((header: {key: string}) => header.key === 'Content-Security-Policy').value as string;
@@ -17,6 +18,7 @@ const owner = '10000000-0000-4000-8000-000000000001';
 async function fixture(page: Page) {
   const rows: Record<string, unknown>[] = [];
   const errors: string[] = [];
+  const uploadSizes: number[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -34,7 +36,9 @@ async function fixture(page: Page) {
     }
     const table = url.pathname.split('/').pop();
     let data: unknown = [];
-    if (table === 'get_owner_profile') data = [{id:owner,email:'owner@test.invalid',role:'admin',business_name:'Test',display_name:'Owner'}];
+    if (table === 'my_business_plan') data = { plan_code: 'pro', plan_name: 'Pro', status: 'active', limits: { modules: { ai: true, knowledge: true, automation: true } } };
+    if (table === 'storage_upload_check') data = { allowed: true };
+    if (table === 'get_owner_profile') data = [{id:owner,email:'owner@test.invalid',role:'admin',business_name:'Test',display_name:'Owner',onboarding_completed_at:new Date().toISOString()}];
     if (table === 'inventory_operation_settings') data = [{holdings_enabled:false}];
     if (table === 'inventory_owners') data = [{id:owner,user_id:owner,name:'Primary',is_primary:true}];
     if (table === 'inventory_owner_memberships') data = [{inventory_owner_id:owner,is_default:true,can_operate:true}];
@@ -51,7 +55,10 @@ async function fixture(page: Page) {
         data = row;
       } else data = rows;
     }
-    if (url.pathname.includes('/storage/v1/object/') && route.request().method() === 'POST') data = {Key:'uploaded'};
+    if (url.pathname.includes('/storage/v1/object/') && route.request().method() === 'POST') {
+      uploadSizes.push(route.request().postDataBuffer()?.byteLength ?? 0);
+      data = {Key:'uploaded'};
+    }
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
   });
   await page.addInitScript(id => {
@@ -61,7 +68,7 @@ async function fixture(page: Page) {
     localStorage.setItem('rivastock-auth',JSON.stringify({access_token:`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,exp,role:'authenticated'})}.fixture`,refresh_token:'fixture',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id,email:'owner@test.invalid',aud:'authenticated',app_metadata:{},user_metadata:{},created_at:new Date().toISOString()}}));
   }, owner);
   await page.goto('/compras');
-  return { rows, errors };
+  return { rows, errors, uploadSizes };
 }
 
 for (const mobile of [false, true]) test(`registers, tracks and closes a supplier order (${mobile ? 'mobile' : 'desktop'})`, async ({page}, testInfo) => {
@@ -117,5 +124,22 @@ for (const mobile of [false, true]) test(`registers, tracks and closes a supplie
   await page.getByLabel('Filtrar pedidos').selectOption('pending');
   await expect(page.locator('article')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('compresses a PDF above 10 MB before uploading it', async ({ page }) => {
+  const { rows, errors, uploadSizes } = await fixture(page);
+  await page.getByRole('button', { name: 'Nuevo pedido' }).click();
+  await page.getByLabel('Proveedor', { exact: true }).fill('Proveedor Uno');
+  await page.getByLabel('PDF del pedido (opcional)', { exact: false }).setInputFiles({
+    name: 'pedido-grande.pdf', mimeType: 'application/pdf', buffer: largePdfBytes,
+  });
+  await page.getByRole('button', { name: 'Guardar pedido', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Comprimiendo PDF');
+  await expect(page.getByRole('dialog')).toBeHidden({ timeout: 30_000 });
+  expect(rows).toHaveLength(1);
+  expect(uploadSizes).toHaveLength(1);
+  expect(uploadSizes[0]).toBeLessThan(largePdfBytes.length);
+  expect(uploadSizes[0]).toBeLessThanOrEqual(50 * 1024 * 1024);
   expect(errors).toEqual([]);
 });

@@ -9,6 +9,7 @@ import { todayString, formatDate } from '../lib/utils';
 import { showToast } from '../lib/toast';
 import Modal from '../components/Modal';
 import { SUPPLIER_ORDER_STATUSES, isPendingOrder, sortSupplierOrders, trackingUrl, validateOrderPdf, type SupplierOrder, type SupplierOrderStatus } from '../lib/supplierOrders';
+import { compressSupplierOrderPdf, SUPPLIER_ORDER_PDF_COMPRESSION_THRESHOLD } from '../lib/supplierOrderPdfCompression';
 import { assertStorageUploadAllowed, storageUploadDenialMessage } from '../lib/platformStorage';
 
 const BUCKET = 'supplier-order-documents';
@@ -37,6 +38,7 @@ export default function SupplierOrders() {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState({ supplier_name: '', ordered_on: todayString(), reference: '', tracking_number: '', status: 'pending' as SupplierOrderStatus, notes: '' });
   const [file, setFile] = useState<File | null>(null);
+  const [compressionMessage, setCompressionMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -101,7 +103,7 @@ export default function SupplierOrders() {
     draftId.current = order?.id ?? crypto.randomUUID();
     setForm(order ? { supplier_name: order.supplier_name, ordered_on: order.ordered_on, reference: order.reference, tracking_number: order.tracking_number ?? '', status: order.status, notes: order.notes }
       : { supplier_name: '', ordered_on: todayString(), reference: '', tracking_number: '', status: 'pending', notes: '' });
-    setFile(null); setFormError(''); setFormOpen(true);
+    setFile(null); setCompressionMessage(''); setFormError(''); setFormOpen(true);
   }
 
   async function save(event: React.FormEvent) {
@@ -118,9 +120,21 @@ export default function SupplierOrders() {
       let name = editing?.document_name ?? null;
       if (file) {
         await validateOrderPdf(file);
-        await assertStorageUploadAllowed(BUCKET, file.size);
+        let uploadFile = file;
+        if (file.size > SUPPLIER_ORDER_PDF_COMPRESSION_THRESHOLD) {
+          setCompressionMessage('Comprimiendo PDF...');
+          try {
+            uploadFile = await compressSupplierOrderPdf(file, (page, count) => {
+              setCompressionMessage(`Comprimiendo PDF... (${page} de ${count})`);
+            });
+          } finally {
+            setCompressionMessage('');
+          }
+          await validateOrderPdf(uploadFile);
+        }
+        await assertStorageUploadAllowed(BUCKET, uploadFile.size);
         uploadedPath = `${user.uid}/${draftId.current}/${crypto.randomUUID()}.pdf`;
-        const { error } = await supabase.storage.from(BUCKET).upload(uploadedPath, file, { contentType: 'application/pdf', upsert: false });
+        const { error } = await supabase.storage.from(BUCKET).upload(uploadedPath, uploadFile, { contentType: 'application/pdf', upsert: false });
         if (error) throw error;
         path = uploadedPath; name = file.name;
       }
@@ -227,10 +241,11 @@ export default function SupplierOrders() {
         <label className="block" htmlFor="supplier-order-status">Estado del pedido</label>
         <select id="supplier-order-status" className={inputClass} value={form.status} onChange={e => setForm({ ...form, status: e.target.value as SupplierOrderStatus })}>{Object.entries(SUPPLIER_ORDER_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <p className="text-xs text-slate-500">El estado lo actualiza tu equipo después de consultar el envío.</p>
-        <label className="block">PDF del pedido (opcional)<input key={draftId.current} type="file" accept="application/pdf,.pdf" className={`${inputClass} mt-1 text-sm`} onChange={e => setFile(e.target.files?.[0] ?? null)} /><span className="text-xs text-slate-500">Hasta 10 MB.{editing?.document_name ? ` Actual: ${editing.document_name}. Adjuntar otro lo reemplaza.` : ''}</span></label>
+        <label className="block">PDF del pedido (opcional)<input key={draftId.current} type="file" accept="application/pdf,.pdf" className={`${inputClass} mt-1 text-sm`} onChange={e => { setFile(e.target.files?.[0] ?? null); setCompressionMessage(''); }} /><span className="text-xs text-slate-500">Hasta 50 MB. Los PDF de más de 10 MB se comprimen automáticamente.{editing?.document_name ? ` Actual: ${editing.document_name}. Adjuntar otro lo reemplaza.` : ''}</span></label>
+        {compressionMessage && <p role="status" className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{compressionMessage}</p>}
         <label className="block">Notas (opcional)<textarea maxLength={4000} rows={3} className={`${inputClass} mt-1`} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Sucursal de retiro, bultos o aclaraciones" /></label>
         {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
-        <button type="submit" disabled={busy} className={`${buttonClass} w-full bg-indigo-600 text-white`}>{busy ? 'Guardando…' : 'Guardar pedido'}</button>
+        <button type="submit" disabled={busy} className={`${buttonClass} w-full bg-indigo-600 text-white`}>{compressionMessage ? 'Comprimiendo...' : busy ? 'Guardando…' : 'Guardar pedido'}</button>
       </form>
     </Modal>
     <Modal isOpen={!!tracking} onClose={() => setTracking(null)} title={`Seguimiento · ${tracking?.supplier_name ?? ''}`} className="max-w-4xl">

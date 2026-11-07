@@ -54,3 +54,11 @@ it('enforces tenant isolation, guide uniqueness, receipt stamps and private PDF 
   await db.exec(`RESET ROLE`);
   expect((await db.query<{public:boolean}>(`SELECT public FROM storage.buckets`)).rows[0].public).toBe(false);
 });
+
+it('raises only the supplier order PDF bucket limit to 50 MB', async () => {
+  await db.exec(readFileSync('supabase/migrations/20261107163737_supplier_order_pdf_upload_limit.sql', 'utf8'));
+  const bucket = await db.query<{ file_size_limit: number; public: boolean; allowed_mime_types: string[] }>(
+    `SELECT file_size_limit, public, allowed_mime_types FROM storage.buckets WHERE id = 'supplier-order-documents'`,
+  );
+  expect(bucket.rows[0]).toEqual({ file_size_limit: 52428800, public: false, allowed_mime_types: ['application/pdf'] });
+});
