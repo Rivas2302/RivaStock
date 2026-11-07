@@ -10,11 +10,12 @@ export interface SupplierListDraftRow {
   error: string | null;
 }
 
-const HEADER_ALIASES: Record<'name' | 'cost' | 'category' | 'image', string[]> = {
+const HEADER_ALIASES: Record<'name' | 'cost' | 'category' | 'image' | 'code', string[]> = {
   name: ['producto', 'nombre', 'articulo', 'artículo', 'descripcion', 'descripción', 'name', 'product'],
   cost: ['costo', 'precio costo', 'precio de costo', 'precio compra', 'precio de compra', 'cost', 'purchase price'],
   category: ['categoria', 'categoría', 'rubro', 'category'],
   image: ['foto', 'imagen', 'image', 'image url', 'url imagen', 'url de imagen'],
+  code: ['codigo', 'código', 'sku', 'barcode', 'código de producto', 'product code'],
 };
 
 function normalizeHeader(value: unknown): string {
@@ -53,11 +54,13 @@ export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow
   const costColumn = findColumn(headers, HEADER_ALIASES.cost);
   const categoryColumn = findColumn(headers, HEADER_ALIASES.category);
   const imageColumn = findColumn(headers, HEADER_ALIASES.image);
+  const codeColumn = findColumn(headers, HEADER_ALIASES.code);
   const columns = {
     name: nameColumn >= 0 ? nameColumn : 0,
     cost: costColumn >= 0 ? costColumn : 1,
     category: categoryColumn,
     image: imageColumn,
+    code: codeColumn,
   };
 
   return matrix.slice(1).flatMap((row, index) => {
@@ -66,10 +69,12 @@ export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow
     const supplierCost = parseLocalizedPrice(rawCost);
     const category = columns.category >= 0 ? String(row[columns.category] ?? '').trim() : '';
     const rawImage = columns.image >= 0 ? String(row[columns.image] ?? '').trim() : '';
+    const sourceCode = columns.code >= 0 ? String(row[columns.code] ?? '').trim() : '';
     const imageUrl = /^https?:\/\//i.test(rawImage) ? rawImage : null;
     if (!name && (rawCost === null || rawCost === undefined || String(rawCost).trim() === '')) return [];
     return [{
       sourceRow: index + 2,
+      ...(sourceCode ? { sourceCode } : {}),
       name,
       supplierCost,
       category,
@@ -82,7 +87,7 @@ export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow
 }
 
 export function buildSupplierListAiPrompt(rows: SupplierListDraftRow[], includesTax: boolean): string {
-  const source = JSON.stringify(rows.map(row => ({ row: row.sourceRow, name: row.name, cost: row.supplierCost, category: row.category, imageUrl: row.imageUrl })));
+  const source = JSON.stringify(rows.map(row => ({ row: row.sourceRow, code: row.sourceCode ?? null, name: row.name, cost: row.supplierCost, category: row.category, imageUrl: row.imageUrl })));
   return [
     'Convertí los datos de una lista de proveedor en filas de productos. Respondé solo JSON válido con la forma {"items":[{"sourceRow":2,"name":"...","supplierCost":0,"category":"...","imageUrl":null}]}.',
     `Los precios vienen ${includesTax ? 'con' : 'sin'} IVA; no los alteres ni inventes impuestos.`,
@@ -134,6 +139,8 @@ export function parseSupplierListAiOutput(output: string, sourceRows: SupplierLi
     return [{
       sourceRow,
       name,
+      ...(source.sourceCode ? { sourceCode: source.sourceCode } : {}),
+      ...(source.sourceCurrency ? { sourceCurrency: source.sourceCurrency } : {}),
       supplierCost,
       category,
       marginPercent: source.marginPercent,

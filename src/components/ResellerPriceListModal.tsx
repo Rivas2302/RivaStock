@@ -35,9 +35,12 @@ import {
   loadResellerSupplierLists,
   saveResellerPriceList,
   saveResellerSupplierList,
+  saveResellerSupplierListPricingBatch,
   toggleResellerSupplierList,
 } from '../lib/priceLists';
-import { db } from '../lib/db';
+import { db, fromDb, toDb } from '../lib/db';
+import { supabase } from '../lib/supabase';
+import { normalizeBarcode } from '../lib/barcode';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
@@ -52,7 +55,8 @@ import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, parseSupplierListText } from '../lib/supplierListImportSource';
-import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from '../lib/resellerSupplierRounds';
+import type { SupplierPriceRounding } from '../lib/resellerSupplierRounds';
+import { planSupplierImport } from '../lib/supplierImportReview';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
 import Modal from './Modal';
@@ -74,6 +78,8 @@ interface ResellerPriceListModalProps {
   onCreateProduct: (context?: SupplierProductCreationContext) => void;
   onEditCatalogProduct: (product: Product) => void;
   onPromoteToStock: (product: Product) => void;
+  onProductsImported: (products: Product[]) => void;
+  onCategoriesImported: (categories: Category[]) => void;
 }
 
 export interface SupplierProductCreationContext {
@@ -120,6 +126,8 @@ export default function ResellerPriceListModal({
   onCreateProduct,
   onEditCatalogProduct,
   onPromoteToStock,
+  onProductsImported,
+  onCategoriesImported,
 }: ResellerPriceListModalProps) {
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
@@ -144,6 +152,14 @@ export default function ResellerPriceListModal({
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
   const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
+  const [supplierImportUsdRate, setSupplierImportUsdRate] = useState(() => {
+    try { return Number(localStorage.getItem('rivastock:supplier-import-usd-rate')) || 0; } catch { return 0; }
+  });
+  const [supplierImportSearch, setSupplierImportSearch] = useState('');
+  const [supplierImportCategoryFilter, setSupplierImportCategoryFilter] = useState('');
+  const [supplierImportPage, setSupplierImportPage] = useState(0);
+  const [supplierImportBatchProgress, setSupplierImportBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [supplierImportProductIdsByRow, setSupplierImportProductIdsByRow] = useState<Record<number, string>>({});
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
   const [supplierImportReading, setSupplierImportReading] = useState(false);
@@ -520,44 +536,139 @@ export default function ResellerPriceListModal({
     }
   };
 
-  const handleCreateImportedSupplierProduct = async (row: SupplierListDraftRow) => {
-    if (!list || !editingSupplierId || !canWrite || !row.name || row.supplierCost === null || row.error) return;
-    setSupplierSaving(true);
-    setError(null);
-    try {
-      await saveResellerSupplierList({
-        priceListId: list.id,
-        supplierId: editingSupplierId,
-        productIds: supplierDraftProductIds,
-      });
-      onCreateProduct({
-        priceListId: list.id,
-        supplierId: editingSupplierId,
-        productIds: supplierDraftProductIds,
-        initialDraft: {
-          name: row.name,
-          supplierCost: row.supplierCost,
-          category: row.category,
-          marginPercent: getSupplierImportMargin(row),
-          roundingStep: supplierImportRounding === 'none' ? 0 : supplierImportRounding,
-          listBasePrice: calculateSupplierSuggestedPrice(row.supplierCost, getSupplierImportMargin(row), supplierImportRounding)
-            / Math.max(0.01, 1 - Math.min(99, discount) / 100),
-          photoFile: supplierImportPhotoFiles[row.sourceRow],
-        },
-      });
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No pudimos preparar la lista del proveedor.');
-    } finally {
-      setSupplierSaving(false);
-    }
-  };
-
   const getSupplierImportMargin = (row: SupplierListDraftRow): number => {
     if (Number.isFinite(row.marginPercent)) return Number(row.marginPercent);
     const categoryKey = row.category.trim().toLocaleLowerCase('es-AR');
     return categoryKey && Number.isFinite(supplierImportCategoryMargins[categoryKey])
       ? supplierImportCategoryMargins[categoryKey]
       : supplierImportMargin;
+  };
+
+  const selectedSupplierProductSet = useMemo(() => new Set(supplierDraftProductIds), [supplierDraftProductIds]);
+  const supplierImportReview = useMemo(() => planSupplierImport({
+    rows: supplierImportRows,
+    supplierProducts: products.filter(product => selectedSupplierProductSet.has(product.id)),
+    currency: supplierImportCurrency,
+    usdRate: supplierImportUsdRate,
+    discountPercent: discount,
+    rounding: supplierImportRounding,
+    marginForRow: getSupplierImportMargin,
+  }), [discount, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportRounding, supplierImportUsdRate, supplierImportCategoryMargins, supplierImportMargin]);
+  const supplierImportCounts = useMemo(() => supplierImportReview.reduce((counts, entry) => {
+    counts[entry.action]++;
+    return counts;
+  }, { new: 0, updated: 0, unchanged: 0, review: 0 }), [supplierImportReview]);
+  const supplierImportFiltered = useMemo(() => {
+    const query = supplierImportSearch.trim().toLocaleLowerCase('es-AR');
+    return supplierImportReview.filter(entry => (
+      (!supplierImportCategoryFilter || entry.row.category === supplierImportCategoryFilter)
+      && (!query || `${entry.row.name} ${entry.row.sourceCode ?? ''} ${entry.row.category}`.toLocaleLowerCase('es-AR').includes(query))
+    ));
+  }, [supplierImportCategoryFilter, supplierImportReview, supplierImportSearch]);
+  const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
+  const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
+
+  const handleAddSupplierImportBatch = async () => {
+    if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
+    const ready = supplierImportReview.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
+    if (ready.length === 0) return;
+    setSupplierSaving(true);
+    setError(null);
+    setSupplierImportBatchProgress({ done: 0, total: ready.length });
+    try {
+      const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase('es-AR'), category]));
+      const newCategories: Category[] = [];
+      for (const entry of ready) {
+        const categoryName = entry.row.category.trim();
+        const key = categoryName.toLocaleLowerCase('es-AR');
+        if (!categoryName || categoryByName.has(key)) continue;
+        const created = await db.create<Category>('categories', { id: crypto.randomUUID(), name: categoryName, ownerUid });
+        categoryByName.set(key, created);
+        newCategories.push(created);
+      }
+      if (newCategories.length) onCategoriesImported(newCategories);
+
+      const resolvedIds = new Map<number, string>();
+      for (const entry of ready) {
+        const id = entry.existingProduct?.id ?? supplierImportProductIdsByRow[entry.row.sourceRow] ?? crypto.randomUUID();
+        resolvedIds.set(entry.row.sourceRow, id);
+      }
+      setSupplierImportProductIdsByRow(current => ({
+        ...current,
+        ...Object.fromEntries(resolvedIds.entries()),
+      }));
+
+      const updatedProducts: Product[] = [];
+      for (let start = 0; start < ready.length; start += 50) {
+        const batch = ready.slice(start, start + 50);
+        const createRows: Product[] = [];
+        const updateRows: Product[] = [];
+        for (const entry of batch) {
+          if (entry.action === 'unchanged') continue;
+          const existing = entry.existingProduct;
+          const categoryName = entry.row.category.trim();
+          const category = categoryByName.get(categoryName.toLocaleLowerCase('es-AR'));
+          const now = new Date().toISOString();
+          const product: Product = {
+            ...(existing ?? {} as Product),
+            id: resolvedIds.get(entry.row.sourceRow)!,
+            name: entry.row.name.trim(),
+            categoryId: category?.id ?? existing?.categoryId ?? '',
+            category: categoryName,
+            purchasePrice: existing?.purchasePrice ?? 0,
+            salePrice: entry.suggestedSalePrice ?? 0,
+            stock: existing?.stock ?? 0,
+            minStock: existing?.minStock ?? 0,
+            imageUrl: entry.row.imageUrl ?? existing?.imageUrl,
+            images: existing?.images ?? [],
+            showInCatalog: existing?.showInCatalog ?? false,
+            catalogOnly: true,
+            catalogCost: entry.supplierCostLocal,
+            barcode: normalizeBarcode(entry.row.sourceCode ?? existing?.barcode ?? '') || undefined,
+            ownerUid,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+          };
+          if (existing) updateRows.push(product); else createRows.push(product);
+        }
+        if (createRows.length) {
+          const { data, error: insertError } = await supabase.from('products')
+            .insert(createRows.map(product => toDb(product as unknown as Record<string, unknown>)))
+            .select('*');
+          if (insertError) throw new Error(`No se pudo guardar una tanda de productos: ${insertError.message}`);
+          updatedProducts.push(...(data ?? []).map(row => fromDb<Product>(row as Record<string, unknown>)));
+        }
+        for (let index = 0; index < updateRows.length; index += 10) {
+          const saved = await Promise.all(updateRows.slice(index, index + 10).map(product => db.update<Product>('products', product.id, product)));
+          updatedProducts.push(...saved);
+        }
+        if (updatedProducts.length) {
+          onProductsImported(updatedProducts);
+          setSupplierDraftProductIds(current => Array.from(new Set([...current, ...updatedProducts.map(product => product.id)])));
+        }
+        setSupplierImportBatchProgress({ done: Math.min(start + batch.length, ready.length), total: ready.length });
+      }
+
+      const allProductIds = Array.from(new Set([...supplierDraftProductIds, ...ready.map(entry => resolvedIds.get(entry.row.sourceRow)!)]));
+      const savedSupplierList = await saveResellerSupplierList({ priceListId: list.id, supplierId: editingSupplierId, productIds: allProductIds });
+      const prices = ready.flatMap(entry => {
+        const productId = resolvedIds.get(entry.row.sourceRow);
+        return productId && entry.supplierCostLocal !== null ? [{
+          productId,
+          supplierCost: entry.supplierCostLocal,
+          marginPercent: getSupplierImportMargin(entry.row),
+          roundingStep: supplierImportRounding === 'none' ? 0 as const : supplierImportRounding,
+        }] : [];
+      });
+      if (prices.length) await saveResellerSupplierListPricingBatch(savedSupplierList.id, prices);
+      await reloadSupplierLists();
+      setSupplierImportBatchProgress({ done: ready.length, total: ready.length });
+      showToast(`Importación lista: ${supplierImportCounts.new} nuevos, ${supplierImportCounts.updated} actualizados y ${supplierImportCounts.unchanged} sin cambios.`, 'success');
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'No pudimos completar la importación. Podés reintentar; los productos ya guardados se conservan.');
+    } finally {
+      setSupplierSaving(false);
+    }
   };
 
   const updateSupplierImportRow = (sourceRow: number, patch: Partial<SupplierListDraftRow>) => {
@@ -986,7 +1097,18 @@ export default function ResellerPriceListModal({
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           {supplierImportRows.length > 0 && <>
-                            {supplierImportCurrency && <p className="rounded-lg bg-indigo-50 p-3 text-sm font-semibold text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">Moneda de origen: {supplierImportCurrency}. Revisá la cotización antes de importar; los costos se muestran en la moneda recibida.</p>}
+                            {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950 dark:bg-indigo-950 dark:text-indigo-100"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
+                              <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} className="mt-1 min-h-10 w-full rounded-lg border border-indigo-200 bg-white px-3 text-sm text-slate-900 dark:border-indigo-800 dark:bg-slate-900 dark:text-white" placeholder="Ingresá la cotización"/>
+                              </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
+                            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                              <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
+                              <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
+                            </div>
+                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos`}</button>
+                            {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
+                            <div className="flex items-center justify-between text-xs"><span>Mostrando {supplierImportFiltered.length ? supplierImportPage * 50 + 1 : 0}–{Math.min((supplierImportPage + 1) * 50, supplierImportFiltered.length)} de {supplierImportFiltered.length}</span><span className="flex gap-2"><button type="button" disabled={supplierImportPage === 0} onClick={() => setSupplierImportPage(page => Math.max(0, page - 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Anterior</button><span className="self-center">{supplierImportPage + 1}/{supplierImportPageCount}</span><button type="button" disabled={supplierImportPage + 1 >= supplierImportPageCount} onClick={() => setSupplierImportPage(page => Math.min(supplierImportPageCount - 1, page + 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Siguiente</button></span></div>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="text-xs font-semibold">¿Los precios incluyen IVA?
                                 <select aria-label="Los precios incluyen IVA" value={supplierImportIncludesTax === null ? '' : String(supplierImportIncludesTax)} onChange={event => setSupplierImportIncludesTax(event.target.value === '' ? null : event.target.value === 'true')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950">
@@ -1014,19 +1136,19 @@ export default function ResellerPriceListModal({
                             <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
                             {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
                             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos de la planilla con Codex en la central vinculada. Las capturas automáticas se incorporarán más adelante; por ahora podés elegir cada foto o recortarla a mano.</p>
-                            <div className="max-h-72 space-y-2 overflow-y-auto" aria-label="Productos importados">
-                              {supplierImportRows.map(row => <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
+                            <div className="max-h-[34rem] space-y-2 overflow-y-auto" aria-label="Productos importados">
+                              {supplierImportPageRows.map(entry => { const row = entry.row; return <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
-                                  <label className="text-[11px] font-semibold text-slate-500">Costo<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
+                                  <label className="text-[11px] font-semibold text-slate-500">Costo{row.sourceCurrency ? ` (${row.sourceCurrency})` : ''}<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Margen del producto<input aria-label={`Margen de fila ${row.sourceRow}`} type="number" min="0" step="0.1" value={row.marginPercent ?? ''} placeholder={`${getSupplierImportMargin(row)}%`} onChange={event => updateSupplierImportRow(row.sourceRow, { marginPercent: event.target.value === '' ? undefined : Math.max(0, Number(event.target.value) || 0) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
-                                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {row.supplierCost === null || row.supplierCost <= 0 ? '—' : formatCurrency(calculateSupplierSuggestedPrice(row.supplierCost, getSupplierImportMargin(row), supplierImportRounding))}</p>
+                                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
                                   {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
+                                  {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
                                   <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => setSupplierImportPhotoFiles(current => { const next = { ...current }; if (file) next[row.sourceRow] = file; else delete next[row.sourceRow]; return next; })}/></div>
                                 </div>
-                                <button type="button" onClick={() => void handleCreateImportedSupplierProduct(row)} disabled={!canWrite || supplierSaving || Boolean(row.error) || discount >= 100} className="min-h-10 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-40 dark:bg-white dark:text-slate-900">Crear y agregar</button>
-                              </article>)}
+                              </article>; })}
                             </div>
                           </>}
                         </section>

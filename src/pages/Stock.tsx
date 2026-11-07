@@ -860,6 +860,20 @@ export default function Stock() {
               returnToResellerList: true,
             });
           }}
+          onProductsImported={(importedProducts) => {
+            setProducts((current) => {
+              const byId = new Map(current.map((product) => [product.id, product]));
+              for (const product of importedProducts) byId.set(product.id, product);
+              return Array.from(byId.values());
+            });
+          }}
+          onCategoriesImported={(importedCategories) => {
+            setCategories((current) => {
+              const byId = new Map(current.map((category) => [category.id, category]));
+              for (const category of importedCategories) byId.set(category.id, category);
+              return Array.from(byId.values());
+            });
+          }}
         />
         </Suspense></DeferredMount>
       )}

@@ -2,12 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractSupplierListCatalog, extractSupplierListFileText, extractSupplierListPageText, parseSupplierListText } from './supplierListImportSource';
 
 const invokeMock = vi.hoisted(() => vi.fn());
+const tesseractWorkerMock = vi.hoisted(() => ({
+  recognize: vi.fn(),
+  terminate: vi.fn(),
+}));
 vi.mock('./supabase', () => ({ supabase: { functions: { invoke: invokeMock } } }));
+vi.mock('tesseract.js', () => ({ createWorker: vi.fn(async () => tesseractWorkerMock) }));
 
 describe('supplier list source extraction', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     invokeMock.mockReset();
+    tesseractWorkerMock.recognize.mockReset();
+    tesseractWorkerMock.terminate.mockReset();
+    vi.doUnmock('pdfjs-dist/legacy/build/pdf.mjs');
   });
   it('turns unstructured PDF or OCR text into rows for AI review', () => {
     expect(parseSupplierListText('Vaso térmico acero\nBotella deportiva 750 ml')).toMatchObject([
@@ -54,6 +62,42 @@ describe('supplier list source extraction', () => {
     const progress = vi.fn();
     await expect(extractSupplierListFileText(file, progress)).resolves.toContain('Taza térmica');
     expect(progress).toHaveBeenCalledWith(1, 1, undefined);
+  });
+
+  it('renders an image-only PDF page and extracts its text through OCR', async () => {
+    const pdfDocumentMock = {
+      numPages: 1,
+      getPage: vi.fn(),
+      destroy: vi.fn(),
+    };
+    vi.doMock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
+      GlobalWorkerOptions: { workerSrc: '' },
+      getDocument: vi.fn(() => ({ promise: Promise.resolve(pdfDocumentMock), destroy: vi.fn() })),
+    }));
+    vi.resetModules();
+    const { extractSupplierListFileText: extractScannedPdf } = await import('./supplierListImportSource');
+    const page = {
+      getTextContent: vi.fn(async () => ({ items: [] })),
+      getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 200 * scale, height: 100 * scale })),
+      render: vi.fn(() => ({ promise: Promise.resolve() })),
+    };
+    pdfDocumentMock.getPage.mockResolvedValue(page);
+    tesseractWorkerMock.recognize.mockResolvedValue({ data: { text: 'Lámpara solar USD 7,75' } });
+    tesseractWorkerMock.terminate.mockResolvedValue(undefined);
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({})),
+    };
+    vi.stubGlobal('window', { document: { createElement: vi.fn(() => canvas) } });
+    const file = Object.assign(new Blob([new Uint8Array([1, 2, 3])], { type: 'application/pdf' }), { name: 'escaneado.pdf' }) as File;
+
+    await expect(extractScannedPdf(file)).resolves.toContain('Lámpara solar USD 7,75');
+    expect(page.render).toHaveBeenCalledOnce();
+    expect(tesseractWorkerMock.recognize).toHaveBeenCalledOnce();
+    expect(canvas.width).toBe(0);
+    expect(canvas.height).toBe(0);
+    expect(tesseractWorkerMock.terminate).toHaveBeenCalledOnce();
   });
 
   it('rejects excessive source rows', () => {

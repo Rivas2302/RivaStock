@@ -159,6 +159,24 @@ export async function saveResellerSupplierListWithPricing(input: {
   };
 }
 
+export async function saveResellerSupplierListPricingBatch(
+  supplierListId: string,
+  items: Array<{ productId: string; supplierCost: number; marginPercent: number; roundingStep: 0 | 100 | 500 }>,
+): Promise<number> {
+  const { data, error } = await supabase.rpc('save_reseller_supplier_list_pricing', {
+    p_supplier_list_id: supplierListId,
+    p_items: items.map(item => ({
+      productId: item.productId,
+      supplierCost: item.supplierCost,
+      marginPercent: item.marginPercent,
+      roundingStep: item.roundingStep,
+    })),
+  });
+  if (error) throw new Error(`[save_reseller_supplier_list_pricing] ${error.message}`);
+  invalidateDbCache('price_list_items', 'reseller_supplier_lists', 'reseller_supplier_list_items');
+  return Number(data ?? 0);
+}
+
 export async function toggleResellerSupplierList(
   supplierListId: string,
   enabled: boolean,

@@ -25,15 +25,17 @@ describe('reseller supplier lists UI', () => {
     expect(modal).toContain('se ocultan sin perder la selección');
   });
 
-  it('imports spreadsheet rows through the connected AI Bridge and reviews them before product creation', () => {
+  it('imports spreadsheet rows through the connected AI Bridge and supports reviewed bulk creation', () => {
     expect(modal).toContain('accept=".xlsx,.xls,.csv');
     expect(modal).toContain('Leer lista con IA');
     expect(modal).toContain("'gpt-6-luna'");
     expect(modal).toContain('¿Los precios incluyen IVA?');
-    expect(modal).toContain('Crear y agregar');
+    expect(modal).toContain('Agregar los ${supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos');
+    expect(modal).toContain('planSupplierImport');
+    expect(modal).toContain('supplierImportBatchProgress');
     expect(modal).toContain('initialDraft');
     expect(modal).toContain('recortarla a mano');
-    expect(modal).toContain('photoFile: supplierImportPhotoFiles[row.sourceRow]');
+    expect(modal).toContain('imageUrl: entry.row.imageUrl ?? existing?.imageUrl');
     expect(modal).toContain('roundingStep');
   });
 
