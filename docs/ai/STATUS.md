@@ -1530,3 +1530,8 @@ Sin toque en src/, supabase/ ni extensions/.
 - Facebook, su extensión y automatización quedan fuera de esta sesión, según la indicación de Riva.
 
 \n
+- **2026-11-06 23:42 ART — smoke I17b/I19b y avance I20**
+  - Producción, `fadd0e6` (Vercel `success`), Playwright con perfil persistente a 360×740: I17b confirmado (buscador del + sin foco y sin botón de tres rayas). I19b confirmado por las dos rutas de alta móvil; escribí borradores y los descarté desde la app, sin guardar productos ni errores de página.
+  - I20, opción B: copié `docs/design/mobile-ai/OpcionB.dc.html`; rehice el encabezado móvil, pasé Nuevo chat al encabezado, eliminé el botón flotante y los tres puntos, añadí tarjetas con iconos por tema, estado “Respondiendo…”, grupos Hoy/Esta semana/Anteriores y hoja de acciones solo para eliminar por pulsación larga. No hay `pinned_at` ni título editable; se difieren sin migración, como permite el plan.
+  - Verificación local del worktree limpio: lint aprobado, Vitest focal **29/29**, Playwright de chats **6/6**, `npx vite build` y `npm run perf:check` aprobados. También pasó Playwright de I19b/I17b: **10 aprobados, 2 saltados** (desktop).
+  - I20 sigue `[ ]` hasta publicar y hacer smoke móvil en producción. No apliqué migraciones; I18/I19 esperan backup diario verificado.

@@ -678,7 +678,7 @@ export default function AIHub() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 text-[var(--ink)]">
       <Suspense fallback={<div aria-hidden="true" className="lg:hidden min-h-24"/>}>
-        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} fullScreen={mobileChatFullScreen || mobileTaskFullScreen} onNavigate={navigateView}/>
+        <MobileAIHubNavigation view={view} bridgeState={bridgeState} isOwner={isOwner} canWrite={canWriteBusiness} onNewChat={startMobileChat} fullScreen={mobileChatFullScreen || mobileTaskFullScreen} onNavigate={navigateView}/>
       </Suspense>
       <header className="hidden flex-wrap items-center justify-between gap-4 lg:flex">
         <div>

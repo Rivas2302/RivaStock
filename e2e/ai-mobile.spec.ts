@@ -60,7 +60,7 @@ function chat(id: string, title: string, preview: string, provider: 'codex' | 'm
 
 async function mockRiva(page: Page, modules: Modules = { ai: true, knowledge: true, automation: true }, empty = false) {
   const chats = empty ? [] : [
-    chat('chat-cameras', '[QA] Stock de cámaras', '¿Cuántas cámaras quedan?'),
+    { ...chat('chat-cameras', '[QA] Stock de cámaras', '¿Cuántas cámaras quedan?'), has_pending_job: true },
     chat('chat-chargers', '[QA] Reposición', 'Consultas sobre cargadores.'),
   ];
   const jobs = empty ? [] : [
@@ -216,6 +216,16 @@ test('mobile chat: search, swipe-delete confirmation, browser back, settings and
   test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   const { calls } = await mockRiva(page);
   await page.goto('/ia?view=chats');
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expect(page.getByRole('heading', { name: 'Asistente IA' })).toBeVisible();
+  await expect(page.getByText('PC conectada')).toBeVisible();
+  await expect(page.getByText('Respondiendo…')).toBeVisible();
+  const newChatHeader = page.getByRole('button', { name: 'Nuevo chat' });
+  const newChatBounds = await newChatHeader.boundingBox();
+  const mainNav = page.getByRole('navigation', { name: 'Navegación principal' });
+  const navBounds = await mainNav.boundingBox();
+  expect(newChatBounds && navBounds && newChatBounds.y + newChatBounds.height < navBounds.y).toBe(true);
+  await expect(page.getByRole('button', { name: 'Nuevo chat' })).toHaveCount(1);
   await expect(page.getByRole('button', { name: /^\[QA\] Stock de cámaras\./ })).toBeVisible();
   await page.getByLabel('Buscar en tus chats').fill('cargadores');
   await expect(page.getByRole('button', { name: /^\[QA\] Reposición\./ })).toBeVisible();
@@ -303,12 +313,34 @@ test('mobile chat and task lists show their empty states and next actions', asyn
   test.skip(testInfo.project.name === 'chromium', 'Mobile interaction scenarios run in Android and iPhone projects.');
   await mockRiva(page, undefined, true);
   await page.goto('/ia?view=chats');
-  await expect(page.getByText('Todavía no tenés chats. Preguntale algo a tu IA.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Nuevo chat' })).toBeVisible();
+  await expect(page.getByText('Todavía no tenés chats')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Nuevo chat' })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Nuevo chat' }).last()).toBeVisible();
 
   await page.goto('/ia?view=tasks');
   await expect(page.getByText('Todavía no hay tareas. Cuando envíes una, va a aparecer acá.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Nueva tarea' })).toBeVisible();
+});
+
+test('mobile chat card opens the delete-only bottom sheet on long press and can be cancelled', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'chromium', 'Chat list interactions run in Android and iPhone projects.');
+  const { calls } = await mockRiva(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/ia?view=chats');
+  const row = page.getByRole('button', { name: /^\[QA\] Stock de cámaras\./ });
+  const bounds = await row.boundingBox();
+  if (!bounds) throw new Error('The chat card is not visible.');
+  await row.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 2, button: 0, clientX: bounds.x + 30, clientY: bounds.y + 30 });
+  await page.waitForTimeout(560);
+  const sheet = page.getByRole('dialog', { name: '[QA] Stock de cámaras' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Eliminar chat' })).toBeVisible();
+  await expect(sheet.getByText('Fijar arriba')).toHaveCount(0);
+  await expect(sheet.getByText('Cambiar nombre')).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(sheet).toHaveCount(0);
+  expect(calls.some((call) => call.action === 'chat_delete')).toBe(false);
+  await testInfo.attach(`${testInfo.project.name}-chat-list-option-b`, { body: await page.screenshot(), contentType: 'image/png' });
 });
 
 test('desktop AI hub retains the existing Chats and Tasks workspace', async ({ page }, testInfo) => {

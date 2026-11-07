@@ -5,6 +5,8 @@ export interface MobileAIChatGroup {
   chats: AIChat[];
 }
 
+export type MobileAIChatTopic = 'stock' | 'sales' | 'publications' | 'quotes' | 'customers' | 'cash' | 'assistant';
+
 export function normalizeChatSearch(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-AR').trim();
 }
@@ -21,25 +23,27 @@ function startOfLocalDay(value: Date): Date {
   return day;
 }
 
-function monthLabel(value: Date, now: Date): string {
-  const label = new Intl.DateTimeFormat('es-AR', { month: 'long' }).format(value);
-  const capitalized = label.charAt(0).toLocaleUpperCase('es-AR') + label.slice(1);
-  return value.getFullYear() === now.getFullYear()
-    ? capitalized
-    : `${capitalized} de ${value.getFullYear()}`;
-}
-
 function groupLabel(value: Date, now: Date): string {
   const today = startOfLocalDay(now);
   const date = startOfLocalDay(value);
   const daysAgo = Math.floor((today.getTime() - date.getTime()) / 86_400_000);
   if (daysAgo <= 0) return 'Hoy';
-  if (daysAgo === 1) return 'Ayer';
   const mondayOffset = (today.getDay() + 6) % 7;
   const weekStart = new Date(today);
   weekStart.setDate(today.getDate() - mondayOffset);
   if (date >= weekStart) return 'Esta semana';
-  return monthLabel(value, now);
+  return 'Anteriores';
+}
+
+export function getMobileAIChatTopic(chat: Pick<AIChat, 'title' | 'last_message_preview'>): MobileAIChatTopic {
+  const text = normalizeChatSearch(`${chat.title} ${chat.last_message_preview ?? ''}`);
+  if (/\b(stock|inventario|producto|mercaderia|reposicion|proveedor)\b/.test(text)) return 'stock';
+  if (/\b(venta|vender|ventas|factura|ticket)\b/.test(text)) return 'sales';
+  if (/\b(publicacion|publicar|facebook|instagram|redes|anuncio)\b/.test(text)) return 'publications';
+  if (/\b(presupuesto|cotizacion|cotizar)\b/.test(text)) return 'quotes';
+  if (/\b(cliente|clientes|contacto)\b/.test(text)) return 'customers';
+  if (/\b(caja|gasto|cobro|pago|dinero)\b/.test(text)) return 'cash';
+  return 'assistant';
 }
 
 export function groupMobileChats(chats: AIChat[], now = new Date()): MobileAIChatGroup[] {

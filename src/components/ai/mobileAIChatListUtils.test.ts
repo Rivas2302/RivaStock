@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AIChat } from '../../lib/aiBridge';
-import { filterMobileChats, formatMobileChatTime, groupMobileChats, isChatInRecentWindow, normalizeChatSearch } from './mobileAIChatListUtils';
+import { filterMobileChats, formatMobileChatTime, getMobileAIChatTopic, groupMobileChats, isChatInRecentWindow, normalizeChatSearch } from './mobileAIChatListUtils';
 
 function chat(id: string, title: string, preview: string, date: Date): AIChat {
   const timestamp = date.toISOString();
@@ -39,8 +39,15 @@ describe('mobile AI chat list helpers', () => {
       chat('today', 'Hoy', '', date(0)),
     ];
 
-    expect(groupMobileChats(chats, now).map((group) => group.label)).toEqual(['Hoy', 'Ayer', 'Esta semana', 'Octubre']);
+    expect(groupMobileChats(chats, now).map((group) => group.label)).toEqual(['Hoy', 'Esta semana', 'Anteriores']);
     expect(groupMobileChats(chats, now)[0].chats[0].id).toBe('today');
+  });
+
+  it('assigns a chat theme from its title or preview', () => {
+    expect(getMobileAIChatTopic(chat('1', 'Stock de auriculares', '', new Date()))).toBe('stock');
+    expect(getMobileAIChatTopic(chat('2', 'Nuevo presupuesto', '', new Date()))).toBe('quotes');
+    expect(getMobileAIChatTopic(chat('3', 'Otro tema', 'Publicación para Instagram', new Date()))).toBe('publications');
+    expect(getMobileAIChatTopic(chat('4', 'Consulta general', '', new Date()))).toBe('assistant');
   });
 
   it('applies the recent cutoff and formats a current-day time', () => {

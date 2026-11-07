@@ -7,13 +7,12 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  Loader2,
   Library,
   ListChecks,
   MessageSquare,
+  Plus,
+  Sparkles,
   Wand2,
-  Wifi,
-  WifiOff,
   type LucideIcon,
 } from 'lucide-react';
 import type { AIBridgeState } from '../../lib/aiBridge';
@@ -26,6 +25,8 @@ interface MobileAIHubNavigationProps {
   view: MobileAIHubView;
   bridgeState: AIBridgeState | null;
   isOwner: boolean;
+  canWrite?: boolean;
+  onNewChat?: () => void;
   fullScreen?: boolean;
   onNavigate: (view: MobileAIHubView) => void;
 }
@@ -46,17 +47,16 @@ const MORE_ITEMS: MoreItem[] = [
 ];
 
 function connectionState(state: AIBridgeState | null) {
-  if (state === 'idle') return { label: 'PC conectada', Icon: Wifi, classes: 'border-[var(--success-line)] bg-[var(--success-surface)] text-[var(--success-ink)]' };
-  if (state === 'busy') return { label: 'PC ocupada', Icon: Loader2, classes: 'border-[var(--brand-ring)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' };
-  if (state === 'offline') return { label: 'PC desconectada', Icon: WifiOff, classes: 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink-muted)]' };
-  return { label: 'Consultando PC', Icon: Loader2, classes: 'border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink-muted)]' };
+  if (state === 'idle') return { label: 'PC conectada' };
+  if (state === 'busy') return { label: 'PC ocupada' };
+  if (state === 'offline') return { label: 'PC desconectada' };
+  return { label: 'Consultando PC' };
 }
 
-export default function MobileAIHubNavigation({ view, bridgeState, isOwner, fullScreen = false, onNavigate }: MobileAIHubNavigationProps) {
+export default function MobileAIHubNavigation({ view, bridgeState, isOwner, canWrite = true, onNewChat, fullScreen = false, onNavigate }: MobileAIHubNavigationProps) {
   useMobileAppChrome({ hideHeader: true, hideBottomNav: fullScreen });
   const [isMoreOpen, setMoreOpen] = useState(false);
   const connection = connectionState(bridgeState);
-  const ConnectionIcon = connection.Icon;
   const moreIsCurrent = view !== 'chats' && view !== 'tasks';
 
   const navigateFromSheet = (next: MobileAIHubView) => {
@@ -68,17 +68,27 @@ export default function MobileAIHubNavigation({ view, bridgeState, isOwner, full
     <>
       {!fullScreen && <header className="-mx-4 -mt-4 space-y-3 border-b border-[var(--line)] bg-[var(--surface)] px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] text-[var(--ink)] lg:hidden">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-[26px] font-bold tracking-tight">IA</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><Sparkles size={21}/></span>
+            <span className="min-w-0">
+              <h1 className="text-[22px] font-bold tracking-tight">Asistente IA</h1>
+              <button
+                type="button"
+                onClick={() => onNavigate('connection')}
+                aria-label={`Estado de la PC: ${connection.label}. Abrir conexión`}
+                className={`inline-flex min-h-6 items-center gap-1.5 text-xs font-semibold ${bridgeState === 'offline' ? 'text-[var(--warning-ink)]' : bridgeState === 'idle' ? 'text-[var(--success-ink)]' : 'text-[var(--ink-muted)]'}`}
+              >
+                <span aria-hidden="true" className={`size-1.5 rounded-full ${bridgeState === 'idle' ? 'bg-[var(--success-ink)]' : bridgeState === 'offline' ? 'bg-[var(--warning-ink)]' : bridgeState === 'busy' ? 'bg-[var(--brand)]' : 'animate-pulse bg-[var(--ink-muted)]'}`}/>
+                {connection.label}
+              </button>
+            </span>
+          </div>
           <button
             type="button"
-            onClick={() => onNavigate('connection')}
-            aria-label={`Estado de la PC: ${connection.label}. Abrir conexión`}
-            className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${connection.classes}`}
-          >
-            <ConnectionIcon size={16} aria-hidden="true" className={bridgeState === 'busy' || bridgeState === null ? 'animate-spin' : undefined}/>
-            <span>{connection.label}</span>
-            <ChevronRight size={15} aria-hidden="true" className="text-[var(--ink-muted)]"/>
-          </button>
+            onClick={onNewChat}
+            disabled={!canWrite || !onNewChat || view !== 'chats'}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-[var(--action-bg)] px-3.5 text-sm font-bold text-[var(--action-ink)] shadow-sm disabled:hidden"
+          ><Plus size={19} aria-hidden="true"/>Nuevo chat</button>
         </div>
 
         <nav className="grid grid-cols-3 gap-1 rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)] p-1" aria-label="Secciones de IA">

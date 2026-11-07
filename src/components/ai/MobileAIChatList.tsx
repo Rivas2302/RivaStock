@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Loader2, MessageSquare, MoreHorizontal, Plus, Search, Trash2, X } from 'lucide-react';
+import { FileText, Loader2, MessageSquare, Package, Plus, Search, ShoppingCart, Sparkles, Trash2, Users, Wallet, X } from 'lucide-react';
 import { deleteAIChat, type AIChat, type AIChatPage } from '../../lib/aiBridge';
 import { getAIChatsPage } from '../../lib/aiBridgeChatList';
-import { filterMobileChats, formatMobileChatTime, groupMobileChats, isChatInRecentWindow } from './mobileAIChatListUtils';
+import { filterMobileChats, formatMobileChatTime, getMobileAIChatTopic, groupMobileChats, isChatInRecentWindow, type MobileAIChatTopic } from './mobileAIChatListUtils';
+
+const CHAT_TOPIC_PRESENTATION = {
+  stock: { Icon: Package, classes: 'bg-[var(--brand-soft)] text-[var(--brand-strong)]' },
+  sales: { Icon: ShoppingCart, classes: 'bg-[var(--success-surface)] text-[var(--success-ink)]' },
+  publications: { Icon: Sparkles, classes: 'bg-[var(--warning-surface)] text-[var(--warning-ink)]' },
+  quotes: { Icon: FileText, classes: 'bg-[var(--brand-soft)] text-[var(--brand)]' },
+  customers: { Icon: Users, classes: 'bg-[var(--success-surface)] text-[var(--success-ink)]' },
+  cash: { Icon: Wallet, classes: 'bg-[var(--danger-surface)] text-[var(--danger-ink)]' },
+  assistant: { Icon: MessageSquare, classes: 'bg-[var(--brand-soft)] text-[var(--brand)]' },
+} satisfies Record<MobileAIChatTopic, { Icon: typeof MessageSquare; classes: string }>;
 
 export interface MobileAIChatListProps {
   canWrite: boolean;
@@ -216,31 +226,46 @@ export default function MobileAIChatList({
   const chatRows = groups.map((group) => (
     <section key={group.label} aria-labelledby={`mobile-chat-group-${group.label.replace(/\s/g, '-').toLocaleLowerCase('es-AR')}`}>
       <h2 id={`mobile-chat-group-${group.label.replace(/\s/g, '-').toLocaleLowerCase('es-AR')}`} className="px-5 pb-1 pt-4 text-xs font-bold uppercase tracking-wide text-[var(--ink-muted)]">{group.label}</h2>
-      <ul>
+      <ul className="space-y-2.5 px-4">
         {group.chats.map((chat) => {
           const busy = Boolean(chat.has_pending_job);
           const swiped = swipedChatId === chat.id;
-          return <li key={chat.id} className="relative overflow-hidden border-b border-[var(--line)]">
+          const topic = CHAT_TOPIC_PRESENTATION[getMobileAIChatTopic(chat)];
+          const TopicIcon = topic.Icon;
+          return <li key={chat.id} className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)]">
             <button
               type="button"
               onPointerDown={(event) => beginPointer(event, chat)}
               onPointerMove={movePointer}
               onPointerUp={(event) => endPointer(event, chat)}
               onPointerCancel={() => { if (pointerStart.current?.timer !== null) window.clearTimeout(pointerStart.current?.timer ?? undefined); pointerStart.current = null; }}
-              onContextMenu={(event) => { event.preventDefault(); longPressTriggered.current = true; openMenu(chat); }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                if (pointerStart.current?.timer !== null) window.clearTimeout(pointerStart.current?.timer ?? undefined);
+                pointerStart.current = null;
+                longPressTriggered.current = true;
+                openMenu(chat);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                event.preventDefault();
+                longPressTriggered.current = true;
+                openMenu(chat);
+              }}
               onClick={() => {
                 if (longPressTriggered.current) { longPressTriggered.current = false; return; }
                 setSwipedChatId(null);
                 onOpenChat(chat.id);
               }}
               aria-label={`${chat.title}. ${chat.last_message_preview ?? ''}. ${formatMobileChatTime(chat.last_message_at)}`}
-              className={`relative z-10 flex min-h-16 w-full items-start gap-3 bg-[var(--surface)] px-5 py-3 pr-14 text-left transition-transform duration-200 ${swiped ? '-translate-x-24' : ''}`}
+              className={`relative z-10 flex min-h-20 w-full items-center gap-3 bg-[var(--surface)] px-3.5 py-3 pr-4 text-left transition-transform duration-200 ${swiped ? '-translate-x-24' : ''}`}
             >
+              <span aria-hidden="true" className={`flex size-11 shrink-0 items-center justify-center rounded-full ${topic.classes}`}><TopicIcon size={20}/></span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold text-[var(--ink)]">{chat.title}</span>
+                <span className="flex min-w-0 items-center gap-2"><span className="block min-w-0 flex-1 truncate text-[15px] font-semibold text-[var(--ink)]">{chat.title}</span><span className="shrink-0 text-xs text-[var(--ink-muted)]">{formatMobileChatTime(chat.last_message_at)}</span></span>
                 <span className="mt-0.5 block truncate text-[13px] text-[var(--ink-muted)]">{chat.last_message_preview || 'Todavía no hay mensajes'}</span>
+                {busy && <span role="status" className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-strong)]"><span aria-hidden="true" className="tracking-widest motion-safe:animate-pulse">•••</span>Respondiendo…</span>}
               </span>
-              <span className="pt-0.5 text-xs text-[var(--ink-muted)]">{formatMobileChatTime(chat.last_message_at)}</span>
             </button>
             <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-[var(--danger-surface)]">
               <button
@@ -251,12 +276,6 @@ export default function MobileAIChatList({
                 className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs font-bold text-[var(--danger-ink)] disabled:opacity-50"
               ><Trash2 size={18}/><span>Eliminar</span></button>
             </div>
-            <button
-              type="button"
-              aria-label={`Opciones de ${chat.title}`}
-              onClick={() => openMenu(chat)}
-              className="absolute right-1 top-1 z-20 inline-flex size-10 items-center justify-center rounded-xl bg-[var(--surface)] text-[var(--ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
-            ><MoreHorizontal size={18}/></button>
           </li>;
         })}
       </ul>
@@ -284,7 +303,7 @@ export default function MobileAIChatList({
         {[0, 1, 2, 3].map((row) => <div key={row} className="flex min-h-16 items-start gap-3 border-b border-[var(--line)] py-3"><span className="min-w-0 flex-1 space-y-2"><span className="block h-4 w-3/4 animate-pulse rounded bg-[var(--surface-muted)]"/><span className="block h-3 w-2/3 animate-pulse rounded bg-[var(--surface-muted)]"/></span><span className="h-3 w-10 animate-pulse rounded bg-[var(--surface-muted)]"/></div>)}
       </div> : chats.length === 0 && !error ? <div className="flex flex-1 flex-col items-center justify-center px-8 py-16 text-center">
         <span className="flex size-14 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-[var(--brand)]"><MessageSquare size={25}/></span>
-        <p className="mt-4 text-sm font-semibold">Todavía no tenés chats. Preguntale algo a tu IA.</p>
+        <p className="mt-4 text-sm font-semibold">Todavía no tenés chats</p>
         {canWrite && <button type="button" onClick={onNewChat} className="mt-4 rounded-xl bg-[var(--action-bg)] px-4 py-2.5 text-sm font-bold text-[var(--action-ink)]">Nuevo chat</button>}
       </div> : debouncedQuery && !visibleChats.length && !loadingAll ? <p className="px-5 py-10 text-center text-sm text-[var(--ink-muted)]">No encontramos chats con ese texto.</p> : <>
         {chatRows}
@@ -298,12 +317,6 @@ export default function MobileAIChatList({
         {!debouncedQuery && hasMore && showOlder && !loadingAll && <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="mx-5 mb-6 mt-2 inline-flex min-h-11 w-[calc(100%-2.5rem)] items-center justify-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink-muted)] disabled:opacity-60">{loadingOlder ? <Loader2 size={15} className="animate-spin"/> : null}Cargar más chats</button>}
       </>}
     </div>
-
-    {canWrite && chats.length > 0 && <button
-      type="button"
-      onClick={onNewChat}
-      className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-30 inline-flex min-h-13 items-center gap-2 rounded-full bg-[var(--action-bg)] px-5 text-sm font-bold text-[var(--action-ink)] shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
-    ><Plus size={20}/>Nuevo chat</button>}
 
     {menuChat && <div className="fixed inset-0 z-[80] flex items-end bg-black/50" onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuChat(null); }}>
       <section ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="mobile-chat-menu-title" className="w-full rounded-t-3xl border border-[var(--line)] bg-[var(--surface)] px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-2xl">

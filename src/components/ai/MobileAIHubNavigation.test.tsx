@@ -46,7 +46,7 @@ describe('mobile AI hub navigation', () => {
   it('shows the two primary sections and opens an accessible More sheet', async () => {
     const onNavigate = vi.fn();
     await renderWithChromeOutlet(<MobileAIHubNavigation view="chats" bridgeState="idle" isOwner onNavigate={onNavigate}/>);
-    expect(host.querySelector('h1')?.textContent).toBe('IA');
+    expect(host.querySelector('h1')?.textContent).toBe('Asistente IA');
     expect(host.textContent).toContain('PC conectada');
     expect(host.querySelector('nav[aria-label="Secciones de IA"]')?.textContent).toContain('Chats');
     expect(host.querySelector('nav[aria-label="Secciones de IA"]')?.textContent).toContain('Tareas');
@@ -80,6 +80,13 @@ describe('mobile AI hub navigation', () => {
     await renderWithChromeOutlet(<MobileAIHubNavigation view="chats" bridgeState={null} isOwner onNavigate={onNavigate}/>);
     await click(Array.from(host.querySelectorAll('nav[aria-label="Secciones de IA"] button')).find((button) => button.textContent?.includes('Tareas')) as HTMLButtonElement);
     expect(onNavigate).toHaveBeenCalledWith('tasks');
+  });
+
+  it('starts a new chat from the header action on the chat list', async () => {
+    const onNewChat = vi.fn();
+    await renderWithChromeOutlet(<MobileAIHubNavigation view="chats" bridgeState="idle" isOwner canWrite onNewChat={onNewChat} onNavigate={vi.fn()}/>);
+    await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Nuevo chat')) ?? null);
+    expect(onNewChat).toHaveBeenCalledOnce();
   });
 });
 

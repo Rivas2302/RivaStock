@@ -123,11 +123,20 @@ describe('MobileAIChatList', () => {
     expect(host.textContent).not.toContain('Pedido de octubre');
   });
 
-  it('uses an accessible chat menu and its own confirmation sheet before deletion', async () => {
+  it('opens the delete-only sheet on long press without a three-dot action', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
+    vi.useFakeTimers();
     await render(makeUI());
-    await click(host.querySelector('button[aria-label="Opciones de Inventario de hoy"]'));
-    await click([...host.querySelectorAll('button')].find((button) => button.textContent === 'Eliminar chat') as HTMLButtonElement);
+    const chat = host.querySelector<HTMLButtonElement>('button[aria-label^="Inventario de hoy"]');
+    if (!chat) throw new Error('No se encontró la tarjeta del chat.');
+    const pointerDown = new Event('pointerdown', { bubbles: true });
+    Object.defineProperties(pointerDown, {
+      pointerType: { value: 'touch' }, button: { value: 0 }, clientX: { value: 12 }, clientY: { value: 12 },
+    });
+    await act(async () => { chat.dispatchEvent(pointerDown); vi.advanceTimersByTime(520); });
+    expect(host.querySelector('button[aria-label^="Opciones de"]')).toBeNull();
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Eliminar chat');
+    await click([...host.querySelectorAll('[role="dialog"] button')].find((button) => button.textContent === 'Eliminar chat') as HTMLButtonElement);
 
     expect(host.textContent).toContain('Se borran los mensajes y sus fuentes. No se puede deshacer.');
     expect(confirmSpy).not.toHaveBeenCalled();
@@ -135,6 +144,14 @@ describe('MobileAIChatList', () => {
     const confirmSheet = host.querySelector('[aria-labelledby="mobile-chat-delete-title"]');
     await click([...confirmSheet?.querySelectorAll('button') ?? []].find((button) => button.textContent === 'Eliminar') as HTMLButtonElement);
     expect(mocks.deleteAIChat).toHaveBeenCalledWith('recent');
+  });
+
+  it('shows a topic icon and a responding status for chats with a pending job', async () => {
+    mocks.getAIChatsPage.mockResolvedValue(page([{ ...makeChat('pending', 'Stock de auriculares', 'Revisando reposición', 0), has_pending_job: true }]));
+    await render(makeUI());
+    expect(host.querySelector('svg')).not.toBeNull();
+    expect(host.textContent).toContain('Respondiendo…');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Respondiendo…');
   });
 
   it('shows a loading skeleton while the first page is pending', async () => {
@@ -146,7 +163,7 @@ describe('MobileAIChatList', () => {
   it('shows the first-chat empty state with its new-chat action', async () => {
     mocks.getAIChatsPage.mockResolvedValue(page([]));
     await render(makeUI());
-    expect(host.textContent).toContain('Todavía no tenés chats. Preguntale algo a tu IA.');
+    expect(host.textContent).toContain('Todavía no tenés chats');
     expect(host.querySelector('button')?.textContent).toContain('Nuevo chat');
   });
 });
