@@ -673,13 +673,13 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Arreglo urgente (va con I26):** el botón «Agregar los N listos» **ignora el buscador y el filtro de categoría**. Con «joystick» la lista muestra 24 productos y el botón sigue diciendo «Agregar los 874 listos». Tiene que agregar **solo lo que está filtrado** («Agregar los 24 listos de "joystick"») y, antes de crear, pedir confirmación con el número exacto. Test e2e: filtro → botón con el número filtrado → solo se crean esos.
 
-### [ ] I25 Categorías sin cuadrado + Lista de revendedores como módulo propio — **pedido de Riva el 07/11 15:25 (después de I24)**
+### [x] I25 Categorías sin cuadrado + Lista de revendedores como módulo propio — **pedido de Riva el 07/11 15:25 (después de I24)**
 
 1. **Cuadrado en las categorías del catálogo (I23 no lo resolvió).** En `src/pages/PublicCatalog.tsx` (~línea 1049) cada categoría es un `<button>` con `rounded-xl` y outline de foco cuadrado, y adentro un círculo con `border-2` **transparente** sobre un fondo degradé. Eso produce: (a) un recuadro alrededor del ícono al tocar o seleccionar en el celular (resaltado del toque y foco del botón), y (b) un anillo de otro color en el borde del círculo, porque el degradé se repite debajo del borde transparente. Corregir:
    - Botón sin fondo ni recuadro visible: `[-webkit-tap-highlight-color:transparent]`, sin `rounded-xl` y con el foco de teclado dibujado como **anillo circular sobre el círculo**, no sobre el botón.
    - Círculo: `background-origin: border-box` (o sin borde y la categoría activa marcada con `ring-2 ring-offset-2` circular).
    - Verificar con capturas de Playwright a 360 px y 1440 px, en tema oscuro y claro, con una categoría **seleccionada**, otra **sin seleccionar** y una con **foco de teclado**. Adjuntar las capturas en el resumen.
-2. **Lista de revendedores fuera de Stock.** Hoy «Lista revendedores» y «Ver lista de precios» están en la cabecera de **Gestión de Stock**. Riva quiere un módulo aparte:
+2. **Lista de revendedores fuera de Stock.** Hoy «Lista revendedores» y «Ver lista de precios» están en la cabecera de **Gestión de Stock**. Riva quiere un módulo aparte. Este punto quedó reemplazado por el diseño aprobado y la implementación completa de I28:
    - Nueva entrada **«Revendedores»** en el menú principal (y en la barra móvil si corresponde), con su propia página y ruta (ej. `/revendedores`), que muestre lo que hoy abre `ResellerPriceListModal` como pantalla completa, no como ventana emergente: configuración, listas por proveedor, importar lista, productos y PDF.
    - Quitar esos botones de la cabecera de Stock. Desde Stock solo queda, como mucho, un enlace chico «Ver en Revendedores».
    - Respetar los permisos actuales (`canWrite`, roles) y que las rutas viejas no se rompan.
@@ -717,7 +717,9 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Verificación:** tests con fixtures (foto ok, foto caída, tipo no permitido, redirect a otro dominio). Prueba real en producción con Mr Tecno: la revisión tiene que mostrar las miniaturas y el contador «con foto / sin foto». Sin confirmar el alta masiva sin OK de Riva. Vercel **Current**.
 
-### [ ] I28 Rediseño del módulo Revendedores con las maquetas aprobadas — **pedido de Riva el 07/11 17:23 («es un quilombo este módulo, muy poca estructura»)**
+**Cierre I25 punto 1 (2026-11-07):** producción en `4367da4`; capturas autenticadas a 360 y 1440 px en claro y oscuro confirman categorías circulares, estados seleccionado/no seleccionado y foco de teclado. Archivos: `%TEMP%\rivastock-qa-artifacts\i25-categories\categories-{360,1440}-{light,dark}.png`. El punto 2 fue reemplazado por I28.
+
+### [x] I28 Rediseño del módulo Revendedores con las maquetas aprobadas — **pedido de Riva el 07/11 17:23 («es un quilombo este módulo, muy poca estructura»)**
 
 **Problema:** I19 se implementó metido dentro de `ResellerPriceListModal` (una ventana emergente encima de Stock), **sin seguir las maquetas aprobadas** el 06/11 (`docs/design/supplier-lists/`: `Main`, `Importar`, `Revisar`, `AbrirPedido`, `Cierre`, `RevCatalogo`, `RevPago`). Resultado, según las capturas de Riva: doble barra de scroll, la URL repetida dos veces, la configuración (IVA, margen, redondeo) **debajo** de la lista y del botón de agregar, más de 30 campos «Margen para CATEGORÍA» todos en 20 %, y un pie «190 productos incluidos / Guardar lista» que no se entiende a qué se refiere.
 
@@ -738,6 +740,8 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 5. Comparar cada pantalla contra las maquetas aprobadas antes de cerrar.
 
 **Verificación:** Playwright 360 px y 1440 px de punta a punta (importar → precios → revisar → agregar filtrados) sin crear productos reales, capturas de cada paso en tema claro y oscuro, y rutas viejas que no se rompan.
+
+**Cierre I28 (2026-11-07):** implementado en `97aca48`; correcciones de la verificación móvil en `a0ffcd9` y `4367da4`. Vercel informó `success` para `4367da4`; producción se probó autenticada con Mr Tecno y sin confirmar el alta. Playwright cubrió los tres pasos a 360/1440 px, claro/oscuro, el filtro del CTA, el modal anterior y el menú móvil intacto. Las capturas de cada pestaña y paso están en `%TEMP%\rivastock-qa-artifacts\i28-revendedores\`.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 

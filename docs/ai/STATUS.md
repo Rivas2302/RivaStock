@@ -1659,9 +1659,9 @@ Sin toque en src/, supabase/ ni extensions/.
 - Smoke autenticado en producción tras el deploy: 1.393 con foto / 7 sin foto; cotización 1.600; tres respuestas HTTP 200 de `fetch-url`, la miniatura muestreada decodificó a 964 px y no hubo errores de consola. No se confirmó el alta masiva ni se escribieron productos.
 - I27 cerrada. El proxy solo acepta el host del proveedor y mantiene `verify_jwt=true`; CSP no se amplió.
 
-### I25 punto 1 — implementación local
+### I25 punto 1 — cierre en producción
 
-- Se quitó el resaltado cuadrado del botón de categoría y el foco/selección se dibujan como anillos circulares sobre el chip; el padre no recorta el foco. Playwright comprobó 360 y 1440 px, claro/oscuro, estado seleccionado, sin seleccionar y foco de teclado. El deploy y las capturas de producción siguen pendientes.
+- Se quitó el resaltado cuadrado del botón de categoría y el foco/selección se dibujan como anillos circulares sobre el chip; el padre no recorta el foco. Playwright y producción a 360/1440 px, claro/oscuro, verificaron seleccionado, sin seleccionar y foco de teclado. Capturas: `%TEMP%\rivastock-qa-artifacts\i25-categories\categories-{360,1440}-{light,dark}.png`.
 
 ### I27 — corrección de autenticación de fetch-url (seguimiento)
 
@@ -1675,4 +1675,11 @@ Sin toque en src/, supabase/ ni extensions/.
 - `a0ffcd9` quedó en `main` y Vercel informó `success`. El smoke autenticado usó la tarjeta real de Mr Tecno y leyó `https://mrtecno.com.ar/productos/`: cotización detectada **1.600** a partir de 3 productos; HM352, USD 6,25, mostró costo local **$10.000**; 1.400 productos importados en la revisión, **1.393 con foto / 7 sin foto**. La acción mostró 867 listos con foto. No se confirmó el alta y no hubo escrituras de productos, categorías o listas; consola y errores de página vacíos.
 - La revisión visual posterior detectó un segundo overflow dentro de `.app-content`: los campos de búsqueda y categoría de la revisión tenían ancho intrínseco mayor que el contenedor. Se limitaron con `min-w-0`/`w-full` y la regresión Playwright ahora mide el scroll horizontal del contenedor de la app a 360 px.
 - Verificación local antes del segundo ajuste: `npm test` **1.142/1.142**, lint y build aprobados; Playwright de `e2e/supplier-list-import.spec.ts` **7/7**. Tras el ajuste, lint/build y Playwright focal **7/7** pasaron.
-- Despliegue y smoke de producción del ajuste del overflow pendientes; I28 e I25 punto 1 no se marcan completos hasta terminar esa comprobación.
+- El despliegue y smoke del ajuste de overflow quedaron resueltos en `4367da4`; detalle y cierre en la entrada siguiente.
+
+## 2026-11-07 — cierre I25 punto 1 e I28
+
+- **I25 punto 1 [x] e I28 [x]:** la implementación y el arreglo final del ancho móvil están en `main` hasta `4367da4`. Vercel informó `success` para ese commit. No se necesitaron migraciones.
+- Playwright focal `e2e/supplier-list-import.spec.ts`: **7/7**; comprobó `/revendedores`, cinco pestañas, los tres pasos, filtro y alta solo en fixtures, a 360 y 1440 px; también comprobó que el flujo modal antiguo sigue disponible y que el menú móvil conserva sus cinco destinos sin agregar Revendedores. La revisión móvil mide el scroll horizontal del contenedor, no solo el ancho del documento. Suite `npm test`: **1.142/1.142**; lint y build aprobados.
+- Smoke autenticado en producción con el proveedor existente Mr Tecno, URL `https://mrtecno.com.ar/productos/`: cotización **1.600** detectada de tres productos; HM352 USD 6,25 cuesta **$10.000** en pesos; revisión de **1.400 productos**, **1.393 con foto y 7 sin foto**, y CTA «Agregar los 867 listos con foto». No se confirmó el CTA; conteo de escrituras de productos/categorías/listas: **0**. Consola y errores de página: **0**.
+- Capturas de producción a 360/1440 px, claro/oscuro: cuatro estados de categorías en `%TEMP%\rivastock-qa-artifacts\i25-categories\`; cinco pestañas y tres pasos de I28 (32 capturas) en `%TEMP%\rivastock-qa-artifacts\i28-revendedores\`. No hubo datos de prueba que limpiar.
