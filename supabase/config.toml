@@ -7,4 +7,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.fetch-url]
-verify_jwt = false
+verify_jwt = true

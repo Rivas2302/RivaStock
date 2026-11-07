@@ -1645,3 +1645,9 @@ Sin toque en src/, supabase/ ni extensions/.
 - Verificación local: lint aprobado; 44 pruebas focales aprobadas; Playwright de importación **3/3**; Deno check aprobado y pruebas de proxy **3/3**. La suite completa había pasado **1.142/1.142** antes del último ajuste de estado visual; se repetirá al cerrar las fases posteriores. `npm run build` aprobado. `npm run perf:check` falla solo por el presupuesto preexistente de `src/pages/Knowledge.tsx`.
 - Lectura de solo consulta en producción: **0** productos tienen `image_url` o elementos de `images` con URL remota de Mr Tecno; el paso de migrar registros previos no tiene objetivos.
 - I27 queda abierta: falta desplegar `fetch-url` y la web, verificar Vercel `Current`, y probar en producción el contador/miniaturas y HM352 sin confirmar el alta masiva. No se crearon ni modificaron productos de producción.
+
+### I27 — corrección de autenticación de fetch-url (seguimiento)
+
+- El primer despliegue de `fetch-url` (v4) quedó brevemente con `verify_jwt=false` por un valor local heredado en `supabase/config.toml`. Se detectó inmediatamente y se volvió a desplegar como v5 con `verify_jwt=true`; la consulta agregada de logs no encontró solicitudes a `fetch-url` durante esa ventana.
+- Se corrigió `supabase/config.toml` a `verify_jwt=true`, alineándolo con producción. Verificado en Supabase: función ACTIVE v5 y JWT requerido. Esta corrección no modifica datos ni esquema.
+- I27 sigue abierta hasta completar la validación funcional de producción.
