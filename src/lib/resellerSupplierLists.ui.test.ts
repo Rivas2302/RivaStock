@@ -26,7 +26,7 @@ describe('reseller supplier lists UI', () => {
   });
 
   it('imports spreadsheet rows through the connected AI Bridge and supports reviewed bulk creation', () => {
-    expect(modal).toContain('accept=".xlsx,.xls,.csv');
+    expect(modal).toContain("supplierImportSourceType === 'spreadsheet' ? '.xlsx,.xls,.csv");
     expect(modal).toContain('Leer lista con IA');
     expect(modal).toContain("'gpt-6-luna'");
     expect(modal).toContain('¿Los precios incluyen IVA?');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getMobilePrimaryItems, getQuickActions, getVisibleNavigation, NAVIGATION_GROUPS } from './mobileNavigation';
+import { DESKTOP_NAVIGATION_GROUPS, getMobilePrimaryItems, getQuickActions, getVisibleNavigation, NAVIGATION_GROUPS } from './mobileNavigation';
 
 const items = [
   { name: 'Inicio', path: '/', module: null },
@@ -42,6 +42,9 @@ describe('mobile navigation visibility', () => {
   it('uses the five approved navigation groups', () => {
     expect(NAVIGATION_GROUPS.map(group => group.label)).toEqual([
       'Vender', 'Productos', 'Clientes y proveedores', 'Dinero', 'Herramientas',
+    ]);
+    expect(DESKTOP_NAVIGATION_GROUPS.map(group => group.label)).toEqual([
+      'Vender', 'Productos', 'Relaciones', 'Clientes y proveedores', 'Dinero', 'Herramientas',
     ]);
   });
 });

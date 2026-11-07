@@ -108,6 +108,7 @@ function AppRoutes() {
           <Route path="consulta-rapida" element={withSuspense(<RequirePermission module="stock" action="read"><QuickPrice /></RequirePermission>)} />
           <Route path="fotos" element={withSuspense(<ProductPhotos />)} />
           <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
+          <Route path="revendedores" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
           <Route path="ventas" element={withSuspense(<RequirePermission module="ventas"><Sales /></RequirePermission>)} />
           <Route path="reportes" element={withSuspense(<RequirePermission module="ventas" action="read"><Reports /></RequirePermission>)} />
           <Route path="pos" element={withSuspense(<RequirePermission module="ventas" action="write"><POS /></RequirePermission>)} />

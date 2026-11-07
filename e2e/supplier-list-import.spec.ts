@@ -225,3 +225,75 @@ test('supplier import previews load through the same-origin image proxy', async 
   await expect.poll(async () => modal.getByTestId('supplier-import-photo-image').first().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(1);
   await expect(modal.getByText(/\d+ con foto · \d+ sin foto/)).toBeVisible();
 });
+
+test('reseller module separates summary, price list, providers and orders without changing stock navigation', async ({ page }) => {
+  const { products } = await mockApp(page);
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto('/revendedores');
+
+  const tabs = page.getByRole('tablist', { name: 'Secciones de Revendedores' });
+  await expect(page.getByRole('heading', { name: 'Revendedores', level: 1 })).toBeVisible();
+  await expect(tabs.getByRole('tab')).toHaveCount(5);
+  await expect(page.getByRole('tabpanel', { name: 'Resumen de Revendedores' })).toBeVisible();
+  await expect(page.getByText('0 productos · margen medio sin definir · cotización sin definir · Sin importaciones')).toBeVisible();
+  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await tabs.getByRole('tab', { name: 'Lista de precios' }).click();
+  await expect(page.getByTestId('reseller-price-list')).toBeVisible();
+  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await tabs.getByRole('tab', { name: 'Proveedores' }).click();
+  await expect(page.getByRole('heading', { name: 'Proveedores', level: 2 })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Proveedores' })).toBeVisible();
+  await tabs.getByRole('tab', { name: 'Encargos' }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Encargos' })).toBeVisible();
+  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(page.getByText('Todavía no abriste una ronda para este proveedor.')).toBeVisible();
+  await tabs.getByRole('tab', { name: 'Ajustes' }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Ajustes' })).toBeVisible();
+  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Revendedores' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(360);
+  expect(products).toEqual([]);
+});
+
+test('Stock no longer has reseller-list shortcuts in its desktop header', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/stock');
+  await expect(page.getByRole('heading', { name: 'Gestión de Stock' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lista revendedores' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ver lista de precios' })).toHaveCount(0);
+});
+
+test('reseller supplier import follows its three steps and adds only filtered fixture rows at 360 and 1440 px', async ({ page }) => {
+  const { products } = await mockApp(page);
+  page.on('dialog', dialog => dialog.accept());
+  for (const width of [360, 1440]) {
+    await page.setViewportSize({ width, height: width === 360 ? 780 : 900 });
+    await page.goto('/revendedores');
+    const tabs = page.getByRole('tablist', { name: 'Secciones de Revendedores' });
+    await tabs.getByRole('tab', { name: 'Proveedores' }).click();
+    await page.getByRole('button', { name: /Importar lista|Editar productos|Crear lista/ }).click();
+
+    const steps = page.getByRole('navigation', { name: 'Pasos para importar' });
+    await expect(steps.getByRole('button', { name: '1. Importar' })).toHaveAttribute('aria-current', 'step');
+    await page.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+    await page.getByRole('button', { name: 'Leer enlace' }).click();
+    await expect(steps.getByRole('button', { name: '2. Precios' })).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByLabel('Los precios incluyen IVA')).toBeVisible();
+    await expect(page.getByLabel('Margen para revendedores')).toBeVisible();
+    await page.getByLabel('Cotización USD a pesos').fill('1600');
+    await page.getByLabel('Los precios incluyen IVA').selectOption('false');
+    await page.getByRole('button', { name: 'Seguir: revisar' }).click();
+    await expect(steps.getByRole('button', { name: '3. Revisar' })).toHaveAttribute('aria-current', 'step');
+    await page.getByLabel('Buscar productos importados').fill('Lámpara solar');
+    await expect(page.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
+    await expect(page.getByLabel('Productos importados', { exact: true })).toBeVisible();
+    const before = products.length;
+    await page.getByTestId('supplier-import-add-filtered').click();
+    await expect.poll(() => products.length).toBe(before + 1);
+    expect(products.at(-1)?.name).toBe('Lámpara solar');
+    expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
+    // Each viewport run starts from the same clean fixture state, as separate smoke runs would.
+    products.splice(0, products.length);
+  }
+});

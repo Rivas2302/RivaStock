@@ -50,7 +50,6 @@ import {
   Share2,
   Barcode,
   Printer,
-  FileText,
   Download,
   Loader2,
   AlertTriangle,
@@ -87,6 +86,7 @@ export default function Stock() {
   const canDelete = usePermission('stock', 'delete');
   const location = useLocation();
   const navigate = useNavigate();
+  const isResellersRoute = location.pathname === '/revendedores';
   const isMobile = useIsMobile();
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -656,7 +656,7 @@ export default function Stock() {
       {desktopProductId && <Suspense fallback={null}>
         <DesktopProductEditorRoute key={desktopProductId} productId={desktopProductId} products={products} loading={loading} onEditProduct={openProductEditor} />
       </Suspense>}
-      {isMobile && <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
+      {isMobile && !isResellersRoute && <Suspense fallback={<div role="status" className="min-h-[60dvh] animate-pulse rounded-2xl bg-[var(--surface-muted)] lg:hidden" />}>
         <MobileStockEntry
           data={[
             ownerVisibleProducts, visibleHoldingsByProduct, inventoryOwners, inventoryOwnersById, operableInventoryOwnerIds,
@@ -716,41 +716,13 @@ export default function Stock() {
           onImageUploadEnd={() => setIsUploadingImage(false)}
         />
       </Suspense>}
+      {!isResellersRoute && <>
       <div className="hidden flex-col justify-between gap-4 md:flex-row md:items-center lg:flex">
         <div>
           <h2 className="page-heading text-3xl font-bold text-slate-900 dark:text-white">Gestión de Stock</h2>
           <p className="text-slate-500 dark:text-slate-400">Controla tus productos y existencias</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <button
-            type="button"
-            onClick={() => setResellerPriceListOpen(true)}
-            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border bg-indigo-50 dark:bg-indigo-950/30 text-[#284b91] dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-950/50"
-          >
-            <Share2 size={18} />
-            Lista revendedores
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePriceList('preview')}
-            disabled={isExportingPdf || priceListProducts.length === 0}
-            title={
-              priceListProducts.length === 0
-                ? 'No hay productos con stock disponible para listar'
-                : isExportingPdf
-                  ? 'Generando PDF...'
-                  : 'Ver lista de precios'
-            }
-            className={cn(
-              'px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all border',
-              isExportingPdf || priceListProducts.length === 0
-                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
-                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-[#b7c7e8] dark:hover:border-indigo-500'
-            )}
-          >
-            {isExportingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
-            {isExportingPdf ? 'Generando...' : 'Ver lista de precios'}
-          </button>
           <button
             type="button"
             onClick={() => handlePriceList('download')}
@@ -822,12 +794,18 @@ export default function Stock() {
           </div>
         </section>
       )}
+      </>}
 
-      {user && (
-        <DeferredMount active={resellerPriceListOpen}><Suspense fallback={<p role="status">Cargando lista de precios…</p>}>
+      {user && (isResellersRoute || resellerPriceListOpen) && (
+        <DeferredMount active><Suspense fallback={<p role="status">Cargando Revendedores…</p>}>
         <ResellerPriceListModal
-          isOpen={resellerPriceListOpen}
-          onClose={() => setResellerPriceListOpen(false)}
+          isOpen={isResellersRoute || resellerPriceListOpen}
+          displayMode={isResellersRoute ? 'page' : 'modal'}
+          publicCatalogUrl={user.catalogSlug ? getCatalogShareUrl(window.location.origin, user.catalogSlug) : undefined}
+          onClose={() => {
+            setResellerPriceListOpen(false);
+            if (isResellersRoute) navigate('/stock');
+          }}
           ownerUid={user.uid}
           products={products}
           categories={categories}
@@ -877,6 +855,8 @@ export default function Stock() {
         />
         </Suspense></DeferredMount>
       )}
+
+      {!isResellersRoute && <>
 
       <Modal
         isOpen={priceListPreview !== null}
@@ -1234,6 +1214,7 @@ export default function Stock() {
           <Pagination {...pagination} />
         </div>
       </div>
+      </>}
 
       {/* Add/Edit Modal */}
       {facebookProduct && <Suspense fallback={<p role="status">Cargando publicación…</p>}><FacebookPublicationModal key={facebookProduct.id} product={facebookProduct} onProductUpdated={updated => { setFacebookProduct(updated); setProducts(previous => previous.map(item => item.id === updated.id ? updated : item)); }} onClose={() => setFacebookProduct(null)} /></Suspense>}

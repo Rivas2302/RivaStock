@@ -9,9 +9,10 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   className?: string;
+  inline?: boolean;
 }
 
-export default function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, className, inline = false }: ModalProps) {
   const dialogRef  = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -29,6 +30,10 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
       previousActive?.focus?.();
     };
   }, [isOpen]);
+
+  if (inline) {
+    return isOpen ? <div ref={dialogRef} role="region" aria-label={title} tabIndex={-1} className={className}>{children}</div> : null;
+  }
 
   return (
     <AnimatePresence>

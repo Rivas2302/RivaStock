@@ -27,6 +27,7 @@ import type {
   ResellerSupplierList,
   Supplier,
 } from '../types';
+import { Link } from 'react-router-dom';
 import {
   configureResellerPriceList,
   configureResellerPricingAdvisor,
@@ -56,7 +57,7 @@ import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, fetchSupplierCatalogImage, parseSupplierListText } from '../lib/supplierListImportSource';
-import type { SupplierPriceRounding } from '../lib/resellerSupplierRounds';
+import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from '../lib/resellerSupplierRounds';
 import { planSupplierImport } from '../lib/supplierImportReview';
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
@@ -67,9 +68,12 @@ import MoneyInput from './MoneyInput';
 import Modal from './Modal';
 import SupplierOrderRoundManager from './resellers/SupplierOrderRoundManager';
 import SupplierListPhotoPicker from './resellers/SupplierListPhotoPicker';
+import './resellers/ResellerPage.css';
 
 interface ResellerPriceListModalProps {
   isOpen: boolean;
+  displayMode?: 'modal' | 'page';
+  publicCatalogUrl?: string;
   onClose: () => void;
   ownerUid: string;
   products: Product[];
@@ -100,6 +104,18 @@ export interface SupplierProductCreationContext {
     listBasePrice: number;
     photoFile?: File;
   };
+}
+
+interface SupplierPricingSummary {
+  averageMarginPercent: number | null;
+  lastImportedAt: string | null;
+}
+
+function formatSupplierImportDate(value: string | null): string {
+  if (!value) return 'Sin importaciones';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin importaciones';
+  return `Última importación: ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' }).format(date)}`;
 }
 
 const buildDraftItem = (product: Product, list: PriceList, index: number): PriceListItem => ({
@@ -183,6 +199,8 @@ function SupplierImportPhotoPreview({
 
 export default function ResellerPriceListModal({
   isOpen,
+  displayMode = 'modal',
+  publicCatalogUrl,
   onClose,
   ownerUid,
   products,
@@ -199,6 +217,7 @@ export default function ResellerPriceListModal({
   onProductsImported,
   onCategoriesImported,
 }: ResellerPriceListModalProps) {
+  const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'settings'>('summary');
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);
@@ -210,8 +229,10 @@ export default function ResellerPriceListModal({
   const [minimumProfitMarginPercent, setMinimumProfitMarginPercent] = useState(25);
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
+  const [productListSourceFilter, setProductListSourceFilter] = useState('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
+  const [supplierPricingSummaries, setSupplierPricingSummaries] = useState<Record<string, SupplierPricingSummary>>({});
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [supplierDraftProductIds, setSupplierDraftProductIds] = useState<string[]>([]);
@@ -221,6 +242,9 @@ export default function ResellerPriceListModal({
   const [supplierImportPhotoFiles, setSupplierImportPhotoFiles] = useState<Record<number, File>>({});
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
+  const [supplierImportStep, setSupplierImportStep] = useState<1 | 2 | 3>(1);
+  const [supplierImportSourceType, setSupplierImportSourceType] = useState<'link' | 'pdf' | 'spreadsheet' | 'photo'>('link');
+  const [newSupplierImportCategory, setNewSupplierImportCategory] = useState('');
   const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
   const [supplierImportRateNotice, setSupplierImportRateNotice] = useState<string | null>(null);
   const [supplierImportUsdRate, setSupplierImportUsdRate] = useState(() => {
@@ -271,6 +295,32 @@ export default function ResellerPriceListModal({
           loadResellerSupplierLists(loaded.list.id),
           db.list<Supplier>('suppliers', ownerUid),
         ]);
+        const supplierListIds = loadedSupplierLists.map(supplierList => supplierList.id);
+        const { data: supplierPricingRows, error: supplierPricingError } = supplierListIds.length === 0
+          ? { data: [], error: null }
+          : await supabase.from('reseller_supplier_list_pricing')
+            .select('supplier_list_id, margin_percent, updated_at')
+            .in('supplier_list_id', supplierListIds);
+        if (supplierPricingError) throw new Error(`[reseller_supplier_list_pricing] ${supplierPricingError.message}`);
+        const pricingSummaryRows = new Map<string, { margins: number[]; lastImportedAt: string | null }>();
+        for (const row of supplierPricingRows ?? []) {
+          const supplierListId = String(row.supplier_list_id);
+          const summary = pricingSummaryRows.get(supplierListId) ?? { margins: [], lastImportedAt: null };
+          const margin = Number(row.margin_percent);
+          if (Number.isFinite(margin)) summary.margins.push(margin);
+          const updatedAt = typeof row.updated_at === 'string' ? row.updated_at : null;
+          if (updatedAt && (!summary.lastImportedAt || updatedAt > summary.lastImportedAt)) summary.lastImportedAt = updatedAt;
+          pricingSummaryRows.set(supplierListId, summary);
+        }
+        const nextPricingSummaries = Object.fromEntries(Array.from(pricingSummaryRows, ([supplierListId, summary]) => [
+          supplierListId,
+          {
+            averageMarginPercent: summary.margins.length
+              ? summary.margins.reduce((total, margin) => total + margin, 0) / summary.margins.length
+              : null,
+            lastImportedAt: summary.lastImportedAt,
+          },
+        ]));
         if (cancelled) return;
         setList(loaded.list);
         setDiscount(loaded.list.defaultDiscountPercent);
@@ -285,6 +335,7 @@ export default function ResellerPriceListModal({
         setSettingsExpanded(false);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
         setSupplierLists(loadedSupplierLists);
+        setSupplierPricingSummaries(nextPricingSummaries);
         setSuppliers(loadedSuppliers.sort((a, b) => a.name.localeCompare(b.name)));
         setEditingSupplierId(null);
         setSupplierDraftProductIds([]);
@@ -364,6 +415,11 @@ export default function ResellerPriceListModal({
       supplierNameById.get(supplierList.supplierId) ?? 'Proveedor',
     ]));
   }, [supplierLists, suppliers]);
+  const resellerVisibleProducts = useMemo(() => visibleProducts.filter(product => {
+    if (productListSourceFilter === 'all') return true;
+    const supplierListId = itemByProductId.get(product.id)?.supplierListId;
+    return productListSourceFilter === 'stock' ? !supplierListId : supplierListId === productListSourceFilter;
+  }), [itemByProductId, productListSourceFilter, visibleProducts]);
   const supplierDraftProducts = useMemo(() => {
     const normalized = supplierProductSearch.trim().toLocaleLowerCase('es-AR');
     if (!normalized) return products;
@@ -440,9 +496,11 @@ export default function ResellerPriceListModal({
 
   const openSupplierEditor = (supplierId: string) => {
     const supplierList = supplierListBySupplierId.get(supplierId);
+    setPageTab('providers');
     setEditingSupplierId(supplierId);
     setSupplierDraftProductIds(supplierList?.productIds ?? []);
     setSupplierProductSearch('');
+    setSupplierImportStep(supplierImportRows.length > 0 ? 2 : 1);
   };
 
   const toggleSupplierDraftProduct = (productId: string) => {
@@ -534,6 +592,7 @@ export default function ResellerPriceListModal({
       setSupplierImportOnlyPhotos(true);
       setSupplierImportPhotoFailures(0);
       setSupplierImportPhotoFailedRows([]);
+      if (displayMode === 'page') setSupplierImportStep(2);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer la planilla.');
     } finally {
@@ -595,6 +654,7 @@ export default function ResellerPriceListModal({
       setSupplierImportOnlyPhotos(true);
       setSupplierImportPhotoFailures(0);
       setSupplierImportPhotoFailedRows([]);
+      if (displayMode === 'page') setSupplierImportStep(2);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer esa página.');
     } finally {
@@ -664,6 +724,7 @@ export default function ResellerPriceListModal({
     counts[entry.action]++;
     return counts;
   }, { new: 0, updated: 0, unchanged: 0, review: 0 }), [supplierImportReview]);
+  const supplierImportExample = supplierImportReview.find(entry => entry.supplierCostLocal !== null && entry.suggestedSalePrice !== null);
   const supplierImportFiltered = useMemo(() => {
     const query = supplierImportSearch.trim().toLocaleLowerCase('es-AR');
     return supplierImportReview.filter(entry => (
@@ -918,14 +979,64 @@ export default function ResellerPriceListModal({
     }
   };
 
+  const handleShareCatalog = async () => {
+    if (!publicCatalogUrl) {
+      showToast('Todavía no hay un catálogo público configurado.', 'info');
+      return;
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Catálogo para revendedores', url: publicCatalogUrl });
+      } else {
+        await navigator.clipboard.writeText(publicCatalogUrl);
+        showToast('Enlace del catálogo copiado.', 'success');
+      }
+    } catch (shareError) {
+      if (shareError instanceof DOMException && shareError.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(publicCatalogUrl);
+        showToast('Enlace del catálogo copiado.', 'success');
+      } catch {
+        showToast('No pudimos compartir el catálogo desde este navegador.', 'error');
+      }
+    }
+  };
+
   return (
     <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Lista de precios para revendedores"
-      className="h-[100dvh] max-h-[100dvh] w-full max-w-6xl rounded-none sm:h-[calc(100dvh_-_2rem)] sm:max-h-[calc(100dvh_-_2rem)] sm:w-[calc(100%_-_2rem)] sm:rounded-2xl"
+      inline={displayMode === 'page'}
+      className={displayMode === 'page'
+        ? 'reseller-module-page w-full min-w-0 text-[var(--ink)]'
+        : 'h-[100dvh] max-h-[100dvh] w-full max-w-6xl rounded-none sm:h-[calc(100dvh_-_2rem)] sm:max-h-[calc(100dvh_-_2rem)] sm:w-[calc(100%_-_2rem)] sm:rounded-2xl'}
     >
+      {displayMode === 'page' && <>
+        <header className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Relaciones</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink)] sm:text-3xl">Revendedores</h1>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">Tu lista de precios, tus proveedores y los encargos de tus revendedores.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {publicCatalogUrl && <a href={publicCatalogUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)]">Ver como revendedor</a>}
+            <button type="button" onClick={() => void handleShareCatalog()} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Compartir catálogo</button>
+          </div>
+        </header>
+        <nav role="tablist" aria-label="Secciones de Revendedores" className="mb-5 grid grid-cols-2 gap-1 border-b border-[var(--line)] sm:flex sm:gap-2">
+          {([
+            ['summary', 'Resumen'],
+            ['prices', 'Lista de precios'],
+            ['providers', 'Proveedores'],
+            ['orders', 'Encargos'],
+            ['settings', 'Ajustes'],
+          ] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" aria-selected={pageTab === tab} onClick={() => setPageTab(tab)} className={cn('min-h-11 rounded-t-lg border-b-2 px-3 text-sm font-semibold transition-colors', pageTab === tab ? 'border-[var(--accent)] text-[var(--accent-text)]' : 'border-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]')}>
+            {label}
+          </button>)}
+        </nav>
+      </>}
       {loading ? (
         <div className="flex min-h-64 items-center justify-center">
           <Loader2 className="animate-spin text-[#365fad]" size={32} />
@@ -935,12 +1046,90 @@ export default function ResellerPriceListModal({
           {error}
         </div>
       ) : list ? (
-        <div className="flex h-full min-h-0 flex-col gap-3 sm:gap-5">
+        <div className={displayMode === 'page' ? 'space-y-5' : 'flex h-full min-h-0 flex-col gap-3 sm:gap-5'}>
+          {displayMode === 'page' && pageTab === 'summary' && <section role="tabpanel" aria-label="Resumen de Revendedores" className="space-y-5">
+            <div className="flex flex-col gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-[var(--ink)]">Tu catálogo para revendedores</h2>
+                  <span className="rounded-full bg-[var(--surface-2)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">{publicEnabled ? 'Publicado' : 'Sin publicar'}</span>
+                </div>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">{getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) || 'Sin compra mínima'} · {discount}% de descuento</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setPageTab('prices')} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Lista de precios</button>
+                <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 rounded-lg bg-[var(--accent)] px-3 text-sm font-semibold text-[var(--accent-ink)]">Importar lista de un proveedor</button>
+              </div>
+            </div>
+            <div>
+              <h2 className="mb-3 text-base font-semibold text-[var(--ink)]">Para atender</h2>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <button type="button" onClick={() => setPageTab('prices')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-left transition-colors hover:bg-[var(--surface-2)]">
+                  <span className="text-sm font-semibold text-[var(--ink)]">Lista de precios</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{items.length} <span className="text-sm font-normal text-[var(--ink-muted)]">productos</span></span>
+                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">{adviceSummary.review + adviceSummary.critical} precios para revisar · {adviceSummary.missing} sin costo</span>
+                </button>
+                <button type="button" onClick={() => setPageTab('providers')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-left transition-colors hover:bg-[var(--surface-2)]">
+                  <span className="text-sm font-semibold text-[var(--ink)]">Proveedores</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{supplierLists.filter(supplierList => supplierList.enabled).length} <span className="text-sm font-normal text-[var(--ink-muted)]">listas activas</span></span>
+                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">{suppliers.length} proveedores en tu agenda</span>
+                </button>
+                <button type="button" onClick={() => setPageTab('orders')} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-left transition-colors hover:bg-[var(--surface-2)]">
+                  <span className="text-sm font-semibold text-[var(--ink)]">Encargos</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--ink)]">{supplierLists.length} <span className="text-sm font-normal text-[var(--ink-muted)]">listas para abrir</span></span>
+                  <span className="mt-1 block text-xs text-[var(--ink-muted)]">Cuando abras uno, tus revendedores piden hasta el cierre.</span>
+                </button>
+              </div>
+            </div>
+            {supplierLists.length > 0 && <section aria-label="Listas de proveedores" className="space-y-2">
+              <h2 className="text-base font-semibold text-[var(--ink)]">Proveedores</h2>
+              {supplierLists.map(supplierList => {
+                const supplier = suppliers.find(item => item.id === supplierList.supplierId);
+                const pricingSummary = supplierPricingSummaries[supplierList.id];
+                const margin = pricingSummary?.averageMarginPercent;
+                return <article key={supplierList.id} className="flex flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[var(--ink)]">{supplierNameByListId.get(supplierList.id) ?? 'Proveedor'}</p>
+                    <p className="mt-1 text-sm text-[var(--ink-muted)]">
+                      {supplierList.productIds.length} productos · margen medio {margin === null || margin === undefined ? 'sin definir' : `${margin.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`}
+                      {' · '}cotización {supplier?.catalogExchangeRate?.toLocaleString('es-AR') ?? 'sin definir'}
+                      {' · '}{formatSupplierImportDate(pricingSummary?.lastImportedAt ?? null)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                    <span className="text-sm font-medium text-[var(--ink-muted)]">{supplierList.enabled ? 'Activa · por pedido' : 'Pausada'}</span>
+                    <button type="button" onClick={() => openSupplierEditor(supplierList.supplierId)} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Seguir importando</button>
+                  </div>
+                </article>;
+              })}
+            </section>}
+          </section>}
+          {displayMode === 'page' && pageTab === 'orders' && <section role="tabpanel" aria-label="Encargos" className="space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div><h2 className="text-xl font-semibold text-[var(--ink)]">Encargos</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Tus revendedores piden y pagan antes del cierre; vos hacés un solo pedido al proveedor.</p></div>
+              {supplierLists.length > 0 && <button type="button" onClick={() => setPageTab('providers')} className="min-h-10 self-start rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Ver proveedores</button>}
+            </div>
+            {supplierLists.length === 0 ? <div className="rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
+              <p className="font-semibold text-[var(--ink)]">No hay encargos abiertos</p>
+              <p className="mt-1 text-sm text-[var(--ink-muted)]">Cuando abras uno, tus revendedores piden hasta la hora de cierre y vos hacés un solo pedido al proveedor.</p>
+              <button type="button" onClick={() => setPageTab('providers')} className="mt-4 min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Cargar lista de proveedor</button>
+            </div> : <div className="space-y-4">{supplierLists.map(supplierList => {
+              const supplier = suppliers.find(item => item.id === supplierList.supplierId);
+              return <section key={supplierList.id} aria-label={`Encargos de ${supplier?.name ?? 'proveedor'}`} className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
+                <h3 className="mb-3 text-base font-semibold text-[var(--ink)]">{supplier?.name ?? 'Proveedor'}</h3>
+                <SupplierOrderRoundManager supplierListId={supplierList.id} supplierName={supplier?.name ?? 'Proveedor'} supplierPhone={supplier?.phone ?? ''} canWrite={canWrite}/>
+              </section>;
+            })}</div>}
+          </section>}
+          {displayMode === 'page' && pageTab === 'providers' && <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div><h2 className="text-xl font-semibold text-[var(--ink)]">Proveedores</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Cargá una lista y ofrecé sus productos por pedido, sin tener stock.</p></div>
+            <Link to="/proveedores" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Nuevo proveedor</Link>
+          </header>}
           <button
             type="button"
             onClick={() => setSettingsExpanded((current) => !current)}
             aria-expanded={settingsExpanded}
-            className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-900 sm:rounded-2xl sm:p-4"
+            className={cn('flex shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-900 sm:rounded-2xl sm:p-4', displayMode === 'page' && 'hidden')}
           >
             <div className="min-w-0">
               <p className="text-sm font-bold text-slate-900 dark:text-white sm:text-base">Configuración y asistente</p>
@@ -951,8 +1140,8 @@ export default function ResellerPriceListModal({
             <ChevronDown className={cn('shrink-0 text-slate-500 transition-transform', settingsExpanded && 'rotate-180')} size={20} aria-hidden="true" />
           </button>
 
-          {settingsExpanded && (
-          <div className="shrink-0 space-y-3 sm:space-y-5">
+          {(displayMode === 'page' ? pageTab === 'settings' : settingsExpanded) && (
+          <section role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Ajustes' : undefined} className="shrink-0 space-y-3 sm:space-y-5">
           <details className="group rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900 dark:bg-indigo-950/20">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
               <div>
@@ -1206,10 +1395,10 @@ export default function ResellerPriceListModal({
             </div>
             </div>
           </details>
-          </div>
+          </section>
           )}
 
-          <details className="group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl">
+          <details role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Proveedores' : undefined} open={displayMode === 'page' ? pageTab === 'providers' : undefined} className={cn('group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl', displayMode === 'page' && pageTab !== 'providers' && 'hidden')}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
               <div className="flex min-w-0 items-center gap-2">
                 <Building2 className="shrink-0 text-amber-700 dark:text-amber-300" size={20} />
@@ -1222,7 +1411,7 @@ export default function ResellerPriceListModal({
               </div>
               <ChevronDown className="shrink-0 text-amber-700 transition-transform group-open:rotate-180 dark:text-amber-300" size={20} aria-hidden="true" />
             </summary>
-            <div className="max-h-[min(60dvh,34rem)] space-y-3 overflow-y-auto border-t border-amber-200 p-3 dark:border-amber-900 sm:p-4">
+            <div className={cn('max-h-[min(60dvh,34rem)] space-y-3 overflow-y-auto border-t border-amber-200 p-3 dark:border-amber-900 sm:p-4', displayMode === 'page' && 'max-h-none overflow-visible')}>
               <p className="text-sm leading-relaxed text-amber-950 dark:text-amber-100">
                 Armá una lista con los productos que conseguís en cada proveedor. Al habilitarla, todos se publican como “Por pedido”; al pausarla, se ocultan sin perder la selección.
               </p>
@@ -1246,7 +1435,7 @@ export default function ResellerPriceListModal({
                           disabled={!canWrite || supplierSaving}
                           className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
-                          {supplierList ? 'Editar productos' : 'Crear lista'}
+                          {displayMode === 'page' ? 'Importar lista' : supplierList ? 'Editar productos' : 'Crear lista'}
                         </button>
                         <button
                           type="button"
@@ -1267,23 +1456,49 @@ export default function ResellerPriceListModal({
                     {editing && (
                       <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                         <section aria-label="Importar lista del proveedor" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
+                          {displayMode === 'page' && <nav aria-label="Pasos para importar" className="grid grid-cols-3 gap-2">
+                            {([
+                              [1, 'Importar'],
+                              [2, 'Precios'],
+                              [3, 'Revisar'],
+                            ] as const).map(([step, label]) => <button key={step} type="button" aria-current={supplierImportStep === step ? 'step' : undefined} disabled={step > 1 && supplierImportRows.length === 0} onClick={() => setSupplierImportStep(step)} className={cn('min-h-10 rounded-lg border px-2 text-xs font-semibold', supplierImportStep === step ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]' : 'border-[var(--line)] bg-[var(--surface-1)] text-[var(--ink-muted)] disabled:opacity-50')}>
+                              <span className="mr-1 tabular-nums">{step}.</span>{' '}{label}
+                            </button>)}
+                          </nav>}
+                          <div hidden={displayMode === 'page' && supplierImportStep !== 1} className="space-y-3">
                           <div>
                             <h5 className="text-sm font-bold text-slate-900 dark:text-white">Importar lista del proveedor</h5>
                             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Importá una planilla, PDF, captura/foto o enlace HTTPS. Revisá los productos y costos antes de agregarlos.</p>
                           </div>
-                          <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white px-3 text-sm font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-slate-950 dark:text-indigo-200">
-                            <input aria-label="Elegir archivo del proveedor" type="file" accept=".xlsx,.xls,.csv,.pdf,image/jpeg,image/png,image/webp,application/pdf" disabled={!canWrite || supplierSaving || supplierImportReading} onChange={event => { void handleSupplierImportFile(event.target.files?.[0]); event.currentTarget.value = ''; }} className="sr-only" />
-                            {supplierImportFileName || 'Elegir archivo'}
-                          </label>
-                          <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700">Leer enlace</button></div>
+                          {displayMode === 'page' && <div role="group" aria-label="Forma de importar" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {([
+                              ['link', 'Enlace'],
+                              ['pdf', 'PDF'],
+                              ['spreadsheet', 'Planilla'],
+                              ['photo', 'Fotos'],
+                            ] as const).map(([sourceType, label]) => <button key={sourceType} type="button" aria-pressed={supplierImportSourceType === sourceType} onClick={() => setSupplierImportSourceType(sourceType)} className={cn('min-h-10 rounded-lg border px-2 text-sm font-semibold', supplierImportSourceType === sourceType ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]' : 'border-[var(--line)] bg-[var(--surface-1)] text-[var(--ink-muted)]')}>
+                              {label}
+                            </button>)}
+                          </div>}
+                          {(displayMode !== 'page' || supplierImportSourceType !== 'link') && <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white px-3 text-sm font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-slate-950 dark:text-indigo-200">
+                            <input aria-label="Elegir archivo del proveedor" type="file" accept={displayMode !== 'page' ? '.xlsx,.xls,.csv,.pdf,image/jpeg,image/png,image/webp,application/pdf' : supplierImportSourceType === 'pdf' ? '.pdf,application/pdf' : supplierImportSourceType === 'spreadsheet' ? '.xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'image/jpeg,image/png,image/webp'} disabled={!canWrite || supplierSaving || supplierImportReading} onChange={event => { void handleSupplierImportFile(event.target.files?.[0]); event.currentTarget.value = ''; }} className="sr-only" />
+                            {supplierImportFileName || (displayMode === 'page' ? `Elegir ${supplierImportSourceType === 'photo' ? 'fotos' : supplierImportSourceType}` : 'Elegir archivo')}
+                          </label>}
+                          {(displayMode !== 'page' || supplierImportSourceType === 'link') && <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700">Leer enlace</button></div>}
                           <p className="text-[11px] text-slate-500">El enlace se consulta desde el servidor, sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
                           <p className="text-[11px] text-slate-500">Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR. El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».</p>
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
+                          </div>
                           {supplierImportRows.length > 0 && <>
                             {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm text-[var(--ink)]"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportRateNotice && <p aria-live="polite" className="text-xs text-[var(--ink-muted)]">{supplierImportRateNotice}</p>}{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
                               <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} onBlur={event => { const rate = Number(event.currentTarget.value); if (rate > 0) void persistSupplierImportRate(rate); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" placeholder="Ingresá la cotización"/>
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
+                            {displayMode === 'page' && supplierImportExample && <section aria-label="Ejemplo de precio" className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-sm">
+                              <p className="font-semibold text-[var(--ink)]">Ejemplo con {supplierImportExample.row.sourceCode ? `${supplierImportExample.row.sourceCode} · ` : ''}{supplierImportExample.row.name}</p>
+                              <p className="mt-1 text-[var(--ink-muted)]">Te cuesta {formatCurrency(supplierImportExample.supplierCostLocal ?? 0)} · precio revendedor {formatCurrency(calculateSupplierSuggestedPrice(supplierImportExample.supplierCostLocal ?? 0, getSupplierImportMargin(supplierImportExample.row), supplierImportRounding))} · público sugerido {formatCurrency(supplierImportExample.suggestedSalePrice ?? 0)}</p>
+                            </section>}
+                            <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-3">
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
                             <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--ink)] sm:flex-row sm:items-center sm:justify-between">
@@ -1297,11 +1512,13 @@ export default function ResellerPriceListModal({
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className="min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50">{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
+                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
                             {supplierImportPhotoProgress && <div><progress aria-label="Progreso de fotos" max={supplierImportPhotoProgress.total || 1} value={supplierImportPhotoProgress.done} className="h-2 w-full"/><p role="status" className="text-xs text-slate-600 dark:text-slate-300">Fotos {supplierImportPhotoProgress.done} de {supplierImportPhotoProgress.total}</p></div>}
                             {supplierImportPhotoFailures > 0 && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportPhotoFailures} foto{supplierImportPhotoFailures === 1 ? '' : 's'} {supplierImportPhotoFailures === 1 ? 'no se pudo copiar' : 'no se pudieron copiar'}. Podés reintentar la importación.</p>}
                             <div className="flex items-center justify-between text-xs"><span>Mostrando {supplierImportFiltered.length ? supplierImportPage * 50 + 1 : 0}–{Math.min((supplierImportPage + 1) * 50, supplierImportFiltered.length)} de {supplierImportFiltered.length}</span><span className="flex gap-2"><button type="button" disabled={supplierImportPage === 0} onClick={() => setSupplierImportPage(page => Math.max(0, page - 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Anterior</button><span className="self-center">{supplierImportPage + 1}/{supplierImportPageCount}</span><button type="button" disabled={supplierImportPage + 1 >= supplierImportPageCount} onClick={() => setSupplierImportPage(page => Math.min(supplierImportPageCount - 1, page + 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Siguiente</button></span></div>
+                            </div>
+                            <div hidden={displayMode === 'page' && supplierImportStep !== 2} className="space-y-3">
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="text-xs font-semibold">¿Los precios incluyen IVA?
                                 <select aria-label="Los precios incluyen IVA" value={supplierImportIncludesTax === null ? '' : String(supplierImportIncludesTax)} onChange={event => setSupplierImportIncludesTax(event.target.value === '' ? null : event.target.value === 'true')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950">
@@ -1318,19 +1535,34 @@ export default function ResellerPriceListModal({
                                 <select aria-label="Redondeo de precio sugerido" value={supplierImportRounding} onChange={event => setSupplierImportRounding(event.target.value === 'none' ? 'none' : Number(event.target.value) as 100 | 500)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 dark:border-slate-700 dark:bg-slate-950"><option value="none">Exacto</option><option value="100">$100</option><option value="500">$500</option></select>
                               </label>
                             </div>
-                            {[...new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))].length > 0 && <div className="grid gap-2 sm:grid-cols-2">
-                              {[...new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))].map(category => {
-                                const key = category.toLocaleLowerCase('es-AR');
-                                return <label key={key} className="text-xs font-semibold">Margen para {category}
-                                  <span className="mt-1 flex min-h-10 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 dark:border-slate-700 dark:bg-slate-950"><input aria-label={`Margen para categoría ${category}`} type="number" min="0" step="0.1" value={supplierImportCategoryMargins[key] ?? ''} onChange={event => setSupplierImportCategoryMargins(current => { if (event.target.value === '') { const next = { ...current }; delete next[key]; return next; } return { ...current, [key]: Math.max(0, Number(event.target.value) || 0) }; })} placeholder={`${supplierImportMargin}`} className="min-w-0 flex-1 bg-transparent text-sm outline-none"/><span className="text-sm">%</span></span>
-                                </label>;
-                              })}
-                            </div>}
+                            <details className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
+                              <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Excepciones por categoría (opcional)</summary>
+                              <p className="mt-1 text-xs text-[var(--ink-muted)]">Solo se muestran las categorías a las que cambies el margen general.</p>
+                              {supplierImportRows.some(row => row.category.trim()) && <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {Array.from(new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))).filter(category => typeof supplierImportCategoryMargins[category.toLocaleLowerCase('es-AR')] === 'number').map(category => {
+                                  const key = category.toLocaleLowerCase('es-AR');
+                                  return <label key={key} className="text-xs font-semibold text-[var(--ink)]">{category}
+                                    <span className="mt-1 flex min-h-10 items-center gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-2"><input aria-label={`Margen para categoría ${category}`} type="number" min="0" step="0.1" value={supplierImportCategoryMargins[key]} onChange={event => setSupplierImportCategoryMargins(current => { if (event.target.value === '') { const next = { ...current }; delete next[key]; return next; } return { ...current, [key]: Math.max(0, Number(event.target.value) || 0) }; })} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none"/><span className="text-sm text-[var(--ink-muted)]">%</span><button type="button" aria-label={`Quitar margen de ${category}`} onClick={() => setSupplierImportCategoryMargins(current => { const next = { ...current }; delete next[key]; return next; })} className="rounded px-2 text-[var(--ink-muted)]">×</button></span>
+                                  </label>;
+                                })}
+                              </div>}
+                              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <select aria-label="Otra categoría para margen" value={newSupplierImportCategory} onChange={event => setNewSupplierImportCategory(event.target.value)} className="min-h-10 min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]">
+                                  <option value="">Elegí una categoría</option>
+                                  {Array.from(new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))).filter(category => typeof supplierImportCategoryMargins[category.toLocaleLowerCase('es-AR')] !== 'number').map(category => <option key={category} value={category}>{category}</option>)}
+                                </select>
+                                <button type="button" disabled={!newSupplierImportCategory} onClick={() => { setSupplierImportCategoryMargins(current => ({ ...current, [newSupplierImportCategory.toLocaleLowerCase('es-AR')]: supplierImportMargin })); setNewSupplierImportCategory(''); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">+ Otra categoría</button>
+                              </div>
+                            </details>
                             <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
                             {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
                             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos de la planilla con Codex en la central vinculada. Las capturas automáticas se incorporarán más adelante; por ahora podés elegir cada foto o recortarla a mano.</p>
-                            <div className="max-h-[34rem] space-y-2 overflow-y-auto" aria-label="Productos importados">
-                              {supplierImportPageRows.map(entry => { const row = entry.row; const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl); const hasPhoto = Boolean(supplierImportPhotoFiles[row.sourceRow] || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow))); const previewCandidate = sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0]; const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null; return <article key={row.sourceRow} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950 sm:flex-row sm:items-center">
+                            {displayMode === 'page' && <button type="button" onClick={() => setSupplierImportStep(3)} className="min-h-11 w-full rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Seguir: revisar</button>}
+                            </div>
+                            <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-2" aria-label="Productos importados">
+                              {supplierImportPageRows.map(entry => { const row = entry.row; const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl); const hasPhoto = Boolean(supplierImportPhotoFiles[row.sourceRow] || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow))); const previewCandidate = sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0]; const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null; const rowStatus = entry.action === 'review' ? 'Revisar' : hasPhoto ? 'Listo' : 'Sin foto'; return <article key={row.sourceRow} className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
+                                  <details open={displayMode !== 'page'} className="group">
+                                    <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                                   <div className="flex items-center gap-2 sm:w-24 sm:flex-col sm:items-start">
                                     {previewUrl && sourceImageUrl
                                       ? <SupplierImportPhotoPreview sourceUrl={sourceImageUrl} supplierUrl={supplierImportPageUrl} onFailure={() => setSupplierImportPhotoFailedRows(current => current.includes(row.sourceRow) ? current : [...current, row.sourceRow])} />
@@ -1339,6 +1571,13 @@ export default function ResellerPriceListModal({
                                         : <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">Sin foto</span>}
                                     <span role="status" aria-label={hasPhoto ? 'Producto con foto' : 'Producto sin foto'} className="text-[10px] font-semibold text-[var(--ink-muted)]">{hasPhoto ? 'Con foto' : 'Sin foto'}</span>
                                   </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-[var(--ink)]">{row.name}</p>
+                                    <p className="mt-1 text-xs text-[var(--ink-muted)]">{row.sourceCode || 'Sin código'} · {entry.supplierCostLocal === null ? 'Sin costo válido' : formatCurrency(entry.supplierCostLocal)} → {entry.suggestedSalePrice === null ? 'Sin precio sugerido' : formatCurrency(entry.suggestedSalePrice)}</p>
+                                  </div>
+                                  <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold', rowStatus === 'Revisar' ? 'bg-rose-50 text-rose-700' : rowStatus === 'Sin foto' ? 'bg-amber-50 text-amber-800' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{rowStatus}</span>
+                                </summary>
+                                <div className="mt-3 border-t border-[var(--line)] pt-3">
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
@@ -1349,7 +1588,9 @@ export default function ResellerPriceListModal({
                                   {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
                                   <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => { setSupplierImportPhotoFiles(current => { const next = { ...current }; if (file) next[row.sourceRow] = file; else delete next[row.sourceRow]; return next; }); setSupplierImportPhotoFailedRows(current => current.filter(sourceRow => sourceRow !== row.sourceRow)); }}/></div>
                                 </div>
-                              </article>; })}
+                                </div>
+                                  </details>
+                                </article>; })}
                             </div>
                           </>}
                         </section>
@@ -1378,7 +1619,7 @@ export default function ResellerPriceListModal({
                             <PackagePlus size={14} /> Crear para esta lista
                           </button>
                         </div>
-                        <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2">
+                        <div className={displayMode === 'page' ? 'grid gap-2 sm:grid-cols-2' : 'grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2'}>
                           {supplierDraftProducts.map((product) => (
                             <label key={product.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-2.5 text-sm dark:border-slate-700">
                               <input
@@ -1431,6 +1672,7 @@ export default function ResellerPriceListModal({
             </div>
           </details>
 
+          <section role="tabpanel" aria-label="Lista de precios" data-testid="reseller-price-list" className={displayMode === 'page' && pageTab !== 'prices' ? 'hidden' : 'space-y-4'}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1442,6 +1684,11 @@ export default function ResellerPriceListModal({
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               />
             </div>
+            {displayMode === 'page' && <div role="group" aria-label="Filtrar productos de la lista" className="flex flex-wrap gap-2">
+              {[['all', 'Todos'], ['stock', 'Mi stock'], ...supplierLists.map(supplierList => [supplierList.id, supplierNameByListId.get(supplierList.id) ?? 'Proveedor'] as [string, string])].map(([filter, label]) => <button key={filter} type="button" aria-pressed={productListSourceFilter === filter} onClick={() => setProductListSourceFilter(filter)} className={cn('min-h-9 rounded-full border px-3 text-xs font-semibold', productListSourceFilter === filter ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]' : 'border-[var(--line)] bg-[var(--surface-1)] text-[var(--ink-muted)]')}>
+                {label}
+              </button>)}
+            </div>}
             <button
               type="button"
               onClick={() => onCreateProduct()}
@@ -1453,8 +1700,8 @@ export default function ResellerPriceListModal({
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {visibleProducts.map((product) => {
+          <div className={displayMode === 'page' ? 'space-y-3' : 'min-h-0 flex-1 space-y-3 overflow-y-auto pr-1'}>
+            {resellerVisibleProducts.map((product) => {
               const item = itemByProductId.get(product.id);
               const resolvedPrice = item
                 ? resolvePriceListPrice(product.salePrice, discount, item)
@@ -1671,7 +1918,7 @@ export default function ResellerPriceListModal({
                 </article>
               );
             })}
-            {visibleProducts.length === 0 && (
+            {resellerVisibleProducts.length === 0 && (
               <div className="py-10 text-center text-sm text-slate-500">
                 <p>{advisorFilter === 'all' ? 'No encontramos productos.' : 'No hay productos dentro de este grupo.'}</p>
                 {advisorFilter !== 'all' && (
@@ -1702,6 +1949,7 @@ export default function ResellerPriceListModal({
               </button>
             </div>
           </footer>
+          </section>
         </div>
       ) : null}
     </Modal>

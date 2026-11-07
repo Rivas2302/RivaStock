@@ -8,7 +8,7 @@ import {
 import type { ModuleKey, PermissionMatrix } from '../types';
 import type { BusinessModuleKey } from '../lib/businessPlan';
 import { cn } from '../lib/utils';
-import { getMobilePrimaryItems, getQuickActions, getVisibleNavigation, NAVIGATION_GROUPS } from '../lib/mobileNavigation';
+import { DESKTOP_NAVIGATION_GROUPS, getMobilePrimaryItems, getQuickActions, getVisibleNavigation, NAVIGATION_GROUPS } from '../lib/mobileNavigation';
 import MobileNavigation from './MobileNavigation';
 
 interface NavItem {
@@ -18,6 +18,7 @@ interface NavItem {
   module: ModuleKey | null;
   businessModule?: BusinessModuleKey;
   ownerOnly?: boolean;
+  desktopOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
   { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes' },
   { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores' },
+  { name: 'Revendedores', path: '/revendedores', icon: Users, module: 'stock', desktopOnly: true },
   { name: 'Compras a proveedores', path: '/compras', icon: Truck, module: 'proveedores' },
   { name: 'Ingresos de mercadería', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },
@@ -65,16 +67,21 @@ export default function AppNavigation(props: AppNavigationProps) {
     isOwner: props.isOwner,
   };
   const items = getVisibleNavigation(NAV_ITEMS, permissionState);
+  const mobileItems = items.filter(item => !item.desktopOnly);
   const actions = getQuickActions(permissionState);
-  const groups = NAVIGATION_GROUPS.map(group => ({
+  const groups = DESKTOP_NAVIGATION_GROUPS.map(group => ({
     ...group,
     items: items.filter(item => group.paths.some(path => path === item.path)),
+  })).filter(group => group.items.length > 0);
+  const mobileGroups = NAVIGATION_GROUPS.map(group => ({
+    ...group,
+    items: mobileItems.filter(item => group.paths.some(path => path === item.path)),
   })).filter(group => group.items.length > 0);
   const filteredGroups = groups.map(group => ({
     ...group,
     items: group.items.filter(item => item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())),
   })).filter(group => group.items.length > 0);
-  const primaryItems = getMobilePrimaryItems(items);
+  const primaryItems = getMobilePrimaryItems(mobileItems);
 
   return <>
     <aside className="app-sidebar hidden lg:flex flex-col w-64 text-white shrink-0">
@@ -98,6 +105,6 @@ export default function AppNavigation(props: AppNavigationProps) {
         <button type="button" onClick={props.onLogout} disabled={props.loggingOut} className="nav-item flex min-h-11 w-full items-center gap-3 px-3 py-2 text-slate-400 transition-colors hover:text-rose-300 disabled:opacity-50"><LogOut size={20} /><span className="font-medium">Cerrar sesión</span></button>
       </div>
     </aside>
-    {!props.hideBottomNav && <MobileNavigation primaryItems={primaryItems} navItems={items} navGroups={groups} quickActions={actions} pathname={props.pathname} onLogout={props.onLogout} loggingOut={props.loggingOut} displayName={props.displayName} displayInitial={props.displayInitial} roleLabel={props.roleLabel} />}
+    {!props.hideBottomNav && <MobileNavigation primaryItems={primaryItems} navItems={mobileItems} navGroups={mobileGroups} quickActions={actions} pathname={props.pathname} onLogout={props.onLogout} loggingOut={props.loggingOut} displayName={props.displayName} displayInitial={props.displayInitial} roleLabel={props.roleLabel} />}
   </>;
 }

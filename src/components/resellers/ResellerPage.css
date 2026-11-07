@@ -1,0 +1,93 @@
+.reseller-module-page {
+  --surface: #ffffff;
+  --surface-1: #fafaf9;
+  --surface-2: #f4f4f3;
+  --surface-3: #e8e8e6;
+  --ink: #191919;
+  --ink-muted: #6b6b6b;
+  --line: #ededec;
+  --accent: #23705f;
+  --accent-ink: #ffffff;
+  --accent-text: #1d5e50;
+  --primary: #191919;
+  --primary-ink: #ffffff;
+  --danger: #c4382b;
+  --warning: #a86f0c;
+  --brand: var(--accent);
+  --brand-strong: var(--accent-text);
+  --brand-soft: var(--surface-2);
+  --action-bg: var(--accent);
+  --action-bg-hover: var(--accent-text);
+  --action-ink: var(--accent-ink);
+  color: var(--ink);
+  font-family: "Hanken Grotesk", system-ui, sans-serif;
+}
+
+:root.dark .reseller-module-page {
+  --surface: #121212;
+  --surface-1: #181818;
+  --surface-2: #202020;
+  --surface-3: #2b2b2b;
+  --ink: #f2f2f2;
+  --ink-muted: #a7a7a7;
+  --line: #262626;
+  --accent: #5fc2a5;
+  --accent-ink: #0e2a22;
+  --accent-text: #7dd3b8;
+  --primary: #f2f2f2;
+  --primary-ink: #121212;
+  --danger: #f07b6e;
+  --warning: #e0a84a;
+}
+
+.reseller-module-page [class*="bg-indigo-"],
+.reseller-module-page [class*="bg-violet-"],
+.reseller-module-page [class*="bg-emerald-"],
+.reseller-module-page [class*="bg-amber-"],
+.reseller-module-page [class*="bg-rose-"],
+.reseller-module-page [class*="bg-blue-"],
+.reseller-module-page [class*="bg-sky-"] {
+  background-color: var(--surface-2) !important;
+}
+
+.reseller-module-page [class*="bg-indigo-700"],
+.reseller-module-page [class*="bg-violet-700"],
+.reseller-module-page [class*="bg-emerald-700"] {
+  background-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+}
+
+.reseller-module-page [class*="text-indigo-"],
+.reseller-module-page [class*="text-violet-"],
+.reseller-module-page [class*="text-blue-"],
+.reseller-module-page [class*="text-sky-"] {
+  color: var(--accent-text) !important;
+}
+
+.reseller-module-page [class*="text-emerald-"] {
+  color: var(--accent-text) !important;
+}
+
+.reseller-module-page [class*="text-amber-"] {
+  color: var(--warning) !important;
+}
+
+.reseller-module-page [class*="text-rose-"] {
+  color: var(--danger) !important;
+}
+
+.reseller-module-page [class*="border-indigo-"],
+.reseller-module-page [class*="border-violet-"],
+.reseller-module-page [class*="border-emerald-"],
+.reseller-module-page [class*="border-amber-"],
+.reseller-module-page [class*="border-rose-"],
+.reseller-module-page [class*="border-blue-"],
+.reseller-module-page [class*="border-sky-"] {
+  border-color: var(--line) !important;
+}
+
+.reseller-module-page [class*="ring-indigo-"],
+.reseller-module-page [class*="ring-violet-"],
+.reseller-module-page [class*="ring-emerald-"] {
+  --tw-ring-color: var(--accent) !important;
+}

@@ -58,6 +58,7 @@ test('mobile quick actions and sections share one menu without creating data', a
   await expect(goTo.getByRole('link', { name: 'Consulta rápida' })).toHaveCount(1);
   await expect(goTo.getByRole('link', { name: 'Buscar y enviar' })).toHaveCount(1);
   await expect(goTo.getByRole('link', { name: 'Configuración' })).toHaveCount(1);
+  await expect(goTo.getByRole('link', { name: 'Revendedores' })).toHaveCount(0);
   await expect(menu.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
   await expect(menu.getByText('Más', { exact: true })).toHaveCount(0);
 
@@ -139,6 +140,8 @@ test('desktop navigation groups and search work at 1280px', async ({ page }, tes
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByText('Vender', { exact: true })).toBeVisible();
   await expect(sidebar.getByText('Clientes y proveedores', { exact: true })).toBeVisible();
+  await expect(sidebar.getByText('Relaciones', { exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: 'Revendedores' })).toHaveAttribute('href', '/revendedores');
   await expect(sidebar.getByLabel('Ir a')).toBeVisible();
   await sidebar.getByLabel('Ir a').fill('Compras');
   await expect(sidebar.getByRole('link', { name: 'Compras a proveedores' })).toBeVisible();
