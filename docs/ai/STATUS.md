@@ -1,3 +1,11 @@
+# 2026-11-07 — I23 catálogo, verificación local lista para publicar
+
+- Agregué el control `Mostrar productos sin stock` en «Qué se muestra». El valor existente `show_out_of_stock` ya tenía default `false`; al desactivarlo se filtran productos agotados de la grilla y las secciones destacadas/ofertas/novedades, salvo disponibilidad `on_order`. La ruta pública directa también los oculta. Al activarlo aparece `AGOTADO` y se conserva la compra del agotado.
+- Quité la disponibilidad y el conteo de unidades de la ficha pública, redondeé el chip de categoría y agregué 32 px debajo de productos relacionados.
+- No requiere migración: `catalog_config.show_out_of_stock` ya existe desde `0001_init.sql`.
+- **Verificación local:** `npm run lint`, `npm run build`, `npm test -- --maxWorkers=2` (192 archivos / 1.115 pruebas) y `npm run test:e2e -- e2e/public-catalog.spec.ts` (13/13, Chromium a 360 px y PC) pasaron. La suite usó variables Supabase ficticias para inicializar módulos; no se leyeron ni usaron credenciales reales. El test comprueba toggle/default, ocultamiento y compra, excepción `on_order`, ruta directa, chip circular sin recorte, ausencia de texto de stock y espacio inferior.
+- Commit y verificación del despliegue en Vercel pendientes.
+
 # 2026-11-07 — I22 ítem 7: compresión de PDF antes de subir
 
 - Adopté el ítem 7 faltante de la copia Desktop de `ACTION_PLAN.md`; comparé el resto de I22 y no moví el email, que Riva pidió dejar para después. El plan nombraba `SupplierListPhotoPicker.tsx`, que solo procesa imágenes: corregí la ruta al flujo real de pedidos PDF en `SupplierOrders.tsx`.

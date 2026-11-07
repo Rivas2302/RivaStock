@@ -57,4 +57,17 @@ describe('CatalogCustomizer', () => {
     expect(host.textContent).toContain('{link}');
     expect(host.textContent).toContain('+ cantidad');
   });
+
+  it('defaults to hiding out-of-stock products and saves the catalog toggle', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    const openDisplay = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Qué se muestra'));
+    await act(async () => openDisplay?.click());
+    const showOutOfStock = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(input => input.closest('label')?.textContent?.includes('Mostrar productos sin stock'));
+    expect(showOutOfStock?.checked).toBe(false);
+    await act(async () => { showOutOfStock?.click(); });
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => save?.click());
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ showOutOfStock: true }));
+  });
 });

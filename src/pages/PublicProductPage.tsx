@@ -56,13 +56,19 @@ export default function PublicProductPage() {
 
       const catalogRow = catalogRes.data?.[0];
 
-      if (!catalogRow || !publicProduct) {
+      const catalogConfig = catalogRow ? fromDb<CatalogConfig>(catalogRow) : null;
+      const isHiddenOutOfStock = publicProduct
+        && publicProduct.stock <= 0
+        && publicProduct.availability !== 'on_order'
+        && !(catalogConfig?.showOutOfStock ?? false);
+
+      if (!catalogRow || !publicProduct || isHiddenOutOfStock) {
         setError('Producto no encontrado');
         setLoading(false);
         return;
       }
 
-      setConfig(fromDb<CatalogConfig>(catalogRow));
+      setConfig(catalogConfig);
       setProduct(publicProduct);
       setRelatedProducts(catalogProducts.filter(row => row.id !== publicProduct.id && row.categoryId === publicProduct.categoryId).slice(0,4));
       setLoading(false);
@@ -259,23 +265,6 @@ export default function PublicProductPage() {
               </p>
             )}
 
-            {config.showStock && (
-              <div
-                className={cn(
-                  'inline-flex items-center px-3 py-1.5 rounded-full text-sm font-bold',
-                  product.stock > 0
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-rose-100 text-rose-700',
-                )}
-              >
-                {product.stock > 0
-                  ? `Disponible${
-                      config.showStockQuantity ? ` — ${product.stock} unidades` : ''
-                    }`
-                  : 'Sin stock'}
-              </div>
-            )}
-
             {product.description && (
               <div>
                 <h2 className="font-bold text-slate-900 mb-2">Descripción</h2>
@@ -317,7 +306,7 @@ export default function PublicProductPage() {
             </div>
           </div>
         </div>
-        {relatedProducts.length > 0 && <section className="mt-8 border-t border-slate-100 pt-5">
+        {relatedProducts.length > 0 && <section className="mt-8 border-t border-slate-100 pb-8 pt-5">
           <h2 className="mb-3 text-lg font-bold">Productos relacionados</h2>
           <div className="flex gap-3 overflow-x-auto pb-2">{relatedProducts.map(item => <Link key={item.id} to={`/catalogo/${slug}/${item.id}`} className="w-32 shrink-0 rounded-xl border border-slate-100 p-2">
             <span className="block aspect-square overflow-hidden rounded-lg bg-slate-50">{(item.images?.[0] ?? item.imageUrl) && <img src={item.images?.[0] ?? item.imageUrl ?? ''} alt="" loading="lazy" className="size-full object-cover"/>}</span>

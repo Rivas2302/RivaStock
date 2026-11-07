@@ -346,10 +346,14 @@ useEffect(() => {
     const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
     return { cartItemCount, cartTotal };
   }, [cart]);
+  const catalogProducts = useMemo(
+    () => products.filter(product => config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
+    [config?.showOutOfStock, products],
+  );
   const filteredProducts = useMemo(() => {
     const searchValue = deferredSearch.toLowerCase();
 
-    const filteredProducts = products.filter((product) => {
+    const filteredProducts = catalogProducts.filter((product) => {
       const hasPhoto = Boolean(product.images?.[0] ?? product.imageUrl);
       const showWithoutPhoto = config?.presentation?.showProductsWithoutPhoto ?? false;
       const matchesSearch =
@@ -363,7 +367,7 @@ useEffect(() => {
     });
 
     return filteredProducts;
-  }, [activeCategory, availabilityFilter, channel, deferredSearch, products]);
+  }, [activeCategory, availabilityFilter, catalogProducts, channel, deferredSearch]);
   const pagination = usePagination(filteredProducts, 48);
 
   const availabilityCounts = useMemo(() => ({
@@ -634,7 +638,7 @@ if (loading) {
   const heroImageUrl = activeTheme === 'normal' && presentation.useBusinessCover
     ? presentation.heroImageUrl || config.bannerUrl
     : null;
-  const featuredProducts = products.filter(product => presentation.featuredProductIds.includes(product.id)
+  const featuredProducts = catalogProducts.filter(product => presentation.featuredProductIds.includes(product.id)
     || Boolean(presentation.featuredCategoryId && product.categoryId === presentation.featuredCategoryId));
   const heroSlides = [
     { id: 'cover', title: heroTitle || businessName, description: heroDescription || config.welcomeMessage || 'Encontrá lo que buscás.', image: heroImageUrl },
@@ -646,7 +650,7 @@ if (loading) {
   const heroSlide = heroSlides[heroSlideIndex % heroSlides.length] ?? heroSlides[0];
   const offerEndTime = presentation.offerEndsAt ? Date.parse(presentation.offerEndsAt) : Number.NaN;
   const offersAreActive = Number.isFinite(offerEndTime) && offerEndTime > Date.now();
-  const offerProducts = products.filter(product => offersAreActive
+  const offerProducts = catalogProducts.filter(product => offersAreActive
     && presentation.offerProductIds?.includes(product.id)
     && getCatalogOfferPrice(product.salePrice, presentation.offerDiscountPercentByProduct?.[product.id] ?? 0) !== null);
   const maxOfferDiscount = offerProducts.reduce((maximum, product) => Math.max(maximum, presentation.offerDiscountPercentByProduct[product.id] ?? 0), 0);
@@ -655,7 +659,7 @@ if (loading) {
       ? presentation.offerDiscountPercentByProduct?.[product.id] ?? 0 : 0;
     return getCatalogOfferPrice(product.salePrice, discount) ?? roundPrice(product.salePrice);
   };
-  const newProducts = products.filter(product => {
+  const newProducts = catalogProducts.filter(product => {
     const createdAt = Date.parse(product.createdAt);
     return Number.isFinite(createdAt) && createdAt >= Date.now() - 30 * 24 * 60 * 60 * 1000;
   });
@@ -1104,9 +1108,9 @@ if (loading) {
                       <span className="rounded-full bg-amber-500/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl backdrop-blur-md">
                         Por pedido · sin stock inmediato
                       </span>
-                    ) : product.stock <= 0 && (
-                      <span className="bg-white/10 backdrop-blur-md text-white/60 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
-                        Agotado
+                    ) : product.stock <= 0 && config.showOutOfStock && product.availability !== 'on_order' && (
+                      <span className="bg-white/10 backdrop-blur-md text-white/90 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
+                        AGOTADO
                       </span>
                     )}
                   </div>
@@ -1116,9 +1120,9 @@ if (loading) {
                   <div className="flex-1 space-y-2 sm:space-y-3">
                     <div className="flex items-center justify-between">
                       <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-[0.2em]",
-                        darkMode ? "text-white/30" : "text-slate-400"
-                      )}>
+                        "catalog-product-category inline-flex w-fit max-w-full items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]",
+                        darkMode ? "bg-white/10 text-white/70" : "bg-slate-100 text-slate-500"
+                      )} data-testid="catalog-product-category">
                         {categories.find(c => c.id === product.categoryId)?.name || 'General'}
                       </span>
                     </div>

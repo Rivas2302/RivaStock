@@ -13,13 +13,13 @@ const product = {
   availability: 'in_stock', createdAt: '2026-11-05T12:00:00.000Z',
 };
 
-function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00') {
+function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00', showOutOfStock = false) {
   const titles = { normal: 'Encontrá lo que buscás', christmas: 'Regalos para compartir', 'children-day': 'Un regalo para cada aventura', 'new-year': 'Empezá el año con algo nuevo' };
   const heroColors = { normal: '#172033', christmas: '#164632', 'children-day': '#F1D98B', 'new-year': '#202226' };
   const accentColors = { normal: '#3156A6', christmas: '#B23A48', 'children-day': '#6B55A1', 'new-year': '#9B7A35' };
   return {
     id: '8af7667f-e8db-46aa-b246-4fba337d9580', user_id: OWNER_ID, business_name: 'Tienda de prueba', slug: 'qa-catalog',
-    enabled: true, show_prices: true, show_out_of_stock: false, show_stock: true, show_stock_quantity: false,
+    enabled: true, show_prices: true, show_out_of_stock: showOutOfStock, show_stock: true, show_stock_quantity: false,
     welcome_message: 'Productos elegidos con cuidado.', primary_color: accentColors[theme], accent_color: accentColors[theme],
     allow_orders: true, layout: 'Grid', font_style: 'Modern', whatsapp_number: '5491100000000',
     presentation: {
@@ -33,15 +33,16 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
+  const catalogProducts = includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
   await page.route('**/rest/v1/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
-    if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [fixtureConfig(theme, offerEndsAt)] });
+    if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [fixtureConfig(theme, offerEndsAt, showOutOfStock)] });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
-    if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: [catalogProduct] });
+    if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: catalogProducts });
     if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: catalogProduct });
     if (pathname.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
     if (pathname.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: Boolean(resellerRounds) } });
@@ -89,6 +90,10 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   const addButton = card.getByRole('button', { name: 'Agregar Cable USB-C al carrito' });
   const addBox = await addButton.boundingBox();
   expect(cardBox && addBox && cardBox.x >= 0 && cardBox.x + cardBox.width <= 360 && addBox.x >= cardBox.x && addBox.x + addBox.width <= cardBox.x + cardBox.width, JSON.stringify({ cardBox, addBox })).toBe(true);
+  const categoryChip = card.getByTestId('catalog-product-category');
+  const cardCategoryBox = await categoryChip.boundingBox();
+  expect(cardCategoryBox && cardCategoryBox.x >= cardBox!.x && cardCategoryBox.x + cardCategoryBox.width <= cardBox!.x + cardBox!.width).toBe(true);
+  expect(Number.parseFloat(await categoryChip.evaluate(element => getComputedStyle(element).borderRadius))).toBeGreaterThanOrEqual((cardCategoryBox?.height ?? 0) / 2);
   await expect(addButton).toBeVisible();
   await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
   await page.getByRole('button', { name: /Abrir carrito, 1 productos/ }).click();
@@ -98,15 +103,19 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   expect(orderSubmitted).toBe(false);
 });
 
-test('retail cards hide internal and stock labels and accept more than zero stock', async ({ page }) => {
+test('out-of-stock products are hidden by default and remain orderable when enabled', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });
   await page.goto('/catalogo/qa-catalog');
-  const addButton = page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last();
-  await expect(addButton).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' })).toHaveCount(0);
   await expect(page.getByText('PRINCIPAL', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Últimas unidades', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/^(Disponible|Stock:)/)).toHaveCount(0);
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' }, true);
+  await page.goto('/catalogo/qa-catalog');
+  const addButton = page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last();
+  await expect(addButton).toBeVisible();
+  await expect(page.getByText('AGOTADO', { exact: true }).first()).toBeVisible();
   await addButton.click();
   await addButton.click();
   await page.getByRole('button', { name: /Abrir carrito/ }).click();
@@ -114,15 +123,36 @@ test('retail cards hide internal and stock labels and accept more than zero stoc
   await expect(page.getByText('No hay más stock disponible.')).toHaveCount(0);
 });
 
-test('direct product route adds an out-of-stock product and requested quantity', async ({ page }) => {
+test('direct product route hides out-of-stock products unless the owner enables them', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });
   await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await expect(page.getByText('Producto no encontrado')).toBeVisible();
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' }, true);
+  await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await expect(page.getByText(/Disponible|Sin stock|unidades/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Agregar una unidad' }).click();
   await expect(page.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
   await page.getByRole('button', { name: 'Agregar al carrito' }).click();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
+});
+
+test('on-order product remains visible while out-of-stock display is disabled', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'on_order' });
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last()).toBeVisible();
+});
+
+test('public product detail hides stock and leaves space after related products', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page, 'normal', undefined, false, { stock: 3 }, false, true);
+  await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await expect(page.getByText(/Disponible|Sin stock|unidades/)).toHaveCount(0);
+  const related = page.getByRole('heading', { name: 'Productos relacionados' }).locator('..');
+  await expect(related).toBeVisible();
+  expect(await related.evaluate(element => getComputedStyle(element).paddingBottom)).toBe('32px');
 });
 
 test('reseller order round uses only its supplier products and directs payment to WhatsApp', async ({ page }) => {
