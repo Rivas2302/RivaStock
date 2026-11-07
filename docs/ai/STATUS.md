@@ -1,11 +1,12 @@
-# 2026-11-07 — I21 proxy de URLs de proveedores, en verificación de Vercel
+# 2026-11-07 — I21 proxy de URLs de proveedores cerrado
 
 - Riva cambió el orden: I21 va ahora antes de I22 ítem 7; I22 email queda postergado. Comparé I21 del worktree con Desktop y `origin/main`; el contenido coincide. Desktop agrega I22 ítem 7, que voy a adoptar al iniciar esa tarea. La edición local del plan que lo añadía quedó fuera de este commit.
 - Reemplacé el `fetch` del navegador por `supabase.functions.invoke('fetch-url')`. La Edge Function es pública y usa POST JSON para no poner la URL del proveedor en el query string; no guarda ni registra URL o contenido. Valida HTTPS, bloquea hosts locales/IP privados tras resolver A y AAAA, no sigue redirecciones, permite solo HTML/texto/CSV, limita entrada a 2 MB, salida a 60.000 caracteres, tiempo a 10 segundos y frecuencia básica a 8 solicitudes por minuto por IP en memoria. El texto de error de la app está en español.
 - Agregué pruebas para URL segura, DNS privado, IP reservadas, limpieza de HTML/tablas, límite de bytes y frecuencia, y para el cliente proxy. **Verificación:** `npm run lint` pasó; `npm test -- --maxWorkers=2` pasó **192 archivos / 1.113 pruebas**. Deno no está instalado localmente; Supabase CLI desplegó la función correctamente con el bundle del servidor.
 - Desplegué `fetch-url` v1 en `RivaStock_Oficial`, con `verify_jwt=false`. Smoke HTTP real: `https://example.org` respondió 200, 156 caracteres extraídos y CORS para `https://rivastock.vercel.app`; `https://127.0.0.1` fue rechazado con 422. No se persistieron respuestas ni se generaron pedidos.
 - **Desvío:** el plan proponía `GET /functions/v1/fetch-url?url=...`; uso POST con JSON para evitar filtrar la URL en access logs. El limitador es por instancia de Edge Function y se reinicia cuando rota el proceso; sigue siendo un límite básico, no global.
-- I21 queda `[ ]` hasta publicar el frontend en Vercel y confirmar el flujo conectado desde la app. No hubo migración, por lo que no correspondía backup de base. **Siguiente:** `git pull --rebase origin main`, publicar este commit a `main`, esperar Vercel y hacer smoke; luego I22 ítem 7. El email de I22 sigue diferido.
+- El commit `a3c2653` quedó en `main`; `git pull --rebase origin main` pasó antes del push. GitHub/Vercel reportó deployment de Producción `success`. Confirmé que `rivastock.vercel.app` sirve el chunk de Stock actualizado y que su modal contiene la llamada a `fetch-url`. I21 quedó `[x]`; no hubo migración ni backup de base.
+- `npm run build` pasó. `npm run perf:check` sigue fallando por el presupuesto excedido de `src/pages/Knowledge.tsx`, problema previo y ajeno a I21. **Siguiente:** I22 ítem 7; mantener postergado el email.
 
 # 2026-11-07 15:55 ART — I22 desplegado; email pendiente de remitente verificado
 

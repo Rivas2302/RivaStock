@@ -557,7 +557,7 @@ Riva probó I18 en producción desde el celular y encontró estos problemas. Ade
 
 ---
 
-### [ ] I21 Proxy para leer listas de proveedores desde URL — **pedido de Riva el 07/11**
+### [x] I21 Proxy para leer listas de proveedores desde URL — **pedido de Riva el 07/11**
 
 Hoy al pegar el link de la página de un proveedor aparece el error "No pudimos leer el enlace. El sitio debe permitir lectura desde el navegador (CORS)". Es una limitación de los navegadores: no pueden leer HTML de sitios externos directamente.
 
