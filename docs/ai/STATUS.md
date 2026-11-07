@@ -1568,3 +1568,9 @@ Sin toque en src/, supabase/ ni extensions/.
 - **Verificación local:** lint, 79 pruebas focales, build, `perf:check` y Playwright de catálogo 5/5 pasaron antes del deploy. I19 cubre margen/redondeo, rondas y pedidos en tests locales.
 - **Desvío de smoke I19:** no se creó una ronda o pedido QA en producción porque la UI no ofrece un flujo normal para borrar rondas; se verificó el editor/importador sin guardar. El selector de foto/recorte manual queda cubierto por pruebas locales; el recorte automático sigue como mejora posterior.
 - I18 e I19 se marcaron `[x]` al quedar desplegadas y verificadas. No se tocó Facebook, su extensión ni su automatización.
+
+## 2026-11-07 — I18b: comparación visual y correcciones móviles
+
+- Comparé en producción las vistas Main, Producto, Carrito y MainPC con las maquetas. La primera publicación mostró dos diferencias: una regla global cuadraba los íconos circulares de categorías y la acción principal del detalle quedaba debajo del pliegue en celular.
+- Se corrigieron ambas: categorías realmente circulares y barra fija móvil con Agregar al carrito, Compartir y WhatsApp. También se mejoró el contraste del precio anterior en ofertas.
+- Verificación local: Playwright de catálogo **9/9**, Vitest focal **16/16**, lint, build y `git diff --check` aprobados. La actualización está lista para publicarse; falta confirmar el deploy de Vercel y volver a capturar las vistas de producción.

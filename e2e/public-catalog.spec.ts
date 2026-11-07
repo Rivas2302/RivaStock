@@ -76,6 +76,10 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   page.on('request', request => { if (request.url().includes('/rpc/create_public_catalog_order')) orderSubmitted = true; });
   await page.goto('/catalogo/qa-catalog');
   await expect(page.getByRole('heading', { name: 'Encontrá lo que buscás' })).toBeVisible();
+  const categoryCircle = page.locator('section[aria-label="Categorías"] button span').first();
+  const categoryBox = await categoryCircle.boundingBox();
+  expect(categoryBox?.width).toBe(categoryBox?.height);
+  expect(Number.parseFloat(await categoryCircle.evaluate(element => getComputedStyle(element).borderRadius))).toBeGreaterThan(20);
   await expect(page.getByText('−20 %').first()).toBeVisible();
   await page.getByPlaceholder('Busca en nuestra colección...').fill('Cable');
   await expect(page.getByText('Cable USB-C').first()).toBeVisible();
@@ -165,6 +169,7 @@ test('product detail modal shares the G2 product URL and adds selected quantity'
   await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cable USB-C' }).last()).toBeVisible();
   await expect(page.getByText('Descripción')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Agregar al carrito/ }).last()).toBeVisible();
   await expect(page.getByText('Productos relacionados')).toHaveCount(0);
   await page.getByRole('button', { name: 'Agregar una unidad' }).click();
   await page.evaluate(() => { window.open = ((url?: string | URL) => { (window as Window & { __sharedUrl?: string }).__sharedUrl = String(url); return null; }) as typeof window.open; });
@@ -174,7 +179,7 @@ test('product detail modal shares the G2 product URL and adds selected quantity'
   expect(decodeURIComponent(sharedUrl)).toContain('Cable USB-C');
   expect(decodeURIComponent(sharedUrl)).toContain('2');
   expect(decodeURIComponent(sharedUrl)).toContain('/p/qa-catalog/');
-  await page.getByRole('button', { name: /Agregar al carrito/ }).click();
+  await page.getByRole('button', { name: /Agregar al carrito/ }).last().click();
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toBeVisible();
 });
@@ -184,7 +189,7 @@ test('direct product link returns to the catalog with its requested quantity in 
   await mockCatalogApi(page);
   await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
   await page.getByRole('button', { name: 'Agregar una unidad' }).click();
-  await page.getByRole('button', { name: /Agregar al carrito/ }).click();
+  await page.getByRole('button', { name: /Agregar al carrito/ }).last().click();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
@@ -192,6 +197,7 @@ test('direct product link returns to the catalog with its requested quantity in 
 
 test('category labels and seasonal countdown meet automated contrast checks', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockCatalogApi(page, 'christmas');
   await page.goto('/catalogo/qa-catalog');
   await expect(page.getByTestId('public-catalog-hero')).toBeVisible();

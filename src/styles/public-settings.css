@@ -114,7 +114,6 @@
 .public-catalog main .aspect-square > div { border-radius: .5rem !important; }
 .public-catalog main .px-8 { padding-left: 1.25rem !important; padding-right: 1.25rem !important; }
 .public-catalog main h3 { letter-spacing: -.03em; }
-.public-catalog .rounded-full { border-radius: .5rem; }
 
 .public-quote-page { background: #f4f1ea !important; color: #1d2026; }
 .public-quote-page .max-w-2xl { max-width: 48rem; }
@@ -201,3 +200,5 @@
 
 /* Public catalog dark mode remains independent from the authenticated app theme. */
 html.catalog-dark .public-page-state { background: #080808 !important; color: #f7f7f7; }
+
+.public-catalog .line-through.text-slate-400 { color: #4b5563 !important; }
