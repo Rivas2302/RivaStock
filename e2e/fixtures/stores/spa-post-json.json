@@ -1,0 +1,179 @@
+{
+  "method": "POST",
+  "url": "/api.php",
+  "responses": [
+    {
+      "items": [
+        {
+          "id": "OMEGA-1",
+          "name": "Producto de prueba 1",
+          "sku": "OMEGA-1",
+          "price": 119900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-1.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-1"
+        },
+        {
+          "id": "OMEGA-2",
+          "name": "Producto de prueba 2",
+          "sku": "OMEGA-2",
+          "price": 120000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-2.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-2"
+        },
+        {
+          "id": "OMEGA-3",
+          "name": "Producto de prueba 3",
+          "sku": "OMEGA-3",
+          "price": 120100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-3.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-3"
+        },
+        {
+          "id": "OMEGA-4",
+          "name": "Producto de prueba 4",
+          "sku": "OMEGA-4",
+          "price": 120200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-4.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-4"
+        },
+        {
+          "id": "OMEGA-5",
+          "name": "Producto de prueba 5",
+          "sku": "OMEGA-5",
+          "price": 120300,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-5.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-5"
+        },
+        {
+          "id": "OMEGA-6",
+          "name": "Producto de prueba 6",
+          "sku": "OMEGA-6",
+          "price": 120400,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-6.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-6"
+        },
+        {
+          "id": "OMEGA-7",
+          "name": "Producto de prueba 7",
+          "sku": "OMEGA-7",
+          "price": 120500,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-7.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-7"
+        },
+        {
+          "id": "OMEGA-8",
+          "name": "Producto de prueba 8",
+          "sku": "OMEGA-8",
+          "price": 120600,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-8.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-8"
+        }
+      ]
+    },
+    {
+      "items": [
+        {
+          "id": "OMEGA-P2-1",
+          "name": "Producto de prueba 1",
+          "sku": "OMEGA-P2-1",
+          "price": 119900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-P2-1.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-P2-1"
+        },
+        {
+          "id": "OMEGA-P2-2",
+          "name": "Producto de prueba 2",
+          "sku": "OMEGA-P2-2",
+          "price": 120000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-P2-2.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-P2-2"
+        },
+        {
+          "id": "OMEGA-P2-3",
+          "name": "Producto de prueba 3",
+          "sku": "OMEGA-P2-3",
+          "price": 120100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 2,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-OMEGA-P2-3.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/OMEGA-P2-3"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,676 @@
+{
+  "responses": [
+    {
+      "page": 1,
+      "products": [
+        {
+          "id": "BRAJA-1",
+          "name": "Producto de prueba 1",
+          "sku": "BRAJA-1",
+          "price": 119900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-1.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-1"
+        },
+        {
+          "id": "BRAJA-2",
+          "name": "Producto de prueba 2",
+          "sku": "BRAJA-2",
+          "price": 120000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-2.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-2"
+        },
+        {
+          "id": "BRAJA-3",
+          "name": "Producto de prueba 3",
+          "sku": "BRAJA-3",
+          "price": 120100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-3.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-3"
+        },
+        {
+          "id": "BRAJA-4",
+          "name": "Producto de prueba 4",
+          "sku": "BRAJA-4",
+          "price": 120200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-4.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-4"
+        },
+        {
+          "id": "BRAJA-5",
+          "name": "Producto de prueba 5",
+          "sku": "BRAJA-5",
+          "price": 120300,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-5.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-5"
+        },
+        {
+          "id": "BRAJA-6",
+          "name": "Producto de prueba 6",
+          "sku": "BRAJA-6",
+          "price": 120400,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-6.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-6"
+        },
+        {
+          "id": "BRAJA-7",
+          "name": "Producto de prueba 7",
+          "sku": "BRAJA-7",
+          "price": 120500,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-7.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-7"
+        },
+        {
+          "id": "BRAJA-8",
+          "name": "Producto de prueba 8",
+          "sku": "BRAJA-8",
+          "price": 120600,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-8.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-8"
+        },
+        {
+          "id": "BRAJA-9",
+          "name": "Producto de prueba 9",
+          "sku": "BRAJA-9",
+          "price": 120700,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-9.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-9"
+        },
+        {
+          "id": "BRAJA-10",
+          "name": "Producto de prueba 10",
+          "sku": "BRAJA-10",
+          "price": 120800,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-10.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-10"
+        },
+        {
+          "id": "BRAJA-11",
+          "name": "Producto de prueba 11",
+          "sku": "BRAJA-11",
+          "price": 120900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-11.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-11"
+        },
+        {
+          "id": "BRAJA-12",
+          "name": "Producto de prueba 12",
+          "sku": "BRAJA-12",
+          "price": 121000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-12.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-12"
+        },
+        {
+          "id": "BRAJA-13",
+          "name": "Producto de prueba 13",
+          "sku": "BRAJA-13",
+          "price": 121100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-13.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-13"
+        },
+        {
+          "id": "BRAJA-14",
+          "name": "Producto de prueba 14",
+          "sku": "BRAJA-14",
+          "price": 121200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-14.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-14"
+        },
+        {
+          "id": "BRAJA-15",
+          "name": "Producto de prueba 15",
+          "sku": "BRAJA-15",
+          "price": 121300,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-15.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-15"
+        },
+        {
+          "id": "BRAJA-16",
+          "name": "Producto de prueba 16",
+          "sku": "BRAJA-16",
+          "price": 121400,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-16.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-16"
+        },
+        {
+          "id": "BRAJA-17",
+          "name": "Producto de prueba 17",
+          "sku": "BRAJA-17",
+          "price": 121500,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-17.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-17"
+        },
+        {
+          "id": "BRAJA-18",
+          "name": "Producto de prueba 18",
+          "sku": "BRAJA-18",
+          "price": 121600,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-18.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-18"
+        },
+        {
+          "id": "BRAJA-19",
+          "name": "Producto de prueba 19",
+          "sku": "BRAJA-19",
+          "price": 121700,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-19.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-19"
+        },
+        {
+          "id": "BRAJA-20",
+          "name": "Producto de prueba 20",
+          "sku": "BRAJA-20",
+          "price": 121800,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-20.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-20"
+        },
+        {
+          "id": "BRAJA-21",
+          "name": "Producto de prueba 21",
+          "sku": "BRAJA-21",
+          "price": 121900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-21.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-21"
+        },
+        {
+          "id": "BRAJA-22",
+          "name": "Producto de prueba 22",
+          "sku": "BRAJA-22",
+          "price": 122000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-22.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-22"
+        },
+        {
+          "id": "BRAJA-23",
+          "name": "Producto de prueba 23",
+          "sku": "BRAJA-23",
+          "price": 122100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-23.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-23"
+        },
+        {
+          "id": "BRAJA-24",
+          "name": "Producto de prueba 24",
+          "sku": "BRAJA-24",
+          "price": 122200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-24.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-24"
+        },
+        {
+          "id": "BRAJA-25",
+          "name": "Producto de prueba 25",
+          "sku": "BRAJA-25",
+          "price": 122300,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-25.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-25"
+        },
+        {
+          "id": "BRAJA-26",
+          "name": "Producto de prueba 26",
+          "sku": "BRAJA-26",
+          "price": 122400,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-26.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-26"
+        },
+        {
+          "id": "BRAJA-27",
+          "name": "Producto de prueba 27",
+          "sku": "BRAJA-27",
+          "price": 122500,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-27.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-27"
+        },
+        {
+          "id": "BRAJA-28",
+          "name": "Producto de prueba 28",
+          "sku": "BRAJA-28",
+          "price": 122600,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-28.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-28"
+        },
+        {
+          "id": "BRAJA-29",
+          "name": "Producto de prueba 29",
+          "sku": "BRAJA-29",
+          "price": 122700,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-29.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-29"
+        },
+        {
+          "id": "BRAJA-30",
+          "name": "Producto de prueba 30",
+          "sku": "BRAJA-30",
+          "price": 122800,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-30.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-30"
+        },
+        {
+          "id": "BRAJA-31",
+          "name": "Producto de prueba 31",
+          "sku": "BRAJA-31",
+          "price": 122900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-31.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-31"
+        },
+        {
+          "id": "BRAJA-32",
+          "name": "Producto de prueba 32",
+          "sku": "BRAJA-32",
+          "price": 123000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-32.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-32"
+        },
+        {
+          "id": "BRAJA-33",
+          "name": "Producto de prueba 33",
+          "sku": "BRAJA-33",
+          "price": 123100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-33.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-33"
+        },
+        {
+          "id": "BRAJA-34",
+          "name": "Producto de prueba 34",
+          "sku": "BRAJA-34",
+          "price": 123200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-34.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-34"
+        },
+        {
+          "id": "BRAJA-35",
+          "name": "Producto de prueba 35",
+          "sku": "BRAJA-35",
+          "price": 123300,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-35.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-35"
+        },
+        {
+          "id": "BRAJA-36",
+          "name": "Producto de prueba 36",
+          "sku": "BRAJA-36",
+          "price": 123400,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-36.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-36"
+        },
+        {
+          "id": "BRAJA-37",
+          "name": "Producto de prueba 37",
+          "sku": "BRAJA-37",
+          "price": 123500,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-37.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-37"
+        },
+        {
+          "id": "BRAJA-38",
+          "name": "Producto de prueba 38",
+          "sku": "BRAJA-38",
+          "price": 123600,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-38.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-38"
+        },
+        {
+          "id": "BRAJA-39",
+          "name": "Producto de prueba 39",
+          "sku": "BRAJA-39",
+          "price": 123700,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-39.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-39"
+        },
+        {
+          "id": "BRAJA-40",
+          "name": "Producto de prueba 40",
+          "sku": "BRAJA-40",
+          "price": 123800,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-40.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-40"
+        }
+      ],
+      "hasMore": true
+    },
+    {
+      "page": 2,
+      "products": [
+        {
+          "id": "BRAJA-P2-1",
+          "name": "Producto de prueba 1",
+          "sku": "BRAJA-P2-1",
+          "price": 119900,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-P2-1.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-P2-1"
+        },
+        {
+          "id": "BRAJA-P2-2",
+          "name": "Producto de prueba 2",
+          "sku": "BRAJA-P2-2",
+          "price": 120000,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-P2-2.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-P2-2"
+        },
+        {
+          "id": "BRAJA-P2-3",
+          "name": "Producto de prueba 3",
+          "sku": "BRAJA-P2-3",
+          "price": 120100,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-P2-3.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-P2-3"
+        },
+        {
+          "id": "BRAJA-P2-4",
+          "name": "Producto de prueba 4",
+          "sku": "BRAJA-P2-4",
+          "price": 120200,
+          "currency_code": "ARS",
+          "currency_minor_unit": 0,
+          "images": [
+            {
+              "src": "https://images.example.test/fixture-BRAJA-P2-4.webp"
+            }
+          ],
+          "category": "Prueba",
+          "permalink": "https://store.example.test/producto/BRAJA-P2-4"
+        }
+      ],
+      "hasMore": false
+    }
+  ]
+}

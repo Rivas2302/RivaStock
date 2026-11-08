@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "vitest run src extensions/facebook/recorder.test.ts extensions/facebook/polling-schedule.test.ts extensions/facebook/extension-update.test.ts extensions/facebook/group-discovery.test.js",
+    "test": "vitest run src extensions/shared/product-extract.test.ts extensions/facebook/recorder.test.ts extensions/facebook/polling-schedule.test.ts extensions/facebook/extension-update.test.ts extensions/facebook/group-discovery.test.js",
     "test:supabase-s3": "npx --yes deno test --allow-env --allow-read --allow-net --allow-sys supabase/functions/_shared/supabaseS3Storage.test.ts",
     "test:e2e": "playwright test",
     "verify": "npm run lint && npm test && npm run build && npm run check:no-secrets && npm run perf:check && npm audit",

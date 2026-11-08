@@ -1,0 +1,94 @@
+{
+  "products": [
+    {
+      "id": "inova-1",
+      "name": "Producto de prueba 1",
+      "sku": "",
+      "price": 119900,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-INOVA-1.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/1"
+    },
+    {
+      "id": "inova-2",
+      "name": "Producto de prueba 2",
+      "sku": "",
+      "price": 120000,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-INOVA-2.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/2"
+    },
+    {
+      "id": "inova-3",
+      "name": "Producto de prueba 3",
+      "sku": "",
+      "price": 120100,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-INOVA-3.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/3"
+    },
+    {
+      "id": "inova-4",
+      "name": "Producto de prueba 4",
+      "sku": "",
+      "price": 120200,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-INOVA-4.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/4"
+    },
+    {
+      "id": "inova-5",
+      "name": "Producto de prueba 5",
+      "sku": "",
+      "price": 120300,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-INOVA-5.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/5"
+    },
+    {
+      "id": "inova-no-price",
+      "name": "Producto sin precio",
+      "sku": "",
+      "price": 0,
+      "currency_code": "ARS",
+      "currency_minor_unit": 0,
+      "images": [
+        {
+          "src": "https://images.example.test/fixture-inova-no-price.webp"
+        }
+      ],
+      "category": "Prueba",
+      "permalink": "https://inovaarg.com/producto/1"
+    }
+  ]
+}

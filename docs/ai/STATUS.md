@@ -5,6 +5,13 @@
 - Próximo: fixtures recortados y anonimizados, motor de extracción (Fase 1), captura de extensión 0.6.0 (Fase 2), recepción local en Revendedores (Fase 3), guía (Fase 4), y pruebas de fixtures/proveedores de solo lectura (Fase 5). No se permiten clics de compra, formularios, escritura en campos ni transferencia de cookies/sesiones.
 - No se requieren migraciones hasta ahora. La extensión conserva su ID/key; solo se publicará el ZIP por el flujo existente. Mr Tecno, Inova, Braja y Omega se prueban localmente, sin guardar productos en producción. Oestech y Babaji quedan para prueba del dueño con su clave.
 
+## I37 — Fase 1: motor de extracción
+
+- Agregué `extensions/shared/product-extract.js`: captura JSON de red, JSON-LD/Next/microdata y tarjetas DOM; normaliza nombres, códigos, categorías, imágenes HTTPS, ARS/USD y precios con `minor_unit`; deduplica; limita a 5.000 y marca precios vacíos/cero o superiores a $5.000.000 para revisar. No conserva campos de sesión/cliente y el `raw` de tarjetas se limita a título, precio, código y categoría.
+- Generé 13 fixtures sintéticos y recortados bajo `e2e/fixtures/stores/`, incluidos diez perfiles de tarjeta por sistema para Oestech y Babaji. Los originales no se copiaron ni se agregaron al repositorio.
+- **Verificación focal:** 9/9 pruebas Vitest pasan; cubren los JSON paginados y POST, WooCommerce con `sku` vacío y `minor_unit: 0`, tarjetas DOM, imágenes de video excluidas, código del título, precio tachado, mayorista/minorista, cero productos y límites.
+- Caso Babaji cubierto: `$ 37,125` se interpreta como **$37.125** ARS; «(SIN CAMBIO)» queda como nota, `1002-L` se conserva en el nombre y precios de más de $5.000.000 requieren revisión.
+
 # 2026-11-08 — I35 e I36 verificados en producción
 
 - Incorporé el orden I35 → I36 y las dos secciones nuevas del `ACTION_PLAN.md` del Escritorio; conservé el resto del plan y sus marcas previas.
