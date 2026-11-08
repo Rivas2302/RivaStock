@@ -1,3 +1,13 @@
+# 2026-11-08 — Revalidación I43, I38 e I40–I42
+
+- Sincronizé desde la copia más reciente del Escritorio las secciones I38–I43 y las publiqué en `main` como `acb13c7`; Desktop había reabierto I38, I40 e I41 y aclarado que la causa de I43 era una hipótesis. Después de verificar, cerré I38 e I40–I42 en el plan; I43 sigue abierto.
+- **I43:** producción y `vercel.json` coinciden exactamente en CSP para `/`, el worker, el core WASM y el modelo español; todos responden 200 y permiten `'wasm-unsafe-eval'`. El E2E con Tesseract real pasó 1/1; las pruebas focales de OCR real, análisis colgado, descarga fallida y cancelación pasaron 4/4. Conteos de fotos reales: Mr Tecno **50/50 analizadas, 0 fallidas**; Babaji **0/8 analizadas**, porque las ocho URL de la captura disponible responden 404. I43 queda abierto por no alcanzar ≥95 % en Babaji.
+- **I38:** Playwright pasó 1/1 a 360 y 412 px; verificó fondo opaco, botón alcanzable, navegación oculta, foco y scroll. El bundle Current contiene la hoja y la barra corregidas.
+- **I40 e I41:** E2E con fixtures pasó para ocultar productos de proveedor y registrar el envío separado. Los módulos compartidos de inventario y envío se sirven desde Current.
+- **I42:** E2E con fixtures pasó 1/1; Current contiene el origen público de RivaStock, la opción de mostrar en el catálogo propio y el flujo de copia de fotos. La migración I42 ya estaba aplicada por la tarea anterior; en esta revalidación no escribí en la base real.
+- Calidad local: lint aprobado; 217 archivos / 1.244 pruebas Vitest aprobadas; build aprobado; 4 E2E de I38/I40/I41/I42 aprobados; OCR real bajo CSP de producción aprobado.
+- **I39 queda pendiente:** la función requiere un cambio aditivo de esquema para lotes, zonas, envíos y saldos. No lo apliqué ni desplegué porque la instrucción actual prohíbe cambios en la base real.
+
 # 2026-11-08 — I43 OCR: causa CSP desplegada; Babaji sigue bloqueado
 
 - Releí I43 en `docs/ai/ACTION_PLAN.md` del Escritorio y en el worktree. La causa raíz coincide: `script-src` impedía la compilación WASM que requiere Tesseract.
@@ -17,7 +27,7 @@
 - I43 permanece abierta hasta analizar al menos el 95 % de las 8 fotos de Babaji y confirmar el criterio completo.
 - Revalidación solicitada el 08/11: `npm run test:e2e:i43-ocr` pasó con Tesseract real, sin la fábrica OCR de prueba, y la política exacta de `vercel.json`; la web, el worker, el core WASM y el modelo español de producción respondieron 200 con `'wasm-unsafe-eval'`. Conteos comprobables de fotos reales: **Mr Tecno 50/50 analizadas, 0 fallidas; Babaji 0/8 analizadas, 8 inaccesibles (HTTP 404)**. La causa CSP está corregida y publicada; I43 sigue abierta porque la tanda de Babaji no alcanza el 95 %.
 
-## I42 — implementación local y migración aplicadas; falta desplegar/verificar
+## I42 — código y migración aplicados previamente; Current revalidado
 
 - El importador reconoce enlaces públicos `/catalogo/<slug>` y `/catalogo/<slug>/<productId>` de RivaStock, consulta solo la configuración y el RPC público, y no llama a `fetch-url`. No conserva stock/costo privado de origen; las fotos se descargan solo del bucket `assets` del proyecto y se comprimen/copían con el flujo I27. Los productos quedan marcados `catalog_only` para excluirlos de Stock/Ventas y el RPC del catálogo los expone solo cuando la cuenta los habilita públicamente.
 - El margen inicial es 0% y conserva el precio público de origen como precio revendedor; «Mostrar en mi catálogo público» queda activado por defecto. El código de origen estable es el UUID; reimportar actualiza el mismo producto y reemplaza solo las fotos administradas por proveedor.
@@ -25,7 +35,7 @@
 - Apliqué exclusivamente `20261108221034_i42_public_rivastock_catalog_supplier_import.sql` con `supabase db query --linked --file` y registré la versión con `supabase migration repair`; no usé `db push`. Verifiqué la migración en historial y que ambos RPC conservan `SECURITY DEFINER`, `search_path=public` y permisos de ejecución para `anon`/`authenticated`. No inserté ni modifiqué productos reales.
 - Unit tests focales: 40 pasaron. El E2E I42 con fixtures de dos negocios pasó 1/1 a 360 px: importa dos fotos, usa costo/precio correcto y UUID estable, aparece en el catálogo público, queda en la lista del proveedor, se oculta en Stock/Ventas y una reimportación actualiza sin duplicar.
 - Verificaciones locales: lint y build aprobados; Vitest **217 archivos / 1.244 pruebas**; E2E focal de importación **31/31** y OCR real bajo la CSP **1/1**. La corrida completa de Playwright terminó con **290 aprobadas, 24 fallidas y 59 omitidas**; el E2E I42 pasó. Los fallos quedan en otras áreas (incluidos archivo ZIP de Facebook, navegación, rendimiento, ventas/caja y ajustes de stock) y no se cambiaron en esta fase.
-- Pendiente antes del cierre: integrar en `main`, deploy a Current y verificación pública. No ejecutar altas reales; el flujo de producción se valida solo leyendo.
+- La revalidación posterior confirmó que el chunk actual de producción sirve el flujo I42. No se hicieron altas ni cambios de productos en la base real.
 ## I38 — corrección móvil cerrada
 
 - Capturé el estado anterior y posterior a 360/412 px en `%TEMP%\rivastock-qa-artifacts\i38\i38-{before,after}-*.png`. La captura anterior mostraba el fondo transparente, la navegación inferior sobre la hoja y acciones de 36 px.

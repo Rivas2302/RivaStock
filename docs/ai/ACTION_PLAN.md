@@ -975,7 +975,7 @@ Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `k
 
 **Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
 
-### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
+### [x] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
 
 **Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
 
@@ -1010,7 +1010,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** tests de la división del envío (proporción y redondeo), del cambio a «En espera», del aviso al juntar el mínimo, del recargo por zona y del saldo a favor aplicado. E2E con fixtures del circuito completo: pedido chico en espera → otro pedido junta el mínimo → aviso → hacer pedido → llega → cargar envío → cada uno ve su parte → faltante → saldo → próximo pedido con descuento. Nada en la base real de Riva.
 
-### [ ] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
+### [x] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
 
 **Problema (verificado en `origin/main`):** los productos importados de proveedores (`catalogOnly = true`, disponibilidad «por pedido») aparecen en **Stock** y en el buscador de **Nueva venta** como «Sin stock». Captura de Riva: en Nueva venta aparecen «Marcadores virales…», «Ventilador 18…» y «Auricular bluetooth x37», todos de Mr Tecno. `Stock.tsx` solo los filtra para la lista de precios en PDF (`priceListProducts`, ~línea 275); `Sales.tsx`, `POS.tsx`, `Quotes.tsx` y el resto no los filtran. Riva quiere: **«no me gusta que los productos que importé en la lista de revendedores se vean en mi stock ni en el módulo de ventas»**.
 
@@ -1022,7 +1022,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** test unitario de `isOwnInventoryProduct`. E2E con fixtures (un producto propio y uno de proveedor): el de proveedor no aparece en Stock, Nueva venta, POS, Presupuestos ni Consulta rápida, y sí aparece en Revendedores. Contadores de Stock e Inicio sin los de proveedor.
 
-### [ ] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
+### [x] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
 
 **Pedido:** «Un botón con o sin envío, así no tengo que sumarlo a mano en el flujo de caja».
 
@@ -1036,7 +1036,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** tests del total con y sin envío, con descuento y recargo; de que la caja refleja el envío sin carga manual; y de que la ganancia por producto no cambia. E2E: venta con envío → caja con el ingreso correcto. Migración solo la nueva; nada en la base real.
 
-### [ ] I42 Importar el catálogo de otra cuenta de RivaStock como proveedor — **Riva, 08/11 14:25 (reemplaza la versión anterior de I42)**
+### [x] I42 Importar el catálogo de otra cuenta de RivaStock como proveedor — **Riva, 08/11 14:25 (reemplaza la versión anterior de I42)**
 
 **Decisión de Riva:** su mamá tiene **su propia cuenta de RivaStock** (otro negocio, con todas las funciones; la crea Riva). Riva quiere **solo lo suyo** en su cuenta. Cuando ella tenga sus productos cargados, Riva **importa la lista de ella a su catálogo**. **No** hay vínculo en vivo entre las cuentas, ni rol de titular, ni catálogo compartido.
 
