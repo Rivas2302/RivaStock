@@ -975,11 +975,11 @@ Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `k
 
 **Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
 
-### [x] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
+### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
 
 **Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
 
-**Causa confirmada:** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Al dibujar hojas y barras flotantes fuera de ese contenedor, los tokens no existían; además, su contexto de apilamiento quedaba debajo de la navegación inferior.
+**Causa probable (verificado en `origin/main`):** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Si la hoja se dibuja fuera de ese contenedor (portal o hermano), la variable no existe y el fondo queda transparente. La barra inferior (`MobileNavigation.css`, `z-index` 30 a 50) queda arriba, seguramente porque la hoja vive dentro de un contexto de apilamiento con `z-index` menor.
 
 **Qué hacer:**
 1. Dibujar la hoja con un **portal a `document.body`**, envuelto en un contenedor con la clase `.reseller-module-page` (o mover los tokens a `:root` / `:root.dark`), para que **todas** las variables existan. Revisar que **ningún** elemento flotante de Revendedores (hojas, barras de acciones en lote, confirmaciones y el «Deshacer») use variables que no existan en donde se dibuja.
@@ -1010,7 +1010,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** tests de la división del envío (proporción y redondeo), del cambio a «En espera», del aviso al juntar el mínimo, del recargo por zona y del saldo a favor aplicado. E2E con fixtures del circuito completo: pedido chico en espera → otro pedido junta el mínimo → aviso → hacer pedido → llega → cargar envío → cada uno ve su parte → faltante → saldo → próximo pedido con descuento. Nada en la base real de Riva.
 
-### [x] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
+### [ ] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
 
 **Problema (verificado en `origin/main`):** los productos importados de proveedores (`catalogOnly = true`, disponibilidad «por pedido») aparecen en **Stock** y en el buscador de **Nueva venta** como «Sin stock». Captura de Riva: en Nueva venta aparecen «Marcadores virales…», «Ventilador 18…» y «Auricular bluetooth x37», todos de Mr Tecno. `Stock.tsx` solo los filtra para la lista de precios en PDF (`priceListProducts`, ~línea 275); `Sales.tsx`, `POS.tsx`, `Quotes.tsx` y el resto no los filtran. Riva quiere: **«no me gusta que los productos que importé en la lista de revendedores se vean en mi stock ni en el módulo de ventas»**.
 
@@ -1022,7 +1022,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** test unitario de `isOwnInventoryProduct`. E2E con fixtures (un producto propio y uno de proveedor): el de proveedor no aparece en Stock, Nueva venta, POS, Presupuestos ni Consulta rápida, y sí aparece en Revendedores. Contadores de Stock e Inicio sin los de proveedor.
 
-### [x] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
+### [ ] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
 
 **Pedido:** «Un botón con o sin envío, así no tengo que sumarlo a mano en el flujo de caja».
 
@@ -1059,7 +1059,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 - `isSupplierPhotoReviewBlocking` (`src/lib/supplierPrivacy.ts`) **bloquea cualquier estado distinto de `clear`** (`pending` y `failed` incluidos) mientras no esté aprobado a mano. Una foto que nunca termina de analizarse bloquea el producto para siempre.
 - `scanSupplierImportPhotos` (`ResellerPriceListModal.tsx` ~1363) **no tiene límite de tiempo** en ningún paso: `createSupplierPhotoOcrWorker()`, `fetchSupplierCatalogImage()` (que pasa por `fetch-url` en modo imagen, con un límite de 8 consultas por minuto), el plan B `fetchSupplierCaptureImage()` (mensaje a la extensión, que puede no contestar nunca) y `worker.recognize()`. Si cualquiera se cuelga, el progreso queda en «0 de N» para siempre. Los archivos de Tesseract en producción **sí existen** (`/tesseract/worker.min.js`, `core/*.wasm.js`, `lang/4.0.0_best_int/spa.traineddata.gz`, todos con 200), así que lo más probable es la descarga de la foto (límite de consultas o la extensión que no contesta).
 
-**CAUSA RAÍZ CONFIRMADA (Claude, headers de producción, 08/11 15:20; OCR real verificado en Playwright):** la política de seguridad del sitio (`vercel.json`, header `Content-Security-Policy`) tenía **`script-src 'self'` sin `'wasm-unsafe-eval'`**. Tesseract necesita compilar **WebAssembly**, y Chrome lo bloqueaba con esa política: el worker de OCR no arrancaba. Agregar `'wasm-unsafe-eval'` hizo que el OCR real terminara bajo la misma política; el header actualizado ya está en producción. **Además, ninguna prueba lo detectaba**, porque `e2e/supplier-list-import.spec.ts` **reemplazaba el OCR por uno falso** (`__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__`) y las pruebas no corrían con los headers de producción. El OCR de capturas (I24) y PDF escaneados (I24 fase 2) usan el mismo Tesseract.
+**CAUSA RAÍZ PROBABLE (Claude, verificado en los headers de producción, 08/11 15:20):** la política de seguridad del sitio (`vercel.json`, header `Content-Security-Policy`) tiene **`script-src 'self'` sin `'wasm-unsafe-eval'`**. Tesseract necesita compilar **WebAssembly**, y Chrome lo **bloquea** con esa política: el worker de OCR no arranca y `createWorker()` se queda esperando o falla. Por eso «0 de 8». **Además, ninguna prueba lo detectó**, porque `e2e/supplier-list-import.spec.ts` **reemplaza el OCR por uno falso** (`__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__`) y las pruebas no corren con los headers de producción. Probablemente también estén rotos en producción el **OCR de capturas** (I24) y el de **PDF escaneados** (I24 fase 2), que usan el mismo Tesseract.
 
 **Arreglo de la causa (obligatorio, primero):**
 - Agregar **`'wasm-unsafe-eval'`** a `script-src` en `vercel.json`: permite compilar WebAssembly, **no** habilita `eval` de JavaScript. Revisar que el worker (`/tesseract/worker.min.js`) y su core reciban esa misma política.
