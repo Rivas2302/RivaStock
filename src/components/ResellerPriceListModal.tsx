@@ -51,6 +51,7 @@ import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } f
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
 import { getResellerProductEconomics } from '../lib/resellerProductEconomics';
+import { getProductPhotoUrls, getProductThumbnailUrl } from '../lib/productPhotos';
 import {
   getResellerPricingAdvice,
   matchesResellerPricingAdviceFilter,
@@ -66,6 +67,8 @@ import { planSupplierImport } from '../lib/supplierImportReview';
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
+import { createSupplierPhotoOcrWorker, getActiveSupplierPhotoReview, inspectSupplierPhotoBrand, isSupplierPhotoReviewBlocking, normalizeSupplierImportRow, supplierPhotoReviewFields, type SupplierPhotoBrandIndicators, type SupplierPhotoReview } from '../lib/supplierPrivacy';
+import { getSupplierAssetStoragePath } from '../lib/supplierPhotoStorage';
 import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupplierImportBatch, type SupplierImportRemovalPreview } from '../lib/resellerSupplierRemoval';
 import { applyResellerPriceListBulkMutations, getBulkActionProductIds, toPriceListBulkRow, type ResellerPriceListBulkMutation, type ResellerPriceListBulkProgress } from '../lib/resellerPriceListBulk';
 import { assertStorageUploadAllowed } from '../lib/platformStorage';
@@ -126,6 +129,19 @@ function formatSupplierImportDate(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Sin importaciones';
   return `Última importación: ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' }).format(date)}`;
+}
+
+function supplierPhotoIndicators(supplier: Supplier | undefined, sourceUrl: string): SupplierPhotoBrandIndicators {
+  return {
+    supplierName: supplier?.name,
+    catalogUrl: supplier?.catalogUrl,
+    sourceUrl,
+    phone: supplier?.phone,
+  };
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, 0));
 }
 
 const buildDraftItem = (product: Product, list: PriceList, index: number): PriceListItem => ({
@@ -299,6 +315,12 @@ export default function ResellerPriceListModal({
   const [supplierImportOnlyPhotos, setSupplierImportOnlyPhotos] = useState(true);
   const [supplierImportPhotoFailures, setSupplierImportPhotoFailures] = useState(0);
   const [supplierImportPhotoFailedRows, setSupplierImportPhotoFailedRows] = useState<number[]>([]);
+  const [supplierPhotoOcrProgress, setSupplierPhotoOcrProgress] = useState<{ done: number; total: number } | null>(null);
+  const [supplierPhotoOcrFailures, setSupplierPhotoOcrFailures] = useState(0);
+  const [supplierPhotoOcrNotice, setSupplierPhotoOcrNotice] = useState<string | null>(null);
+  const [supplierNameCleanupBusy, setSupplierNameCleanupBusy] = useState(false);
+  const [supplierNameCleanupNotice, setSupplierNameCleanupNotice] = useState<string | null>(null);
+  const supplierPhotoOcrRun = useRef(0);
   const [supplierImportProductIdsByRow, setSupplierImportProductIdsByRow] = useState<Record<number, string>>({});
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
@@ -927,8 +949,199 @@ export default function ResellerPriceListModal({
     }
   };
 
+  const scanSupplierImportPhotos = async (
+    rows: SupplierListDraftRow[],
+    supplierUrl: string,
+    supplier: Supplier | undefined,
+  ) => {
+    const candidates = rows.filter(row => getSupplierCatalogImageUrl(row.imageUrl, supplierUrl));
+    if (candidates.length === 0) return;
+    const run = ++supplierPhotoOcrRun.current;
+    const candidateRows = new Set(candidates.map(row => row.sourceRow));
+    setSupplierImportRows(current => current.map(row => candidateRows.has(row.sourceRow)
+      ? { ...row, photoBrandReview: { ...row.photoBrandReview, source: { status: 'pending', matches: [] } } }
+      : row));
+    setSupplierPhotoOcrProgress({ done: 0, total: candidates.length });
+    setSupplierPhotoOcrFailures(0);
+    setSupplierPhotoOcrNotice(null);
+    let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
+    let flagged = 0;
+    let processed = 0;
+    try {
+      worker = await createSupplierPhotoOcrWorker();
+      const failures = await processSupplierPhotoBatch(candidates, async row => {
+        if (supplierPhotoOcrRun.current !== run) return;
+        const sourceUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierUrl);
+        if (!sourceUrl) throw new Error('Foto fuera del dominio de la lista.');
+        const file = await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+        if (!file) throw new Error('No se pudo leer la foto.');
+        const detection = await inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker!);
+        if (detection.flagged) flagged++;
+        setSupplierImportRows(current => current.map(item => item.sourceRow === row.sourceRow
+          ? { ...item, photoBrandReview: { ...item.photoBrandReview, source: { status: detection.flagged ? 'flagged' : 'clear', matches: detection.matches } } }
+          : item));
+        processed++;
+        if (processed % 5 === 0) await yieldToBrowser();
+      }, (done, total) => {
+        if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress({ done, total });
+      }, row => {
+        if (supplierPhotoOcrRun.current === run) setSupplierImportRows(current => current.map(item => item.sourceRow === row.sourceRow
+          ? { ...item, photoBrandReview: { ...item.photoBrandReview, source: { status: 'failed', matches: [] } } }
+          : item));
+      });
+      if (supplierPhotoOcrRun.current !== run) return;
+      setSupplierPhotoOcrFailures(failures);
+      setSupplierPhotoOcrNotice(`Revisamos ${candidates.length} fotos; ${flagged} quedaron marcadas con texto asociado al proveedor.`);
+    } catch {
+      if (supplierPhotoOcrRun.current === run) {
+        setSupplierImportRows(current => current.map(row => candidateRows.has(row.sourceRow)
+          ? { ...row, photoBrandReview: { ...row.photoBrandReview, source: { status: 'failed', matches: [] } } }
+          : row));
+        setSupplierPhotoOcrFailures(candidates.length);
+        setSupplierPhotoOcrNotice('No pudimos analizar algunas fotos. Revisalas antes de agregarlas.');
+      }
+    } finally {
+      await worker?.terminate();
+      if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress(null);
+    }
+  };
+
+  const scanReplacementPhoto = async (
+    sourceRow: number,
+    file: File,
+    supplierUrl: string,
+    supplier: Supplier | undefined,
+  ) => {
+    setSupplierImportRows(current => current.map(row => row.sourceRow === sourceRow
+      ? { ...row, photoBrandReview: { ...row.photoBrandReview, replacement: { status: 'pending', matches: [] } } }
+      : row));
+    let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
+    try {
+      worker = await createSupplierPhotoOcrWorker();
+      const detection = await inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker);
+      setSupplierImportRows(current => current.map(row => row.sourceRow === sourceRow
+        ? { ...row, photoBrandReview: { ...row.photoBrandReview, replacement: { status: detection.flagged ? 'flagged' : 'clear', matches: detection.matches } } }
+        : row));
+    } catch {
+      setSupplierImportRows(current => current.map(row => row.sourceRow === sourceRow
+        ? { ...row, photoBrandReview: { ...row.photoBrandReview, replacement: { status: 'failed', matches: [] } } }
+        : row));
+    } finally {
+      await worker?.terminate();
+    }
+  };
+
+  const handleSupplierPhotoSelect = (row: SupplierListDraftRow, file: File | undefined) => {
+    setSupplierImportPhotoFiles(current => {
+      const next = { ...current };
+      if (file) next[row.sourceRow] = file;
+      else delete next[row.sourceRow];
+      return next;
+    });
+    setSupplierImportPhotoFailedRows(current => current.filter(sourceRow => sourceRow !== row.sourceRow));
+    if (file) {
+      const supplier = suppliers.find(item => item.id === editingSupplierId);
+      void scanReplacementPhoto(row.sourceRow, file, supplierImportPageUrl, supplier);
+    } else {
+      setSupplierImportRows(current => current.map(item => {
+        if (item.sourceRow !== row.sourceRow || !item.photoBrandReview) return item;
+        const review = { ...item.photoBrandReview };
+        delete review.replacement;
+        return { ...item, photoBrandReview: review };
+      }));
+    }
+  };
+
+  const sanitizeExistingSupplierNames = async () => {
+    if (!canWrite || !editingSupplierId || supplierNameCleanupBusy) return;
+    setSupplierNameCleanupBusy(true);
+    setSupplierNameCleanupNotice(null);
+    try {
+      const { data, error: cleanupError } = await supabase.rpc('sanitize_reseller_supplier_product_names', {
+        p_supplier_id: editingSupplierId,
+      });
+      if (cleanupError) throw cleanupError;
+      const updatedCount = Number(data) || 0;
+      invalidateDbCache('products');
+      const refreshedProducts = await db.list<Product>('products', ownerUid);
+      const supplierProductIds = new Set(supplierDraftProductIds);
+      onProductsImported(refreshedProducts.filter(product => supplierProductIds.has(product.id)));
+      setSupplierNameCleanupNotice(updatedCount > 0
+        ? `Actualizamos ${updatedCount} ${updatedCount === 1 ? 'nombre' : 'nombres'}. Los códigos internos se conservaron.`
+        : 'No había nombres con códigos de proveedor para limpiar.');
+    } catch {
+      setSupplierNameCleanupNotice('No pudimos limpiar los nombres. Revisá tu conexión y volvé a intentar.');
+    } finally {
+      setSupplierNameCleanupBusy(false);
+    }
+  };
+
+  const scanExistingSupplierPhotos = async () => {
+    if (!canWrite || !editingSupplierId || supplierPhotoOcrProgress) return;
+    const selectedProducts = products.filter(product => selectedSupplierProductSet.has(product.id));
+    const targets = selectedProducts.flatMap(product => getProductPhotoUrls(product).map((url, index) => ({ product, url, index })));
+    if (targets.length === 0) {
+      setSupplierPhotoOcrNotice('La lista no tiene fotos para analizar.');
+      return;
+    }
+    const supplier = suppliers.find(item => item.id === editingSupplierId);
+    const run = ++supplierPhotoOcrRun.current;
+    const findings = new Map<string, Array<{ index: number; matches: string[] }>>();
+    let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
+    let processed = 0;
+    setSupplierPhotoOcrProgress({ done: 0, total: targets.length });
+    setSupplierPhotoOcrFailures(0);
+    setSupplierPhotoOcrNotice(null);
+    try {
+      worker = await createSupplierPhotoOcrWorker();
+      const failures = await processSupplierPhotoBatch(targets, async target => {
+        if (supplierPhotoOcrRun.current !== run) return;
+        const thumbnailUrl = getProductThumbnailUrl(target.url);
+        const storagePath = getSupplierAssetStoragePath(thumbnailUrl, supabaseProjectUrl);
+        if (!storagePath) throw new Error('Foto fuera del almacenamiento del negocio.');
+        const { data, error: downloadError } = await supabase.storage.from('assets').download(storagePath);
+        if (downloadError || !data) throw new Error('No se pudo leer la miniatura.');
+        const detection = await inspectSupplierPhotoBrand(data, supplierPhotoIndicators(supplier, supplier?.catalogUrl ?? ''), worker!);
+        if (detection.flagged) {
+          findings.set(target.product.id, [...(findings.get(target.product.id) ?? []), { index: target.index, matches: detection.matches }]);
+        }
+        processed++;
+        if (processed % 5 === 0) await yieldToBrowser();
+      }, (done, total) => {
+        if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress({ done, total });
+      });
+      if (supplierPhotoOcrRun.current !== run) return;
+      const checkedAt = new Date().toISOString();
+      for (const product of selectedProducts) {
+        const matches = findings.get(product.id) ?? [];
+        const wasFlagged = product.customFields?.supplierPhotoBrandFlag === true;
+        if (matches.length === 0 && !wasFlagged) continue;
+        const evidence = matches.map(item => `Foto ${item.index + 1}: ${item.matches.join(', ')}`).join('; ').slice(0, 1000);
+        const saved = await db.update<Product>('products', product.id, {
+          customFields: {
+            ...(product.customFields ?? {}),
+            supplierPhotoBrandFlag: matches.length > 0,
+            supplierPhotoBrandApproved: matches.length > 0 && product.customFields?.supplierPhotoBrandApproved === true,
+            supplierPhotoBrandFlaggedCount: matches.length,
+            supplierPhotoBrandEvidence: evidence || null,
+            supplierPhotoBrandCheckedAt: checkedAt,
+          },
+        });
+        onProductsImported([saved]);
+      }
+      setSupplierPhotoOcrFailures(failures);
+      const flaggedPhotos = Array.from(findings.values()).reduce((count, value) => count + value.length, 0);
+      setSupplierPhotoOcrNotice(`Analizamos ${targets.length} fotos de la lista; ${flaggedPhotos} quedaron marcadas con texto asociado al proveedor.`);
+    } catch {
+      if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrNotice('No pudimos terminar el análisis de fotos importadas. Podés volver a intentarlo.');
+    } finally {
+      await worker?.terminate();
+      if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress(null);
+    }
+  };
+
   const handleSupplierImportPage = async () => {
-    if (!supplierImportPageUrl.trim() || supplierImportReading) return;
+    if (!supplierImportPageUrl.trim() || supplierImportReading || supplierPhotoOcrProgress) return;
     setSupplierImportReading(true);
     setError(null);
     try {
@@ -960,7 +1173,7 @@ export default function ResellerPriceListModal({
       } else {
         setSupplierImportRateNotice(null);
       }
-      const rows = catalog.items.length > 0
+      const rows = (catalog.items.length > 0
         ? catalog.items.map((item, index) => ({
           sourceRow: index + 1,
           sourceCode: item.code,
@@ -973,7 +1186,7 @@ export default function ResellerPriceListModal({
             : item.price === null || item.price <= 0 ? 'Sin precio, revisar.'
               : null,
         }))
-        : parseSupplierListText(catalog.text ?? '');
+        : parseSupplierListText(catalog.text ?? '')).map(normalizeSupplierImportRow);
       if (rows.length === 0) throw new Error('No encontramos texto para revisar en esa página.');
       setSupplierImportRows(rows);
       setSupplierImportCurrency(catalog.currency);
@@ -981,6 +1194,7 @@ export default function ResellerPriceListModal({
       setSupplierImportOnlyPhotos(true);
       setSupplierImportPhotoFailures(0);
       setSupplierImportPhotoFailedRows([]);
+      void scanSupplierImportPhotos(rows, supplierImportPageUrl.trim(), selectedSupplier);
       if (displayMode === 'page') setSupplierImportStep(2);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos leer esa página.');
@@ -1046,7 +1260,8 @@ export default function ResellerPriceListModal({
     discountPercent: discount,
     rounding: supplierImportRounding,
     marginForRow: getSupplierImportMargin,
-  }), [discount, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportRounding, supplierImportUsdRate, supplierImportCategoryMargins, supplierImportMargin]);
+    hasReplacementForRow: row => Boolean(supplierImportPhotoFiles[row.sourceRow]),
+  }), [discount, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportRounding, supplierImportUsdRate, supplierImportCategoryMargins, supplierImportMargin, supplierImportPhotoFiles]);
   const supplierImportCounts = useMemo(() => supplierImportReview.reduce((counts, entry) => {
     counts[entry.action]++;
     return counts;
@@ -1136,6 +1351,8 @@ export default function ResellerPriceListModal({
           const categoryName = entry.row.category.trim();
           const category = categoryByName.get(categoryName.toLocaleLowerCase('es-AR'));
           const now = new Date().toISOString();
+          const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
+          const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           const product: Product = {
             ...(existing ?? {} as Product),
             id: resolvedIds.get(entry.row.sourceRow)!,
@@ -1152,6 +1369,7 @@ export default function ResellerPriceListModal({
             catalogOnly: true,
             catalogCost: entry.supplierCostLocal,
             barcode: normalizeBarcode(entry.row.sourceCode ?? existing?.barcode ?? '') || undefined,
+            ...(Object.keys(customFields).length ? { customFields } : {}),
             ownerUid,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
@@ -1807,6 +2025,8 @@ export default function ResellerPriceListModal({
                         <section aria-label="Importar lista del proveedor" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
                           {displayMode === 'page' && <div className="flex flex-wrap items-center justify-between gap-2">
                             <h5 className="text-sm font-bold text-[var(--ink)]">{supplier.name} · Importar lista</h5>
+                            <button type="button" onClick={() => void sanitizeExistingSupplierNames()} disabled={!canWrite || supplierSaving || supplierNameCleanupBusy} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">{supplierNameCleanupBusy ? 'Limpiando nombres…' : 'Limpiar códigos de nombres'}</button>
+                            <button type="button" onClick={() => void scanExistingSupplierPhotos()} disabled={!canWrite || supplierSaving || Boolean(supplierPhotoOcrProgress) || supplierDraftProductIds.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Analizar fotos importadas</button>
                             <button type="button" onClick={() => setEditingSupplierId(null)} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)]">Volver a proveedores</button>
                           </div>}
                           {displayMode === 'page' && <nav aria-label="Pasos para importar" className="grid grid-cols-3 gap-2">
@@ -1843,7 +2063,10 @@ export default function ResellerPriceListModal({
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           </div>
+                          {supplierNameCleanupNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierNameCleanupNotice}</p>}
                           {supplierImportRows.length > 0 && <>
+                            {supplierPhotoOcrProgress && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">Analizando fotos: {supplierPhotoOcrProgress.done} de {supplierPhotoOcrProgress.total}. Podés seguir usando la pantalla.</p>}
+                            {supplierPhotoOcrNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierPhotoOcrNotice}{supplierPhotoOcrFailures > 0 ? ` ${supplierPhotoOcrFailures} fotos no se pudieron analizar.` : ''}</p>}
                             {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm text-[var(--ink)]"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportRateNotice && <p aria-live="polite" className="text-xs text-[var(--ink-muted)]">{supplierImportRateNotice}</p>}{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
                               <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} onBlur={event => { const rate = Number(event.currentTarget.value); if (rate > 0) void persistSupplierImportRate(rate); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" placeholder="Ingresá la cotización"/>
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
@@ -1913,7 +2136,25 @@ export default function ResellerPriceListModal({
                             {displayMode === 'page' && <button type="button" onClick={() => setSupplierImportStep(3)} className="min-h-11 w-full rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Seguir: revisar</button>}
                             </div>
                             <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-2" aria-label="Productos importados">
-                              {supplierImportPageRows.map(entry => { const row = entry.row; const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl); const hasPhoto = Boolean(supplierImportPhotoFiles[row.sourceRow] || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow))); const previewCandidate = sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0]; const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null; const rowStatus = entry.action === 'review' ? 'Revisar' : hasPhoto ? 'Listo' : 'Sin foto'; return <article key={row.sourceRow} className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
+                              {supplierImportPageRows.map(entry => {
+                                const row = entry.row;
+                                const sourceImageUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierImportPageUrl);
+                                const hasReplacement = Boolean(supplierImportPhotoFiles[row.sourceRow]);
+                                const activePhotoReview = getActiveSupplierPhotoReview(row.photoBrandReview, hasReplacement);
+                                const photoReviewBlocks = isSupplierPhotoReviewBlocking(row.photoBrandReview, hasReplacement);
+                                const hasPhoto = Boolean(hasReplacement || hasProductPhoto(entry.existingProduct) || (sourceImageUrl && !supplierImportPhotoFailedRows.includes(row.sourceRow)));
+                                const previewCandidate = hasReplacement ? undefined : sourceImageUrl ?? entry.existingProduct?.imageUrl ?? entry.existingProduct?.images?.[0];
+                                const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null;
+                                const rowStatus = activePhotoReview?.status === 'pending' ? 'Analizando foto'
+                                  : activePhotoReview?.status === 'flagged' && !activePhotoReview.approved ? 'Con marca del proveedor'
+                                    : activePhotoReview?.status === 'failed' && !activePhotoReview.approved ? 'Sin analizar'
+                                      : entry.action === 'review' ? 'Revisar' : hasPhoto ? 'Listo' : 'Sin foto';
+                                const rowStatusClass = rowStatus === 'Con marca del proveedor' || rowStatus === 'Sin analizar' || rowStatus === 'Revisar'
+                                  ? 'bg-rose-50 text-rose-700'
+                                  : rowStatus === 'Sin foto' ? 'bg-amber-50 text-amber-800'
+                                    : rowStatus === 'Analizando foto' ? 'bg-[var(--surface-2)] text-[var(--ink-muted)]'
+                                      : 'bg-[var(--surface-2)] text-[var(--ink-muted)]';
+                                return <article key={row.sourceRow} className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
                                   <details open={displayMode !== 'page'} className="group">
                                     <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                                   <div className="flex items-center gap-2 sm:w-24 sm:flex-col sm:items-start">
@@ -1928,7 +2169,7 @@ export default function ResellerPriceListModal({
                                     <p className="truncate text-sm font-semibold text-[var(--ink)]">{row.name}</p>
                                     <p className="mt-1 text-xs text-[var(--ink-muted)]">{row.sourceCode || 'Sin código'} · {entry.supplierCostLocal === null ? 'Sin costo válido' : formatCurrency(entry.supplierCostLocal)} → {entry.suggestedSalePrice === null ? 'Sin precio sugerido' : formatCurrency(entry.suggestedSalePrice)}</p>
                                   </div>
-                                  <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold', rowStatus === 'Revisar' ? 'bg-rose-50 text-rose-700' : rowStatus === 'Sin foto' ? 'bg-amber-50 text-amber-800' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{rowStatus}</span>
+                                  <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold', rowStatusClass)}>{rowStatus}</span>
                                 </summary>
                                 <div className="mt-3 border-t border-[var(--line)] pt-3">
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
@@ -1939,11 +2180,18 @@ export default function ResellerPriceListModal({
                                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
                                   {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
                                   {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
-                                  <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => { setSupplierImportPhotoFiles(current => { const next = { ...current }; if (file) next[row.sourceRow] = file; else delete next[row.sourceRow]; return next; }); setSupplierImportPhotoFailedRows(current => current.filter(sourceRow => sourceRow !== row.sourceRow)); }}/></div>
+                                  {activePhotoReview?.status === 'pending' && <p role="status" className="text-xs font-semibold text-[var(--ink-muted)] sm:col-span-2">Analizando la foto con OCR local…</p>}
+                                  {activePhotoReview?.status === 'flagged' && <p role="note" className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Con marca del proveedor: {activePhotoReview.matches.join(', ')}. Elegí otra foto o usala solo si confirmás que está bien.</p>}
+                                  {activePhotoReview?.status === 'failed' && <p role="note" className="text-xs font-semibold text-amber-800 dark:text-amber-200 sm:col-span-2">No pudimos analizar esta foto. Elegí otra o revisala antes de usarla.</p>}
+                                  {photoReviewBlocks && activePhotoReview && activePhotoReview.status !== 'pending' && <button type="button" onClick={() => setSupplierImportRows(current => current.map(item => item.sourceRow === row.sourceRow
+                                    ? { ...item, photoBrandReview: { ...item.photoBrandReview, [hasReplacement ? 'replacement' : 'source']: { ...activePhotoReview, approved: true } } }
+                                    : item))} className="min-h-10 rounded-lg border border-amber-500 px-3 text-xs font-bold text-amber-900 dark:text-amber-200 sm:col-span-2">Usar igual</button>}
+                                  <div className="sm:col-span-2"><SupplierListPhotoPicker label={row.name || `fila ${row.sourceRow}`} selectedFile={supplierImportPhotoFiles[row.sourceRow]} screenshot={supplierImportScreenshot} disabled={!canWrite || supplierSaving || supplierImportReading} onSelect={file => handleSupplierPhotoSelect(row, file)}/></div>
                                 </div>
                                 </div>
                                   </details>
-                                </article>; })}
+                                </article>;
+                              })}
                             </div>
                           </>}
                         </section>
@@ -1987,6 +2235,9 @@ export default function ResellerPriceListModal({
                               <span className="min-w-0">
                                 <span className="block truncate font-bold text-slate-800 dark:text-slate-100">{product.name}</span>
                                 <span className="block text-xs text-slate-500">{product.category} · Stock: {product.stock}</span>
+                                {product.customFields?.supplierPhotoBrandFlag === true && <span title={typeof product.customFields.supplierPhotoBrandEvidence === 'string' ? product.customFields.supplierPhotoBrandEvidence : undefined} className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                                  Con marca del proveedor · {Math.max(1, Number(product.customFields.supplierPhotoBrandFlaggedCount) || 1)} {Number(product.customFields.supplierPhotoBrandFlaggedCount) === 1 ? 'foto' : 'fotos'}
+                                </span>}
                               </span>
                             </label>
                           ))}

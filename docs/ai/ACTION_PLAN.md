@@ -751,7 +751,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px de punta a punta (importar → precios → revisar → agregar filtrados) sin crear productos reales, capturas de cada paso en tema claro y oscuro, y rutas viejas que no se rompan.
 
-### [ ] I29 Revendedores también en el celular — **pedido de Riva el 07/11 20:56 («Obviamente quiero que esté presente en el celular»)**
+### [x] I29 Revendedores también en el celular — **pedido de Riva el 07/11 20:56 («Obviamente quiero que esté presente en el celular»)**
 
 **Problema:** en I28 se agregó `desktopOnly: true` a «Revendedores» (`src/components/AppNavigation.tsx`), así que en el celular no aparece en el menú. Fue una mala lectura de «el menú del celular no se toca»: lo que Riva quería es que **no se rediseñe** el menú, no que falte Revendedores.
 

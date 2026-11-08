@@ -41,4 +41,25 @@ describe('supplier import review', () => {
       discountPercent: 20, rounding: 'none', marginForRow: () => 25,
     })[0].action).toBe('new');
   });
+
+  it('keeps photos with provider branding out of the ready rows until explicitly resolved', () => {
+    const input = {
+      rows: [row({ photoBrandReview: { source: { status: 'flagged' as const, matches: ['www'] } } })],
+      supplierProducts: [], currency: 'USD', usdRate: 1000,
+      discountPercent: 20, rounding: 'none' as const, marginForRow: () => 25,
+    };
+    expect(planSupplierImport(input)[0].action).toBe('review');
+    expect(planSupplierImport({
+      ...input,
+      rows: [row({ photoBrandReview: { source: { status: 'flagged', matches: ['www'], approved: true } } })],
+    })[0].action).toBe('new');
+    expect(planSupplierImport({
+      ...input,
+      hasReplacementForRow: () => true,
+      rows: [row({ photoBrandReview: {
+        source: { status: 'flagged', matches: ['www'] },
+        replacement: { status: 'clear', matches: [] },
+      } })],
+    })[0].action).toBe('new');
+  });
 });

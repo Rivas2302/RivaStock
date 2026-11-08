@@ -17,8 +17,20 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean } = {}) {
-  const products: Record<string, unknown>[] = options.largeFixture ? [
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean } = {}) {
+  await page.addInitScript(texts => {
+    let index = 0;
+    Object.defineProperty(window, '__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__', {
+      configurable: false,
+      value: () => ({
+        recognize: async () => ({ data: { text: texts[Math.min(index++, texts.length - 1)] || '' } }),
+        terminate: async () => undefined,
+      }),
+    });
+  }, options.ocrTexts ?? ['']);
+  const products: Record<string, unknown>[] = options.nameCleanupFixture ? [
+    { id: 'supplier-name-1', user_id: owner, name: 'HM352 – HUMIFICADOR LED ESTILO FUEGO', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'HM352', image_url: null, images: [] },
+  ] : options.largeFixture ? [
     ...Array.from({ length: 2_499 }, (_, index) => ({
       id: `product-${String(index + 1).padStart(4, '0')}`,
       user_id: owner,
@@ -33,7 +45,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'bulk-provider-included', user_id: owner, name: '[QA] Producto proveedor', category: 'General', category_id: 'category-general', stock: 0, sale_price: 4000, catalog_only: true, catalog_cost: 2500, barcode: 'QA-PROVIDER-1', image_url: 'https://fixture.invalid/provider.webp', images: ['https://fixture.invalid/provider.webp'] },
   ] : [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
-  let supplierProductIds: string[] = options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
+  let supplierProductIds: string[] = options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
   ] : options.bulkFixture ? [
@@ -84,6 +96,17 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       const rpc = path.split('/').pop();
       if (rpc === 'get_owner_profile') return route.fulfill({ json: [{ id: owner, role: 'admin', business_name: 'Negocio QA', display_name: 'Dueño QA', currency_symbol: '$', dark_mode: false, onboarding_completed_at: now, created_at: now }] });
       if (rpc === 'is_platform_admin') return route.fulfill({ json: false });
+      if (rpc === 'sanitize_reseller_supplier_product_names') {
+        let updated = 0;
+        for (const product of products) {
+          if (!supplierProductIds.includes(String(product.id)) || typeof product.name !== 'string') continue;
+          if (/^[A-Z\d._/-]{2,32}\s*[–—-]\s+/u.test(product.name)) {
+            product.name = product.name.replace(/^[A-Z\d._/-]{2,32}\s*[–—-]\s+/u, '').toLocaleLowerCase('es-AR').replace(/^\p{L}/u, letter => letter.toLocaleUpperCase('es-AR')).replace(/\b(led|usb|hdmi|rgb)\b/gi, token => token.toLocaleUpperCase('en-US'));
+            updated++;
+          }
+        }
+        return route.fulfill({ json: updated });
+      }
       if (rpc === 'my_business_plan') return route.fulfill({ json: { plan_code: 'base', plan_name: 'RivaStock', status: 'active', limits: { modules: { ai: false, knowledge: false, automation: false } } } });
       if (rpc === 'storage_upload_check') return route.fulfill({ json: { allowed: true } });
       if (rpc === 'get_public_catalog_products') return route.fulfill({ json: [] });
@@ -241,9 +264,49 @@ async function openMobileSupplierImportFromStock(page: Page) {
 }
 
 async function continueSupplierImportToReview(page: Page, importRegion: ReturnType<Page['getByRole']>) {
+  await expect(importRegion.getByText(/Revisamos \d+ fotos;/)).toBeVisible();
   await importRegion.getByRole('button', { name: 'Seguir: revisar' }).click();
   await expect(page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '3. Revisar' }))
     .toHaveAttribute('aria-current', 'step');
+}
+
+for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
+  test(`historical supplier-name cleanup preserves the internal barcode at ${viewport.width}px`, async ({ page }) => {
+    const { products } = await mockApp(page, { nameCleanupFixture: true });
+    await page.setViewportSize(viewport);
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+    const providers = page.getByRole('tabpanel', { name: 'Proveedores' });
+    await providers.getByRole('button', { name: 'Importar lista' }).first().click();
+    await providers.getByRole('button', { name: 'Limpiar códigos de nombres' }).click();
+    await expect(providers.getByRole('status').filter({ hasText: 'Actualizamos 1 nombre' })).toBeVisible();
+    expect(products[0]).toMatchObject({ name: 'Humificador LED estilo fuego', barcode: 'HM352' });
+  });
+
+  test(`supplier photo OCR blocks provider-branded photos until explicit approval at ${viewport.width}px`, async ({ page }) => {
+    const { products } = await mockApp(page, { ocrTexts: ['www.mrtecno.com.ar', '', ''] });
+    await page.setViewportSize(viewport);
+    page.on('dialog', dialog => dialog.accept());
+    const importRegion = await openMobileSupplierImportFromStock(page);
+    await importRegion.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+    await importRegion.getByRole('button', { name: 'Leer enlace' }).click();
+    await importRegion.getByLabel('Cotización USD a pesos').fill('1600');
+    await importRegion.getByLabel('Los precios incluyen IVA').selectOption('false');
+    await continueSupplierImportToReview(page, importRegion);
+
+    await expect(importRegion.getByText('Con marca del proveedor').first()).toBeVisible();
+    await expect(importRegion.getByText('3 productos · 2 listos · 1 para revisar')).toBeVisible();
+    const firstProduct = importRegion.getByLabel('Producto de fila 1');
+    await firstProduct.scrollIntoViewIfNeeded();
+    await importRegion.getByText('Con marca del proveedor').first().click();
+    await expect(importRegion.getByRole('button', { name: 'Usar igual' }).first()).toBeVisible();
+    await importRegion.getByRole('button', { name: 'Usar igual' }).first().click();
+    await expect(importRegion.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
+    await importRegion.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+    await expect.poll(() => products.length).toBe(3);
+    expect(products[0]).toMatchObject({ name: 'Lámpara solar', barcode: '1015' });
+    expect(products[0].custom_fields).toMatchObject({ supplierPhotoBrandFlag: true, supplierPhotoBrandApproved: true });
+  });
 }
 
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
@@ -324,7 +387,7 @@ test('bulk import button confirms and creates only products matching the active 
 });
 
 test('a failed supplier image does not block other photos or product import', async ({ page }) => {
-  const { products, failImagesAt } = await mockApp(page, { failImageIndex: 2 });
+  const { products, failImagesAt } = await mockApp(page);
   page.on('dialog', dialog => dialog.accept());
   const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
@@ -332,6 +395,7 @@ test('a failed supplier image does not block other photos or product import', as
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
   await continueSupplierImportToReview(page, modal);
+  failImagesAt(2);
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(2);

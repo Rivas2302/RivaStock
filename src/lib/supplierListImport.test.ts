@@ -14,6 +14,13 @@ describe('supplier list import', () => {
     ]);
   });
 
+  it('moves a supplier code embedded in the name to the internal code field', () => {
+    expect(parseSupplierListRows([
+      ['Código', 'Nombre', 'Precio'],
+      ['HM352', 'HM352 – HUMIFICADOR LED ESTILO FUEGO', '12.50'],
+    ])).toMatchObject([{ sourceCode: 'HM352', name: 'Humificador LED estilo fuego' }]);
+  });
+
   it('keeps malformed rows visible for review instead of silently discarding them', () => {
     expect(parseSupplierListRows([
       ['Producto', 'Costo'],

@@ -1,3 +1,6 @@
+import type { SupplierPhotoBrandReview } from './supplierPrivacy';
+import { normalizeSupplierImportRow } from './supplierPrivacy';
+
 export interface SupplierListDraftRow {
   sourceRow: number;
   name: string;
@@ -8,6 +11,7 @@ export interface SupplierListDraftRow {
   marginPercent?: number;
   imageUrl: string | null;
   error: string | null;
+  photoBrandReview?: SupplierPhotoBrandReview;
 }
 
 const HEADER_ALIASES: Record<'name' | 'cost' | 'category' | 'image' | 'code', string[]> = {
@@ -72,7 +76,7 @@ export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow
     const sourceCode = columns.code >= 0 ? String(row[columns.code] ?? '').trim() : '';
     const imageUrl = /^https?:\/\//i.test(rawImage) ? rawImage : null;
     if (!name && (rawCost === null || rawCost === undefined || String(rawCost).trim() === '')) return [];
-    return [{
+    return [normalizeSupplierImportRow({
       sourceRow: index + 2,
       ...(sourceCode ? { sourceCode } : {}),
       name,
@@ -82,7 +86,7 @@ export function parseSupplierListRows(matrix: unknown[][]): SupplierListDraftRow
       error: !name ? 'Falta el nombre del producto.'
         : supplierCost === null || supplierCost <= 0 ? 'Revisá el precio de costo.'
           : rawImage && !imageUrl ? 'La imagen debe tener una URL HTTP o HTTPS.' : null,
-    }];
+    })];
   });
 }
 
@@ -136,7 +140,7 @@ export function parseSupplierListAiOutput(output: string, sourceRows: SupplierLi
     // Imported rows are untrusted: the model may only preserve an image URL
     // that was present in the source, never introduce an arbitrary remote URL.
     const imageUrl = source.imageUrl;
-    return [{
+    return [normalizeSupplierImportRow({
       sourceRow,
       name,
       ...(source.sourceCode ? { sourceCode: source.sourceCode } : {}),
@@ -146,6 +150,6 @@ export function parseSupplierListAiOutput(output: string, sourceRows: SupplierLi
       marginPercent: source.marginPercent,
       imageUrl,
       error: !name ? 'Falta el nombre del producto.' : supplierCost === null || supplierCost <= 0 ? 'Revisá el precio de costo.' : null,
-    }];
+    })];
   });
 }

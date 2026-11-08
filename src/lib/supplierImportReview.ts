@@ -2,6 +2,7 @@ import type { Product } from '../types';
 import type { SupplierListDraftRow } from './supplierListImport';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from './resellerSupplierRounds';
 import { isSupplierManagedPhotoUrl } from './supplierCatalogPhoto';
+import { isSupplierPhotoReviewBlocking, normalizeSupplierImportRow } from './supplierPrivacy';
 
 export type SupplierImportAction = 'new' | 'updated' | 'unchanged' | 'review';
 
@@ -30,6 +31,7 @@ export function planSupplierImport(input: {
   discountPercent: number;
   rounding: SupplierPriceRounding;
   marginForRow: (row: SupplierListDraftRow) => number;
+  hasReplacementForRow?: (row: SupplierListDraftRow) => boolean;
 }): SupplierImportReviewEntry[] {
   const currency = input.currency?.toUpperCase() ?? null;
   const existingByCode = new Map<string, Product>();
@@ -40,7 +42,9 @@ export function planSupplierImport(input: {
     const name = normalizeSupplierProductName(product.name);
     if (name && !existingByName.has(name)) existingByName.set(name, product);
   }
-  return input.rows.map(row => {
+  return input.rows.map(sourceRow => {
+    const row = normalizeSupplierImportRow(sourceRow);
+    const photoBlocked = isSupplierPhotoReviewBlocking(row.photoBrandReview, input.hasReplacementForRow?.(row) ?? false);
     const convertedCost = row.supplierCost === null ? null
       : currency === 'USD' ? (Number.isFinite(input.usdRate) && input.usdRate > 0 ? row.supplierCost * input.usdRate : null)
         : currency === null || currency === 'ARS' ? row.supplierCost : null;
@@ -50,7 +54,7 @@ export function planSupplierImport(input: {
       : null;
     const existingProduct = (row.sourceCode ? existingByCode.get(normalizeSourceCode(row.sourceCode)) : undefined)
       ?? existingByName.get(normalizeSupplierProductName(row.name)) ?? null;
-    if (row.error || cost === null || cost <= 0 || suggested === null) {
+    if (row.error || cost === null || cost <= 0 || suggested === null || photoBlocked) {
       return { row, action: 'review', existingProduct, supplierCostLocal: cost, suggestedSalePrice: suggested };
     }
     if (!existingProduct) return { row, action: 'new', existingProduct: null, supplierCostLocal: cost, suggestedSalePrice: suggested };
