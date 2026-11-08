@@ -1692,7 +1692,7 @@ Sin toque en src/, supabase/ ni extensions/.
 - **Revendedores y PDF:** 0 de 867 vinculados a `reseller_supplier_list_items` o `price_list_items`; no aparecen en la lista ni en su PDF. Encontré 1 lista de precios activa, pero ninguna lista de proveedor para Mr Tecno. El lote quedó sin vínculo persistido.
 - De los 867, 690 tienen una foto bajo el formato de Storage de la importación; las categorías asociadas son 26, de las cuales 24 se crearon en la misma hora del lote. No hice cambios de producción en productos, categorías ni archivos.
 - **Decisión técnica:** incorporar de forma conservadora el lote histórico a una lista de proveedor pausada para que el nuevo flujo I32 pueda alcanzarlo; el despliegue no publica productos y no borra filas. La migración aborta si los criterios ya no encuentran exactamente el lote verificado.
-- I32 sigue `[ ]` hasta terminar implementación, backup verificado, migración selectiva, pruebas, deploy Current y captura de la confirmación sin ejecutarla.
+- I32 quedó cerrada para Codex tras implementación, backups verificados, migraciones selectivas, pruebas, deploy `Current` y captura del resumen de confirmación sin ejecutarla; el borrado histórico sigue pendiente del dueño.
 
 ### I32 — implementación y preparación de verificación
 
@@ -1712,4 +1712,11 @@ Sin toque en src/, supabase/ ni extensions/.
 - Lista compacta por páginas de 50, búsqueda por nombre/código, origen y filtros de estado, selección de filas o de los resultados visibles, atajos de Mi stock, acciones de quitar/agregar/disponibilidad y confirmación propia. Los cambios solo escriben `price_list_items`, por lotes secuenciales de 100; nunca actualizan productos o stock. Hay progreso, reintento y deshacer durante 8 segundos.
 - No requiere migración: usa las políticas RLS existentes de `price_list_items`. **No hice escrituras en la lista real de producción**; los cambios se probaron con fixtures.
 - Verificación local: lint aprobado; suite completa **1.153/1.153** con variables ficticias en el proceso; build aprobado; Playwright de importación **10/10**, a 360 y 1440 px. La prueba incluye Mi stock → seleccionar → quitar → deshacer → quitar, agregar y cambiar disponibilidad; comprueba que los productos/stock no se modifican. La prueba unitaria procesa 1.205 IDs en 13 tandas de máximo 100.
-- Pendiente para cerrar I33: documentar el smoke final, commit/push, Vercel `Current`, y Playwright de solo lectura en producción a 360 y 1440 px. No cambiaré la lista real.
+- Cierre de I33: commit `49b17cb` está en `main`; Vercel dio `success`. Playwright con el perfil persistente abrió `/revendedores` y «Lista de precios» en producción a 360 y 1440 px, con ancho de documento igual al viewport y sin errores de consola; las dos capturas están en `%TEMP%\rivastock-i33-production\price-list-{360,1440}.png`. La vista confirma tabla compacta, controles de búsqueda/origen y filas. Fue solo lectura: no se seleccionaron filas ni se cambió la lista real.
+- I33 queda cerrada. La prueba de fixtures también verifica que el catálogo de revendedores deja de mostrar el producto excluido y conserva el producto por pedido.
+
+### I34 — en curso: paginación de colecciones
+
+- Cambio local: `db.list`, `db.listColumns`, y las búsquedas no limitadas de `db.find` / `db.findBy` leen páginas estables de 1.000 filas ordenadas por ID. Las lecturas de artículos y precios de listas de proveedores también se paginan por bloques con orden estable.
+- Verificación local: `npm run lint`, `npm run build`, suite completa **1.157/1.157** y Playwright **11/11**. El fixture de 2.500 productos confirma contador total, búsqueda del P47 después de la primera página y acción en lote dirigida a ese producto, a 360 y 1440 px. Sin migraciones ni escrituras de producción.
+- Pendiente: publicar a `main`, confirmar Vercel `Current` y verificar en producción solo lectura el total aproximado de 1.330 productos y el P47 en la lista.

@@ -23,6 +23,7 @@ interface CacheEntry {
 
 const queryCache = new Map<string, CacheEntry>();
 const MAX_CACHED_QUERIES = 128;
+const COLLECTION_PAGE_SIZE = 1_000;
 const OFFLINE_QUEUE_KEY = 'rivastock:offline-mutations';
 const OFFLINE_QUEUE_EVENT = 'rivastock:offline-queue-changed';
 let databaseActor: string | null = null;
@@ -443,15 +444,23 @@ class SupabaseDB {
     const key = cacheKey('list', collectionName, { ownerUid: ownerUid ?? null });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select('*');
-      if (ownerUid && !ip) {
-        q = q.eq('user_id', ownerUid);
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; ; offset += COLLECTION_PAGE_SIZE) {
+        let query = supabase.from(tbl).select('*');
+        if (ownerUid && !ip) {
+          query = query.eq('user_id', ownerUid);
+        }
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .range(offset, offset + COLLECTION_PAGE_SIZE - 1);
+        if (error) throw new Error(`[db.list:${tbl}] ${error.message}`);
+        const page = (data ?? []) as unknown as Record<string, unknown>[];
+        rows.push(...page);
+        if (page.length < COLLECTION_PAGE_SIZE) break;
       }
 
-      const { data, error } = await q;
-      if (error) throw new Error(`[db.list:${tbl}] ${error.message}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (data as any[]).map(r => fromDb<T>(r, ip));
+      return rows.map(r => fromDb<T>(r, ip));
     });
   }
 
@@ -462,15 +471,23 @@ class SupabaseDB {
     const key = cacheKey('listColumns', collectionName, { ownerUid: ownerUid ?? null, columns: selectedColumns });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select(selectedColumns);
-      if (ownerUid && !ip) {
-        q = q.eq('user_id', ownerUid);
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; ; offset += COLLECTION_PAGE_SIZE) {
+        let query = supabase.from(tbl).select(selectedColumns);
+        if (ownerUid && !ip) {
+          query = query.eq('user_id', ownerUid);
+        }
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .range(offset, offset + COLLECTION_PAGE_SIZE - 1);
+        if (error) throw new Error(`[db.listColumns:${tbl}] ${error.message}`);
+        const page = (data ?? []) as unknown as Record<string, unknown>[];
+        rows.push(...page);
+        if (page.length < COLLECTION_PAGE_SIZE) break;
       }
 
-      const { data, error } = await q;
-      if (error) throw new Error(`[db.listColumns:${tbl}] ${error.message}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (data as any[]).map(r => fromDb<T>(r, ip));
+      return rows.map(r => fromDb<T>(r, ip));
     });
   }
 
@@ -486,13 +503,23 @@ class SupabaseDB {
     const key = cacheKey('find', collectionName, { field: dbField, value, limitCount: limitCount ?? null });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select('*').eq(dbField, value as string);
-      if (limitCount) q = q.limit(limitCount);
-
-      const { data, error } = await q;
-      if (error) throw new Error(`[db.find:${tbl}] ${error.message}`);
+      if (limitCount) {
+        const { data, error } = await supabase.from(tbl).select('*').eq(dbField, value as string).limit(limitCount);
+        if (error) throw new Error(`[db.find:${tbl}] ${error.message}`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (data as any[]).map(r => fromDb<T>(r, ip));
+      }
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; ; offset += COLLECTION_PAGE_SIZE) {
+        const { data, error } = await supabase.from(tbl).select('*').eq(dbField, value as string)
+          .order('id', { ascending: true }).range(offset, offset + COLLECTION_PAGE_SIZE - 1);
+        if (error) throw new Error(`[db.find:${tbl}] ${error.message}`);
+        const page = (data ?? []) as Record<string, unknown>[];
+        rows.push(...page);
+        if (page.length < COLLECTION_PAGE_SIZE) break;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (data as any[]).map(r => fromDb<T>(r, ip));
+      return rows.map(r => fromDb<T>(r, ip));
     });
   }
 
@@ -513,16 +540,32 @@ class SupabaseDB {
     });
 
     return readWithCache(key, async () => {
-      let q = supabase.from(tbl).select('*');
-      for (const filter of normalizedFilters) {
-        q = q.eq(filter.field, filter.value as string);
+      if (limitCount) {
+        let query = supabase.from(tbl).select('*');
+        for (const filter of normalizedFilters) {
+          query = query.eq(filter.field, filter.value as string);
+        }
+        const { data, error } = await query.limit(limitCount);
+        if (error) throw new Error(`[db.findBy:${tbl}] ${error.message}`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (data as any[]).map(r => fromDb<T>(r, ip));
       }
-      if (limitCount) q = q.limit(limitCount);
-
-      const { data, error } = await q;
-      if (error) throw new Error(`[db.findBy:${tbl}] ${error.message}`);
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; ; offset += COLLECTION_PAGE_SIZE) {
+        let query = supabase.from(tbl).select('*');
+        for (const filter of normalizedFilters) {
+          query = query.eq(filter.field, filter.value as string);
+        }
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .range(offset, offset + COLLECTION_PAGE_SIZE - 1);
+        if (error) throw new Error(`[db.findBy:${tbl}] ${error.message}`);
+        const page = (data ?? []) as Record<string, unknown>[];
+        rows.push(...page);
+        if (page.length < COLLECTION_PAGE_SIZE) break;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (data as any[]).map(r => fromDb<T>(r, ip));
+      return rows.map(r => fromDb<T>(r, ip));
     });
   }
 

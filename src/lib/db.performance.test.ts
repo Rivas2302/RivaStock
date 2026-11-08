@@ -11,12 +11,35 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function rangeQuery(rows: Array<Record<string, unknown>>, calls: [string, unknown[]][] = [], error: unknown = null) {
+  let start = 0;
+  let end = 999;
+  let limitCount: number | null = null;
+  const builder: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'order', 'gt', 'gte', 'lte']) {
+    builder[method] = (...args: unknown[]) => { calls.push([method, args]); return builder; };
+  }
+  builder.limit = (limit: number) => { limitCount = limit; calls.push(['limit', [limit]]); return builder; };
+  builder.range = (from: number, to: number) => { start = from; end = to; calls.push(['range', [from, to]]); return builder; };
+  builder.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve({
+    data: error ? null : rows.slice(start, end + 1).slice(0, limitCount ?? undefined), error,
+  }).then(resolve, reject);
+  return builder;
+}
+
+function deferredRangeQuery(promise: Promise<unknown>) {
+  const builder: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'order', 'range']) builder[method] = () => builder;
+  builder.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => promise.then(resolve, reject);
+  return builder;
+}
+
 beforeEach(() => { clearDbCache(); from.mockReset(); rpc.mockReset(); });
 afterEach(() => vi.useRealTimers());
 
 describe('query cache invalidation during requests', () => {
   it('bounds retained query results across long sessions', async () => {
-    from.mockReturnValue({select:()=>({eq:()=>Promise.resolve({data:[{id:'result'}],error:null})})});
+    from.mockReturnValue(rangeQuery([{ id: 'result' }]));
     await db.find('products','name','old');
     for (let index=0; index<128; index++) await db.find('products','name',`search-${index}`);
     const calls = from.mock.calls.length;
@@ -27,7 +50,7 @@ describe('query cache invalidation during requests', () => {
   });
   it.each(['register_customer_payment_v2', 'reconcile_customer_balance', 'toggle_sale_status'])('invalidates the linked ledger and sale after %s', async (name) => {
     let revision = 'old';
-    from.mockImplementation(() => ({select: () => Promise.resolve({data:[{id:revision}],error:null})}));
+    from.mockImplementation(() => rangeQuery([{ id: revision }]));
     expect(await db.list('sales')).toEqual([{id:'old'}]);
     expect(await db.list('customer_transactions')).toEqual([{id:'old'}]);
     revision = 'new';
@@ -39,8 +62,8 @@ describe('query cache invalidation during requests', () => {
   });
   it('shares one bounded recovery attempt between simultaneous readers', async () => {
     vi.useFakeTimers();
-    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: null, error: { message: 'AbortError: Lock broken by another request' } }) });
-    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: [{ id: 'recovered' }], error: null }) });
+    from.mockReturnValueOnce(rangeQuery([], [], { message: 'AbortError: Lock broken by another request' }));
+    from.mockReturnValueOnce(rangeQuery([{ id: 'recovered' }]));
     const readers = Promise.all([db.list('inventory_owners'), db.list('inventory_owners')]);
     await vi.advanceTimersByTimeAsync(200);
     expect(await readers).toEqual([[{ id: 'recovered' }], [{ id: 'recovered' }]]);
@@ -54,10 +77,10 @@ describe('query cache invalidation during requests', () => {
   });
   it('does not let an old read replace a newer cached result', async () => {
     const old = deferred<{ data: { id: string }[]; error: null }>();
-    from.mockReturnValueOnce({ select: () => old.promise });
+    from.mockReturnValueOnce(deferredRangeQuery(old.promise));
     const initial = db.list('products');
     invalidateDbCache('products');
-    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: [{ id: 'new' }], error: null }) });
+    from.mockReturnValueOnce(rangeQuery([{ id: 'new' }]));
     await db.list('products');
     old.resolve({ data: [{ id: 'old' }], error: null });
     await initial;
@@ -66,21 +89,59 @@ describe('query cache invalidation during requests', () => {
   });
   it('does not repopulate cache after session clearing', async () => {
     const old = deferred<{ data: { id: string }[]; error: null }>();
-    from.mockReturnValueOnce({ select: () => old.promise });
+    from.mockReturnValueOnce(deferredRangeQuery(old.promise));
     const pending = db.list('products');
     clearDbCache();
     old.resolve({ data: [{ id: 'old' }], error: null });
     await pending;
-    from.mockReturnValueOnce({ select: () => Promise.resolve({ data: [], error: null }) });
+    from.mockReturnValueOnce(rangeQuery([]));
     expect(await db.list('products')).toEqual([]);
     expect(from).toHaveBeenCalledTimes(2);
   });
   it('deduplicates simultaneous requests', async () => {
-    from.mockReturnValue({ select: () => Promise.resolve({ data: [{ id: 'same' }], error: null }) });
+    from.mockReturnValue(rangeQuery([{ id: 'same' }]));
     const [a, b] = await Promise.all([db.list('products'), db.list('products')]);
     expect(a).toEqual(b);
     expect(a).not.toBe(b);
     expect(from).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('collection reads beyond the PostgREST row cap', () => {
+  const fixtures = Array.from({ length: 2_500 }, (_, index) => ({
+    id: `product-${String(index + 1).padStart(4, '0')}`,
+    user_id: 'owner',
+    name: index === 2_499 ? 'Auricular Bluetooth P47' : `Fixture ${index + 1}`,
+  }));
+
+  it('loads all rows in stable 1,000-row pages from list and listColumns', async () => {
+    const ranges: [string, unknown[]][] = [];
+    from.mockImplementation(() => rangeQuery(fixtures, ranges));
+
+    const listed = await db.list<{ id: string; userId: string; name: string }>('products', 'owner');
+    expect(listed).toHaveLength(2_500);
+    expect(listed.at(-1)).toMatchObject({ id: 'product-2500', name: 'Auricular Bluetooth P47' });
+    expect(ranges.filter(([method]) => method === 'range')).toEqual([
+      ['range', [0, 999]], ['range', [1_000, 1_999]], ['range', [2_000, 2_999]],
+    ]);
+
+    clearDbCache();
+    ranges.splice(0, ranges.length);
+    const selected = await db.listColumns<{ id: string; name: string }>('products', 'owner', 'id,name');
+    expect(selected).toHaveLength(2_500);
+    expect(selected.at(-1)).toMatchObject({ id: 'product-2500', name: 'Auricular Bluetooth P47' });
+    expect(ranges.filter(([method]) => method === 'range')).toHaveLength(3);
+  });
+
+  it('paginates unbounded find and findBy reads while preserving explicitly limited lookups', async () => {
+    const calls: [string, unknown[]][] = [];
+    from.mockImplementation(() => rangeQuery(fixtures, calls));
+
+    expect(await db.find('products', 'userId', 'owner')).toHaveLength(2_500);
+    clearDbCache();
+    expect(await db.findBy('products', [{ field: 'userId', value: 'owner' }])).toHaveLength(2_500);
+    clearDbCache();
+    expect(await db.find('products', 'userId', 'owner', 1)).toHaveLength(1);
   });
 });
 

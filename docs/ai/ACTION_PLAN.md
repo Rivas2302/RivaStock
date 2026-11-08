@@ -666,6 +666,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 ### ⚠️ Orden de ejecución — actualizado por Riva el 07/11 21:22 (I25–I28 ya cerradas)
 
+00. 🔴 **I34** La app solo carga 1.000 productos. **URGENTE: antes que todo lo que falte.**
 0. **I32** Deshacer una importación de proveedor (Riva cargó ~800 de Mr Tecno y los quiere poder borrar). **Va primero.**
 0b. **I33** Acciones en lote en Lista de precios (quitar todos los de «Mi stock» de una vez).
 1. **I29** Revendedores también en el celular (chico y urgente: Riva usa el celular la mitad del tiempo).
@@ -806,7 +807,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** tests de la RPC con PGlite: borra solo los del proveedor y del dueño, respeta las ventas y otro dueño no puede borrar. Playwright con fixtures: confirmación con números → progreso → lista vacía. Deploy en **Current**.
 
-### [ ] I33 Acciones en lote en «Lista de precios» — **pedido de Riva el 07/11 21:48**
+### [x] I33 Acciones en lote en «Lista de precios» — **pedido de Riva el 07/11 21:48**
 
 **Pedido:** «Me gustaría sacar de la lista de revendedores los productos que tengo en stock, pero son muchos y tengo que desmarcar uno por uno». Hoy **no existe** ninguna acción en lote en la pestaña Lista de precios (verificado en `origin/main`). Además, esa pestaña sigue con las tarjetas grandes viejas, no con la tabla de la maqueta `docs/design/revendedores-v2/ListaPrecios.dc.html`.
 
@@ -819,6 +820,18 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 6. Que funcione con más de 1.000 productos sin trabarse (guardado por tandas).
 
 **Verificación:** Playwright 360 px y 1440 px con fixtures: filtrar «Mi stock» → elegir todos → quitar → deshacer → quitar; y que el catálogo de revendedores refleje el cambio. No tocar la lista real de Riva en producción.
+
+### [ ] I34 🔴 URGENTE: la app solo carga 1.000 productos — **detectado el 07/11 23:11 (va antes que todo lo demás)**
+
+**Problema (verificado en `origin/main`):** `db.list` y `db.listColumns` (`src/lib/db.ts`, ~líneas 440-470) hacen `supabase.from(tbl).select(...)` **sin paginar**. Supabase devuelve como máximo **1.000 filas**. Con los productos de Mr Tecno, Riva tiene ~1.330 productos (463 propios + 867 importados), así que **en toda la app se cargan solo 1.000, en un orden cualquiera**: Stock, Ventas, POS, Presupuestos, Ingresos, Consulta rápida, Calculadora, Inicio, Buscar y enviar, la IA y Revendedores. Síntomas que vio Riva: «Todos · 1000» en Lista de precios, y «En la lista · 1» con la tabla vacía: el «Auricular Bluetooth P47» sigue en la lista de revendedores y aparece en el catálogo, pero no se cargó en la pantalla, así que la acción en lote de I33 no lo pudo quitar. **Riva podría no encontrar productos propios al vender.**
+
+**Qué hacer:**
+1. En `db.list` y `db.listColumns` (y en cualquier lectura de colecciones que pueda pasar de 1.000 filas: productos, ventas, movimientos, clientes, items de listas), **paginar con `.range()` de a 1.000** con orden estable (`order('id')`) hasta traer todo. Reusar el patrón de `listAll` / `listAllColumns`, que ya paginan.
+2. Buscar en todo `src/` otras consultas sin límite que puedan pasar de 1.000 filas (`git grep "from('products')"`, `sale_items`, `price_list_items`, `reseller_supplier_list_items`, etc.) y corregirlas igual.
+3. Revisar que el **catálogo público** y el **catálogo de revendedores** (RPC o consultas) no tengan el mismo tope.
+4. Contadores: «Todos · N» tiene que mostrar el total real.
+5. Test: fixture con 2.500 productos → todas las pantallas principales los ven todos; la acción en lote de I33 alcanza a los que no estaban en la primera página.
+6. Después del deploy, verificar **solo leyendo** en producción que Lista de precios muestre el total real (~1.330) y que «En la lista» muestre el P47.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 

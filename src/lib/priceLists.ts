@@ -15,6 +15,7 @@ import { supabase } from './supabase';
 import { clampPriceListDiscount } from './priceListPricing';
 
 type RawPriceList = PriceList & { accessCodeHash?: string | null };
+const SUPPLIER_ITEMS_PAGE_SIZE = 1_000;
 
 const normalizePriceList = (value: RawPriceList): PriceList => {
   const { accessCodeHash, ...list } = value;
@@ -80,33 +81,72 @@ export async function saveResellerPriceList(
 }
 
 export async function loadResellerSupplierLists(priceListId: string): Promise<ResellerSupplierList[]> {
-  const { data: rawLists, error: listsError } = await supabase
-    .from('reseller_supplier_lists')
-    .select('*')
-    .eq('price_list_id', priceListId)
-    .order('created_at');
-  if (listsError) throw new Error(`[load_reseller_supplier_lists] ${listsError.message}`);
+  const rawLists: Record<string, unknown>[] = [];
+  for (let offset = 0; ; offset += SUPPLIER_ITEMS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('reseller_supplier_lists')
+      .select('*')
+      .eq('price_list_id', priceListId)
+      .order('created_at')
+      .order('id', { ascending: true })
+      .range(offset, offset + SUPPLIER_ITEMS_PAGE_SIZE - 1);
+    if (error) throw new Error(`[load_reseller_supplier_lists] ${error.message}`);
+    const page = data ?? [];
+    rawLists.push(...page);
+    if (page.length < SUPPLIER_ITEMS_PAGE_SIZE) break;
+  }
 
-  const listIds = (rawLists ?? []).map((row) => String(row.id));
-  const { data: rawItems, error: itemsError } = listIds.length === 0
-    ? { data: [], error: null }
-    : await supabase
+  const listIds = rawLists.map((row) => String(row.id));
+  const rawItems: Record<string, unknown>[] = [];
+  for (let offset = 0; listIds.length > 0; offset += SUPPLIER_ITEMS_PAGE_SIZE) {
+    const { data, error } = await supabase
       .from('reseller_supplier_list_items')
       .select('supplier_list_id,product_id,sort_order')
       .in('supplier_list_id', listIds)
-      .order('sort_order');
-  if (itemsError) throw new Error(`[load_reseller_supplier_list_items] ${itemsError.message}`);
-
-  const productIdsByList = new Map<string, string[]>();
-  for (const item of rawItems ?? []) {
-    const listId = String(item.supplier_list_id);
-    productIdsByList.set(listId, [...(productIdsByList.get(listId) ?? []), String(item.product_id)]);
+      .order('sort_order', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + SUPPLIER_ITEMS_PAGE_SIZE - 1);
+    if (error) throw new Error(`[load_reseller_supplier_list_items] ${error.message}`);
+    const page = data ?? [];
+    rawItems.push(...page);
+    if (page.length < SUPPLIER_ITEMS_PAGE_SIZE) break;
   }
 
-  return (rawLists ?? []).map((row) => ({
+  const productIdsByList = new Map<string, string[]>();
+  for (const item of rawItems) {
+    const listId = String(item.supplier_list_id);
+    const productIds = productIdsByList.get(listId) ?? [];
+    productIds.push(String(item.product_id));
+    productIdsByList.set(listId, productIds);
+  }
+
+  return rawLists.map((row) => ({
     ...fromDb<Omit<ResellerSupplierList, 'productIds'>>(row as Record<string, unknown>),
     productIds: productIdsByList.get(String(row.id)) ?? [],
   }));
+}
+
+export async function loadResellerSupplierListPricing(supplierListIds: string[]): Promise<{
+  supplier_list_id: string;
+  product_id: string;
+  margin_percent: number;
+  updated_at: string | null;
+}[]> {
+  const rows: { supplier_list_id: string; product_id: string; margin_percent: number; updated_at: string | null }[] = [];
+  for (let offset = 0; supplierListIds.length > 0; offset += SUPPLIER_ITEMS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('reseller_supplier_list_pricing')
+      .select('supplier_list_id,product_id,margin_percent,updated_at')
+      .in('supplier_list_id', supplierListIds)
+      .order('supplier_list_id', { ascending: true })
+      .order('product_id', { ascending: true })
+      .range(offset, offset + SUPPLIER_ITEMS_PAGE_SIZE - 1);
+    if (error) throw new Error(`[load_reseller_supplier_list_pricing] ${error.message}`);
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < SUPPLIER_ITEMS_PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 export async function saveResellerSupplierList(input: {

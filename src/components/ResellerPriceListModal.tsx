@@ -35,6 +35,7 @@ import {
   configureResellerPricingAdvisor,
   ensureResellerPriceList,
   loadResellerPriceList,
+  loadResellerSupplierListPricing,
   loadResellerSupplierLists,
   saveResellerPriceList,
   saveResellerSupplierList,
@@ -336,12 +337,7 @@ export default function ResellerPriceListModal({
           db.list<Supplier>('suppliers', ownerUid),
         ]);
         const supplierListIds = loadedSupplierLists.map(supplierList => supplierList.id);
-        const { data: supplierPricingRows, error: supplierPricingError } = supplierListIds.length === 0
-          ? { data: [], error: null }
-          : await supabase.from('reseller_supplier_list_pricing')
-            .select('supplier_list_id, margin_percent, updated_at')
-            .in('supplier_list_id', supplierListIds);
-        if (supplierPricingError) throw new Error(`[reseller_supplier_list_pricing] ${supplierPricingError.message}`);
+        const supplierPricingRows = await loadResellerSupplierListPricing(supplierListIds);
         const pricingSummaryRows = new Map<string, { margins: number[]; lastImportedAt: string | null }>();
         for (const row of supplierPricingRows ?? []) {
           const supplierListId = String(row.supplier_list_id);

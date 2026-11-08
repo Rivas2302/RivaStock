@@ -17,15 +17,26 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean } = {}) {
-  const products: Record<string, unknown>[] = options.bulkFixture ? [
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean } = {}) {
+  const products: Record<string, unknown>[] = options.largeFixture ? [
+    ...Array.from({ length: 2_499 }, (_, index) => ({
+      id: `product-${String(index + 1).padStart(4, '0')}`,
+      user_id: owner,
+      name: `[QA] Fixture ${index + 1}`,
+      category: 'General', category_id: 'category-general', stock: 2, sale_price: 2000,
+      purchase_price: 1000, image_url: null, images: [],
+    })),
+    { id: 'zz-product-p47', user_id: owner, name: 'Auricular Bluetooth P47', category: 'General', category_id: 'category-general', stock: 2, sale_price: 45000, purchase_price: 30000, image_url: null, images: [] },
+  ] : options.bulkFixture ? [
     { id: 'bulk-stock-included', user_id: owner, name: '[QA] Stock incluido', category: 'General', category_id: 'category-general', stock: 4, sale_price: 2000, purchase_price: 1000, barcode: 'QA-STOCK-1', image_url: 'https://fixture.invalid/stock.webp', images: ['https://fixture.invalid/stock.webp'] },
     { id: 'bulk-stock-excluded', user_id: owner, name: '[QA] Stock fuera de lista', category: 'General', category_id: 'category-general', stock: 2, sale_price: 3000, purchase_price: 1500, barcode: 'QA-STOCK-2', image_url: 'https://fixture.invalid/stock-2.webp', images: ['https://fixture.invalid/stock-2.webp'] },
     { id: 'bulk-provider-included', user_id: owner, name: '[QA] Producto proveedor', category: 'General', category_id: 'category-general', stock: 0, sale_price: 4000, catalog_only: true, catalog_cost: 2500, barcode: 'QA-PROVIDER-1', image_url: 'https://fixture.invalid/provider.webp', images: ['https://fixture.invalid/provider.webp'] },
   ] : [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
   let supplierProductIds: string[] = options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
-  const priceListItems: Record<string, unknown>[] = options.bulkFixture ? [
+  const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
+    { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
+  ] : options.bulkFixture ? [
     { id: 'bulk-item-stock', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-stock-included', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
     { id: 'bulk-item-provider', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-provider-included', pricing_mode: 'default', availability: 'on_order', supplier_list_id: supplierList.id, sort_order: 1 },
   ] : [];
@@ -35,6 +46,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   const pricingCalls: unknown[][] = [];
   const removalCalls: unknown[] = [];
   const bulkCalls: Array<{ method: string; productIds: string[]; body?: unknown }> = [];
+  const productReadPages: string[] = [];
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
@@ -133,7 +145,19 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
           if (product) Object.assign(product, route.request().postDataJSON());
           return route.fulfill({ json: product ?? {} });
         }
-        return route.fulfill({ json: products });
+        const range = route.request().headers().range;
+        const rangeMatch = range?.match(/^(\d+)-(\d+)$/);
+        const cursor = url.searchParams.get('id')?.replace(/^gt\./, '');
+        const pageSize = Number(url.searchParams.get('limit')) || (rangeMatch ? Number(rangeMatch[2]) - Number(rangeMatch[1]) + 1 : products.length);
+        const start = rangeMatch ? Number(rangeMatch[1]) : Number(url.searchParams.get('offset')) || 0;
+        const end = rangeMatch ? Number(rangeMatch[2]) : start + pageSize - 1;
+        const matchingProducts = cursor ? products.filter(product => String(product.id) > cursor) : products;
+        const pageRows = matchingProducts.slice(start, end + 1);
+        productReadPages.push(`${cursor ?? 'start'}:${start}-${end}:${pageRows.length}`);
+        return route.fulfill({
+          json: pageRows,
+          headers: { 'content-range': `${start}-${Math.min(end, products.length - 1)}/${products.length}` },
+        });
       }
       if (table === 'categories') {
         if (method === 'POST') {
@@ -198,7 +222,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems,
+    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages,
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
   };
@@ -477,5 +501,39 @@ test('bulk price-list actions use the visible Mi stock filter, support undo, and
     await toolbar.getByRole('button', { name: 'Por pedido' }).click();
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Marcar por pedido' }).click();
     await expect.poll(() => priceListItems.find(item => item.product_id === 'bulk-stock-included')?.availability).toBe('on_order');
+  }
+});
+
+test('price list loads the product after row 1,000 and bulk actions can reach it at 360 and 1440 px', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { products, bulkCalls, priceListItems, productReadPages } = await mockApp(page, { largeFixture: true });
+  const p47 = products.at(-1)!;
+  const item = { ...priceListItems[0] };
+
+  for (const width of [360, 1440]) {
+    if (width === 1440) priceListItems.splice(0, priceListItems.length, { ...item });
+    await page.setViewportSize({ width, height: width === 360 ? 780 : 900 });
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
+    await expect.poll(() => productReadPages.length).toBeGreaterThan(0);
+    expect(productReadPages).toContain('start:0-999:1000');
+    expect(productReadPages).toContain('start:1000-1999:1000');
+    expect(productReadPages).toContain('start:2000-2999:500');
+
+    const filters = page.getByRole('group', { name: 'Filtrar por estado' });
+    await expect(filters.getByRole('button', { name: 'Todos · 2500' })).toBeVisible();
+    await expect(filters.getByRole('button', { name: 'En la lista · 1' })).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Buscar producto en la lista de precios' }).fill('Auricular Bluetooth P47');
+    const row = page.getByRole('row', { name: /Auricular Bluetooth P47/ });
+    await expect(row).toBeVisible();
+    await row.getByLabel('Elegir Auricular Bluetooth P47').check();
+    await page.getByRole('toolbar', { name: 'Acciones para productos elegidos' }).getByRole('button', { name: 'Quitar de la lista' }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
+    await expect(confirmation).toContainText('1 producto');
+    await confirmation.getByRole('button', { name: 'Quitar de la lista' }).click();
+    await expect.poll(() => priceListItems.some(entry => entry.product_id === p47.id)).toBe(false);
+    expect(bulkCalls.at(-1)).toMatchObject({ method: 'DELETE', productIds: [p47.id] });
+    expect(products).toHaveLength(2_500);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
