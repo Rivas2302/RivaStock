@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
-    "prebuild": "node scripts/check-no-secrets.mjs && node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
+    "predev": "node scripts/copy-tesseract-assets.mjs && node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
+    "prebuild": "node scripts/check-no-secrets.mjs && node scripts/copy-tesseract-assets.mjs && node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
     "package:ai-bridge": "node scripts/package-ai-bridge.mjs",
     "update:facebook-extension": "node scripts/update-installed-facebook-extension.mjs",
     "dump:automation-traces": "node scripts/automation-trace-dump.mjs",
@@ -63,6 +63,7 @@
     "tailwind-merge": "^3.5.0",
     "tesseract.js": "7.0.0",
     "unpdf": "1.9.1",
+    "wasm-feature-detect": "1.9.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.3"
   },
@@ -71,6 +72,7 @@
     "@electric-sql/pglite": "0.5.11",
     "@electric-sql/pglite-pgvector": "0.0.12",
     "@playwright/test": "^1.55.0",
+    "@tesseract.js-data/spa": "1.0.0",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

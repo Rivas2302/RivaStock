@@ -17,17 +17,19 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean } = {}) {
-  await page.addInitScript(texts => {
-    let index = 0;
-    Object.defineProperty(window, '__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__', {
-      configurable: false,
-      value: () => ({
-        recognize: async () => ({ data: { text: texts[Math.min(index++, texts.length - 1)] || '' } }),
-        terminate: async () => undefined,
-      }),
-    });
-  }, options.ocrTexts ?? ['']);
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
+  if (!options.useRealOcr) {
+    await page.addInitScript(texts => {
+      let index = 0;
+      Object.defineProperty(window, '__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__', {
+        configurable: false,
+        value: () => ({
+          recognize: async () => ({ data: { text: texts[Math.min(index++, texts.length - 1)] || '' } }),
+          terminate: async () => undefined,
+        }),
+      });
+    }, options.ocrTexts ?? ['']);
+  }
   const products: Record<string, unknown>[] = options.photoScanFixture ? [
     { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
   ] : options.nameCleanupFixture ? [
@@ -364,6 +366,34 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 
     await expect(dialog).toBeHidden();
   });
 }
+
+test('real Spanish OCR loads its worker, core and language model from the app origin', async ({ page }) => {
+  test.setTimeout(120_000);
+  const { products, bulkCalls } = await mockApp(page, { photoScanFixture: true, useRealOcr: true });
+  await page.setViewportSize({ width: 360, height: 800 });
+  const pageErrors: string[] = [];
+  const assetPaths = new Set<string>();
+  page.on('pageerror', error => pageErrors.push(error.name));
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/tesseract/')) assetPaths.add(url.pathname);
+    if (url.hostname === 'cdn.jsdelivr.net') assetPaths.add(`external:${url.hostname}`);
+  });
+  await page.goto('/revendedores');
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+  const providers = page.getByRole('tabpanel', { name: 'Proveedores' });
+  const provider = providers.locator('article').filter({ hasText: '[QA] Mr Tecno' }).first();
+  await provider.getByRole('button', { name: 'Importar lista' }).click();
+  await providers.getByRole('button', { name: 'Analizar fotos importadas' }).click();
+  await expect(providers.getByRole('status').filter({ hasText: 'Analizamos 1 fotos de la lista; 0 quedaron marcadas' })).toBeVisible({ timeout: 90_000 });
+  expect(Array.from(assetPaths)).toContain('/tesseract/worker.min.js');
+  expect(Array.from(assetPaths)).toContain('/tesseract/lang/4.0.0_best_int/spa.traineddata.gz');
+  expect(Array.from(assetPaths).some(path => /^\/tesseract\/core\/tesseract-core-(?:simd-)?lstm\.wasm\.js$/.test(path))).toBe(true);
+  expect(Array.from(assetPaths)).not.toContain('external:cdn.jsdelivr.net');
+  expect(products[0].custom_fields).toBeUndefined();
+  expect(bulkCalls).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
 
 test('supplier catalog import reviews three fixture pages, bulk adds, then updates by SKU on reimport', async ({ page }) => {
   const pageErrors: string[] = [];

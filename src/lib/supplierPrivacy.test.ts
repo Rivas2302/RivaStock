@@ -7,10 +7,12 @@ const workerMock = vi.hoisted(() => ({
 }));
 
 vi.mock('tesseract.js', () => ({ createWorker: vi.fn(async () => workerMock) }));
+vi.mock('wasm-feature-detect', () => ({ simd: vi.fn(async () => false) }));
 
 import {
   createSupplierPhotoOcrWorker,
   detectSupplierPhotoBrand,
+  getSupplierPhotoOcrWorkerOptions,
   getActiveSupplierPhotoReview,
   isSupplierPhotoReviewBlocking,
   normalizeSupplierImportRow,
@@ -64,6 +66,17 @@ describe('supplier privacy helpers', () => {
     await worker.terminate();
     expect(workerMock.recognize).toHaveBeenCalledOnce();
     expect(workerMock.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps OCR worker, core, and Spanish data on the app origin', () => {
+    expect(getSupplierPhotoOcrWorkerOptions('https://rivastock.vercel.app', true)).toEqual({
+      workerPath: 'https://rivastock.vercel.app/tesseract/worker.min.js',
+      corePath: 'https://rivastock.vercel.app/tesseract/core/tesseract-core-simd-lstm.wasm.js',
+      langPath: 'https://rivastock.vercel.app/tesseract/lang/4.0.0_best_int/',
+      gzip: true,
+    });
+    expect(getSupplierPhotoOcrWorkerOptions('https://rivastock.vercel.app', false).corePath)
+      .toBe('https://rivastock.vercel.app/tesseract/core/tesseract-core-lstm.wasm.js');
   });
 
   it('blocks unreviewed source or replacement photos and allows explicit approvals', () => {

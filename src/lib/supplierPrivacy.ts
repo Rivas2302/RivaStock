@@ -30,6 +30,17 @@ export interface SupplierPhotoOcrWorker {
   terminate: () => Promise<unknown>;
 }
 
+export function getSupplierPhotoOcrWorkerOptions(origin: string, supportsSimd: boolean) {
+  const baseUrl = new URL('/tesseract/', origin);
+  const coreFile = supportsSimd ? 'tesseract-core-simd-lstm.wasm.js' : 'tesseract-core-lstm.wasm.js';
+  return {
+    workerPath: new URL('worker.min.js', baseUrl).href,
+    corePath: new URL(`core/${coreFile}`, baseUrl).href,
+    langPath: new URL('lang/4.0.0_best_int/', baseUrl).href,
+    gzip: true,
+  };
+}
+
 function normalizeSignal(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('en-US')
     .replace(/[^a-z\d]+/g, '');
@@ -77,8 +88,13 @@ export async function createSupplierPhotoOcrWorker(): Promise<SupplierPhotoOcrWo
       .__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__;
     if (factory) return factory();
   }
-  const { createWorker } = await import('tesseract.js');
-  return createWorker('spa', 1) as unknown as SupplierPhotoOcrWorker;
+  const [{ createWorker }, { simd }] = await Promise.all([
+    import('tesseract.js'),
+    import('wasm-feature-detect'),
+  ]);
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const options = getSupplierPhotoOcrWorkerOptions(origin, await simd());
+  return createWorker('spa', 1, options) as unknown as SupplierPhotoOcrWorker;
 }
 
 export async function inspectSupplierPhotoBrand(
