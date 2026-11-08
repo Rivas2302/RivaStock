@@ -22,6 +22,7 @@ import type {
   InventoryOwner,
   MinimumOrderRule,
   PriceList,
+  PriceListAvailability,
   PriceListItem,
   PriceListPricingMode,
   Product,
@@ -42,7 +43,7 @@ import {
   saveSupplierCatalogExchangeRate,
   toggleResellerSupplierList,
 } from '../lib/priceLists';
-import { db, deleteFromStorage, fromDb, toDb } from '../lib/db';
+import { db, deleteFromStorage, fromDb, invalidateDbCache, toDb } from '../lib/db';
 import { supabase, supabaseProjectUrl } from '../lib/supabase';
 import { normalizeBarcode } from '../lib/barcode';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
@@ -65,7 +66,9 @@ import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierP
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
 import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupplierImportBatch, type SupplierImportRemovalPreview } from '../lib/resellerSupplierRemoval';
+import { applyResellerPriceListBulkMutations, getBulkActionProductIds, toPriceListBulkRow, type ResellerPriceListBulkMutation, type ResellerPriceListBulkProgress } from '../lib/resellerPriceListBulk';
 import { assertStorageUploadAllowed } from '../lib/platformStorage';
+import ProductThumbnail from './stock/ProductThumbnail';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
 import Modal from './Modal';
@@ -137,6 +140,18 @@ const buildDraftItem = (product: Product, list: PriceList, index: number): Price
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 });
+const PRICE_LIST_PAGE_SIZE = 50;
+
+type PriceListBulkAction = 'add' | 'remove' | PriceListAvailability;
+type PriceListBulkUndo =
+  | { type: 'remove'; items: PriceListItem[] }
+  | { type: 'add'; productIds: string[] }
+  | { type: 'availability'; items: Array<Pick<PriceListItem, 'productId' | 'availability'>> };
+type PriceListBulkConfirmation = {
+  action: PriceListBulkAction;
+  productIds: string[];
+  previousItems: PriceListItem[];
+};
 
 function SupplierImportPhotoPreview({
   sourceUrl,
@@ -239,6 +254,7 @@ export default function ResellerPriceListModal({
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
   const [search, setSearch] = useState('');
   const [productListSourceFilter, setProductListSourceFilter] = useState('all');
+  const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included'>('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
   const [supplierPricingSummaries, setSupplierPricingSummaries] = useState<Record<string, SupplierPricingSummary>>({});
@@ -253,6 +269,15 @@ export default function ResellerPriceListModal({
   const [removalProgress, setRemovalProgress] = useState<{ done: number; total: number } | null>(null);
   const [removalBusy, setRemovalBusy] = useState(false);
   const [removalError, setRemovalError] = useState<string | null>(null);
+  const [selectedPriceProductIds, setSelectedPriceProductIds] = useState<Set<string>>(() => new Set());
+  const [priceProductPage, setPriceProductPage] = useState(0);
+  const [editingPriceProductId, setEditingPriceProductId] = useState<string | null>(null);
+  const [bulkConfirmation, setBulkConfirmation] = useState<PriceListBulkConfirmation | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<ResellerPriceListBulkProgress | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkUndo, setBulkUndo] = useState<PriceListBulkUndo | null>(null);
+  const pricePageSelectAllRef = useRef<HTMLInputElement>(null);
   const [supplierImportRows, setSupplierImportRows] = useState<SupplierListDraftRow[]>([]);
   const [supplierImportPhotoFiles, setSupplierImportPhotoFiles] = useState<Record<number, File>>({});
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
@@ -372,6 +397,12 @@ export default function ResellerPriceListModal({
     if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
   }, [pdfPreview]);
 
+  useEffect(() => {
+    if (!bulkUndo) return;
+    const timeout = window.setTimeout(() => setBulkUndo(null), 8_000);
+    return () => window.clearTimeout(timeout);
+  }, [bulkUndo]);
+
   const itemByProductId = useMemo(
     () => new Map(items.map((item) => [item.productId, item])),
     [items],
@@ -382,6 +413,7 @@ export default function ResellerPriceListModal({
     return products.filter((product) => (
       product.name.toLocaleLowerCase('es-AR').includes(normalized)
       || product.category.toLocaleLowerCase('es-AR').includes(normalized)
+      || (product.barcode ?? '').toLocaleLowerCase('es-AR').includes(normalized)
     ));
   }, [products, search]);
 
@@ -430,11 +462,58 @@ export default function ResellerPriceListModal({
       supplierNameById.get(supplierList.supplierId) ?? 'Proveedor',
     ]));
   }, [supplierLists, suppliers]);
+  const supplierListByProductId = useMemo(() => {
+    const result = new Map<string, ResellerSupplierList>();
+    for (const supplierList of supplierLists) {
+      for (const productId of supplierList.productIds) result.set(productId, supplierList);
+    }
+    return result;
+  }, [supplierLists]);
   const resellerVisibleProducts = useMemo(() => visibleProducts.filter(product => {
+    if (priceListInclusionFilter === 'included' && !itemByProductId.has(product.id)) return false;
     if (productListSourceFilter === 'all') return true;
-    const supplierListId = itemByProductId.get(product.id)?.supplierListId;
+    const supplierListId = itemByProductId.get(product.id)?.supplierListId ?? supplierListByProductId.get(product.id)?.id;
     return productListSourceFilter === 'stock' ? !supplierListId : supplierListId === productListSourceFilter;
-  }), [itemByProductId, productListSourceFilter, visibleProducts]);
+  }), [itemByProductId, priceListInclusionFilter, productListSourceFilter, supplierListByProductId, visibleProducts]);
+  const priceProductPageCount = Math.max(1, Math.ceil(resellerVisibleProducts.length / PRICE_LIST_PAGE_SIZE));
+  const visiblePricePageProducts = useMemo(() => (
+    resellerVisibleProducts.slice(priceProductPage * PRICE_LIST_PAGE_SIZE, (priceProductPage + 1) * PRICE_LIST_PAGE_SIZE)
+  ), [priceProductPage, resellerVisibleProducts]);
+  const selectedPageCount = visiblePricePageProducts.filter(product => selectedPriceProductIds.has(product.id)).length;
+  const allPricePageSelected = visiblePricePageProducts.length > 0 && selectedPageCount === visiblePricePageProducts.length;
+  const selectedPriceProducts = resellerVisibleProducts.filter(product => selectedPriceProductIds.has(product.id));
+  const selectedProductIds = selectedPriceProducts.map(product => product.id);
+  const addableProductIds = useMemo(() => new Set(products.filter(product => {
+    const supplierList = supplierListByProductId.get(product.id);
+    return !supplierList || supplierList.enabled;
+  }).map(product => product.id)), [products, supplierListByProductId]);
+  const sourceStockProducts = productListSourceFilter === 'stock'
+    ? resellerVisibleProducts.filter(product => !supplierListByProductId.has(product.id))
+    : [];
+  const stockShortcutRemoveIds = getBulkActionProductIds('remove', sourceStockProducts.map(product => product.id), items);
+  const stockShortcutAddIds = getBulkActionProductIds('add', sourceStockProducts.map(product => product.id), items, addableProductIds);
+  const selectedRemoveIds = getBulkActionProductIds('remove', selectedProductIds, items);
+  const selectedAddIds = getBulkActionProductIds('add', selectedProductIds, items, addableProductIds);
+  const selectedAvailableIds = getBulkActionProductIds('in_stock', selectedProductIds, items);
+  const selectedOnOrderIds = getBulkActionProductIds('on_order', selectedProductIds, items);
+
+  useEffect(() => {
+    setPriceProductPage(page => Math.min(page, priceProductPageCount - 1));
+  }, [priceProductPageCount]);
+
+  useEffect(() => {
+    if (pricePageSelectAllRef.current) {
+      pricePageSelectAllRef.current.indeterminate = selectedPageCount > 0 && !allPricePageSelected;
+    }
+  }, [allPricePageSelected, selectedPageCount]);
+
+  useEffect(() => {
+    const visibleIds = new Set(resellerVisibleProducts.map(product => product.id));
+    setSelectedPriceProductIds(current => {
+      const next = new Set(Array.from(current).filter(id => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [resellerVisibleProducts]);
   const supplierDraftProducts = useMemo(() => {
     const normalized = supplierProductSearch.trim().toLocaleLowerCase('es-AR');
     if (!normalized) return products;
@@ -462,6 +541,171 @@ export default function ResellerPriceListModal({
       if (exists) return current.filter((item) => item.productId !== product.id);
       return [...current, buildDraftItem(product, list, current.length)];
     });
+  };
+
+  const requestBulkConfirmation = (action: PriceListBulkAction, requestedIds: string[]) => {
+    if (!list || !canWrite || bulkBusy) return;
+    if (itemsDirty) {
+      showToast('Guardá primero los cambios pendientes de la lista.', 'error');
+      return;
+    }
+    const productIds = getBulkActionProductIds(action, requestedIds, items, addableProductIds);
+    if (productIds.length === 0) {
+      showToast('No hay productos que necesiten ese cambio.', 'info');
+      return;
+    }
+    const productIdSet = new Set(productIds);
+    const previousItems = items.filter(item => productIdSet.has(item.productId));
+    setBulkError(null);
+    setBulkProgress(null);
+    setBulkConfirmation({ action, productIds, previousItems });
+  };
+
+  const toggleVisiblePriceSelection = () => {
+    const visibleIds = visiblePricePageProducts.map(product => product.id);
+    const visibleIdSet = new Set(visibleIds);
+    setSelectedPriceProductIds(current => {
+      const next = new Set(current);
+      if (visibleIds.length > 0 && visibleIds.every(id => current.has(id))) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return new Set(Array.from(next).filter(id => id !== '' && (visibleIdSet.has(id) || current.has(id))));
+    });
+  };
+
+  const writePriceListBulkBatch = async (mutation: ResellerPriceListBulkMutation) => {
+    if (!list) throw new Error('Lista de revendedores no disponible.');
+    let query;
+    if (mutation.type === 'remove') {
+      query = supabase.from('price_list_items').delete()
+        .eq('user_id', ownerUid)
+        .eq('price_list_id', list.id)
+        .in('product_id', mutation.productIds);
+    } else if (mutation.type === 'add') {
+      query = supabase.from('price_list_items').upsert(
+        mutation.items.map(toPriceListBulkRow),
+        { onConflict: 'price_list_id,product_id', ignoreDuplicates: true },
+      );
+    } else {
+      query = supabase.from('price_list_items').update({ availability: mutation.availability })
+        .eq('user_id', ownerUid)
+        .eq('price_list_id', list.id)
+        .in('product_id', mutation.productIds);
+    }
+    const { error: writeError } = await query;
+    if (writeError) throw writeError;
+  };
+
+  const runPriceListBulkMutations = async (mutations: ResellerPriceListBulkMutation[]) => {
+    await applyResellerPriceListBulkMutations(
+      mutations,
+      writePriceListBulkBatch,
+      setBulkProgress,
+      100,
+    );
+    invalidateDbCache('price_list_items');
+  };
+
+  const handleApplyBulkConfirmation = async () => {
+    if (!list || !bulkConfirmation || !canWrite || bulkBusy) return;
+    const { action, productIds, previousItems } = bulkConfirmation;
+    const selectedProducts = products.filter(product => productIds.includes(product.id));
+    let mutations: ResellerPriceListBulkMutation[];
+    let undoState: PriceListBulkUndo;
+
+    if (action === 'remove') {
+      mutations = [{ type: 'remove', productIds }];
+      undoState = { type: 'remove', items: previousItems };
+    } else if (action === 'add') {
+      let nextSortOrder = Math.max(-1, ...items.map(item => item.sortOrder)) + 1;
+      const rows = selectedProducts.map(product => {
+        const supplierList = supplierListByProductId.get(product.id);
+        const draft = buildDraftItem(product, list, nextSortOrder++);
+        return {
+          ...draft,
+          supplierListId: supplierList?.id ?? null,
+          availability: supplierList ? 'on_order' as const : draft.availability,
+        };
+      });
+      mutations = [{ type: 'add', items: rows }];
+      undoState = { type: 'add', productIds };
+    } else {
+      mutations = [{ type: 'availability', productIds, availability: action }];
+      undoState = { type: 'availability', items: previousItems.map(item => ({ productId: item.productId, availability: item.availability })) };
+    }
+
+    setBulkBusy(true);
+    setBulkError(null);
+    setBulkProgress({ completed: 0, total: productIds.length });
+    try {
+      await runPriceListBulkMutations(mutations);
+      if (action === 'remove') {
+        const removed = new Set(productIds);
+        setItems(current => current.filter(item => !removed.has(item.productId)));
+      } else if (action === 'add') {
+        setItems(current => {
+          const existing = new Set(current.map(item => item.productId));
+          return [...current, ...mutations.flatMap(mutation => mutation.type === 'add'
+            ? mutation.items.filter(item => !existing.has(item.productId))
+            : [])];
+        });
+      } else {
+        setItems(current => current.map(item => productIds.includes(item.productId) ? { ...item, availability: action } : item));
+      }
+      setItemsDirty(false);
+      setSelectedPriceProductIds(new Set());
+      setBulkUndo(undoState);
+      setBulkConfirmation(null);
+      setBulkError(null);
+      showToast('Cambios guardados en la lista de revendedores.', 'success');
+    } catch (bulkSaveError) {
+      setBulkError(bulkSaveError instanceof Error ? bulkSaveError.message : 'No se pudieron guardar todos los cambios.');
+      try {
+        const refreshed = await loadResellerPriceList(ownerUid);
+        setItems(refreshed.items.sort((a, b) => a.sortOrder - b.sortOrder));
+      } catch {
+        // Keep the current rows visible so the user can retry the same action.
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleUndoPriceListBulk = async () => {
+    if (!list || !bulkUndo || !canWrite || bulkBusy) return;
+    let mutations: ResellerPriceListBulkMutation[];
+    if (bulkUndo.type === 'remove') {
+      mutations = [{ type: 'add', items: bulkUndo.items }];
+    } else if (bulkUndo.type === 'add') {
+      mutations = [{ type: 'remove', productIds: bulkUndo.productIds }];
+    } else {
+      mutations = (['in_stock', 'on_order'] as const).flatMap(availability => {
+        const productIds = bulkUndo.items.filter(item => item.availability === availability).map(item => item.productId);
+        return productIds.length ? [{ type: 'availability' as const, productIds, availability }] : [];
+      });
+    }
+    setBulkBusy(true);
+    setBulkProgress(null);
+    try {
+      await runPriceListBulkMutations(mutations);
+      const refreshed = await loadResellerPriceList(ownerUid);
+      setItems(refreshed.items.sort((a, b) => a.sortOrder - b.sortOrder));
+      setItemsDirty(false);
+      setBulkUndo(null);
+      showToast('Cambios deshechos.', 'success');
+    } catch {
+      try {
+        const refreshed = await loadResellerPriceList(ownerUid);
+        setItems(refreshed.items.sort((a, b) => a.sortOrder - b.sortOrder));
+      } catch {
+        // Keep the undo action available for another attempt.
+      }
+      showToast('No se pudieron deshacer todos los cambios. Podés volver a intentar.', 'error');
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1790,6 +2034,151 @@ export default function ResellerPriceListModal({
           </details>
 
           <section role="tabpanel" aria-label="Lista de precios" data-testid="reseller-price-list" className={displayMode === 'page' && pageTab !== 'prices' ? 'hidden' : 'space-y-4'}>
+          {displayMode === 'page' ? (
+            <div data-testid="reseller-price-bulk-panel" className="space-y-4 pb-28 sm:pb-20">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)]" size={18} />
+                  <input
+                    type="search"
+                    aria-label="Buscar producto en la lista de precios"
+                    value={search}
+                    onChange={event => { setSearch(event.target.value); setPriceProductPage(0); setSelectedPriceProductIds(new Set()); }}
+                    placeholder="Buscar producto o código"
+                    className="min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] py-2 pl-10 pr-3 text-sm text-[var(--ink)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                  />
+                </div>
+                <div role="group" aria-label="Origen de los productos" className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-[var(--surface-2)] p-1">
+                  {[['all', 'Todos'], ['stock', 'Mi stock'], ...supplierLists.map(supplierList => [supplierList.id, supplierNameByListId.get(supplierList.id) ?? 'Proveedor'] as [string, string])].map(([filter, label]) => (
+                    <button key={filter} type="button" aria-pressed={productListSourceFilter === filter}
+                      onClick={() => { setProductListSourceFilter(filter); setPriceProductPage(0); setSelectedPriceProductIds(new Set()); }}
+                      className={cn('min-h-8 shrink-0 rounded-md px-3 text-xs font-semibold', productListSourceFilter === filter ? 'bg-[var(--surface-1)] text-[var(--ink)] shadow-sm' : 'text-[var(--ink-muted)] hover:text-[var(--ink)]')}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">
+                  <PackagePlus size={17} /> Crear producto por pedido
+                </button>
+              </div>
+
+              {productListSourceFilter === 'stock' && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+                  <span className="mr-auto text-sm font-semibold text-[var(--ink)]">Mi stock: {sourceStockProducts.length} productos filtrados</span>
+                  <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || stockShortcutRemoveIds.length === 0}
+                    onClick={() => requestBulkConfirmation('remove', sourceStockProducts.map(product => product.id))}
+                    className="min-h-9 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">
+                    Quitar los {stockShortcutRemoveIds.length} de Mi stock de la lista
+                  </button>
+                  <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || stockShortcutAddIds.length === 0}
+                    onClick={() => requestBulkConfirmation('add', sourceStockProducts.map(product => product.id))}
+                    className="min-h-9 rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-45">
+                    Agregar los {stockShortcutAddIds.length} que faltan
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
+                <button type="button" aria-pressed={priceListInclusionFilter === 'all' && advisorFilter === 'all'}
+                  onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'all' && advisorFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  Todos · {visibleProducts.length}
+                </button>
+                <button type="button" aria-pressed={priceListInclusionFilter === 'included' && advisorFilter === 'all'}
+                  onClick={() => { setPriceListInclusionFilter('included'); setAdvisorFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'included' && advisorFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  En la lista · {items.length}
+                </button>
+                <button type="button" aria-pressed={advisorFilter === 'balanced'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('balanced'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'balanced' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  {adviceSummary.balanced} saludables
+                </button>
+                <button type="button" aria-pressed={advisorFilter === 'review'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('review'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'review' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  {adviceSummary.review} para revisar
+                </button>
+                <button type="button" aria-pressed={advisorFilter === 'critical'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('critical'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'critical' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  {adviceSummary.critical} con pérdida
+                </button>
+                {adviceSummary.missing > 0 && <button type="button" aria-pressed={advisorFilter === 'missing'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('missing'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'missing' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  {adviceSummary.missing} sin costo
+                </button>}
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--surface-1)]">
+                <table className="w-full min-w-[900px] border-collapse text-sm" aria-label="Productos de la lista de precios">
+                  <thead className="bg-[var(--surface-2)] text-left text-xs text-[var(--ink-muted)]">
+                    <tr className="border-b border-[var(--line)]">
+                      <th scope="col" className="w-12 px-3 py-3">
+                        <input ref={pricePageSelectAllRef} type="checkbox" aria-label="Elegir todos los que se ven" checked={allPricePageSelected} onChange={toggleVisiblePriceSelection} disabled={!canWrite || visiblePricePageProducts.length === 0} className="size-4 accent-[var(--accent)]" />
+                      </th>
+                      <th scope="col" className="px-3 py-3">Producto</th>
+                      <th scope="col" className="px-3 py-3 text-right">Costo</th>
+                      <th scope="col" className="px-3 py-3 text-right">Minorista</th>
+                      <th scope="col" className="px-3 py-3 text-right">Revendedor</th>
+                      <th scope="col" className="px-3 py-3 text-right">Ganás</th>
+                      <th scope="col" className="px-3 py-3">Estado</th>
+                      <th scope="col" className="w-24 px-3 py-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePricePageProducts.map(product => {
+                      const item = itemByProductId.get(product.id);
+                      const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
+                      const pricingItem = item ?? { pricingMode: 'default' as const, discountPercent: null, fixedPrice: null };
+                      const resellerPrice = resolvePriceListPrice(product.salePrice, discount, pricingItem);
+                      const profit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
+                      const advice = pricingAdviceByProductId.get(product.id);
+                      const sourceList = supplierListByProductId.get(product.id);
+                      const statusLabel = advice?.status === 'balanced' ? 'Saludable'
+                        : advice?.status === 'loss' ? 'Con pérdida'
+                          : advice?.status === 'missing_cost' ? 'Sin costo'
+                            : advice?.status === 'low_margin' || advice?.status === 'not_competitive' ? 'Para revisar' : '—';
+                      const expanded = editingPriceProductId === product.id;
+                      return <React.Fragment key={product.id}>
+                        <tr className="border-b border-[var(--line)] align-middle hover:bg-[var(--surface-2)]/60">
+                          <td className="px-3 py-3"><input type="checkbox" aria-label={`Elegir ${product.name}`} checked={selectedPriceProductIds.has(product.id)} onChange={() => setSelectedPriceProductIds(current => { const next = new Set(current); if (next.has(product.id)) next.delete(product.id); else next.add(product.id); return next; })} disabled={!canWrite || bulkBusy} className="size-4 accent-[var(--accent)]" /></td>
+                          <td className="px-3 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <ProductThumbnail product={product} sizeClassName="size-10" />
+                              <div className="min-w-0"><p className="max-w-[22rem] truncate font-semibold text-[var(--ink)]">{product.name}</p><p className="text-xs text-[var(--ink-muted)]">{sourceList ? `${supplierNameByListId.get(sourceList.id) ?? 'Proveedor'} · ` : 'Mi stock · '}{product.category || 'Sin categoría'} · {product.stock} en stock</p></div>
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink-muted)]">{economics.purchaseCost === null ? '—' : formatCurrency(economics.purchaseCost)}</td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink-muted)]">{formatCurrency(product.salePrice)}</td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-[var(--ink)]">{formatCurrency(resellerPrice)}</td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink)]">{profit === null ? '—' : formatCurrency(profit)}</td>
+                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p></div></td>
+                          <td className="px-3 py-3 text-right"><button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!item || !canWrite || bulkBusy} aria-expanded={expanded} className="min-h-8 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar' : 'Editar'}</button></td>
+                        </tr>
+                        {expanded && item && <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/60"><td colSpan={8} className="px-4 py-4">
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <label className="text-xs font-semibold text-[var(--ink-muted)]">Regla de precio<select aria-label={`Regla de precio para ${product.name}`} value={item.pricingMode} disabled={!canWrite || bulkBusy} onChange={event => updateItem(product.id, { pricingMode: event.target.value as PriceListPricingMode, discountPercent: event.target.value === 'discount' ? discount : null, fixedPrice: event.target.value === 'fixed' ? resellerPrice : null })} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="default">Descuento general</option><option value="discount">Otro descuento</option><option value="fixed">Precio fijo</option></select></label>
+                            {item.pricingMode === 'discount' && <label className="text-xs font-semibold text-[var(--ink-muted)]">Descuento<input aria-label={`Descuento para ${product.name}`} type="number" min="0" max="100" step="0.5" value={item.discountPercent ?? 0} disabled={!canWrite || bulkBusy} onChange={event => updateItem(product.id, { discountPercent: Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>}
+                            {item.pricingMode === 'fixed' && <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio fijo<MoneyInput aria-label={`Precio fijo para ${product.name}`} min="0" value={item.fixedPrice ?? 0} disabled={!canWrite || bulkBusy} onChange={event => updateItem(product.id, { fixedPrice: Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>}
+                            <div className="text-xs font-semibold text-[var(--ink-muted)]">Precio para revendedores<p className="mt-1 text-base font-bold text-[var(--ink)]">{formatCurrency(resellerPrice)}</p></div>
+                            <label className="text-xs font-semibold text-[var(--ink-muted)]">Disponibilidad<select aria-label={`Disponibilidad para ${product.name}`} value={item.availability} disabled={!canWrite || bulkBusy} onChange={event => updateItem(product.id, { availability: event.target.value as PriceListItem['availability'] })} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="in_stock">Disponible</option><option value="on_order">Por pedido</option></select></label>
+                          </div>
+                          {advice && <p className="mt-3 text-sm text-[var(--ink-muted)]">{advice.message}</p>}
+                        </td></tr>}
+                      </React.Fragment>;
+                    })}
+                    {visiblePricePageProducts.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-[var(--ink-muted)]">No encontramos productos con estos filtros.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-3 text-sm text-[var(--ink-muted)] sm:flex-row sm:items-center sm:justify-between">
+                <p>Mostrando {resellerVisibleProducts.length === 0 ? 0 : priceProductPage * PRICE_LIST_PAGE_SIZE + 1}–{Math.min((priceProductPage + 1) * PRICE_LIST_PAGE_SIZE, resellerVisibleProducts.length)} de {resellerVisibleProducts.length} productos · {items.length} en la lista</p>
+                <div className="flex items-center gap-2"><button type="button" aria-label="Página anterior" onClick={() => setPriceProductPage(page => Math.max(0, page - 1))} disabled={priceProductPage === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 disabled:opacity-40">Anterior</button><span aria-live="polite">{priceProductPage + 1} / {priceProductPageCount}</span><button type="button" aria-label="Página siguiente" onClick={() => setPriceProductPage(page => Math.min(priceProductPageCount - 1, page + 1))} disabled={priceProductPage >= priceProductPageCount - 1} className="min-h-9 rounded-lg border border-[var(--line)] px-3 disabled:opacity-40">Siguiente</button></div>
+              </div>
+
+              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                <p className="text-xs text-[var(--ink-muted)]">La inclusión y la disponibilidad se guardan automáticamente. Los cambios de precio se guardan al confirmar «Guardar lista».</p>
+                <div className="flex gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Ver PDF</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Descargar</button><button type="button" onClick={handleSave} disabled={!canWrite || saving || bulkBusy} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">Guardar lista</button></div>
+              </footer>
+            </div>
+          ) : (
+            <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1801,11 +2190,6 @@ export default function ResellerPriceListModal({
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               />
             </div>
-            {displayMode === 'page' && <div role="group" aria-label="Filtrar productos de la lista" className="flex flex-wrap gap-2">
-              {[['all', 'Todos'], ['stock', 'Mi stock'], ...supplierLists.map(supplierList => [supplierList.id, supplierNameByListId.get(supplierList.id) ?? 'Proveedor'] as [string, string])].map(([filter, label]) => <button key={filter} type="button" aria-pressed={productListSourceFilter === filter} onClick={() => setProductListSourceFilter(filter)} className={cn('min-h-9 rounded-full border px-3 text-xs font-semibold', productListSourceFilter === filter ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]' : 'border-[var(--line)] bg-[var(--surface-1)] text-[var(--ink-muted)]')}>
-                {label}
-              </button>)}
-            </div>}
             <button
               type="button"
               onClick={() => onCreateProduct()}
@@ -1817,7 +2201,7 @@ export default function ResellerPriceListModal({
             </button>
           </div>
 
-          <div className={displayMode === 'page' ? 'space-y-3' : 'min-h-0 flex-1 space-y-3 overflow-y-auto pr-1'}>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {resellerVisibleProducts.map((product) => {
               const item = itemByProductId.get(product.id);
               const resolvedPrice = item
@@ -2066,9 +2450,55 @@ export default function ResellerPriceListModal({
               </button>
             </div>
           </footer>
+            </>
+          )}
           </section>
         </div>
       ) : null}
+    </Modal>
+
+    {displayMode === 'page' && pageTab === 'prices' && selectedPriceProducts.length > 0 && (
+      <div role="toolbar" aria-label="Acciones para productos elegidos" className="fixed inset-x-2 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-[calc(100%_-_1rem)] max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-3 shadow-2xl sm:bottom-4 sm:flex-nowrap sm:justify-center">
+        <span className="mr-auto whitespace-nowrap px-1 text-sm font-bold text-[var(--ink)]">{selectedPriceProducts.length} elegidos</span>
+        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedRemoveIds.length === 0} onClick={() => requestBulkConfirmation('remove', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Quitar de la lista</button>
+        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
+        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAvailableIds.length === 0} onClick={() => requestBulkConfirmation('in_stock', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Disponible</button>
+        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedOnOrderIds.length === 0} onClick={() => requestBulkConfirmation('on_order', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Por pedido</button>
+        <button type="button" onClick={() => setSelectedPriceProductIds(new Set())} disabled={bulkBusy} className="min-h-9 whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-40">Cancelar</button>
+      </div>
+    )}
+
+    {displayMode === 'page' && pageTab === 'prices' && bulkUndo && (
+      <div role="status" className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
+        <span>{bulkUndo.type === 'remove' ? 'Productos quitados de la lista.' : bulkUndo.type === 'add' ? 'Productos agregados a la lista.' : 'Disponibilidad actualizada.'}</span>
+        <button type="button" onClick={() => void handleUndoPriceListBulk()} disabled={bulkBusy} className="rounded-md bg-[var(--surface-1)] px-3 py-1.5 font-bold text-[var(--ink)] disabled:opacity-50">Deshacer</button>
+      </div>
+    )}
+
+    <Modal
+      isOpen={bulkConfirmation !== null}
+      onClose={() => { if (!bulkBusy) { setBulkConfirmation(null); setBulkProgress(null); setBulkError(null); } }}
+      title="Confirmar cambios en la lista"
+      className="w-[calc(100%_-_1rem)] max-w-lg"
+    >
+      {bulkConfirmation && (
+        <div className="space-y-4">
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm leading-relaxed text-[var(--ink)]">
+            {bulkConfirmation.action === 'remove' && <>Vas a quitar <strong>{bulkConfirmation.productIds.length.toLocaleString('es-AR')} producto{bulkConfirmation.productIds.length === 1 ? '' : 's'}</strong> de la lista de revendedores. No se borran de tu stock.</>}
+            {bulkConfirmation.action === 'add' && <>Vas a agregar <strong>{bulkConfirmation.productIds.length.toLocaleString('es-AR')} producto{bulkConfirmation.productIds.length === 1 ? '' : 's'}</strong> a la lista de revendedores.</>}
+            {bulkConfirmation.action === 'in_stock' && <>Vas a marcar <strong>{bulkConfirmation.productIds.length.toLocaleString('es-AR')} producto{bulkConfirmation.productIds.length === 1 ? '' : 's'}</strong> como disponibles en la lista de revendedores.</>}
+            {bulkConfirmation.action === 'on_order' && <>Vas a marcar <strong>{bulkConfirmation.productIds.length.toLocaleString('es-AR')} producto{bulkConfirmation.productIds.length === 1 ? '' : 's'}</strong> como «Por pedido» en la lista de revendedores.</>}
+          </p>
+          {bulkProgress && <p role="status" aria-live="polite" className="text-sm text-[var(--ink-muted)]">Guardando {bulkProgress.completed.toLocaleString('es-AR')} de {bulkProgress.total.toLocaleString('es-AR')} productos…</p>}
+          {bulkError && <p role="alert" className="text-sm font-semibold text-[var(--danger-ink)]">{bulkError}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => { if (!bulkBusy) { setBulkConfirmation(null); setBulkProgress(null); setBulkError(null); } }} disabled={bulkBusy} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-45">Cancelar</button>
+            <button type="button" onClick={() => void handleApplyBulkConfirmation()} disabled={!canWrite || bulkBusy} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-45">
+              {bulkBusy ? 'Guardando…' : bulkError ? 'Reintentar' : bulkConfirmation.action === 'remove' ? 'Quitar de la lista' : bulkConfirmation.action === 'add' ? 'Agregar a la lista' : bulkConfirmation.action === 'in_stock' ? 'Marcar disponible' : 'Marcar por pedido'}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
 
     <Modal

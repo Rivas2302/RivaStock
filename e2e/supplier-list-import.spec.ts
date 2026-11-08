@@ -17,15 +17,24 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean } = {}) {
-  const products: Record<string, unknown>[] = [];
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean } = {}) {
+  const products: Record<string, unknown>[] = options.bulkFixture ? [
+    { id: 'bulk-stock-included', user_id: owner, name: '[QA] Stock incluido', category: 'General', category_id: 'category-general', stock: 4, sale_price: 2000, purchase_price: 1000, barcode: 'QA-STOCK-1', image_url: 'https://fixture.invalid/stock.webp', images: ['https://fixture.invalid/stock.webp'] },
+    { id: 'bulk-stock-excluded', user_id: owner, name: '[QA] Stock fuera de lista', category: 'General', category_id: 'category-general', stock: 2, sale_price: 3000, purchase_price: 1500, barcode: 'QA-STOCK-2', image_url: 'https://fixture.invalid/stock-2.webp', images: ['https://fixture.invalid/stock-2.webp'] },
+    { id: 'bulk-provider-included', user_id: owner, name: '[QA] Producto proveedor', category: 'General', category_id: 'category-general', stock: 0, sale_price: 4000, catalog_only: true, catalog_cost: 2500, barcode: 'QA-PROVIDER-1', image_url: 'https://fixture.invalid/provider.webp', images: ['https://fixture.invalid/provider.webp'] },
+  ] : [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
-  let supplierProductIds: string[] = options.removalFixture ? ['product-removal-1', 'product-removal-2'] : [];
+  let supplierProductIds: string[] = options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
+  const priceListItems: Record<string, unknown>[] = options.bulkFixture ? [
+    { id: 'bulk-item-stock', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-stock-included', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
+    { id: 'bulk-item-provider', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-provider-included', pricing_mode: 'default', availability: 'on_order', supplier_list_id: supplierList.id, sort_order: 1 },
+  ] : [];
   let changedCatalog = false;
   let failedImageIndex = options.failImageIndex;
   const sourceCosts: number[] = [];
   const pricingCalls: unknown[][] = [];
   const removalCalls: unknown[] = [];
+  const bulkCalls: Array<{ method: string; productIds: string[]; body?: unknown }> = [];
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
@@ -65,6 +74,32 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       if (rpc === 'is_platform_admin') return route.fulfill({ json: false });
       if (rpc === 'my_business_plan') return route.fulfill({ json: { plan_code: 'base', plan_name: 'RivaStock', status: 'active', limits: { modules: { ai: false, knowledge: false, automation: false } } } });
       if (rpc === 'storage_upload_check') return route.fulfill({ json: { allowed: true } });
+      if (rpc === 'get_public_catalog_products') return route.fulfill({ json: [] });
+      if (rpc === 'get_reseller_catalog_status') {
+        const enabled = priceListItems.some(item => {
+          const product = products.find(row => row.id === item.product_id);
+          return Boolean(product && (item.availability === 'on_order' || Number(product.stock) > 0));
+        });
+        return route.fulfill({ json: { enabled } });
+      }
+      if (rpc === 'unlock_reseller_catalog') {
+        const listedProducts = priceListItems.flatMap(item => {
+          const product = products.find(row => row.id === item.product_id);
+          if (!product || (item.availability !== 'on_order' && Number(product.stock) <= 0)) return [];
+          return [{
+            id: product.id,
+            name: product.name,
+            categoryId: product.category_id,
+            category: product.category,
+            salePrice: product.sale_price,
+            stock: product.stock,
+            imageUrl: product.image_url,
+            images: product.images,
+            availability: item.availability,
+          }];
+        });
+        return route.fulfill({ json: { enabled: true, priceListId: priceList.id, products: listedProducts } });
+      }
       if (rpc === 'save_reseller_supplier_list') {
         supplierProductIds = (route.request().postDataJSON() as { p_product_ids: string[] }).p_product_ids;
         return route.fulfill({ json: supplierList });
@@ -109,7 +144,45 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
         }
         return route.fulfill({ json: categories });
       }
+      if (table === 'catalog_config') return route.fulfill({ json: [{
+        id: 'catalog-config-qa', user_id: owner, business_name: 'Negocio QA', slug: 'qa-bulk',
+        show_prices: true, show_out_of_stock: true, show_stock: false, show_stock_quantity: false,
+        enabled: true, welcome_message: '', primary_color: '#4f46e5', accent_color: '#4f46e5',
+        allow_orders: true, layout: 'Grid', font_style: 'Modern',
+      }] });
       if (table === 'price_lists') return route.fulfill({ json: [priceList] });
+      if (table === 'price_list_items') {
+        const method = route.request().method();
+        if (method === 'GET') return route.fulfill({ json: priceListItems });
+        const queryProductIds = () => priceListItems
+          .map(row => String(row.product_id))
+          .filter(productId => (url.searchParams.get('product_id') ?? '').includes(productId));
+        if (method === 'DELETE') {
+          const productIds = queryProductIds();
+          bulkCalls.push({ method, productIds });
+          for (let index = priceListItems.length - 1; index >= 0; index -= 1) {
+            if (productIds.includes(String(priceListItems[index].product_id))) priceListItems.splice(index, 1);
+          }
+          return route.fulfill({ json: [] });
+        }
+        if (method === 'PATCH') {
+          const productIds = queryProductIds();
+          const body = route.request().postDataJSON() as Record<string, unknown>;
+          bulkCalls.push({ method, productIds, body });
+          for (const row of priceListItems) if (productIds.includes(String(row.product_id))) Object.assign(row, body);
+          return route.fulfill({ json: [] });
+        }
+        if (method === 'POST') {
+          const rows = route.request().postDataJSON() as Record<string, unknown>[];
+          const productIds = rows.map(row => String(row.product_id));
+          bulkCalls.push({ method, productIds, body: rows });
+          for (const row of rows) {
+            const existing = priceListItems.find(item => item.product_id === row.product_id && item.price_list_id === row.price_list_id);
+            if (!existing) priceListItems.push({ ...row, id: `bulk-item-${String(row.product_id)}` });
+          }
+          return route.fulfill({ status: 201, json: [] });
+        }
+      }
       if (table === 'reseller_supplier_lists') return route.fulfill({ json: [supplierList] });
       if (table === 'reseller_supplier_list_items') return route.fulfill({ json: supplierProductIds.map((product_id, sort_order) => ({ user_id: owner, supplier_list_id: supplierList.id, product_id, sort_order })) });
       if (table === 'suppliers') return route.fulfill({ json: [supplier, secondarySupplier] });
@@ -125,7 +198,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts, removalCalls,
+    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems,
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
   };
@@ -341,5 +414,68 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
     // Each viewport run starts from the same clean fixture state, as separate smoke runs would.
     products.splice(0, products.length);
+  }
+});
+
+test('bulk price-list actions use the visible Mi stock filter, support undo, and never mutate products at 360 and 1440 px', async ({ page }) => {
+  const { products, bulkCalls, priceListItems } = await mockApp(page, { bulkFixture: true });
+  const initialItems = priceListItems.map(item => ({ ...item }));
+
+  for (const width of [360, 1440]) {
+    priceListItems.splice(0, priceListItems.length, ...initialItems.map(item => ({ ...item })));
+    bulkCalls.splice(0, bulkCalls.length);
+    await page.setViewportSize({ width, height: width === 360 ? 800 : 900 });
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
+    await page.getByRole('group', { name: 'Origen de los productos' }).getByRole('button', { name: 'Mi stock' }).click();
+
+    const panel = page.getByTestId('reseller-price-bulk-panel');
+    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('En la lista');
+    await expect(panel.getByRole('row', { name: /Stock fuera de lista/ })).toContainText('Fuera de la lista');
+    await expect(panel.getByRole('row', { name: /Producto proveedor/ })).toHaveCount(0);
+    await panel.getByLabel('Elegir todos los que se ven').check();
+
+    const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
+    await expect(toolbar).toContainText('2 elegidos');
+    await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
+    await expect(confirmation).toContainText('1 producto de la lista de revendedores. No se borran de tu stock.');
+    await confirmation.getByRole('button', { name: 'Quitar de la lista' }).click();
+    await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(false);
+    expect(products).toHaveLength(3);
+    expect(bulkCalls.at(-1)).toMatchObject({ method: 'DELETE', productIds: ['bulk-stock-included'] });
+
+    await page.getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(true);
+    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('En la lista');
+
+    await panel.getByLabel('Elegir todos los que se ven').check();
+    await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
+    await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Quitar de la lista' }).click();
+    await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(false);
+    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('Fuera de la lista');
+    expect(products).toHaveLength(3);
+    expect(bulkCalls.every(call => call.productIds.every(id => id === 'bulk-stock-included'))).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+    await page.goto('/catalogo/qa-bulk');
+    await expect(page.getByRole('button', { name: /Revendedores/ })).toBeVisible();
+    await page.getByRole('button', { name: /Revendedores/ }).click();
+    await page.getByPlaceholder('Código de acceso').fill('qa-code');
+    await page.getByRole('button', { name: 'Ingresar' }).click();
+    await expect(page.getByText('[QA] Stock incluido')).toHaveCount(0);
+    await expect(page.getByText('[QA] Producto proveedor')).toBeVisible();
+
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
+    const restoredPanel = page.getByTestId('reseller-price-bulk-panel');
+    await restoredPanel.getByLabel('Elegir [QA] Stock incluido').check();
+    await toolbar.getByRole('button', { name: 'Agregar a la lista' }).click();
+    await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Agregar a la lista' }).click();
+    await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(true);
+    await panel.getByLabel('Elegir [QA] Stock incluido').check();
+    await toolbar.getByRole('button', { name: 'Por pedido' }).click();
+    await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Marcar por pedido' }).click();
+    await expect.poll(() => priceListItems.find(item => item.product_id === 'bulk-stock-included')?.availability).toBe('on_order');
   }
 });

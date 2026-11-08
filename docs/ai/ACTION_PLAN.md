@@ -789,7 +789,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px: cambiar el código desde Ajustes **solo con fixtures o en el entorno local** (el código real está guardado como hash y no se puede restaurar: **nunca cambiarlo en producción**); y que los ajustes se guarden sin tocar otra pestaña. Capturas de Ajustes comparadas con la maqueta.
 
-### [ ] I32 Deshacer una importación de proveedor (borrado masivo seguro) — **pedido de Riva el 07/11 21:24 (URGENTE, va primero)**
+### [x] I32 Deshacer una importación de proveedor (borrado masivo seguro) — **pedido de Riva el 07/11 21:24 (URGENTE, va primero)**
 
 **Situación:** Riva agregó ~800 productos de Mr Tecno con «Agregar los listos» (antes de I30, así que los nombres llevan el código del proveedor, por ejemplo «HM352 – …»), y quiere poder borrarlos. Hoy la app **no tiene borrado masivo** (Stock solo borra de a uno). La importación también creó **categorías nuevas** (las de Mr Tecno, en mayúsculas) y subió fotos al Storage.
 
