@@ -70,11 +70,11 @@ describe('universal supplier product extraction', () => {
     expect(results.items.every(item => item.imageUrl?.startsWith('https://'))).toBe(true);
   });
 
-  it('parses Babaji free text, preserves model codes, annotates non-code notes, and reads $ 37,125 as 37.125', () => {
+  it('parses anonymized Babaji cards, preserves model codes, annotates notes, and reads $ 37,125 as ARS 37,125', () => {
     const results = extract.readPage(page('php-cards-long-babaji.html', 'https://babaji.com.ar/catalogo2022x3.php'));
     expect(results.items).toHaveLength(10);
     const first = results.items.find(item => item.code === 'FIX-B-01');
-    expect(first).toMatchObject({ name: 'Ventilador Demostracion', price: 37125, currency: 'ARS', category: 'Tecno & Hogar', notes: ['Sin Cambio'], packSize: 6 });
+    expect(first).toMatchObject({ name: 'Ventilador Demostracion', price: 37125, currency: 'ARS', category: 'Categoria De Prueba', notes: ['Sin Cambio'], packSize: 6 });
     expect(first?.altCode).toBeNull();
     expect(results.items.find(item => item.code === 'FIX-B-02')).toMatchObject({ altCode: 'ALT-02', name: 'Lampara Demostracion' });
     expect(results.items.find(item => item.code === 'FIX-B-03')?.altCode).toBeNull();
@@ -99,6 +99,48 @@ describe('universal supplier product extraction', () => {
     expect(extract.readPage(page('tiendanube-dom.html')).items).toHaveLength(2);
     expect(extract.readPage(page('jsonld-itemlist.html')).items).toHaveLength(3);
     expect(extract.readPage(page('next-data.html')).items).toHaveLength(4);
+  });
+
+  it('reads WooCommerce Woodmart product cards and falls back to a product ID when SKU is blank', () => {
+    const document = new JSDOM(`
+      <div class="wd-shop-product">
+        <div class="wd-product product-grid-item post-10047591">
+          <a class="wd-product-img-link" href="https://inovaarg.com/producto/arbol-de-arce-calido/"><img src="https://inovaarg.com/arbol.webp"></a>
+          <h3 class="wd-entities-title"><a href="https://inovaarg.com/producto/arbol-de-arce-calido/">Árbol de arce cálido</a></h3>
+          <span class="price"><span class="woocommerce-Price-amount">$ 16.500</span></span>
+        </div>
+      </div>
+    `, { url: 'https://inovaarg.com/tienda/page/4/' }).window.document;
+
+    const result = extract.readPage(document);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      code: '10047591', name: 'Árbol de arce cálido', price: 16500,
+      url: 'https://inovaarg.com/producto/arbol-de-arce-calido/',
+      imageUrl: 'https://inovaarg.com/arbol.webp',
+    });
+  });
+
+  it('reads Braja card SKUs while excluding its quantity and add controls', () => {
+    const document = new JSDOM(`
+      <article class="product-card">
+        <a class="product-card-link" data-detalle-producto-id="3408" href="/tienda/centro/productos/3408"></a>
+        <div class="product-card-media"><img src="https://images.example.test/alargue.webp"></div>
+        <div class="product-card-body">
+          <span class="product-card-categoria">ELECTRONICA Y ACCESORIOS</span>
+          <h3 class="product-card-nombre">ALARGUE ZAPATILLA 9 ENCHUFES</h3>
+          <span class="product-card-sku">SKU: PS-341</span>
+          <p class="product-card-precio"><span class="product-card-precio-actual">$ 11.900,00</span></p>
+          <form><input value="1"><button type="button">AGREGAR</button></form>
+        </div>
+      </article>
+    `, { url: 'https://brajamayorista.com/tienda/centro/productos' }).window.document;
+
+    const result = extract.readPage(document);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ code: 'PS-341', price: 11900, name: 'Alargue Zapatilla 9 Enchufes' });
+    expect(result.items[0].url).toBe('https://brajamayorista.com/tienda/centro/productos/3408');
+    expect(result.items[0].raw).not.toContain('AGREGAR');
   });
 
   it('keeps sale and labeled wholesale/retail prices with a review warning', () => {

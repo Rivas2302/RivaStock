@@ -45,7 +45,7 @@ describe('Facebook publication preparation',() => {
     expect(() => validateFacebookDestination({mechanism:'group_direct',url:'https://www.facebook.com/groups/PicoVendedeTodo'})).not.toThrow();
     await expect(fetchPublicationPhotos({photos:['https://evil.test/photo.jpg']},'https://test.supabase.co')).rejects.toThrow('almacenamiento');
     const manifest=JSON.parse(readFileSync('extensions/facebook/manifest.json','utf8'));
-    expect(manifest.permissions).toEqual(['storage','alarms','scripting']);
+    expect(manifest.permissions).toEqual(['storage','alarms','scripting','activeTab']);
     expect(manifest.host_permissions).toBeUndefined();
     expect(manifest.externally_connectable).toEqual({matches:['https://rivastock.vercel.app/*']});
   });

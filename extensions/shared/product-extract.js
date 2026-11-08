@@ -223,7 +223,7 @@
     const candidates = new Set();
     const selectors = [
       '.caja_producto', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
-      'article.product', 'article.product-card', 'li.product', '.product-card', '.product-item',
+      'article.product', 'article.product-card', 'li.product', '.product-card', '.product-item', '.wd-product', '.product-grid-item',
       '.js-item-product', '.item-product', '.grid-item.product', '[class*="product-card"]',
     ];
     for (const selector of selectors) for (const node of document.querySelectorAll(selector)) candidates.add(node);
@@ -238,18 +238,29 @@
       if (!title || !priceNode || imageNodes.length === 0) continue;
       const safeTexts = collectSafeText(node);
       const titleText = safeText(title.textContent);
-      const codeLine = safeTexts.find(text => /(?:sku|c[oó]d(?:igo)?|codigo)\s*[:#]/i.test(text)) ?? '';
+      const codeElement = node.querySelector('[itemprop="sku"], [data-sku], [class*="sku"]');
+      const codeElementText = codeElement && !codeElement.closest(UNSAFE_DOM)
+        ? (codeElement.getAttribute('content') || codeElement.getAttribute('data-sku') || safeText(codeElement.textContent))
+        : '';
+      const codeLine = codeElementText || safeTexts.find(text => /(?:sku|c[oó]d(?:igo)?|codigo)\s*[:#]/i.test(text)) || '';
       const codeMatch = codeLine.match(/(?:sku|c[oó]d(?:igo)?|codigo)\s*\.?\s*[:#]\s*([\w./-]+)/i);
+      const productAnchor = node.querySelector('a.woocommerce-LoopProduct-link,a.product-link,a.js-item-name,a.wd-entities-title[href],.wd-entities-title a[href],a.product-card-link[href],[data-detalle-producto-id][href],[itemprop="url"]');
+      const classProductId = String(node.className || '').match(/(?:^|\s)post-(\d+)(?:\s|$)/)?.[1];
+      let permalinkCode = null;
+      try { if (productAnchor?.href) permalinkCode = new URL(productAnchor.href, document.location?.href).pathname.replace(/\/$/, '').slice(0, 100) || null; } catch { /* Ignore invalid product links. */ }
       const fallbackCode = imageNodes.find(image => image.getAttribute('data-codigo'))?.getAttribute('data-codigo')
         ?? node.querySelector('a[name]')?.getAttribute('name')
         ?? node.getAttribute('data-product-id')
+        ?? node.getAttribute('data-id')
+        ?? node.querySelector('[data-detalle-producto-id]')?.getAttribute('data-detalle-producto-id')
+        ?? classProductId
+        ?? permalinkCode
         ?? node.getAttribute('data-product');
       const categoryNode = node.querySelector('p.rubro_centrado, [itemprop="category"], [class*="category"], [class*="categoria"], [class*="rubro"]');
       const priceText = safeText(priceNode.textContent);
       const imageUrls = imageNodes.map(image => image.getAttribute('data-src') || image.getAttribute('data-lazy') || image.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0] || image.getAttribute('src')).filter(Boolean);
       const allText = safeTexts.join(' ');
       const listPriceNode = node.querySelector('del,.price-original,[class*="original"],[class*="regular"],[data-list-price]');
-      const productAnchor = node.querySelector('a.woocommerce-LoopProduct-link,a.product-link,a.js-item-name,[itemprop="url"]');
       cards.push({
         title: titleText, text: allText.slice(0, MAX_TEXT_LENGTH), priceText,
         code: codeMatch?.[1] ?? fallbackCode ?? null,

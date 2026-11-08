@@ -32,6 +32,22 @@
 - Playwright validó los tres pasos y que cada imagen carga (2/2 pruebas del flujo extensión→Revisar y ayuda). Capturas de fixture local: `public/images/i37-extension-step-1.png`, `i37-extension-step-2.png` y `i37-extension-step-3.png`; no contienen datos de producción.
 - F4 lista para el commit de su fase.
 
+## I37 — Fase 5: verificación local y lectura real
+
+- El e2e cargó la extensión 0.6.0 en Chromium con páginas de fixture: 44 productos desde JSON paginado, 4 por scroll infinito y 3 tarjetas WooCommerce. Se verificó 0 clics en botones de compra/carrusel, 0 escrituras de producción y ninguna sesión/cookie enviada. La prueba del popup espera «Versión 0.6.0», así detecta errores al cargar su módulo.
+- Leí las cuatro tiendas públicas desde un perfil temporal, nuevo y sin autenticar; la extensión se ejecutó en el navegador, sin llamadas desde nuestro servidor a endpoints privados. No escribí formularios, no accioné controles de compra ni envié capturas a RivaStock.
+
+| Proveedor | Leídos | Con foto | Con código/ID | Sin precio | Tres precios visibles que coincidieron |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Mr Tecno | 1.399 | 1.399 | 1.399 | 525 | Zapatero 50×23×60 cm $16.960; Auricular Tipo Sony $14.400; Adaptador Internacional con 2 USB $4.000 |
+| Inova | 786 (la página indicaba 823) | 786 | 786 | 2 | Árbol de arce cálido $16.500; Árbol de Navidad 120 cm $15.500; Árbol de Navidad 150 cm $26.000 |
+| Braja | 782 (la página indicaba 790) | 782 | 782 | 0 | Alargue 9 enchufes · PS-341 $11.900; TWS-K89 $9.200; XX0011 $4.300 |
+| Mayorista Omega | 1.140 | 1.140 | 1.140 | 0 | Accesorio flexible p/canilla SM4 $3.000; Aceitero spray 100 ml H48 $2.900; Aceitero spray 2 en 1 ROC-01-02 $4.500 |
+
+- En Mr Tecno los 525 registros sin precio no tenían texto monetario ni «Consultar» en la tarjeta; por eso no los marqué como fallo de parseo y quedan para revisar. Desvío del criterio de cierre: el total capturado no alcanza 95 % con precio disponible; no marco I37 [x] hasta resolver ese criterio. Inova quedó en 95,5 % del total mostrado (786/823) y Braja en 99,0 % (782/790).
+- Las pruebas de Babaji mantienen el caso "$ 37,125": el parser devuelve el entero 37125, que en formato argentino se presenta como $37.125. Se usaron 10 tarjetas anonimizadas por tienda derivadas solo de la estructura de las muestras del Escritorio; los textos, códigos, categorías e imágenes son sintéticos y no se guardó ningún original en git.
+- Verificación: lint aprobado; 1.210/1.210 pruebas unitarias; build aprobado; Playwright de importación 25/25 a Chromium, con 360/412/1440 px donde corresponde; e2e de la extensión 3 escenarios. La primera corrida de Playwright reveló que el mock compartía mutablemente la lista entre pruebas; se aisló con un clon por ejecución y la suite completa pasó.
+- El paquete se genera con la allowlist del publicador y contiene supplier-capture-ui.js; la key/ID derivan igual que la versión anterior. La web todavía debe recibir este commit para publicar el ZIP y su manifiesto; luego hay que comprobar HTTP 200, version 0.6.0 y que el hash público corresponda al ZIP.
 # 2026-11-08 — I35 e I36 verificados en producción
 
 - Incorporé el orden I35 → I36 y las dos secciones nuevas del `ACTION_PLAN.md` del Escritorio; conservé el resto del plan y sus marcas previas.

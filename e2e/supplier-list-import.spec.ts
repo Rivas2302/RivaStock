@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const owner = '10000000-0000-4000-8000-000000000001';
 const now = new Date().toISOString();
-const priceList = { id: 'price-list-qa', user_id: owner, kind: 'reseller', default_discount_percent: 20, public_enabled: false, minimum_rule: 'none', minimum_order_amount: 0, minimum_order_quantity: 0,
+const priceListFixture = { id: 'price-list-qa', user_id: owner, kind: 'reseller', default_discount_percent: 20, public_enabled: false, minimum_rule: 'none', minimum_order_amount: 0, minimum_order_quantity: 0,
   margin_rules: { tiers: [
     { id: 'cost-5000', maximumCost: 5000, mode: 'percent', value: 40, minimumProfit: null, maximumProfit: null },
     { id: 'cost-15000', maximumCost: 15000, mode: 'percent', value: 30, minimumProfit: null, maximumProfit: null },
@@ -11,7 +11,7 @@ const priceList = { id: 'price-list-qa', user_id: owner, kind: 'reseller', defau
   ], categoryOverrides: {}, productOverrides: {}, rounding: 'none' } };
 const supplier = { id: 'supplier-qa', user_id: owner, name: '[QA] Mr Tecno', name_lower: '[qa] mr tecno', is_active: true };
 const secondarySupplier = { id: 'supplier-qa-secondary', user_id: owner, name: 'ZZ [QA] Otro proveedor', name_lower: 'zz [qa] otro proveedor', is_active: true };
-const supplierList = { id: 'supplier-list-qa', user_id: owner, price_list_id: priceList.id, supplier_id: supplier.id, enabled: false };
+const supplierListFixture = { id: 'supplier-list-qa', user_id: owner, price_list_id: priceListFixture.id, supplier_id: supplier.id, enabled: false };
 
 function session() {
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -24,6 +24,8 @@ function session() {
 }
 
 async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean } = {}) {
+  const priceList = structuredClone(priceListFixture);
+  const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
     await page.addInitScript(texts => {
       let index = 0;
@@ -725,7 +727,7 @@ test('extension supplier capture arrives in review without saving products', asy
   expect(priceListItems).toHaveLength(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({ path: 'test-results/i37-extension-review-1440.png', fullPage: true });
+  await page.getByLabel('Productos importados', { exact: true }).screenshot({ path: 'test-results/i37-extension-review-1440.png' });
 });
 
 test('I36 simulates six cost-based margins on mobile, applies one or many prices, and supports undo', async ({ page }, testInfo) => {

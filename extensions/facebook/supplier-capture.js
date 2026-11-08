@@ -8,7 +8,7 @@ const CHUNK_SIZE = 500;
 const MAIN_SCRIPT_ID = 'rivastock-supplier-main';
 const PAGE_SCRIPT_ID = 'rivastock-supplier-page';
 const PRODUCT_CARD_PATHS = new Set(['rub', 'cat', 'categoria', 'page', 'pagina']);
-const SAFE_PAGINATION_LABEL = /^(?:siguiente(?:\s+p[aá]gina)?|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
+const SAFE_PAGINATION_LABEL = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|p[aá]gina\s+\d{1,4}|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
 const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
 
 function isUnsafePublicHost(hostname) {

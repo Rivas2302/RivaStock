@@ -5,9 +5,9 @@
   const MAX_PAGES = 150;
   const MAX_PRODUCTS = 5_000;
   const BLOCKED = /^(?:agregar|a[nñ]adir|comprar|ver\s+pedido|carrito|pedido|enviar|whats?app|consultar)$/i;
-  const PAGINATION = /^(?:siguiente|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
+  const PAGINATION = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
   const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
-  const CARDS = '.caja_producto,[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.js-item-product,.item-product,[class*="product-card"]';
+  const CARDS = '.caja_producto,[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
   let timer = null;
   let crawlStarted = false;
   let lastProductCount = 0;
@@ -30,16 +30,25 @@
   function candidateLabel(element) {
     return String(element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   }
+  function isNextNumberedPage(element) {
+    if (!element.closest('.pagination,[class*="pagination"],nav[aria-label*="pagin" i]')) return false;
+    const current = document.querySelector('[aria-current="page"],.catalog-pagination-numero.actual,.pagination .current,[class*="pagination"] .current');
+    const currentLabel = String(current?.getAttribute('aria-label') || current?.textContent || '').trim();
+    const currentNumber = Number(currentLabel.match(/(?:p[aá]gina\s+)?(\d{1,4})/i)?.[1]);
+    const candidateNumber = Number(candidateLabel(element).match(/^p[aá]gina\s+(\d{1,4})$/i)?.[1]
+      ?? candidateLabel(element).match(/^(\d{1,4})$/)?.[1]);
+    return Number.isSafeInteger(currentNumber) && currentNumber > 0 && candidateNumber === currentNumber + 1;
+  }
   function findSafeNext() {
     for (const element of document.querySelectorAll('a[rel~="next"],.pagination a,nav[aria-label*="pagin" i] a,a,button[type="button"]')) {
       if (isExcluded(element) || element.disabled || element.getAttribute('aria-disabled') === 'true') continue;
       const label = candidateLabel(element);
       if (BLOCKED.test(label)) continue;
       const url = element.tagName === 'A' ? safePageUrl(element.href) : null;
-      const numericPage = /^\d{1,4}$/.test(label) && Boolean(element.closest('.pagination,[class*="pagination"],nav[aria-label*="pagin" i]'));
+      const numericPage = isNextNumberedPage(element);
       if (element.rel?.toLowerCase().split(/\s+/).includes('next') || PAGINATION.test(label) || numericPage) {
         if (element.tagName === 'A' && url && url !== location.href) return { kind: 'url', url, label };
-        if (element.tagName === 'BUTTON' && PAGINATION.test(label)) return { kind: 'button', label };
+        if (element.tagName === 'BUTTON' && (PAGINATION.test(label) || numericPage)) return { kind: 'button', label };
       }
     }
     return null;
@@ -123,7 +132,6 @@
       const beforeCount = document.querySelectorAll(CARDS).length;
       window.scrollBy({ top: Math.max(360, Math.floor(window.innerHeight * 0.8)), left: 0, behavior: 'instant' });
       await delay(350);
-      await sendEvidence();
       const afterHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
       const afterCount = document.querySelectorAll(CARDS).length;
       const atBottom = window.scrollY + window.innerHeight >= afterHeight - 4;
@@ -135,6 +143,7 @@
       if (unchangedAtBottom >= 3) break;
       await delay(350);
     }
+    await sendEvidence();
     finishPage({ categoryUrls: collectCategoryUrls() });
   }
   function finishPage(navigation) {
@@ -159,7 +168,9 @@
       const next = findSafeNext();
       if (!next || next.kind !== 'button' || next.label !== message.label) { reply({ done: false }); return; }
       // Revalidate the exact, allowlisted pagination control immediately before clicking.
-      const target = [...document.querySelectorAll('button[type="button"]')].find(button => !isExcluded(button) && PAGINATION.test(candidateLabel(button)) && candidateLabel(button) === message.label && !BLOCKED.test(candidateLabel(button)));
+      const target = [...document.querySelectorAll('button[type="button"]')].find(button => !isExcluded(button)
+        && candidateLabel(button) === message.label && !BLOCKED.test(candidateLabel(button))
+        && (PAGINATION.test(candidateLabel(button)) || isNextNumberedPage(button)));
       if (!target) { reply({ done: false }); return; }
       pageFinished = false;
       target.click();

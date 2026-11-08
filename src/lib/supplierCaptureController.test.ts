@@ -90,6 +90,22 @@ describe('supplier capture controller', () => {
     expect(await controller.readLive()).toBeNull();
   });
 
+  it('forwards the explicit next numbered page label for page-script revalidation', async () => {
+    const { api } = mockExtension();
+    const controller = createSupplierCaptureController(api as never);
+    await controller.start(7, 'https://supplier.example.test');
+    await controller.handleEvidence({
+      url: 'https://supplier.example.test/products',
+      items: [{ name: 'Producto 1', code: 'SKU-1', price: 100 }], source: ['dom-cards'], warnings: [],
+    }, { tab: { id: 7 }, url: 'https://supplier.example.test/products' } as never);
+    await controller.handlePageFinished({
+      url: 'https://supplier.example.test/products',
+      navigation: { next: { kind: 'button', label: 'Pagina 2' } },
+    }, { tab: { id: 7 }, url: 'https://supplier.example.test/products' } as never);
+
+    expect(api.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'supplier-capture-click-next', label: 'Pagina 2' });
+  });
+
   it('stores the capture locally for 24 hours, serves bounded chunks, then removes it on acknowledgement', async () => {
     const { api, local } = mockExtension();
     const controller = createSupplierCaptureController(api as never);

@@ -1,4 +1,7 @@
 // Connection approval and permission request stay inside the extension page.
+import { supplierCaptureStatus } from './supplier-capture-ui.js';
+
+
 const form=document.querySelector('#connect');
 document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
 const supplierStart=document.querySelector('#supplier-start');
@@ -38,9 +41,7 @@ async function renderSupplierCapture(){
   supplierFinish.disabled=count===0;
   supplierAllCategories.hidden=state.status!=='categories-available';
   supplierAllCategories.textContent=`Leer todas las categorías (${Math.max(0,(state.categoryUrls?.length??0)-(state.pagesVisited?.length??0))})`;
-  if(state.status==='complete'&&count===0)supplierStatus.textContent='No encontramos productos. Ingresá primero con tu clave en la página del proveedor y después tocá Importar.';
-  else if(state.warnings?.length)supplierStatus.textContent=state.warnings.slice(0,2).join(' ');
-  else supplierStatus.textContent=state.status==='categories-available'?'Encontramos categorías. Podés recorrerlas sin usar flechas de carrusel.':'';
+  supplierStatus.textContent=supplierCaptureStatus(state);
 }
 supplierStart.addEventListener('click',async()=>{
   supplierStart.disabled=true;
