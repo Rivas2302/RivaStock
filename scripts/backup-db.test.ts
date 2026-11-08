@@ -6,7 +6,25 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SCRIPT = fileURLToPath(new URL('./backup-db.mjs', import.meta.url));
-const { parseScriptArgs } = await import('./backup-db.mjs');
+const { compareCounts, parseScriptArgs } = await import('./backup-db.mjs');
+
+describe('database backup row-count verification', () => {
+  it('accepts a dump count matching either exact live count around the export', () => {
+    const before = new Map([['public.items', 2]]);
+    const exported = new Map([['public.items', 2]]);
+    const after = new Map([['public.items', 3]]);
+    expect(compareCounts(before, exported, after)).toEqual([]);
+    expect(compareCounts(new Map([['public.items', 3]]), new Map([['public.items', 3]]), before)).toEqual([]);
+  });
+
+  it('rejects a dump count that matches neither exact live count', () => {
+    expect(compareCounts(
+      new Map([['public.items', 2]]),
+      new Map([['public.items', 4]]),
+      new Map([['public.items', 3]]),
+    )).toEqual([{ table: 'public.items', before: 2, exported: 4, after: 3 }]);
+  });
+});
 
 describe('database backup credential handling', () => {
   it('parses a resumable backup directory without accepting unknown arguments', () => {

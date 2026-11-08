@@ -852,6 +852,15 @@ export default function Stock() {
               return Array.from(byId.values());
             });
           }}
+          onProductsRemoved={(productIds) => {
+            const removed = new Set(productIds);
+            setProducts((current) => current.filter((product) => !removed.has(product.id)));
+          }}
+          onCategoriesRemoved={(categoryIds) => {
+            const removed = new Set(categoryIds);
+            setCategories((current) => current.filter((category) => !removed.has(category.id)));
+          }}
+          onPendingImageCleanup={(paths) => setPendingImageCleanup((current) => [...new Set([...current, ...paths])])}
         />
         </Suspense></DeferredMount>
       )}

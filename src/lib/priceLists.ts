@@ -128,6 +128,19 @@ export async function saveResellerSupplierList(input: {
   };
 }
 
+export async function saveResellerSupplierImportCategories(
+  supplierListId: string,
+  categoryIds: string[],
+): Promise<number> {
+  if (categoryIds.length === 0) return 0;
+  const { data, error } = await supabase.rpc('save_reseller_supplier_import_categories', {
+    p_supplier_list_id: supplierListId,
+    p_category_ids: Array.from(new Set(categoryIds)),
+  });
+  if (error) throw new Error(`[save_reseller_supplier_import_categories] ${error.message}`);
+  return Number(data ?? 0);
+}
+
 export async function saveResellerSupplierListWithPricing(input: {
   priceListId: string;
   supplierId: string;

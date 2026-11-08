@@ -664,6 +664,17 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 - PDF de prueba de 25 MB con texto y uno escaneado.
 - Confirmar que Vercel desplegó el commit (estado **Current**). Si GitHub no dispara el deploy, avisar a Riva en vez de dar por cerrado.
 
+### ⚠️ Orden de ejecución — actualizado por Riva el 07/11 21:22 (I25–I28 ya cerradas)
+
+0. **I32** Deshacer una importación de proveedor (Riva cargó ~800 de Mr Tecno y los quiere poder borrar). **Va primero.**
+0b. **I33** Acciones en lote en Lista de precios (quitar todos los de «Mi stock» de una vez).
+1. **I29** Revendedores también en el celular (chico y urgente: Riva usa el celular la mitad del tiempo).
+2. **I30** Que los clientes no descubran al proveedor. **Bloquea** cargar productos de Mr Tecno al catálogo: hoy los nombres llevan el código del proveedor.
+3. **I31** Ajustes como la maqueta, «Cambiar código» y correcciones contra las maquetas.
+4. Riva prueba cargando una tanda chica de Mr Tecno (ej. «zapatero») y después el resto. Codex no crea productos reales.
+5. Email de pedidos (I22): elegir una opción gratis sin dominio propio. Pendiente de decisión de Riva.
+6. Futuro: revisión de la estructura de la app (4e) y Bloque J. No empezar sin OK.
+
 ### ⚠️ Orden de ejecución actualizado — **Riva, 07/11 17:23: «priorizá esto, así dejamos listo este listado»**
 
 1. **I26** (cotización automática) + el arreglo urgente de abajo.
@@ -673,19 +684,19 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Arreglo urgente (va con I26):** el botón «Agregar los N listos» **ignora el buscador y el filtro de categoría**. Con «joystick» la lista muestra 24 productos y el botón sigue diciendo «Agregar los 874 listos». Tiene que agregar **solo lo que está filtrado** («Agregar los 24 listos de "joystick"») y, antes de crear, pedir confirmación con el número exacto. Test e2e: filtro → botón con el número filtrado → solo se crean esos.
 
-### [x] I25 Categorías sin cuadrado + Lista de revendedores como módulo propio — **pedido de Riva el 07/11 15:25 (después de I24)**
+### [ ] I25 Categorías sin cuadrado + Lista de revendedores como módulo propio — **pedido de Riva el 07/11 15:25 (después de I24)**
 
 1. **Cuadrado en las categorías del catálogo (I23 no lo resolvió).** En `src/pages/PublicCatalog.tsx` (~línea 1049) cada categoría es un `<button>` con `rounded-xl` y outline de foco cuadrado, y adentro un círculo con `border-2` **transparente** sobre un fondo degradé. Eso produce: (a) un recuadro alrededor del ícono al tocar o seleccionar en el celular (resaltado del toque y foco del botón), y (b) un anillo de otro color en el borde del círculo, porque el degradé se repite debajo del borde transparente. Corregir:
    - Botón sin fondo ni recuadro visible: `[-webkit-tap-highlight-color:transparent]`, sin `rounded-xl` y con el foco de teclado dibujado como **anillo circular sobre el círculo**, no sobre el botón.
    - Círculo: `background-origin: border-box` (o sin borde y la categoría activa marcada con `ring-2 ring-offset-2` circular).
    - Verificar con capturas de Playwright a 360 px y 1440 px, en tema oscuro y claro, con una categoría **seleccionada**, otra **sin seleccionar** y una con **foco de teclado**. Adjuntar las capturas en el resumen.
-2. **Lista de revendedores fuera de Stock.** Hoy «Lista revendedores» y «Ver lista de precios» están en la cabecera de **Gestión de Stock**. Riva quiere un módulo aparte. Este punto quedó reemplazado por el diseño aprobado y la implementación completa de I28:
+2. **Lista de revendedores fuera de Stock.** Hoy «Lista revendedores» y «Ver lista de precios» están en la cabecera de **Gestión de Stock**. Riva quiere un módulo aparte:
    - Nueva entrada **«Revendedores»** en el menú principal (y en la barra móvil si corresponde), con su propia página y ruta (ej. `/revendedores`), que muestre lo que hoy abre `ResellerPriceListModal` como pantalla completa, no como ventana emergente: configuración, listas por proveedor, importar lista, productos y PDF.
    - Quitar esos botones de la cabecera de Stock. Desde Stock solo queda, como mucho, un enlace chico «Ver en Revendedores».
    - Respetar los permisos actuales (`canWrite`, roles) y que las rutas viejas no se rompan.
    - Tests: navegación al módulo, que Stock ya no muestre los botones y que importar lista siga funcionando desde la página nueva.
 
-### [x] I26 Cotización del proveedor detectada automáticamente — **pedido de Riva el 07/11 17:18 (después de I25)**
+### [ ] I26 Cotización del proveedor detectada automáticamente — **pedido de Riva el 07/11 17:18 (después de I25)**
 
 **Problema:** Mr Tecno guarda los precios en USD (Store API) y su web los muestra en pesos con su propia cotización. Riva ve en la revisión «Costo (USD) 6,25» mientras en la web ve **$10.000** (`HM352`: 6,25 × 1.600 = 10.000). Tiene que cargar la cotización a mano y actualizarla cada vez que el proveedor la cambie.
 
@@ -703,7 +714,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Verificación:** tests con fixtures (API en USD + página del producto en ARS, API que acepta `currency=ARS`, páginas bloqueadas, valores que no coinciden). Prueba real en producción con `https://mrtecno.com.ar/productos/`: tiene que detectar ≈ 1.600 y mostrar `HM352` con costo **$10.000**. Sin confirmar el alta masiva. Confirmar que Vercel quede **Current**.
 
-### [x] I27 Fotos en la importación del proveedor — **pedido de Riva el 07/11 17:19 («No me sirve sin foto»)**
+### [ ] I27 Fotos en la importación del proveedor — **pedido de Riva el 07/11 17:19 («No me sirve sin foto»)**
 
 **Estado actual (verificado en `origin/main`):** el alta masiva de I24 guarda en `imageUrl` la **URL remota del proveedor** (ej. `https://mrtecno.com.ar/wp-content/uploads/...jpeg`), sin copiarla. En una muestra de la Store API de Mr Tecno, ~75 % de los productos trae foto y ~25 % no (ej. `HM352`, que tampoco tiene foto en la web del proveedor).
 
@@ -717,9 +728,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 
 **Verificación:** tests con fixtures (foto ok, foto caída, tipo no permitido, redirect a otro dominio). Prueba real en producción con Mr Tecno: la revisión tiene que mostrar las miniaturas y el contador «con foto / sin foto». Sin confirmar el alta masiva sin OK de Riva. Vercel **Current**.
 
-**Cierre I25 punto 1 (2026-11-07):** producción en `4367da4`; capturas autenticadas a 360 y 1440 px en claro y oscuro confirman categorías circulares, estados seleccionado/no seleccionado y foco de teclado. Archivos: `%TEMP%\rivastock-qa-artifacts\i25-categories\categories-{360,1440}-{light,dark}.png`. El punto 2 fue reemplazado por I28.
-
-### [x] I28 Rediseño del módulo Revendedores con las maquetas aprobadas — **pedido de Riva el 07/11 17:23 («es un quilombo este módulo, muy poca estructura»)**
+### [ ] I28 Rediseño del módulo Revendedores con las maquetas aprobadas — **pedido de Riva el 07/11 17:23 («es un quilombo este módulo, muy poca estructura»)**
 
 **Problema:** I19 se implementó metido dentro de `ResellerPriceListModal` (una ventana emergente encima de Stock), **sin seguir las maquetas aprobadas** el 06/11 (`docs/design/supplier-lists/`: `Main`, `Importar`, `Revisar`, `AbrirPedido`, `Cierre`, `RevCatalogo`, `RevPago`). Resultado, según las capturas de Riva: doble barra de scroll, la URL repetida dos veces, la configuración (IVA, margen, redondeo) **debajo** de la lista y del botón de agregar, más de 30 campos «Margen para CATEGORÍA» todos en 20 %, y un pie «190 productos incluidos / Guardar lista» que no se entiende a qué se refiere.
 
@@ -741,7 +750,75 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px de punta a punta (importar → precios → revisar → agregar filtrados) sin crear productos reales, capturas de cada paso en tema claro y oscuro, y rutas viejas que no se rompan.
 
-**Cierre I28 (2026-11-07):** implementado en `97aca48`; correcciones de la verificación móvil en `a0ffcd9` y `4367da4`. Vercel informó `success` para `4367da4`; producción se probó autenticada con Mr Tecno y sin confirmar el alta. Playwright cubrió los tres pasos a 360/1440 px, claro/oscuro, el filtro del CTA, el modal anterior y el menú móvil intacto. Las capturas de cada pestaña y paso están en `%TEMP%\rivastock-qa-artifacts\i28-revendedores\`.
+### [ ] I29 Revendedores también en el celular — **pedido de Riva el 07/11 20:56 («Obviamente quiero que esté presente en el celular»)**
+
+**Problema:** en I28 se agregó `desktopOnly: true` a «Revendedores» (`src/components/AppNavigation.tsx`), así que en el celular no aparece en el menú. Fue una mala lectura de «el menú del celular no se toca»: lo que Riva quería es que **no se rediseñe** el menú, no que falte Revendedores.
+
+**Qué hacer:**
+1. Quitar `desktopOnly` de «Revendedores» y agregar `'/revendedores'` en `NAVIGATION_GROUPS` (`src/lib/mobileNavigation.ts`), en el grupo **«Clientes y proveedores»**, después de `/proveedores`. **No** agregarlo a la barra inferior (`getMobilePrimaryItems`), que queda igual.
+2. En el celular, el acceso a revendedores que hoy está en Stock (`setResellerPriceListOpen(true)` en `MobileStockEntry`) tiene que llevar a `/revendedores` (página), no abrir la ventana emergente.
+3. Verificar que `/revendedores` en el celular se ve como `docs/design/revendedores-v2/MovilResumen.dc.html` y `MovilRevisar.dc.html`: pestañas con scroll horizontal, sin scroll horizontal de la página y botón principal fijo abajo en «Revisar y agregar».
+4. Tests: Playwright 360 px → abrir el menú «Más» → Revendedores → pestañas → importar hasta Revisar, sin crear productos. Unit test: Revendedores está en los grupos del celular y no en la barra inferior.
+
+### [ ] I30 Que los clientes no descubran al proveedor — **pedido de Riva el 07/11 21:14**
+
+**Pedido:** que un agente revise las fotos importadas porque pueden traer el logo del proveedor y la gente lo encontraría por ahí.
+
+**Diagnóstico (07/11):** en una muestra de fotos de Mr Tecno no se ve logo ni marca de agua (producto sobre fondo blanco; solo el texto del propio envase). **La filtración más grande hoy es el nombre:** se importan como «HM352 – HUMIFICADOR LED…» o «YH88214N – ZAPATERO…», y buscando ese código en Google aparece la tienda del proveedor.
+
+**Qué hacer:**
+1. **Nombre público sin el código del proveedor:** al importar, separar el código del nombre (patrón `CÓDIGO – Nombre`, `CÓDIGO - Nombre` o el `sku` de la API) y guardarlo como código interno (`barcode` o el campo que ya usa la reimportación para no duplicar). El catálogo público, el PDF y los mensajes de WhatsApp **nunca** muestran el código del proveedor. Nombre en formato normal («Humificador LED estilo fuego»), no todo en mayúsculas. Migrar los productos ya importados de proveedores.
+2. **Revisión de fotos (gratis, en el navegador):** al importar, pasar cada foto por el OCR que ya existe (tesseract) buscando el nombre del proveedor, su dominio, «www», «.com», «@», teléfonos y la palabra de su marca. Si aparece, marcar la foto como **«Con marca del proveedor»**: queda fuera de «Listos» por defecto, con las opciones Recortar (herramienta que ya existe), Subir otra foto o Usarla igual. Hacerlo por tandas con progreso y sin trabar el celular (si tarda, que siga en segundo plano y avise al terminar).
+3. **No borrar logos con IA automáticamente:** puede deformar el producto y son fotos del proveedor. Solo marcar y que Riva decida.
+4. Las fotos se guardan con nombres que no delatan al proveedor (ya es `supplier-<hash>.webp`: verificar que el nombre del archivo y la URL pública no incluyan el dominio ni el nombre del proveedor).
+5. Más adelante (no ahora): revisión con IA de visión en la central cuando el Bridge acepte imágenes, para logos sin texto.
+
+**Verificación:** tests con fixtures (foto limpia, foto con «www.proveedor.com» en una esquina, foto con teléfono); prueba real con Mr Tecno: cuántas fotos quedaron marcadas, y que el catálogo público muestre «Humificador LED estilo fuego» sin «HM352». Sin crear productos reales sin OK de Riva.
+
+### [ ] I31 Pestaña Ajustes como la maqueta (cambiar el código de acceso) — **pedido de Riva el 07/11 21:17**
+
+**Problema (verificado en `origin/main`):** la pestaña **Ajustes** de `/revendedores` no sigue la maqueta aprobada (`docs/design/revendedores-v2/Ajustes.dc.html`): muestra los acordeones viejos («Precio automático con excepciones», «Asistente de precios», «Catálogo público para revendedores»). El código de acceso es un campo de contraseña que **solo se guarda con «Guardar lista»**, y ese botón está en el pie de la pestaña Lista de precios: **desde Ajustes no hay forma de cambiar el código**. Además, el navegador autocompleta ese campo (Riva lo ve con «••••»), y como el servidor exige 6 caracteres como mínimo, un autocompletado corto hace fallar el guardado de toda la lista.
+
+**Qué hacer:**
+1. Rehacer **Ajustes** como la maqueta: tres bloques planos (Publicación y acceso · Precios · Compra mínima), sin acordeones.
+2. **Publicación y acceso:** interruptor «Catálogo para revendedores publicado»; fila «Código de acceso — Configurado» con el botón **«Cambiar código»**, que abre una hoja o diálogo propio (no `prompt()` ni `confirm()` del navegador) con «Nuevo código» y «Repetir código», mínimo 6 caracteres, botón para mostrar u ocultar, y **Guardar** que lo cambia en el momento y avisa «Código actualizado. Pasáselo a tus revendedores». Fila «Lista en PDF» con Ver y Descargar.
+3. Sacar el campo de código de la pantalla principal (así el navegador no lo autocompleta). En el diálogo, usar `autocomplete="off"` y nombres de campo que no sean de contraseña de login.
+4. **Precios y Compra mínima** con −/+ y segmentado, como la maqueta, y que **se guarden solos**, sin depender de «Guardar lista». Mostrar «Cambios guardados».
+5. Revisar las otras pestañas contra las maquetas aprobadas y corregir lo que no coincida (por ejemplo, en el paso Precios los botones 20/25/30/40 % casi no se leen y el botón «Leer lista con IA» no corresponde cuando la lista vino ordenada de la tienda).
+6. Reemplazar el `window.confirm` de «Agregar los N listos» por la confirmación propia de la app.
+
+**Verificación:** Playwright 360 px y 1440 px: cambiar el código desde Ajustes **solo con fixtures o en el entorno local** (el código real está guardado como hash y no se puede restaurar: **nunca cambiarlo en producción**); y que los ajustes se guarden sin tocar otra pestaña. Capturas de Ajustes comparadas con la maqueta.
+
+### [ ] I32 Deshacer una importación de proveedor (borrado masivo seguro) — **pedido de Riva el 07/11 21:24 (URGENTE, va primero)**
+
+**Situación:** Riva agregó ~800 productos de Mr Tecno con «Agregar los listos» (antes de I30, así que los nombres llevan el código del proveedor, por ejemplo «HM352 – …»), y quiere poder borrarlos. Hoy la app **no tiene borrado masivo** (Stock solo borra de a uno). La importación también creó **categorías nuevas** (las de Mr Tecno, en mayúsculas) y subió fotos al Storage.
+
+**Primero, antes de programar:** comprobar en producción, **solo leyendo**, dónde se ven hoy esos productos (catálogo público minorista, pestaña Revendedores, PDF) y anotarlo en `STATUS.md`. Si se ven en el catálogo minorista, que el primer commit los oculte de ahí (un cambio de visibilidad, sin borrar nada).
+
+**Qué hacer:**
+1. En **Revendedores › Proveedores**, menú «⋯» de cada proveedor: **«Quitar productos importados…»**. Abre una confirmación propia de la app (no `confirm()`) con el resumen exacto: «Se van a borrar N productos de Mr Tecno, M fotos y K categorías que quedan vacías. X productos tienen ventas, pedidos o movimientos de stock: esos no se borran, se ocultan y se desvinculan». Hay que escribir el nombre del proveedor para confirmar.
+2. Hacerlo con una **RPC en el servidor** (`SECURITY DEFINER`, que verifique dueño y permiso de escritura), acotada **solo** a los productos vinculados a la lista de ese proveedor (`reseller_supplier_list_items`) del mismo `owner_uid`. Nunca `DELETE` sin `WHERE`. Que respete las referencias: los productos con ventas, pedidos, encargos o movimientos se ocultan y se desvinculan, no se borran. Por tandas, con progreso, reintentable.
+3. Borrar del Storage las fotos de esos productos (las `supplier-*.webp` y sus miniaturas), usando el mecanismo de limpieza de imágenes que ya existe (`pendingImageCleanup`).
+4. Borrar las categorías que creó la importación **solo si quedan vacías**.
+5. Opcional, si es simple: en Stock, selección múltiple + «Eliminar seleccionados» con la misma confirmación y las mismas reglas.
+
+**Ejecución:** Codex **no** borra los productos de Riva. Lo hace Riva con el botón, después del deploy. Codex lo prueba solo con fixtures o en el entorno local.
+
+**Verificación:** tests de la RPC con PGlite: borra solo los del proveedor y del dueño, respeta las ventas y otro dueño no puede borrar. Playwright con fixtures: confirmación con números → progreso → lista vacía. Deploy en **Current**.
+
+### [ ] I33 Acciones en lote en «Lista de precios» — **pedido de Riva el 07/11 21:48**
+
+**Pedido:** «Me gustaría sacar de la lista de revendedores los productos que tengo en stock, pero son muchos y tengo que desmarcar uno por uno». Hoy **no existe** ninguna acción en lote en la pestaña Lista de precios (verificado en `origin/main`). Además, esa pestaña sigue con las tarjetas grandes viejas, no con la tabla de la maqueta `docs/design/revendedores-v2/ListaPrecios.dc.html`.
+
+**Qué hacer:**
+1. Pasar **Lista de precios** a la tabla compacta de la maqueta (Producto · Costo · Minorista · Revendedor · Ganás · Estado; la regla de precio se edita abriendo la fila).
+2. **Selección en lote:** casilla en el encabezado para «Elegir todos los que se ven» (respeta el buscador, el origen Todos / Mi stock / proveedor y los chips de estado) y casilla por fila. Al elegir aparece una barra fija abajo: **«N elegidos · Quitar de la lista · Agregar a la lista · Disponible / Por pedido · Cancelar»**.
+3. **Atajo:** con el origen «Mi stock» activo, un botón visible **«Quitar los N de Mi stock de la lista»** (y su opuesto «Agregar…»), con la misma confirmación.
+4. Confirmación propia de la app con el número exacto («Vas a quitar 190 productos de la lista de revendedores. No se borran de tu stock»). Se guarda solo y aparece un aviso con **«Deshacer»** durante unos segundos.
+5. Solo cambia la inclusión y la disponibilidad en la lista de revendedores: **nunca borra productos ni cambia el stock**.
+6. Que funcione con más de 1.000 productos sin trabarse (guardado por tandas).
+
+**Verificación:** Playwright 360 px y 1440 px con fixtures: filtrar «Mi stock» → elegir todos → quitar → deshacer → quitar; y que el catálogo de revendedores refleje el cambio. No tocar la lista real de Riva en producción.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 

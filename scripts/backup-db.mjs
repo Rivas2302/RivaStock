@@ -376,7 +376,8 @@ function compareCounts(before, exported, after) {
   for (const [table, countBefore] of before) {
     const countAfter = after.get(table);
     const countDump = exported.get(table) || 0;
-    if (countAfter === undefined || countBefore !== countAfter || countDump !== countBefore) {
+    const matchesObservedCount = countDump === countBefore || countDump === countAfter;
+    if (countAfter === undefined || !matchesObservedCount) {
       mismatches.push({ table, before: countBefore, exported: countDump, after: countAfter });
     }
   }

@@ -6,6 +6,7 @@ import {
   Eye,
   KeyRound,
   Loader2,
+  MoreHorizontal,
   Pencil,
   PackageCheck,
   PackagePlus,
@@ -36,12 +37,13 @@ import {
   loadResellerSupplierLists,
   saveResellerPriceList,
   saveResellerSupplierList,
+  saveResellerSupplierImportCategories,
   saveResellerSupplierListPricingBatch,
   saveSupplierCatalogExchangeRate,
   toggleResellerSupplierList,
 } from '../lib/priceLists';
-import { db, fromDb, toDb } from '../lib/db';
-import { supabase } from '../lib/supabase';
+import { db, deleteFromStorage, fromDb, toDb } from '../lib/db';
+import { supabase, supabaseProjectUrl } from '../lib/supabase';
 import { normalizeBarcode } from '../lib/barcode';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
@@ -62,6 +64,7 @@ import { planSupplierImport } from '../lib/supplierImportReview';
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
+import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupplierImportBatch, type SupplierImportRemovalPreview } from '../lib/resellerSupplierRemoval';
 import { assertStorageUploadAllowed } from '../lib/platformStorage';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
@@ -89,6 +92,9 @@ interface ResellerPriceListModalProps {
   onPromoteToStock: (product: Product) => void;
   onProductsImported: (products: Product[]) => void;
   onCategoriesImported: (categories: Category[]) => void;
+  onProductsRemoved?: (productIds: string[]) => void;
+  onCategoriesRemoved?: (categoryIds: string[]) => void;
+  onPendingImageCleanup?: (paths: string[]) => void;
 }
 
 export interface SupplierProductCreationContext {
@@ -216,6 +222,9 @@ export default function ResellerPriceListModal({
   onPromoteToStock,
   onProductsImported,
   onCategoriesImported,
+  onProductsRemoved,
+  onCategoriesRemoved,
+  onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
   const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'settings'>('summary');
   const [list, setList] = useState<PriceList | null>(null);
@@ -238,6 +247,12 @@ export default function ResellerPriceListModal({
   const [supplierDraftProductIds, setSupplierDraftProductIds] = useState<string[]>([]);
   const [supplierProductSearch, setSupplierProductSearch] = useState('');
   const [supplierSaving, setSupplierSaving] = useState(false);
+  const [removalSupplier, setRemovalSupplier] = useState<{ listId: string; name: string } | null>(null);
+  const [removalPreview, setRemovalPreview] = useState<SupplierImportRemovalPreview | null>(null);
+  const [removalTypedName, setRemovalTypedName] = useState('');
+  const [removalProgress, setRemovalProgress] = useState<{ done: number; total: number } | null>(null);
+  const [removalBusy, setRemovalBusy] = useState(false);
+  const [removalError, setRemovalError] = useState<string | null>(null);
   const [supplierImportRows, setSupplierImportRows] = useState<SupplierListDraftRow[]>([]);
   const [supplierImportPhotoFiles, setSupplierImportPhotoFiles] = useState<Record<number, File>>({});
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
@@ -555,6 +570,78 @@ export default function ResellerPriceListModal({
       showToast(supplierError instanceof Error ? supplierError.message : 'No se pudo cambiar el estado de la lista.', 'error');
     } finally {
       setSupplierSaving(false);
+    }
+  };
+
+  const openSupplierRemoval = async (supplierList: ResellerSupplierList, supplierName: string) => {
+    setRemovalError(null);
+    setRemovalTypedName('');
+    setRemovalProgress(null);
+    setRemovalBusy(true);
+    try {
+      const preview = await previewSupplierImportRemoval(supplierList.id);
+      setRemovalSupplier({ listId: supplierList.id, name: supplierName });
+      setRemovalPreview(preview);
+    } catch (previewError) {
+      showToast(previewError instanceof Error ? previewError.message : 'No se pudo revisar la importación.', 'error');
+    } finally {
+      setRemovalBusy(false);
+    }
+  };
+
+  const closeSupplierRemoval = (force = false) => {
+    if (removalBusy && !force) return;
+    setRemovalSupplier(null);
+    setRemovalPreview(null);
+    setRemovalTypedName('');
+    setRemovalProgress(null);
+    setRemovalError(null);
+  };
+
+  const handleRemoveSupplierImport = async () => {
+    if (!removalSupplier || !removalPreview || !canWrite || removalBusy) return;
+    if (removalTypedName.trim().toLocaleLowerCase('es-AR') !== removalSupplier.name.trim().toLocaleLowerCase('es-AR')) return;
+    setRemovalBusy(true);
+    setRemovalError(null);
+    let processed = 0;
+    let total = removalPreview.products;
+    setRemovalProgress({ done: 0, total });
+    try {
+      while (true) {
+        const batch = await removeSupplierImportBatch(removalSupplier.listId, 50);
+        if (batch.processed === 0 && batch.remaining > 0) {
+          throw new Error('La tanda no avanzó. Podés reintentar sin perder el progreso anterior.');
+        }
+        processed += batch.processed;
+        total = Math.max(total, processed + batch.remaining);
+        setRemovalProgress({ done: Math.min(processed, total), total });
+        if (batch.deletedProductIds.length) onProductsRemoved?.(batch.deletedProductIds);
+        if (batch.deletedCategoryIds.length) onCategoriesRemoved?.(batch.deletedCategoryIds);
+
+        const storagePaths = getSupplierImportStoragePaths(batch.storageUrls, supabaseProjectUrl);
+        if (storagePaths.length) {
+          const results = await Promise.allSettled(storagePaths.map(path => deleteFromStorage(path)));
+          const failed = storagePaths.filter((_, index) => results[index]?.status === 'rejected');
+          if (failed.length) onPendingImageCleanup?.(failed);
+        }
+        if (batch.remaining === 0) break;
+      }
+      await reloadSupplierLists();
+      showToast('La importación se quitó de la lista. Los productos con movimientos se conservaron ocultos.', 'success');
+      closeSupplierRemoval(true);
+    } catch (removeError) {
+      const message = removeError instanceof Error ? removeError.message : 'No se pudo completar la limpieza.';
+      setRemovalError(`${message} El progreso ya completado se conservó; podés volver a confirmar para seguir.`);
+      setRemovalTypedName('');
+      try {
+        const updatedPreview = await previewSupplierImportRemoval(removalSupplier.listId);
+        setRemovalPreview(updatedPreview);
+        setRemovalProgress({ done: 0, total: updatedPreview.products });
+      } catch {
+        // Keep the last confirmed preview available for retry.
+      }
+    } finally {
+      setRemovalBusy(false);
     }
   };
 
@@ -883,6 +970,9 @@ export default function ResellerPriceListModal({
 
       const allProductIds = Array.from(new Set([...supplierDraftProductIds, ...ready.map(entry => resolvedIds.get(entry.row.sourceRow)!)]));
       const savedSupplierList = await saveResellerSupplierList({ priceListId: list.id, supplierId: editingSupplierId, productIds: allProductIds });
+      if (newCategories.length) {
+        await saveResellerSupplierImportCategories(savedSupplierList.id, newCategories.map(category => category.id));
+      }
       const prices = ready.flatMap(entry => {
         const productId = resolvedIds.get(entry.row.sourceRow);
         return productId && entry.supplierCostLocal !== null ? [{
@@ -1428,7 +1518,7 @@ export default function ResellerPriceListModal({
                           {!supplier.isActive && ' · Proveedor inactivo'}
                         </p>
                       </div>
-                      {!(displayMode === 'page' && editing) && <div className="grid grid-cols-2 gap-2 sm:flex">
+                      {!(displayMode === 'page' && editing) && <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem] gap-2 sm:flex">
                         <button
                           type="button"
                           onClick={() => openSupplierEditor(supplier.id)}
@@ -1450,6 +1540,25 @@ export default function ResellerPriceListModal({
                           <Power size={14} />
                           {supplierList?.enabled ? 'Pausar' : 'Habilitar'}
                         </button>
+                        <details className="group relative">
+                          <summary aria-label={`Más acciones para ${supplier.name}`} className="flex size-9 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                            <MoreHorizontal size={18} aria-hidden="true" />
+                          </summary>
+                          <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xl">
+                            <button
+                              type="button"
+                              data-testid={`remove-supplier-import-${supplier.id}`}
+                              disabled={!canWrite || !supplierList || supplierList.productIds.length === 0 || removalBusy}
+                              onClick={(event) => {
+                                event.currentTarget.closest('details')?.removeAttribute('open');
+                                if (supplierList) void openSupplierRemoval(supplierList, supplier.name);
+                              }}
+                              className="min-h-11 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--danger-ink)] hover:bg-[var(--danger-surface)] disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              Quitar productos importados…
+                            </button>
+                          </div>
+                        </details>
                       </div>}
                     </div>
 
@@ -1960,6 +2069,58 @@ export default function ResellerPriceListModal({
           </section>
         </div>
       ) : null}
+    </Modal>
+
+    <Modal
+      isOpen={removalSupplier !== null}
+      onClose={() => closeSupplierRemoval()}
+      title="Quitar productos importados"
+      className="w-[calc(100%_-_1rem)] max-w-lg"
+    >
+      {removalSupplier && removalPreview && (
+        <div data-testid="supplier-remove-confirm-dialog" className="space-y-4">
+          <div className="rounded-xl border border-[var(--danger-line)] bg-[var(--danger-surface)] p-4 text-sm text-[var(--ink)]">
+            <p className="font-semibold">Importación de {removalSupplier.name}</p>
+            <p className="mt-2">
+              Se quitarán {removalPreview.products.toLocaleString('es-AR')} productos de la lista: {removalPreview.deletableProducts.toLocaleString('es-AR')} se borrarán, {removalPreview.protectedProducts.toLocaleString('es-AR')} con ventas, pedidos, encargos o movimientos se ocultarán y desvincularán sin borrarse.
+            </p>
+            <p className="mt-2">
+              También se eliminarán {removalPreview.photosToDelete.toLocaleString('es-AR')} foto{removalPreview.photosToDelete === 1 ? '' : 's'} del proveedor y {removalPreview.emptyCategoriesToDelete.toLocaleString('es-AR')} categoría{removalPreview.emptyCategoriesToDelete === 1 ? '' : 's'} que queden vacías.
+            </p>
+          </div>
+          <label className="block text-sm font-semibold text-[var(--ink)]">
+            Escribí <span className="font-bold">{removalSupplier.name}</span> para confirmar.
+            <input
+              type="text"
+              autoComplete="off"
+              value={removalTypedName}
+              onChange={event => setRemovalTypedName(event.target.value)}
+              disabled={removalBusy}
+              aria-label="Nombre del proveedor para confirmar"
+              className="mt-2 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-1)] px-3 font-normal text-[var(--ink)] outline-none focus:border-[var(--danger-ink)] focus:ring-2 focus:ring-[var(--danger-ink)]/20"
+            />
+          </label>
+          {removalProgress && (
+            <p role="status" aria-live="polite" className="text-sm font-semibold text-[var(--ink-muted)]">
+              {removalBusy ? 'Quitando' : 'Progreso'}: {removalProgress.done.toLocaleString('es-AR')} de {removalProgress.total.toLocaleString('es-AR')} productos.
+            </p>
+          )}
+          {removalError && <p role="alert" className="text-sm font-semibold text-[var(--danger-ink)]">{removalError}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => closeSupplierRemoval()} disabled={removalBusy} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">Cancelar</button>
+            <button
+              type="button"
+              data-testid="confirm-remove-supplier-import"
+              onClick={() => void handleRemoveSupplierImport()}
+              disabled={!canWrite || removalBusy || removalPreview.products === 0 || removalTypedName.trim().toLocaleLowerCase('es-AR') !== removalSupplier.name.trim().toLocaleLowerCase('es-AR')}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--danger-ink)] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {removalBusy && <Loader2 size={16} className="animate-spin" />}
+              {removalBusy ? 'Quitando…' : `Quitar ${removalPreview.products.toLocaleString('es-AR')} productos`}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
 
     <Modal

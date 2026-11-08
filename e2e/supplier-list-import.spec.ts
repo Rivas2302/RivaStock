@@ -17,14 +17,15 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean } = {}) {
   const products: Record<string, unknown>[] = [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
-  let supplierProductIds: string[] = [];
+  let supplierProductIds: string[] = options.removalFixture ? ['product-removal-1', 'product-removal-2'] : [];
   let changedCatalog = false;
   let failedImageIndex = options.failImageIndex;
   const sourceCosts: number[] = [];
   const pricingCalls: unknown[][] = [];
+  const removalCalls: unknown[] = [];
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
@@ -72,6 +73,13 @@ async function mockApp(page: Page, options: { failImageIndex?: number } = {}) {
         pricingCalls.push((route.request().postDataJSON() as { p_items: unknown[] }).p_items);
         return route.fulfill({ json: pricingCalls.at(-1)?.length ?? 0 });
       }
+      if (rpc === 'preview_reseller_supplier_import_removal') {
+        return route.fulfill({ json: { products: 2, protectedProducts: 1, deletableProducts: 1, photosToDelete: 1, emptyCategoriesToDelete: 1 } });
+      }
+      if (rpc === 'remove_reseller_supplier_import_batch') {
+        removalCalls.push(route.request().postDataJSON());
+        return route.fulfill({ json: { processed: 2, deleted: 1, protected: 1, deletedProductIds: ['product-removal-1'], protectedProductIds: ['product-removal-2'], storageUrls: [], emptyCategoriesDeleted: 1, deletedCategoryIds: ['category-removal'], remaining: 0 } });
+      }
       if (rpc === 'configure_reseller_price_list' || rpc === 'ensure_reseller_price_list') return route.fulfill({ json: priceList });
       return route.fulfill({ json: [] });
     }
@@ -117,10 +125,38 @@ async function mockApp(page: Page, options: { failImageIndex?: number } = {}) {
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts,
+    products, pricingCalls, sourceCosts, removalCalls,
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
   };
+}
+
+for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
+  test(`supplier removal requires typed confirmation and shows exact counts at ${viewport.width}px`, async ({ page }) => {
+    const { removalCalls } = await mockApp(page, { removalFixture: true });
+    await page.setViewportSize(viewport);
+    await page.goto('/revendedores');
+    const modal = page.getByRole('region', { name: 'Lista de precios para revendedores' });
+    await modal.getByRole('tab', { name: 'Proveedores' }).click();
+    await modal.locator('summary[aria-label="Más acciones para [QA] Mr Tecno"]').click();
+    await modal.getByRole('button', { name: 'Quitar productos importados…' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Quitar productos importados' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('2 productos');
+    await expect(dialog).toContainText('1 se borrarán');
+    await expect(dialog).toContainText('1 foto del proveedor');
+    await expect(dialog.getByTestId('confirm-remove-supplier-import')).toBeDisabled();
+
+    if (viewport.width === 360) {
+      await dialog.screenshot({ path: 'test-results/i32-removal-confirmation-360.png' });
+    }
+    await dialog.getByLabel('Nombre del proveedor para confirmar').fill('[QA] Mr Tecno');
+    await expect(dialog.getByTestId('confirm-remove-supplier-import')).toBeEnabled();
+    await dialog.getByTestId('confirm-remove-supplier-import').click();
+    await expect.poll(() => removalCalls.length).toBe(1);
+    await expect(dialog).toBeHidden();
+  });
 }
 
 test('supplier catalog import reviews three fixture pages, bulk adds, then updates by SKU on reimport', async ({ page }) => {

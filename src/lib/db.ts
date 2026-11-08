@@ -771,15 +771,14 @@ export async function deleteFromStorage(pathOrUrl: string): Promise<void> {
   if (pathOrUrl.startsWith('http')) {
     const match = pathOrUrl.match(/\/assets\/(.+?)(\?|$)/);
     if (!match) {
-      console.error('[storage.delete] URL no parseable:', pathOrUrl);
-      return;
+      throw new Error('La imagen no corresponde al almacenamiento de productos.');
     }
     storagePath = decodeURIComponent(match[1]);
   } else {
     storagePath = pathOrUrl;
   }
   const { error } = await supabase.storage.from('assets').remove([storagePath]);
-  if (error) console.error(`[storage.delete:${storagePath}]`, error.message);
+  if (error) throw new Error('No se pudo eliminar una imagen del almacenamiento.');
 }
 
 // ─── Re-export supabase client ────────────────────────────────────────────────
