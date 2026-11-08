@@ -42,13 +42,21 @@ export function extensionIdFromManifestKey(key) {
     .map(value => String.fromCharCode(97 + value)).join('');
 }
 
+export function isSupportedExtensionManifest(candidate, currentManifest, expectedId) {
+  return Boolean(candidate && typeof candidate === 'object'
+    && ['RivaStock', 'RivaStock · Facebook'].includes(candidate.name)
+    && extensionIdFromManifestKey(candidate.key) === expectedId
+    && candidate.manifest_version === 3
+    && currentManifest?.name === 'RivaStock');
+}
+
 export function isValidReleaseManifest(value, expectedId, expectedFiles = extensionFiles) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && typeof value.version === 'string' && /^\d+\.\d+\.\d+$/.test(value.version)
     && value.protocol === 2
     && typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/.test(value.sha256)
     && Array.isArray(value.files) && value.files.length > 0
-    && value.files.every(file => typeof file === 'string' && /^[a-z0-9][a-z0-9._-]*$/i.test(file))
+    && value.files.every(file => typeof file === 'string' && file.split('/').every(segment => /^[a-z0-9][a-z0-9._-]*$/i.test(segment) && segment !== '.' && segment !== '..'))
     && new Set(value.files).size === value.files.length
     && value.files.length === expectedFiles.length && expectedFiles.every((file, index) => value.files[index] === file)
     && typeof expectedId === 'string' && /^[a-p]{32}$/.test(expectedId));
@@ -84,7 +92,7 @@ export function extractVerifiedStoredArchive(archive, expectedFiles) {
       throw new Error('extension-archive-format-unsupported');
     }
     const name = archive.subarray(nameStart, nameStart + nameLength).toString('utf8');
-    if (!allowed.has(name) || name.includes('/') || name.includes('\\') || extracted.has(name)) {
+    if (!allowed.has(name) || name.includes('\\') || name.startsWith('/') || name.split('/').some(segment => segment === '.' || segment === '..') || extracted.has(name)) {
       throw new Error('extension-archive-file-invalid');
     }
     const bytes = archive.subarray(dataStart, dataEnd);
@@ -200,7 +208,7 @@ async function installRelease({ release, current, expectedId, archive }) {
     try {
       const folder = await realpath(candidate.extensionPath);
       const folderManifest = JSON.parse(await readFile(join(folder, 'manifest.json'), 'utf8'));
-      if (folderManifest.name !== current.name || extensionIdFromManifestKey(folderManifest.key) !== expectedId) continue;
+      if (!isSupportedExtensionManifest(folderManifest, current, expectedId)) continue;
       validCandidates.push({ ...candidate, extensionPath: folder, installedVersion: folderManifest.version });
     } catch { /* Missing, stale, or non-extension paths are ignored. */ }
   }
@@ -222,17 +230,37 @@ async function installRelease({ release, current, expectedId, archive }) {
   if (currentBackupManifest.version !== install.installedVersion) throw new Error('extension-backup-verification-failed');
   const stageDirectory = await mkdtemp(join(tmpdir(), 'rivastock-facebook-extension-'));
   try {
-    for (const [name, bytes] of extracted) await writeFile(join(stageDirectory, name), bytes, { flag: 'wx' });
+    const stageRoot = await realpath(stageDirectory);
+    for (const [name, bytes] of extracted) {
+      const stagedPath = join(stageDirectory, name);
+      await mkdir(dirname(stagedPath), { recursive: true });
+      if (!isInside(stageRoot, await realpath(dirname(stagedPath)))) throw new Error('extension-stage-path-invalid');
+      await writeFile(stagedPath, bytes, { flag: 'wx' });
+    }
     const stagedManifest = JSON.parse(await readFile(join(stageDirectory, 'manifest.json'), 'utf8'));
     if (stagedManifest.name !== current.name || stagedManifest.version !== release.version
       || extensionIdFromManifestKey(stagedManifest.key) !== expectedId) throw new Error('extension-stage-verification-failed');
-    for (const name of release.files) await writeFile(join(install.extensionPath, name), extracted.get(name));
+    const installTargets = [];
+    for (const name of release.files) {
+      const targetPath = join(install.extensionPath, name);
+      await mkdir(dirname(targetPath), { recursive: true });
+      if (!isInside(install.extensionPath, await realpath(dirname(targetPath)))) throw new Error('extension-install-path-invalid');
+      installTargets.push({ name, targetPath });
+    }
+    for (const { name, targetPath } of installTargets) {
+      await writeFile(targetPath, extracted.get(name));
+    }
     const installedManifest = JSON.parse(await readFile(join(install.extensionPath, 'manifest.json'), 'utf8'));
     if (installedManifest.version !== release.version) throw new Error('extension-install-verification-failed');
   } catch (error) {
     for (const name of release.files) {
-      try { await cp(join(backupDirectory, 'previous-extension', name), join(install.extensionPath, name), { force: true }); }
-      catch { /* A missing older file is not replaced during recovery. */ }
+      const targetPath = join(install.extensionPath, name);
+      try {
+        if (!isInside(install.extensionPath, await realpath(dirname(targetPath)))) continue;
+        await cp(join(backupDirectory, 'previous-extension', name), targetPath, { force: true });
+      } catch {
+        try { if (isInside(install.extensionPath, await realpath(dirname(targetPath)))) await rm(targetPath, { force: true }); } catch { /* Never follow a target outside the extension folder. */ }
+      }
     }
     throw error;
   } finally {

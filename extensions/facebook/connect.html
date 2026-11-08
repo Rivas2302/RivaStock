@@ -1,8 +1,20 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><title>RivaStock · Automatizaciones</title><link rel="stylesheet" href="connect.css"></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><title>RivaStock</title><link rel="stylesheet" href="connect.css"></head>
 <body><main>
 <header class="brand"><span class="brand-mark" aria-hidden="true">R</span><div><h1>RivaStock</h1><p>Conexión con Facebook</p></div><span id="version" class="version"></span></header>
 <div class="connection"><span id="connection-dot" class="dot"></span><span id="connection-label">Comprobando conexión…</span><a href="https://rivastock.vercel.app/automatizaciones" target="_blank" rel="noopener noreferrer">Abrir RivaStock ↗</a></div>
+<section class="card supplier-import" aria-labelledby="supplier-import-heading">
+  <div class="card-heading"><h2 id="supplier-import-heading">Importar productos</h2><span id="supplier-badge" class="badge">Listo</span></div>
+  <p class="support">Lee los productos que esta tienda ya muestra en Chrome. La extensión no comparte cookies ni datos de sesión.</p>
+  <button id="supplier-start" type="button">Importar productos de esta página</button>
+  <p id="supplier-status" class="activity" role="status"></p>
+  <div id="supplier-progress" hidden>
+    <p id="supplier-count" class="supplier-count">Leyendo…</p>
+    <button id="supplier-all-categories" class="secondary" type="button" hidden>Leer todas las categorías</button>
+    <button id="supplier-finish" type="button" disabled>Terminar y llevar a RivaStock</button>
+    <button id="supplier-cancel" class="quiet" type="button">Cancelar</button>
+  </div>
+</section>
 <form id="connect" class="card" hidden><h2>Vincular esta computadora</h2><p>Confirmá la conexión que iniciaste desde RivaStock.</p><input id="url" type="hidden"><input id="key" type="hidden"><input id="code" type="hidden"><button type="submit">Conectar y activar esta PC</button></form>
 <section class="card" aria-labelledby="capture-heading"><div class="card-heading"><h2 id="capture-heading">Capturas para asistencia</h2></div><p class="support">Chrome solicita acceso amplio a sitios para habilitar su API de capturas. La extensión solo captura la pestaña activa de Facebook durante una automatización; sin permiso, registra solo el resumen del formulario.</p><button id="capture-permission" class="secondary" type="button">Permitir capturas de la pestaña de Facebook para que la IA vea el proceso</button><p id="capture-status" class="activity" role="status"></p></section>
 <p id="start" class="notice">Para vincular esta PC, abrí Automatizaciones → Publicaciones → Configuración → Conectar esta PC en RivaStock.</p>

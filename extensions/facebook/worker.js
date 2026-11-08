@@ -1,5 +1,7 @@
+import './shared/product-extract.js';
 import { facebookAdapter } from './adapter.js';
 import { registerPairing } from './pairing.js';
+import { createSupplierCaptureController } from './supplier-capture.js';
 import { discoverJoinedGroups, discoverGroupMembers, discoverGroupRules } from './group-discovery.js';
 import { closeAutomationTab } from './automation-tabs.js';
 import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, stepWithSequence, traceIdForJob } from './recorder.js';
@@ -7,7 +9,9 @@ import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './pos
 import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
 import { queueAlarmPeriodMinutes, shouldSkipPausedQueuePoll } from './polling-schedule.js';
 import { shouldReloadForServerTarget } from './extension-update.js';
-registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown});
+const supplierCapture=createSupplierCaptureController();
+supplierCapture.registerInternalMessages();
+registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown,getCapture:supplierCapture.readCapture,getCaptureImage:supplierCapture.readCaptureImage,acknowledgeCapture:supplierCapture.acknowledgeCapture});
 void flushTraceQueue();
 
 let polling = false;
@@ -15,10 +19,10 @@ let pendingSignal=null;
 let readingGroups = false;
 let reviewingHistorical = false;
 
-const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking','self-reload'];
+const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking','self-reload','supplier-product-capture'];
 const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
 let flushingPostSubmitObservations=false;
-function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.5.21';}}
+function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.6.0';}}
 // Contract rejections cannot be resolved by sending the same payload again.
 // PostgreSQL reports every RAISE EXCEPTION as SQLSTATE P0001 and carries the
 // domain code in the message, so the code never arrives in error.code.

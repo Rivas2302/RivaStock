@@ -1,6 +1,89 @@
 // Connection approval and permission request stay inside the extension page.
 const form=document.querySelector('#connect');
 document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
+const supplierStart=document.querySelector('#supplier-start');
+const supplierStatus=document.querySelector('#supplier-status');
+const supplierProgress=document.querySelector('#supplier-progress');
+const supplierCount=document.querySelector('#supplier-count');
+const supplierBadge=document.querySelector('#supplier-badge');
+const supplierFinish=document.querySelector('#supplier-finish');
+const supplierAllCategories=document.querySelector('#supplier-all-categories');
+let activeSupplierTab=null;
+async function refreshActiveSupplierTab(){
+  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+  activeSupplierTab=tab?.id===undefined?null:tab;
+  return activeSupplierTab;
+}
+function supportedSupplierOrigin(value){
+  try{
+    const url=new URL(value);
+    if(url.protocol!=='https:'||url.username||url.password)return null;
+    const host=url.hostname.toLowerCase();
+    if(host.includes(':')||host==='localhost'||host.endsWith('.localhost')||host.endsWith('.local')||host.endsWith('.internal')||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)
+      ||host==='rivastock.vercel.app'||host==='facebook.com'||host.endsWith('.facebook.com')||/(?:bank|banco|bancaria|homebanking|bbva|santander|galicia|macro|icbc|brubank|hsbc|itau|supervielle|nacion|provincia)/i.test(host))return null;
+    return url.origin;
+  }catch{return null;}
+}
+async function renderSupplierCapture(){
+  const tab=await refreshActiveSupplierTab();
+  if(!tab?.id){supplierStart.disabled=true;supplierStatus.textContent='Abrí una tienda de proveedores en esta pestaña.';return;}
+  const response=await chrome.runtime.sendMessage({type:'supplier-capture-state',tabId:tab.id}).catch(()=>null);
+  const state=response?.state;
+  if(!state){supplierStart.hidden=false;supplierStart.disabled=!supportedSupplierOrigin(tab.url);supplierProgress.hidden=true;supplierBadge.textContent='Listo';return;}
+  supplierStart.hidden=true;supplierProgress.hidden=false;
+  const count=state.items?.length??0;
+  supplierCount.textContent=state.status==='complete'?`Lectura lista: ${count} productos`:`Leyendo… ${count} productos`;
+  supplierBadge.textContent=state.status==='complete'?'Lista':state.status==='categories-available'?'Categorías':'Leyendo';
+  supplierBadge.className=`badge ${state.status==='complete'?'active':'working'}`;
+  supplierFinish.disabled=count===0;
+  supplierAllCategories.hidden=state.status!=='categories-available';
+  supplierAllCategories.textContent=`Leer todas las categorías (${Math.max(0,(state.categoryUrls?.length??0)-(state.pagesVisited?.length??0))})`;
+  if(state.status==='complete'&&count===0)supplierStatus.textContent='No encontramos productos. Ingresá primero con tu clave en la página del proveedor y después tocá Importar.';
+  else if(state.warnings?.length)supplierStatus.textContent=state.warnings.slice(0,2).join(' ');
+  else supplierStatus.textContent=state.status==='categories-available'?'Encontramos categorías. Podés recorrerlas sin usar flechas de carrusel.':'';
+}
+supplierStart.addEventListener('click',async()=>{
+  supplierStart.disabled=true;
+  try{
+    const tab=activeSupplierTab??await refreshActiveSupplierTab();
+    const origin=supportedSupplierOrigin(tab?.url);
+    if(!origin||tab?.id===undefined)throw new Error('Abrí una página de productos de un proveedor en Chrome.');
+    // Request host access for this site only; never request a wildcard here.
+    const granted=await chrome.permissions.request({origins:[`${origin}/*`]});
+    if(!granted)throw new Error('No se dio permiso para leer esta tienda. Podés volver a intentarlo cuando quieras.');
+    const [current]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(current?.id!==tab.id||supportedSupplierOrigin(current?.url)!==origin)throw new Error('La pestaña activa cambió. Volvé a la tienda e intentá de nuevo.');
+    const response=await chrome.runtime.sendMessage({type:'supplier-capture-start',tabId:tab.id,origin});
+    if(response?.error)throw new Error(response.error);
+    supplierStatus.textContent='Preparando la lectura segura de esta tienda…';
+    await renderSupplierCapture();
+  }catch(error){supplierStatus.textContent=error?.message??'No se pudo iniciar la lectura.';supplierStart.disabled=false;}
+});
+supplierFinish.addEventListener('click',async()=>{
+  supplierFinish.disabled=true;
+  try{
+    const response=await chrome.runtime.sendMessage({type:'supplier-capture-finish',tabId:activeSupplierTab?.id});
+    if(response?.error)throw new Error(response.error);
+    supplierStatus.textContent='Abriendo RivaStock con la lista leída…';
+  }catch(error){supplierStatus.textContent=error?.message??'No se pudo llevar la lista a RivaStock.';supplierFinish.disabled=false;}
+});
+supplierAllCategories.addEventListener('click',async()=>{
+  supplierAllCategories.disabled=true;
+  try{
+    const response=await chrome.runtime.sendMessage({type:'supplier-capture-read-categories',tabId:activeSupplierTab?.id});
+    if(response?.error)throw new Error(response.error);
+    supplierStatus.textContent='Leyendo las categorías una por una…';
+    await renderSupplierCapture();
+  }catch(error){supplierStatus.textContent=error?.message??'No se pudieron leer las categorías.';}
+  finally{supplierAllCategories.disabled=false;}
+});
+document.querySelector('#supplier-cancel').addEventListener('click',async()=>{
+  const response=await chrome.runtime.sendMessage({type:'supplier-capture-cancel',tabId:activeSupplierTab?.id}).catch(()=>null);
+  supplierStatus.textContent=response?.error??'Lectura cancelada.';
+  await renderSupplierCapture();
+});
+chrome.storage.onChanged.addListener((_changes,area)=>{if(area==='session'||area==='local')void renderSupplierCapture();});
+void renderSupplierCapture();
 const captureButton=document.querySelector('#capture-permission');
 const captureStatus=document.querySelector('#capture-status');
 async function renderCapturePermission() {

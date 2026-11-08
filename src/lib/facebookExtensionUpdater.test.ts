@@ -8,6 +8,7 @@ import {
   extensionIdFromManifestKey,
   extractVerifiedStoredArchive,
   findChromeExtensionInstall,
+  isSupportedExtensionManifest,
   isValidReleaseManifest,
 } from '../../scripts/update-installed-facebook-extension.mjs';
 
@@ -22,9 +23,11 @@ describe('Facebook extension updater', () => {
   });
 
   it('validates published metadata and exact file names before extracting', () => {
-    expect(isValidReleaseManifest({ version: '0.5.24', protocol: 2, sha256: 'a'.repeat(64), files: extensionFiles }, extensionId)).toBe(true);
+    expect(isValidReleaseManifest({ version: '0.6.0', protocol: 2, sha256: 'a'.repeat(64), files: extensionFiles }, extensionId)).toBe(true);
     expect(isValidReleaseManifest({ version: '../latest', protocol: 2, sha256: 'a'.repeat(64), files: extensionFiles }, extensionId)).toBe(false);
-    expect(isValidReleaseManifest({ version: '0.5.24', protocol: 2, sha256: 'a'.repeat(64), files: ['unexpected.js'] }, extensionId)).toBe(false);
+    expect(isValidReleaseManifest({ version: '0.6.0', protocol: 2, sha256: 'a'.repeat(64), files: ['../unexpected.js'] }, extensionId)).toBe(false);
+    expect(isSupportedExtensionManifest({ ...localManifest, name: 'RivaStock · Facebook', version: '0.5.25' }, localManifest, extensionId)).toBe(true);
+    expect(isSupportedExtensionManifest({ ...localManifest, name: 'Other extension' }, localManifest, extensionId)).toBe(false);
   });
 
   it('extracts only allowlisted files and rejects corrupt archives', () => {

@@ -2,7 +2,8 @@
 
 - Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.
 - El primer commit de I37 es `db11cb5`: agregó `tmp/proveedores/` a `.gitignore`. `git check-ignore -v` confirmó que `oestech.html` y `babaji.html` quedan ignorados antes de usarlos. Los originales no se agregan al repositorio.
-- Próximo: fixtures recortados y anonimizados, motor de extracción (Fase 1), captura de extensión 0.6.0 (Fase 2), recepción local en Revendedores (Fase 3), guía (Fase 4), y pruebas de fixtures/proveedores de solo lectura (Fase 5). No se permiten clics de compra, formularios, escritura en campos ni transferencia de cookies/sesiones.
+- Los fixtures y el motor de extracción de la Fase 1 están en el commit `6f58729` (9/9 pruebas focales aprobadas). No se copiaron los HTML originales; los fixtures son recortados, sintéticos y anonimizados.
+- No se permiten clics de compra, formularios, escritura en campos ni transferencia de cookies/sesiones.
 - No se requieren migraciones hasta ahora. La extensión conserva su ID/key; solo se publicará el ZIP por el flujo existente. Mr Tecno, Inova, Braja y Omega se prueban localmente, sin guardar productos en producción. Oestech y Babaji quedan para prueba del dueño con su clave.
 
 ## I37 — Fase 1: motor de extracción
@@ -11,6 +12,16 @@
 - Generé 13 fixtures sintéticos y recortados bajo `e2e/fixtures/stores/`, incluidos diez perfiles de tarjeta por sistema para Oestech y Babaji. Los originales no se copiaron ni se agregaron al repositorio.
 - **Verificación focal:** 9/9 pruebas Vitest pasan; cubren los JSON paginados y POST, WooCommerce con `sku` vacío y `minor_unit: 0`, tarjetas DOM, imágenes de video excluidas, código del título, precio tachado, mayorista/minorista, cero productos y límites.
 - Caso Babaji cubierto: `$ 37,125` se interpreta como **$37.125** ARS; «(SIN CAMBIO)» queda como nota, `1002-L` se conserva en el nombre y precios de más de $5.000.000 requieren revisión.
+
+## I37 — Fase 2: extensión RivaStock 0.6.0
+
+- La extensión mantiene el mismo ID derivado de la key existente; solo cambié `name`, `description` y `version` a «RivaStock», la descripción aprobada y `0.6.0`.
+- El popup suma lectura de la pestaña actual, permiso opcional para un único origen HTTPS, estado y contador, lectura de categorías, terminar y cancelar. El lector combina respuesta JSON de `fetch`/XHR con productos visibles, sin enviar headers/cookies ni usar endpoints propios; el JSON se limita a 5 MB con lectura acotada. La cancelación/fin desregistra los scripts y restaura los wrappers de red.
+- Se limita el avance a controles de paginación con etiquetas permitidas y fuera de tarjetas/formularios; descarta formularios, tarjetas de producto, carruseles y campos de entrada. No transfiere URLs de producto; las fotos conservan solo parámetros públicos de presentación conocidos, y los warnings se limitan a mensajes fijos del extractor, no texto arbitrario de la tienda. Captura local con expiración de 24 h, 500 productos por tanda y máximo 5.000.
+- **Desvío obligatorio por la instrucción de Riva:** no se cambia el selector «Mostrar N productos», porque la tarea prohíbe escribir en campos de la tienda. La lectura usa el valor visible actual y continúa con paginación/scroll seguro.
+- **Permiso del popup:** agregué `activeTab` para leer únicamente la pestaña cuyo ícono abre Riva. El permiso opcional de sitio sigue pidiéndose para un único origen HTTPS y se valida que la pestaña no haya cambiado antes de recargarla.
+- **Pruebas focales:** 59/59 pasan para el worker de Facebook, paquete y actualizador, emparejamiento, límites, cancelación, seguridad de URLs y transferencia de imágenes sin credenciales (máximo 400 KB). Falla inicial del suite completo: faltaban variables de entorno ficticias para tests y el mock del worker no definía `chrome.tabs`; ambos temas se aislaron, y el mock pasó a tolerar la API opcional. La corrida completa se repetirá con variables de prueba no secretas antes del cierre.
+- La recepción de datos en Revendedores (Fase 3) está implementada localmente, pero aún no commitida ni desplegada. Los ensayos reales de lectura de los cuatro proveedores y el paquete 0.6.0 en la carpeta del dueño quedan pendientes de la Fase 5/actualizador.
 
 # 2026-11-08 — I35 e I36 verificados en producción
 

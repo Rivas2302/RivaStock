@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 
 // Explicit allowlist: the download contains extension code only, never local
 // credentials, browser data, source maps or repository configuration.
-export const extensionFiles=['manifest.json','worker.js','recorder.js','post-submit.js','result-verification.js','polling-schedule.js','extension-update.js','adapter.js','publication-policy.js','form-actions.js','automation-tabs.js','marketplace-contract.js','group-contract.js','group-discovery.js','pairing.js','connect.html','connect.js','connect.css'];
+export const extensionFiles=['manifest.json','worker.js','recorder.js','post-submit.js','result-verification.js','polling-schedule.js','extension-update.js','adapter.js','publication-policy.js','form-actions.js','automation-tabs.js','marketplace-contract.js','group-contract.js','group-discovery.js','pairing.js','supplier-capture.js','supplier-capture-main.js','supplier-capture-page.js','shared/product-extract.js','connect.html','connect.js','connect.css'];
 function crc32(bytes) {
   let crc=0xffffffff;
   for(const byte of bytes) {
@@ -17,7 +17,7 @@ function crc32(bytes) {
 export function extensionArchive(root) {
   const entries=[];const directory=[];let offset=0;
   for(const file of extensionFiles) {
-    const name=Buffer.from(file);const data=readFileSync(resolve(root,'extensions/facebook',file));
+    const name=Buffer.from(file);const source=file.startsWith('shared/')?resolve(root,'extensions',file):resolve(root,'extensions/facebook',file);const data=readFileSync(source);
     const crc=crc32(data);
     const local=Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50);local.writeUInt16LE(20,4);

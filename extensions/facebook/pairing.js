@@ -19,13 +19,29 @@ export function publicConnection(message) {
 export function trustedPairingSender(sender) {
   try {
     const url = new URL(sender.url);
-    return !sender.id && sender.tab?.id !== undefined && sender.frameId === 0 && url.origin === 'https://rivastock.vercel.app' && ['/stock','/config','/automatizaciones'].includes(url.pathname);
+    return !sender.id && sender.tab?.id !== undefined && sender.frameId === 0 && url.origin === 'https://rivastock.vercel.app' && ['/stock','/config','/automatizaciones','/revendedores'].includes(url.pathname);
   } catch { return false; }
 }
 
-export function registerPairing({wakeGroups,wakePublications,reviewUnknown} = {}) {
+function trustedSupplierCaptureSender(sender) {
+  return trustedPairingSender(sender) && new URL(sender.url).pathname === '/revendedores';
+}
+
+export function registerPairing({wakeGroups,wakePublications,reviewUnknown,getCapture,getCaptureImage,acknowledgeCapture} = {}) {
   chrome.runtime.onMessageExternal?.addListener((message,sender,reply) => {
     if (!trustedPairingSender(sender)) return;
+    if (trustedSupplierCaptureSender(sender) && message?.type === 'rivastock-get-capture' && typeof getCapture === 'function') {
+      void Promise.resolve(getCapture(message.captureId, message.offset)).then(reply).catch(error => reply({ error: error?.message ?? 'La captura ya no está disponible.' }));
+      return true;
+    }
+    if (trustedSupplierCaptureSender(sender) && message?.type === 'rivastock-capture-received' && typeof acknowledgeCapture === 'function') {
+      void Promise.resolve(acknowledgeCapture(message.captureId)).then(reply).catch(() => reply({ received: false }));
+      return true;
+    }
+    if (trustedSupplierCaptureSender(sender) && message?.type === 'supplier-capture-read-image' && typeof getCaptureImage === 'function') {
+      void Promise.resolve(getCaptureImage(message.captureId, message.imageUrl)).then(reply).catch(error => reply({ error: error?.message ?? 'La foto no está disponible.' }));
+      return true;
+    }
     if (message?.type === 'rivastock-installed') { reply({installed:true,protocol:2,connectionStatus:true,publicKeyRefresh:true,version:chrome.runtime.getManifest?.().version,groupsWake:typeof wakeGroups==='function',publicationsWake:typeof wakePublications==='function',historicalReview:typeof reviewUnknown==='function'}); return; }
     if (message?.type === 'rivastock-update-public-key') {
       void (async () => {
