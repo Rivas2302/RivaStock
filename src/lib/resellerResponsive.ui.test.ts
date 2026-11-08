@@ -24,6 +24,14 @@ describe('reseller price list responsive UI contract', () => {
     expect(reseller).toContain('hidden sm:inline');
   });
 
+  it('keeps reseller tabs horizontally scrollable and uses mobile price rows with a bottom editor', () => {
+    expect(reseller).toContain('overflow-x-auto border-b border-[var(--line)]');
+    expect(reseller).toContain('data-testid="reseller-price-list-mobile"');
+    expect(reseller).toContain('Editar precio de ${product.name}');
+    expect(reseller).toContain('max-h-[88dvh]');
+    expect(reseller).toContain('bottom-[calc(5.5rem+env(safe-area-inset-bottom))]');
+  });
+
   it('uses the device PDF viewer on mobile and an in-app fallback elsewhere', () => {
     expect(reseller).toContain('(max-width: 767px), (hover: none) and (pointer: coarse)');
     expect(reseller).toContain("setPdfPreview({ url, fileName: pdf.fileName })");

@@ -17,7 +17,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
   if (!options.useRealOcr) {
     await page.addInitScript(texts => {
       let index = 0;
@@ -34,7 +34,9 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
   ] : options.nameCleanupFixture ? [
     { id: 'supplier-name-1', user_id: owner, name: 'HM352 – HUMIFICADOR LED ESTILO FUEGO', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'HM352', image_url: null, images: [] },
-  ] : options.largeFixture ? [
+  ] : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
+    id: `mobile-price-${index + 1}`, user_id: owner, name: `[QA] Móvil producto ${index + 1}`, category: 'General', category_id: 'category-general', stock: index + 1, sale_price: 2000 + index * 500, purchase_price: 1000 + index * 200, image_url: null, images: [],
+  })) : options.largeFixture ? [
     ...Array.from({ length: 2_499 }, (_, index) => ({
       id: `product-${String(index + 1).padStart(4, '0')}`,
       user_id: owner,
@@ -52,7 +54,9 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   let supplierProductIds: string[] = options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
-  ] : options.bulkFixture ? [
+  ] : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
+    id: `mobile-price-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `mobile-price-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
+  })) : options.bulkFixture ? [
     { id: 'bulk-item-stock', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-stock-included', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
     { id: 'bulk-item-provider', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-provider-included', pricing_mode: 'default', availability: 'on_order', supplier_list_id: supplierList.id, sort_order: 1 },
   ] : [];
@@ -681,10 +685,26 @@ test('bulk price-list actions use the visible Mi stock filter, support undo, and
     await page.getByRole('group', { name: 'Origen de los productos' }).getByRole('button', { name: 'Mi stock' }).click();
 
     const panel = page.getByTestId('reseller-price-bulk-panel');
-    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('En la lista');
-    await expect(panel.getByRole('row', { name: /Stock fuera de lista/ })).toContainText('Fuera de la lista');
-    await expect(panel.getByRole('row', { name: /Producto proveedor/ })).toHaveCount(0);
-    await panel.getByLabel('Elegir todos los que se ven').check();
+    const mobileList = panel.getByTestId('reseller-price-list-mobile');
+    const includedCheckbox = (root: typeof panel) => width === 360
+      ? root.getByTestId('reseller-price-list-mobile').getByLabel('Elegir [QA] Stock incluido')
+      : root.getByRole('row', { name: /Stock incluido/ }).getByLabel('Elegir [QA] Stock incluido');
+    const includedRow = width === 360
+      ? mobileList.locator('article').filter({ hasText: 'Stock incluido' })
+      : panel.getByRole('row', { name: /Stock incluido/ });
+    const excludedRow = width === 360
+      ? mobileList.locator('article').filter({ hasText: 'Stock fuera de lista' })
+      : panel.getByRole('row', { name: /Stock fuera de lista/ });
+    await expect(includedRow).toContainText('En la lista');
+    await expect(excludedRow).toContainText(width === 360 ? 'Fuera' : 'Fuera de la lista');
+    if (width === 360) {
+      await expect(mobileList.getByText('[QA] Producto proveedor')).toHaveCount(0);
+      await mobileList.getByLabel('Elegir [QA] Stock incluido').check();
+      await mobileList.getByLabel('Elegir [QA] Stock fuera de lista').check();
+    } else {
+      await expect(panel.getByRole('row', { name: /Producto proveedor/ })).toHaveCount(0);
+      await panel.getByLabel('Elegir todos los que se ven').check();
+    }
 
     const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
     await expect(toolbar).toContainText('2 elegidos');
@@ -698,13 +718,18 @@ test('bulk price-list actions use the visible Mi stock filter, support undo, and
 
     await page.getByRole('button', { name: 'Deshacer' }).click();
     await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(true);
-    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('En la lista');
+    await expect(includedRow).toContainText('En la lista');
 
-    await panel.getByLabel('Elegir todos los que se ven').check();
+    if (width === 360) {
+      await mobileList.getByLabel('Elegir [QA] Stock incluido').check();
+      await mobileList.getByLabel('Elegir [QA] Stock fuera de lista').check();
+    } else {
+      await panel.getByLabel('Elegir todos los que se ven').check();
+    }
     await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Quitar de la lista' }).click();
     await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(false);
-    await expect(panel.getByRole('row', { name: /Stock incluido/ })).toContainText('Fuera de la lista');
+    await expect(includedRow).toContainText(width === 360 ? 'Fuera' : 'Fuera de la lista');
     expect(products).toHaveLength(3);
     expect(bulkCalls.every(call => call.productIds.every(id => id === 'bulk-stock-included'))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -720,11 +745,11 @@ test('bulk price-list actions use the visible Mi stock filter, support undo, and
     await page.goto('/revendedores');
     await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
     const restoredPanel = page.getByTestId('reseller-price-bulk-panel');
-    await restoredPanel.getByLabel('Elegir [QA] Stock incluido').check();
+    await includedCheckbox(restoredPanel).check();
     await toolbar.getByRole('button', { name: 'Agregar a la lista' }).click();
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Agregar a la lista' }).click();
     await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(true);
-    await panel.getByLabel('Elegir [QA] Stock incluido').check();
+    await includedCheckbox(panel).check();
     await toolbar.getByRole('button', { name: 'Por pedido' }).click();
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Marcar por pedido' }).click();
     await expect.poll(() => priceListItems.find(item => item.product_id === 'bulk-stock-included')?.availability).toBe('on_order');
@@ -751,9 +776,15 @@ test('price list loads the product after row 1,000 and bulk actions can reach it
     await expect(filters.getByRole('button', { name: 'Todos · 2500' })).toBeVisible();
     await expect(filters.getByRole('button', { name: 'En la lista · 1' })).toBeVisible();
     await page.getByRole('searchbox', { name: 'Buscar producto en la lista de precios' }).fill('Auricular Bluetooth P47');
-    const row = page.getByRole('row', { name: /Auricular Bluetooth P47/ });
-    await expect(row).toBeVisible();
-    await row.getByLabel('Elegir Auricular Bluetooth P47').check();
+    if (width === 360) {
+      const mobileList = page.getByTestId('reseller-price-list-mobile');
+      await expect(mobileList.getByRole('button', { name: 'Editar precio de Auricular Bluetooth P47' })).toBeVisible();
+      await mobileList.getByLabel('Elegir Auricular Bluetooth P47').check();
+    } else {
+      const row = page.getByRole('row', { name: /Auricular Bluetooth P47/ });
+      await expect(row).toBeVisible();
+      await row.getByLabel('Elegir Auricular Bluetooth P47').check();
+    }
     await page.getByRole('toolbar', { name: 'Acciones para productos elegidos' }).getByRole('button', { name: 'Quitar de la lista' }).click();
     const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
     await expect(confirmation).toContainText('1 producto');
@@ -803,4 +834,77 @@ test('mobile Más menu opens Revendedores page and reaches review without creati
   await expect(page).toHaveURL(/\/revendedores$/);
   await expect(page.getByRole('dialog', { name: 'Lista de precios para revendedores' })).toHaveCount(0);
   await expect(page.getByRole('tablist', { name: 'Secciones de Revendedores' })).toBeVisible();
+});
+
+test('I35 keeps reseller tabs and price rows usable on mobile at 360 and 412 px', async ({ page }, testInfo) => {
+  const { products, bulkCalls, priceListItems } = await mockApp(page, { mobileListFixture: true });
+  const tabNames = ['Resumen', 'Lista de precios', 'Proveedores', 'Encargos', 'Ajustes'] as const;
+  const tabFiles = ['summary', 'prices', 'providers', 'orders', 'settings'] as const;
+
+  for (const width of [360, 412, 1440]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 960 : 820 });
+    await page.goto('/revendedores');
+    const tabs = page.getByRole('tablist', { name: 'Secciones de Revendedores' });
+    await expect(tabs.getByRole('tab')).toHaveCount(5);
+    if (width < 640) {
+      const tabDimensions = await tabs.evaluate(element => ({ overflowX: getComputedStyle(element).overflowX, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+      expect(tabDimensions.overflowX).toBe('auto');
+      expect(tabDimensions.scrollWidth).toBeGreaterThan(tabDimensions.clientWidth);
+    }
+
+    for (let index = 0; index < tabNames.length; index++) {
+      const tab = tabs.getByRole('tab', { name: tabNames[index] });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      if (tabNames[index] === 'Resumen') await expect(page.getByRole('tabpanel', { name: 'Resumen de Revendedores' })).toBeVisible();
+      if (tabNames[index] === 'Lista de precios') {
+        await expect(page.getByTestId('reseller-price-list')).toBeVisible();
+        if (width < 640) {
+          await expect(page.getByTestId('reseller-price-list-mobile')).toBeVisible();
+          await expect(page.getByTestId('reseller-price-list-mobile').getByText('[QA] Móvil producto 1')).toBeVisible();
+          await expect(page.getByRole('table', { name: 'Productos de la lista de precios' })).toHaveCount(0);
+        } else {
+          await expect(page.getByRole('table', { name: 'Productos de la lista de precios' })).toBeVisible();
+        }
+      }
+      if (tabNames[index] === 'Proveedores') await expect(page.getByRole('tabpanel', { name: 'Proveedores' })).toBeVisible();
+      if (tabNames[index] === 'Encargos') await expect(page.getByRole('tabpanel', { name: 'Encargos' })).toBeVisible();
+      if (tabNames[index] === 'Ajustes') await expect(page.getByRole('tabpanel', { name: 'Ajustes' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      if (width === 360) await page.screenshot({ path: testInfo.outputPath(`i35-${tabFiles[index]}-360.png`), fullPage: true });
+    }
+
+    if (width === 360) {
+      const mobileList = page.getByTestId('reseller-price-list-mobile');
+      await tabs.getByRole('tab', { name: 'Lista de precios' }).click();
+      await mobileList.getByRole('button', { name: 'Editar precio de [QA] Móvil producto 1' }).click();
+      await expect(page.getByRole('dialog', { name: 'Editar [QA] Móvil producto 1' })).toBeVisible();
+      await page.getByRole('button', { name: 'Cerrar edición' }).click();
+
+      for (let index = 1; index <= 3; index++) await mobileList.getByLabel(`Elegir [QA] Móvil producto ${index}`).check();
+      const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
+      await expect(toolbar).toContainText('3 elegidos');
+      const bottomBarLayout = await page.evaluate(() => {
+        const toolbarElement = document.querySelector('[aria-label="Acciones para productos elegidos"]');
+        const navigationElement = document.querySelector('.mobile-navigation-bar');
+        if (!toolbarElement || !navigationElement) return null;
+        return { toolbarBottom: toolbarElement.getBoundingClientRect().bottom, navigationTop: navigationElement.getBoundingClientRect().top, toolbarPosition: getComputedStyle(toolbarElement).position };
+      });
+      expect(bottomBarLayout?.toolbarPosition).toBe('fixed');
+      expect(bottomBarLayout?.toolbarBottom).toBeLessThanOrEqual(bottomBarLayout?.navigationTop ?? 0);
+
+      await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
+      const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
+      await expect(confirmation).toContainText('3 productos de la lista de revendedores. No se borran de tu stock.');
+      await confirmation.getByRole('button', { name: 'Quitar de la lista' }).click();
+      await expect.poll(() => priceListItems.length).toBe(0);
+      expect(products).toHaveLength(3);
+      expect(bulkCalls.at(-1)?.productIds).toEqual(['mobile-price-1', 'mobile-price-2', 'mobile-price-3']);
+
+      await page.getByRole('button', { name: 'Deshacer' }).click();
+      await expect.poll(() => priceListItems.length).toBe(3);
+      expect(products).toHaveLength(3);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  }
 });

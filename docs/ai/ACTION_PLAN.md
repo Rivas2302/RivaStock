@@ -1021,3 +1021,42 @@ Sos el agente ejecutor autónomo de RivaStock. Riva no va a estar disponible: no
 6) STATUS.md es tu memoria: leelo antes de cada tarea y actualizalo después. Si la sesión se corta, una sesión nueva debe poder seguir solo con este prompt.
 7) No me escribas hasta que no quede nada que avanzar sin mí; entonces mandá un único mensaje con el formato de §9.
 ```
+
+## 4f. Orden de ejecución actualizado por Riva el 08/11/2026: I35 → I36
+
+### [ ] I35 Revendedores en el celular: que se vea como la maqueta — **pedido de Riva el 08/11 09:47 (con capturas)**
+
+**Problemas vistos en el celular (360-412 px):**
+- Las 5 pestañas se acomodan en una grilla de 2 columnas que ocupa media pantalla. Tienen que ser **una fila con scroll horizontal**, como `MovilResumen.dc.html`.
+- **Lista de precios** se ve como la tabla de PC con scroll horizontal: no se ve el nombre y el precio juntos. En el celular tiene que ser una **lista de filas** (miniatura 52 px, nombre en 1-2 líneas, «Mi stock / Mr Tecno · categoría», a la derecha precio revendedor y «ganás $…») con la casilla para elegir; al tocar la fila se abre la edición (regla de precio y disponibilidad) en una hoja inferior.
+- El estado «Fuera de la lista» se parte en 3 líneas y deja un «—» suelto: usar punto de color y texto corto en una línea («En la lista» / «Fuera»).
+- Sobretítulo «RELACIONES» encima del título: sacarlo (DESIGN.md: sin sobretítulos).
+- «Crear producto por pedido» es un botón blanco enorme: en el celular va al menú «⋯» o como botón secundario chico.
+- Los botones «Ver PDF / Descargar / Guardar lista» quedan sueltos al pie: en el celular, barra fija abajo solo cuando hay cambios sin guardar; PDF en «⋯».
+- La barra de acciones en lote (I33) tiene que quedar fija arriba de la barra inferior de la app, sin taparla.
+
+**Verificación:** capturas a 360 px y 412 px de cada pestaña, comparadas con las maquetas; sin scroll horizontal de página (`scrollWidth <= clientWidth`); test e2e de elegir 3 productos y quitarlos de la lista desde el celular (con fixtures).
+
+
+
+### [ ] I36 Asistente de márgenes por escalones — **pedido de Riva el 08/11 09:47**
+
+**Problema:** con un mismo % para todo, o queda caro o queda regalado. Ejemplo de Riva: perfumes de ~$16.000 que solo le dejan ~$3.000. Quiere que al revendedor le quede barato **y** él gane, por ejemplo, unos $5.000.
+
+**Idea (motor de reglas, sin IA obligatoria):** la ganancia de Riva se calcula por **escalones de costo**, con un **mínimo y un máximo en pesos**:
+- Tabla editable de escalones; **cada escalón es un % o un monto fijo en pesos** (valores iniciales sugeridos, Riva los ajusta): costo hasta $5.000 → +40 %; $5.000 a $15.000 → +30 %; $15.000 a $30.000 → **ganancia fija $5.000**; más de $30.000 → +18 %.
+- Opcional por escalón: mínimo y máximo en pesos (no un mínimo global, porque encarecería de más los productos baratos).
+- Excepciones por categoría (Perfumes, Joysticks…) y por producto, que pisan el escalón.
+- Redondeo (exacto / $100 / $500) igual que hoy.
+
+**Pantalla:** en Revendedores › Ajustes › «Cómo calculás tu ganancia», con **simulador**: muestra 6 productos reales de distintos precios con costo → precio revendedor → ganás → público sugerido, y se recalcula al mover cualquier valor. Abajo, el impacto: «Con estas reglas: 412 productos suben, 120 bajan, ganancia promedio $4.800 por producto». Botón «Aplicar a la lista» con confirmación propia y «Deshacer».
+
+**Sugerencias automáticas:** en Lista de precios, un filtro nuevo «Ganancia baja» (por debajo del mínimo en pesos) y, para cada uno, «Sugerido: $X (ganás $Y)» con «Aplicar» por fila o en lote.
+
+**IA (opcional, después):** botón «Pedir sugerencia a la IA» que manda a la central un resumen anónimo (categorías, rangos de costo y precios actuales, sin datos de clientes) y devuelve una propuesta de escalones con explicación, que Riva acepta o no. Tandas de menos de 7.000 caracteres.
+
+**Confirmado por Riva (08/11 09:54):** los escalones van **por costo** (lo que le cuesta a Riva). Orden de prioridad: **producto puntual → categoría → escalón**. Cantidad de escalones libre (2 a 10) y cortes editables. No hace falta maqueta aparte: seguir el estilo de `docs/design/revendedores-v2/Ajustes.dc.html` y `Precios.dc.html` (filas planas, −/+, segmentado %/$ por escalón, ejemplo en vivo como el de Precios). El simulador también tiene que funcionar en el celular (I35).
+Aplicar las mismas reglas en el paso **Precios** de la importación de proveedores (Mr Tecno), para que los productos importados nazcan con estos márgenes.
+
+**Verificación:** tests de la fórmula (mínimo, máximo, escalones, excepciones, redondeo), simulador con fixtures, e2e de «Aplicar a la lista» y «Deshacer» sin tocar la lista real de Riva.
+

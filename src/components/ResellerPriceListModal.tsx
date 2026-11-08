@@ -614,6 +614,16 @@ export default function ResellerPriceListModal({
   const allPricePageSelected = visiblePricePageProducts.length > 0 && selectedPageCount === visiblePricePageProducts.length;
   const selectedPriceProducts = resellerVisibleProducts.filter(product => selectedPriceProductIds.has(product.id));
   const selectedProductIds = selectedPriceProducts.map(product => product.id);
+  const editingPriceProduct = editingPriceProductId
+    ? products.find(product => product.id === editingPriceProductId) ?? null
+    : null;
+  const editingPriceItem = editingPriceProduct ? itemByProductId.get(editingPriceProduct.id) ?? null : null;
+  const editingPriceEconomics = editingPriceProduct
+    ? getResellerProductEconomics(editingPriceProduct, holdings, holdingsEnabled)
+    : null;
+  const editingResellerPrice = editingPriceProduct
+    ? resolvePriceListPrice(editingPriceProduct.salePrice, discount, editingPriceItem ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null })
+    : 0;
   const addableProductIds = useMemo(() => new Set(products.filter(product => {
     const supplierList = supplierListByProductId.get(product.id);
     return !supplierList || supplierList.enabled;
@@ -1729,7 +1739,6 @@ export default function ResellerPriceListModal({
       {displayMode === 'page' && <>
         <header className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Relaciones</p>
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink)] sm:text-3xl">Revendedores</h1>
             <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">Tu lista de precios, tus proveedores y los encargos de tus revendedores.</p>
           </div>
@@ -1738,14 +1747,14 @@ export default function ResellerPriceListModal({
             <button type="button" onClick={() => void handleShareCatalog()} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Compartir catálogo</button>
           </div>
         </header>
-        <nav role="tablist" aria-label="Secciones de Revendedores" className="mb-5 grid grid-cols-2 gap-1 border-b border-[var(--line)] sm:flex sm:gap-2">
+        <nav role="tablist" aria-label="Secciones de Revendedores" className="mb-5 flex w-full min-w-0 max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {([
             ['summary', 'Resumen'],
             ['prices', 'Lista de precios'],
             ['providers', 'Proveedores'],
             ['orders', 'Encargos'],
             ['settings', 'Ajustes'],
-          ] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" aria-selected={pageTab === tab} onClick={() => setPageTab(tab)} className={cn('min-h-11 rounded-t-lg border-b-2 px-3 text-sm font-semibold transition-colors', pageTab === tab ? 'border-[var(--accent)] text-[var(--accent-text)]' : 'border-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]')}>
+          ] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" aria-selected={pageTab === tab} onClick={() => setPageTab(tab)} className={cn('min-h-11 shrink-0 whitespace-nowrap rounded-t-lg border-b-2 px-3 text-sm font-semibold transition-colors', pageTab === tab ? 'border-[var(--accent)] text-[var(--accent-text)]' : 'border-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]')}>
             {label}
           </button>)}
         </nav>
@@ -2278,8 +2287,16 @@ export default function ResellerPriceListModal({
                     </button>
                   ))}
                 </div>
+                <details className="relative ml-auto sm:hidden">
+                  <summary aria-label="Más opciones de la lista de precios" className="flex min-h-10 min-w-10 cursor-pointer list-none items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xl font-semibold text-[var(--ink)] [&::-webkit-details-marker]:hidden">⋯</summary>
+                  <div className="absolute right-0 top-full z-30 mt-1 min-w-52 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-1 shadow-xl">
+                    <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Crear producto por pedido</button>
+                    <button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Ver PDF</button>
+                    <button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="block min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] disabled:opacity-50">Descargar PDF</button>
+                  </div>
+                </details>
                 <button type="button" onClick={() => onCreateProduct()} disabled={!canWrite}
-                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">
+                  className="hidden min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50 sm:inline-flex">
                   <PackagePlus size={17} /> Crear producto por pedido
                 </button>
               </div>
@@ -2325,7 +2342,7 @@ export default function ResellerPriceListModal({
                 </button>}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--surface-1)]">
+              <div className="hidden overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--surface-1)] sm:block">
                 <table className="w-full min-w-[900px] border-collapse text-sm" aria-label="Productos de la lista de precios">
                   <thead className="bg-[var(--surface-2)] text-left text-xs text-[var(--ink-muted)]">
                     <tr className="border-b border-[var(--line)]">
@@ -2388,12 +2405,47 @@ export default function ResellerPriceListModal({
                 </table>
               </div>
 
+              <ul className="space-y-2 sm:hidden" aria-label="Productos de la lista de precios para celular" data-testid="reseller-price-list-mobile">
+                {visiblePricePageProducts.map(product => {
+                  const item = itemByProductId.get(product.id);
+                  const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
+                  const resellerPrice = resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null });
+                  const profit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
+                  const sourceList = supplierListByProductId.get(product.id);
+                  return <li key={product.id}>
+                    <article className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <input type="checkbox" aria-label={`Elegir ${product.name}`} checked={selectedPriceProductIds.has(product.id)} onChange={() => setSelectedPriceProductIds(current => { const next = new Set(current); if (next.has(product.id)) next.delete(product.id); else next.add(product.id); return next; })} disabled={!canWrite || bulkBusy} className="size-4 shrink-0 accent-[var(--accent)]" />
+                        <button type="button" onClick={() => setEditingPriceProductId(product.id)} aria-label={`Editar precio de ${product.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+                          <ProductThumbnail product={product} sizeClassName="size-[52px]" />
+                          <span className="min-w-0 flex-1">
+                            <span className="line-clamp-2 block text-sm font-semibold text-[var(--ink)]">{product.name}</span>
+                            <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{sourceList ? `${supplierNameByListId.get(sourceList.id) ?? 'Proveedor'} · ` : 'Mi stock · '}{product.category || 'Sin categoría'}</span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-[10px] text-[var(--ink-muted)]">Revendedor</span>
+                            <span className="block text-sm font-bold tabular-nums text-[var(--ink)]">{formatCurrency(resellerPrice)}</span>
+                            <span className="mt-1 block text-[10px] leading-tight text-[var(--ink-muted)]">ganás {profit === null ? '—' : formatCurrency(profit)}</span>
+                          </span>
+                        </button>
+                      </div>
+                      <p className="mt-2 flex items-center gap-1.5 pl-7 text-xs font-medium text-[var(--ink-muted)]">
+                        <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', item ? 'bg-[var(--accent)]' : 'bg-[var(--line-strong)]')} />
+                        <span className="whitespace-nowrap">{item ? 'En la lista' : 'Fuera'}</span>
+                        {item && <span className="truncate">· {item.availability === 'on_order' ? 'Por pedido' : 'Disponible'}</span>}
+                      </p>
+                    </article>
+                  </li>;
+                })}
+                {visiblePricePageProducts.length === 0 && <li className="rounded-xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--ink-muted)]">No encontramos productos con estos filtros.</li>}
+              </ul>
+
               <div className="flex flex-col gap-3 text-sm text-[var(--ink-muted)] sm:flex-row sm:items-center sm:justify-between">
                 <p>Mostrando {resellerVisibleProducts.length === 0 ? 0 : priceProductPage * PRICE_LIST_PAGE_SIZE + 1}–{Math.min((priceProductPage + 1) * PRICE_LIST_PAGE_SIZE, resellerVisibleProducts.length)} de {resellerVisibleProducts.length} productos · {items.length} en la lista</p>
                 <div className="flex items-center gap-2"><button type="button" aria-label="Página anterior" onClick={() => setPriceProductPage(page => Math.max(0, page - 1))} disabled={priceProductPage === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 disabled:opacity-40">Anterior</button><span aria-live="polite">{priceProductPage + 1} / {priceProductPageCount}</span><button type="button" aria-label="Página siguiente" onClick={() => setPriceProductPage(page => Math.min(priceProductPageCount - 1, page + 1))} disabled={priceProductPage >= priceProductPageCount - 1} className="min-h-9 rounded-lg border border-[var(--line)] px-3 disabled:opacity-40">Siguiente</button></div>
               </div>
 
-              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+              <footer className="hidden flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4 sm:flex">
                 <p className="text-xs text-[var(--ink-muted)]">La inclusión y la disponibilidad se guardan automáticamente. Los cambios de precio se guardan al confirmar «Guardar lista».</p>
                 <div className="flex gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Ver PDF</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Descargar</button><button type="button" onClick={handleSave} disabled={!canWrite || saving || bulkBusy} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">Guardar lista</button></div>
               </footer>
@@ -2717,8 +2769,35 @@ export default function ResellerPriceListModal({
       </div>}
     </Modal>
 
-    {displayMode === 'page' && pageTab === 'prices' && selectedPriceProducts.length > 0 && (
-      <div role="toolbar" aria-label="Acciones para productos elegidos" className="fixed inset-x-2 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-[calc(100%_-_1rem)] max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-3 shadow-2xl sm:bottom-4 sm:flex-nowrap sm:justify-center">
+    {displayMode === 'page' && pageTab === 'prices' && editingPriceProduct && (
+      <div className="fixed inset-0 z-[70] flex items-end bg-black/45 sm:hidden" role="presentation" onClick={() => setEditingPriceProductId(null)}>
+        <section role="dialog" aria-modal="true" aria-label={`Editar ${editingPriceProduct.name}`} onClick={event => event.stopPropagation()} className="max-h-[88dvh] w-full overflow-y-auto rounded-t-2xl border border-[var(--line)] bg-[var(--surface-1)] pb-[env(safe-area-inset-bottom)] text-[var(--ink)] shadow-2xl">
+          <header className="sticky top-0 flex items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--surface-1)] p-4">
+            <div className="min-w-0"><h2 className="line-clamp-2 font-semibold">{editingPriceProduct.name}</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{editingPriceEconomics?.purchaseCost === null || editingPriceEconomics?.purchaseCost === undefined ? 'Sin costo registrado' : `Costo ${formatCurrency(editingPriceEconomics.purchaseCost)}`}</p></div>
+            <button type="button" aria-label="Cerrar edición" onClick={() => setEditingPriceProductId(null)} className="min-h-10 min-w-10 rounded-lg border border-[var(--line)] text-lg">×</button>
+          </header>
+          {editingPriceItem ? <div className="space-y-4 p-4">
+            <div className="grid gap-3">
+              <label className="text-xs font-semibold text-[var(--ink-muted)]">Regla de precio<select aria-label={`Regla de precio para ${editingPriceProduct.name}`} value={editingPriceItem.pricingMode} disabled={!canWrite || bulkBusy} onChange={event => updateItem(editingPriceProduct.id, { pricingMode: event.target.value as PriceListPricingMode, discountPercent: event.target.value === 'discount' ? discount : null, fixedPrice: event.target.value === 'fixed' ? editingResellerPrice : null })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="default">Descuento general</option><option value="discount">Otro descuento</option><option value="fixed">Precio fijo</option></select></label>
+              {editingPriceItem.pricingMode === 'discount' && <label className="text-xs font-semibold text-[var(--ink-muted)]">Descuento<input aria-label={`Descuento para ${editingPriceProduct.name}`} type="number" min="0" max="100" step="0.5" value={editingPriceItem.discountPercent ?? 0} disabled={!canWrite || bulkBusy} onChange={event => updateItem(editingPriceProduct.id, { discountPercent: Number(event.target.value) })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>}
+              {editingPriceItem.pricingMode === 'fixed' && <label className="text-xs font-semibold text-[var(--ink-muted)]">Precio fijo<MoneyInput aria-label={`Precio fijo para ${editingPriceProduct.name}`} min="0" value={editingPriceItem.fixedPrice ?? 0} disabled={!canWrite || bulkBusy} onChange={event => updateItem(editingPriceProduct.id, { fixedPrice: Number(event.target.value) })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" /></label>}
+              <label className="text-xs font-semibold text-[var(--ink-muted)]">Disponibilidad<select aria-label={`Disponibilidad para ${editingPriceProduct.name}`} value={editingPriceItem.availability} disabled={!canWrite || bulkBusy} onChange={event => updateItem(editingPriceProduct.id, { availability: event.target.value as PriceListItem['availability'] })} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]"><option value="in_stock">Disponible</option><option value="on_order">Por pedido</option></select></label>
+            </div>
+            <div className="rounded-xl bg-[var(--surface-2)] p-3 text-sm"><p>Precio revendedor <strong className="float-right">{formatCurrency(editingResellerPrice)}</strong></p><p className="mt-1">Ganancia <strong className="float-right">{editingPriceEconomics?.purchaseCost == null ? '—' : formatCurrency(editingResellerPrice - editingPriceEconomics.purchaseCost)}</strong></p></div>
+          </div> : <div className="space-y-3 p-4"><p className="text-sm text-[var(--ink-muted)]">Este producto todavía está fuera de la lista. Agregalo para cambiar el precio y la disponibilidad.</p><button type="button" disabled={!canWrite || bulkBusy} onClick={() => toggleProduct(editingPriceProduct)} className="min-h-11 w-full rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">Agregar a la lista</button></div>}
+        </section>
+      </div>
+    )}
+
+    {displayMode === 'page' && pageTab === 'prices' && itemsDirty && (
+      <div role="status" className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[54] mx-auto flex w-[calc(100%_-_1.5rem)] max-w-lg items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] px-4 py-3 shadow-xl sm:hidden">
+        <span className="text-xs font-semibold text-[var(--ink-muted)]">Cambios sin guardar</span>
+        <button type="button" onClick={() => void handleSave()} disabled={!canWrite || saving || bulkBusy} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar lista'}</button>
+      </div>
+    )}
+
+    {displayMode === 'page' && pageTab === 'prices' && !itemsDirty && selectedPriceProducts.length > 0 && (
+      <div role="toolbar" aria-label="Acciones para productos elegidos" className="fixed inset-x-2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-[calc(100%_-_1rem)] max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-3 shadow-2xl sm:bottom-4 sm:flex-nowrap sm:justify-center">
         <span className="mr-auto whitespace-nowrap px-1 text-sm font-bold text-[var(--ink)]">{selectedPriceProducts.length} elegidos</span>
         <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedRemoveIds.length === 0} onClick={() => requestBulkConfirmation('remove', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Quitar de la lista</button>
         <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
@@ -2729,7 +2808,7 @@ export default function ResellerPriceListModal({
     )}
 
     {displayMode === 'page' && pageTab === 'prices' && bulkUndo && (
-      <div role="status" className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
+      <div role="status" className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
         <span>{bulkUndo.type === 'remove' ? 'Productos quitados de la lista.' : bulkUndo.type === 'add' ? 'Productos agregados a la lista.' : 'Disponibilidad actualizada.'}</span>
         <button type="button" onClick={() => void handleUndoPriceListBulk()} disabled={bulkBusy} className="rounded-md bg-[var(--surface-1)] px-3 py-1.5 font-bold text-[var(--ink)] disabled:opacity-50">Deshacer</button>
       </div>
