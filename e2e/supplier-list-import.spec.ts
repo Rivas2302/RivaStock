@@ -686,6 +686,45 @@ test('reseller supplier import follows its three steps and adds only filtered fi
   }
 });
 
+test('extension supplier capture arrives in review without saving products', async ({ page }, testInfo) => {
+  const { products, priceListItems } = await mockApp(page);
+  const captureId = 'a1b2c3d4-e5f6-4789-a012-123456789abc';
+  const capturedItems = [
+    { name: 'Cable USB C [QA]', code: 'EXT-001', altCode: null, price: 1200, currency: 'ARS', category: 'Cables', imageUrl: 'https://images.example.test/cable.webp', images: ['https://images.example.test/cable.webp'], url: 'https://supplier.example.test/products/1' },
+    { name: 'Cargador USB [QA]', code: 'EXT-002', altCode: null, price: 2500, currency: 'ARS', category: 'Cargadores', imageUrl: null, images: [], url: 'https://supplier.example.test/products/2' },
+  ];
+  await page.addInitScript(({ id, items }) => {
+    Object.defineProperty(window, 'chrome', {
+      configurable: true,
+      value: { runtime: { lastError: null, sendMessage: (_extensionId: string, message: { type: string; offset?: number }, callback: (response: unknown) => void) => {
+        if (message.type === 'rivastock-get-capture') {
+          const offset = message.offset ?? 0;
+          callback({ captureId: id, offset, nextOffset: items.length, total: items.length, done: true, items: items.slice(offset), origin: 'https://supplier.example.test', source: ['dom-cards'], warnings: [], capturedAt: new Date().toISOString() });
+        } else callback({ received: true });
+      } } },
+    });
+  }, { id: captureId, items: capturedItems });
+
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(`/revendedores?importar=extension&captura=${captureId}`);
+  await expect(page.getByRole('heading', { name: 'Recibimos 2 productos de supplier.example.test' })).toBeVisible();
+  await expect(page.getByText('No se guardó ningún producto ni se enviaron cookies o datos de sesión.')).toBeVisible();
+  await page.getByLabel('Proveedor para la captura').selectOption('supplier-qa');
+  await page.getByRole('button', { name: 'Seguir a Precios' }).click();
+  await expect(page.getByRole('button', { name: '2. Precios' })).toHaveAttribute('aria-current', 'step');
+  await page.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await page.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(page.getByRole('button', { name: '3. Revisar' })).toHaveAttribute('aria-current', 'step');
+  await page.getByLabel('Solo con foto').uncheck();
+  await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('Cable USB C [QA]');
+  await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('EXT-001');
+  await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('Cargador USB [QA]');
+  await page.getByLabel('Productos importados', { exact: true }).screenshot({ path: testInfo.outputPath('i37-extension-review-360.png') });
+  expect(products).toHaveLength(0);
+  expect(priceListItems).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+});
+
 test('I36 simulates six cost-based margins on mobile, applies one or many prices, and supports undo', async ({ page }, testInfo) => {
   const { products, priceListItems, bulkCalls } = await mockApp(page, { marginFixture: true });
   const originalProductPrices = products.map(product => [product.id, product.sale_price, product.purchase_price]);

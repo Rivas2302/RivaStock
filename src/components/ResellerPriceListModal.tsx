@@ -29,7 +29,7 @@ import type {
   ResellerSupplierList,
   Supplier,
 } from '../types';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   configureResellerPriceList,
   configureResellerPricingAdvisor,
@@ -47,6 +47,7 @@ import {
 } from '../lib/priceLists';
 import { db, deleteFromStorage, fromDb, invalidateDbCache, toDb } from '../lib/db';
 import { supabase, supabaseProjectUrl } from '../lib/supabase';
+import { acknowledgeSupplierCapture, fetchSupplierCaptureImage, receiveSupplierExtensionCapture, requestSupplierCaptureChunk } from '../lib/supplierExtensionCapture';
 import { normalizeBarcode } from '../lib/barcode';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
@@ -298,6 +299,7 @@ export default function ResellerPriceListModal({
   onCategoriesRemoved,
   onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'settings'>('summary');
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
@@ -366,7 +368,7 @@ export default function ResellerPriceListModal({
   const [supplierImportScreenshot, setSupplierImportScreenshot] = useState<File | null>(null);
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
   const [supplierImportStep, setSupplierImportStep] = useState<1 | 2 | 3>(1);
-  const [supplierImportSourceType, setSupplierImportSourceType] = useState<'link' | 'pdf' | 'spreadsheet' | 'photo'>('link');
+  const [supplierImportSourceType, setSupplierImportSourceType] = useState<'link' | 'extension' | 'pdf' | 'spreadsheet' | 'photo'>('link');
   const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
   const [supplierImportRateNotice, setSupplierImportRateNotice] = useState<string | null>(null);
   const [supplierImportUsdRate, setSupplierImportUsdRate] = useState(() => {
@@ -389,6 +391,13 @@ export default function ResellerPriceListModal({
   const [supplierImportProductIdsByRow, setSupplierImportProductIdsByRow] = useState<Record<number, string>>({});
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
+  const [supplierExtensionCapture, setSupplierExtensionCapture] = useState<{ origin: string; count: number; warnings: string[] } | null>(null);
+  const [supplierExtensionCaptureId, setSupplierExtensionCaptureId] = useState<string | null>(null);
+  const [supplierExtensionSupplierId, setSupplierExtensionSupplierId] = useState('');
+  const [supplierExtensionStatus, setSupplierExtensionStatus] = useState('');
+  const [supplierExtensionBusy, setSupplierExtensionBusy] = useState(false);
+  const processedSupplierCaptureId = useRef<string | null>(null);
+  const supplierCaptureQueryId = searchParams.get('captura');
   const [supplierImportReading, setSupplierImportReading] = useState(false);
   const [supplierImportAiStatus, setSupplierImportAiStatus] = useState<string | null>(null);
   const [supplierImportProgress, setSupplierImportProgress] = useState<{ page: number; total: number; warning: string | null } | null>(null);
@@ -399,6 +408,46 @@ export default function ResellerPriceListModal({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || displayMode !== 'page' || searchParams.get('importar') !== 'extension'
+      || !supplierCaptureQueryId || processedSupplierCaptureId.current === supplierCaptureQueryId) return;
+    let cancelled = false;
+    setSupplierExtensionBusy(true);
+    setSupplierExtensionStatus('Recibiendo productos desde la extensión…');
+    setError(null);
+    setPageTab('providers');
+    void receiveSupplierExtensionCapture(
+      supplierCaptureQueryId,
+      requestSupplierCaptureChunk,
+    ).then(capture => {
+      if (cancelled) return;
+      processedSupplierCaptureId.current = supplierCaptureQueryId;
+      setSupplierImportRows(capture.rows);
+      setSupplierImportCurrency(new Set(capture.items.map(item => item.currency)).size === 1 ? capture.items[0]?.currency ?? null : null);
+      setSupplierImportFileName(new URL(capture.origin).hostname);
+      setSupplierImportPageUrl(capture.origin);
+      setSupplierImportSourceType('extension');
+      setSupplierImportOnlyPhotos(true);
+      setSupplierImportPhotoFiles({});
+      setSupplierImportPhotoFailedRows([]);
+      setSupplierImportIncludesTax(null);
+      setSupplierImportRateNotice(null);
+      setSupplierImportStep(2);
+      setSupplierExtensionCapture({ origin: capture.origin, count: capture.items.length, warnings: capture.warnings });
+      setSupplierExtensionCaptureId(supplierCaptureQueryId);
+      setSupplierExtensionStatus('Elegí un proveedor o crealo con el nombre del sitio. Todavía no se guardó ningún producto.');
+      const next = new URLSearchParams(searchParams);
+      next.delete('importar');
+      next.delete('captura');
+      setSearchParams(next, { replace: true });
+    }).catch(captureError => {
+      if (!cancelled) setSupplierExtensionStatus(captureError instanceof Error ? captureError.message : 'No se pudo recibir la captura.');
+    }).finally(() => {
+      if (!cancelled) setSupplierExtensionBusy(false);
+    });
+    return () => { cancelled = true; };
+  }, [displayMode, isOpen, searchParams, setSearchParams, supplierCaptureQueryId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1257,10 +1306,65 @@ export default function ResellerPriceListModal({
     }
   };
 
+  const continueSupplierExtensionCapture = (supplier: Supplier) => {
+    if (!supplierExtensionCapture || !supplierExtensionCaptureId) return;
+    const captureId = supplierExtensionCaptureId;
+    const supplierList = supplierListBySupplierId.get(supplier.id);
+    setPageTab('providers');
+    setEditingSupplierId(supplier.id);
+    setSupplierDraftProductIds(supplierList?.productIds ?? []);
+    setSupplierProductSearch('');
+    setSupplierImportPageUrl(supplierExtensionCapture.origin);
+    setSupplierImportStep(2);
+    setSupplierExtensionCapture(null);
+    setSupplierExtensionStatus('La captura está en revisión. No se agregó ningún producto todavía.');
+    void scanSupplierImportPhotos(supplierImportRows, supplierExtensionCapture.origin, supplier, captureId);
+  };
+
+  const createSupplierFromCapture = async () => {
+    if (!supplierExtensionCapture || supplierExtensionBusy) return;
+    setSupplierExtensionBusy(true);
+    try {
+      const origin = supplierExtensionCapture.origin;
+      const hostname = new URL(origin).hostname.replace(/^www\./i, '');
+      const existing = suppliers.find(supplier => supplier.catalogUrl === origin);
+      if (existing) {
+        setSupplierExtensionSupplierId(existing.id);
+        continueSupplierExtensionCapture(existing);
+        return;
+      }
+      const { data, error: createError } = await supabase.rpc('register_supplier', {
+        p_name: hostname,
+        p_contact_name: null,
+        p_phone: null,
+        p_email: null,
+        p_address: null,
+        p_cuit: null,
+        p_category: null,
+        p_notes: null,
+        p_payment_terms: null,
+        p_catalog_url: origin,
+        p_facebook_url: null,
+        p_instagram_url: null,
+      });
+      if (createError || !data || typeof data !== 'object' || Array.isArray(data)) throw createError ?? new Error('No se pudo crear el proveedor.');
+      const created = fromDb<Supplier>(data as Record<string, unknown>);
+      invalidateDbCache('suppliers');
+      setSuppliers(current => [...current.filter(supplier => supplier.id !== created.id), created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSupplierExtensionSupplierId(created.id);
+      continueSupplierExtensionCapture(created);
+    } catch (captureError) {
+      setSupplierExtensionStatus(captureError instanceof Error ? captureError.message : 'No se pudo crear el proveedor.');
+    } finally {
+      setSupplierExtensionBusy(false);
+    }
+  };
+
   const scanSupplierImportPhotos = async (
     rows: SupplierListDraftRow[],
     supplierUrl: string,
     supplier: Supplier | undefined,
+    captureId?: string,
   ) => {
     const candidates = rows.filter(row => getSupplierCatalogImageUrl(row.imageUrl, supplierUrl));
     if (candidates.length === 0) return;
@@ -1281,7 +1385,14 @@ export default function ResellerPriceListModal({
         if (supplierPhotoOcrRun.current !== run) return;
         const sourceUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierUrl);
         if (!sourceUrl) throw new Error('Foto fuera del dominio de la lista.');
-        const file = await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+        let file: File;
+        try {
+          file = await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+        } catch (serverError) {
+          if (!captureId) throw serverError;
+          file = await fetchSupplierCaptureImage(captureId, sourceUrl);
+          setSupplierImportPhotoFiles(current => ({ ...current, [row.sourceRow]: file }));
+        }
         if (!file) throw new Error('No se pudo leer la foto.');
         const detection = await inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker!);
         if (detection.flagged) flagged++;
@@ -1730,7 +1841,15 @@ export default function ResellerPriceListModal({
         const currentProduct = productsById.get(id);
         if (!currentProduct) throw new Error('No se encontró el producto importado.');
         const sourceUrl = target.sourceUrl;
-        const file = target.file ?? (sourceUrl ? await fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl) : null);
+        let file = target.file ?? null;
+        if (!file && sourceUrl) {
+          try {
+            file = await fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl);
+          } catch (serverError) {
+            if (!supplierExtensionCaptureId) throw serverError;
+            file = await fetchSupplierCaptureImage(supplierExtensionCaptureId, sourceUrl);
+          }
+        }
         if (!file) throw new Error('No se encontró una foto válida.');
         const prepared = await prepareSupplierCatalogPhoto(file);
         const photoUrl = await uploadPreparedSupplierCatalogPhoto(prepared, ownerUid, id, sourceUrl);
@@ -1763,6 +1882,10 @@ export default function ResellerPriceListModal({
       });
       if (prices.length) await saveResellerSupplierListPricingBatch(savedSupplierList.id, prices);
       await reloadSupplierLists();
+      if (supplierExtensionCaptureId) {
+        await acknowledgeSupplierCapture(supplierExtensionCaptureId).catch(() => {});
+        setSupplierExtensionCaptureId(null);
+      }
       setSupplierImportBatchProgress({ done: ready.length, total: ready.length });
       showToast(`Importación lista: ${supplierImportCounts.new} nuevos, ${supplierImportCounts.updated} actualizados y ${supplierImportCounts.unchanged} sin cambios.`, 'success');
     } catch (importError) {
@@ -1915,6 +2038,19 @@ export default function ResellerPriceListModal({
         </div>
       ) : list ? (
         <div className={displayMode === 'page' ? 'space-y-5' : 'flex h-full min-h-0 flex-col gap-3 sm:gap-5'}>
+          {displayMode === 'page' && supplierExtensionCapture && <section aria-label="Captura recibida desde la extensión" className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
+            <div><h2 className="text-base font-semibold text-[var(--ink)]">Recibimos {supplierExtensionCapture.count} productos de {new URL(supplierExtensionCapture.origin).hostname}</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">La captura queda en esta pantalla. No se guardó ningún producto ni se enviaron cookies o datos de sesión.</p></div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <label className="text-xs font-semibold text-[var(--ink-muted)]">Proveedor<select aria-label="Proveedor para la captura" value={supplierExtensionSupplierId} onChange={event => setSupplierExtensionSupplierId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]">
+                <option value="">Elegí un proveedor</option>
+                {suppliers.filter(supplier => supplier.isActive).map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select></label>
+              <button type="button" onClick={() => { const supplier = suppliers.find(item => item.id === supplierExtensionSupplierId); if (supplier) continueSupplierExtensionCapture(supplier); }} disabled={!canWrite || supplierExtensionBusy || !supplierExtensionSupplierId} className="min-h-11 self-end rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">Seguir a Precios</button>
+              {!suppliers.some(supplier => supplier.catalogUrl === supplierExtensionCapture.origin) && <button type="button" onClick={() => void createSupplierFromCapture()} disabled={!canWrite || supplierExtensionBusy} className="min-h-11 self-end rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">{supplierExtensionBusy ? 'Creando…' : `Crear ${new URL(supplierExtensionCapture.origin).hostname}`}</button>}
+            </div>
+            {supplierExtensionCapture.warnings.map(warning => <p key={warning} className="text-xs text-[var(--ink-muted)]">{warning}</p>)}
+            {supplierExtensionStatus && <p role="status" className="text-sm text-[var(--ink-muted)]">{supplierExtensionStatus}</p>}
+          </section>}
           {displayMode === 'page' && pageTab === 'summary' && <section role="tabpanel" aria-label="Resumen de Revendedores" className="space-y-5">
             <div className="flex flex-col gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
@@ -2184,9 +2320,10 @@ export default function ResellerPriceListModal({
                             <h5 className="text-sm font-bold text-slate-900 dark:text-white">Importar lista del proveedor</h5>
                             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Importá una planilla, PDF, captura/foto o enlace HTTPS. Revisá los productos y costos antes de agregarlos.</p>
                           </div>
-                          {displayMode === 'page' && <div role="group" aria-label="Forma de importar" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {displayMode === 'page' && <div role="group" aria-label="Forma de importar" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                             {([
                               ['link', 'Enlace'],
+                              ['extension', 'Extensión de Chrome'],
                               ['pdf', 'PDF'],
                               ['spreadsheet', 'Planilla'],
                               ['photo', 'Fotos'],
@@ -2194,13 +2331,14 @@ export default function ResellerPriceListModal({
                               {label}
                             </button>)}
                           </div>}
-                          {(displayMode !== 'page' || supplierImportSourceType !== 'link') && <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white px-3 text-sm font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-slate-950 dark:text-indigo-200">
+                          {displayMode === 'page' && supplierImportSourceType === 'extension' && <section className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-sm text-[var(--ink)]"><p>Con la tienda abierta en Chrome, abrí la extensión RivaStock y elegí «Importar productos de esta página». Al terminar, RivaStock recibirá la captura en esta pantalla para revisarla.</p><a href="/downloads/rivastock-facebook.zip" download="rivastock-facebook.zip" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]"><Download size={16}/>Instalar o actualizar la extensión</a>{supplierExtensionStatus && <p role="status" className="text-xs text-[var(--ink-muted)]">{supplierExtensionStatus}</p>}</section>}
+                          {(displayMode !== 'page' || (supplierImportSourceType !== 'link' && supplierImportSourceType !== 'extension')) && <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white px-3 text-sm font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-slate-950 dark:text-indigo-200">
                             <input aria-label="Elegir archivo del proveedor" type="file" accept={displayMode !== 'page' ? '.xlsx,.xls,.csv,.pdf,image/jpeg,image/png,image/webp,application/pdf' : supplierImportSourceType === 'pdf' ? '.pdf,application/pdf' : supplierImportSourceType === 'spreadsheet' ? '.xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'image/jpeg,image/png,image/webp'} disabled={!canWrite || supplierSaving || supplierImportReading} onChange={event => { void handleSupplierImportFile(event.target.files?.[0]); event.currentTarget.value = ''; }} className="sr-only" />
                             {supplierImportFileName || (displayMode === 'page' ? `Elegir ${supplierImportSourceType === 'photo' ? 'fotos' : supplierImportSourceType}` : 'Elegir archivo')}
                           </label>}
-                          {(displayMode !== 'page' || supplierImportSourceType === 'link') && <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700">Leer enlace</button></div>}
-                          <p className="text-[11px] text-slate-500">El enlace se consulta desde el servidor, sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
-                          <p className="text-[11px] text-slate-500">{supplierImportSourceType === 'photo' ? 'Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR.' : 'Los datos del proveedor se procesan para preparar la lista.'}{supplierImportSourceType !== 'link' ? ' El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».' : ''}</p>
+                          {(displayMode !== 'page' || supplierImportSourceType === 'link') && <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700 dark:text-white">Leer enlace</button></div>}
+                          {supplierImportSourceType !== 'extension' && <p className="text-[11px] text-slate-500">{supplierImportSourceType === 'link' ? 'El enlace se consulta desde el servidor, sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.' : 'Los datos del proveedor se procesan para preparar la lista.'}</p>}
+                          {supplierImportSourceType === 'photo' && <p className="text-[11px] text-slate-500">Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR.</p>}
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           </div>
@@ -2246,7 +2384,7 @@ export default function ResellerPriceListModal({
                               <p className="text-xs text-[var(--ink-muted)]">Costo del proveedor → escalón por costo → excepción por categoría o producto → redondeo de {marginRules.rounding === 'none' ? 'precio exacto' : `$${marginRules.rounding}`}. Podés ajustar un producto en el paso Revisar.</p>
                               <p className="text-xs text-[var(--ink-muted)]">{marginRules.tiers.map(tier => `${tier.maximumCost === null ? 'Más' : `Hasta ${formatCurrency(tier.maximumCost)}`}: ${tier.mode === 'percent' ? `${tier.value}%` : formatCurrency(tier.value)}`).join(' · ')}</p>
                             </section>
-                            {supplierImportSourceType !== 'link' && <>
+                            {supplierImportSourceType !== 'link' && supplierImportSourceType !== 'extension' && <>
                               <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
                               {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
                               <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos del archivo con Codex en la central vinculada. Por ahora podés elegir cada foto o recortarla a mano.</p>
