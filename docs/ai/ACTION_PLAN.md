@@ -1024,7 +1024,7 @@ Sos el agente ejecutor autónomo de RivaStock. Riva no va a estar disponible: no
 
 ## 4f. Orden de ejecución actualizado por Riva el 08/11/2026: I35 → I36
 
-### [ ] I35 Revendedores en el celular: que se vea como la maqueta — **pedido de Riva el 08/11 09:47 (con capturas)**
+### [x] I35 Revendedores en el celular: que se vea como la maqueta — **pedido de Riva el 08/11 09:47 (con capturas)**
 
 **Problemas vistos en el celular (360-412 px):**
 - Las 5 pestañas se acomodan en una grilla de 2 columnas que ocupa media pantalla. Tienen que ser **una fila con scroll horizontal**, como `MovilResumen.dc.html`.
@@ -1039,7 +1039,7 @@ Sos el agente ejecutor autónomo de RivaStock. Riva no va a estar disponible: no
 
 
 
-### [ ] I36 Asistente de márgenes por escalones — **pedido de Riva el 08/11 09:47**
+### [x] I36 Asistente de márgenes por escalones — **pedido de Riva el 08/11 09:47**
 
 **Problema:** con un mismo % para todo, o queda caro o queda regalado. Ejemplo de Riva: perfumes de ~$16.000 que solo le dejan ~$3.000. Quiere que al revendedor le quede barato **y** él gane, por ejemplo, unos $5.000.
 

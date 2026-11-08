@@ -1,13 +1,15 @@
-# 2026-11-08 — I35 e I36 listos localmente; verificación de Current pendiente
+# 2026-11-08 — I35 e I36 verificados en producción
 
-- Adopté del `ACTION_PLAN.md` del Escritorio solo las secciones nuevas I35 e I36 y su orden I35 → I36. Conservé las marcas completadas anteriores; no importé I37.
-- I35 adapta las cinco pestañas, la lista de precios y su edición a móvil, conserva las acciones por encima de la barra inferior y no altera la navegación inferior. Las pruebas de pestañas generan capturas de fixtures a 360 y 412 px.
-- I36 implementa reglas de ganancia por costo en %, pesos fijos y límites en pesos; prioridad producto → categoría → escalón; simulador adaptable; filtro «Ganancia baja»; aplicación individual o en lote con confirmación propia y deshacer; y reutilización de las reglas guardadas en Precios de importación.
-- **Verificación local:** lint y build aprobados; suite completa **204 archivos / 1.181 pruebas**; Playwright de proveedores **23/23**, con I35 e I36 a 360, 412 y 1440 px. El e2e de I36 aplica precios y deshace solo sobre fixtures; no muta productos, costos, stock ni lista real.
-- **Backup previo verificado:** `%USERPROFILE%\rivastock-backups\20261108T135652Z`; Postgres `passed` (101 tablas / 20.164 filas) y Storage `passed` (2.559 objetos / 162.793.797 bytes).
-- Apliqué selectivamente solo `20261108134943_reseller_margin_rules` mediante Supabase MCP. La columna JSONB y su constraint se verificaron; la lista existente recibió los valores predeterminados. La migración no modifica `price_list_items`, productos, costos, stock ni precios. No usé `db push`.
-- Verificación SQL de solo lectura posterior: 1 lista de revendedores con reglas válidas; 1 fila en `price_list_items`. No se aplicó ninguna regla a precios reales.
-- I35 e I36 siguen `[ ]` hasta confirmar que la app de producción esté en `Current`, leer el conteo real de «Ganancia baja» y obtener el simulador con seis productos reales. La llamada a Vercel CLI indicó que esta sesión no tiene login; el despliegue se comprobará por la integración de GitHub y la respuesta pública del sitio.
+- Incorporé el orden I35 → I36 y las dos secciones nuevas del `ACTION_PLAN.md` del Escritorio; conservé el resto del plan y sus marcas previas.
+- **I35 cerrado:** las cinco pestañas de Revendedores, lista/edición de precios, acciones en lote y controles quedan adaptados al móvil sin tocar la barra inferior. Las capturas de las cinco pestañas se generaron con fixtures locales a 360 y 412 px.
+- **I36 cerrado:** reglas por costo en porcentaje o pesos fijos, prioridad producto → categoría → escalón, simulador adaptable, filtro «Ganancia baja», aplicación individual/en lote con confirmación propia y deshacer, y mismas reglas en el paso Precios de importación.
+- **Deploy verificado:** Vercel informó `success` para el commit de reintento `8b1e434`; el manifest público de `rivastock.vercel.app` devolvió HTTP 200 y apunta al chunk actual de Revendedores. El chunk también devolvió HTTP 200 e incluye «Cómo calculás tu ganancia», «Ganancia baja» y la lista móvil. No usé Vercel CLI porque esta sesión no tiene login.
+- **Backup previo verificado:** `%USERPROFILE%\rivastock-backups\20261108T135652Z`; Postgres `passed` (101 tablas / 20.164 filas) y Storage `passed` (2.559 objetos / 162.793.797 bytes). Apliqué selectivamente solo `20261108134943_reseller_margin_rules` mediante Supabase MCP. Verifiqué la columna JSONB, su constraint y los valores predeterminados. No usé `db push`.
+- **Sin cambios de datos comerciales:** la migración no modificó `price_list_items`, productos, costos, stock ni precios; tampoco apliqué las reglas a la lista real.
+- **Resultado «Ganancia baja» con escalones de ejemplo:** 0 de 1 elemento de la lista real. El único elemento tiene costo de $4.000 y ganancia actual de $5.400; el primer escalón fija una ganancia objetivo de $1.600.
+- **Captura del simulador:** seis productos reales y sus costos/precios se consultaron en producción en modo solo lectura y se renderizaron en el navegador local con el componente real. Esta captura no es un smoke autenticado de producción: el perfil persistente redirigió a `/login`. No se hicieron escrituras en producción.
+- **Verificación local:** `npm run lint`, `npm run build`, suite completa (**204 archivos / 1.181 pruebas**) y Playwright de proveedores (**23/23**) aprobados. I35 e I36 se ejercitaron a 360, 412 y 1440 px; aplicación y deshacer solo modificaron fixtures.
+- Las tareas I35 e I36 quedan `[x]` en el plan. Capturas guardadas fuera del repo en `%TEMP%\rivastock-i35-mobile` y `%TEMP%\rivastock-i36-real-products-1440.png`.
 
 # 2026-11-08 — I30 en curso: nombres públicos limpios y revisión de fotos
 
