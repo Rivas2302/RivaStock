@@ -1559,10 +1559,14 @@ export default function ResellerPriceListModal({
     }
   };
 
+  const [supplierExtensionHelpOpen, setSupplierExtensionHelpOpen] = useState(false);
+  const [supplierExtensionHelpVisible, setSupplierExtensionHelpVisible] = useState(false);
+
   const handleSupplierImportPage = async () => {
     if (!supplierImportPageUrl.trim() || supplierImportReading || supplierPhotoOcrProgress) return;
     setSupplierImportReading(true);
     setError(null);
+    setSupplierExtensionHelpVisible(false);
     try {
       setSupplierImportScreenshot(null);
       setSupplierImportPhotoFiles({});
@@ -1616,7 +1620,12 @@ export default function ResellerPriceListModal({
       void scanSupplierImportPhotos(rows, supplierImportPageUrl.trim(), selectedSupplier);
       if (displayMode === 'page') setSupplierImportStep(2);
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'No pudimos leer esa página.');
+      const message = importError instanceof Error ? importError.message : 'No pudimos leer esa página.';
+      const needsExtensionHelp = supplierImportSourceType === 'link' && /no encontramos productos|no encontramos texto|tienda carga/i.test(message);
+      setSupplierExtensionHelpVisible(needsExtensionHelp);
+      setError(needsExtensionHelp
+        ? 'Esta tienda carga los productos con JavaScript. Abrila en Chrome en tu PC y tocá el ícono de RivaStock → Importar productos de esta página.'
+        : message);
     } finally {
       setSupplierImportReading(false);
     }
@@ -2035,6 +2044,10 @@ export default function ResellerPriceListModal({
       ) : error ? (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
           {error}
+          {supplierExtensionHelpVisible && <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSupplierExtensionHelpOpen(true)} className="min-h-10 rounded-lg bg-rose-800 px-3 text-sm font-semibold text-white">Cómo hacerlo</button>
+            <a href="/downloads/rivastock-facebook.zip" download="rivastock-facebook.zip" className="inline-flex min-h-10 items-center rounded-lg border border-rose-300 px-3 text-sm font-semibold text-rose-900 dark:border-rose-800 dark:text-rose-100">Instalar o actualizar la extensión</a>
+          </div>}
         </div>
       ) : list ? (
         <div className={displayMode === 'page' ? 'space-y-5' : 'flex h-full min-h-0 flex-col gap-3 sm:gap-5'}>
@@ -3017,6 +3030,28 @@ export default function ResellerPriceListModal({
           </section>
         </div>
       ) : null}
+    </Modal>
+
+    <Modal
+      isOpen={supplierExtensionHelpOpen}
+      onClose={() => setSupplierExtensionHelpOpen(false)}
+      title="Importar desde Chrome"
+      className="w-[calc(100%_-_1rem)] max-w-2xl"
+    >
+      <div className="space-y-5 text-[var(--ink)]">
+        <p className="text-sm text-[var(--ink-muted)]"><span className="hidden sm:inline">La tienda carga los productos dentro de Chrome. La extensión lee solo lo que ves en esa pestaña y no comparte cookies ni datos de sesión.</span><span className="sm:hidden">Hacelo desde una PC con Chrome. La extensión lee lo que muestra la tienda y no comparte cookies ni datos de sesión.</span></p>
+        <ol className="grid gap-4 sm:grid-cols-3">
+          {[
+            ['1. Abrí la tienda', 'En Chrome, entrá a la lista del proveedor y abrí RivaStock desde el ícono de extensiones.', '/images/i37-extension-step-1.png'],
+            ['2. Leé los productos', 'Elegí «Importar productos de esta página». La extensión recorre productos y páginas seguras.', '/images/i37-extension-step-2.png'],
+            ['3. Revisá la captura', 'Tocá «Terminar y llevar a RivaStock». Revisá precios, moneda y fotos antes de agregar.', '/images/i37-extension-step-3.png'],
+          ].map(([title, copy, image]) => <li key={title} className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-1)]">
+            <img src={image} alt={`Captura del paso ${title}`} loading="lazy" className="aspect-[4/3] w-full border-b border-[var(--line)] object-cover object-top" />
+            <div className="space-y-1 p-3"><h4 className="text-sm font-bold">{title}</h4><p className="text-xs leading-relaxed text-[var(--ink-muted)]">{copy}</p></div>
+          </li>)}
+        </ol>
+        <a href="/downloads/rivastock-facebook.zip" download="rivastock-facebook.zip" className="inline-flex min-h-11 items-center rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)]">Instalar o actualizar la extensión</a>
+      </div>
     </Modal>
 
     <Modal

@@ -2,7 +2,7 @@
 
 - Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.
 - El primer commit de I37 es `db11cb5`: agregó `tmp/proveedores/` a `.gitignore`. `git check-ignore -v` confirmó que `oestech.html` y `babaji.html` quedan ignorados antes de usarlos. Los originales no se agregan al repositorio.
-- Los fixtures y el motor de extracción de la Fase 1 están en el commit `6f58729` (9/9 pruebas focales aprobadas). No se copiaron los HTML originales; los fixtures son recortados, sintéticos y anonimizados.
+- Los fixtures y el motor de extracción de la Fase 1 están en el commit `6f58729` (9/9 pruebas focales aprobadas). Para completar la tarea, consulté las muestras locales del Escritorio solo sin ejecutar scripts ni recursos externos: 279 tarjetas Oestech y 924 Babaji. Reconstruí 10 tarjetas por proveedor a partir de su estructura, reemplazando nombres, códigos, categorías e imágenes por datos sintéticos y omitiendo formularios/controles. En Babaji conservé `$ 37,125` únicamente como caso de parseo solicitado; se interpreta como el entero 37125 y se muestra como $37.125 con separador argentino de miles.
 - No se permiten clics de compra, formularios, escritura en campos ni transferencia de cookies/sesiones.
 - No se requieren migraciones hasta ahora. La extensión conserva su ID/key; solo se publicará el ZIP por el flujo existente. Mr Tecno, Inova, Braja y Omega se prueban localmente, sin guardar productos en producción. Oestech y Babaji quedan para prueba del dueño con su clave.
 
@@ -11,7 +11,7 @@
 - Agregué `extensions/shared/product-extract.js`: captura JSON de red, JSON-LD/Next/microdata y tarjetas DOM; normaliza nombres, códigos, categorías, imágenes HTTPS, ARS/USD y precios con `minor_unit`; deduplica; limita a 5.000 y marca precios vacíos/cero o superiores a $5.000.000 para revisar. No conserva campos de sesión/cliente y el `raw` de tarjetas se limita a título, precio, código y categoría.
 - Generé 13 fixtures sintéticos y recortados bajo `e2e/fixtures/stores/`, incluidos diez perfiles de tarjeta por sistema para Oestech y Babaji. Los originales no se copiaron ni se agregaron al repositorio.
 - **Verificación focal:** 9/9 pruebas Vitest pasan; cubren los JSON paginados y POST, WooCommerce con `sku` vacío y `minor_unit: 0`, tarjetas DOM, imágenes de video excluidas, código del título, precio tachado, mayorista/minorista, cero productos y límites.
-- Caso Babaji cubierto: `$ 37,125` se interpreta como **$37.125** ARS; «(SIN CAMBIO)» queda como nota, `1002-L` se conserva en el nombre y precios de más de $5.000.000 requieren revisión.
+- Caso Babaji cubierto: `$ 37,125` se interpreta como el entero **37125** y se muestra como **$37.125** con separador argentino de miles; «(SIN CAMBIO)» queda como nota, `1002-L` se conserva en el nombre y precios de más de $5.000.000 requieren revisión.
 
 ## I37 — Fase 2: extensión RivaStock 0.6.0
 
@@ -25,6 +25,12 @@
 - Si la descarga HTTPS de una imagen falla en el proxy, el worker puede bajar desde el mismo origen una imagen ya incluida en la captura, sin cookies, redirecciones, Referer ni más de 400 KB; el Blob queda en el navegador para OCR/subida posterior. **Desvío de alcance mínimo:** imágenes de un CDN distinto al origen no usan ese fallback, porque el permiso autorizado es solo para el dominio de la pestaña; siguen dependiendo del proxy o de selección manual.
 - **Verificación F3:** 8/8 tests de transferencia/remitente y 2/2 Playwright (captura en Revisar sin crear datos y ayuda para tienda JavaScript). No se transfirieron capturas a producción ni se escribieron datos.
 - El paquete 0.6.0 aún no se publicó ni instaló. Las lecturas reales de Mr Tecno, Inova, Braja y Omega quedan pendientes de Fase 5; Oestech y Babaji requieren la clave del dueño.
+
+## I37 — Fase 4: guía local lista
+
+- La respuesta para tiendas JavaScript aclara en español que debe usarse Chrome en una PC; incluye ayuda de tres pasos, capturas, enlace de instalación/actualización y la garantía de que no comparte cookies ni datos de sesión.
+- Playwright validó los tres pasos y que cada imagen carga (2/2 pruebas del flujo extensión→Revisar y ayuda). Capturas de fixture local: `public/images/i37-extension-step-1.png`, `i37-extension-step-2.png` y `i37-extension-step-3.png`; no contienen datos de producción.
+- F4 lista para el commit de su fase.
 
 # 2026-11-08 — I35 e I36 verificados en producción
 

@@ -23,7 +23,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean } = {}) {
   if (!options.useRealOcr) {
     await page.addInitScript(texts => {
       let index = 0;
@@ -107,6 +107,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
           base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
         } });
       }
+      if (options.emptyCatalog) return route.fulfill({ json: { source: 'unknown', currency: 'ARS', items: [], text: '' } });
       sourceCosts.push(changedCatalog ? 8.75 : 7.75);
       return route.fulfill({ json: {
         source: 'woocommerce', currency: 'USD', items: [
@@ -686,7 +687,7 @@ test('reseller supplier import follows its three steps and adds only filtered fi
   }
 });
 
-test('extension supplier capture arrives in review without saving products', async ({ page }, testInfo) => {
+test('extension supplier capture arrives in review without saving products', async ({ page }) => {
   const { products, priceListItems } = await mockApp(page);
   const captureId = 'a1b2c3d4-e5f6-4789-a012-123456789abc';
   const capturedItems = [
@@ -719,10 +720,12 @@ test('extension supplier capture arrives in review without saving products', asy
   await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('Cable USB C [QA]');
   await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('EXT-001');
   await expect(page.getByLabel('Productos importados', { exact: true })).toContainText('Cargador USB [QA]');
-  await page.getByLabel('Productos importados', { exact: true }).screenshot({ path: testInfo.outputPath('i37-extension-review-360.png') });
+  await page.getByLabel('Productos importados', { exact: true }).screenshot({ path: 'test-results/i37-extension-review-360.png' });
   expect(products).toHaveLength(0);
   expect(priceListItems).toHaveLength(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: 'test-results/i37-extension-review-1440.png', fullPage: true });
 });
 
 test('I36 simulates six cost-based margins on mobile, applies one or many prices, and supports undo', async ({ page }, testInfo) => {
@@ -773,6 +776,26 @@ test('I36 simulates six cost-based margins on mobile, applies one or many prices
       expect(bulkCalls.filter(call => call.method === 'POST').every(call => call.body)).toBe(true);
     }
   }
+});
+
+test('JavaScript-only supplier pages offer the Chrome extension guide', async ({ page }) => {
+  await mockApp(page, { emptyCatalog: true });
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto('/revendedores');
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+  await page.getByRole('button', { name: /Importar lista|Editar productos|Crear lista/ }).first().click();
+  await page.getByLabel('Enlace HTTPS del proveedor').fill('https://brajamayorista.com/tienda/centro/productos');
+  await page.getByRole('button', { name: 'Leer enlace' }).click();
+  await expect(page.getByRole('alert')).toContainText('Esta tienda carga los productos con JavaScript.');
+  await expect(page.getByRole('alert')).toContainText('Abrila en Chrome en tu PC');
+  await page.getByRole('button', { name: 'Cómo hacerlo' }).click();
+  const help = page.getByRole('dialog', { name: 'Importar desde Chrome' });
+  await help.screenshot({ path: 'test-results/i37-extension-help-360.png' });
+  await expect(help.getByRole('listitem')).toHaveCount(3);
+  await expect.poll(() => help.locator('img').evaluateAll(images => images.length === 3 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await expect(help.getByText('Hacelo desde una PC con Chrome.')).toBeVisible();
+  await expect(help.getByRole('link', { name: 'Instalar o actualizar la extensión' })).toBeVisible();
+  await expect(help).toContainText('no comparte cookies ni datos de sesión.');
 });
 
 test('bulk price-list actions use the visible Mi stock filter, support undo, and never mutate products at 360 and 1440 px', async ({ page }) => {
