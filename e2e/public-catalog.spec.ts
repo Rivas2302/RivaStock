@@ -103,6 +103,23 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   expect(orderSubmitted).toBe(false);
 });
 
+for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
+  test(`public catalog shows the cleaned supplier fixture name without its source code at ${viewport.width}px`, async ({ page }) => {
+    const humidifierImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640"><defs><radialGradient id="g"><stop stop-color="#ffbb55"/><stop offset="1" stop-color="#c84d25"/></radialGradient></defs><rect width="640" height="640" fill="#ede9e2"/><rect x="218" y="112" width="204" height="412" rx="34" fill="#2b2b2b"/><rect x="240" y="142" width="160" height="340" rx="80" fill="#171717"/><path d="M274 420c-26-56 42-72 28-124 60 38 61 74 37 124 40-24 43-61 25-89 59 53 47 110-5 130h-78c-45-19-47-55-7-82z" fill="url(#g)"/><circle cx="320" cy="505" r="5" fill="#c7c7c7"/></svg>')}`;
+    await page.setViewportSize(viewport);
+    await mockCatalogApi(page, 'normal', undefined, false, {
+      name: 'Humificador LED estilo fuego',
+      category: 'Hogar',
+      imageUrl: humidifierImage,
+      images: [humidifierImage],
+    });
+    await page.goto('/catalogo/qa-catalog');
+    await expect(page.getByRole('button', { name: 'Humificador LED estilo fuego', exact: true }).last()).toBeVisible();
+    await expect(page.getByText(/HM352/i)).toHaveCount(0);
+    await page.screenshot({ path: `test-results/i30-public-catalog-clean-name-${viewport.width}.png`, fullPage: true });
+  });
+}
+
 test('out-of-stock products are hidden by default and remain orderable when enabled', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });

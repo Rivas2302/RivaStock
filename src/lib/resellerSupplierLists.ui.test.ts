@@ -12,6 +12,24 @@ const roundManager = readFileSync(
 );
 
 describe('reseller supplier lists UI', () => {
+  it('shows the approved flat settings sections with autosave and an owned code dialog', () => {
+    expect(modal).toContain('Publicación y acceso');
+    expect(modal).toContain('Precios');
+    expect(modal).toContain('Compra mínima');
+    expect(modal).toContain('Cambiar código');
+    expect(modal).toContain('reseller-code-new');
+    expect(modal).toContain('reseller-code-repeat');
+    expect(modal).toContain('autoComplete="off"');
+    expect(modal).toContain('Cambios guardados');
+    expect(modal).not.toContain('Precio automático con excepciones');
+  });
+
+  it('keeps supplier import controls readable and hides AI reading for store links', () => {
+    expect(modal).toContain('aria-pressed:bg-[var(--primary)]');
+    expect(modal).toContain("supplierImportSourceType !== 'link'");
+    expect(modal).not.toContain('window.confirm');
+  });
+
   it('lets the operator configure and toggle each active supplier list', () => {
     expect(modal).toContain('Listas por proveedor');
     expect(modal).toContain('Crear lista');
@@ -31,7 +49,8 @@ describe('reseller supplier lists UI', () => {
     expect(modal).toContain("'gpt-6-luna'");
     expect(modal).toContain('¿Los precios incluyen IVA?');
     expect(modal).toContain('supplierImportFilteredReadyCount');
-    expect(modal).toContain('window.confirm');
+    expect(modal).not.toContain('window.confirm');
+    expect(modal).toContain('Confirmar productos');
     expect(modal).toContain('Agregar los ${supplierImportFilteredReadyCount} listos');
     expect(modal).toContain('planSupplierImport');
     expect(modal).toContain('supplierImportBatchProgress');

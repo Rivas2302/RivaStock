@@ -63,6 +63,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   const removalCalls: unknown[] = [];
   const bulkCalls: Array<{ method: string; productIds: string[]; body?: unknown }> = [];
   const productReadPages: string[] = [];
+  const settingsWrites: Array<{ target: string; body: Record<string, unknown> }> = [];
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
@@ -147,6 +148,27 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
         pricingCalls.push((route.request().postDataJSON() as { p_items: unknown[] }).p_items);
         return route.fulfill({ json: pricingCalls.at(-1)?.length ?? 0 });
       }
+      if (rpc === 'configure_reseller_price_list') {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        settingsWrites.push({ target: rpc, body });
+        Object.assign(priceList, {
+          public_enabled: body.p_public_enabled,
+          minimum_rule: body.p_minimum_rule,
+          minimum_order_amount: body.p_minimum_order_amount,
+          minimum_order_quantity: body.p_minimum_order_quantity,
+          access_code_hash: body.p_access_code ? 'fixture-hash' : priceList.access_code_hash,
+        });
+        return route.fulfill({ json: priceList });
+      }
+      if (rpc === 'configure_reseller_pricing_advisor') {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        settingsWrites.push({ target: rpc, body });
+        Object.assign(priceList, {
+          minimum_profit_margin_percent: body.p_minimum_profit_margin_percent,
+          target_reseller_discount_percent: body.p_target_reseller_discount_percent,
+        });
+        return route.fulfill({ json: priceList });
+      }
       if (rpc === 'preview_reseller_supplier_import_removal') {
         return route.fulfill({ json: { products: 2, protectedProducts: 1, deletableProducts: 1, photosToDelete: 1, emptyCategoriesToDelete: 1 } });
       }
@@ -201,7 +223,15 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
         enabled: true, welcome_message: '', primary_color: '#4f46e5', accent_color: '#4f46e5',
         allow_orders: true, layout: 'Grid', font_style: 'Modern',
       }] });
-      if (table === 'price_lists') return route.fulfill({ json: [priceList] });
+      if (table === 'price_lists') {
+        if (method === 'PATCH') {
+          const body = route.request().postDataJSON() as Record<string, unknown>;
+          settingsWrites.push({ target: table, body });
+          Object.assign(priceList, body);
+          return route.fulfill({ json: priceList });
+        }
+        return route.fulfill({ json: [priceList] });
+      }
       if (table === 'price_list_items') {
         const method = route.request().method();
         if (method === 'GET') return route.fulfill({ json: priceListItems });
@@ -254,7 +284,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages,
+    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites,
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
   };
@@ -277,6 +307,64 @@ async function continueSupplierImportToReview(page: Page, importRegion: ReturnTy
   await importRegion.getByRole('button', { name: 'Seguir: revisar' }).click();
   await expect(page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '3. Revisar' }))
     .toHaveAttribute('aria-current', 'step');
+}
+
+async function confirmSupplierProductImport(page: Page) {
+  const confirmation = page.getByRole('dialog', { name: 'Confirmar productos' });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Agregar productos' }).click();
+  await expect(confirmation).toBeHidden();
+}
+
+for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
+  test(`reseller settings match the approved structure, autosave, and change access code with a fixture at ${viewport.width}px`, async ({ page }) => {
+    const { settingsWrites } = await mockApp(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Ajustes' }).click();
+    const settings = page.getByRole('tabpanel', { name: 'Ajustes' });
+    await expect(settings.getByRole('heading', { name: 'Publicación y acceso' })).toBeVisible();
+    await expect(settings.getByRole('heading', { name: 'Precios' })).toBeVisible();
+    await expect(settings.getByRole('heading', { name: 'Compra mínima' })).toBeVisible();
+    await expect(settings.getByText('Precio automático con excepciones')).toHaveCount(0);
+    await expect(settings.getByText('Asistente de precios')).toHaveCount(0);
+    await expect(settings.getByRole('button', { name: 'Ver', exact: true })).toBeVisible();
+    await expect(settings.getByRole('button', { name: 'Descargar', exact: true })).toBeVisible();
+    await expect(settings.locator('input[type="password"]')).toHaveCount(0);
+
+    await settings.getByRole('button', { name: 'Bajar descuento general' }).click();
+    await expect.poll(() => settingsWrites.some(write => write.target === 'price_lists' && write.body.default_discount_percent === 19)).toBe(true);
+    await expect(settings.getByRole('status')).toHaveText('Cambios guardados');
+
+    await settings.getByRole('group', { name: 'Tipo de compra mínima' }).getByRole('button', { name: 'Monto', exact: true }).click();
+    const amount = settings.getByLabel('Monto mínimo');
+    await amount.fill('55000');
+    await amount.press('Tab');
+    await expect.poll(() => settingsWrites.some(write => write.target === 'configure_reseller_price_list' && write.body.p_minimum_rule === 'amount' && write.body.p_minimum_order_amount === 55000)).toBe(true);
+
+    await settings.getByRole('button', { name: 'Cambiar código' }).click();
+    const codeDialog = page.getByRole('dialog', { name: 'Cambiar código' });
+    await expect(codeDialog).toBeVisible();
+    await expect(codeDialog.locator('input[name="reseller-code-new"]')).toHaveAttribute('autocomplete', 'off');
+    await expect(codeDialog.locator('input[name="reseller-code-repeat"]')).toHaveAttribute('autocomplete', 'off');
+    await expect(codeDialog.locator('input[name="reseller-code-new"]')).toHaveAttribute('type', 'password');
+    await codeDialog.getByRole('button', { name: 'Mostrar códigos' }).click();
+    await expect(codeDialog.locator('input[name="reseller-code-new"]')).toHaveAttribute('type', 'text');
+    await codeDialog.getByRole('button', { name: 'Ocultar códigos' }).click();
+    await codeDialog.getByLabel('Nuevo código').fill('clave-local-QA');
+    await codeDialog.getByLabel('Repetir código').fill('clave-distinta');
+    await expect(codeDialog.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    await codeDialog.getByLabel('Repetir código').fill('clave-local-QA');
+    await codeDialog.getByRole('button', { name: 'Guardar' }).click();
+    await expect(codeDialog).toBeHidden();
+    await expect.poll(() => settingsWrites.some(write => write.target === 'configure_reseller_price_list' && write.body.p_access_code === 'clave-local-QA')).toBe(true);
+    await settings.getByRole('switch', { name: 'Catálogo para revendedores publicado' }).click();
+    await expect.poll(() => settingsWrites.some(write => write.target === 'configure_reseller_price_list' && write.body.p_public_enabled === true)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await page.waitForTimeout(3500);
+    if (viewport.width === 360) await page.addStyleTag({ content: '.mobile-navigation-bar { display: none !important; }' });
+    await settings.screenshot({ path: `test-results/i31-settings-${viewport.width}.png` });
+  });
 }
 
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
@@ -316,7 +404,6 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 
   test(`supplier photo OCR blocks provider-branded photos until explicit approval at ${viewport.width}px`, async ({ page }) => {
     const { products } = await mockApp(page, { ocrTexts: ['www.mrtecno.com.ar', '', ''] });
     await page.setViewportSize(viewport);
-    page.on('dialog', dialog => dialog.accept());
     const importRegion = await openMobileSupplierImportFromStock(page);
     await importRegion.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
     await importRegion.getByRole('button', { name: 'Leer enlace' }).click();
@@ -333,6 +420,7 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 
     await importRegion.getByRole('button', { name: 'Usar igual' }).first().click();
     await expect(importRegion.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
     await importRegion.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+    await confirmSupplierProductImport(page);
     await expect.poll(() => products.length).toBe(3);
     expect(products[0]).toMatchObject({ name: 'Lámpara solar', barcode: '1015' });
     expect(products[0].custom_fields).toMatchObject({ supplierPhotoBrandFlag: true, supplierPhotoBrandApproved: true });
@@ -400,7 +488,6 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
   page.on('console', message => { if (message.type() === 'error') pageErrors.push(message.text()); });
   const { products, pricingCalls, sourceCosts, changeCatalog } = await mockApp(page);
-  page.on('dialog', dialog => dialog.accept());
   const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
@@ -410,6 +497,7 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect(modal.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
   await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(1);
 
@@ -422,6 +510,7 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect(modal.getByText('3 productos · 0 listos · 0 para revisar')).toHaveCount(0);
   await expect(modal.getByText(/0 nuevos · 1 actualizados · 2 sin cambios/)).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
@@ -430,7 +519,6 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
 
 test('bulk import button confirms and creates only products matching the active search filter', async ({ page }) => {
   const { products } = await mockApp(page);
-  page.on('dialog', dialog => dialog.accept());
   const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
@@ -440,13 +528,15 @@ test('bulk import button confirms and creates only products matching the active 
   await modal.getByLabel('Buscar productos importados').fill('Lámpara solar');
   await expect(modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' }).click();
+  await expect(page.getByRole('dialog', { name: 'Confirmar productos' })).toContainText('1 producto con foto');
+  expect(products).toHaveLength(0);
+  await confirmSupplierProductImport(page);
   await expect.poll(() => products.length).toBe(1);
   expect(products[0].name).toBe('Lámpara solar');
 });
 
 test('a failed supplier image does not block other photos or product import', async ({ page }) => {
   const { products, failImagesAt } = await mockApp(page);
-  page.on('dialog', dialog => dialog.accept());
   const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
@@ -455,6 +545,7 @@ test('a failed supplier image does not block other photos or product import', as
   await continueSupplierImportToReview(page, modal);
   failImagesAt(2);
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(2);
   await expect(modal.getByText(/1 foto no se pudo copiar/)).toBeVisible();
@@ -468,6 +559,7 @@ test('a failed supplier image does not block other photos or product import', as
   await continueSupplierImportToReview(page, modal);
   await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(3);
   await expect(modal.getByText(/foto no se pudo copiar/)).toHaveCount(0);
 });
@@ -533,7 +625,6 @@ test('Stock no longer has reseller-list shortcuts in its desktop header', async 
 
 test('reseller supplier import follows its three steps and adds only filtered fixture rows at 360 and 1440 px', async ({ page }) => {
   const { products } = await mockApp(page);
-  page.on('dialog', dialog => dialog.accept());
   for (const width of [360, 1440]) {
     await page.setViewportSize({ width, height: width === 360 ? 780 : 900 });
     await page.goto('/revendedores');
@@ -549,6 +640,13 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     await expect(steps.getByRole('button', { name: '2. Precios' })).toHaveAttribute('aria-current', 'step');
     await expect(page.getByLabel('Los precios incluyen IVA')).toBeVisible();
     await expect(page.getByLabel('Margen para revendedores')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Leer lista con IA' })).toHaveCount(0);
+    const marginButtonColors = await page.getByRole('button', { name: /^(20|25|30|40)%$/ }).evaluateAll(buttons => buttons.map(button => {
+      const style = getComputedStyle(button);
+      return { color: style.color, background: style.backgroundColor };
+    }));
+    expect(marginButtonColors).toHaveLength(4);
+    expect(marginButtonColors.every(({ color, background }) => color !== background)).toBe(true);
     await page.getByLabel('Cotización USD a pesos').fill('1600');
     await page.getByLabel('Los precios incluyen IVA').selectOption('false');
     await page.getByRole('button', { name: 'Seguir: revisar' }).click();
@@ -561,6 +659,7 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     }
     const before = products.length;
     await page.getByTestId('supplier-import-add-filtered').click();
+    await confirmSupplierProductImport(page);
     await expect.poll(() => products.length).toBe(before + 1);
     expect(products.at(-1)?.name).toBe('Lámpara solar');
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
@@ -672,9 +771,11 @@ test('mobile Más menu opens Revendedores page and reaches review without creati
   await page.goto('/stock');
   await page.getByRole('button', { name: 'Abrir menú' }).click();
   const menu = page.getByRole('dialog');
+  await menu.getByLabel('Buscar acciones y secciones').fill('Revendedores');
   const resellerLink = menu.getByRole('link', { name: 'Revendedores' });
   await expect(resellerLink).toBeVisible();
   await expect(resellerLink).toHaveAttribute('href', '/revendedores');
+  await menu.screenshot({ path: 'test-results/i29-mobile-more-revendedores-360.png' });
   await resellerLink.click();
   await expect(page).toHaveURL(/\/revendedores$/);
   await expect(page.getByRole('tablist', { name: 'Secciones de Revendedores' })).toBeVisible();

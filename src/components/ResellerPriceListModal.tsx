@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   Building2,
@@ -169,6 +169,31 @@ type PriceListBulkConfirmation = {
   productIds: string[];
   previousItems: PriceListItem[];
 };
+type ResellerSettingsSnapshot = {
+  publicEnabled: boolean;
+  discount: number;
+  minimumRule: MinimumOrderRule;
+  minimumOrderAmount: number;
+  minimumOrderQuantity: number;
+  minimumProfitMarginPercent: number;
+  targetResellerDiscountPercent: number;
+};
+type SupplierImportAddConfirmation = {
+  count: number;
+  withPhoto: boolean;
+  filterText: string;
+};
+
+function sameResellerSettings(left: ResellerSettingsSnapshot | null, right: ResellerSettingsSnapshot): boolean {
+  return Boolean(left
+    && left.publicEnabled === right.publicEnabled
+    && left.discount === right.discount
+    && left.minimumRule === right.minimumRule
+    && left.minimumOrderAmount === right.minimumOrderAmount
+    && left.minimumOrderQuantity === right.minimumOrderQuantity
+    && left.minimumProfitMarginPercent === right.minimumProfitMarginPercent
+    && left.targetResellerDiscountPercent === right.targetResellerDiscountPercent);
+}
 
 function SupplierImportPhotoPreview({
   sourceUrl,
@@ -263,7 +288,11 @@ export default function ResellerPriceListModal({
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);
   const [publicEnabled, setPublicEnabled] = useState(false);
-  const [accessCode, setAccessCode] = useState('');
+  const [accessCodeDialogOpen, setAccessCodeDialogOpen] = useState(false);
+  const [newAccessCode, setNewAccessCode] = useState('');
+  const [repeatedAccessCode, setRepeatedAccessCode] = useState('');
+  const [showAccessCode, setShowAccessCode] = useState(false);
+  const [savingAccessCode, setSavingAccessCode] = useState(false);
   const [minimumRule, setMinimumRule] = useState<MinimumOrderRule>('none');
   const [minimumOrderAmount, setMinimumOrderAmount] = useState(0);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(0);
@@ -294,6 +323,22 @@ export default function ResellerPriceListModal({
   const [bulkProgress, setBulkProgress] = useState<ResellerPriceListBulkProgress | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUndo, setBulkUndo] = useState<PriceListBulkUndo | null>(null);
+  const [supplierImportConfirmation, setSupplierImportConfirmation] = useState<SupplierImportAddConfirmation | null>(null);
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const settingsSaveInProgress = useRef(false);
+  const queuedSettingsSave = useRef<ResellerSettingsSnapshot | null>(null);
+  const savedSettingsSnapshot = useRef<ResellerSettingsSnapshot | null>(null);
+  const settingsSnapshot = useMemo<ResellerSettingsSnapshot>(() => ({
+    publicEnabled,
+    discount,
+    minimumRule,
+    minimumOrderAmount,
+    minimumOrderQuantity,
+    minimumProfitMarginPercent,
+    targetResellerDiscountPercent,
+  }), [discount, minimumOrderAmount, minimumOrderQuantity, minimumProfitMarginPercent, minimumRule, publicEnabled, targetResellerDiscountPercent]);
+  const currentSettingsSnapshot = useRef(settingsSnapshot);
+  currentSettingsSnapshot.current = settingsSnapshot;
   const pricePageSelectAllRef = useRef<HTMLInputElement>(null);
   const [supplierImportRows, setSupplierImportRows] = useState<SupplierListDraftRow[]>([]);
   const [supplierImportPhotoFiles, setSupplierImportPhotoFiles] = useState<Record<number, File>>({});
@@ -380,10 +425,18 @@ export default function ResellerPriceListModal({
           },
         ]));
         if (cancelled) return;
+        savedSettingsSnapshot.current = {
+          publicEnabled: loaded.list.publicEnabled,
+          discount: loaded.list.defaultDiscountPercent,
+          minimumRule: loaded.list.minimumRule,
+          minimumOrderAmount: loaded.list.minimumOrderAmount,
+          minimumOrderQuantity: loaded.list.minimumOrderQuantity,
+          minimumProfitMarginPercent: loaded.list.minimumProfitMarginPercent,
+          targetResellerDiscountPercent: loaded.list.targetResellerDiscountPercent,
+        };
         setList(loaded.list);
         setDiscount(loaded.list.defaultDiscountPercent);
         setPublicEnabled(loaded.list.publicEnabled);
-        setAccessCode('');
         setMinimumRule(loaded.list.minimumRule);
         setMinimumOrderAmount(loaded.list.minimumOrderAmount);
         setMinimumOrderQuantity(loaded.list.minimumOrderQuantity);
@@ -399,6 +452,7 @@ export default function ResellerPriceListModal({
         setSupplierDraftProductIds([]);
         setSupplierProductSearch('');
         setItemsDirty(false);
+        setSettingsSaveStatus('saved');
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la lista.');
@@ -410,6 +464,65 @@ export default function ResellerPriceListModal({
     void load();
     return () => { cancelled = true; };
   }, [canWrite, isOpen, ownerUid]);
+
+  const persistSettings = useCallback(async (snapshot: ResellerSettingsSnapshot) => {
+    if (!list || !canWrite) return;
+    if (settingsSaveInProgress.current) {
+      queuedSettingsSave.current = snapshot;
+      return;
+    }
+    if (sameResellerSettings(savedSettingsSnapshot.current, snapshot)) return;
+    settingsSaveInProgress.current = true;
+    setSettingsSaveStatus('saving');
+    let saved = false;
+    try {
+      await configureResellerPriceList({
+        listId: list.id,
+        publicEnabled: snapshot.publicEnabled,
+        accessCode: '',
+        minimumRule: snapshot.minimumRule,
+        minimumOrderAmount: snapshot.minimumOrderAmount,
+        minimumOrderQuantity: snapshot.minimumOrderQuantity,
+      });
+      await configureResellerPricingAdvisor({
+        listId: list.id,
+        minimumProfitMarginPercent: snapshot.minimumProfitMarginPercent,
+        targetResellerDiscountPercent: snapshot.targetResellerDiscountPercent,
+      });
+      await db.update<PriceList>('price_lists', list.id, { defaultDiscountPercent: snapshot.discount });
+      savedSettingsSnapshot.current = snapshot;
+      setList(current => current ? {
+        ...current,
+        publicEnabled: snapshot.publicEnabled,
+        defaultDiscountPercent: snapshot.discount,
+        minimumRule: snapshot.minimumRule,
+        minimumOrderAmount: snapshot.minimumOrderAmount,
+        minimumOrderQuantity: snapshot.minimumOrderQuantity,
+        minimumProfitMarginPercent: snapshot.minimumProfitMarginPercent,
+        targetResellerDiscountPercent: snapshot.targetResellerDiscountPercent,
+      } : current);
+      setSettingsSaveStatus('saved');
+      saved = true;
+    } catch {
+      setSettingsSaveStatus('error');
+      showToast('No se pudieron guardar los ajustes. Revisá tu conexión e intentá de nuevo.', 'error');
+    } finally {
+      settingsSaveInProgress.current = false;
+      const queued = queuedSettingsSave.current;
+      queuedSettingsSave.current = null;
+      if (queued && !sameResellerSettings(savedSettingsSnapshot.current, queued)) {
+        void persistSettings(queued);
+      } else if (saved && !sameResellerSettings(savedSettingsSnapshot.current, currentSettingsSnapshot.current)) {
+        void persistSettings(currentSettingsSnapshot.current);
+      }
+    }
+  }, [canWrite, list]);
+
+  useEffect(() => {
+    if (!list || !canWrite || sameResellerSettings(savedSettingsSnapshot.current, settingsSnapshot)) return;
+    const timer = window.setTimeout(() => void persistSettings(settingsSnapshot), 500);
+    return () => window.clearTimeout(timer);
+  }, [canWrite, list, persistSettings, settingsSnapshot]);
 
   useEffect(() => () => {
     if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
@@ -728,8 +841,9 @@ export default function ResellerPriceListModal({
 
   const handleSave = async () => {
     if (!list || !canWrite || saving) return;
-    if (publicEnabled && !list.accessCodeConfigured && accessCode.trim().length < 6) {
-      showToast('Definí un código de acceso de al menos 6 caracteres.', 'error');
+    if (publicEnabled && !list.accessCodeConfigured) {
+      setAccessCodeDialogOpen(true);
+      showToast('Primero configurá un código de acceso.', 'error');
       return;
     }
     setSaving(true);
@@ -738,7 +852,7 @@ export default function ResellerPriceListModal({
       const configured = await configureResellerPriceList({
         listId: list.id,
         publicEnabled,
-        accessCode,
+        accessCode: '',
         minimumRule,
         minimumOrderAmount,
         minimumOrderQuantity,
@@ -749,8 +863,9 @@ export default function ResellerPriceListModal({
         targetResellerDiscountPercent,
       });
       setList({ ...configured, ...configuredAdvisor });
-      setAccessCode('');
       setItemsDirty(false);
+      savedSettingsSnapshot.current = currentSettingsSnapshot.current;
+      setSettingsSaveStatus('saved');
       showToast('Lista de revendedores guardada.', 'success');
     } catch (saveError) {
       console.error('[ResellerPriceList] save error:', saveError);
@@ -758,6 +873,49 @@ export default function ResellerPriceListModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveAccessCode = async () => {
+    if (!list || !canWrite || savingAccessCode) return;
+    const nextCode = newAccessCode.trim();
+    if (nextCode.length < 6) {
+      showToast('El código debe tener al menos 6 caracteres.', 'error');
+      return;
+    }
+    if (nextCode.toLocaleLowerCase('es-AR') !== repeatedAccessCode.trim().toLocaleLowerCase('es-AR')) {
+      showToast('Los códigos no coinciden.', 'error');
+      return;
+    }
+    setSavingAccessCode(true);
+    try {
+      const configured = await configureResellerPriceList({
+        listId: list.id,
+        publicEnabled,
+        accessCode: nextCode,
+        minimumRule,
+        minimumOrderAmount,
+        minimumOrderQuantity,
+      });
+      setList(configured);
+      setAccessCodeDialogOpen(false);
+      setNewAccessCode('');
+      setRepeatedAccessCode('');
+      setShowAccessCode(false);
+      showToast('Código actualizado. Pasáselo a tus revendedores', 'success');
+    } catch {
+      showToast('No se pudo actualizar el código. Revisá tu conexión e intentá de nuevo.', 'error');
+    } finally {
+      setSavingAccessCode(false);
+    }
+  };
+
+  const handlePublicEnabledChange = (enabled: boolean) => {
+    if (enabled && !list?.accessCodeConfigured) {
+      setAccessCodeDialogOpen(true);
+      showToast('Primero configurá un código de acceso.', 'error');
+      return;
+    }
+    setPublicEnabled(enabled);
   };
 
   const reloadSupplierLists = async () => {
@@ -1293,7 +1451,7 @@ export default function ResellerPriceListModal({
   const supplierImportWithoutPhotoCount = supplierImportReview.length - supplierImportWithPhotoCount;
   const supplierImportFilterLabel = [supplierImportSearch.trim(), supplierImportCategoryFilter].filter(Boolean).join(' · ');
 
-  const handleAddSupplierImportBatch = async () => {
+  const handleAddSupplierImportBatch = async (confirmed = false) => {
     if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
     const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
     if (ready.length === 0) return;
@@ -1307,7 +1465,11 @@ export default function ResellerPriceListModal({
         : [];
     });
     const buttonPhotoLabel = supplierImportOnlyPhotos ? ' con foto' : '';
-    if (!window.confirm(`Vas a agregar ${ready.length} producto${ready.length === 1 ? '' : 's'}${buttonPhotoLabel}${filterText}. ¿Querés continuar?`)) return;
+    if (!confirmed) {
+      setSupplierImportConfirmation({ count: ready.length, withPhoto: supplierImportOnlyPhotos, filterText });
+      return;
+    }
+    setSupplierImportConfirmation(null);
     setSupplierSaving(true);
     setError(null);
     setSupplierImportBatchProgress({ done: 0, total: ready.length });
@@ -1692,264 +1854,67 @@ export default function ResellerPriceListModal({
           </button>
 
           {(displayMode === 'page' ? pageTab === 'settings' : settingsExpanded) && (
-          <section role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Ajustes' : undefined} className="shrink-0 space-y-3 sm:space-y-5">
-          <details className="group rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900 dark:bg-indigo-950/20">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
+          <section role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Ajustes' : undefined} data-testid="reseller-settings" className="space-y-0 text-[var(--ink)]">
+            <section aria-labelledby="reseller-settings-publication-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
               <div>
-                <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Precio automático con excepciones</h4>
-                <p className="mt-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">Descuento general: {discount}%</p>
+                <h3 id="reseller-settings-publication-title" className="text-base font-bold">Publicación y acceso</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Quién puede ver la pestaña Revendedores de tu catálogo.</p>
               </div>
-              <ChevronDown className="shrink-0 text-indigo-600 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
-            </summary>
-            <div className="grid gap-4 border-t border-indigo-100 p-4 dark:border-indigo-900 md:grid-cols-[minmax(0,1fr)_15rem]">
+              <div className="divide-y divide-[var(--line)]">
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Catálogo para revendedores publicado</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Si lo apagás, la pestaña deja de verse.</p></div>
+                  <button type="button" role="switch" aria-checked={publicEnabled} aria-label="Catálogo para revendedores publicado" disabled={!canWrite} onClick={() => handlePublicEnabledChange(!publicEnabled)} className={cn('relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50', publicEnabled ? 'bg-[var(--success-ink)]' : 'bg-[var(--line-strong)]')}>
+                    <span aria-hidden="true" className={cn('absolute top-1 size-4 rounded-full bg-[var(--surface-1)] transition-all', publicEnabled ? 'right-1' : 'left-1')} />
+                  </button>
+                </div>
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Código de acceso</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">{list?.accessCodeConfigured ? 'Configurado. Se lo pasás a cada revendedor.' : 'Todavía no está configurado.'}</p></div>
+                  <button type="button" disabled={!canWrite} onClick={() => setAccessCodeDialogOpen(true)} className="min-h-9 shrink-0 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Cambiar código</button>
+                </div>
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Lista en PDF</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Para mandar por WhatsApp a quien no usa el catálogo.</p></div>
+                  <div className="flex shrink-0 gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Ver</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Descargar</button></div>
+                </div>
+              </div>
+            </section>
+
+            <section aria-labelledby="reseller-settings-prices-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
               <div>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                El descuento general se aplica a todos los productos en modo automático. Podés definir otro descuento o un precio fijo en productos puntuales.
-              </p>
+                <h3 id="reseller-settings-prices-title" className="text-base font-bold">Precios</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Cómo se calcula el precio para revendedores y cuándo te avisamos que conviene revisarlo.</p>
               </div>
-              <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">Descuento general</span>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  value={discount}
-                  disabled={!canWrite}
-                  onChange={(event) => setDiscount(Math.min(100, Math.max(0, Number(event.target.value))))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-9 font-bold outline-none focus:ring-2 focus:ring-[#365fad] disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">%</span>
-              </div>
-              </label>
-            </div>
-          </details>
-
-          <details className="group rounded-2xl border border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
-              <div className="flex min-w-0 items-center gap-2">
-                <Sparkles size={19} className="shrink-0 text-violet-600" />
-                <div className="min-w-0">
-                  <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Asistente de precios</h4>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-violet-700 dark:text-violet-300">
-                    {adviceSummary.review} para revisar · {adviceSummary.critical} con pérdida · {adviceSummary.missing} sin costo
-                  </p>
+              <div className="divide-y divide-[var(--line)]">
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Descuento general</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Sobre tu precio minorista. Cada producto puede tener otro.</p></div>
+                  <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1"><button type="button" aria-label="Bajar descuento general" disabled={!canWrite || discount <= 0} onClick={() => setDiscount(value => Math.max(0, value - 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">−</button><span className="min-w-14 text-center text-sm font-bold tabular-nums">{discount} %</span><button type="button" aria-label="Subir descuento general" disabled={!canWrite || discount >= 100} onClick={() => setDiscount(value => Math.min(100, value + 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">+</button></div>
+                </div>
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Tu margen mínimo</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Si un precio te deja menos, aparece en «Para revisar».</p></div>
+                  <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1"><button type="button" aria-label="Bajar margen mínimo" disabled={!canWrite || minimumProfitMarginPercent <= 0} onClick={() => setMinimumProfitMarginPercent(value => Math.max(0, value - 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">−</button><span className="min-w-14 text-center text-sm font-bold tabular-nums">{minimumProfitMarginPercent} %</span><button type="button" aria-label="Subir margen mínimo" disabled={!canWrite || minimumProfitMarginPercent >= 95} onClick={() => setMinimumProfitMarginPercent(value => Math.min(95, value + 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">+</button></div>
+                </div>
+                <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+                  <div><p className="text-sm font-semibold">Descuento atractivo</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Lo mínimo que el revendedor tiene que ahorrar para que le convenga.</p></div>
+                  <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--surface-2)] p-1"><button type="button" aria-label="Bajar descuento atractivo" disabled={!canWrite || targetResellerDiscountPercent <= 0} onClick={() => setTargetResellerDiscountPercent(value => Math.max(0, value - 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">−</button><span className="min-w-14 text-center text-sm font-bold tabular-nums">{targetResellerDiscountPercent} %</span><button type="button" aria-label="Subir descuento atractivo" disabled={!canWrite || targetResellerDiscountPercent >= 100} onClick={() => setTargetResellerDiscountPercent(value => Math.min(100, value + 1))} className="size-8 rounded-md text-lg font-semibold text-[var(--ink)] disabled:opacity-40">+</button></div>
                 </div>
               </div>
-              <ChevronDown className="shrink-0 text-violet-600 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
-            </summary>
-            <div className="grid gap-4 border-t border-violet-200 p-4 dark:border-violet-900 lg:grid-cols-[minmax(0,1fr)_11rem_11rem] lg:items-end">
+            </section>
+
+            <section aria-labelledby="reseller-settings-minimum-title" className="grid gap-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
               <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">Sugerencias y filtros</p>
-                </div>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Compara costo, precio minorista y precio revendedor. Usa el costo más alto cuando un producto tiene costos mixtos. Tocá un contador para filtrar.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setAdvisorFilter('all')}
-                    aria-pressed={advisorFilter === 'all'}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 transition-all',
-                      advisorFilter === 'all' ? 'border-violet-600 bg-violet-600 text-white shadow-sm' : 'border-violet-200 bg-white text-violet-700 hover:border-violet-400 dark:bg-slate-900',
-                    )}
-                  >
-                    Todos ({products.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdvisorFilter('balanced')}
-                    aria-pressed={advisorFilter === 'balanced'}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 transition-all',
-                      advisorFilter === 'balanced' ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm' : 'border-emerald-200 bg-emerald-100 text-emerald-800 hover:border-emerald-500',
-                    )}
-                  >
-                    {adviceSummary.balanced} saludables
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdvisorFilter('review')}
-                    aria-pressed={advisorFilter === 'review'}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 transition-all',
-                      advisorFilter === 'review' ? 'border-amber-700 bg-amber-700 text-white shadow-sm' : 'border-amber-200 bg-amber-100 text-amber-800 hover:border-amber-500',
-                    )}
-                  >
-                    {adviceSummary.review} para revisar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdvisorFilter('critical')}
-                    aria-pressed={advisorFilter === 'critical'}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 transition-all',
-                      advisorFilter === 'critical' ? 'border-rose-700 bg-rose-700 text-white shadow-sm' : 'border-rose-200 bg-rose-100 text-rose-800 hover:border-rose-500',
-                    )}
-                  >
-                    {adviceSummary.critical} con pérdida
-                  </button>
-                  {adviceSummary.missing > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setAdvisorFilter('missing')}
-                      aria-pressed={advisorFilter === 'missing'}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 transition-all',
-                        advisorFilter === 'missing' ? 'border-slate-700 bg-slate-700 text-white shadow-sm' : 'border-slate-300 bg-slate-200 text-slate-700 hover:border-slate-500',
-                      )}
-                    >
-                      {adviceSummary.missing} sin costo
-                    </button>
-                  )}
-                </div>
-                {advisorFilter !== 'all' && (
-                  <p className="mt-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
-                    Filtro activo: se muestran {visibleProducts.length} producto{visibleProducts.length === 1 ? '' : 's'}.
-                  </p>
-                )}
+                <h3 id="reseller-settings-minimum-title" className="text-base font-bold">Compra mínima</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Lo mínimo que tiene que pedir un revendedor. Cada encargo puede tener otro.</p>
               </div>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Margen propio mínimo</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="95"
-                    step="1"
-                    value={minimumProfitMarginPercent}
-                    disabled={!canWrite}
-                    onChange={(event) => setMinimumProfitMarginPercent(Math.min(95, Math.max(0, Number(event.target.value))))}
-                    className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 pr-8 font-bold dark:border-violet-800 dark:bg-slate-950 dark:text-white"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
+              <div className="space-y-4">
+                <div role="group" aria-label="Tipo de compra mínima" className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg bg-[var(--surface-2)] p-1">
+                  {([['none', 'Sin mínimo'], ['amount', 'Monto'], ['quantity', 'Cantidad'], ['both', 'Monto y cantidad']] as const).map(([rule, label]) => <button key={rule} type="button" aria-pressed={minimumRule === rule} disabled={!canWrite} onClick={() => setMinimumRule(rule)} className={cn('min-h-9 rounded-md px-3 text-xs font-semibold', minimumRule === rule ? 'bg-[var(--surface-1)] text-[var(--ink)] shadow-sm' : 'text-[var(--ink-muted)] hover:text-[var(--ink)]')}>{label}</button>)}
                 </div>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Descuento atractivo</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={targetResellerDiscountPercent}
-                    disabled={!canWrite}
-                    onChange={(event) => setTargetResellerDiscountPercent(Math.min(100, Math.max(0, Number(event.target.value))))}
-                    className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2.5 pr-8 font-bold dark:border-violet-800 dark:bg-slate-950 dark:text-white"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">%</span>
-                </div>
-              </label>
-            </div>
-          </details>
-
-          <details className="group rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:gap-4 sm:p-4 [&::-webkit-details-marker]:hidden">
-              <div className="flex min-w-0 items-center gap-2">
-                <Store className="shrink-0 text-[#365fad]" size={20} />
-                <div className="min-w-0">
-                  <h4 className="text-sm font-bold leading-tight text-slate-900 dark:text-white sm:text-base">Catálogo público para revendedores</h4>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {publicEnabled ? 'Publicado' : 'Oculto'} · {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) || 'Sin compra mínima'}
-                  </p>
-                </div>
+                {['amount', 'both'].includes(minimumRule) && <label className="block max-w-xs"><span className="mb-1 block text-xs font-semibold text-[var(--ink-muted)]">Monto mínimo</span><MoneyInput min="0" value={minimumOrderAmount} disabled={!canWrite} onChange={event => setMinimumOrderAmount(Math.max(0, Number(event.target.value)))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] py-2 pr-3 text-sm text-[var(--ink)]" /></label>}
+                {['quantity', 'both'].includes(minimumRule) && <label className="block max-w-xs"><span className="mb-1 block text-xs font-semibold text-[var(--ink-muted)]">Unidades mínimas</span><NumberField min="0" integer value={minimumOrderQuantity} disabled={!canWrite} onChange={event => setMinimumOrderQuantity(Math.max(0, Math.floor(Number(event.target.value))))} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--ink)]" /></label>}
+                <p role="status" aria-live="polite" className="text-xs font-semibold text-[var(--ink-muted)]">{settingsSaveStatus === 'saving' ? 'Guardando cambios…' : settingsSaveStatus === 'error' ? 'No se pudieron guardar los cambios.' : 'Cambios guardados'}</p>
               </div>
-              <ChevronDown className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" size={20} aria-hidden="true" />
-            </summary>
-            <div className="grid gap-4 border-t border-slate-200 p-4 dark:border-slate-800 lg:grid-cols-2">
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex gap-3">
-                  <Store className="mt-0.5 text-[#365fad]" size={20} />
-                  <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white">Publicación y acceso</h4>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Aparece como una sección protegida dentro de tu catálogo público.
-                    </p>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={publicEnabled}
-                  disabled={!canWrite}
-                  onChange={(event) => setPublicEnabled(event.target.checked)}
-                  aria-label="Publicar catálogo para revendedores"
-                  className="mt-1 h-5 w-5 rounded border-slate-300 text-[#365fad] focus:ring-[#365fad]"
-                />
-              </div>
-              <label className="block">
-                <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  <KeyRound size={15} /> Código de acceso
-                </span>
-                <input
-                  type="password"
-                  value={accessCode}
-                  disabled={!canWrite}
-                  onChange={(event) => setAccessCode(event.target.value)}
-                  placeholder={list.accessCodeConfigured ? 'Dejar vacío para conservarlo' : 'Mínimo 6 caracteres'}
-                  autoComplete="new-password"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                {list.accessCodeConfigured && (
-                  <span className="mt-1 block text-xs font-semibold text-emerald-600">Código configurado</span>
-                )}
-              </label>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">Regla comercial</span>
-                <select
-                  value={minimumRule}
-                  disabled={!canWrite}
-                  onChange={(event) => setMinimumRule(event.target.value as MinimumOrderRule)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                >
-                  <option value="none">Sin compra mínima</option>
-                  <option value="amount">Monto mínimo</option>
-                  <option value="quantity">Cantidad mínima</option>
-                  <option value="both">Monto y cantidad mínimos</option>
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className={cn('block', !['amount', 'both'].includes(minimumRule) && 'opacity-50')}>
-                  <span className="mb-1 block text-xs font-semibold text-slate-500">Monto mínimo</span>
-                  <MoneyInput
-                    min="0"
-                    value={minimumOrderAmount}
-                    disabled={!canWrite || !['amount', 'both'].includes(minimumRule)}
-                    onChange={(event) => setMinimumOrderAmount(Number(event.target.value))}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-3 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  />
-                </label>
-                <label className={cn('block', !['quantity', 'both'].includes(minimumRule) && 'opacity-50')}>
-                  <span className="mb-1 block text-xs font-semibold text-slate-500">Unidades mínimas</span>
-                  <NumberField
-                    min="0"
-                    integer
-                    value={minimumOrderQuantity}
-                    disabled={!canWrite || !['quantity', 'both'].includes(minimumRule)}
-                    onChange={(event) => setMinimumOrderQuantity(Number(event.target.value))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  />
-                </label>
-              </div>
-              {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity }) && (
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                  {getCommercialRuleMessage({ minimumRule, minimumOrderAmount, minimumOrderQuantity })}
-                </p>
-              )}
-            </div>
-            </div>
-          </details>
+            </section>
           </section>
-          )}
-
-          <details role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Proveedores' : undefined} open={displayMode === 'page' ? pageTab === 'providers' : undefined} className={cn('group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl', displayMode === 'page' && pageTab !== 'providers' && 'hidden')}>
+          )}          <details role={displayMode === 'page' ? 'tabpanel' : undefined} aria-label={displayMode === 'page' ? 'Proveedores' : undefined} open={displayMode === 'page' ? pageTab === 'providers' : undefined} className={cn('group shrink-0 rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 sm:rounded-2xl', displayMode === 'page' && pageTab !== 'providers' && 'hidden')}>
             <summary className={cn('flex cursor-pointer list-none items-center justify-between gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden', displayMode === 'page' && editingSupplierId && 'hidden')}>
               <div className="flex min-w-0 items-center gap-2">
                 <Building2 className="shrink-0 text-amber-700 dark:text-amber-300" size={20} />
@@ -2066,7 +2031,7 @@ export default function ResellerPriceListModal({
                           </label>}
                           {(displayMode !== 'page' || supplierImportSourceType === 'link') && <div className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace HTTPS del proveedor" type="url" inputMode="url" value={supplierImportPageUrl} onChange={event => setSupplierImportPageUrl(event.target.value)} placeholder="https://proveedor.com/lista" disabled={!canWrite || supplierImportReading} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/><button type="button" onClick={() => void handleSupplierImportPage()} disabled={!canWrite || supplierImportReading || !supplierImportPageUrl.trim()} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-bold disabled:opacity-50 dark:border-slate-700">Leer enlace</button></div>}
                           <p className="text-[11px] text-slate-500">El enlace se consulta desde el servidor, sin cookies. Tocá cada producto para elegir una foto o recortar una parte de la captura.</p>
-                          <p className="text-[11px] text-slate-500">Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR. El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».</p>
+                          <p className="text-[11px] text-slate-500">{supplierImportSourceType === 'photo' ? 'Las capturas se leen en este navegador con OCR en español; la imagen no se envía al servicio de OCR.' : 'Los datos del proveedor se procesan para preparar la lista.'}{supplierImportSourceType !== 'link' ? ' El texto sí se comparte con la IA del Bridge cuando elegís «Leer lista con IA».' : ''}</p>
                           {supplierImportReading && supplierImportProgress && <p role="status" className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Leyendo página {supplierImportProgress.page} de {supplierImportProgress.total}…</p>}
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           </div>
@@ -2113,7 +2078,7 @@ export default function ResellerPriceListModal({
                               </label>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                              {[20, 25, 30, 40].map(value => <button key={value} type="button" aria-pressed={supplierImportMargin === value} onClick={() => setSupplierImportMargin(value)} className="min-h-10 rounded-full border border-indigo-200 px-3 text-xs font-bold text-indigo-800 aria-pressed:bg-indigo-700 aria-pressed:text-white dark:border-indigo-800 dark:text-indigo-200">{value}%</button>)}
+                              {[20, 25, 30, 40].map(value => <button key={value} type="button" aria-pressed={supplierImportMargin === value} onClick={() => setSupplierImportMargin(value)} className="min-h-10 rounded-full border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xs font-bold text-[var(--ink)] aria-pressed:bg-[var(--primary)] aria-pressed:text-[var(--primary-ink)]">{value}%</button>)}
                               <label className="ml-auto flex items-center gap-2 text-xs font-semibold">Redondeo
                                 <select aria-label="Redondeo de precio sugerido" value={supplierImportRounding} onChange={event => setSupplierImportRounding(event.target.value === 'none' ? 'none' : Number(event.target.value) as 100 | 500)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 dark:border-slate-700 dark:bg-slate-950"><option value="none">Exacto</option><option value="100">$100</option><option value="500">$500</option></select>
                               </label>
@@ -2137,9 +2102,11 @@ export default function ResellerPriceListModal({
                                 <button type="button" disabled={!newSupplierImportCategory} onClick={() => { setSupplierImportCategoryMargins(current => ({ ...current, [newSupplierImportCategory.toLocaleLowerCase('es-AR')]: supplierImportMargin })); setNewSupplierImportCategory(''); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">+ Otra categoría</button>
                               </div>
                             </details>
-                            <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
-                            {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
-                            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos de la planilla con Codex en la central vinculada. Las capturas automáticas se incorporarán más adelante; por ahora podés elegir cada foto o recortarla a mano.</p>
+                            {supplierImportSourceType !== 'link' && <>
+                              <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
+                              {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
+                              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">La IA revisa los datos del archivo con Codex en la central vinculada. Por ahora podés elegir cada foto o recortarla a mano.</p>
+                            </>}
                             {displayMode === 'page' && <button type="button" onClick={() => setSupplierImportStep(3)} className="min-h-11 w-full rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-ink)]">Seguir: revisar</button>}
                             </div>
                             <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-2" aria-label="Productos importados">
@@ -2709,6 +2676,45 @@ export default function ResellerPriceListModal({
           </section>
         </div>
       ) : null}
+    </Modal>
+
+    <Modal
+      isOpen={accessCodeDialogOpen}
+      onClose={() => {
+        if (savingAccessCode) return;
+        setAccessCodeDialogOpen(false);
+        setNewAccessCode('');
+        setRepeatedAccessCode('');
+        setShowAccessCode(false);
+      }}
+      title="Cambiar código"
+      className="w-[calc(100%_-_1rem)] max-w-lg"
+    >
+      <div className="space-y-4 text-[var(--ink)]">
+        <p className="text-sm text-[var(--ink-muted)]">Elegí el código que vas a compartir con tus revendedores. Tiene que tener al menos 6 caracteres.</p>
+        <label className="block text-sm font-semibold">Nuevo código
+          <input type={showAccessCode ? 'text' : 'password'} name="reseller-code-new" autoComplete="off" value={newAccessCode} onChange={event => setNewAccessCode(event.target.value)} disabled={savingAccessCode} className="mt-1.5 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-[var(--ink)]" />
+        </label>
+        <label className="block text-sm font-semibold">Repetir código
+          <input type={showAccessCode ? 'text' : 'password'} name="reseller-code-repeat" autoComplete="off" value={repeatedAccessCode} onChange={event => setRepeatedAccessCode(event.target.value)} disabled={savingAccessCode} className="mt-1.5 min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 text-[var(--ink)]" />
+        </label>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <button type="button" onClick={() => setShowAccessCode(value => !value)} disabled={savingAccessCode} className="min-h-10 self-start rounded-lg px-2 text-sm font-semibold text-[var(--ink-muted)] disabled:opacity-50">{showAccessCode ? 'Ocultar códigos' : 'Mostrar códigos'}</button>
+          <div className="flex gap-2"><button type="button" onClick={() => { setAccessCodeDialogOpen(false); setNewAccessCode(''); setRepeatedAccessCode(''); setShowAccessCode(false); }} disabled={savingAccessCode} className="min-h-10 rounded-lg border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">Cancelar</button><button type="button" onClick={() => void handleSaveAccessCode()} disabled={!canWrite || savingAccessCode || newAccessCode.trim().length < 6 || newAccessCode.trim().toLocaleLowerCase('es-AR') !== repeatedAccessCode.trim().toLocaleLowerCase('es-AR')} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{savingAccessCode ? 'Guardando…' : 'Guardar'}</button></div>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal
+      isOpen={supplierImportConfirmation !== null}
+      onClose={() => setSupplierImportConfirmation(null)}
+      title="Confirmar productos"
+      className="w-[calc(100%_-_1rem)] max-w-lg"
+    >
+      {supplierImportConfirmation && <div className="space-y-4">
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm leading-relaxed text-[var(--ink)]">Vas a agregar <strong>{supplierImportConfirmation.count.toLocaleString('es-AR')} producto{supplierImportConfirmation.count === 1 ? '' : 's'}</strong>{supplierImportConfirmation.withPhoto ? ' con foto' : ''}{supplierImportConfirmation.filterText ? ` de «${supplierImportConfirmation.filterText}»` : ''} a la lista del proveedor.</p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setSupplierImportConfirmation(null)} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]">Cancelar</button><button type="button" onClick={() => void handleAddSupplierImportBatch(true)} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)]">Agregar productos</button></div>
+      </div>}
     </Modal>
 
     {displayMode === 'page' && pageTab === 'prices' && selectedPriceProducts.length > 0 && (
