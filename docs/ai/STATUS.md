@@ -1,4 +1,4 @@
-# 2026-11-08 — I43 OCR: CSP corregida localmente; verificación productiva pendiente
+# 2026-11-08 — I43 OCR: causa CSP desplegada; Babaji sigue bloqueado
 
 - Releí I43 en `docs/ai/ACTION_PLAN.md` del Escritorio y en el worktree. La causa raíz coincide: `script-src` impedía la compilación WASM que requiere Tesseract.
 - `vercel.json` ahora permite `'wasm-unsafe-eval'` en `script-src`, sin habilitar `eval` de JavaScript. El worker, el core WASM y el modelo de idioma reciben los mismos headers.
@@ -6,7 +6,15 @@
 - OCR local con el motor real: las 3 imágenes de prueba se clasificaron/leyeron como se esperaba. Además, una tanda de 50 fotos públicas reales de Mr Tecno terminó con **50/50 analizadas y 0 fallidas**.
 - Babaji: el fixture contiene 924 tarjetas; la prueba lee al menos 900. Las 8 imágenes de la captura disponible no se pudieron descargar (0/8), así que no hay resultado OCR real de Babaji ni se cumple todavía el criterio de cierre.
 - Verificaciones locales: lint aprobado; Vitest 210 archivos / 1.219 pruebas aprobadas; build aprobado; E2E de importación 28/28; E2E OCR real bajo la CSP exacta 1/1.
-- Aún falta publicar el cambio y confirmar el header actualizado en `rivastock.vercel.app`. El sitio consultado durante el diagnóstico seguía devolviendo la política anterior. I43 permanece abierta.
+- El commit `7005075` quedó en `main`; Vercel informó `success`. En producción, `/`, el worker, el core WASM y el modelo español devuelven HTTP 200 y todos incluyen `'wasm-unsafe-eval'`.
+- Con el header de producción ya publicado, el OCR real bajo esa política analizó 50 fotos públicas de Mr Tecno: **50/50 analizadas; 0 fallidas**. Las 8 fotos de Babaji siguen inaccesibles desde la captura disponible (**0/8 analizadas**), así que no alcanza el criterio ≥95 % y I43 permanece abierta.
+
+## I38 — corrección móvil lista; publicación pendiente
+
+- Capturé el estado anterior y posterior a 360/412 px en `%TEMP%\rivastock-qa-artifacts\i38\i38-{before,after}-*.png`. La captura anterior mostraba el fondo transparente, la navegación inferior sobre la hoja y acciones de 36 px.
+- Los diálogos y elementos flotantes de Revendedores ahora se dibujan en un portal con los tokens del módulo. Al abrir la edición se oculta la barra inferior, se bloquea el scroll de fondo y se devuelve el foco al cerrar. La barra de selección reemplaza la navegación y organiza acciones de 44 px; acciones adicionales quedan bajo «Más acciones».
+- Verificaciones locales: lint, build, 210 archivos / 1.219 pruebas Vitest y 29/29 pruebas Playwright de importación y Revendedores. En 360 y 412 px, el fondo es sólido, el botón recibe el toque, la navegación no tapa el contenido y las confirmaciones quedan por encima.
+- Sin migraciones. I38 queda abierta hasta publicar el commit y verificarlo en Current.
 
 # 2026-11-08 — I37 importador universal: código listo, publicación web bloqueada
 

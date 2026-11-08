@@ -29,7 +29,10 @@ describe('reseller price list responsive UI contract', () => {
     expect(reseller).toContain('data-testid="reseller-price-list-mobile"');
     expect(reseller).toContain('Editar precio de ${product.name}');
     expect(reseller).toContain('max-h-[88dvh]');
-    expect(reseller).toContain('bottom-[calc(5.5rem+env(safe-area-inset-bottom))]');
+    expect(reseller).toContain('fixed inset-0 z-[110] flex items-end');
+    expect(reseller).toContain('pb-[calc(env(safe-area-inset-bottom)+1rem)]');
+    expect(reseller).toContain('useMobileAppChrome({ hideHeader: false, hideBottomNav: hideResellerBottomNavigation })');
+    expect(reseller).toContain('createPortal(<div className="reseller-module-page contents">{children}</div>, document.body)');
   });
 
   it('uses the device PDF viewer on mobile and an in-app fallback elsewhere', () => {

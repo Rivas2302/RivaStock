@@ -23,7 +23,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
@@ -78,7 +78,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
   ] : options.marginFixture ? Array.from({ length: 6 }, (_, index) => ({
     id: `margin-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `margin-product-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
-  })) : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
+  })) : options.mobileEditOutsideFixture ? [{ id: 'mobile-price-item-2', user_id: owner, price_list_id: priceList.id, product_id: 'mobile-price-2', pricing_mode: 'default', availability: 'in_stock', sort_order: 1 }] : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
     id: `mobile-price-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `mobile-price-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
   })) : options.bulkFixture ? [
     { id: 'bulk-item-stock', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-stock-included', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
@@ -830,7 +830,8 @@ test('I36 simulates six cost-based margins on mobile, applies one or many prices
       await list.getByLabel('Elegir [QA] Margen producto 1').check();
       await list.getByLabel('Elegir [QA] Margen producto 2').check();
       const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
-      await toolbar.getByRole('button', { name: 'Aplicar ganancia sugerida (2)' }).click();
+      await toolbar.getByRole('button', { name: 'Más acciones' }).click();
+      await toolbar.getByRole('group', { name: 'Más acciones para productos elegidos' }).getByRole('button', { name: 'Aplicar ganancia sugerida (2)' }).click();
       const bulkConfirmation = page.getByRole('dialog', { name: 'Confirmar precios sugeridos' });
       await expect(bulkConfirmation).toContainText('2 productos');
       await bulkConfirmation.getByRole('button', { name: 'Aplicar precios sugeridos' }).click();
@@ -941,7 +942,12 @@ test('bulk price-list actions use the visible Mi stock filter, support undo, and
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Agregar a la lista' }).click();
     await expect.poll(() => priceListItems.some(item => item.product_id === 'bulk-stock-included')).toBe(true);
     await includedCheckbox(panel).check();
-    await toolbar.getByRole('button', { name: 'Por pedido' }).click();
+    if (width < 640) {
+      await toolbar.getByRole('button', { name: 'Más acciones' }).click();
+      await toolbar.getByRole('group', { name: 'Más acciones para productos elegidos' }).getByRole('button', { name: 'Por pedido' }).click();
+    } else {
+      await toolbar.getByRole('button', { name: 'Por pedido' }).click();
+    }
     await page.getByRole('dialog', { name: 'Confirmar cambios en la lista' }).getByRole('button', { name: 'Marcar por pedido' }).click();
     await expect.poll(() => priceListItems.find(item => item.product_id === 'bulk-stock-included')?.availability).toBe('on_order');
   }
@@ -1077,12 +1083,16 @@ test('I35 keeps reseller tabs and price rows usable on mobile at 360 and 412 px'
       await expect(toolbar).toContainText('3 elegidos');
       const bottomBarLayout = await page.evaluate(() => {
         const toolbarElement = document.querySelector('[aria-label="Acciones para productos elegidos"]');
-        const navigationElement = document.querySelector('.mobile-navigation-bar');
-        if (!toolbarElement || !navigationElement) return null;
-        return { toolbarBottom: toolbarElement.getBoundingClientRect().bottom, navigationTop: navigationElement.getBoundingClientRect().top, toolbarPosition: getComputedStyle(toolbarElement).position };
+        return {
+          toolbarPosition: toolbarElement ? getComputedStyle(toolbarElement).position : null,
+          toolbarBottom: toolbarElement?.getBoundingClientRect().bottom ?? null,
+          safeBottom: window.innerHeight - 16,
+          navigationVisible: Boolean(document.querySelector('.mobile-navigation-bar')?.getClientRects().length),
+        };
       });
-      expect(bottomBarLayout?.toolbarPosition).toBe('fixed');
-      expect(bottomBarLayout?.toolbarBottom).toBeLessThanOrEqual(bottomBarLayout?.navigationTop ?? 0);
+      expect(bottomBarLayout.toolbarPosition).toBe('fixed');
+      expect(bottomBarLayout.toolbarBottom).toBeLessThanOrEqual(bottomBarLayout.safeBottom);
+      expect(bottomBarLayout.navigationVisible).toBe(false);
 
       await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
       const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
@@ -1097,5 +1107,89 @@ test('I35 keeps reseller tabs and price rows usable on mobile at 360 and 412 px'
       expect(products).toHaveLength(3);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     }
+  }
+});
+
+test('I38 keeps mobile reseller sheets and bulk actions visible above navigation at 360 and 412 px', async ({ page }, testInfo) => {
+  await mockApp(page, { mobileListFixture: true, mobileEditOutsideFixture: true });
+
+  for (const width of [360, 412]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
+    const mobileList = page.getByTestId('reseller-price-list-mobile');
+    await mobileList.getByRole('button', { name: 'Editar precio de [QA] Móvil producto 1' }).click();
+    const editor = page.getByRole('dialog', { name: 'Editar [QA] Móvil producto 1' });
+    await expect(editor).toBeVisible();
+    await editor.screenshot({ path: testInfo.outputPath(`i38-after-edit-${width}.png`) });
+    const editorMetrics = await editor.evaluate(dialog => {
+      const add = [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Agregar a la lista'));
+      if (!add) return { background: getComputedStyle(dialog).backgroundColor, addButton: false, addButtonHit: false, navVisible: true, zIndex: 0, scrollLocked: false };
+      const rect = add.getBoundingClientRect();
+      const point = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      const nav = document.querySelector('.mobile-navigation-bar');
+      return {
+        background: getComputedStyle(dialog).backgroundColor,
+        addButton: true,
+        addButtonHit: point === add || add.contains(point),
+        navVisible: Boolean(nav && getComputedStyle(nav).display !== 'none' && nav.getClientRects().length),
+        zIndex: Number.parseInt(getComputedStyle(dialog.parentElement!).zIndex, 10),
+        scrollLocked: getComputedStyle(document.querySelector('.app-content')!).overflowY === 'hidden',
+      };
+    });
+    expect(editorMetrics.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(editorMetrics.addButton).toBe(true);
+    expect(editorMetrics.addButtonHit).toBe(true);
+    expect(editorMetrics.navVisible).toBe(false);
+    expect(editorMetrics.zIndex).toBeGreaterThanOrEqual(100);
+    expect(editorMetrics.scrollLocked).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('reseller-price-editor');
+    await page.getByRole('button', { name: 'Cerrar edición' }).click();
+    await expect(mobileList.getByRole('button', { name: 'Editar precio de [QA] Móvil producto 1' })).toBeFocused();
+
+    for (let index = 1; index <= 3; index++) await mobileList.getByLabel(`Elegir [QA] Móvil producto ${index}`).check();
+    const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
+    await toolbar.screenshot({ path: testInfo.outputPath(`i38-after-bulk-${width}.png`) });
+    const toolbarMetrics = await toolbar.evaluate(element => ({
+      background: getComputedStyle(element).backgroundColor,
+      fixed: getComputedStyle(element).position === 'fixed',
+      zIndex: Number.parseInt(getComputedStyle(element).zIndex, 10),
+      navigationVisible: Boolean(document.querySelector('.mobile-navigation-bar')?.getClientRects().length),
+      buttonHeights: [...element.querySelectorAll('button')].filter(button => button.getClientRects().length)
+        .map(button => Math.round(button.getBoundingClientRect().height)),
+    }));
+    expect(toolbarMetrics.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(toolbarMetrics.fixed).toBe(true);
+    expect(toolbarMetrics.zIndex).toBeGreaterThanOrEqual(100);
+    expect(toolbarMetrics.navigationVisible).toBe(false);
+    expect(toolbarMetrics.buttonHeights.length).toBeGreaterThanOrEqual(4);
+    expect(toolbarMetrics.buttonHeights.every(height => height >= 44)).toBe(true);
+    await toolbar.getByRole('button', { name: 'Más acciones' }).click();
+    const moreActions = toolbar.getByRole('group', { name: 'Más acciones para productos elegidos' });
+    await expect(moreActions).toBeVisible();
+    await moreActions.screenshot({ path: testInfo.outputPath(`i38-after-bulk-menu-${width}.png`) });
+    const menuButtonHeights = await moreActions.locator('button').evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().height)));
+    expect(menuButtonHeights.every(height => height >= 44)).toBe(true);
+    await toolbar.getByRole('button', { name: 'Menos acciones' }).click();
+    await toolbar.getByRole('button', { name: 'Quitar de la lista' }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Confirmar cambios en la lista' });
+    await expect(confirmation).toBeVisible();
+    await confirmation.screenshot({ path: testInfo.outputPath(`i38-after-confirm-${width}.png`) });
+    const confirmationMetrics = await confirmation.evaluate(dialog => ({
+      background: getComputedStyle(dialog).backgroundColor,
+      buttonHit: (() => {
+        const button = [...dialog.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Quitar de la lista');
+        if (!button) return false;
+        const rect = button.getBoundingClientRect();
+        const point = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return point === button || button.contains(point);
+      })(),
+      navigationVisible: Boolean(document.querySelector('.mobile-navigation-bar')?.getClientRects().length),
+    }));
+    expect(confirmationMetrics.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(confirmationMetrics.buttonHit).toBe(true);
+    expect(confirmationMetrics.navigationVisible).toBe(false);
+    await confirmation.getByRole('button', { name: 'Cancelar' }).click();
+    await toolbar.getByRole('button', { name: 'Cancelar' }).click();
   }
 });

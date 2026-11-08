@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronDown,
   Building2,
@@ -79,6 +80,7 @@ import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
 import { SUPPLIER_PHOTO_TIMEOUT_MS, withSupplierPhotoTimeout } from '../lib/supplierPhotoTimeout';
 import { createSupplierPhotoOcrWorker, getActiveSupplierPhotoReview, inspectSupplierPhotoBrand, isSupplierPhotoReviewBlocking, normalizeSupplierImportRow, supplierPhotoReviewFields, type SupplierPhotoBrandIndicators, type SupplierPhotoReview } from '../lib/supplierPrivacy';
 import { getSupplierAssetStoragePath } from '../lib/supplierPhotoStorage';
+import { useMobileAppChrome } from '../hooks/useMobileAppChrome';
 import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupplierImportBatch, type SupplierImportRemovalPreview } from '../lib/resellerSupplierRemoval';
 import { applyResellerPriceListBulkMutations, getBulkActionProductIds, toPriceListBulkRow, type ResellerPriceListBulkMutation, type ResellerPriceListBulkProgress } from '../lib/resellerPriceListBulk';
 import { assertStorageUploadAllowed } from '../lib/platformStorage';
@@ -90,6 +92,10 @@ import SupplierOrderRoundManager from './resellers/SupplierOrderRoundManager';
 import ResellerMarginAssistant, { type MarginSimulatorProduct } from './resellers/ResellerMarginAssistant';
 import SupplierListPhotoPicker from './resellers/SupplierListPhotoPicker';
 import './resellers/ResellerPage.css';
+
+function ResellerPortal({ children }: { children: React.ReactNode }) {
+  return createPortal(<div className="reseller-module-page contents">{children}</div>, document.body);
+}
 
 interface ResellerPriceListModalProps {
   isOpen: boolean;
@@ -337,8 +343,10 @@ export default function ResellerPriceListModal({
   const [removalBusy, setRemovalBusy] = useState(false);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const [selectedPriceProductIds, setSelectedPriceProductIds] = useState<Set<string>>(() => new Set());
+  const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
   const [priceProductPage, setPriceProductPage] = useState(0);
   const [editingPriceProductId, setEditingPriceProductId] = useState<string | null>(null);
+  const editingPriceSheetRef = useRef<HTMLElement>(null);
   const [bulkConfirmation, setBulkConfirmation] = useState<PriceListBulkConfirmation | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<ResellerPriceListBulkProgress | null>(null);
@@ -778,6 +786,10 @@ export default function ResellerPriceListModal({
   const selectedAddIds = getBulkActionProductIds('add', selectedProductIds, items, addableProductIds);
   const selectedAvailableIds = getBulkActionProductIds('in_stock', selectedProductIds, items);
   const selectedOnOrderIds = getBulkActionProductIds('on_order', selectedProductIds, items);
+
+  useEffect(() => {
+    if (selectedPriceProducts.length === 0) setBulkActionsMenuOpen(false);
+  }, [selectedPriceProducts.length]);
 
   useEffect(() => {
     setPriceProductPage(page => Math.min(page, priceProductPageCount - 1));
@@ -1639,6 +1651,35 @@ export default function ResellerPriceListModal({
 
   const [supplierExtensionHelpOpen, setSupplierExtensionHelpOpen] = useState(false);
   const [supplierExtensionHelpVisible, setSupplierExtensionHelpVisible] = useState(false);
+
+  const resellerDialogOpen = accessCodeDialogOpen || supplierExtensionHelpOpen || supplierImportConfirmation !== null
+    || bulkConfirmation !== null || marginApplyConfirmation !== null || removalSupplier !== null || pdfPreview !== null;
+  const hideResellerBottomNavigation = displayMode === 'page'
+    && (Boolean(editingPriceProduct) || selectedPriceProducts.length > 0 || resellerDialogOpen);
+  useMobileAppChrome({ hideHeader: false, hideBottomNav: hideResellerBottomNavigation });
+
+  useEffect(() => {
+    if (displayMode !== 'page' || !editingPriceProduct) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const scrollContainer = document.querySelector<HTMLElement>('.app-content');
+    const previousOverflow = scrollContainer?.style.overflowY;
+    const previousScrollTop = scrollContainer?.scrollTop ?? 0;
+    if (scrollContainer) scrollContainer.style.overflowY = 'hidden';
+    const focusFrame = window.requestAnimationFrame(() => editingPriceSheetRef.current?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEditingPriceProductId(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', onKeyDown);
+      if (scrollContainer) {
+        scrollContainer.style.overflowY = previousOverflow ?? '';
+        scrollContainer.scrollTop = previousScrollTop;
+      }
+      if (previousFocus?.isConnected) window.requestAnimationFrame(() => previousFocus.focus());
+    };
+  }, [displayMode, editingPriceProduct?.id]);
 
   const handleSupplierImportPage = async () => {
     if (!supplierImportPageUrl.trim() || supplierImportReading || supplierPhotoOcrProgress) return;
@@ -3119,6 +3160,7 @@ export default function ResellerPriceListModal({
       ) : null}
     </Modal>
 
+    <ResellerPortal>
     <Modal
       isOpen={supplierExtensionHelpOpen}
       onClose={() => setSupplierExtensionHelpOpen(false)}
@@ -3181,8 +3223,8 @@ export default function ResellerPriceListModal({
     </Modal>
 
     {displayMode === 'page' && pageTab === 'prices' && editingPriceProduct && (
-      <div className="fixed inset-0 z-[70] flex items-end bg-black/45 sm:hidden" role="presentation" onClick={() => setEditingPriceProductId(null)}>
-        <section role="dialog" aria-modal="true" aria-label={`Editar ${editingPriceProduct.name}`} onClick={event => event.stopPropagation()} className="max-h-[88dvh] w-full overflow-y-auto rounded-t-2xl border border-[var(--line)] bg-[var(--surface-1)] pb-[env(safe-area-inset-bottom)] text-[var(--ink)] shadow-2xl">
+      <div data-testid="reseller-price-editor-backdrop" className="fixed inset-0 z-[110] flex items-end bg-black/45 sm:hidden" role="presentation" onClick={() => setEditingPriceProductId(null)}>
+        <section ref={editingPriceSheetRef} tabIndex={-1} data-testid="reseller-price-editor" role="dialog" aria-modal="true" aria-label={`Editar ${editingPriceProduct.name}`} onClick={event => event.stopPropagation()} className="max-h-[88dvh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-[var(--line)] bg-[var(--surface-1)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-[var(--ink)] shadow-2xl">
           <header className="sticky top-0 flex items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--surface-1)] p-4">
             <div className="min-w-0"><h2 className="line-clamp-2 font-semibold">{editingPriceProduct.name}</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{editingPriceEconomics?.purchaseCost === null || editingPriceEconomics?.purchaseCost === undefined ? 'Sin costo registrado' : `Costo ${formatCurrency(editingPriceEconomics.purchaseCost)}`}</p></div>
             <button type="button" aria-label="Cerrar edición" onClick={() => setEditingPriceProductId(null)} className="min-h-10 min-w-10 rounded-lg border border-[var(--line)] text-lg">×</button>
@@ -3201,26 +3243,42 @@ export default function ResellerPriceListModal({
     )}
 
     {displayMode === 'page' && pageTab === 'prices' && itemsDirty && (
-      <div role="status" className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[54] mx-auto flex w-[calc(100%_-_1.5rem)] max-w-lg items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] px-4 py-3 shadow-xl sm:hidden">
+      <div role="status" className="fixed inset-x-3 bottom-[calc(16px+env(safe-area-inset-bottom))] z-[110] mx-auto flex w-[calc(100%_-_1.5rem)] max-w-lg items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] px-4 py-3 shadow-xl sm:hidden">
         <span className="text-xs font-semibold text-[var(--ink-muted)]">Cambios sin guardar</span>
         <button type="button" onClick={() => void handleSave()} disabled={!canWrite || saving || bulkBusy} className="min-h-10 rounded-lg bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar lista'}</button>
       </div>
     )}
 
     {displayMode === 'page' && pageTab === 'prices' && !itemsDirty && selectedPriceProducts.length > 0 && (
-      <div role="toolbar" aria-label="Acciones para productos elegidos" className="fixed inset-x-2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-[calc(100%_-_1rem)] max-w-5xl flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-3 shadow-2xl sm:bottom-4 sm:flex-nowrap sm:justify-center">
-        <span className="mr-auto whitespace-nowrap px-1 text-sm font-bold text-[var(--ink)]">{selectedPriceProducts.length} elegidos</span>
-        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedRemoveIds.length === 0} onClick={() => requestBulkConfirmation('remove', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Quitar de la lista</button>
-        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
-        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAvailableIds.length === 0} onClick={() => requestBulkConfirmation('in_stock', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Disponible</button>
-        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedOnOrderIds.length === 0} onClick={() => requestBulkConfirmation('on_order', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Por pedido</button>
-        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved' || selectedMarginApplyIds.length === 0} onClick={() => requestMarginPriceApply(selectedMarginApplyIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-[var(--accent-ink)] disabled:opacity-40">Aplicar ganancia sugerida ({selectedMarginApplyIds.length})</button>
-        <button type="button" onClick={() => setSelectedPriceProductIds(new Set())} disabled={bulkBusy} className="min-h-9 whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-40">Cancelar</button>
+      <div role="toolbar" aria-label="Acciones para productos elegidos" className="fixed inset-x-2 bottom-[calc(16px+env(safe-area-inset-bottom))] z-[110] mx-auto w-[calc(100%_-_1rem)] max-w-5xl rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-3 shadow-2xl sm:bottom-4">
+        <div className="grid grid-cols-2 gap-2 sm:hidden">
+          <div className="col-span-2 flex items-center justify-between gap-3">
+            <span className="whitespace-nowrap px-1 text-sm font-bold text-[var(--ink)]">{selectedPriceProducts.length} elegidos</span>
+            <button type="button" onClick={() => setSelectedPriceProductIds(new Set())} disabled={bulkBusy} className="min-h-11 whitespace-nowrap rounded-lg px-3 text-sm font-semibold text-[var(--ink-muted)] disabled:opacity-40">Cancelar</button>
+          </div>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedRemoveIds.length === 0} onClick={() => requestBulkConfirmation('remove', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Quitar de la lista</button>
+          <button type="button" aria-expanded={bulkActionsMenuOpen} onClick={() => setBulkActionsMenuOpen(open => !open)} className="col-span-2 min-h-11 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">{bulkActionsMenuOpen ? 'Menos acciones' : 'Más acciones'}</button>
+          {bulkActionsMenuOpen && <div role="group" aria-label="Más acciones para productos elegidos" className="col-span-2 grid grid-cols-2 gap-2">
+            <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAvailableIds.length === 0} onClick={() => { setBulkActionsMenuOpen(false); requestBulkConfirmation('in_stock', selectedProductIds); }} className="min-h-11 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Disponible</button>
+            <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedOnOrderIds.length === 0} onClick={() => { setBulkActionsMenuOpen(false); requestBulkConfirmation('on_order', selectedProductIds); }} className="min-h-11 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Por pedido</button>
+            <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved' || selectedMarginApplyIds.length === 0} onClick={() => { setBulkActionsMenuOpen(false); requestMarginPriceApply(selectedMarginApplyIds); }} className="col-span-2 min-h-11 whitespace-nowrap rounded-lg bg-[var(--accent)] px-2 text-xs font-semibold text-[var(--accent-ink)] disabled:opacity-40">Aplicar ganancia sugerida ({selectedMarginApplyIds.length})</button>
+          </div>}
+        </div>
+        <div className="hidden items-center gap-2 sm:flex sm:flex-nowrap sm:justify-center">
+          <span className="mr-auto whitespace-nowrap px-1 text-sm font-bold text-[var(--ink)]">{selectedPriceProducts.length} elegidos</span>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedRemoveIds.length === 0} onClick={() => requestBulkConfirmation('remove', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Quitar de la lista</button>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAvailableIds.length === 0} onClick={() => requestBulkConfirmation('in_stock', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Disponible</button>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedOnOrderIds.length === 0} onClick={() => requestBulkConfirmation('on_order', selectedProductIds)} className="min-h-11 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Por pedido</button>
+          <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved' || selectedMarginApplyIds.length === 0} onClick={() => requestMarginPriceApply(selectedMarginApplyIds)} className="min-h-11 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-[var(--accent-ink)] disabled:opacity-40">Aplicar ganancia sugerida ({selectedMarginApplyIds.length})</button>
+          <button type="button" onClick={() => setSelectedPriceProductIds(new Set())} disabled={bulkBusy} className="min-h-11 whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-40">Cancelar</button>
+        </div>
       </div>
     )}
 
     {displayMode === 'page' && pageTab === 'prices' && bulkUndo && (
-      <div role="status" className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
+      <div role="status" className="fixed inset-x-3 bottom-[calc(16px+env(safe-area-inset-bottom))] z-[110] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
         <span>{bulkUndo.type === 'remove' ? 'Productos quitados de la lista.' : bulkUndo.type === 'add' ? 'Productos agregados a la lista.' : bulkUndo.type === 'prices' ? 'Precios sugeridos aplicados.' : 'Disponibilidad actualizada.'}</span>
         <button type="button" onClick={() => void handleUndoPriceListBulk()} disabled={bulkBusy} className="rounded-md bg-[var(--surface-1)] px-3 py-1.5 font-bold text-[var(--ink)] disabled:opacity-50">Deshacer</button>
       </div>
@@ -3349,6 +3407,7 @@ export default function ResellerPriceListModal({
         </div>
       )}
     </Modal>
+    </ResellerPortal>
     </>
   );
 }
