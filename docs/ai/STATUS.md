@@ -31,14 +31,15 @@
 - Verificaciones: `npm run lint` aprobado; `npm test -- --maxWorkers=4` **1.226/1.226**; `npm run build` aprobado; Playwright de la suite **30/30**, más el E2E ampliado de I40 **1/1**. Un intento inicial de suite completa con concurrencia alta excedió el límite de 5 s de un test PGlite; el test aislado pasó y la suite completa pasó al limitar workers.
 - Sin migraciones ni escrituras en datos reales. Commit `5ef6449` en `main`; Vercel marcó `success`. La app pública carga el chunk `ownInventory-mV1H5l2B.js`; Stock, Ventas y POS devuelven HTTP 200 y lo importan. I40 queda cerrada.
 
-## I41 — implementación y migración aplicadas; publicación pendiente
+## I41 — cerrada; migración y bundle Current verificados
 
 - Agregué el envío opcional a Nueva venta, edición, POS, Presupuestos y presupuesto público. El monto se conserva como `shipping_amount`; no altera precios unitarios ni ganancia de productos. La caja usa el mismo cobro con detalle «incluye envío» y Reportes separa los envíos cobrados.
 - Verificación local ya completada: lint; Vitest **1.234/1.234** con 215 archivos; Playwright focal **1/1** a 360 px con RPC simulado; build aprobado. `npm run perf:check` conserva solo los fallos previos de `Knowledge.tsx` y `Stock.tsx`; Ventas queda dentro del presupuesto ajustado.
 - Backup previo verificado: `C:\Users\USER\rivastock-backups\20261108T211645Z`, 101 tablas / 18.399 filas y 2.559 objetos de Storage (162.793.797 bytes), `verification: passed`.
 - Apliqué exclusivamente `20261108202943_i41_shipping_amounts.sql` con `supabase db query --linked --file` y registré esa versión con `supabase migration repair`; no usé `db push`. Confirmé ambas columnas `shipping_amount` con `NOT NULL DEFAULT 0`, los RPC y permisos, RLS activo en la tabla privada sin acceso de `anon`/`authenticated`, e historial remoto aplicado. No registré ni modifiqué ventas o presupuestos reales.
 - Los 10 avisos del advisor para estos RPC son por `SECURITY DEFINER` accesible al rol previsto: nueve RPC solo para `authenticated` y la lectura pública del presupuesto para `anon`, que sigue el diseño público existente. No hubo avisos sobre search_path mutable en las funciones nuevas.
-- I41 queda abierta hasta el commit, Vercel Current y el smoke de producción sin registrar una venta real.
+- Publicación: el check de Vercel para `fcbcccf` terminó en `success`. `https://rivastock.vercel.app` referencia el entry `index-BK5dTQfY.js`; los chunks de Ventas, POS, Presupuestos y `SaleShippingControl` responden HTTP 200 e incluyen las llamadas de envío. No hubo escritura de ventas o presupuestos reales.
+- I41 queda cerrada: migración aplicada, commit `fcbcccf` en `main`, Vercel `success` y bundle de producción comprobado. E2E local cubrió el flujo con RPC simulado sin tocar ventas reales.
 # 2026-11-08 — I37 importador universal: código listo, publicación web bloqueada
 
 - Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.

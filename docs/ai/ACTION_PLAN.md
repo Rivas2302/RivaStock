@@ -1022,7 +1022,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** test unitario de `isOwnInventoryProduct`. E2E con fixtures (un producto propio y uno de proveedor): el de proveedor no aparece en Stock, Nueva venta, POS, Presupuestos ni Consulta rápida, y sí aparece en Revendedores. Contadores de Stock e Inicio sin los de proveedor.
 
-### [ ] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
+### [x] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
 
 **Pedido:** «Un botón con o sin envío, así no tengo que sumarlo a mano en el flujo de caja».
 
