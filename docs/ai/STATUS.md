@@ -1,3 +1,10 @@
+# 2026-11-08 — I37 importador universal en curso
+
+- Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.
+- El primer commit de I37 es `db11cb5`: agregó `tmp/proveedores/` a `.gitignore`. `git check-ignore -v` confirmó que `oestech.html` y `babaji.html` quedan ignorados antes de usarlos. Los originales no se agregan al repositorio.
+- Próximo: fixtures recortados y anonimizados, motor de extracción (Fase 1), captura de extensión 0.6.0 (Fase 2), recepción local en Revendedores (Fase 3), guía (Fase 4), y pruebas de fixtures/proveedores de solo lectura (Fase 5). No se permiten clics de compra, formularios, escritura en campos ni transferencia de cookies/sesiones.
+- No se requieren migraciones hasta ahora. La extensión conserva su ID/key; solo se publicará el ZIP por el flujo existente. Mr Tecno, Inova, Braja y Omega se prueban localmente, sin guardar productos en producción. Oestech y Babaji quedan para prueba del dueño con su clave.
+
 # 2026-11-08 — I35 e I36 verificados en producción
 
 - Incorporé el orden I35 → I36 y las dos secciones nuevas del `ACTION_PLAN.md` del Escritorio; conservé el resto del plan y sus marcas previas.
