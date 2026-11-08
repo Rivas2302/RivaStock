@@ -1,4 +1,4 @@
-# 2026-11-08 — I37 importador universal en curso
+# 2026-11-08 — I37 importador universal: código listo, publicación web bloqueada
 
 - Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.
 - El primer commit de I37 es `db11cb5`: agregó `tmp/proveedores/` a `.gitignore`. `git check-ignore -v` confirmó que `oestech.html` y `babaji.html` quedan ignorados antes de usarlos. Los originales no se agregan al repositorio.
@@ -24,7 +24,8 @@
 - **Fase 3 lista localmente:** `/revendedores` valida el origen, el remitente externo, tandas de 500 y los campos antes de mostrar la captura en Precios → Revisar. Recibirla solo cambia estado local del navegador: no crea proveedor ni escribe productos, precios o listas hasta que el usuario usa los controles existentes.
 - Si la descarga HTTPS de una imagen falla en el proxy, el worker puede bajar desde el mismo origen una imagen ya incluida en la captura, sin cookies, redirecciones, Referer ni más de 400 KB; el Blob queda en el navegador para OCR/subida posterior. **Desvío de alcance mínimo:** imágenes de un CDN distinto al origen no usan ese fallback, porque el permiso autorizado es solo para el dominio de la pestaña; siguen dependiendo del proxy o de selección manual.
 - **Verificación F3:** 8/8 tests de transferencia/remitente y 2/2 Playwright (captura en Revisar sin crear datos y ayuda para tienda JavaScript). No se transfirieron capturas a producción ni se escribieron datos.
-- El paquete 0.6.0 aún no se publicó ni instaló. Las lecturas reales de Mr Tecno, Inova, Braja y Omega quedan pendientes de Fase 5; Oestech y Babaji requieren la clave del dueño.
+- El paquete público 0.6.0 y su manifiesto responden HTTP 200; el SHA-256 del ZIP coincide con el manifiesto y el paquete local. Las tres imágenes de ayuda también responden HTTP 200.
+- Ejecuté `npm run update:facebook-extension`: actualizó la única instalación descomprimida encontrada a 0.6.0. El actualizador verificó que conserva el ID derivado de la key existente, comprobó que no hubiera trabajo de Facebook en curso, guardó la versión anterior fuera del repo y actualizó la versión requerida en la política de dispositivos.
 
 ## I37 — Fase 4: guía local lista
 
@@ -47,7 +48,7 @@
 - En Mr Tecno los 525 registros sin precio no tenían texto monetario ni «Consultar» en la tarjeta; por eso no los marqué como fallo de parseo y quedan para revisar. Desvío del criterio de cierre: el total capturado no alcanza 95 % con precio disponible; no marco I37 [x] hasta resolver ese criterio. Inova quedó en 95,5 % del total mostrado (786/823) y Braja en 99,0 % (782/790).
 - Las pruebas de Babaji mantienen el caso "$ 37,125": el parser devuelve el entero 37125, que en formato argentino se presenta como $37.125. Se usaron 10 tarjetas anonimizadas por tienda derivadas solo de la estructura de las muestras del Escritorio; los textos, códigos, categorías e imágenes son sintéticos y no se guardó ningún original en git.
 - Verificación: lint aprobado; 1.210/1.210 pruebas unitarias; build aprobado; Playwright de importación 25/25 a Chromium, con 360/412/1440 px donde corresponde; e2e de la extensión 3 escenarios. La primera corrida de Playwright reveló que el mock compartía mutablemente la lista entre pruebas; se aisló con un clon por ejecución y la suite completa pasó.
-- El paquete se genera con la allowlist del publicador y contiene supplier-capture-ui.js; la key/ID derivan igual que la versión anterior. La web todavía debe recibir este commit para publicar el ZIP y su manifiesto; luego hay que comprobar HTTP 200, version 0.6.0 y que el hash público corresponda al ZIP.
+- El paquete se genera con la allowlist del publicador y contiene supplier-capture-ui.js; la key/ID derivan igual que la versión anterior. Vercel informó `success` para `d2f3967` y para el disparador `586cbe6`, pero el dominio sigue sirviendo el bundle anterior: `/` referencia `index-CNVCYkt5.js` y `Stock-B0iwDUyJ.js`, que no contiene el importador. La ruta de chunk local nueva cae en el fallback HTML. `npx vercel inspect` confirmó que esta sesión no está autenticada; por eso no pude promover ni verificar el frontend en Current. I37 no queda cerrado hasta que la app publicada sirva el código nuevo.
 # 2026-11-08 — I35 e I36 verificados en producción
 
 - Incorporé el orden I35 → I36 y las dos secciones nuevas del `ACTION_PLAN.md` del Escritorio; conservé el resto del plan y sus marcas previas.
