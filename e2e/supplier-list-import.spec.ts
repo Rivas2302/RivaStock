@@ -23,20 +23,27 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
-    await page.addInitScript(texts => {
+    await page.addInitScript(({ texts, hangWorkerCreation, hangFirstRecognition }) => {
       let index = 0;
       Object.defineProperty(window, '__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__', {
         configurable: false,
-        value: () => ({
-          recognize: async () => ({ data: { text: texts[Math.min(index++, texts.length - 1)] || '' } }),
-          terminate: async () => undefined,
-        }),
+        value: () => hangWorkerCreation ? new Promise(() => undefined) : (() => {
+          let recognitionIndex = 0;
+          return {
+            recognize: async () => {
+              const current = recognitionIndex++;
+              if (hangFirstRecognition && current === 0) return new Promise(() => undefined);
+              return { data: { text: texts[Math.min(index++, texts.length - 1)] || '' } };
+            },
+            terminate: async () => undefined,
+          };
+        })(),
       });
-    }, options.ocrTexts ?? ['']);
+    }, { texts: options.ocrTexts ?? [''], hangWorkerCreation: options.hangWorkerCreation ?? false, hangFirstRecognition: options.hangFirstRecognition ?? false });
   }
   const products: Record<string, unknown>[] = options.photoScanFixture ? [
     { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
@@ -326,7 +333,7 @@ async function openMobileSupplierImportFromStock(page: Page) {
 }
 
 async function continueSupplierImportToReview(page: Page, importRegion: ReturnType<Page['getByRole']>) {
-  await expect(importRegion.getByText(/Revisamos \d+ fotos;/)).toBeVisible();
+  await expect(importRegion.getByText(/Revisamos \d+ fotos:/)).toBeVisible();
   await importRegion.getByRole('button', { name: 'Seguir: revisar' }).click();
   await expect(page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '3. Revisar' }))
     .toHaveAttribute('aria-current', 'step');
@@ -504,6 +511,62 @@ test('real Spanish OCR loads its worker, core and language model from the app or
   expect(products[0].custom_fields).toBeUndefined();
   expect(bulkCalls).toEqual([]);
   expect(pageErrors).toEqual([]);
+});
+
+test('a hung supplier OCR recognition advances, marks the photo unreviewed, and leaves products addable', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { products } = await mockApp(page, { hangFirstRecognition: true });
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await expect(modal.getByRole('status').filter({ hasText: 'Revisamos 3 fotos: 2 sin marcas, 0 marcadas y 1 no se pudieron revisar.' })).toBeVisible({ timeout: 35_000 });
+  await modal.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(modal.getByText('No se pudo revisar').first()).toBeVisible();
+  const add = modal.getByRole('button', { name: 'Agregar los 3 listos con foto' });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await confirmSupplierProductImport(page);
+  await expect.poll(() => products.length).toBe(3);
+});
+
+test('a failed supplier photo download advances OCR progress and does not block import', async ({ page }) => {
+  const { products, failImagesAt } = await mockApp(page);
+  failImagesAt(2);
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await expect(modal.getByRole('status').filter({ hasText: 'Revisamos 3 fotos: 2 sin marcas, 0 marcadas y 1 no se pudieron revisar.' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(modal.getByText('No se pudo revisar').first()).toBeVisible();
+  const add = modal.getByRole('button', { name: 'Agregar los 3 listos con foto' });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await confirmSupplierProductImport(page);
+  await expect.poll(() => products.length).toBe(3);
+  await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(2);
+});
+
+test('cancelling supplier OCR leaves photos marked as unreviewed and does not block adding rows', async ({ page }) => {
+  const { products } = await mockApp(page, { hangWorkerCreation: true });
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await expect(modal.getByRole('button', { name: 'Cancelar análisis' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Cancelar análisis' }).click();
+  await expect(modal.getByRole('status').filter({ hasText: 'Análisis cancelado. Las fotos quedaron como "Foto sin revisar".' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(modal.getByText('Foto sin revisar').first()).toBeVisible();
+  const add = modal.getByRole('button', { name: 'Agregar los 3 listos con foto' });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await confirmSupplierProductImport(page);
+  await expect.poll(() => products.length).toBe(3);
 });
 
 test('supplier catalog import reviews three fixture pages, bulk adds, then updates by SKU on reimport', async ({ page }) => {

@@ -1,6 +1,6 @@
 import type { SupplierListDraftRow } from './supplierListImport';
 
-export type SupplierPhotoReviewStatus = 'pending' | 'clear' | 'flagged' | 'failed';
+export type SupplierPhotoReviewStatus = 'pending' | 'clear' | 'flagged' | 'failed' | 'unreviewed';
 
 export interface SupplierPhotoReview {
   status: SupplierPhotoReviewStatus;
@@ -150,7 +150,7 @@ export function isSupplierPhotoReviewBlocking(
   hasReplacement: boolean,
 ): boolean {
   const active = getActiveSupplierPhotoReview(review, hasReplacement);
-  return Boolean(active && active.status !== 'clear' && !active.approved);
+  return active?.status === 'flagged' && active.approved !== true;
 }
 
 export function supplierPhotoReviewFields(
@@ -158,7 +158,7 @@ export function supplierPhotoReviewFields(
   hasReplacement: boolean,
 ): Record<string, string | number | boolean | null> | null {
   const active = getActiveSupplierPhotoReview(review, hasReplacement);
-  if (!active || active.status === 'pending' || active.status === 'failed') return null;
+  if (!active || active.status === 'pending' || active.status === 'failed' || active.status === 'unreviewed') return null;
   return {
     supplierPhotoBrandFlag: active.status === 'flagged',
     supplierPhotoBrandApproved: active.status === 'flagged' ? active.approved === true : false,

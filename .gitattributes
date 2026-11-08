@@ -1,3 +1,4 @@
 extensions/facebook/** text eol=lf
+extensions/shared/** text eol=lf
 public/downloads/*.zip binary
 tools/rivastock-ai-bridge/test/fixtures/*.pdf binary

@@ -1,11 +1,12 @@
 // Connection approval and permission request stay inside the extension page.
-import { supplierCaptureStatus } from './supplier-capture-ui.js';
+import { supplierBabajiFullCatalogHint, supplierCaptureStatus } from './supplier-capture-ui.js';
 
 
 const form=document.querySelector('#connect');
 document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
 const supplierStart=document.querySelector('#supplier-start');
 const supplierStatus=document.querySelector('#supplier-status');
+const supplierFullCatalog=document.querySelector('#supplier-full-catalog');
 const supplierProgress=document.querySelector('#supplier-progress');
 const supplierCount=document.querySelector('#supplier-count');
 const supplierBadge=document.querySelector('#supplier-badge');
@@ -41,7 +42,10 @@ async function renderSupplierCapture(){
   supplierFinish.disabled=count===0;
   supplierAllCategories.hidden=state.status!=='categories-available';
   supplierAllCategories.textContent=`Leer todas las categorías (${Math.max(0,(state.categoryUrls?.length??0)-(state.pagesVisited?.length??0))})`;
-  supplierStatus.textContent=supplierCaptureStatus(state);
+  const catalogHint=supplierBabajiFullCatalogHint(state);
+  supplierStatus.textContent=catalogHint?`Esta página muestra ${catalogHint.count} productos. ¿Querés ir a la lista completa?`:supplierCaptureStatus(state);
+  supplierFullCatalog.hidden=!catalogHint;
+  if(catalogHint)supplierFullCatalog.href=catalogHint.url;
 }
 supplierStart.addEventListener('click',async()=>{
   supplierStart.disabled=true;

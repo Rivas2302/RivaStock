@@ -76,6 +76,7 @@ import { planSupplierImport, type SupplierImportReviewEntry } from '../lib/suppl
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
+import { SUPPLIER_PHOTO_TIMEOUT_MS, withSupplierPhotoTimeout } from '../lib/supplierPhotoTimeout';
 import { createSupplierPhotoOcrWorker, getActiveSupplierPhotoReview, inspectSupplierPhotoBrand, isSupplierPhotoReviewBlocking, normalizeSupplierImportRow, supplierPhotoReviewFields, type SupplierPhotoBrandIndicators, type SupplierPhotoReview } from '../lib/supplierPrivacy';
 import { getSupplierAssetStoragePath } from '../lib/supplierPhotoStorage';
 import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupplierImportBatch, type SupplierImportRemovalPreview } from '../lib/resellerSupplierRemoval';
@@ -388,6 +389,7 @@ export default function ResellerPriceListModal({
   const [supplierNameCleanupBusy, setSupplierNameCleanupBusy] = useState(false);
   const [supplierNameCleanupNotice, setSupplierNameCleanupNotice] = useState<string | null>(null);
   const supplierPhotoOcrRun = useRef(0);
+  const supplierPhotoOcrRows = useRef<number[]>([]);
   const [supplierImportProductIdsByRow, setSupplierImportProductIdsByRow] = useState<Record<number, string>>({});
   const [supplierImportPageUrl, setSupplierImportPageUrl] = useState('');
   const [supplierImportIncludesTax, setSupplierImportIncludesTax] = useState<boolean | null>(null);
@@ -1370,6 +1372,7 @@ export default function ResellerPriceListModal({
     if (candidates.length === 0) return;
     const run = ++supplierPhotoOcrRun.current;
     const candidateRows = new Set(candidates.map(row => row.sourceRow));
+    supplierPhotoOcrRows.current = Array.from(candidateRows);
     setSupplierImportRows(current => current.map(row => candidateRows.has(row.sourceRow)
       ? { ...row, photoBrandReview: { ...row.photoBrandReview, source: { status: 'pending', matches: [] } } }
       : row));
@@ -1378,29 +1381,47 @@ export default function ResellerPriceListModal({
     setSupplierPhotoOcrNotice(null);
     let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
     let flagged = 0;
-    let processed = 0;
+    let analysed = 0;
     try {
-      worker = await createSupplierPhotoOcrWorker();
+      worker = await withSupplierPhotoTimeout(
+        createSupplierPhotoOcrWorker,
+        SUPPLIER_PHOTO_TIMEOUT_MS.worker,
+        'worker',
+      );
       const failures = await processSupplierPhotoBatch(candidates, async row => {
         if (supplierPhotoOcrRun.current !== run) return;
         const sourceUrl = getSupplierCatalogImageUrl(row.imageUrl, supplierUrl);
         if (!sourceUrl) throw new Error('Foto fuera del dominio de la lista.');
         let file: File;
         try {
-          file = await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+          file = await withSupplierPhotoTimeout(
+            () => fetchSupplierCatalogImage(sourceUrl, supplierUrl),
+            SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
+            'catalogDownload',
+          );
         } catch (serverError) {
           if (!captureId) throw serverError;
-          file = await fetchSupplierCaptureImage(captureId, sourceUrl);
+          file = await withSupplierPhotoTimeout(
+            () => fetchSupplierCaptureImage(captureId, sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
+            SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
+            'extensionResponse',
+          );
           setSupplierImportPhotoFiles(current => ({ ...current, [row.sourceRow]: file }));
         }
+        if (supplierPhotoOcrRun.current !== run) return;
         if (!file) throw new Error('No se pudo leer la foto.');
-        const detection = await inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker!);
+        const detection = await withSupplierPhotoTimeout(
+          () => inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker!),
+          SUPPLIER_PHOTO_TIMEOUT_MS.recognition,
+          'recognition',
+        );
+        if (supplierPhotoOcrRun.current !== run) return;
         if (detection.flagged) flagged++;
         setSupplierImportRows(current => current.map(item => item.sourceRow === row.sourceRow
           ? { ...item, photoBrandReview: { ...item.photoBrandReview, source: { status: detection.flagged ? 'flagged' : 'clear', matches: detection.matches } } }
           : item));
-        processed++;
-        if (processed % 5 === 0) await yieldToBrowser();
+        analysed++;
+        if (analysed % 5 === 0) await yieldToBrowser();
       }, (done, total) => {
         if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress({ done, total });
       }, row => {
@@ -1410,18 +1431,29 @@ export default function ResellerPriceListModal({
       });
       if (supplierPhotoOcrRun.current !== run) return;
       setSupplierPhotoOcrFailures(failures);
-      setSupplierPhotoOcrNotice(`Revisamos ${candidates.length} fotos; ${flagged} quedaron marcadas con texto asociado al proveedor.`);
+      const clear = Math.max(0, analysed - flagged);
+      setSupplierPhotoOcrNotice(`Revisamos ${candidates.length} fotos: ${clear} sin marcas, ${flagged} marcadas y ${failures} no se pudieron revisar.`);
     } catch {
       if (supplierPhotoOcrRun.current === run) {
         setSupplierImportRows(current => current.map(row => candidateRows.has(row.sourceRow)
           ? { ...row, photoBrandReview: { ...row.photoBrandReview, source: { status: 'failed', matches: [] } } }
           : row));
         setSupplierPhotoOcrFailures(candidates.length);
-        setSupplierPhotoOcrNotice('No pudimos analizar algunas fotos. Revisalas antes de agregarlas.');
+        setSupplierPhotoOcrProgress({ done: candidates.length, total: candidates.length });
+        setSupplierPhotoOcrNotice(`Revisamos ${candidates.length} fotos: 0 sin marcas, 0 marcadas y ${candidates.length} no se pudieron revisar.`);
       }
     } finally {
-      await worker?.terminate();
-      if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress(null);
+      if (worker) {
+        await withSupplierPhotoTimeout(
+          () => worker!.terminate(),
+          SUPPLIER_PHOTO_TIMEOUT_MS.terminate,
+          'terminate',
+        ).catch(() => undefined);
+      }
+      if (supplierPhotoOcrRun.current === run) {
+        supplierPhotoOcrRows.current = [];
+        setSupplierPhotoOcrProgress(null);
+      }
     }
   };
 
@@ -1436,8 +1468,16 @@ export default function ResellerPriceListModal({
       : row));
     let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
     try {
-      worker = await createSupplierPhotoOcrWorker();
-      const detection = await inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker);
+      worker = await withSupplierPhotoTimeout(
+        createSupplierPhotoOcrWorker,
+        SUPPLIER_PHOTO_TIMEOUT_MS.worker,
+        'worker',
+      );
+      const detection = await withSupplierPhotoTimeout(
+        () => inspectSupplierPhotoBrand(file, supplierPhotoIndicators(supplier, supplierUrl), worker!),
+        SUPPLIER_PHOTO_TIMEOUT_MS.recognition,
+        'recognition',
+      );
       setSupplierImportRows(current => current.map(row => row.sourceRow === sourceRow
         ? { ...row, photoBrandReview: { ...row.photoBrandReview, replacement: { status: detection.flagged ? 'flagged' : 'clear', matches: detection.matches } } }
         : row));
@@ -1446,7 +1486,13 @@ export default function ResellerPriceListModal({
         ? { ...row, photoBrandReview: { ...row.photoBrandReview, replacement: { status: 'failed', matches: [] } } }
         : row));
     } finally {
-      await worker?.terminate();
+      if (worker) {
+        await withSupplierPhotoTimeout(
+          () => worker!.terminate(),
+          SUPPLIER_PHOTO_TIMEOUT_MS.terminate,
+          'terminate',
+        ).catch(() => undefined);
+      }
     }
   };
 
@@ -1505,6 +1551,7 @@ export default function ResellerPriceListModal({
     }
     const supplier = suppliers.find(item => item.id === editingSupplierId);
     const run = ++supplierPhotoOcrRun.current;
+    supplierPhotoOcrRows.current = [];
     const findings = new Map<string, Array<{ index: number; matches: string[] }>>();
     let worker: Awaited<ReturnType<typeof createSupplierPhotoOcrWorker>> | undefined;
     let processed = 0;
@@ -1512,15 +1559,27 @@ export default function ResellerPriceListModal({
     setSupplierPhotoOcrFailures(0);
     setSupplierPhotoOcrNotice(null);
     try {
-      worker = await createSupplierPhotoOcrWorker();
+      worker = await withSupplierPhotoTimeout(
+        createSupplierPhotoOcrWorker,
+        SUPPLIER_PHOTO_TIMEOUT_MS.worker,
+        'worker',
+      );
       const failures = await processSupplierPhotoBatch(targets, async target => {
         if (supplierPhotoOcrRun.current !== run) return;
         const thumbnailUrl = getProductThumbnailUrl(target.url);
         const storagePath = getSupplierAssetStoragePath(thumbnailUrl, supabaseProjectUrl);
         if (!storagePath) throw new Error('Foto fuera del almacenamiento del negocio.');
-        const { data, error: downloadError } = await supabase.storage.from('assets').download(storagePath);
+        const { data, error: downloadError } = await withSupplierPhotoTimeout(
+          () => supabase.storage.from('assets').download(storagePath),
+          SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
+          'catalogDownload',
+        );
         if (downloadError || !data) throw new Error('No se pudo leer la miniatura.');
-        const detection = await inspectSupplierPhotoBrand(data, supplierPhotoIndicators(supplier, supplier?.catalogUrl ?? ''), worker!);
+        const detection = await withSupplierPhotoTimeout(
+          () => inspectSupplierPhotoBrand(data, supplierPhotoIndicators(supplier, supplier?.catalogUrl ?? ''), worker!),
+          SUPPLIER_PHOTO_TIMEOUT_MS.recognition,
+          'recognition',
+        );
         if (detection.flagged) {
           findings.set(target.product.id, [...(findings.get(target.product.id) ?? []), { index: target.index, matches: detection.matches }]);
         }
@@ -1554,9 +1613,28 @@ export default function ResellerPriceListModal({
     } catch {
       if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrNotice('No pudimos terminar el análisis de fotos importadas. Podés volver a intentarlo.');
     } finally {
-      await worker?.terminate();
+      if (worker) {
+        await withSupplierPhotoTimeout(
+          () => worker!.terminate(),
+          SUPPLIER_PHOTO_TIMEOUT_MS.terminate,
+          'terminate',
+        ).catch(() => undefined);
+      }
       if (supplierPhotoOcrRun.current === run) setSupplierPhotoOcrProgress(null);
     }
+  };
+
+  const cancelSupplierPhotoAnalysis = () => {
+    if (!supplierPhotoOcrProgress) return;
+    supplierPhotoOcrRun.current += 1;
+    const pendingRows = new Set(supplierPhotoOcrRows.current);
+    supplierPhotoOcrRows.current = [];
+    setSupplierImportRows(current => current.map(row => pendingRows.has(row.sourceRow)
+      ? { ...row, photoBrandReview: { ...row.photoBrandReview, source: { status: 'unreviewed', matches: [] } } }
+      : row));
+    setSupplierPhotoOcrProgress(null);
+    setSupplierPhotoOcrFailures(0);
+    setSupplierPhotoOcrNotice('Análisis cancelado. Las fotos quedaron como "Foto sin revisar".');
   };
 
   const [supplierExtensionHelpOpen, setSupplierExtensionHelpOpen] = useState(false);
@@ -1853,10 +1931,18 @@ export default function ResellerPriceListModal({
         let file = target.file ?? null;
         if (!file && sourceUrl) {
           try {
-            file = await fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl);
+            file = await withSupplierPhotoTimeout(
+              () => fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl),
+              SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
+              'catalogDownload',
+            );
           } catch (serverError) {
             if (!supplierExtensionCaptureId) throw serverError;
-            file = await fetchSupplierCaptureImage(supplierExtensionCaptureId, sourceUrl);
+            file = await withSupplierPhotoTimeout(
+              () => fetchSupplierCaptureImage(supplierExtensionCaptureId, sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
+              SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
+              'extensionResponse',
+            );
           }
         }
         if (!file) throw new Error('No se encontró una foto válida.');
@@ -2356,8 +2442,8 @@ export default function ResellerPriceListModal({
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           </div>
                           {supplierNameCleanupNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierNameCleanupNotice}</p>}
-                          {supplierPhotoOcrProgress && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">Analizando fotos: {supplierPhotoOcrProgress.done} de {supplierPhotoOcrProgress.total}. Podés seguir usando la pantalla.</p>}
-                          {supplierPhotoOcrNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierPhotoOcrNotice}{supplierPhotoOcrFailures > 0 ? ` ${supplierPhotoOcrFailures} fotos no se pudieron analizar.` : ''}</p>}
+                          {supplierPhotoOcrProgress && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]"><p role="status">Analizando fotos: {supplierPhotoOcrProgress.done} de {supplierPhotoOcrProgress.total}. Podés seguir usando la pantalla.</p><button type="button" onClick={cancelSupplierPhotoAnalysis} className="min-h-9 rounded-lg border border-[var(--line)] px-3 font-semibold">Cancelar análisis</button></div>}
+                          {supplierPhotoOcrNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierPhotoOcrNotice}{supplierPhotoOcrFailures > 0 && !supplierPhotoOcrNotice.includes('no se pudieron revisar') ? ` ${supplierPhotoOcrFailures} fotos no se pudieron analizar.` : ''}</p>}
                           {supplierImportRows.length > 0 && <>
                             {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm text-[var(--ink)]"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportRateNotice && <p aria-live="polite" className="text-xs text-[var(--ink-muted)]">{supplierImportRateNotice}</p>}{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
                               <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} onBlur={event => { const rate = Number(event.currentTarget.value); if (rate > 0) void persistSupplierImportRate(rate); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" placeholder="Ingresá la cotización"/>
@@ -2416,11 +2502,12 @@ export default function ResellerPriceListModal({
                                 const previewUrl = hasPhoto && /^https?:\/\//i.test(previewCandidate ?? '') ? previewCandidate : null;
                                 const rowStatus = activePhotoReview?.status === 'pending' ? 'Analizando foto'
                                   : activePhotoReview?.status === 'flagged' && !activePhotoReview.approved ? 'Con marca del proveedor'
-                                    : activePhotoReview?.status === 'failed' && !activePhotoReview.approved ? 'Sin analizar'
+                                    : activePhotoReview?.status === 'failed' && !activePhotoReview.approved ? 'No se pudo revisar'
+                                      : activePhotoReview?.status === 'unreviewed' ? 'Foto sin revisar'
                                       : entry.action === 'review' ? 'Revisar' : hasPhoto ? 'Listo' : 'Sin foto';
-                                const rowStatusClass = rowStatus === 'Con marca del proveedor' || rowStatus === 'Sin analizar' || rowStatus === 'Revisar'
+                                const rowStatusClass = rowStatus === 'Con marca del proveedor' || rowStatus === 'Revisar'
                                   ? 'bg-rose-50 text-rose-700'
-                                  : rowStatus === 'Sin foto' ? 'bg-amber-50 text-amber-800'
+                                  : rowStatus === 'Sin foto' || rowStatus === 'No se pudo revisar' || rowStatus === 'Foto sin revisar' ? 'bg-amber-50 text-amber-800'
                                     : rowStatus === 'Analizando foto' ? 'bg-[var(--surface-2)] text-[var(--ink-muted)]'
                                       : 'bg-[var(--surface-2)] text-[var(--ink-muted)]';
                                 return <article key={row.sourceRow} className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">

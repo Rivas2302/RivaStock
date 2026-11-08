@@ -672,6 +672,7 @@ Riva probó el catálogo después de I18b y reporta los siguientes problemas:
 1. **I29** Revendedores también en el celular (chico y urgente: Riva usa el celular la mitad del tiempo).
 2. **I30** Que los clientes no descubran al proveedor. **Bloquea** cargar productos de Mr Tecno al catálogo: hoy los nombres llevan el código del proveedor.
 3. **I31** Ajustes como la maqueta, «Cambiar código» y correcciones contra las maquetas.
+3b. **I35 → I36 → I37** (celular, asistente de márgenes, importador universal con la extensión). Agregado el 08/11.
 4. Riva prueba cargando una tanda chica de Mr Tecno (ej. «zapatero») y después el resto. Codex no crea productos reales.
 5. Email de pedidos (I22): elegir una opción gratis sin dominio propio. Pendiente de decisión de Riva.
 6. Futuro: revisión de la estructura de la app (4e) y Bloque J. No empezar sin OK.
@@ -751,7 +752,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px de punta a punta (importar → precios → revisar → agregar filtrados) sin crear productos reales, capturas de cada paso en tema claro y oscuro, y rutas viejas que no se rompan.
 
-### [x] I29 Revendedores también en el celular — **pedido de Riva el 07/11 20:56 («Obviamente quiero que esté presente en el celular»)**
+### [ ] I29 Revendedores también en el celular — **pedido de Riva el 07/11 20:56 («Obviamente quiero que esté presente en el celular»)**
 
 **Problema:** en I28 se agregó `desktopOnly: true` a «Revendedores» (`src/components/AppNavigation.tsx`), así que en el celular no aparece en el menú. Fue una mala lectura de «el menú del celular no se toca»: lo que Riva quería es que **no se rediseñe** el menú, no que falte Revendedores.
 
@@ -790,7 +791,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px: cambiar el código desde Ajustes **solo con fixtures o en el entorno local** (el código real está guardado como hash y no se puede restaurar: **nunca cambiarlo en producción**); y que los ajustes se guarden sin tocar otra pestaña. Capturas de Ajustes comparadas con la maqueta.
 
-### [x] I32 Deshacer una importación de proveedor (borrado masivo seguro) — **pedido de Riva el 07/11 21:24 (URGENTE, va primero)**
+### [ ] I32 Deshacer una importación de proveedor (borrado masivo seguro) — **pedido de Riva el 07/11 21:24 (URGENTE, va primero)**
 
 **Situación:** Riva agregó ~800 productos de Mr Tecno con «Agregar los listos» (antes de I30, así que los nombres llevan el código del proveedor, por ejemplo «HM352 – …»), y quiere poder borrarlos. Hoy la app **no tiene borrado masivo** (Stock solo borra de a uno). La importación también creó **categorías nuevas** (las de Mr Tecno, en mayúsculas) y subió fotos al Storage.
 
@@ -807,7 +808,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** tests de la RPC con PGlite: borra solo los del proveedor y del dueño, respeta las ventas y otro dueño no puede borrar. Playwright con fixtures: confirmación con números → progreso → lista vacía. Deploy en **Current**.
 
-### [x] I33 Acciones en lote en «Lista de precios» — **pedido de Riva el 07/11 21:48**
+### [ ] I33 Acciones en lote en «Lista de precios» — **pedido de Riva el 07/11 21:48**
 
 **Pedido:** «Me gustaría sacar de la lista de revendedores los productos que tengo en stock, pero son muchos y tengo que desmarcar uno por uno». Hoy **no existe** ninguna acción en lote en la pestaña Lista de precios (verificado en `origin/main`). Además, esa pestaña sigue con las tarjetas grandes viejas, no con la tabla de la maqueta `docs/design/revendedores-v2/ListaPrecios.dc.html`.
 
@@ -821,7 +822,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px con fixtures: filtrar «Mi stock» → elegir todos → quitar → deshacer → quitar; y que el catálogo de revendedores refleje el cambio. No tocar la lista real de Riva en producción.
 
-### [x] I34 🔴 URGENTE: la app solo carga 1.000 productos — **detectado el 07/11 23:11 (va antes que todo lo demás)**
+### [ ] I34 🔴 URGENTE: la app solo carga 1.000 productos — **detectado el 07/11 23:11 (va antes que todo lo demás)**
 
 **Problema (verificado en `origin/main`):** `db.list` y `db.listColumns` (`src/lib/db.ts`, ~líneas 440-470) hacen `supabase.from(tbl).select(...)` **sin paginar**. Supabase devuelve como máximo **1.000 filas**. Con los productos de Mr Tecno, Riva tiene ~1.330 productos (463 propios + 867 importados), así que **en toda la app se cargan solo 1.000, en un orden cualquiera**: Stock, Ventas, POS, Presupuestos, Ingresos, Consulta rápida, Calculadora, Inicio, Buscar y enviar, la IA y Revendedores. Síntomas que vio Riva: «Todos · 1000» en Lista de precios, y «En la lista · 1» con la tabla vacía: el «Auricular Bluetooth P47» sigue en la lista de revendedores y aparece en el catálogo, pero no se cargó en la pantalla, así que la acción en lote de I33 no lo pudo quitar. **Riva podría no encontrar productos propios al vender.**
 
@@ -832,6 +833,249 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 4. Contadores: «Todos · N» tiene que mostrar el total real.
 5. Test: fixture con 2.500 productos → todas las pantallas principales los ven todos; la acción en lote de I33 alcanza a los que no estaban en la primera página.
 6. Después del deploy, verificar **solo leyendo** en producción que Lista de precios muestre el total real (~1.330) y que «En la lista» muestre el P47.
+
+### [ ] I35 Revendedores en el celular: que se vea como la maqueta — **pedido de Riva el 08/11 09:47 (con capturas)**
+
+**Problemas vistos en el celular (360-412 px):**
+- Las 5 pestañas se acomodan en una grilla de 2 columnas que ocupa media pantalla. Tienen que ser **una fila con scroll horizontal**, como `MovilResumen.dc.html`.
+- **Lista de precios** se ve como la tabla de PC con scroll horizontal: no se ve el nombre y el precio juntos. En el celular tiene que ser una **lista de filas** (miniatura 52 px, nombre en 1-2 líneas, «Mi stock / Mr Tecno · categoría», a la derecha precio revendedor y «ganás $…») con la casilla para elegir; al tocar la fila se abre la edición (regla de precio y disponibilidad) en una hoja inferior.
+- El estado «Fuera de la lista» se parte en 3 líneas y deja un «—» suelto: usar punto de color y texto corto en una línea («En la lista» / «Fuera»).
+- Sobretítulo «RELACIONES» encima del título: sacarlo (DESIGN.md: sin sobretítulos).
+- «Crear producto por pedido» es un botón blanco enorme: en el celular va al menú «⋯» o como botón secundario chico.
+- Los botones «Ver PDF / Descargar / Guardar lista» quedan sueltos al pie: en el celular, barra fija abajo solo cuando hay cambios sin guardar; PDF en «⋯».
+- La barra de acciones en lote (I33) tiene que quedar fija arriba de la barra inferior de la app, sin taparla.
+
+**Verificación:** capturas a 360 px y 412 px de cada pestaña, comparadas con las maquetas; sin scroll horizontal de página (`scrollWidth <= clientWidth`); test e2e de elegir 3 productos y quitarlos de la lista desde el celular (con fixtures).
+
+### [ ] I36 Asistente de márgenes por escalones — **pedido de Riva el 08/11 09:47**
+
+**Problema:** con un mismo % para todo, o queda caro o queda regalado. Ejemplo de Riva: perfumes de ~$16.000 que solo le dejan ~$3.000. Quiere que al revendedor le quede barato **y** él gane, por ejemplo, unos $5.000.
+
+**Idea (motor de reglas, sin IA obligatoria):** la ganancia de Riva se calcula por **escalones de costo**, con un **mínimo y un máximo en pesos**:
+- Tabla editable de escalones; **cada escalón es un % o un monto fijo en pesos** (valores iniciales sugeridos, Riva los ajusta): costo hasta $5.000 → +40 %; $5.000 a $15.000 → +30 %; $15.000 a $30.000 → **ganancia fija $5.000**; más de $30.000 → +18 %.
+- Opcional por escalón: mínimo y máximo en pesos (no un mínimo global, porque encarecería de más los productos baratos).
+- Excepciones por categoría (Perfumes, Joysticks…) y por producto, que pisan el escalón.
+- Redondeo (exacto / $100 / $500) igual que hoy.
+
+**Pantalla:** en Revendedores › Ajustes › «Cómo calculás tu ganancia», con **simulador**: muestra 6 productos reales de distintos precios con costo → precio revendedor → ganás → público sugerido, y se recalcula al mover cualquier valor. Abajo, el impacto: «Con estas reglas: 412 productos suben, 120 bajan, ganancia promedio $4.800 por producto». Botón «Aplicar a la lista» con confirmación propia y «Deshacer».
+
+**Sugerencias automáticas:** en Lista de precios, un filtro nuevo «Ganancia baja» (por debajo del mínimo en pesos) y, para cada uno, «Sugerido: $X (ganás $Y)» con «Aplicar» por fila o en lote.
+
+**IA (opcional, después):** botón «Pedir sugerencia a la IA» que manda a la central un resumen anónimo (categorías, rangos de costo y precios actuales, sin datos de clientes) y devuelve una propuesta de escalones con explicación, que Riva acepta o no. Tandas de menos de 7.000 caracteres.
+
+**Confirmado por Riva (08/11 09:54):** los escalones van **por costo** (lo que le cuesta a Riva). Orden de prioridad: **producto puntual → categoría → escalón**. Cantidad de escalones libre (2 a 10) y cortes editables. No hace falta maqueta aparte: seguir el estilo de `docs/design/revendedores-v2/Ajustes.dc.html` y `Precios.dc.html` (filas planas, −/+, segmentado %/$ por escalón, ejemplo en vivo como el de Precios). El simulador también tiene que funcionar en el celular (I35).
+Aplicar las mismas reglas en el paso **Precios** de la importación de proveedores (Mr Tecno), para que los productos importados nazcan con estos márgenes.
+
+**Verificación:** tests de la fórmula (mínimo, máximo, escalones, excepciones, redondeo), simulador con fixtures, e2e de «Aplicar a la lista» y «Deshacer» sin tocar la lista real de Riva.
+
+### [ ] I37 Importador universal con la extensión de Chrome — **pedido de Riva el 08/11 10:06. Arquitectura: Claude. Ejecuta: Codex.**
+
+**Objetivo de Riva:** «Que funcione y que sea lo más sencillo posible importar una lista», de **cualquier tienda**. Caso real que motivó esto: `https://brajamayorista.com/tienda/centro/productos` (791 productos, sin login, precios en ARS). Es una app de JavaScript: el HTML viene vacío y el navegador pide los productos en JSON. Por eso `fetch-url` no puede leerla.
+
+**Principio de diseño:** la extensión **lee lo que el navegador de Riva ya recibió y muestra**: el JSON que la página cargó, los datos estructurados y las tarjetas en pantalla. **Nunca** consulta por su cuenta la API privada del proveedor ni manda cookies o datos de sesión a RivaStock. Solo actúa cuando Riva lo pide y en el sitio que Riva autoriza.
+
+**Experiencia esperada (3 toques):**
+1. En la tienda del proveedor, Riva toca el ícono de RivaStock → **«Importar productos de esta página»**.
+2. La primera vez en ese sitio, Chrome pide permiso para ese dominio solo («Permitir que RivaStock lea brajamayorista.com»). La página se recarga sola, y la extensión **lee, pasa de página o hace scroll sola** y muestra «Leyendo… 320 productos». Si la tienda tiene una paginación rara, Riva puede navegar a mano mientras la lectura sigue activa: todo lo que se vea se suma.
+3. Toca **«Terminar y llevar a RivaStock»**: se abre `rivastock.vercel.app/revendedores` en **Importar**, con los productos cargados, para elegir el proveedor y seguir con **Precios → Revisar y agregar** (escalones de I36, nombres sin código de I30, fotos comprimidas de I27).
+
+---
+
+#### Proveedores reales de referencia (OBLIGATORIOS) — relevados por Claude el 08/11
+
+La I37 se da por terminada cuando funciona con **estos 6 proveedores de Riva**. Cada uno representa un tipo de tienda distinto:
+
+| Proveedor | URL | Tipo (verificado) | Cómo se lee | Detalles que hay que resolver |
+|---|---|---|---|---|
+| **Mr Tecno** | `mrtecno.com.ar/productos/` | WooCommerce. Store API pública. Precios en **USD** (`minor_unit 2`) | Enlace (ya anda) y extensión | Cotización (I26); nombres «HM352 – …» (I30) |
+| **Inova** | `inovaarg.com/tienda/page/4` | WooCommerce 11.2 (WordPress 7.1). Store API pública. **ARS con `minor_unit 0`**. ~43 productos por página | Enlace (debería andar por la Store API) y extensión | **`sku` vacío**: para reimportar sin duplicar, usar como código el `id` del producto o el `permalink`. Hay productos con precio **$0**: «Sin precio, revisar» |
+| **Braja** | `brajamayorista.com/tienda/centro/productos` | App propia hecha con JavaScript (Vite/React). El HTML viene vacío y los productos llegan en **JSON por GET** desde su API. 791 productos, de a 40 por página, con selector «Mostrar N» | Extensión: captura del JSON (estrategia A) | Elegir el valor más alto de «Mostrar». Un carrusel de «Destacados» repite productos: deduplicar por SKU. Formato «SKU: NAV009» y «$ 3.600,00» |
+| **Mayorista Omega** | `mayoristaomega.com/#catalogo` | App propia con JavaScript. Navegación por `#hash`. Pide los productos con **`POST /api.php`** (FormData). Hay scroll infinito o «cargar más». Campos tipo `nombre`, `precio`, `precioU`, `precio_original`, `codigo`, `codigo_barras`, `imagen` | Extensión: captura del JSON de **respuestas a POST** | El gancho de red tiene que capturar `fetch` y `XMLHttpRequest` **con cualquier método** (POST incluido). Precio actual frente a `precio_original` (tachado). Scroll infinito |
+| **Oestech** | `oestech.com.ar/catalogo2024.php` | PHP armado en el servidor, **detrás de una clave de acceso** (sin clave responde «No ingreso clave de acceso») | Extensión: tarjetas del DOM (estrategia C), **después de que Riva ingresa la clave** | Tarjeta: título «(BLN-004) SET DE BOLAS DE NAVIDAD…», categoría «\*NAVIDAD\*», «Cód.: 004CM-X6», «Cant. p/bulto: 400», precio «$950», carrusel con varias fotos, campos «Su comentario» y «Cant.», y botones **«Agregar» / «Ver pedido»**. Probablemente es **una sola página larga** con fotos que cargan al hacer scroll |
+| **Babaji** | `babaji.com.ar/catalogo2022x3.php` | **El mismo sistema que Oestech** (misma respuesta «No ingreso clave de acceso» y misma forma de URL) | Igual que Oestech | Igual que Oestech |
+
+**Oestech, relevado de la muestra real (`tmp/proveedores/oestech.html`, 1,4 MB, 08/11):**
+- Estructura de cada producto: `.caja_producto > .contenedor_producto`; el título va en `.descrip h1` («(BLN-004) SET DE BOLAS DE NAVIDAD PLASTICO X6 PCS»); hay un ancla `<a name="004CM-X6">`; las fotos están en un carrusel Bootstrap (`.carousel-inner .item img[data-codigo]`, a veces 2 o más, y la «activa» no siempre es la primera del DOM); la categoría va en `p.rubro_centrado` («\*NAVIDAD\*», «AURICULARES»…, **sacar los asteriscos**); el código, en `p.datos1` «Cód.: 004CM-X6»; las unidades por bulto, en `p.datos1` «Cant. p/bulto: 400»; el precio, en `p.datos strong` «$950»; y hay un formulario `agregar_al_carrito.php?cod=…` con `input[type=submit][value=Agregar]` y `input[name=cant]`.
+- **Trampa 1, imagen falsa:** cada tarjeta trae `p.video_centrado img` (`boton_video_falso.jpg`). **No es foto del producto**: tomar solo las imágenes del carrusel o las que tengan `data-codigo` igual al código.
+- **Trampa 2, flechas que no son paginación:** cada tarjeta tiene `a.carousel-control[data-slide=next|prev]` (chevrons), y arriba hay un carrusel de categorías con `div.swiper-button-next[aria-label="Next slide"]`. **Ninguno es «siguiente página».** El avance automático **excluye** `[data-slide]`, `.carousel-control`, `.swiper-button-*`, cualquier `[aria-label*=slide]` y todo lo que esté dentro de una tarjeta de producto.
+- **No hay paginación: hay categorías.** La página muestra «NOVEDADES» (279 productos en la muestra) y el catálogo completo se recorre por categorías con enlaces `catalogo2024.php?rub=N#productos` (unas 20, entre ellas «OFERTAS y ULTIMAS UNIDADES»). La extensión tiene que ofrecer **«Leer todas las categorías»**: detectar enlaces a la **misma ruta** que solo cambian un parámetro de consulta (`rub`, `cat`, `categoria`, `page`, `pagina`), visitarlos de a uno (navegación normal con la sesión de Riva, una página por vez, con 1,5 s de espera entre página y página) y deduplicar por código, porque un producto puede estar en NOVEDADES y en su categoría.
+- Fixture `php-cards-long`: armarlo a partir de esta muestra con 10 tarjetas recortadas (incluyendo una con 2 fotos y la imagen falsa del video), precios cambiados, **sin** el resto de la página. **No commitear el archivo original.**
+
+**Babaji, relevado de la muestra real (`tmp/proveedores/babaji.html`, 3,5 MB, 08/11). Mismo sistema que Oestech, pero con OTRO formato:**
+- **924 productos en una sola página** (`catalogo2022x3.php?rub=99999` = todos; también existe `rub=88888`). No hay paginación ni hace falta recorrer categorías: con esta página alcanza.
+- Tarjeta: `.caja_producto > .contenedor_producto`, ancla `<a name="13489">`, título en `h1` («1.5MT C/TECLA 5 TOMAS ALARGUE ZAPATILLA __________»), fotos en `.carousel-inner .item img` (**sin** `data-codigo`; el archivo se llama como el código). Los datos van como **texto suelto con `<br>`**, no en `<p>` con `<strong>`: «Codigo: 13489», «Rubro: ELECTRODOMESTICOS», «Ctdad. por bulto: 100». Precio: `strong.caja_precio_noimptk`. Mismo formulario «Agregar» / «Ver pedido» (`agregar_al_carrito.php`, `ver_compra_vieja.php`): **no tocar nunca**.
+- **Trampa 3, el precio usa la coma como separador de miles:** «$ 37,125» son **treinta y siete mil ciento veinticinco pesos**, no $37,12. Formatos que aparecen: `$ 9,999` (480 productos), `$ 99,999` (403), `$ 999,999` (29), `$ 999` (11) y uno `$ 99,999,999` (sospechoso). En cambio Braja usa «$ 3.600,00» y Oestech «$950». **Regla del normalizador:** si el último separador (`.` o `,`) va seguido de **exactamente 2 dígitos**, es decimal; si va seguido de **exactamente 3**, es separador de miles (y todos los separadores iguales anteriores también). Ante una duda, tomar el formato que más se repite en esa misma página. Precios por encima de $ 5.000.000 se marcan «Revisar precio».
+- **Trampa 4, nombres con relleno:** 710 de 924 títulos terminan en «____». Hay que sacar los guiones bajos finales y los espacios dobles, y decodificar `&amp;` → «&». Las categorías vienen **cortadas** («LED VELADORES & ILUMINACI», «BELLEZA & CUIDADO PERSONA»): usarlas tal cual, en formato normal, sin intentar completarlas.
+- **Trampa 5, paréntesis que NO son código:** «(SIN CAMBIO) VENTILADOR…» es una aclaración comercial (sin cambio, sin devolución), no un código. Regla: un paréntesis al principio cuenta como código solo si **no tiene espacios y tiene al menos un dígito** («(BLN-004)» sí; «(SIN CAMBIO)» no). Si no es código, se saca del nombre y se muestra como **etiqueta** en Revisar («Sin cambio»), guardada en `notes`.
+- Códigos de modelo al principio del nombre sin guion de separación («1002-L TERMO STANLEY…», «OR-L991 LICUADORA…») **se dejan** en el nombre: son del fabricante, no del proveedor. El código del proveedor es el de «Codigo:».
+- «Ctdad. por bulto:» vacío en 160 productos: `packSize = null`, sin error.
+- `caja_precio_noimptk` podría indicar un precio **sin impuestos**, pero **Riva no sabe si estos proveedores publican con o sin IVA (08/11)**. Por eso, **no preseleccionar nada**: en el paso Precios, la pregunta «¿Los precios incluyen IVA?» queda sin elegir y es obligatoria la primera vez para cada proveedor. Después se **recuerda por proveedor** y se puede cambiar. Para Babaji, mostrar debajo una pista suave: «La página de este proveedor marca los precios como “sin impuesto”; si no estás seguro, consultale».
+- Fixture `php-cards-long-babaji`: 10 tarjetas recortadas de esta muestra, incluyendo «(SIN CAMBIO)», relleno «____», precio «$ 99,999», bulto vacío y categoría con `&amp;`, con precios cambiados. **No commitear el original.**
+
+
+**Respuestas de Riva (08/11 10:40), obligatorias para el diseño:**
+- **Oestech y Babaji recuerdan la clave mientras se navega:** después de ingresar, tocar una categoría muestra los productos. Recorrer las categorías con navegación normal (GET, misma pestaña, misma sesión) funciona.
+- **El precio publicado es por unidad.** «Cant. p/bulto» es **solo informativo** (por si conviene comprar el bulto) y **Riva puede pedir por unidad**. Por eso `packSize` se muestra como dato («Bulto: 400, opcional») y **no** se usa para calcular el costo, ni como mínimo, ni en los encargos.
+- **IVA:** Riva no sabe cuál de estos proveedores publica con o sin IVA. Ver la regla de Babaji: nada preseleccionado, se pregunta la primera vez y se recuerda por proveedor.
+
+**Reglas que salen de estos casos (obligatorias):**
+1. **Nunca hacer clic en botones de compra ni de formulario.** El avance automático solo toca controles de paginación: «Siguiente», «›», `rel=next`, números de página, «Ver más» o «Cargar más» **fuera de las tarjetas de producto**. Lista negra de textos: «Agregar», «Añadir», «Comprar», «Ver pedido», «Carrito», «Pedido», «Enviar», «WhatsApp», «Consultar». Nunca enviar formularios ni escribir en campos (como «Cant.» o «Su comentario» de Oestech).
+2. **Código del proveedor:** si la tarjeta tiene «Cód.:» o «SKU:», ese es el `code`. Si además el título trae un código entre paréntesis o con guion al principio («(BLN-004) …», «HM352 – …»), sacarlo del nombre (I30) y guardarlo como `altCode`. Si no hay ningún código (Inova), usar el `id` o el `permalink` de la fuente.
+3. **Unidades por bulto:** leer «Cant. p/bulto», «Ctdad. por bulto», «x bulto», «Bulto:» o «Mínimo:» como `packSize` y mostrarlo en Revisar como dato informativo («Bulto: 400, opcional»). El precio es **por unidad** (confirmado por Riva) y `packSize` no cambia costos ni mínimos.
+4. **Fotos:** tomar la **primera** foto del carrusel como principal y guardar hasta 4 más en `images[]`. Antes de leer, hacer scroll por toda la lista para que carguen las fotos diferidas (`data-src`, `srcset`).
+5. **Página única larga (Oestech, Babaji):** si no hay paginación, hacer scroll hasta el final, esperar a que dejen de aparecer productos durante 3 s, y listo.
+6. **Precio $0, «Consultar» o vacío:** «Sin precio, revisar». Nunca se importa con costo 0.
+7. **Moneda:** `ARS` por defecto si el símbolo es «$» y el sitio es `.com.ar` o está en español de Argentina. `USD` solo si lo dice («USD», «U$S», `currency_code`).
+8. **Sitios con clave o login:** la extensión no pide ni guarda claves. Si la página muestra «clave de acceso», «iniciar sesión» o no encuentra productos, el popup dice: «Ingresá primero con tu clave en la página del proveedor y después tocá Importar».
+
+**Muestras para los fixtures: YA ESTÁN** en `tmp/proveedores/oestech.html` y `tmp/proveedores/babaji.html` (las cargó Claude el 08/11). Antes: Codex no tiene la clave de Oestech ni la de Babaji. Riva guarda una muestra de cada página **después de ingresar la clave** (Chrome → Ctrl+S → «Página web, solo HTML») en `tmp/proveedores/oestech.html` y `tmp/proveedores/babaji.html` (carpeta fuera de git). Codex arma con eso fixtures **recortados y anonimizados**: 10 tarjetas, precios cambiados y sin datos del cliente, en `e2e/fixtures/stores/`. **Nunca commitear las páginas originales**: el primer commit de I37 agrega `tmp/proveedores/` al `.gitignore` (hoy `tmp/` **no** está ignorado) y Codex verifica con `git check-ignore` antes de tocar esas muestras. Además, agregar a `OWNER_ACTIONS.md` el paso para Riva: entrar con la clave, bajar hasta el final, Ctrl+S → «Página web, solo HTML» → `tmp\proveedores\oestech.html` y `babaji.html`. Si las muestras todavía no están, Codex arma fixtures a partir de la descripción de la tarjeta de esta tabla y lo anota en `STATUS.md`.
+
+**Pruebas reales de solo lectura que tiene que hacer Codex (sin llevar nada a producción):** Mr Tecno, Inova (por enlace y por extensión), Braja y Mayorista Omega, en un perfil local con la extensión. Por cada una, reportar en el resumen: productos leídos, con foto, con código y sin precio, y 3 precios comparados contra lo que se ve en la página. Oestech y Babaji los prueba Riva (tienen clave): dejar en `OWNER_ACTIONS.md` el paso a paso.
+
+#### Fase 1 — Motor de extracción (módulo puro, testeable) · `commit: feat(import): universal product extraction engine`
+Archivo nuevo compartido `extensions/shared/product-extract.js` (JS sin dependencias, usable desde la extensión y desde los tests de Vitest). Recibe «evidencias» y devuelve `{ items:[{ key, code, name, price, listPrice, currency, category, imageUrl, url, raw }], source, warnings }`.
+Estrategias, **todas a la vez**, combinadas por puntaje:
+- **A. JSON de red capturado:** recorrer recursivamente los JSON que la página recibió (ver Fase 2) y detectar **arreglos de objetos con forma de producto**: un campo de nombre (`name|nombre|title|titulo|descripcion`), uno de precio (`price|precio|amount|importe|valor|prices.*`) y, si hay, `sku|codigo|code|id`, `image|imagen|images[0]|foto|thumbnail|picture` y `category|categoria|rubro`. Puntaje por cantidad de objetos y por campos presentes. Esta estrategia resuelve Braja y la mayoría de las tiendas hechas a medida.
+- **B. Datos estructurados en la página:** JSON-LD `Product`/`ItemList`/`Offer`, microdata `itemprop`, y estados embebidos (`__NEXT_DATA__`, `__NUXT__`, `window.__INITIAL_STATE__`, `<script type="application/json">`).
+- **C. Tarjetas del DOM:** buscar contenedores que se repiten (mismo padre y misma estructura de clases), cada uno con imagen, texto y un precio con formato de moneda. Tomar `img` (`src`, `srcset`, `data-src` y `data-lazy` por la carga diferida), el texto principal como nombre y textos tipo «SKU: X» o «Cód.» como código.
+- **Normalizadores:** precios argentinos e internacionales (`$ 15.700,00`, `$15.700`, `15700`, `USD 6,25`, `U$S`, centavos en `minor_unit`); si hay precio tachado y precio actual, `price` es el actual y `listPrice` el tachado; si hay **varios precios con etiqueta** (mayorista/minorista), guardar los dos y marcar `warnings`. Nombres: decodificar entidades HTML, sacar espacios dobles y pasar de MAYÚSCULAS a formato normal. Las URL de imagen siempre absolutas y en `https`.
+- **Deduplicar** por `code`; si no hay código, por `name + price`. Así se descartan los «Destacados» que repiten productos de la lista.
+- Límites: hasta 5.000 productos y textos recortados (nombre de 200 caracteres como máximo).
+- **Tests (Vitest) con fixtures guardados en `e2e/fixtures/stores/`:** `spa-json` (cascarón con JSON paginado de 40 por página, imitando a Braja), `spa-post-json` (respuestas a `POST /api.php` con scroll infinito, imitando a Mayorista Omega), `php-cards-long` (Oestech: «(COD) Nombre / Cód.: / Cant. p/bulto / $950 / Agregar / Ver pedido», foto falsa del video y recorrido por categorías), `php-cards-long-babaji` (Babaji: texto suelto «Codigo: / Rubro: / Ctdad. por bulto:», precios «$ 37,125» con coma de miles, títulos con «____» y «(SIN CAMBIO)»), `woocommerce-sku-vacio` (imitando a Inova, ARS con `minor_unit 0`), `woocommerce-dom`, `tiendanube-dom`, `jsonld-itemlist`, `next-data`, `infinite-scroll`, `precio-tachado`, `mayorista-minorista` y `sin-productos` (tiene que dar 0 sin inventar). Meta: ≥ 99 % de los productos en `spa-json` y ≥ 95 % con nombre, precio y foto correctos en los de DOM.
+
+#### Fase 2 — Captura en la extensión · `commit: feat(extension): capture products from the current page`
+Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `key` y el ID quedan igual. Renombrar la extensión a **«RivaStock»**, con la descripción «Publica en Facebook e importa listas de proveedores», y subir a la versión **0.6.0**.
+- Popup (`connect.html`): una sección nueva **«Importar productos de esta página»** con un botón principal, un contador en vivo y los botones «Terminar y llevar a RivaStock» y «Cancelar». La parte de Facebook queda igual.
+- Permiso: al tocar el botón, `chrome.permissions.request({ origins: [origen de la pestaña] })`, **solo ese dominio**. `<all_urls>` ya está declarado como opcional. Si Riva rechaza, se explica para qué sirve y se ofrece reintentar.
+- Captura de red: `chrome.scripting.registerContentScripts` con `world: 'MAIN'`, `runAt: 'document_start'` y `matches` = ese origen, **solo mientras dura la lectura**. El script envuelve `fetch` y `XMLHttpRequest` y copia **solo las respuestas JSON** de hasta 5 MB cada una, sin tocar ni mandar headers ni cookies. Las pasa por `window.postMessage` a un content script aislado, que se las da al motor. Después recarga la pestaña para capturar desde el principio. Al terminar o cancelar, se desregistra el script.
+- Lectura del DOM: el content script aislado corre el motor con el DOM actual y con cada cambio (`MutationObserver` con un pequeño retardo).
+- **Avance automático:** detectar «Siguiente», «›», `rel=next`, números de página o un botón «Ver más» y hacer clic. Si es scroll infinito, bajar hasta que no aparezcan más productos. Si hay un selector de «Mostrar N productos», elegir el valor más alto. Límites: 150 páginas o 5.000 productos, y cortar si 3 páginas seguidas no suman productos nuevos. Siempre se puede navegar a mano mientras la lectura está activa.
+- Estado en `chrome.storage.session` (con `chrome.storage.local` como respaldo) por pestaña: los productos acumulados, el origen y la hora. El badge del ícono muestra la cantidad.
+- No correr en `rivastock.vercel.app`, `facebook.com`, sitios de bancos ni páginas `chrome://`.
+
+#### Fase 3 — Pasaje a RivaStock sin guardar nada en el servidor · `commit: feat(resellers): receive captured supplier products from the extension`
+- Al tocar «Terminar», la extensión guarda la captura con un `captureId` aleatorio y abre `https://rivastock.vercel.app/revendedores?importar=extension&captura=<captureId>`.
+- La app pide los datos con `chrome.runtime.sendMessage(EXTENSION_ID, { type: 'rivastock-get-capture', captureId, offset })`, **en tandas de 500**. Ampliar `trustedPairingSender` para aceptar la ruta `/revendedores` (con las mismas reglas: `frameId 0`, origen exacto). La captura se borra de la extensión cuando la app confirma que la recibió, o a las 24 horas.
+- En RivaStock, el **Paso 1 · Importar** suma la opción **«Desde la extensión de Chrome»**: muestra «Recibimos 791 productos de brajamayorista.com», pide el proveedor (o crear uno nuevo con el nombre del sitio) y sigue con **Precios → Revisar y agregar**, reusando todo lo de I24 a I36: moneda (si la captura viene en ARS no se pide cotización), escalones, «Solo con foto», escaneo de marcas, nombres sin código y reimportación que actualiza por `code`.
+- Fotos: las URL capturadas pasan por el modo imagen de `fetch-url` y se comprimen como en I27. Si el sitio bloquea la descarga desde el servidor, la extensión las baja desde la pestaña (tiene permiso de ese origen) y las manda como `Blob` en la misma transferencia, con un máximo de 400 KB cada una antes de comprimir.
+- Validación de todo lo que llega, porque es información no confiable: tipos, longitudes, URL `https` y precios numéricos > 0.
+
+#### Fase 4 — Guía y mensajes · `commit: docs(import): guide users to the universal importer`
+- Cuando `fetch-url` no encuentra productos (página de JavaScript, como Braja), el error dice: **«Esta tienda carga los productos con JavaScript. Abrila en Chrome en tu PC y tocá el ícono de RivaStock → Importar productos de esta página.»**, con el botón «Cómo hacerlo» que abre una ayuda de 3 pasos con capturas.
+- En el celular, el mismo mensaje aclara que se hace desde la PC.
+- Si la extensión no está instalada o está desactualizada, botón «Instalar o actualizar la extensión», con el flujo que ya existe.
+
+#### Fase 5 — Pruebas y verificación real · `commit: test(import): universal importer end to end`
+- Playwright con Chromium cargando la extensión sin empaquetar y los fixtures servidos en local: leer → avanzar páginas → terminar → abrir RivaStock en local → Revisar con los números correctos. Casos: `spa-json`, `infinite-scroll` y `woocommerce-dom`.
+- **Prueba real de solo lectura con Braja:** en un perfil local de prueba, abrir `https://brajamayorista.com/tienda/centro/productos` con la extensión, leer hasta el final y verificar **cuántos productos captura (meta: 791 ± diferencias de stock), cuántos con foto y SKU**, y que los precios coincidan con 5 productos a la vista (por ejemplo «Alargue zapatilla 9 enchufes · PS-341 · $11.900»). **No** llevar la captura a producción ni crear productos.
+- Prueba con Mr Tecno por la extensión: tiene que dar el mismo resultado que por enlace.
+- Publicar la versión 0.6.0 por el mecanismo de actualización que ya existe (C0) y dejar en `OWNER_ACTIONS.md` los pasos para Riva, si hace falta algo de su lado.
+
+**Fuera de alcance (no hacer):** adaptadores por proveedor, llamadas directas desde nuestro servidor a la API privada de una tienda, saltar captchas o protecciones anti-bots y leer sitios que piden login sin que Riva haya iniciado sesión él mismo.
+
+**Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
+
+### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
+
+**Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
+
+**Causa probable (verificado en `origin/main`):** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Si la hoja se dibuja fuera de ese contenedor (portal o hermano), la variable no existe y el fondo queda transparente. La barra inferior (`MobileNavigation.css`, `z-index` 30 a 50) queda arriba, seguramente porque la hoja vive dentro de un contexto de apilamiento con `z-index` menor.
+
+**Qué hacer:**
+1. Dibujar la hoja con un **portal a `document.body`**, envuelto en un contenedor con la clase `.reseller-module-page` (o mover los tokens a `:root` / `:root.dark`), para que **todas** las variables existan. Revisar que **ningún** elemento flotante de Revendedores (hojas, barras de acciones en lote, confirmaciones y el «Deshacer») use variables que no existan en donde se dibuja.
+2. `z-index` de la hoja y de su fondo oscuro **por encima de la barra inferior** (por ejemplo 100), y **ocultar la barra inferior y el botón «+» mientras la hoja está abierta**.
+3. `padding-bottom` de la hoja = `env(safe-area-inset-bottom)` + 16 px. Bloquear el scroll del fondo mientras está abierta y devolver el foco al cerrar.
+4. Lo mismo para la **barra de acciones en lote** de I33 (Riva lo confirmó con captura a las 11:38: con 3 elegidos, la barra sale transparente encima de la lista y los botones se pisan con los productos) y para las confirmaciones propias de I32, I33 e I36 en el celular.
+5. **Barra de acciones en lote en el celular, ordenada:** fondo sólido `surface-1`, borde superior, fija **arriba** de la zona de la barra inferior (o reemplazándola mientras hay elegidos). Primera fila: «3 elegidos» a la izquierda y «Cancelar» a la derecha. Segunda fila: «Agregar a la lista» (principal) y «Quitar de la lista». Tercera fila, o un menú «⋯»: «Disponible / Por pedido» y «Aplicar ganancia sugerida (N)». Nada de textos encimados: cada botón con 44 px de alto como mínimo y el texto en una línea. Agregar padding inferior a la lista para que el último producto no quede tapado por la barra.
+
+**Verificación (obligatoria):** Playwright a 360 y 412 px. Tocar un producto y comprobar que:
+- el `backgroundColor` calculado de la hoja **no es transparente**;
+- `document.elementFromPoint` en el centro del botón «Agregar a la lista» devuelve ese botón y no la barra de navegación;
+- la barra inferior no se ve mientras la hoja está abierta.
+
+Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
+
+### [ ] I39 Reglas del negocio de revendedores en la app — **definidas por Riva el 08/11 12:40** (documento: https://claude.ai/artifact/NU8ScdfEo1Ef4Us4Pdsyiw)
+
+**Modelo:** los revendedores **piden cuando quieren** y **pagan por adelantado**. Riva junta los pedidos y hace un solo pedido al proveedor. El envío se cobra aparte, **al costo**. Riva entrega en su domicilio en General Pico; afuera de Pico (La Pampa) hay un recargo por zona y la entrega es con viaje de Riva o por comisionista. Hoy se lanza a mano: esta tarea automatiza lo manual. Va **después de I37 e I38**.
+
+1. **Pedido siempre abierto por proveedor** (reemplaza las rondas con fecha de cierre de I19, sin romper las que ya existen). En Encargos, cada proveedor tiene un «lote actual» que acepta pedidos. El botón «Hacer pedido al proveedor» cierra ese lote, genera el pedido consolidado (PDF, WhatsApp y «Crear compra», que ya existen) y abre el siguiente. En el lote cerrado, Riva carga la **fecha estimada de llegada**, que se le avisa a cada revendedor.
+2. **Mínimo por proveedor y por revendedor** (ej. Mr Tecno: $150.000, editable en cada proveedor). Un pedido por debajo del mínimo se acepta como **«En espera»**: el revendedor **paga igual**, y el catálogo le explica que se confirma cuando, entre todos los pedidos en espera, se junta el mínimo, o cuando Riva hace el pedido. La app **avisa a Riva** cuando la suma de los pedidos en espera de un proveedor llega al mínimo. «Hacer pedido al proveedor» incluye los pedidos en espera. Si en **15 días** (editable) un pedido en espera no se confirma, se marca para que el revendedor elija devolución o saldo a favor.
+3. **Envío dividido:** cuando el lote llega, Riva carga el costo real de Vía Cargo. RivaStock lo **divide en proporción al monto** de cada pedido del lote (redondeando a $10, con la diferencia de redondeo en el último) y lo muestra en cada pedido como «Envío a pagar al retirar». Sin ganancia para Riva.
+4. **Zonas:** al pedir, el revendedor elige «General Pico (retiro en domicilio de Riva)» u «Otra localidad de La Pampa» (lista de localidades, editable). Para las otras localidades, los precios llevan un **recargo % configurable** (inicial 10 %). En Encargos, los pedidos se agrupan por localidad con la cuenta «¿conviene viajar?»: recargo cobrado en esa localidad frente al costo del viaje (Riva carga km ida y vuelta, km por litro, precio del litro y horas por el valor de su hora) y frente al costo del comisionista.
+5. **Faltantes:** en un pedido del lote, Riva marca qué producto no vino y cuántos. El revendedor recibe por WhatsApp el monto que le corresponde y la pregunta «¿devolución o saldo a favor?». Riva registra la respuesta. El **saldo a favor** queda en la ficha del revendedor y **se descuenta solo** en su próximo pedido.
+6. **Políticas visibles en el catálogo de revendedores:** una sección «Cómo comprar» con el texto del documento: mínimo por proveedor, pedidos en espera, pago, envío dividido, retiro en el domicilio, recargo afuera de Pico, faltantes, garantía del proveedor y productos «Sin cambio». Editable desde Ajustes.
+7. **Avisos por WhatsApp con un botón** (sin envío automático): pedido en espera, fecha de llegada, «llegó tu pedido» con el envío que le toca, y faltante. Los textos base están en el documento y son editables.
+8. Sin datos de pago en el sistema (como en I19): el pago se coordina por WhatsApp y Riva lo marca a mano.
+
+**Verificación:** tests de la división del envío (proporción y redondeo), del cambio a «En espera», del aviso al juntar el mínimo, del recargo por zona y del saldo a favor aplicado. E2E con fixtures del circuito completo: pedido chico en espera → otro pedido junta el mínimo → aviso → hacer pedido → llega → cargar envío → cada uno ve su parte → faltante → saldo → próximo pedido con descuento. Nada en la base real de Riva.
+
+### [ ] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
+
+**Problema (verificado en `origin/main`):** los productos importados de proveedores (`catalogOnly = true`, disponibilidad «por pedido») aparecen en **Stock** y en el buscador de **Nueva venta** como «Sin stock». Captura de Riva: en Nueva venta aparecen «Marcadores virales…», «Ventilador 18…» y «Auricular bluetooth x37», todos de Mr Tecno. `Stock.tsx` solo los filtra para la lista de precios en PDF (`priceListProducts`, ~línea 275); `Sales.tsx`, `POS.tsx`, `Quotes.tsx` y el resto no los filtran. Riva quiere: **«no me gusta que los productos que importé en la lista de revendedores se vean en mi stock ni en el módulo de ventas»**.
+
+**Qué hacer:**
+1. Una sola función `isOwnInventoryProduct(product)` (`!catalogOnly`, más cualquier otra marca de producto de proveedor que exista), usada **en todos** estos lugares, que muestran solo productos propios: Stock (lista, filtros, contadores, reposición sugerida, inversión, etiquetas, PDF), Ventas (Nueva venta y edición), POS, Presupuestos, Consulta rápida, Calculadora, Buscar y enviar (fotos), Ingresos de mercadería, Inicio (indicadores de stock y valor de inventario), Reportes (valor de stock) y Facebook/automatizaciones (selector de productos).
+2. Los productos de proveedores se ven y se editan **solo en Revendedores** (Lista de precios, con el origen «Mr Tecno», etc.) y en el catálogo de revendedores. En el catálogo **minorista público** tampoco aparecen, salvo que Riva active para ese producto «Ofrecer también al público por pedido» (si esa opción ya existe; si no, no se agrega ahora).
+3. **No borrar ni migrar datos:** es solo un filtro de vista. Buscar (`git grep`) cualquier otro listado de productos (`db.list<Product>('products'…)`, `listColumns`) y decidir caso por caso.
+4. Si algún día Riva le vende a un cliente final un producto por pedido, eso se hace desde Encargos (I39), no desde Nueva venta.
+
+**Verificación:** test unitario de `isOwnInventoryProduct`. E2E con fixtures (un producto propio y uno de proveedor): el de proveedor no aparece en Stock, Nueva venta, POS, Presupuestos ni Consulta rápida, y sí aparece en Revendedores. Contadores de Stock e Inicio sin los de proveedor.
+
+### [ ] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
+
+**Pedido:** «Un botón con o sin envío, así no tengo que sumarlo a mano en el flujo de caja».
+
+**Qué hacer:**
+1. En **Nueva venta** (y en edición de venta, POS y Presupuestos, con el mismo componente): un interruptor **«Con envío»** debajo de Descuento/Recargo. Al activarlo aparece el campo **«Costo de envío»** con `MoneyInput`, precargado con el **último monto usado** (editable). Hay un ajuste en Configuración → Ventas, «Envío por defecto», opcional.
+2. El total pasa a ser: subtotal − descuento + recargo + **envío**. El resumen muestra una línea «Envío $X» aparte.
+3. Guardar el envío en la venta como **campo propio** (`shipping_amount`, migración nueva, con default 0 y sin tocar las ventas viejas). **No** sumarlo al precio de los productos, para que la ganancia y los reportes de productos no se distorsionen.
+4. **Flujo de caja:** al cobrar la venta, el envío entra en el **mismo movimiento** de la venta, con el detalle «incluye envío $X», o como movimiento de ingreso aparte con la categoría **«Envíos»**. Elegir lo que encaje mejor con la estructura actual de caja y anotarlo en `STATUS.md`. Lo importante es que Riva **no lo tenga que cargar a mano**. Si la venta queda pendiente de cobro o en cuenta corriente, el envío sigue el mismo estado.
+5. Reportes: en Ventas o Reportes, el total de envíos cobrados del período aparece separado de las ventas de productos.
+6. Comprobante o mensaje de WhatsApp de la venta: con la línea «Envío».
+
+**Verificación:** tests del total con y sin envío, con descuento y recargo; de que la caja refleja el envío sin carga manual; y de que la ganancia por producto no cambia. E2E: venta con envío → caja con el ingreso correcto. Migración solo la nueva; nada en la base real.
+
+### [ ] I42 Importar el catálogo de otra cuenta de RivaStock como proveedor — **Riva, 08/11 14:25 (reemplaza la versión anterior de I42)**
+
+**Decisión de Riva:** su mamá tiene **su propia cuenta de RivaStock** (otro negocio, con todas las funciones; la crea Riva). Riva quiere **solo lo suyo** en su cuenta. Cuando ella tenga sus productos cargados, Riva **importa la lista de ella a su catálogo**. **No** hay vínculo en vivo entre las cuentas, ni rol de titular, ni catálogo compartido.
+
+**Diseño:** la mamá funciona como **un proveedor más** de Riva. Se reusa todo el importador (I24 a I37): Precios → Revisar y agregar, «Solo con foto», reimportación que actualiza sin duplicar e I40 (sus productos **no** aparecen en Stock ni en Ventas de Riva).
+
+**Qué hacer:**
+1. En «Importar lista del proveedor», cuando el enlace sea un catálogo de RivaStock (`https://rivastock.vercel.app/catalogo/<slug>` y la vista de producto `…/<slug>/<productId>`), leerlo **directo desde nuestro sistema**, con la misma lectura pública que usa el catálogo (RPC o consulta pública existente). Sin `fetch-url` y sin extensión, así que funciona también desde el celular. Solo productos **visibles al público** de ese catálogo: nada privado de la otra cuenta (costos, stock interno ni datos de clientes). Si el catálogo tiene la sección de revendedores protegida con código, **no** se lee esa sección.
+2. Datos: nombre, precio público como costo para Riva, categoría, fotos (copiadas y comprimidas como en I27) y un código estable (el `productId` de origen) para reimportar sin duplicar.
+3. En Revisar, mostrar el origen («Catálogo de [nombre del negocio]»). En el paso Precios, permitir **margen 0 %** («mismo precio que su catálogo»). Para este proveedor, agregar la opción **«Mostrar en mi catálogo público»** (por defecto activada), porque Riva quiere estos productos en su catálogo y no solo en Revendedores. I40 los sigue ocultando de Stock y Ventas.
+4. Los pedidos de esos productos funcionan como cualquier producto por pedido de un proveedor (Encargos), y Riva coordina con su mamá.
+5. Cuando la mamá ya trabaje con su cuenta, el titular «Vicky» de la cuenta de Riva queda para que Riva lo archive desde Configuración → Titulares (no automático; dejarlo en `OWNER_ACTIONS.md`).
+
+**Verificación:** test de la lectura del catálogo de otra cuenta, que solo trae lo público, con un fixture de dos negocios. E2E: importar el catálogo B en el negocio A → los productos aparecen en el catálogo público de A y en Revendedores, no en Stock ni en Ventas → reimportar actualiza precios sin duplicar. Nada en la base real.
+
+### [ ] I43 🔴 URGENTE: el análisis de fotos se queda trabado y no deja agregar productos — **Riva, 08/11 15:13 (con capturas, Babaji por extensión)**
+
+**Síntoma:** después de importar Babaji con la extensión, Revisar muestra «Analizando fotos: 0 de 8» y cada fila dice «Analizando foto» para siempre. El resumen queda en «0 listos · 8 para revisar» y el botón «Agregar los 0 listos con foto» está deshabilitado. **Riva no puede agregar nada.**
+
+**Diagnóstico (Claude, sobre `origin/main`):**
+- `isSupplierPhotoReviewBlocking` (`src/lib/supplierPrivacy.ts`) **bloquea cualquier estado distinto de `clear`** (`pending` y `failed` incluidos) mientras no esté aprobado a mano. Una foto que nunca termina de analizarse bloquea el producto para siempre.
+- `scanSupplierImportPhotos` (`ResellerPriceListModal.tsx` ~1363) **no tiene límite de tiempo** en ningún paso: `createSupplierPhotoOcrWorker()`, `fetchSupplierCatalogImage()` (que pasa por `fetch-url` en modo imagen, con un límite de 8 consultas por minuto), el plan B `fetchSupplierCaptureImage()` (mensaje a la extensión, que puede no contestar nunca) y `worker.recognize()`. Si cualquiera se cuelga, el progreso queda en «0 de N» para siempre. Los archivos de Tesseract en producción **sí existen** (`/tesseract/worker.min.js`, `core/*.wasm.js`, `lang/4.0.0_best_int/spa.traineddata.gz`, todos con 200), así que lo más probable es la descarga de la foto (límite de consultas o la extensión que no contesta).
+
+**CAUSA RAÍZ PROBABLE (Claude, verificado en los headers de producción, 08/11 15:20):** la política de seguridad del sitio (`vercel.json`, header `Content-Security-Policy`) tiene **`script-src 'self'` sin `'wasm-unsafe-eval'`**. Tesseract necesita compilar **WebAssembly**, y Chrome lo **bloquea** con esa política: el worker de OCR no arranca y `createWorker()` se queda esperando o falla. Por eso «0 de 8». **Además, ninguna prueba lo detectó**, porque `e2e/supplier-list-import.spec.ts` **reemplaza el OCR por uno falso** (`__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__`) y las pruebas no corren con los headers de producción. Probablemente también estén rotos en producción el **OCR de capturas** (I24) y el de **PDF escaneados** (I24 fase 2), que usan el mismo Tesseract.
+
+**Arreglo de la causa (obligatorio, primero):**
+- Agregar **`'wasm-unsafe-eval'`** a `script-src` en `vercel.json`: permite compilar WebAssembly, **no** habilita `eval` de JavaScript. Revisar que el worker (`/tesseract/worker.min.js`) y su core reciban esa misma política.
+- **Prueba real sin simulaciones:** un Playwright que levanta el build de producción (`vite build` + `vite preview` o un servidor estático) **aplicando exactamente los headers de `vercel.json`**, y corre el OCR **real** (sin `__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__`) sobre 3 imágenes de prueba: una con «www.proveedor.com» en una esquina (tiene que quedar **marcada**), una limpia (`clear`) y una captura de lista de precios (tiene que leer el texto). Esta prueba entra en la suite normal para que no vuelva a pasar.
+- Después del deploy, verificar en el sitio publicado que el header incluye `'wasm-unsafe-eval'`.
+- **Criterio de «funciona bien»:** con las 8 fotos de Babaji y una tanda de 50 de Mr Tecno, el análisis **termina** en menos de 1 minuto cada 10 fotos en una PC normal, con ≥ 95 % de las fotos analizadas (`clear` o `flagged`) y **no** `failed`. Reportar el número en el resumen.
+
+**Qué hacer además (para que nunca vuelva a trabar):**
+1. **El análisis de fotos nunca bloquea.** Solo bloquea una foto **marcada** con texto del proveedor (`flagged`). `pending` y `failed` **no** bloquean: el producto queda «Listo» con una etiqueta chica («Foto sin revisar» o «No se pudo revisar la foto»). Riva lo puede agregar y después correr «Analizar fotos importadas».
+2. **Límites de tiempo con `AbortSignal` o `Promise.race`:** crear el OCR, 30 s; descargar cada foto, 15 s; respuesta de la extensión, 10 s; reconocer cada foto, 20 s. Al vencer, esa foto queda `failed` y se sigue con la próxima.
+3. **El progreso siempre avanza:** contar como «hecha» también la que falla. Mostrar «Revisamos 8 fotos: 7 sin marcas, 1 no se pudo revisar». Agregar un botón **«Cancelar análisis»** que deja todo como «Foto sin revisar».
+4. **Descargas de fotos:** que el modo imagen de `fetch-url` tenga su **propio límite**, más alto o por tandas (por ejemplo 60 por minuto), separado del de páginas. Si el servidor no puede bajar la foto, usar la que la extensión ya mandó (`Blob`) **antes** de pedírsela de nuevo.
+5. **Babaji leyó solo 8 productos** y la página tiene 924 (relevado en `tmp/proveedores/babaji.html`). Investigar con el fixture y en solo lectura: si Riva estaba en una vista filtrada, el popup tiene que avisar «Esta página muestra 8 productos; ¿querés ir a la lista completa?» (enlace `catalogo2022x3.php?rub=99999` o equivalente). Si no, corregir la lectura de tarjetas de Babaji (datos en texto suelto con `<br>`).
+6. **Error de precio en Precios:** en el ejemplo, el «público sugerido» sale **igual** al precio revendedor ($2.660 y $2.660). Tiene que ser el precio revendedor dividido por (1 − descuento general), como en I24. Revisar la fórmula después de I36.
+
+**Verificación:** e2e con fixtures en los que el OCR **se cuelga** y en los que la foto **no descarga**: el progreso llega al final en menos de 1 minuto y los productos se pueden agregar. Unit tests de `isSupplierPhotoReviewBlocking` (solo `flagged` bloquea). Fixture de Babaji con 924 tarjetas: se leen ≥ 900. Deploy en **Current**, verificado en el sitio publicado.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 
@@ -1021,168 +1265,3 @@ Sos el agente ejecutor autónomo de RivaStock. Riva no va a estar disponible: no
 6) STATUS.md es tu memoria: leelo antes de cada tarea y actualizalo después. Si la sesión se corta, una sesión nueva debe poder seguir solo con este prompt.
 7) No me escribas hasta que no quede nada que avanzar sin mí; entonces mandá un único mensaje con el formato de §9.
 ```
-
-## 4f. Orden de ejecución actualizado por Riva el 08/11/2026: I35 → I36
-
-### [x] I35 Revendedores en el celular: que se vea como la maqueta — **pedido de Riva el 08/11 09:47 (con capturas)**
-
-**Problemas vistos en el celular (360-412 px):**
-- Las 5 pestañas se acomodan en una grilla de 2 columnas que ocupa media pantalla. Tienen que ser **una fila con scroll horizontal**, como `MovilResumen.dc.html`.
-- **Lista de precios** se ve como la tabla de PC con scroll horizontal: no se ve el nombre y el precio juntos. En el celular tiene que ser una **lista de filas** (miniatura 52 px, nombre en 1-2 líneas, «Mi stock / Mr Tecno · categoría», a la derecha precio revendedor y «ganás $…») con la casilla para elegir; al tocar la fila se abre la edición (regla de precio y disponibilidad) en una hoja inferior.
-- El estado «Fuera de la lista» se parte en 3 líneas y deja un «—» suelto: usar punto de color y texto corto en una línea («En la lista» / «Fuera»).
-- Sobretítulo «RELACIONES» encima del título: sacarlo (DESIGN.md: sin sobretítulos).
-- «Crear producto por pedido» es un botón blanco enorme: en el celular va al menú «⋯» o como botón secundario chico.
-- Los botones «Ver PDF / Descargar / Guardar lista» quedan sueltos al pie: en el celular, barra fija abajo solo cuando hay cambios sin guardar; PDF en «⋯».
-- La barra de acciones en lote (I33) tiene que quedar fija arriba de la barra inferior de la app, sin taparla.
-
-**Verificación:** capturas a 360 px y 412 px de cada pestaña, comparadas con las maquetas; sin scroll horizontal de página (`scrollWidth <= clientWidth`); test e2e de elegir 3 productos y quitarlos de la lista desde el celular (con fixtures).
-
-
-
-### [x] I36 Asistente de márgenes por escalones — **pedido de Riva el 08/11 09:47**
-
-**Problema:** con un mismo % para todo, o queda caro o queda regalado. Ejemplo de Riva: perfumes de ~$16.000 que solo le dejan ~$3.000. Quiere que al revendedor le quede barato **y** él gane, por ejemplo, unos $5.000.
-
-**Idea (motor de reglas, sin IA obligatoria):** la ganancia de Riva se calcula por **escalones de costo**, con un **mínimo y un máximo en pesos**:
-- Tabla editable de escalones; **cada escalón es un % o un monto fijo en pesos** (valores iniciales sugeridos, Riva los ajusta): costo hasta $5.000 → +40 %; $5.000 a $15.000 → +30 %; $15.000 a $30.000 → **ganancia fija $5.000**; más de $30.000 → +18 %.
-- Opcional por escalón: mínimo y máximo en pesos (no un mínimo global, porque encarecería de más los productos baratos).
-- Excepciones por categoría (Perfumes, Joysticks…) y por producto, que pisan el escalón.
-- Redondeo (exacto / $100 / $500) igual que hoy.
-
-**Pantalla:** en Revendedores › Ajustes › «Cómo calculás tu ganancia», con **simulador**: muestra 6 productos reales de distintos precios con costo → precio revendedor → ganás → público sugerido, y se recalcula al mover cualquier valor. Abajo, el impacto: «Con estas reglas: 412 productos suben, 120 bajan, ganancia promedio $4.800 por producto». Botón «Aplicar a la lista» con confirmación propia y «Deshacer».
-
-**Sugerencias automáticas:** en Lista de precios, un filtro nuevo «Ganancia baja» (por debajo del mínimo en pesos) y, para cada uno, «Sugerido: $X (ganás $Y)» con «Aplicar» por fila o en lote.
-
-**IA (opcional, después):** botón «Pedir sugerencia a la IA» que manda a la central un resumen anónimo (categorías, rangos de costo y precios actuales, sin datos de clientes) y devuelve una propuesta de escalones con explicación, que Riva acepta o no. Tandas de menos de 7.000 caracteres.
-
-**Confirmado por Riva (08/11 09:54):** los escalones van **por costo** (lo que le cuesta a Riva). Orden de prioridad: **producto puntual → categoría → escalón**. Cantidad de escalones libre (2 a 10) y cortes editables. No hace falta maqueta aparte: seguir el estilo de `docs/design/revendedores-v2/Ajustes.dc.html` y `Precios.dc.html` (filas planas, −/+, segmentado %/$ por escalón, ejemplo en vivo como el de Precios). El simulador también tiene que funcionar en el celular (I35).
-Aplicar las mismas reglas en el paso **Precios** de la importación de proveedores (Mr Tecno), para que los productos importados nazcan con estos márgenes.
-
-**Verificación:** tests de la fórmula (mínimo, máximo, escalones, excepciones, redondeo), simulador con fixtures, e2e de «Aplicar a la lista» y «Deshacer» sin tocar la lista real de Riva.
-
-### [ ] I37 Importador universal con la extensión de Chrome — **pedido de Riva el 08/11 10:06. Arquitectura: Claude. Ejecuta: Codex.**
-
-**Objetivo de Riva:** «Que funcione y que sea lo más sencillo posible importar una lista», de **cualquier tienda**. Caso real que motivó esto: `https://brajamayorista.com/tienda/centro/productos` (791 productos, sin login, precios en ARS). Es una app de JavaScript: el HTML viene vacío y el navegador pide los productos en JSON. Por eso `fetch-url` no puede leerla.
-
-**Principio de diseño:** la extensión **lee lo que el navegador de Riva ya recibió y muestra**: el JSON que la página cargó, los datos estructurados y las tarjetas en pantalla. **Nunca** consulta por su cuenta la API privada del proveedor ni manda cookies o datos de sesión a RivaStock. Solo actúa cuando Riva lo pide y en el sitio que Riva autoriza.
-
-**Experiencia esperada (3 toques):**
-1. En la tienda del proveedor, Riva toca el ícono de RivaStock → **«Importar productos de esta página»**.
-2. La primera vez en ese sitio, Chrome pide permiso para ese dominio solo («Permitir que RivaStock lea brajamayorista.com»). La página se recarga sola, y la extensión **lee, pasa de página o hace scroll sola** y muestra «Leyendo… 320 productos». Si la tienda tiene una paginación rara, Riva puede navegar a mano mientras la lectura sigue activa: todo lo que se vea se suma.
-3. Toca **«Terminar y llevar a RivaStock»**: se abre `rivastock.vercel.app/revendedores` en **Importar**, con los productos cargados, para elegir el proveedor y seguir con **Precios → Revisar y agregar** (escalones de I36, nombres sin código de I30, fotos comprimidas de I27).
-
----
-
-#### Proveedores reales de referencia (OBLIGATORIOS) — relevados por Claude el 08/11
-
-La I37 se da por terminada cuando funciona con **estos 6 proveedores de Riva**. Cada uno representa un tipo de tienda distinto:
-
-| Proveedor | URL | Tipo (verificado) | Cómo se lee | Detalles que hay que resolver |
-|---|---|---|---|---|
-| **Mr Tecno** | `mrtecno.com.ar/productos/` | WooCommerce. Store API pública. Precios en **USD** (`minor_unit 2`) | Enlace (ya anda) y extensión | Cotización (I26); nombres «HM352 – …» (I30) |
-| **Inova** | `inovaarg.com/tienda/page/4` | WooCommerce 11.2 (WordPress 7.1). Store API pública. **ARS con `minor_unit 0`**. ~43 productos por página | Enlace (debería andar por la Store API) y extensión | **`sku` vacío**: para reimportar sin duplicar, usar como código el `id` del producto o el `permalink`. Hay productos con precio **$0**: «Sin precio, revisar» |
-| **Braja** | `brajamayorista.com/tienda/centro/productos` | App propia hecha con JavaScript (Vite/React). El HTML viene vacío y los productos llegan en **JSON por GET** desde su API. 791 productos, de a 40 por página, con selector «Mostrar N» | Extensión: captura del JSON (estrategia A) | Elegir el valor más alto de «Mostrar». Un carrusel de «Destacados» repite productos: deduplicar por SKU. Formato «SKU: NAV009» y «$ 3.600,00» |
-| **Mayorista Omega** | `mayoristaomega.com/#catalogo` | App propia con JavaScript. Navegación por `#hash`. Pide los productos con **`POST /api.php`** (FormData). Hay scroll infinito o «cargar más». Campos tipo `nombre`, `precio`, `precioU`, `precio_original`, `codigo`, `codigo_barras`, `imagen` | Extensión: captura del JSON de **respuestas a POST** | El gancho de red tiene que capturar `fetch` y `XMLHttpRequest` **con cualquier método** (POST incluido). Precio actual frente a `precio_original` (tachado). Scroll infinito |
-| **Oestech** | `oestech.com.ar/catalogo2024.php` | PHP armado en el servidor, **detrás de una clave de acceso** (sin clave responde «No ingreso clave de acceso») | Extensión: tarjetas del DOM (estrategia C), **después de que Riva ingresa la clave** | Tarjeta: título «(BLN-004) SET DE BOLAS DE NAVIDAD…», categoría «\*NAVIDAD\*», «Cód.: 004CM-X6», «Cant. p/bulto: 400», precio «$950», carrusel con varias fotos, campos «Su comentario» y «Cant.», y botones **«Agregar» / «Ver pedido»**. Probablemente es **una sola página larga** con fotos que cargan al hacer scroll |
-| **Babaji** | `babaji.com.ar/catalogo2022x3.php` | **El mismo sistema que Oestech** (misma respuesta «No ingreso clave de acceso» y misma forma de URL) | Igual que Oestech | Igual que Oestech |
-
-**Oestech, relevado de la muestra real (`tmp/proveedores/oestech.html`, 1,4 MB, 08/11):**
-- Estructura de cada producto: `.caja_producto > .contenedor_producto`; el título va en `.descrip h1` («(BLN-004) SET DE BOLAS DE NAVIDAD PLASTICO X6 PCS»); hay un ancla `<a name="004CM-X6">`; las fotos están en un carrusel Bootstrap (`.carousel-inner .item img[data-codigo]`, a veces 2 o más, y la «activa» no siempre es la primera del DOM); la categoría va en `p.rubro_centrado` («\*NAVIDAD\*», «AURICULARES»…, **sacar los asteriscos**); el código, en `p.datos1` «Cód.: 004CM-X6»; las unidades por bulto, en `p.datos1` «Cant. p/bulto: 400»; el precio, en `p.datos strong` «$950»; y hay un formulario `agregar_al_carrito.php?cod=…` con `input[type=submit][value=Agregar]` y `input[name=cant]`.
-- **Trampa 1, imagen falsa:** cada tarjeta trae `p.video_centrado img` (`boton_video_falso.jpg`). **No es foto del producto**: tomar solo las imágenes del carrusel o las que tengan `data-codigo` igual al código.
-- **Trampa 2, flechas que no son paginación:** cada tarjeta tiene `a.carousel-control[data-slide=next|prev]` (chevrons), y arriba hay un carrusel de categorías con `div.swiper-button-next[aria-label="Next slide"]`. **Ninguno es «siguiente página».** El avance automático **excluye** `[data-slide]`, `.carousel-control`, `.swiper-button-*`, cualquier `[aria-label*=slide]` y todo lo que esté dentro de una tarjeta de producto.
-- **No hay paginación: hay categorías.** La página muestra «NOVEDADES» (279 productos en la muestra) y el catálogo completo se recorre por categorías con enlaces `catalogo2024.php?rub=N#productos` (unas 20, entre ellas «OFERTAS y ULTIMAS UNIDADES»). La extensión tiene que ofrecer **«Leer todas las categorías»**: detectar enlaces a la **misma ruta** que solo cambian un parámetro de consulta (`rub`, `cat`, `categoria`, `page`, `pagina`), visitarlos de a uno (navegación normal con la sesión de Riva, una página por vez, con 1,5 s de espera entre página y página) y deduplicar por código, porque un producto puede estar en NOVEDADES y en su categoría.
-- Fixture `php-cards-long`: armarlo a partir de esta muestra con 10 tarjetas recortadas (incluyendo una con 2 fotos y la imagen falsa del video), precios cambiados, **sin** el resto de la página. **No commitear el archivo original.**
-
-**Babaji, relevado de la muestra real (`tmp/proveedores/babaji.html`, 3,5 MB, 08/11). Mismo sistema que Oestech, pero con OTRO formato:**
-- **924 productos en una sola página** (`catalogo2022x3.php?rub=99999` = todos; también existe `rub=88888`). No hay paginación ni hace falta recorrer categorías: con esta página alcanza.
-- Tarjeta: `.caja_producto > .contenedor_producto`, ancla `<a name="13489">`, título en `h1` («1.5MT C/TECLA 5 TOMAS ALARGUE ZAPATILLA __________»), fotos en `.carousel-inner .item img` (**sin** `data-codigo`; el archivo se llama como el código). Los datos van como **texto suelto con `<br>`**, no en `<p>` con `<strong>`: «Codigo: 13489», «Rubro: ELECTRODOMESTICOS», «Ctdad. por bulto: 100». Precio: `strong.caja_precio_noimptk`. Mismo formulario «Agregar» / «Ver pedido» (`agregar_al_carrito.php`, `ver_compra_vieja.php`): **no tocar nunca**.
-- **Trampa 3, el precio usa la coma como separador de miles:** «$ 37,125» son **treinta y siete mil ciento veinticinco pesos**, no $37,12. Formatos que aparecen: `$ 9,999` (480 productos), `$ 99,999` (403), `$ 999,999` (29), `$ 999` (11) y uno `$ 99,999,999` (sospechoso). En cambio Braja usa «$ 3.600,00» y Oestech «$950». **Regla del normalizador:** si el último separador (`.` o `,`) va seguido de **exactamente 2 dígitos**, es decimal; si va seguido de **exactamente 3**, es separador de miles (y todos los separadores iguales anteriores también). Ante una duda, tomar el formato que más se repite en esa misma página. Precios por encima de $ 5.000.000 se marcan «Revisar precio».
-- **Trampa 4, nombres con relleno:** 710 de 924 títulos terminan en «____». Hay que sacar los guiones bajos finales y los espacios dobles, y decodificar `&amp;` → «&». Las categorías vienen **cortadas** («LED VELADORES & ILUMINACI», «BELLEZA & CUIDADO PERSONA»): usarlas tal cual, en formato normal, sin intentar completarlas.
-- **Trampa 5, paréntesis que NO son código:** «(SIN CAMBIO) VENTILADOR…» es una aclaración comercial (sin cambio, sin devolución), no un código. Regla: un paréntesis al principio cuenta como código solo si **no tiene espacios y tiene al menos un dígito** («(BLN-004)» sí; «(SIN CAMBIO)» no). Si no es código, se saca del nombre y se muestra como **etiqueta** en Revisar («Sin cambio»), guardada en `notes`.
-- Códigos de modelo al principio del nombre sin guion de separación («1002-L TERMO STANLEY…», «OR-L991 LICUADORA…») **se dejan** en el nombre: son del fabricante, no del proveedor. El código del proveedor es el de «Codigo:».
-- «Ctdad. por bulto:» vacío en 160 productos: `packSize = null`, sin error.
-- `caja_precio_noimptk` podría indicar un precio **sin impuestos**, pero **Riva no sabe si estos proveedores publican con o sin IVA (08/11)**. Por eso, **no preseleccionar nada**: en el paso Precios, la pregunta «¿Los precios incluyen IVA?» queda sin elegir y es obligatoria la primera vez para cada proveedor. Después se **recuerda por proveedor** y se puede cambiar. Para Babaji, mostrar debajo una pista suave: «La página de este proveedor marca los precios como “sin impuesto”; si no estás seguro, consultale».
-- Fixture `php-cards-long-babaji`: 10 tarjetas recortadas de esta muestra, incluyendo «(SIN CAMBIO)», relleno «____», precio «$ 99,999», bulto vacío y categoría con `&amp;`, con precios cambiados. **No commitear el original.**
-
-
-**Respuestas de Riva (08/11 10:40), obligatorias para el diseño:**
-- **Oestech y Babaji recuerdan la clave mientras se navega:** después de ingresar, tocar una categoría muestra los productos. Recorrer las categorías con navegación normal (GET, misma pestaña, misma sesión) funciona.
-- **El precio publicado es por unidad.** «Cant. p/bulto» es **solo informativo** (por si conviene comprar el bulto) y **Riva puede pedir por unidad**. Por eso `packSize` se muestra como dato («Bulto: 400, opcional») y **no** se usa para calcular el costo, ni como mínimo, ni en los encargos.
-- **IVA:** Riva no sabe cuál de estos proveedores publica con o sin IVA. Ver la regla de Babaji: nada preseleccionado, se pregunta la primera vez y se recuerda por proveedor.
-
-**Reglas que salen de estos casos (obligatorias):**
-1. **Nunca hacer clic en botones de compra ni de formulario.** El avance automático solo toca controles de paginación: «Siguiente», «›», `rel=next`, números de página, «Ver más» o «Cargar más» **fuera de las tarjetas de producto**. Lista negra de textos: «Agregar», «Añadir», «Comprar», «Ver pedido», «Carrito», «Pedido», «Enviar», «WhatsApp», «Consultar». Nunca enviar formularios ni escribir en campos (como «Cant.» o «Su comentario» de Oestech).
-2. **Código del proveedor:** si la tarjeta tiene «Cód.:» o «SKU:», ese es el `code`. Si además el título trae un código entre paréntesis o con guion al principio («(BLN-004) …», «HM352 – …»), sacarlo del nombre (I30) y guardarlo como `altCode`. Si no hay ningún código (Inova), usar el `id` o el `permalink` de la fuente.
-3. **Unidades por bulto:** leer «Cant. p/bulto», «Ctdad. por bulto», «x bulto», «Bulto:» o «Mínimo:» como `packSize` y mostrarlo en Revisar como dato informativo («Bulto: 400, opcional»). El precio es **por unidad** (confirmado por Riva) y `packSize` no cambia costos ni mínimos.
-4. **Fotos:** tomar la **primera** foto del carrusel como principal y guardar hasta 4 más en `images[]`. Antes de leer, hacer scroll por toda la lista para que carguen las fotos diferidas (`data-src`, `srcset`).
-5. **Página única larga (Oestech, Babaji):** si no hay paginación, hacer scroll hasta el final, esperar a que dejen de aparecer productos durante 3 s, y listo.
-6. **Precio $0, «Consultar» o vacío:** «Sin precio, revisar». Nunca se importa con costo 0.
-7. **Moneda:** `ARS` por defecto si el símbolo es «$» y el sitio es `.com.ar` o está en español de Argentina. `USD` solo si lo dice («USD», «U$S», `currency_code`).
-8. **Sitios con clave o login:** la extensión no pide ni guarda claves. Si la página muestra «clave de acceso», «iniciar sesión» o no encuentra productos, el popup dice: «Ingresá primero con tu clave en la página del proveedor y después tocá Importar».
-
-**Muestras para los fixtures: YA ESTÁN** en `tmp/proveedores/oestech.html` y `tmp/proveedores/babaji.html` (las cargó Claude el 08/11). Antes: Codex no tiene la clave de Oestech ni la de Babaji. Riva guarda una muestra de cada página **después de ingresar la clave** (Chrome → Ctrl+S → «Página web, solo HTML») en `tmp/proveedores/oestech.html` y `tmp/proveedores/babaji.html` (carpeta fuera de git). Codex arma con eso fixtures **recortados y anonimizados**: 10 tarjetas, precios cambiados y sin datos del cliente, en `e2e/fixtures/stores/`. **Nunca commitear las páginas originales**: el primer commit de I37 agrega `tmp/proveedores/` al `.gitignore` (hoy `tmp/` **no** está ignorado) y Codex verifica con `git check-ignore` antes de tocar esas muestras. Además, agregar a `OWNER_ACTIONS.md` el paso para Riva: entrar con la clave, bajar hasta el final, Ctrl+S → «Página web, solo HTML» → `tmp\proveedores\oestech.html` y `babaji.html`. Si las muestras todavía no están, Codex arma fixtures a partir de la descripción de la tarjeta de esta tabla y lo anota en `STATUS.md`.
-
-**Pruebas reales de solo lectura que tiene que hacer Codex (sin llevar nada a producción):** Mr Tecno, Inova (por enlace y por extensión), Braja y Mayorista Omega, en un perfil local con la extensión. Por cada una, reportar en el resumen: productos leídos, con foto, con código y sin precio, y 3 precios comparados contra lo que se ve en la página. Oestech y Babaji los prueba Riva (tienen clave): dejar en `OWNER_ACTIONS.md` el paso a paso.
-
-#### Fase 1 — Motor de extracción (módulo puro, testeable) · `commit: feat(import): universal product extraction engine`
-Archivo nuevo compartido `extensions/shared/product-extract.js` (JS sin dependencias, usable desde la extensión y desde los tests de Vitest). Recibe «evidencias» y devuelve `{ items:[{ key, code, name, price, listPrice, currency, category, imageUrl, url, raw }], source, warnings }`.
-Estrategias, **todas a la vez**, combinadas por puntaje:
-- **A. JSON de red capturado:** recorrer recursivamente los JSON que la página recibió (ver Fase 2) y detectar **arreglos de objetos con forma de producto**: un campo de nombre (`name|nombre|title|titulo|descripcion`), uno de precio (`price|precio|amount|importe|valor|prices.*`) y, si hay, `sku|codigo|code|id`, `image|imagen|images[0]|foto|thumbnail|picture` y `category|categoria|rubro`. Puntaje por cantidad de objetos y por campos presentes. Esta estrategia resuelve Braja y la mayoría de las tiendas hechas a medida.
-- **B. Datos estructurados en la página:** JSON-LD `Product`/`ItemList`/`Offer`, microdata `itemprop`, y estados embebidos (`__NEXT_DATA__`, `__NUXT__`, `window.__INITIAL_STATE__`, `<script type="application/json">`).
-- **C. Tarjetas del DOM:** buscar contenedores que se repiten (mismo padre y misma estructura de clases), cada uno con imagen, texto y un precio con formato de moneda. Tomar `img` (`src`, `srcset`, `data-src` y `data-lazy` por la carga diferida), el texto principal como nombre y textos tipo «SKU: X» o «Cód.» como código.
-- **Normalizadores:** precios argentinos e internacionales (`$ 15.700,00`, `$15.700`, `15700`, `USD 6,25`, `U$S`, centavos en `minor_unit`); si hay precio tachado y precio actual, `price` es el actual y `listPrice` el tachado; si hay **varios precios con etiqueta** (mayorista/minorista), guardar los dos y marcar `warnings`. Nombres: decodificar entidades HTML, sacar espacios dobles y pasar de MAYÚSCULAS a formato normal. Las URL de imagen siempre absolutas y en `https`.
-- **Deduplicar** por `code`; si no hay código, por `name + price`. Así se descartan los «Destacados» que repiten productos de la lista.
-- Límites: hasta 5.000 productos y textos recortados (nombre de 200 caracteres como máximo).
-- **Tests (Vitest) con fixtures guardados en `e2e/fixtures/stores/`:** `spa-json` (cascarón con JSON paginado de 40 por página, imitando a Braja), `spa-post-json` (respuestas a `POST /api.php` con scroll infinito, imitando a Mayorista Omega), `php-cards-long` (Oestech: «(COD) Nombre / Cód.: / Cant. p/bulto / $950 / Agregar / Ver pedido», foto falsa del video y recorrido por categorías), `php-cards-long-babaji` (Babaji: texto suelto «Codigo: / Rubro: / Ctdad. por bulto:», precios «$ 37,125» con coma de miles, títulos con «____» y «(SIN CAMBIO)»), `woocommerce-sku-vacio` (imitando a Inova, ARS con `minor_unit 0`), `woocommerce-dom`, `tiendanube-dom`, `jsonld-itemlist`, `next-data`, `infinite-scroll`, `precio-tachado`, `mayorista-minorista` y `sin-productos` (tiene que dar 0 sin inventar). Meta: ≥ 99 % de los productos en `spa-json` y ≥ 95 % con nombre, precio y foto correctos en los de DOM.
-
-#### Fase 2 — Captura en la extensión · `commit: feat(extension): capture products from the current page`
-Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `key` y el ID quedan igual. Renombrar la extensión a **«RivaStock»**, con la descripción «Publica en Facebook e importa listas de proveedores», y subir a la versión **0.6.0**.
-- Popup (`connect.html`): una sección nueva **«Importar productos de esta página»** con un botón principal, un contador en vivo y los botones «Terminar y llevar a RivaStock» y «Cancelar». La parte de Facebook queda igual.
-- Permiso: al tocar el botón, `chrome.permissions.request({ origins: [origen de la pestaña] })`, **solo ese dominio**. `<all_urls>` ya está declarado como opcional. Si Riva rechaza, se explica para qué sirve y se ofrece reintentar.
-- Captura de red: `chrome.scripting.registerContentScripts` con `world: 'MAIN'`, `runAt: 'document_start'` y `matches` = ese origen, **solo mientras dura la lectura**. El script envuelve `fetch` y `XMLHttpRequest` y copia **solo las respuestas JSON** de hasta 5 MB cada una, sin tocar ni mandar headers ni cookies. Las pasa por `window.postMessage` a un content script aislado, que se las da al motor. Después recarga la pestaña para capturar desde el principio. Al terminar o cancelar, se desregistra el script.
-- Lectura del DOM: el content script aislado corre el motor con el DOM actual y con cada cambio (`MutationObserver` con un pequeño retardo).
-- **Avance automático:** detectar «Siguiente», «›», `rel=next`, números de página o un botón «Ver más» y hacer clic. Si es scroll infinito, bajar hasta que no aparezcan más productos. Si hay un selector de «Mostrar N productos», elegir el valor más alto. Límites: 150 páginas o 5.000 productos, y cortar si 3 páginas seguidas no suman productos nuevos. Siempre se puede navegar a mano mientras la lectura está activa.
-- Estado en `chrome.storage.session` (con `chrome.storage.local` como respaldo) por pestaña: los productos acumulados, el origen y la hora. El badge del ícono muestra la cantidad.
-- No correr en `rivastock.vercel.app`, `facebook.com`, sitios de bancos ni páginas `chrome://`.
-
-#### Fase 3 — Pasaje a RivaStock sin guardar nada en el servidor · `commit: feat(resellers): receive captured supplier products from the extension`
-- Al tocar «Terminar», la extensión guarda la captura con un `captureId` aleatorio y abre `https://rivastock.vercel.app/revendedores?importar=extension&captura=<captureId>`.
-- La app pide los datos con `chrome.runtime.sendMessage(EXTENSION_ID, { type: 'rivastock-get-capture', captureId, offset })`, **en tandas de 500**. Ampliar `trustedPairingSender` para aceptar la ruta `/revendedores` (con las mismas reglas: `frameId 0`, origen exacto). La captura se borra de la extensión cuando la app confirma que la recibió, o a las 24 horas.
-- En RivaStock, el **Paso 1 · Importar** suma la opción **«Desde la extensión de Chrome»**: muestra «Recibimos 791 productos de brajamayorista.com», pide el proveedor (o crear uno nuevo con el nombre del sitio) y sigue con **Precios → Revisar y agregar**, reusando todo lo de I24 a I36: moneda (si la captura viene en ARS no se pide cotización), escalones, «Solo con foto», escaneo de marcas, nombres sin código y reimportación que actualiza por `code`.
-- Fotos: las URL capturadas pasan por el modo imagen de `fetch-url` y se comprimen como en I27. Si el sitio bloquea la descarga desde el servidor, la extensión las baja desde la pestaña (tiene permiso de ese origen) y las manda como `Blob` en la misma transferencia, con un máximo de 400 KB cada una antes de comprimir.
-- Validación de todo lo que llega, porque es información no confiable: tipos, longitudes, URL `https` y precios numéricos > 0.
-
-#### Fase 4 — Guía y mensajes · `commit: docs(import): guide users to the universal importer`
-- Cuando `fetch-url` no encuentra productos (página de JavaScript, como Braja), el error dice: **«Esta tienda carga los productos con JavaScript. Abrila en Chrome en tu PC y tocá el ícono de RivaStock → Importar productos de esta página.»**, con el botón «Cómo hacerlo» que abre una ayuda de 3 pasos con capturas.
-- En el celular, el mismo mensaje aclara que se hace desde la PC.
-- Si la extensión no está instalada o está desactualizada, botón «Instalar o actualizar la extensión», con el flujo que ya existe.
-
-#### Fase 5 — Pruebas y verificación real · `commit: test(import): universal importer end to end`
-- Playwright con Chromium cargando la extensión sin empaquetar y los fixtures servidos en local: leer → avanzar páginas → terminar → abrir RivaStock en local → Revisar con los números correctos. Casos: `spa-json`, `infinite-scroll` y `woocommerce-dom`.
-- **Prueba real de solo lectura con Braja:** en un perfil local de prueba, abrir `https://brajamayorista.com/tienda/centro/productos` con la extensión, leer hasta el final y verificar **cuántos productos captura (meta: 791 ± diferencias de stock), cuántos con foto y SKU**, y que los precios coincidan con 5 productos a la vista (por ejemplo «Alargue zapatilla 9 enchufes · PS-341 · $11.900»). **No** llevar la captura a producción ni crear productos.
-- Prueba con Mr Tecno por la extensión: tiene que dar el mismo resultado que por enlace.
-- Publicar la versión 0.6.0 por el mecanismo de actualización que ya existe (C0) y dejar en `OWNER_ACTIONS.md` los pasos para Riva, si hace falta algo de su lado.
-
-**Fuera de alcance (no hacer):** adaptadores por proveedor, llamadas directas desde nuestro servidor a la API privada de una tienda, saltar captchas o protecciones anti-bots y leer sitios que piden login sin que Riva haya iniciado sesión él mismo.
-
-**Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
-
-### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
-
-**Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
-
-**Causa probable (verificado en `origin/main`):** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Si la hoja se dibuja fuera de ese contenedor (portal o hermano), la variable no existe y el fondo queda transparente. La barra inferior (`MobileNavigation.css`, `z-index` 30 a 50) queda arriba, seguramente porque la hoja vive dentro de un contexto de apilamiento con `z-index` menor.
-
-**Qué hacer:**
-1. Dibujar la hoja con un **portal a `document.body`**, envuelto en un contenedor con la clase `.reseller-module-page` (o mover los tokens a `:root` / `:root.dark`), para que **todas** las variables existan. Revisar que **ningún** elemento flotante de Revendedores (hojas, barras de acciones en lote, confirmaciones y el «Deshacer») use variables que no existan en donde se dibuja.
-2. `z-index` de la hoja y de su fondo oscuro **por encima de la barra inferior** (por ejemplo 100), y **ocultar la barra inferior y el botón «+» mientras la hoja está abierta**.
-3. `padding-bottom` de la hoja = `env(safe-area-inset-bottom)` + 16 px. Bloquear el scroll del fondo mientras está abierta y devolver el foco al cerrar.
-4. Lo mismo para la **barra de acciones en lote** de I33 (Riva lo confirmó con captura a las 11:38: con 3 elegidos, la barra sale transparente encima de la lista y los botones se pisan con los productos) y para las confirmaciones propias de I32, I33 e I36 en el celular.
-5. **Barra de acciones en lote en el celular, ordenada:** fondo sólido `surface-1`, borde superior, fija **arriba** de la zona de la barra inferior (o reemplazándola mientras hay elegidos). Primera fila: «3 elegidos» a la izquierda y «Cancelar» a la derecha. Segunda fila: «Agregar a la lista» (principal) y «Quitar de la lista». Tercera fila, o un menú «⋯»: «Disponible / Por pedido» y «Aplicar ganancia sugerida (N)». Nada de textos encimados: cada botón con 44 px de alto como mínimo y el texto en una línea. Agregar padding inferior a la lista para que el último producto no quede tapado por la barra.
-
-**Verificación (obligatoria):** Playwright a 360 y 412 px. Tocar un producto y comprobar que:
-- el `backgroundColor` calculado de la hoja **no es transparente**;
-- `document.elementFromPoint` en el centro del botón «Agregar a la lista» devuelve ese botón y no la barra de navegación;
-- la barra inferior no se ve mientras la hoja está abierta.
-
-Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.

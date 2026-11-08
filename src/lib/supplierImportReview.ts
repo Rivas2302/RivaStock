@@ -23,6 +23,12 @@ export interface SupplierImportReviewEntry {
   suggestedSalePrice: number | null;
 }
 
+export function calculateSupplierSuggestedPublicPrice(resellerPrice: number | null, generalDiscountPercent: number): number | null {
+  if (resellerPrice === null || !Number.isFinite(resellerPrice) || resellerPrice < 0) return null;
+  const discount = Number.isFinite(generalDiscountPercent) ? Math.min(99, Math.max(0, generalDiscountPercent)) : 0;
+  return resellerPrice / (1 - discount / 100);
+}
+
 export function normalizeSupplierProductName(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-AR')
     .replace(/[^a-z\d]+/g, ' ').trim().replace(/\s+/g, ' ');
@@ -78,9 +84,7 @@ export function planSupplierImport(input: {
     const suggestedProfit = marginSuggestion
       ? Math.round((suggestedResellerPrice! - cost!) * 100) / 100
       : null;
-    const suggested = suggestedResellerPrice !== null
-      ? suggestedResellerPrice / Math.max(0.01, 1 - Math.min(99, input.discountPercent) / 100)
-      : null;
+    const suggested = calculateSupplierSuggestedPublicPrice(suggestedResellerPrice, input.discountPercent);
     if (row.error || cost === null || cost <= 0 || suggested === null || photoBlocked) {
       return { row, action: 'review', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
     }

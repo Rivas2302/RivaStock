@@ -12,11 +12,11 @@ interface ExtensionRuntime {
   sendMessage: (extensionId: string, message: unknown, callback: (response: unknown) => void) => void;
 }
 
-function extensionMessage(message: unknown): Promise<unknown> {
+function extensionMessage(message: unknown, timeoutMs = 15_000): Promise<unknown> {
   const runtime = (window as Window & { chrome?: { runtime?: ExtensionRuntime } }).chrome?.runtime;
   if (!runtime?.sendMessage) return Promise.reject(new Error('Instalá o actualizá la extensión RivaStock en Chrome y recargá esta página.'));
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('La extensión no respondió. Actualizala y volvé a intentar.')), 15_000);
+    const timer = setTimeout(() => reject(new Error('La extensión no respondió. Actualizala y volvé a intentar.')), timeoutMs);
     runtime.sendMessage(facebookExtensionId, message, response => {
       clearTimeout(timer);
       if (runtime.lastError || !response) reject(new Error('Instalá o actualizá la extensión RivaStock en Chrome y recargá esta página.'));
@@ -170,11 +170,11 @@ export async function acknowledgeSupplierCapture(captureId: string): Promise<unk
   return extensionMessage({ type: 'rivastock-capture-received', captureId });
 }
 
-export async function fetchSupplierCaptureImage(captureId: string, imageUrl: string): Promise<File> {
+export async function fetchSupplierCaptureImage(captureId: string, imageUrl: string, timeoutMs = 15_000): Promise<File> {
   if (!/^[0-9a-f-]{36}$/i.test(captureId)) throw new Error('La captura no es válida.');
   const safeUrl = safeHttps(imageUrl);
   if (!safeUrl) throw new Error('La foto del proveedor no tiene un enlace HTTPS válido.');
-  const response = await extensionMessage({ type: 'supplier-capture-read-image', captureId, imageUrl: safeUrl }) as {
+  const response = await extensionMessage({ type: 'supplier-capture-read-image', captureId, imageUrl: safeUrl }, timeoutMs) as {
     mimeType?: unknown; base64?: unknown; size?: unknown;
   };
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(String(response.mimeType))

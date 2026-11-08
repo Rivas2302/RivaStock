@@ -79,13 +79,18 @@ describe('supplier privacy helpers', () => {
       .toBe('https://rivastock.vercel.app/tesseract/core/tesseract-core-lstm.wasm.js');
   });
 
-  it('blocks unreviewed source or replacement photos and allows explicit approvals', () => {
+  it('blocks only unapproved provider-branded photos and allows unresolved photos', () => {
     const flagged = { source: { status: 'flagged' as const, matches: ['Mr Tecno'] } };
     expect(isSupplierPhotoReviewBlocking(flagged, false)).toBe(true);
     expect(isSupplierPhotoReviewBlocking({ source: { status: 'flagged', matches: ['www'], approved: true } }, false)).toBe(false);
     expect(isSupplierPhotoReviewBlocking({ ...flagged, replacement: { status: 'clear', matches: [] } }, true)).toBe(false);
+    expect(isSupplierPhotoReviewBlocking({ source: { status: 'pending', matches: [] } }, false)).toBe(false);
+    expect(isSupplierPhotoReviewBlocking({ source: { status: 'failed', matches: [] } }, false)).toBe(false);
+    expect(isSupplierPhotoReviewBlocking({ source: { status: 'unreviewed', matches: [] } }, false)).toBe(false);
+    expect(isSupplierPhotoReviewBlocking({ source: { status: 'clear', matches: [] } }, false)).toBe(false);
     expect(getActiveSupplierPhotoReview(flagged, false)?.matches).toEqual(['Mr Tecno']);
     expect(supplierPhotoReviewFields(flagged, false)).toMatchObject({ supplierPhotoBrandFlag: true, supplierPhotoBrandApproved: false });
     expect(supplierPhotoReviewFields({ source: { status: 'pending', matches: [] } }, false)).toBeNull();
+    expect(supplierPhotoReviewFields({ source: { status: 'unreviewed', matches: [] } }, false)).toBeNull();
   });
 });

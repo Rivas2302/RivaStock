@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Product } from '../types';
-import { planSupplierImport } from './supplierImportReview';
+import { calculateSupplierSuggestedPublicPrice, planSupplierImport } from './supplierImportReview';
 import { DEFAULT_RESELLER_MARGIN_RULES } from './resellerMarginRules';
 
 const product = (changes: Partial<Product> = {}): Product => ({
@@ -16,6 +16,12 @@ const row = (changes = {}) => ({
 });
 
 describe('supplier import review', () => {
+  it('calculates the suggested public price from the reseller price and the general discount', () => {
+    expect(calculateSupplierSuggestedPublicPrice(2660, 20)).toBe(3325);
+    expect(calculateSupplierSuggestedPublicPrice(2660, 0)).toBe(2660);
+    expect(calculateSupplierSuggestedPublicPrice(null, 20)).toBeNull();
+  });
+
   it('converts USD with the entered rate and matches existing products by supplier code', () => {
     const plan = planSupplierImport({
       rows: [row()], supplierProducts: [product()], currency: 'USD', usdRate: 1000,
@@ -88,5 +94,16 @@ describe('supplier import review', () => {
         replacement: { status: 'clear', matches: [] },
       } })],
     })[0].action).toBe('new');
+  });
+
+  it('keeps pending, failed, and cancelled photo reviews addable', () => {
+    for (const status of ['pending', 'failed', 'unreviewed'] as const) {
+      const plan = planSupplierImport({
+        rows: [row({ photoBrandReview: { source: { status, matches: [] } } })],
+        supplierProducts: [], currency: 'USD', usdRate: 1000,
+        discountPercent: 20, rounding: 'none', marginForRow: () => 25,
+      });
+      expect(plan[0].action).toBe('new');
+    }
   });
 });

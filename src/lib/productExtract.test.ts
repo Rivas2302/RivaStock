@@ -83,6 +83,26 @@ describe('universal supplier product extraction', () => {
     expect(results.items.find(item => item.code === 'FIX-B-10')?.needsPriceReview).toBe(true);
   });
 
+  it('reads a generated Babaji catalog containing 924 distinct cards', () => {
+    const dom = new JSDOM('<!doctype html><html><body><main></main></body></html>', {
+      url: 'https://babaji.com.ar/catalogo2022x3.php?rub=99999',
+    });
+    Object.defineProperty(dom.window, 'getComputedStyle', { value: undefined });
+    const main = dom.window.document.querySelector('main')!;
+    for (let index = 1; index <= 924; index += 1) {
+      const code = `FIX-B-${String(index).padStart(4, '0')}`;
+      const card = dom.window.document.createElement('div');
+      card.className = 'col-xs-12 col-md-4 caja_producto';
+      card.innerHTML = `<div class="contenedor_producto"><div class="col-xs-12"><a><h1>ARTICULO DE PRUEBA ${index} ____</h1></a></div><div class="col-xs-12 foto"><div class="carousel slide"><div class="carousel-inner"><div class="item active"><a class="miniatura_imagen"><img data-codigo="${code}" src="https://images.example.test/${index}.webp" alt=""></a></div></div></div></div><div>Codigo: ${code}<br>Rubro: CATEGORIA DE PRUEBA<br>Ctdad. por bulto: 6<br></div><strong class="caja_precio_noimptk">$ 2,660</strong></div></div>`;
+      main.append(card);
+    }
+
+    const results = extract.readPage(dom.window.document);
+    expect(results.items).toHaveLength(924);
+    expect(results.items[0]).toMatchObject({ code: 'FIX-B-0001', name: 'Articulo De Prueba 1', price: 2660 });
+    expect(results.items.at(-1)?.code).toBe('FIX-B-0924');
+  }, 30_000);
+
   it('normalizes Argentine and international prices, currencies, and suspicious amounts', () => {
     expect(extract.parsePrice('$ 15.700,00')).toMatchObject({ price: 15700, currency: 'ARS' });
     expect(extract.parsePrice('$11.900')).toMatchObject({ price: 11900, currency: 'ARS' });
