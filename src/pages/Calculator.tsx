@@ -20,6 +20,7 @@ import Modal from '../components/Modal';
 import { motion } from 'motion/react';
 import '../styles/business-redesign.css';
 import MoneyInput from '../components/MoneyInput';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 
 interface BatchResult {
   purchase: number;
@@ -54,7 +55,7 @@ export default function Calculator() {
       db.list<Product>('products', user.uid)
     ]);
     setPriceRanges(pr.sort((a, b) => a.minPrice - b.minPrice));
-    setProducts(p);
+    setProducts(filterOwnInventoryProducts(p));
     setLoading(false);
   };
 

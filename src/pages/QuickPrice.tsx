@@ -20,6 +20,7 @@ import { formatCurrency, roundPrice } from '../lib/utils';
 import type { Product } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileQuickPrice from '../components/quick-price/MobileQuickPrice';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 
 export default function QuickPrice() {
   const navigate = useNavigate();
@@ -90,7 +91,7 @@ export default function QuickPrice() {
         dispatchLoad({
           type: 'success',
           scopeKey: catalogScopeKey,
-          products: loadedProducts,
+          products: filterOwnInventoryProducts(loadedProducts),
           holdings: loadedHoldings,
         });
       })

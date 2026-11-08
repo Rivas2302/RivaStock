@@ -5,6 +5,7 @@ import { usePermission } from '../../hooks/usePermission';
 import { useBusinessPlan } from '../../hooks/useBusinessPlan';
 import { db, invalidateDbCache } from '../../lib/db';
 import { getInventoryHoldings, getVisibleProductStock } from '../../lib/inventoryHoldings';
+import { filterOwnInventoryProducts } from '../../lib/ownInventory';
 import { getVisibleQuickPriceProducts, searchProducts } from '../../lib/quickPriceLookup';
 import { productPhotos } from '../../lib/facebookPublications';
 import { createFacebookCopywritingJob } from '../../lib/facebookCopywriting';
@@ -173,7 +174,7 @@ export default function MobileAITaskNewTask(props: MobileAITaskNewTaskProps) {
     ]).then(([loadedProducts, holdings]) => {
       if (!active) return;
       const visibleProducts = getVisibleQuickPriceProducts({
-        products: loadedProducts,
+        products: filterOwnInventoryProducts(loadedProducts),
         holdings,
         holdingsEnabled,
         allowedInventoryOwnerIds,

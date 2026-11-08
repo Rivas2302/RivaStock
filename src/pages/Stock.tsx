@@ -73,6 +73,7 @@ const MobileProductForm = lazy(() => import('../components/stock/MobileProductFo
 const ProductDeleteConfirmation = lazy(() => import('../components/stock/ProductDeleteConfirmation'));
 const DesktopProductEditorRoute = lazy(() => import('../components/stock/DesktopProductEditorRoute'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -206,7 +207,7 @@ export default function Stock() {
         holdingsEnabled ? Promise.resolve([]) : getRecentRestockSales(user.uid),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
-      setProducts(nextProducts);
+      setProducts(isResellersRoute ? nextProducts : filterOwnInventoryProducts(nextProducts));
       setCategories(nextCategories);
       setPriceRanges(nextPriceRanges);
       setSales(nextSales);
@@ -236,7 +237,7 @@ export default function Stock() {
           holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
-        setProducts(nextProducts);
+        setProducts(isResellersRoute ? nextProducts : filterOwnInventoryProducts(nextProducts));
         setCategories(nextCategories);
         setPriceRanges(nextPriceRanges);
         setSales(nextSales);
@@ -249,7 +250,7 @@ export default function Stock() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, refetchToken, holdingsEnabled, inventoryAccessError]);
+  }, [user, refetchToken, holdingsEnabled, inventoryAccessError, isResellersRoute]);
 
   useEffect(() => {
     if (editingProduct || formData.inventoryOwnerId || !primaryOwner) return;

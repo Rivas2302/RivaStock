@@ -11,6 +11,7 @@ import {
   Product, Sale, Customer, CustomerTransaction, InventoryHolding,
   SaleItemAllocation, SaleItemSnapshot,
 } from '../types';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { cn, formatDate, todayString } from '../lib/utils';
 import {
   Plus,
@@ -302,7 +303,7 @@ export default function Sales() {
     }));
 
     if (productsResult.status === 'fulfilled') {
-      setProducts(productsResult.value);
+      setProducts(filterOwnInventoryProducts(productsResult.value));
     } else {
       console.error('Error al cargar productos:', productsResult.reason);
     }
@@ -374,7 +375,7 @@ export default function Sales() {
           return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
         }));
       }
-      if (productsResult.status === 'fulfilled') setProducts(productsResult.value);
+      if (productsResult.status === 'fulfilled') setProducts(filterOwnInventoryProducts(productsResult.value));
       if (customersResult.status === 'fulfilled') setCustomers(customersResult.value);
       if (customerTransactionsResult.status === 'fulfilled') {
         setCustomerTransactions(customerTransactionsResult.value);

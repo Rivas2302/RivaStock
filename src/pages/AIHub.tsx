@@ -38,6 +38,7 @@ import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
 import type { PublicationContent } from '../lib/facebookPublications';
 import type { FacebookCopywritingProposal } from '../lib/facebookCopywriting';
 import { resolveFacebookCopywritingProduct } from '../lib/facebookCopywritingProduct';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { startVisiblePolling } from '../lib/visiblePolling';
 import type { Product } from '../types';
 
@@ -245,7 +246,7 @@ export default function AIHub() {
         import('../lib/facebookPublications'),
       ]);
       invalidateDbCache('products');
-      const products = await db.list<Product>('products', ownerUid);
+      const products = filterOwnInventoryProducts(await db.list<Product>('products', ownerUid));
       const resolution = resolveFacebookCopywritingProduct(job.input, products);
       if (resolution.kind !== 'match') {
         setMobileTaskActionError(resolution.kind === 'ambiguous'

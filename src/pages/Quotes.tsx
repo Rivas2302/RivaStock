@@ -18,6 +18,7 @@ import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
 import { motion, AnimatePresence } from 'motion/react';
 import '../styles/business-redesign.css';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileQuotes from '../components/quotes/MobileQuotes';
 import { useSearchParams } from 'react-router-dom';
@@ -118,7 +119,7 @@ export default function Quotes() {
         db.list<Customer>('customers', user.uid),
       ]);
       setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-      setProducts(p);
+      setProducts(filterOwnInventoryProducts(p));
       setCustomers(c);
     } catch (err) {
       console.error('[Quotes] fetchData error:', err);
@@ -139,7 +140,7 @@ export default function Quotes() {
         ]);
         if (cancelled) return;
         setQuotes(q.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-        setProducts(p);
+        setProducts(filterOwnInventoryProducts(p));
         setCustomers(c);
       } catch (err) {
         if (cancelled) return;

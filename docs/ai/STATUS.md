@@ -9,12 +9,21 @@
 - El commit `7005075` quedó en `main`; Vercel informó `success`. En producción, `/`, el worker, el core WASM y el modelo español devuelven HTTP 200 y todos incluyen `'wasm-unsafe-eval'`.
 - Con el header de producción ya publicado, el OCR real bajo esa política analizó 50 fotos públicas de Mr Tecno: **50/50 analizadas; 0 fallidas**. Las 8 fotos de Babaji siguen inaccesibles desde la captura disponible (**0/8 analizadas**), así que no alcanza el criterio ≥95 % y I43 permanece abierta.
 
-## I38 — corrección móvil lista; publicación pendiente
+## I38 — corrección móvil cerrada
 
 - Capturé el estado anterior y posterior a 360/412 px en `%TEMP%\rivastock-qa-artifacts\i38\i38-{before,after}-*.png`. La captura anterior mostraba el fondo transparente, la navegación inferior sobre la hoja y acciones de 36 px.
 - Los diálogos y elementos flotantes de Revendedores ahora se dibujan en un portal con los tokens del módulo. Al abrir la edición se oculta la barra inferior, se bloquea el scroll de fondo y se devuelve el foco al cerrar. La barra de selección reemplaza la navegación y organiza acciones de 44 px; acciones adicionales quedan bajo «Más acciones».
 - Verificaciones locales: lint, build, 210 archivos / 1.219 pruebas Vitest y 29/29 pruebas Playwright de importación y Revendedores. En 360 y 412 px, el fondo es sólido, el botón recibe el toque, la navegación no tapa el contenido y las confirmaciones quedan por encima.
-- Sin migraciones. I38 queda abierta hasta publicar el commit y verificarlo en Current.
+- Sin migraciones. El commit `7cadbe3` está en `main`; Vercel informó `success`. `rivastock.vercel.app` sirve el chunk de Revendedores con el portal y la barra de acciones I38 (`reseller-module-page`, `Acciones para productos elegidos`, nivel de capa superior).
+- I38 queda cerrada: E2E completo de importación/Revendedores **30/30** aprobado, con capturas locales antes/después a 360/412 px. La prueba incluye fondo opaco, botón alcanzable, navegación oculta y foco/scroll restaurados.
+
+## I40 — en curso: ocultar productos de proveedor fuera de Revendedores
+
+- Implementé `isOwnInventoryProduct` y `filterOwnInventoryProducts`, usando `catalogOnly` como marca de proveedor existente. La regla filtra Stock en la ruta normal, ventas, POS, presupuestos, consulta rápida, calculadora, fotos, ingresos, selectores de automatización/IA y la selección de productos de Catálogo público. `/revendedores` y su flujo de lista conservan los productos de proveedor.
+- El Inicio ya excluía productos `catalogOnly` de alertas y reposición; ahora la valuación de stock también los excluye tanto con titulares de inventario como con el esquema legado. No encontré otro campo marcador de proveedor en `Product`; el informe de ventas no calcula valor de stock.
+- Pruebas locales: test unitario de clasificación/filtrado; prueba de valuación para ambos modos; E2E con fixtures que confirma producto proveedor ausente y producto propio visible en Stock, Nueva venta, POS, Presupuestos y Consulta rápida, y conserva el producto proveedor en la lista de Revendedores.
+- Verificaciones: `npm run lint` aprobado; `npm test -- --maxWorkers=4` **1.226/1.226**; `npm run build` aprobado; Playwright de la suite **30/30**, más el E2E ampliado de I40 **1/1**. Un intento inicial de suite completa con concurrencia alta excedió el límite de 5 s de un test PGlite; el test aislado pasó y la suite completa pasó al limitar workers.
+- Sin migraciones ni escrituras en datos reales. I40 queda pendiente del commit y la verificación en Current.
 
 # 2026-11-08 — I37 importador universal: código listo, publicación web bloqueada
 

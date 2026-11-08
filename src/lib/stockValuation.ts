@@ -1,5 +1,6 @@
 import type { InventoryHolding, InventoryOwner, Product } from '../types';
 import { roundPrice } from './utils';
+import { isOwnInventoryProduct } from './ownInventory';
 
 export function selectStockValuationOwner(
   owners: InventoryOwner[],
@@ -26,7 +27,7 @@ export function getStockValuation(
   let totalInvested = 0;
   const categories = new Map<string, number>();
   const owner = owners.find(item => item.id === ownerId);
-  const productById = new Map(products.map(product => [product.id, product]));
+  const productById = new Map(products.filter(isOwnInventoryProduct).map(product => [product.id, product]));
 
   const add = (product: Product, stock: number, purchaseCost: number) => {
     const value = roundPrice(product.salePrice) * stock;
@@ -43,6 +44,7 @@ export function getStockValuation(
     }
   } else if (owner) {
     for (const product of products) {
+      if (!isOwnInventoryProduct(product)) continue;
       // Unassigned legacy stock belongs only to the actual primary owner.
       if (product.inventoryOwnerId === owner.id || (!product.inventoryOwnerId && owner.isPrimary)) {
         add(product, product.stock, product.purchasePrice);

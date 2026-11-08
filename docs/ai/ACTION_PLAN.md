@@ -975,11 +975,11 @@ Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `k
 
 **Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
 
-### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
+### [x] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
 
 **Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
 
-**Causa probable (verificado en `origin/main`):** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Si la hoja se dibuja fuera de ese contenedor (portal o hermano), la variable no existe y el fondo queda transparente. La barra inferior (`MobileNavigation.css`, `z-index` 30 a 50) queda arriba, seguramente porque la hoja vive dentro de un contexto de apilamiento con `z-index` menor.
+**Causa confirmada:** la hoja usa `bg-[var(--surface-1)]` y `--surface-1` **solo está definido dentro de `.reseller-module-page`** (`src/components/resellers/ResellerPage.css`). Al dibujar hojas y barras flotantes fuera de ese contenedor, los tokens no existían; además, su contexto de apilamiento quedaba debajo de la navegación inferior.
 
 **Qué hacer:**
 1. Dibujar la hoja con un **portal a `document.body`**, envuelto en un contenedor con la clase `.reseller-module-page` (o mover los tokens a `:root` / `:root.dark`), para que **todas** las variables existan. Revisar que **ningún** elemento flotante de Revendedores (hojas, barras de acciones en lote, confirmaciones y el «Deshacer») use variables que no existan en donde se dibuja.

@@ -8,6 +8,7 @@ import TeamTab from '../components/team/TeamTab';
 import InventoryOwnersTab from '../components/inventory/InventoryOwnersTab';
 import { db, uploadToStorage, deleteFromStorage } from '../lib/db';
 import { getProductPhotoStorageUrls } from '../lib/productPhotos';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { optimizeCatalogCover, optimizeUploadImage } from '../lib/imageOptimization';
 import {
   Category,
@@ -131,7 +132,7 @@ export default function Settings() {
         db.list<Product>('products', user.uid),
       ]);
 
-      setCatalogProducts(catalogItems);
+      setCatalogProducts(filterOwnInventoryProducts(catalogItems));
 
       let cc = ccList[0] || null;
 

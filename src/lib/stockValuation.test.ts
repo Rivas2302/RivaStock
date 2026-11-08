@@ -76,6 +76,14 @@ describe('owner-specific stock valuation', () => {
     expect(getStockValuation([product()], [], owners, 'primary', true).totalInvested).toBe(0);
   });
 
+  it('excludes supplier catalog products from both stock valuation modes', () => {
+    const supplierProduct = product({ id: 'supplier', catalogOnly: true, stock: 20, purchasePrice: 10 });
+    const supplierHolding = holding({ productId: 'supplier', stock: 20, purchaseCost: 10 });
+
+    expect(getStockValuation([supplierProduct], [supplierHolding], owners, 'primary', true).stockValue).toBe(0);
+    expect(getStockValuation([supplierProduct], [], owners, 'primary', false).stockValue).toBe(0);
+  });
+
   it('assigns unassigned legacy products only to the actual primary owner', () => {
     const products = [product({ stock: 2, purchasePrice: 20 }), product({
       id: 'other-product', inventoryOwnerId: 'other', stock: 3, purchasePrice: 40,

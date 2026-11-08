@@ -1,5 +1,6 @@
 import type { CashFlowEntry, Product, Sale } from '../types';
 import { getStockStatus } from './stockStatus';
+import { filterOwnInventoryProducts } from './ownInventory';
 
 export interface DashboardSummaryInput {
   sales: Sale[];
@@ -65,7 +66,7 @@ function monthLabel(year: number, monthIndex: number): string {
 }
 
 export function getDashboardInventoryProducts(products: Product[]): Product[] {
-  return products.filter((product) => !product.catalogOnly);
+  return filterOwnInventoryProducts(products);
 }
 
 export function getDashboardSummary({

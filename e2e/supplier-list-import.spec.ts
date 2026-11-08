@@ -23,7 +23,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
@@ -45,7 +45,10 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       });
     }, { texts: options.ocrTexts ?? [''], hangWorkerCreation: options.hangWorkerCreation ?? false, hangFirstRecognition: options.hangFirstRecognition ?? false });
   }
-  const products: Record<string, unknown>[] = options.photoScanFixture ? [
+  const products: Record<string, unknown>[] = options.inventoryVisibilityFixture ? [
+    { id: 'own-inventory-qa', user_id: owner, name: '[QA] Producto propio visible', category: 'General', category_id: 'category-general', stock: 4, sale_price: 2000, purchase_price: 1000, catalog_only: false, image_url: null, images: [] },
+    { id: 'supplier-inventory-qa', user_id: owner, name: '[QA] Producto proveedor oculto', category: 'General', category_id: 'category-general', stock: 0, sale_price: 3000, purchase_price: 1500, catalog_only: true, catalog_cost: 1500, image_url: null, images: [] },
+  ] : options.photoScanFixture ? [
     { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
   ] : options.nameCleanupFixture ? [
     { id: 'supplier-name-1', user_id: owner, name: 'HM352 – HUMIFICADOR LED ESTILO FUEGO', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'HM352', image_url: null, images: [] },
@@ -73,8 +76,10 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'category-general', user_id: owner, name: 'General' },
     ...(options.marginFixture ? [{ id: 'category-perfumes', user_id: owner, name: 'Perfumes' }] : []),
   ];
-  let supplierProductIds: string[] = options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
-  const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
+  let supplierProductIds: string[] = options.inventoryVisibilityFixture ? ['supplier-inventory-qa'] : options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
+  const priceListItems: Record<string, unknown>[] = options.inventoryVisibilityFixture ? [
+    { id: 'supplier-visibility-item', user_id: owner, price_list_id: priceList.id, product_id: 'supplier-inventory-qa', pricing_mode: 'default', availability: 'on_order', supplier_list_id: supplierList.id, sort_order: 0 },
+  ] : options.largeFixture ? [
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
   ] : options.marginFixture ? Array.from({ length: 6 }, (_, index) => ({
     id: `margin-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `margin-product-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
@@ -1031,6 +1036,54 @@ test('mobile Más menu opens Revendedores page and reaches review without creati
   await expect(page).toHaveURL(/\/revendedores$/);
   await expect(page.getByRole('dialog', { name: 'Lista de precios para revendedores' })).toHaveCount(0);
   await expect(page.getByRole('tablist', { name: 'Secciones de Revendedores' })).toBeVisible();
+});
+
+test('supplier-only products stay out of inventory, sales, POS, quotes, and quick lookup', async ({ page }) => {
+  await mockApp(page, { inventoryVisibilityFixture: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await page.goto('/stock');
+  const stockSearch = page.getByPlaceholder('Buscar por nombre...');
+  await stockSearch.fill('Producto proveedor oculto');
+  await expect(page.getByText('[QA] Producto proveedor oculto', { exact: true })).toHaveCount(0);
+  await stockSearch.fill('Producto propio visible');
+  await expect(page.getByText('[QA] Producto propio visible', { exact: true })).toBeVisible();
+
+  await page.goto('/ventas');
+  await page.getByRole('button', { name: 'Nueva Venta' }).click();
+  const saleProductSearch = page.getByPlaceholder('Buscar por nombre o categoría...');
+  await saleProductSearch.fill('Producto proveedor oculto');
+  await expect(page.getByText('[QA] Producto proveedor oculto', { exact: true })).toHaveCount(0);
+  await saleProductSearch.fill('Producto propio visible');
+  await expect(page.getByText('[QA] Producto propio visible', { exact: true })).toBeVisible();
+
+  await page.goto('/pos');
+  const posSearch = page.getByPlaceholder('Buscar por nombre, categoría o código…');
+  await posSearch.fill('Producto proveedor oculto');
+  await expect(page.getByText('[QA] Producto proveedor oculto', { exact: true })).toHaveCount(0);
+  await posSearch.fill('Producto propio visible');
+  await expect(page.getByText('[QA] Producto propio visible', { exact: true })).toBeVisible();
+
+  await page.goto('/presupuestos');
+  await page.getByRole('button', { name: 'Nuevo Presupuesto' }).click();
+  const quoteProductSearch = page.getByPlaceholder('Buscar producto...');
+  await quoteProductSearch.fill('Producto proveedor oculto');
+  await expect(page.getByText('[QA] Producto proveedor oculto', { exact: true })).toHaveCount(0);
+  await quoteProductSearch.fill('Producto propio visible');
+  await expect(page.getByText('[QA] Producto propio visible', { exact: true })).toBeVisible();
+
+  await page.goto('/consulta-rapida');
+  const quickSearch = page.getByPlaceholder('Ej: Auriculares M10 o 779123…');
+  await quickSearch.fill('Producto proveedor oculto');
+  await expect(page.getByText('No encontramos productos con esa búsqueda.')).toBeVisible();
+  await quickSearch.fill('Producto propio visible');
+  await expect(page.getByText('[QA] Producto propio visible', { exact: true })).toBeVisible();
+
+  await page.goto('/revendedores');
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Lista de precios' }).click();
+  await page.getByRole('group', { name: 'Origen de los productos' }).getByRole('button', { name: '[QA] Mr Tecno' }).click();
+  await expect(page.getByRole('table', { name: 'Productos de la lista de precios' })
+    .getByText('[QA] Producto proveedor oculto', { exact: true })).toBeVisible();
 });
 
 test('I35 keeps reseller tabs and price rows usable on mobile at 360 and 412 px', async ({ page }, testInfo) => {

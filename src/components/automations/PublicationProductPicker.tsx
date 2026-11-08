@@ -4,6 +4,7 @@ import {db,invalidateDbCache} from '../../lib/db';
 import {filterProductsByHoldingOwner,getInventoryHoldings,getVisibleHoldingEconomics} from '../../lib/inventoryHoldings';
 import {formatCurrency} from '../../lib/utils';
 import type {Product} from '../../types';
+import {filterOwnInventoryProducts} from '../../lib/ownInventory';
 import Modal from '../Modal';
 
 export default function PublicationProductPicker({onClose,onSelect,purpose='publication'}:{onClose:()=>void;onSelect:(product:Product)=>void;purpose?:'publication'|'rehearsal'}) {
@@ -19,7 +20,7 @@ export default function PublicationProductPicker({onClose,onSelect,purpose='publ
       if(inventoryAccessError)throw new Error(inventoryAccessError);
       invalidateDbCache('products','inventory_holdings');
       const [items,holdings]=await Promise.all([db.list<Product>('products',ownerUid),holdingsEnabled?getInventoryHoldings(ownerUid):Promise.resolve([])]);
-      const inventory=items.filter(item=>!item.catalogOnly);
+      const inventory=filterOwnInventoryProducts(items);
       if(active)setProducts(holdingsEnabled?filterProductsByHoldingOwner(inventory,holdings,'all').map(item=>({...item,stock:getVisibleHoldingEconomics(item,holdings,'all').stock})):inventory);
     }
     void load().catch(()=>{if(active)setError('No se pudo cargar el inventario. Volvé a intentarlo.');}).finally(()=>{if(active)setLoading(false);});

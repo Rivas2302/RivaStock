@@ -24,6 +24,7 @@ import {
 } from '../lib/productPhotoSharing';
 import { showToast } from '../lib/toast';
 import type { InventoryHolding, PriceList, PriceListItem, Product } from '../types';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { formatCurrency } from '../lib/utils';
 
 type PriceChoice = 'public' | string;
@@ -209,7 +210,7 @@ export default function ProductPhotos() {
           { field: 'priceListId', value: list.id },
         ])));
         if (cancelled) return;
-        setProducts(loadedProducts);
+        setProducts(filterOwnInventoryProducts(loadedProducts));
         setHoldings(loadedHoldings);
         setPriceLists(loadedPriceLists);
         setPriceListItems(loadedItems.flat());

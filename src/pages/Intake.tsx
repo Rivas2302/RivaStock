@@ -32,6 +32,7 @@ import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempot
 import { beginSubmission, endSubmission } from '../lib/submissionGuard';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileIntakeList from '../components/intake/MobileIntakeList';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 
 export default function Intake() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,7 +87,7 @@ export default function Intake() {
         if (dc !== 0) return dc;
         return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
       }));
-      setProducts(p);
+      setProducts(filterOwnInventoryProducts(p));
       setHoldings(h);
     } catch (err) {
       console.error('[Intake] fetchData error:', err);
@@ -117,7 +118,7 @@ export default function Intake() {
           if (dc !== 0) return dc;
           return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
         }));
-        setProducts(p);
+        setProducts(filterOwnInventoryProducts(p));
         setHoldings(h);
       } catch (err) {
         if (cancelled) return;

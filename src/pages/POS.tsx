@@ -9,6 +9,7 @@ import { db, callRpc } from '../lib/db';
 import { Product, Customer, InventoryHolding, PAYMENT_METHODS } from '../types';
 import { cn, formatCurrency, roundPrice, todayString } from '../lib/utils';
 import { normalizeBarcode } from '../lib/barcode';
+import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { showToast } from '../lib/toast';
 import { useInventoryOwners } from '../hooks/useInventoryOwners';
 import { getInventoryOwnerName } from '../lib/inventoryOwners';
@@ -75,7 +76,7 @@ export default function POS() {
           holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
         ]);
         if (cancelled) return;
-        setProducts(p);
+        setProducts(filterOwnInventoryProducts(p));
         setCustomers(c);
         setHoldings(h);
       } catch (error) {
@@ -265,7 +266,7 @@ export default function POS() {
         db.list<Product>('products', user.uid),
         holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
       ]);
-      setProducts(fresh);
+      setProducts(filterOwnInventoryProducts(fresh));
       setHoldings(freshHoldings);
     } catch (err) {
       console.error('[POS] register_pos_sale error:', err);
