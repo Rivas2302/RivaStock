@@ -49,6 +49,7 @@ export function planSupplierImport(input: {
   marginRules?: ResellerMarginRules;
   marginRuleForRow?: (row: SupplierListDraftRow, existingProduct: Product | null) => ResellerMarginValueRule | null;
   hasReplacementForRow?: (row: SupplierListDraftRow) => boolean;
+  preserveZeroMarginPrice?: boolean;
 }): SupplierImportReviewEntry[] {
   const currency = input.currency?.toUpperCase() ?? null;
   const existingByCode = new Map<string, Product>();
@@ -73,12 +74,16 @@ export function planSupplierImport(input: {
         : Number.isFinite(row.marginPercent) ? { mode: 'percent' as const, value: Number(row.marginPercent), minimumProfit: null, maximumProfit: null }
           : null);
     const rules = input.marginRules ? normalizeResellerMarginRules(input.marginRules) : null;
+    const exactCatalogPrice = input.preserveZeroMarginPrice === true
+      && explicitRule?.mode === 'percent'
+      && explicitRule.value === 0;
+    const rounding = exactCatalogPrice ? 'none' : input.rounding;
     const marginSuggestion = cost !== null && cost > 0
       ? rules
         ? explicitRule
-          ? calculateResellerMarginSuggestionForRule(explicitRule, cost, rules.rounding)
+          ? calculateResellerMarginSuggestionForRule(explicitRule, cost, exactCatalogPrice ? 'none' : rules.rounding)
           : calculateResellerMarginSuggestion(rules, { cost, productId: existingProduct?.id, category: row.category })
-        : { suggestedResellerPrice: calculateSupplierSuggestedPrice(cost, explicitRule?.mode === 'fixed' ? explicitRule.value * 100 / cost : explicitRule?.value ?? input.marginForRow?.(row) ?? 25, input.rounding) }
+        : { suggestedResellerPrice: calculateSupplierSuggestedPrice(cost, explicitRule?.mode === 'fixed' ? explicitRule.value * 100 / cost : explicitRule?.value ?? input.marginForRow?.(row) ?? 25, rounding) }
       : null;
     const suggestedResellerPrice = marginSuggestion?.suggestedResellerPrice ?? null;
     const suggestedProfit = marginSuggestion

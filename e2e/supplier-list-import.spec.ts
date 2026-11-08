@@ -12,6 +12,20 @@ const priceListFixture = { id: 'price-list-qa', user_id: owner, kind: 'reseller'
 const supplier = { id: 'supplier-qa', user_id: owner, name: '[QA] Mr Tecno', name_lower: '[qa] mr tecno', is_active: true };
 const secondarySupplier = { id: 'supplier-qa-secondary', user_id: owner, name: 'ZZ [QA] Otro proveedor', name_lower: 'zz [qa] otro proveedor', is_active: true };
 const supplierListFixture = { id: 'supplier-list-qa', user_id: owner, price_list_id: priceListFixture.id, supplier_id: supplier.id, enabled: false };
+const rivaSourceProduct = {
+  id: '10000000-0000-4000-8000-000000000042',
+  name: '[QA] Producto público cuenta B',
+  categoryId: 'category-source',
+  category: 'Accesorios B',
+  salePrice: 12500,
+  stock: 73,
+  imageUrl: 'https://rivastock-test.invalid/storage/v1/object/public/assets/account-b/products/source-1/photo.webp',
+  images: [
+    'https://rivastock-test.invalid/storage/v1/object/public/assets/account-b/products/source-1/photo.webp',
+    'https://rivastock-test.invalid/storage/v1/object/public/assets/account-b/products/source-2/photo.webp',
+  ],
+  availability: 'in_stock',
+};
 
 function session() {
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -23,7 +37,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean } = {}) {
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
@@ -148,7 +162,37 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       }
       if (rpc === 'my_business_plan') return route.fulfill({ json: { plan_code: 'base', plan_name: 'RivaStock', status: 'active', limits: { modules: { ai: false, knowledge: false, automation: false } } } });
       if (rpc === 'storage_upload_check') return route.fulfill({ json: { allowed: true } });
-      if (rpc === 'get_public_catalog_products') return route.fulfill({ json: [] });
+      if (rpc === 'get_public_catalog_products') {
+        const slug = String((route.request().postDataJSON() as { p_slug?: string }).p_slug ?? '');
+        const sourceProduct = changedCatalog ? { ...rivaSourceProduct, salePrice: 14000 } : rivaSourceProduct;
+        if (options.rivaCatalogFixture && slug === 'cuenta-b') return route.fulfill({ json: [sourceProduct] });
+        if (options.rivaCatalogFixture && slug === 'cuenta-a') {
+          const visible = products.filter(product => product.show_in_catalog === true
+            && (product.catalog_only !== true || (product.custom_fields as Record<string, unknown> | undefined)?.rivaCatalogSupplierImport === true));
+          return route.fulfill({ json: visible.map(product => ({
+            id: product.id, name: product.name, categoryId: product.category_id, category: product.category,
+            salePrice: product.sale_price, stock: product.stock, imageUrl: product.image_url, images: product.images,
+            availability: (product.custom_fields as Record<string, unknown> | undefined)?.rivaCatalogSupplierImport === true ? 'on_order' : Number(product.stock) > 0 ? 'in_stock' : 'out_of_stock',
+          })) });
+        }
+        return route.fulfill({ json: [] });
+      }
+      if (rpc === 'get_public_catalog_product') {
+        const body = route.request().postDataJSON() as { p_slug?: string; p_product_id?: string };
+        const sourceProduct = changedCatalog ? { ...rivaSourceProduct, salePrice: 14000 } : rivaSourceProduct;
+        if (options.rivaCatalogFixture && body.p_slug === 'cuenta-b' && body.p_product_id === sourceProduct.id) return route.fulfill({ json: sourceProduct });
+        if (options.rivaCatalogFixture && body.p_slug === 'cuenta-a') {
+          const product = products.find(row => row.id === body.p_product_id && row.show_in_catalog === true
+            && (row.catalog_only !== true || (row.custom_fields as Record<string, unknown> | undefined)?.rivaCatalogSupplierImport === true));
+          if (!product) return route.fulfill({ json: null });
+          return route.fulfill({ json: {
+            id: product.id, name: product.name, categoryId: product.category_id, category: product.category,
+            salePrice: product.sale_price, stock: product.stock, imageUrl: product.image_url, images: product.images,
+            availability: (product.custom_fields as Record<string, unknown> | undefined)?.rivaCatalogSupplierImport === true ? 'on_order' : Number(product.stock) > 0 ? 'in_stock' : 'out_of_stock',
+          } });
+        }
+        return route.fulfill({ json: null });
+      }
       if (rpc === 'get_reseller_catalog_status') {
         const enabled = priceListItems.some(item => {
           const product = products.find(row => row.id === item.product_id);
@@ -251,12 +295,18 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
         }
         return route.fulfill({ json: categories });
       }
-      if (table === 'catalog_config') return route.fulfill({ json: [{
-        id: 'catalog-config-qa', user_id: owner, business_name: 'Negocio QA', slug: 'qa-bulk',
-        show_prices: true, show_out_of_stock: true, show_stock: false, show_stock_quantity: false,
-        enabled: true, welcome_message: '', primary_color: '#4f46e5', accent_color: '#4f46e5',
-        allow_orders: true, layout: 'Grid', font_style: 'Modern',
-      }] });
+      if (table === 'catalog_config') {
+        const requestedSlug = url.searchParams.get('slug')?.replace(/^eq\./, '') ?? 'qa-bulk';
+        const config = {
+          id: `catalog-config-${requestedSlug}`, user_id: owner,
+          business_name: requestedSlug === 'cuenta-b' ? 'Cuenta B' : requestedSlug === 'cuenta-a' ? 'Cuenta A' : 'Negocio QA', slug: requestedSlug,
+          show_prices: true, show_out_of_stock: requestedSlug !== 'cuenta-a', show_stock: false, show_stock_quantity: false,
+          enabled: true, welcome_message: '', primary_color: '#4f46e5', accent_color: '#4f46e5',
+          allow_orders: true, layout: 'Grid', font_style: 'Modern',
+        };
+        if (route.request().headers().accept?.includes('vnd.pgrst.object')) return route.fulfill({ json: config });
+        return route.fulfill({ json: [config] });
+      }
       if (table === 'price_lists') {
         if (method === 'PATCH') {
           const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -320,13 +370,14 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
     products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites,
+    supplierProducts: () => [...supplierProductIds],
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
   };
 }
 
-async function openMobileSupplierImportFromStock(page: Page) {
-  await page.setViewportSize({ width: 390, height: 844 });
+async function openMobileSupplierImportFromStock(page: Page, width = 390) {
+  await page.setViewportSize({ width, height: width >= 1024 ? 900 : 844 });
   await page.goto('/stock');
   await page.getByRole('button', { name: 'Más acciones de stock' }).click();
   await page.getByRole('button', { name: /Lista revendedores/ }).click();
@@ -606,6 +657,82 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
   await expect(modal.getByText(/0 nuevos · 0 actualizados · 3 sin cambios/)).toBeVisible();
+});
+
+test('I42 imports only public RivaStock catalog data, copies photos, stays out of Stock and Sales, and reimports by source id', async ({ page }) => {
+  const pageErrors: string[] = [];
+  const fetchUrlRequests: string[] = [];
+  page.on('pageerror', error => pageErrors.push(error.stack ?? error.message));
+  page.on('console', message => { if (message.type() === 'error') pageErrors.push(message.text()); });
+  page.on('request', request => {
+    if (request.url().includes('/functions/v1/fetch-url')) fetchUrlRequests.push(request.url());
+  });
+  const { products, pricingCalls, supplierProducts, changeCatalog } = await mockApp(page, { rivaCatalogFixture: true });
+  const modal = await openMobileSupplierImportFromStock(page, 360);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://rivastock.vercel.app/catalogo/cuenta-b');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await expect(modal.getByText(/Origen: Catálogo de Cuenta B/)).toBeVisible();
+  await expect(modal.getByLabel('Mostrar en mi catálogo público')).toBeChecked();
+  await expect(modal.getByRole('button', { name: 'Usar el mismo precio del catálogo · 0% de margen' })).toBeVisible();
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('true');
+  await continueSupplierImportToReview(page, modal);
+  await expect(modal.getByText(/1 productos · 1 listos · 0 para revisar/)).toBeVisible();
+  await expect(modal.getByText(rivaSourceProduct.id).first()).toBeVisible();
+  await expect(modal.getByRole('button', { name: 'Agregar los 1 listos con foto' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 1 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
+  await expect.poll(() => products.length).toBe(1);
+  await expect.poll(() => Array.isArray(products[0].images) && (products[0].images as unknown[]).length === 2).toBe(true);
+  const imported = products[0];
+  expect(imported).toMatchObject({
+    barcode: rivaSourceProduct.id,
+    catalog_cost: 12500,
+    stock: 0,
+    catalog_only: true,
+    show_in_catalog: true,
+  });
+  expect((imported.custom_fields as Record<string, unknown>).rivaCatalogSupplierImport).toBe(true);
+  expect((imported.images as string[]).every(url => url.includes('/storage/v1/object/public/assets/') && url.endsWith('.webp'))).toBe(true);
+  expect(imported.sale_price).toBe(15625);
+  expect(supplierProducts()).toContain(imported.id);
+  expect(pricingCalls.at(-1)?.[0]).toMatchObject({ productId: imported.id, supplierCost: 12500, marginPercent: 0 });
+  expect(fetchUrlRequests).toEqual([]);
+
+  await page.goto('/catalogo/cuenta-a');
+  await expect(page.getByText('[QA] Producto público cuenta B')).toBeVisible();
+  await expect(page.getByText(/15[.,]625/)).toBeVisible();
+  await page.goto(`/catalogo/cuenta-a/${String(imported.id)}`);
+  await expect(page.getByRole('heading', { name: '[QA] Producto público cuenta B' })).toBeVisible();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/stock');
+  await page.getByPlaceholder('Buscar por nombre...').fill('[QA] Producto público cuenta B');
+  await expect(page.getByText('[QA] Producto público cuenta B', { exact: true })).toHaveCount(0);
+  await page.goto('/ventas');
+  await page.getByRole('button', { name: 'Nueva Venta' }).click();
+  await page.getByPlaceholder('Buscar por nombre o categoría...').fill('[QA] Producto público cuenta B');
+  await expect(page.getByText('[QA] Producto público cuenta B', { exact: true })).toHaveCount(0);
+
+  changeCatalog();
+  await page.goto('/revendedores');
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+  await page.getByRole('tabpanel', { name: 'Proveedores' }).getByRole('button', { name: 'Importar lista' }).first().click();
+  const reimport = page.getByRole('region', { name: 'Importar lista del proveedor' });
+  await reimport.getByLabel('Enlace HTTPS del proveedor').fill('https://rivastock.vercel.app/catalogo/cuenta-b');
+  await reimport.getByRole('button', { name: 'Leer enlace' }).click();
+  await reimport.getByLabel('Los precios incluyen IVA').selectOption('true');
+  await continueSupplierImportToReview(page, reimport);
+  await expect(reimport.getByText(/0 nuevos · 1 actualizados · 0 sin cambios/)).toBeVisible();
+  await reimport.getByRole('button', { name: 'Agregar los 1 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
+  await expect.poll(() => products.length).toBe(1);
+  await expect.poll(() => products[0].catalog_cost).toBe(14000);
+  expect(products[0].barcode).toBe(rivaSourceProduct.id);
+  expect(products[0].sale_price).toBe(17500);
+  expect((products[0].images as string[]).filter(url => url.includes('/supplier-'))).toHaveLength(2);
+  expect(supplierProducts()).toEqual([imported.id]);
+  expect(pricingCalls.at(-1)?.[0]).toMatchObject({ productId: imported.id, supplierCost: 14000, marginPercent: 0 });
+  expect(pageErrors).toEqual([]);
 });
 
 test('bulk import button confirms and creates only products matching the active search filter', async ({ page }) => {

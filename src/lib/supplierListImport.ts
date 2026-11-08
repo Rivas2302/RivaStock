@@ -12,6 +12,7 @@ export interface SupplierListDraftRow {
   marginMode?: 'percent' | 'fixed';
   marginValue?: number;
   imageUrl: string | null;
+  imageUrls?: string[];
   error: string | null;
   photoBrandReview?: SupplierPhotoBrandReview;
 }

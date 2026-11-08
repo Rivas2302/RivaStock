@@ -1,5 +1,6 @@
 import { parseSupplierListRows, type SupplierListDraftRow } from './supplierListImport';
 import { supabase } from './supabase';
+import { fetchRivaCatalogImage, loadRivaCatalogSupplierSource } from './rivaCatalogSupplierImport';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
@@ -12,7 +13,9 @@ const MAX_OCR_PAGES = 30;
 export type SupplierFileProgress = (page: number, total: number, warning?: string) => void;
 
 export interface SupplierCatalogSourceResult {
-  source: 'woocommerce' | 'shopify' | 'jsonld' | 'text';
+  source: 'woocommerce' | 'shopify' | 'jsonld' | 'text' | 'rivastock';
+  originName?: string;
+  sourceSlug?: string;
   currency: string | null;
   items: Array<{
     code: string | null;
@@ -20,6 +23,7 @@ export interface SupplierCatalogSourceResult {
     price: number | null;
     category: string;
     imageUrl: string | null;
+    imageUrls?: string[];
     url: string | null;
   }>;
   detectedRate?: number | null;
@@ -219,6 +223,24 @@ export async function extractSupplierListPageText(rawUrl: string): Promise<strin
 }
 
 export async function extractSupplierListCatalog(rawUrl: string): Promise<SupplierCatalogSourceResult> {
+  const rivaCatalog = await loadRivaCatalogSupplierSource(rawUrl);
+  if (rivaCatalog) {
+    return {
+      source: 'rivastock',
+      originName: rivaCatalog.businessName,
+      sourceSlug: rivaCatalog.slug,
+      currency: 'ARS',
+      items: rivaCatalog.items.map(item => ({
+        code: item.id,
+        name: item.name,
+        price: item.price,
+        category: item.category,
+        imageUrl: item.imageUrl,
+        imageUrls: item.imageUrls,
+        url: `${new URL(rawUrl).origin}/catalogo/${encodeURIComponent(rivaCatalog.slug)}/${encodeURIComponent(item.id)}`,
+      })),
+    };
+  }
   const url = validateSupplierPageUrl(rawUrl);
   let data: SupplierCatalogSourceResult & { error?: unknown } | null;
   let error: Error | null;
@@ -238,6 +260,8 @@ export async function extractSupplierListCatalog(rawUrl: string): Promise<Suppli
   }
   return data;
 }
+
+export { fetchRivaCatalogImage };
 
 export async function fetchSupplierCatalogImage(rawImageUrl: string, rawSupplierUrl: string): Promise<File> {
   const imageUrl = validateSupplierPageUrl(rawImageUrl);

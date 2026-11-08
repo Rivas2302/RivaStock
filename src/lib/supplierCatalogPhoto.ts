@@ -59,3 +59,17 @@ export function withImportedProductPhoto(product: Product, photoUrl: string, sup
     images: Array.from(new Set(images)),
   };
 }
+
+export function withImportedProductPhotos(product: Product, photoUrls: string[], supplierUrl?: string): Product {
+  const isProviderPhoto = (value: string) => isSupplierManagedPhotoUrl(value)
+    || Boolean(supplierUrl && isLegacySupplierPhotoUrl(value, supplierUrl));
+  const newProviderPhotos = Array.from(new Set(photoUrls.filter(Boolean)));
+  const preservedImages = (product.images ?? []).filter(url => !isProviderPhoto(url));
+  const primaryIsProviderPhoto = Boolean(product.imageUrl && isProviderPhoto(product.imageUrl));
+  const images = Array.from(new Set([...preservedImages, ...newProviderPhotos]));
+  const imageUrl = product.imageUrl && !primaryIsProviderPhoto
+    ? product.imageUrl
+    : newProviderPhotos[0] ?? product.imageUrl;
+  if (imageUrl && !images.includes(imageUrl)) images.unshift(imageUrl);
+  return { ...product, imageUrl, images };
+}

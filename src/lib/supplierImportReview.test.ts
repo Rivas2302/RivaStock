@@ -75,6 +75,15 @@ describe('supplier import review', () => {
     expect(plan[0].suggestedResellerPrice).toBe(18518.51);
   });
 
+  it('keeps a zero-margin RivaStock catalog price exact despite saved price rounding', () => {
+    const plan = planSupplierImport({
+      rows: [row({ supplierCost: 2660, sourceCurrency: 'ARS', marginMode: 'percent', marginValue: 0 })],
+      supplierProducts: [], currency: 'ARS', usdRate: 0, discountPercent: 0, rounding: 500,
+      marginRules: { ...DEFAULT_RESELLER_MARGIN_RULES, rounding: 500 }, preserveZeroMarginPrice: true,
+    });
+    expect(plan[0]).toMatchObject({ suggestedResellerPrice: 2660, suggestedSalePrice: 2660, suggestedProfit: 0 });
+  });
+
   it('keeps photos with provider branding out of the ready rows until explicitly resolved', () => {
     const input = {
       rows: [row({ photoBrandReview: { source: { status: 'flagged' as const, matches: ['www'] } } })],

@@ -2,17 +2,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractSupplierListCatalog, extractSupplierListFileText, extractSupplierListPageText, fetchSupplierCatalogImage, parseSupplierListText } from './supplierListImportSource';
 
 const invokeMock = vi.hoisted(() => vi.fn());
+const rivaCatalogSourceMock = vi.hoisted(() => vi.fn());
+const rivaCatalogImageMock = vi.hoisted(() => vi.fn());
 const tesseractWorkerMock = vi.hoisted(() => ({
   recognize: vi.fn(),
   terminate: vi.fn(),
 }));
 vi.mock('./supabase', () => ({ supabase: { functions: { invoke: invokeMock } } }));
+vi.mock('./rivaCatalogSupplierImport', () => ({
+  loadRivaCatalogSupplierSource: rivaCatalogSourceMock,
+  fetchRivaCatalogImage: rivaCatalogImageMock,
+}));
 vi.mock('tesseract.js', () => ({ createWorker: vi.fn(async () => tesseractWorkerMock) }));
 
 describe('supplier list source extraction', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     invokeMock.mockReset();
+    rivaCatalogSourceMock.mockReset();
+    rivaCatalogImageMock.mockReset();
     tesseractWorkerMock.recognize.mockReset();
     tesseractWorkerMock.terminate.mockReset();
     vi.doUnmock('pdfjs-dist/legacy/build/pdf.mjs');
@@ -127,6 +135,19 @@ describe('supplier list source extraction', () => {
       source: 'woocommerce', currency: 'USD', items: [{ code: 'SKU-1', price: 7.75 }],
     });
     expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/catalog', mode: 'catalog' } });
+  });
+
+  it('reads a RivaStock catalog directly and preserves its stable product ID without using fetch-url', async () => {
+    rivaCatalogSourceMock.mockResolvedValue({
+      slug: 'cuenta-b', businessName: 'Cuenta B', showPrices: true,
+      items: [{ id: '10000000-0000-4000-8000-000000000001', name: 'Cable', price: 12500, category: 'Accesorios', imageUrl: 'https://project.supabase.co/photo.webp', imageUrls: ['https://project.supabase.co/photo.webp'] }],
+    });
+    await expect(extractSupplierListCatalog('https://rivastock.vercel.app/catalogo/cuenta-b')).resolves.toMatchObject({
+      source: 'rivastock', originName: 'Cuenta B', sourceSlug: 'cuenta-b', currency: 'ARS',
+      items: [{ code: '10000000-0000-4000-8000-000000000001', price: 12500, imageUrls: ['https://project.supabase.co/photo.webp'] }],
+    });
+    expect(rivaCatalogSourceMock).toHaveBeenCalledWith('https://rivastock.vercel.app/catalogo/cuenta-b');
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it('downloads a same-origin supplier image through the protected proxy', async () => {

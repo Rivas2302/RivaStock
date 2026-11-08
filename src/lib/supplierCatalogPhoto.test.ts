@@ -7,6 +7,7 @@ import {
   isSupplierManagedPhotoUrl,
   shouldReplaceWithSupplierPhoto,
   withImportedProductPhoto,
+  withImportedProductPhotos,
 } from './supplierCatalogPhoto';
 
 const supplierUrl = 'https://supplier.example/catalog';
@@ -51,5 +52,21 @@ describe('supplier catalog photos', () => {
     const current = product({ imageUrl: 'https://project.supabase.co/manual.webp' });
     expect(withImportedProductPhoto(current, 'https://project.supabase.co/supplier.webp', supplierUrl).imageUrl)
       .toBe(current.imageUrl);
+  });
+
+  it('replaces a supplier photo set on reimport and preserves a business photo', () => {
+    const managedOne = 'https://project.supabase.co/storage/v1/object/public/assets/owner/products/product/supplier-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp';
+    const managedTwo = 'https://project.supabase.co/storage/v1/object/public/assets/owner/products/product/supplier-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp';
+    const current = product({
+      imageUrl: managedOne,
+      images: ['https://project.supabase.co/storage/v1/object/public/assets/owner/products/product/manual.webp', managedOne, managedTwo],
+    });
+    const updated = withImportedProductPhotos(current, ['https://project.supabase.co/new-one.webp', 'https://project.supabase.co/new-two.webp'], supplierUrl);
+    expect(updated.imageUrl).toBe('https://project.supabase.co/new-one.webp');
+    expect(updated.images).toEqual([
+      'https://project.supabase.co/storage/v1/object/public/assets/owner/products/product/manual.webp',
+      'https://project.supabase.co/new-one.webp',
+      'https://project.supabase.co/new-two.webp',
+    ]);
   });
 });
