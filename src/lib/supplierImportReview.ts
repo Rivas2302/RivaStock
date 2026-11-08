@@ -3,6 +3,13 @@ import type { SupplierListDraftRow } from './supplierListImport';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from './resellerSupplierRounds';
 import { isSupplierManagedPhotoUrl } from './supplierCatalogPhoto';
 import { isSupplierPhotoReviewBlocking, normalizeSupplierImportRow } from './supplierPrivacy';
+import {
+  calculateResellerMarginSuggestion,
+  calculateResellerMarginSuggestionForRule,
+  normalizeResellerMarginRules,
+  type ResellerMarginRules,
+  type ResellerMarginValueRule,
+} from './resellerMarginRules';
 
 export type SupplierImportAction = 'new' | 'updated' | 'unchanged' | 'review';
 
@@ -11,6 +18,8 @@ export interface SupplierImportReviewEntry {
   action: SupplierImportAction;
   existingProduct: Product | null;
   supplierCostLocal: number | null;
+  suggestedResellerPrice: number | null;
+  suggestedProfit: number | null;
   suggestedSalePrice: number | null;
 }
 
@@ -30,7 +39,9 @@ export function planSupplierImport(input: {
   usdRate: number;
   discountPercent: number;
   rounding: SupplierPriceRounding;
-  marginForRow: (row: SupplierListDraftRow) => number;
+  marginForRow?: (row: SupplierListDraftRow) => number;
+  marginRules?: ResellerMarginRules;
+  marginRuleForRow?: (row: SupplierListDraftRow, existingProduct: Product | null) => ResellerMarginValueRule | null;
   hasReplacementForRow?: (row: SupplierListDraftRow) => boolean;
 }): SupplierImportReviewEntry[] {
   const currency = input.currency?.toUpperCase() ?? null;
@@ -45,24 +56,40 @@ export function planSupplierImport(input: {
   return input.rows.map(sourceRow => {
     const row = normalizeSupplierImportRow(sourceRow);
     const photoBlocked = isSupplierPhotoReviewBlocking(row.photoBrandReview, input.hasReplacementForRow?.(row) ?? false);
+    const existingProduct = (row.sourceCode ? existingByCode.get(normalizeSourceCode(row.sourceCode)) : undefined)
+      ?? existingByName.get(normalizeSupplierProductName(row.name)) ?? null;
     const convertedCost = row.supplierCost === null ? null
       : currency === 'USD' ? (Number.isFinite(input.usdRate) && input.usdRate > 0 ? row.supplierCost * input.usdRate : null)
         : currency === null || currency === 'ARS' ? row.supplierCost : null;
     const cost = convertedCost !== null && Number.isFinite(convertedCost) ? Math.round(convertedCost * 100) / 100 : null;
-    const suggested = cost !== null && cost > 0
-      ? calculateSupplierSuggestedPrice(cost, input.marginForRow(row), input.rounding) / Math.max(0.01, 1 - Math.min(99, input.discountPercent) / 100)
+    const explicitRule = input.marginRuleForRow?.(row, existingProduct)
+      ?? (Number.isFinite(row.marginValue) ? { mode: row.marginMode ?? 'percent', value: Number(row.marginValue), minimumProfit: null, maximumProfit: null }
+        : Number.isFinite(row.marginPercent) ? { mode: 'percent' as const, value: Number(row.marginPercent), minimumProfit: null, maximumProfit: null }
+          : null);
+    const rules = input.marginRules ? normalizeResellerMarginRules(input.marginRules) : null;
+    const marginSuggestion = cost !== null && cost > 0
+      ? rules
+        ? explicitRule
+          ? calculateResellerMarginSuggestionForRule(explicitRule, cost, rules.rounding)
+          : calculateResellerMarginSuggestion(rules, { cost, productId: existingProduct?.id, category: row.category })
+        : { suggestedResellerPrice: calculateSupplierSuggestedPrice(cost, explicitRule?.mode === 'fixed' ? explicitRule.value * 100 / cost : explicitRule?.value ?? input.marginForRow?.(row) ?? 25, input.rounding) }
       : null;
-    const existingProduct = (row.sourceCode ? existingByCode.get(normalizeSourceCode(row.sourceCode)) : undefined)
-      ?? existingByName.get(normalizeSupplierProductName(row.name)) ?? null;
+    const suggestedResellerPrice = marginSuggestion?.suggestedResellerPrice ?? null;
+    const suggestedProfit = marginSuggestion
+      ? Math.round((suggestedResellerPrice! - cost!) * 100) / 100
+      : null;
+    const suggested = suggestedResellerPrice !== null
+      ? suggestedResellerPrice / Math.max(0.01, 1 - Math.min(99, input.discountPercent) / 100)
+      : null;
     if (row.error || cost === null || cost <= 0 || suggested === null || photoBlocked) {
-      return { row, action: 'review', existingProduct, supplierCostLocal: cost, suggestedSalePrice: suggested };
+      return { row, action: 'review', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
     }
-    if (!existingProduct) return { row, action: 'new', existingProduct: null, supplierCostLocal: cost, suggestedSalePrice: suggested };
+    if (!existingProduct) return { row, action: 'new', existingProduct: null, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
     const unchanged = existingProduct.name === row.name
       && Number(existingProduct.catalogCost ?? 0) === cost
       && existingProduct.salePrice === suggested
       && existingProduct.category === row.category
       && (!row.imageUrl || existingProduct.imageUrl === row.imageUrl || isSupplierManagedPhotoUrl(existingProduct.imageUrl));
-    return { row, action: unchanged ? 'unchanged' : 'updated', existingProduct, supplierCostLocal: cost, suggestedSalePrice: suggested };
+    return { row, action: unchanged ? 'unchanged' : 'updated', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
   });
 }

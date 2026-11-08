@@ -25,8 +25,10 @@ describe('reseller supplier lists UI', () => {
   });
 
   it('keeps supplier import controls readable and hides AI reading for store links', () => {
-    expect(modal).toContain('aria-pressed:bg-[var(--primary)]');
+    expect(modal).toContain('aria-label="Forma de importar"');
+    expect(modal).toContain("supplierImportSourceType === sourceType ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]'");
     expect(modal).toContain("supplierImportSourceType !== 'link'");
+    expect(modal).toContain('Se aplican tus reglas guardadas de Revendedores → Ajustes.');
     expect(modal).not.toContain('window.confirm');
   });
 

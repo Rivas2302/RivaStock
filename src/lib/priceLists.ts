@@ -13,6 +13,7 @@ import type {
 import { db, fromDb, invalidateDbCache } from './db';
 import { supabase } from './supabase';
 import { clampPriceListDiscount } from './priceListPricing';
+import { normalizeResellerMarginRules, type ResellerMarginRules } from './resellerMarginRules';
 
 type RawPriceList = PriceList & { accessCodeHash?: string | null };
 const SUPPLIER_ITEMS_PAGE_SIZE = 1_000;
@@ -28,6 +29,7 @@ const normalizePriceList = (value: RawPriceList): PriceList => {
     minimumOrderQuantity: Number(list.minimumOrderQuantity ?? 0),
     minimumProfitMarginPercent: Number(list.minimumProfitMarginPercent ?? 25),
     targetResellerDiscountPercent: Number(list.targetResellerDiscountPercent ?? 15),
+    marginRules: normalizeResellerMarginRules(list.marginRules),
   };
 };
 
@@ -78,6 +80,15 @@ export async function saveResellerPriceList(
   if (error) throw new Error(`[save_reseller_price_list] ${error.message}`);
   invalidateDbCache('price_lists', 'price_list_items');
   return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
+}
+
+export async function saveResellerMarginRules(
+  listId: string,
+  marginRules: ResellerMarginRules,
+): Promise<PriceList> {
+  const saved = await db.update<RawPriceList>('price_lists', listId, { marginRules });
+  invalidateDbCache('price_lists');
+  return normalizePriceList(saved);
 }
 
 export async function loadResellerSupplierLists(priceListId: string): Promise<ResellerSupplierList[]> {

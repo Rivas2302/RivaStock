@@ -67,6 +67,27 @@ describe('reseller price list bulk actions', () => {
     expect(progress.at(-1)).toEqual({ completed: 1_205, total: 1_205 });
   });
 
+  it('applies and restores distinct suggested prices in bounded batches', async () => {
+    const rows = [item('a'), item('b'), item('c')].map((entry, index) => ({
+      ...entry,
+      pricingMode: 'fixed' as const,
+      discountPercent: null,
+      fixedPrice: 1_400 + index * 100,
+    }));
+    const batches: Array<string[]> = [];
+    await applyResellerPriceListBulkMutations(
+      [{ type: 'prices', items: rows }],
+      async mutation => {
+        if (mutation.type !== 'prices') throw new Error('Unexpected mutation');
+        batches.push(mutation.items.map(row => row.productId));
+      },
+      undefined,
+      2,
+    );
+    expect(batches).toEqual([['a', 'b'], ['c']]);
+    expect(toPriceListBulkRow(rows[0])).toMatchObject({ pricing_mode: 'fixed', discount_percent: null, fixed_price: 1_400 });
+  });
+
   it('stops on the failed batch and reports completed progress for a safe retry', async () => {
     const write = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('raw database error'));
     const progress: Array<{ completed: number; total: number }> = [];

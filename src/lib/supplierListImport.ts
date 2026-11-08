@@ -9,6 +9,8 @@ export interface SupplierListDraftRow {
   supplierCost: number | null;
   category: string;
   marginPercent?: number;
+  marginMode?: 'percent' | 'fixed';
+  marginValue?: number;
   imageUrl: string | null;
   error: string | null;
   photoBrandReview?: SupplierPhotoBrandReview;

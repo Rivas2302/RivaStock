@@ -38,6 +38,7 @@ import {
   loadResellerSupplierListPricing,
   loadResellerSupplierLists,
   saveResellerPriceList,
+  saveResellerMarginRules,
   saveResellerSupplierList,
   saveResellerSupplierImportCategories,
   saveResellerSupplierListPricingBatch,
@@ -51,6 +52,14 @@ import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } f
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
 import { getResellerProductEconomics } from '../lib/resellerProductEconomics';
+import {
+  calculateResellerMarginSuggestion,
+  DEFAULT_RESELLER_MARGIN_RULES,
+  normalizeResellerMarginRules,
+  selectMarginSimulatorProducts,
+  validateResellerMarginRules,
+  type ResellerMarginRules,
+} from '../lib/resellerMarginRules';
 import { getProductPhotoUrls, getProductThumbnailUrl } from '../lib/productPhotos';
 import {
   getResellerPricingAdvice,
@@ -62,8 +71,7 @@ import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, fetchSupplierCatalogImage, parseSupplierListText } from '../lib/supplierListImportSource';
-import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from '../lib/resellerSupplierRounds';
-import { planSupplierImport } from '../lib/supplierImportReview';
+import { planSupplierImport, type SupplierImportReviewEntry } from '../lib/supplierImportReview';
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto } from '../lib/supplierCatalogPhoto';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
@@ -77,6 +85,7 @@ import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
 import Modal from './Modal';
 import SupplierOrderRoundManager from './resellers/SupplierOrderRoundManager';
+import ResellerMarginAssistant, { type MarginSimulatorProduct } from './resellers/ResellerMarginAssistant';
 import SupplierListPhotoPicker from './resellers/SupplierListPhotoPicker';
 import './resellers/ResellerPage.css';
 
@@ -163,7 +172,8 @@ type PriceListBulkAction = 'add' | 'remove' | PriceListAvailability;
 type PriceListBulkUndo =
   | { type: 'remove'; items: PriceListItem[] }
   | { type: 'add'; productIds: string[] }
-  | { type: 'availability'; items: Array<Pick<PriceListItem, 'productId' | 'availability'>> };
+  | { type: 'availability'; items: Array<Pick<PriceListItem, 'productId' | 'availability'>> }
+  | { type: 'prices'; items: PriceListItem[] };
 type PriceListBulkConfirmation = {
   action: PriceListBulkAction;
   productIds: string[];
@@ -182,6 +192,11 @@ type SupplierImportAddConfirmation = {
   count: number;
   withPhoto: boolean;
   filterText: string;
+};
+
+type MarginApplyConfirmation = {
+  previousItems: PriceListItem[];
+  nextItems: PriceListItem[];
 };
 
 function sameResellerSettings(left: ResellerSettingsSnapshot | null, right: ResellerSettingsSnapshot): boolean {
@@ -298,9 +313,12 @@ export default function ResellerPriceListModal({
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(0);
   const [minimumProfitMarginPercent, setMinimumProfitMarginPercent] = useState(25);
   const [targetResellerDiscountPercent, setTargetResellerDiscountPercent] = useState(15);
+  const [marginRules, setMarginRules] = useState<ResellerMarginRules>(DEFAULT_RESELLER_MARGIN_RULES);
+  const [marginRulesSaveStatus, setMarginRulesSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [search, setSearch] = useState('');
   const [productListSourceFilter, setProductListSourceFilter] = useState('all');
   const [priceListInclusionFilter, setPriceListInclusionFilter] = useState<'all' | 'included'>('all');
+  const [marginFilter, setMarginFilter] = useState<'all' | 'low'>('all');
   const [advisorFilter, setAdvisorFilter] = useState<ResellerPricingAdviceFilter>('all');
   const [supplierLists, setSupplierLists] = useState<ResellerSupplierList[]>([]);
   const [supplierPricingSummaries, setSupplierPricingSummaries] = useState<Record<string, SupplierPricingSummary>>({});
@@ -323,11 +341,14 @@ export default function ResellerPriceListModal({
   const [bulkProgress, setBulkProgress] = useState<ResellerPriceListBulkProgress | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUndo, setBulkUndo] = useState<PriceListBulkUndo | null>(null);
+  const [marginApplyConfirmation, setMarginApplyConfirmation] = useState<MarginApplyConfirmation | null>(null);
+  const [marginApplyError, setMarginApplyError] = useState<string | null>(null);
   const [supplierImportConfirmation, setSupplierImportConfirmation] = useState<SupplierImportAddConfirmation | null>(null);
   const [settingsSaveStatus, setSettingsSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const settingsSaveInProgress = useRef(false);
   const queuedSettingsSave = useRef<ResellerSettingsSnapshot | null>(null);
   const savedSettingsSnapshot = useRef<ResellerSettingsSnapshot | null>(null);
+  const savedMarginRulesSnapshot = useRef(JSON.stringify(DEFAULT_RESELLER_MARGIN_RULES));
   const settingsSnapshot = useMemo<ResellerSettingsSnapshot>(() => ({
     publicEnabled,
     discount,
@@ -346,7 +367,6 @@ export default function ResellerPriceListModal({
   const [supplierImportFileName, setSupplierImportFileName] = useState('');
   const [supplierImportStep, setSupplierImportStep] = useState<1 | 2 | 3>(1);
   const [supplierImportSourceType, setSupplierImportSourceType] = useState<'link' | 'pdf' | 'spreadsheet' | 'photo'>('link');
-  const [newSupplierImportCategory, setNewSupplierImportCategory] = useState('');
   const [supplierImportCurrency, setSupplierImportCurrency] = useState<string | null>(null);
   const [supplierImportRateNotice, setSupplierImportRateNotice] = useState<string | null>(null);
   const [supplierImportUsdRate, setSupplierImportUsdRate] = useState(() => {
@@ -372,9 +392,6 @@ export default function ResellerPriceListModal({
   const [supplierImportReading, setSupplierImportReading] = useState(false);
   const [supplierImportAiStatus, setSupplierImportAiStatus] = useState<string | null>(null);
   const [supplierImportProgress, setSupplierImportProgress] = useState<{ page: number; total: number; warning: string | null } | null>(null);
-  const [supplierImportMargin, setSupplierImportMargin] = useState(25);
-  const [supplierImportRounding, setSupplierImportRounding] = useState<SupplierPriceRounding>('none');
-  const [supplierImportCategoryMargins, setSupplierImportCategoryMargins] = useState<Record<string, number>>({});
   const [itemsDirty, setItemsDirty] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; fileName: string } | null>(null);
@@ -425,6 +442,8 @@ export default function ResellerPriceListModal({
           },
         ]));
         if (cancelled) return;
+        const loadedMarginRules = normalizeResellerMarginRules(loaded.list.marginRules);
+        savedMarginRulesSnapshot.current = JSON.stringify(loadedMarginRules);
         savedSettingsSnapshot.current = {
           publicEnabled: loaded.list.publicEnabled,
           discount: loaded.list.defaultDiscountPercent,
@@ -442,7 +461,10 @@ export default function ResellerPriceListModal({
         setMinimumOrderQuantity(loaded.list.minimumOrderQuantity);
         setMinimumProfitMarginPercent(loaded.list.minimumProfitMarginPercent);
         setTargetResellerDiscountPercent(loaded.list.targetResellerDiscountPercent);
+        setMarginRules(loadedMarginRules);
+        setMarginRulesSaveStatus('saved');
         setAdvisorFilter('all');
+        setMarginFilter('all');
         setSettingsExpanded(false);
         setItems(loaded.items.sort((a, b) => a.sortOrder - b.sortOrder));
         setSupplierLists(loadedSupplierLists);
@@ -524,6 +546,26 @@ export default function ResellerPriceListModal({
     return () => window.clearTimeout(timer);
   }, [canWrite, list, persistSettings, settingsSnapshot]);
 
+  useEffect(() => {
+    if (!list || !canWrite || savedMarginRulesSnapshot.current === JSON.stringify(marginRules)) return;
+    if (validateResellerMarginRules(marginRules)) {
+      setMarginRulesSaveStatus('error');
+      return;
+    }
+    setMarginRulesSaveStatus('saving');
+    const timer = window.setTimeout(() => {
+      void saveResellerMarginRules(list.id, marginRules).then(saved => {
+        savedMarginRulesSnapshot.current = JSON.stringify(marginRules);
+        setList(saved);
+        setMarginRulesSaveStatus('saved');
+      }).catch(() => {
+        setMarginRulesSaveStatus('error');
+        showToast('No se pudieron guardar las reglas de ganancia. Revisá tu conexión e intentá de nuevo.', 'error');
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [canWrite, list, marginRules]);
+
   useEffect(() => () => {
     if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
   }, [pdfPreview]);
@@ -565,6 +607,26 @@ export default function ResellerPriceListModal({
     }));
   }, [discount, holdings, holdingsEnabled, items, minimumProfitMarginPercent, products, targetResellerDiscountPercent]);
 
+  const marginSuggestionsByProductId = useMemo(() => {
+    const productById = new Map(products.map(product => [product.id, product]));
+    return new Map(items.flatMap(item => {
+      const product = productById.get(item.productId);
+      if (!product) return [];
+      const cost = getResellerProductEconomics(product, holdings, holdingsEnabled).purchaseCost;
+      if (cost === null || cost <= 0) return [];
+      const suggestion = calculateResellerMarginSuggestion(marginRules, { cost, productId: product.id, category: product.category });
+      const currentResellerPrice = resolvePriceListPrice(product.salePrice, discount, item);
+      return [[product.id, {
+        cost,
+        currentResellerPrice,
+        currentProfit: currentResellerPrice - cost,
+        targetProfit: suggestion.targetProfit,
+        suggestedResellerPrice: suggestion.suggestedResellerPrice,
+        low: currentResellerPrice - cost < suggestion.targetProfit,
+      }] as const];
+    }));
+  }, [discount, holdings, holdingsEnabled, items, marginRules, products]);
+
   const adviceSummary = useMemo(() => {
     const values = Array.from(pricingAdviceByProductId.values());
     return {
@@ -576,11 +638,11 @@ export default function ResellerPriceListModal({
   }, [pricingAdviceByProductId]);
 
   const visibleProducts = useMemo(() => (
-    searchMatchedProducts.filter((product) => matchesResellerPricingAdviceFilter(
-      pricingAdviceByProductId.get(product.id)?.status,
-      advisorFilter,
+    searchMatchedProducts.filter(product => (
+      matchesResellerPricingAdviceFilter(pricingAdviceByProductId.get(product.id)?.status, advisorFilter)
+      && (marginFilter !== 'low' || marginSuggestionsByProductId.get(product.id)?.low === true)
     ))
-  ), [advisorFilter, pricingAdviceByProductId, searchMatchedProducts]);
+  ), [advisorFilter, marginFilter, marginSuggestionsByProductId, pricingAdviceByProductId, searchMatchedProducts]);
 
   const supplierListBySupplierId = useMemo(
     () => new Map(supplierLists.map((supplierList) => [supplierList.supplierId, supplierList])),
@@ -614,6 +676,34 @@ export default function ResellerPriceListModal({
   const allPricePageSelected = visiblePricePageProducts.length > 0 && selectedPageCount === visiblePricePageProducts.length;
   const selectedPriceProducts = resellerVisibleProducts.filter(product => selectedPriceProductIds.has(product.id));
   const selectedProductIds = selectedPriceProducts.map(product => product.id);
+  const selectedMarginApplyIds = selectedProductIds.filter(productId => marginSuggestionsByProductId.has(productId));
+  const lowMarginProductCount = Array.from(marginSuggestionsByProductId.values()).filter(suggestion => suggestion.low).length;
+  const marginRulesImpact = useMemo(() => {
+    const suggestions = Array.from(marginSuggestionsByProductId.values());
+    return {
+      increaseCount: suggestions.filter(suggestion => suggestion.suggestedResellerPrice > suggestion.currentResellerPrice).length,
+      decreaseCount: suggestions.filter(suggestion => suggestion.suggestedResellerPrice < suggestion.currentResellerPrice).length,
+      averageProfit: suggestions.length
+        ? suggestions.reduce((sum, suggestion) => sum + suggestion.targetProfit, 0) / suggestions.length
+        : null,
+    };
+  }, [marginSuggestionsByProductId]);
+  const marginSimulatorProducts = useMemo(() => {
+    const eligible = products.flatMap(product => {
+      const cost = getResellerProductEconomics(product, holdings, holdingsEnabled).purchaseCost;
+      if (cost === null || cost <= 0) return [];
+      const item = itemByProductId.get(product.id);
+      return [{
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        cost,
+        retailPrice: product.salePrice,
+        currentResellerPrice: resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null }),
+      } satisfies MarginSimulatorProduct];
+    });
+    return selectMarginSimulatorProducts(eligible, 6);
+  }, [discount, holdings, holdingsEnabled, itemByProductId, products]);
   const editingPriceProduct = editingPriceProductId
     ? products.find(product => product.id === editingPriceProductId) ?? null
     : null;
@@ -729,6 +819,11 @@ export default function ResellerPriceListModal({
         mutation.items.map(toPriceListBulkRow),
         { onConflict: 'price_list_id,product_id', ignoreDuplicates: true },
       );
+    } else if (mutation.type === 'prices') {
+      query = supabase.from('price_list_items').upsert(
+        mutation.items.map(toPriceListBulkRow),
+        { onConflict: 'price_list_id,product_id' },
+      );
     } else {
       query = supabase.from('price_list_items').update({ availability: mutation.availability })
         .eq('user_id', ownerUid)
@@ -821,11 +916,13 @@ export default function ResellerPriceListModal({
       mutations = [{ type: 'add', items: bulkUndo.items }];
     } else if (bulkUndo.type === 'add') {
       mutations = [{ type: 'remove', productIds: bulkUndo.productIds }];
-    } else {
+    } else if (bulkUndo.type === 'availability') {
       mutations = (['in_stock', 'on_order'] as const).flatMap(availability => {
         const productIds = bulkUndo.items.filter(item => item.availability === availability).map(item => item.productId);
         return productIds.length ? [{ type: 'availability' as const, productIds, availability }] : [];
       });
+    } else {
+      mutations = [{ type: 'prices', items: bulkUndo.items }];
     }
     setBulkBusy(true);
     setBulkProgress(null);
@@ -846,6 +943,49 @@ export default function ResellerPriceListModal({
       showToast('No se pudieron deshacer todos los cambios. Podés volver a intentar.', 'error');
     } finally {
       setBulkBusy(false);
+    }
+  };
+
+  const requestMarginPriceApply = (requestedIds: string[]) => {
+    if (!list || !canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved') return;
+    const itemById = new Map(items.map(item => [item.productId, item]));
+    const previousItems = Array.from(new Set(requestedIds)).flatMap(productId => {
+      const item = itemById.get(productId);
+      const suggestion = marginSuggestionsByProductId.get(productId);
+      return item && suggestion ? [item] : [];
+    });
+    if (previousItems.length === 0) {
+      showToast('No hay precios con ganancia baja para aplicar.', 'info');
+      return;
+    }
+    const nextItems = previousItems.map(item => {
+      const suggestion = marginSuggestionsByProductId.get(item.productId)!;
+      return { ...item, pricingMode: 'fixed' as const, discountPercent: null, fixedPrice: suggestion.suggestedResellerPrice };
+    });
+    setMarginApplyError(null);
+    setMarginApplyConfirmation({ previousItems, nextItems });
+  };
+
+  const handleConfirmMarginPriceApply = async () => {
+    if (!list || !marginApplyConfirmation || !canWrite || bulkBusy) return;
+    const { previousItems, nextItems } = marginApplyConfirmation;
+    setBulkBusy(true);
+    setBulkProgress({ completed: 0, total: nextItems.length });
+    setMarginApplyError(null);
+    try {
+      await runPriceListBulkMutations([{ type: 'prices', items: nextItems }]);
+      const nextById = new Map(nextItems.map(item => [item.productId, item]));
+      setItems(current => current.map(item => nextById.get(item.productId) ?? item));
+      setItemsDirty(false);
+      setSelectedPriceProductIds(new Set());
+      setBulkUndo({ type: 'prices', items: previousItems });
+      setMarginApplyConfirmation(null);
+      showToast('Precios sugeridos aplicados. Podés deshacer el cambio.', 'success');
+    } catch {
+      setMarginApplyError('No se pudieron aplicar todos los precios. Podés volver a intentar.');
+    } finally {
+      setBulkBusy(false);
+      setBulkProgress(null);
     }
   };
 
@@ -1411,13 +1551,18 @@ export default function ResellerPriceListModal({
     }
   };
 
-  const getSupplierImportMargin = (row: SupplierListDraftRow): number => {
-    if (Number.isFinite(row.marginPercent)) return Number(row.marginPercent);
-    const categoryKey = row.category.trim().toLocaleLowerCase('es-AR');
-    return categoryKey && Number.isFinite(supplierImportCategoryMargins[categoryKey])
-      ? supplierImportCategoryMargins[categoryKey]
-      : supplierImportMargin;
-  };
+  const getSupplierImportMarginOverride = (row: SupplierListDraftRow) => (
+    Number.isFinite(row.marginValue)
+      ? { mode: row.marginMode ?? 'percent' as const, value: Number(row.marginValue), minimumProfit: null, maximumProfit: null }
+      : Number.isFinite(row.marginPercent)
+        ? { mode: 'percent' as const, value: Number(row.marginPercent), minimumProfit: null, maximumProfit: null }
+        : null
+  );
+  const getSupplierImportEffectiveMarginPercent = (entry: SupplierImportReviewEntry): number => (
+    entry.supplierCostLocal && entry.suggestedProfit !== null
+      ? Math.max(0, entry.suggestedProfit / entry.supplierCostLocal * 100)
+      : 0
+  );
 
   const selectedSupplierProductSet = useMemo(() => new Set(supplierDraftProductIds), [supplierDraftProductIds]);
   const supplierPhotoBrandFlaggedProducts = useMemo(() => products.filter(product => (
@@ -1429,10 +1574,11 @@ export default function ResellerPriceListModal({
     currency: supplierImportCurrency,
     usdRate: supplierImportUsdRate,
     discountPercent: discount,
-    rounding: supplierImportRounding,
-    marginForRow: getSupplierImportMargin,
+    rounding: marginRules.rounding,
+    marginRules,
+    marginRuleForRow: row => getSupplierImportMarginOverride(row),
     hasReplacementForRow: row => Boolean(supplierImportPhotoFiles[row.sourceRow]),
-  }), [discount, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportRounding, supplierImportUsdRate, supplierImportCategoryMargins, supplierImportMargin, supplierImportPhotoFiles]);
+  }), [discount, marginRules, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportUsdRate, supplierImportPhotoFiles]);
   const supplierImportCounts = useMemo(() => supplierImportReview.reduce((counts, entry) => {
     counts[entry.action]++;
     return counts;
@@ -1611,8 +1757,8 @@ export default function ResellerPriceListModal({
         return productId && entry.supplierCostLocal !== null ? [{
           productId,
           supplierCost: entry.supplierCostLocal,
-          marginPercent: getSupplierImportMargin(entry.row),
-          roundingStep: supplierImportRounding === 'none' ? 0 as const : supplierImportRounding,
+          marginPercent: getSupplierImportEffectiveMarginPercent(entry),
+          roundingStep: marginRules.rounding === 'none' ? 0 as const : marginRules.rounding,
         }] : [];
       });
       if (prices.length) await saveResellerSupplierListPricingBatch(savedSupplierList.id, prices);
@@ -1908,6 +2054,20 @@ export default function ResellerPriceListModal({
               </div>
             </section>
 
+            <section aria-label="Asistente de márgenes" className="border-b border-[var(--line)] py-6">
+              <ResellerMarginAssistant
+                rules={marginRules}
+                products={products}
+                simulatorProducts={marginSimulatorProducts}
+                impact={marginRulesImpact}
+                targetResellerDiscountPercent={targetResellerDiscountPercent}
+                canWrite={canWrite}
+                saveStatus={marginRulesSaveStatus}
+                onChange={setMarginRules}
+                onApplyToList={() => requestMarginPriceApply(items.map(item => item.productId))}
+              />
+            </section>
+
             <section aria-labelledby="reseller-settings-minimum-title" className="grid gap-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
               <div>
                 <h3 id="reseller-settings-minimum-title" className="text-base font-bold">Compra mínima</h3>
@@ -2053,7 +2213,7 @@ export default function ResellerPriceListModal({
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}
                             {displayMode === 'page' && supplierImportExample && <section aria-label="Ejemplo de precio" className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-sm">
                               <p className="font-semibold text-[var(--ink)]">Ejemplo con {supplierImportExample.row.sourceCode ? `${supplierImportExample.row.sourceCode} · ` : ''}{supplierImportExample.row.name}</p>
-                              <p className="mt-1 text-[var(--ink-muted)]">Te cuesta {formatCurrency(supplierImportExample.supplierCostLocal ?? 0)} · precio revendedor {formatCurrency(calculateSupplierSuggestedPrice(supplierImportExample.supplierCostLocal ?? 0, getSupplierImportMargin(supplierImportExample.row), supplierImportRounding))} · público sugerido {formatCurrency(supplierImportExample.suggestedSalePrice ?? 0)}</p>
+                              <p className="mt-1 text-[var(--ink-muted)]">Te cuesta {formatCurrency(supplierImportExample.supplierCostLocal ?? 0)} · precio revendedor {formatCurrency(supplierImportExample.suggestedResellerPrice ?? 0)} · ganás {formatCurrency(supplierImportExample.suggestedProfit ?? 0)} · público sugerido {formatCurrency(supplierImportExample.suggestedSalePrice ?? 0)}</p>
                             </section>}
                             <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-3">
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
@@ -2076,41 +2236,16 @@ export default function ResellerPriceListModal({
                             <div className="flex items-center justify-between text-xs"><span>Mostrando {supplierImportFiltered.length ? supplierImportPage * 50 + 1 : 0}–{Math.min((supplierImportPage + 1) * 50, supplierImportFiltered.length)} de {supplierImportFiltered.length}</span><span className="flex gap-2"><button type="button" disabled={supplierImportPage === 0} onClick={() => setSupplierImportPage(page => Math.max(0, page - 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Anterior</button><span className="self-center">{supplierImportPage + 1}/{supplierImportPageCount}</span><button type="button" disabled={supplierImportPage + 1 >= supplierImportPageCount} onClick={() => setSupplierImportPage(page => Math.min(supplierImportPageCount - 1, page + 1))} className="min-h-9 rounded border px-2 disabled:opacity-40">Siguiente</button></span></div>
                             </div>
                             <div hidden={displayMode === 'page' && supplierImportStep !== 2} className="space-y-3">
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <label className="text-xs font-semibold">¿Los precios incluyen IVA?
-                                <select aria-label="Los precios incluyen IVA" value={supplierImportIncludesTax === null ? '' : String(supplierImportIncludesTax)} onChange={event => setSupplierImportIncludesTax(event.target.value === '' ? null : event.target.value === 'true')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950">
-                                  <option value="">Elegí una opción</option><option value="true">Sí, con IVA</option><option value="false">No, sin IVA</option>
-                                </select>
-                              </label>
-                              <label className="text-xs font-semibold">Margen para revendedores
-                                <span className="mt-1 flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 dark:border-slate-700 dark:bg-slate-950"><input aria-label="Margen para revendedores" type="number" min="0" step="0.1" value={supplierImportMargin} onChange={event => setSupplierImportMargin(Math.max(0, Number(event.target.value) || 0))} className="min-w-0 flex-1 bg-transparent text-sm outline-none"/><span className="text-sm">%</span></span>
-                              </label>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {[20, 25, 30, 40].map(value => <button key={value} type="button" aria-pressed={supplierImportMargin === value} onClick={() => setSupplierImportMargin(value)} className="min-h-10 rounded-full border border-[var(--line)] bg-[var(--surface-1)] px-3 text-xs font-bold text-[var(--ink)] aria-pressed:bg-[var(--primary)] aria-pressed:text-[var(--primary-ink)]">{value}%</button>)}
-                              <label className="ml-auto flex items-center gap-2 text-xs font-semibold">Redondeo
-                                <select aria-label="Redondeo de precio sugerido" value={supplierImportRounding} onChange={event => setSupplierImportRounding(event.target.value === 'none' ? 'none' : Number(event.target.value) as 100 | 500)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 dark:border-slate-700 dark:bg-slate-950"><option value="none">Exacto</option><option value="100">$100</option><option value="500">$500</option></select>
-                              </label>
-                            </div>
-                            <details className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
-                              <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Excepciones por categoría (opcional)</summary>
-                              <p className="mt-1 text-xs text-[var(--ink-muted)]">Solo se muestran las categorías a las que cambies el margen general.</p>
-                              {supplierImportRows.some(row => row.category.trim()) && <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                {Array.from(new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))).filter(category => typeof supplierImportCategoryMargins[category.toLocaleLowerCase('es-AR')] === 'number').map(category => {
-                                  const key = category.toLocaleLowerCase('es-AR');
-                                  return <label key={key} className="text-xs font-semibold text-[var(--ink)]">{category}
-                                    <span className="mt-1 flex min-h-10 items-center gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-2"><input aria-label={`Margen para categoría ${category}`} type="number" min="0" step="0.1" value={supplierImportCategoryMargins[key]} onChange={event => setSupplierImportCategoryMargins(current => { if (event.target.value === '') { const next = { ...current }; delete next[key]; return next; } return { ...current, [key]: Math.max(0, Number(event.target.value) || 0) }; })} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none"/><span className="text-sm text-[var(--ink-muted)]">%</span><button type="button" aria-label={`Quitar margen de ${category}`} onClick={() => setSupplierImportCategoryMargins(current => { const next = { ...current }; delete next[key]; return next; })} className="rounded px-2 text-[var(--ink-muted)]">×</button></span>
-                                  </label>;
-                                })}
-                              </div>}
-                              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                <select aria-label="Otra categoría para margen" value={newSupplierImportCategory} onChange={event => setNewSupplierImportCategory(event.target.value)} className="min-h-10 min-w-0 flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]">
-                                  <option value="">Elegí una categoría</option>
-                                  {Array.from(new Set(supplierImportRows.map(row => row.category.trim()).filter(Boolean))).filter(category => typeof supplierImportCategoryMargins[category.toLocaleLowerCase('es-AR')] !== 'number').map(category => <option key={category} value={category}>{category}</option>)}
-                                </select>
-                                <button type="button" disabled={!newSupplierImportCategory} onClick={() => { setSupplierImportCategoryMargins(current => ({ ...current, [newSupplierImportCategory.toLocaleLowerCase('es-AR')]: supplierImportMargin })); setNewSupplierImportCategory(''); }} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">+ Otra categoría</button>
-                              </div>
-                            </details>
+                            <label className="block max-w-sm text-xs font-semibold">¿Los precios incluyen IVA?
+                              <select aria-label="Los precios incluyen IVA" value={supplierImportIncludesTax === null ? '' : String(supplierImportIncludesTax)} onChange={event => setSupplierImportIncludesTax(event.target.value === '' ? null : event.target.value === 'true')} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                                <option value="">Elegí una opción</option><option value="true">Sí, con IVA</option><option value="false">No, sin IVA</option>
+                              </select>
+                            </label>
+                            <section aria-label="Reglas de ganancia aplicadas" className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-sm text-[var(--ink)]">
+                              <p className="font-semibold">Se aplican tus reglas guardadas de Revendedores → Ajustes.</p>
+                              <p className="text-xs text-[var(--ink-muted)]">Costo del proveedor → escalón por costo → excepción por categoría o producto → redondeo de {marginRules.rounding === 'none' ? 'precio exacto' : `$${marginRules.rounding}`}. Podés ajustar un producto en el paso Revisar.</p>
+                              <p className="text-xs text-[var(--ink-muted)]">{marginRules.tiers.map(tier => `${tier.maximumCost === null ? 'Más' : `Hasta ${formatCurrency(tier.maximumCost)}`}: ${tier.mode === 'percent' ? `${tier.value}%` : formatCurrency(tier.value)}`).join(' · ')}</p>
+                            </section>
                             {supplierImportSourceType !== 'link' && <>
                               <button type="button" onClick={() => void handleReadSupplierImportWithAI()} disabled={!canWrite || supplierImportReading || supplierImportIncludesTax === null} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 text-sm font-bold text-white disabled:opacity-50"><Sparkles size={16}/>{supplierImportReading ? 'Leyendo con IA…' : 'Leer lista con IA'}</button>
                               {supplierImportAiStatus && <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{supplierImportAiStatus}</p>}
@@ -2159,7 +2294,14 @@ export default function ResellerPriceListModal({
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
                                   <div><label className="text-[11px] font-semibold text-slate-500">Costo de origen{row.sourceCurrency ? ` (${row.sourceCurrency})` : ''}<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>{row.sourceCurrency?.toUpperCase() === 'USD' && <p className="mt-1 text-sm font-bold text-[var(--ink)]">Costo en pesos: {entry.supplierCostLocal === null ? '—' : formatCurrency(entry.supplierCostLocal)} <span className="text-xs font-normal text-[var(--ink-muted)]">(USD {row.supplierCost?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span></p>}</div>
-                                  <label className="text-[11px] font-semibold text-slate-500">Margen del producto<input aria-label={`Margen de fila ${row.sourceRow}`} type="number" min="0" step="0.1" value={row.marginPercent ?? ''} placeholder={`${getSupplierImportMargin(row)}%`} onChange={event => updateSupplierImportRow(row.sourceRow, { marginPercent: event.target.value === '' ? undefined : Math.max(0, Number(event.target.value) || 0) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
+                                  <label className="text-[11px] font-semibold text-slate-500">Excepción de ganancia
+                                    <span className="mt-1 flex items-center gap-1">
+                                      <select aria-label={`Tipo de ganancia fila ${row.sourceRow}`} value={row.marginMode ?? 'percent'} onChange={event => updateSupplierImportRow(row.sourceRow, { marginMode: event.target.value as 'percent' | 'fixed' })} className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-900"><option value="percent">%</option><option value="fixed">$</option></select>
+                                      {row.marginMode === 'fixed' ? <MoneyInput aria-label={`Ganancia de fila ${row.sourceRow}`} min="0" value={row.marginValue ?? ''} placeholder="Según regla" onChange={event => updateSupplierImportRow(row.sourceRow, { marginPercent: undefined, marginValue: event.target.value === '' ? undefined : Math.max(0, Number(event.target.value) || 0) })} className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                        : <input aria-label={`Ganancia de fila ${row.sourceRow}`} type="number" min="0" step="0.1" value={row.marginValue ?? row.marginPercent ?? ''} placeholder="Según regla" onChange={event => updateSupplierImportRow(row.sourceRow, { marginPercent: undefined, marginValue: event.target.value === '' ? undefined : Math.max(0, Number(event.target.value) || 0), marginMode: 'percent' })} className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />}
+                                      {(row.marginValue !== undefined || row.marginPercent !== undefined) && <button type="button" aria-label={`Usar regla de ganancia fila ${row.sourceRow}`} onClick={() => updateSupplierImportRow(row.sourceRow, { marginPercent: undefined, marginValue: undefined })} className="min-h-10 shrink-0 rounded border border-slate-200 px-2 text-xs dark:border-slate-700">Regla</button>}
+                                    </span>
+                                  </label>
                                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
                                   {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
                                   {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
@@ -2318,26 +2460,29 @@ export default function ResellerPriceListModal({
               )}
 
               <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
-                <button type="button" aria-pressed={priceListInclusionFilter === 'all' && advisorFilter === 'all'}
-                  onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setPriceProductPage(0); }}
-                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'all' && advisorFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                <button type="button" aria-pressed={priceListInclusionFilter === 'all' && advisorFilter === 'all' && marginFilter === 'all'}
+                  onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'all' && advisorFilter === 'all' && marginFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   Todos · {visibleProducts.length}
                 </button>
-                <button type="button" aria-pressed={priceListInclusionFilter === 'included' && advisorFilter === 'all'}
-                  onClick={() => { setPriceListInclusionFilter('included'); setAdvisorFilter('all'); setPriceProductPage(0); }}
-                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'included' && advisorFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                <button type="button" aria-pressed={priceListInclusionFilter === 'included' && advisorFilter === 'all' && marginFilter === 'all'}
+                  onClick={() => { setPriceListInclusionFilter('included'); setAdvisorFilter('all'); setMarginFilter('all'); setPriceProductPage(0); }}
+                  className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', priceListInclusionFilter === 'included' && advisorFilter === 'all' && marginFilter === 'all' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   En la lista · {items.length}
                 </button>
-                <button type="button" aria-pressed={advisorFilter === 'balanced'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('balanced'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'balanced' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                <button type="button" aria-pressed={marginFilter === 'low'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('all'); setMarginFilter('low'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', marginFilter === 'low' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                  Ganancia baja · {lowMarginProductCount}
+                </button>
+                <button type="button" aria-pressed={advisorFilter === 'balanced'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('balanced'); setMarginFilter('all'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'balanced' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   {adviceSummary.balanced} saludables
                 </button>
-                <button type="button" aria-pressed={advisorFilter === 'review'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('review'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'review' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                <button type="button" aria-pressed={advisorFilter === 'review'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('review'); setMarginFilter('all'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'review' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   {adviceSummary.review} para revisar
                 </button>
-                <button type="button" aria-pressed={advisorFilter === 'critical'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('critical'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'critical' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                <button type="button" aria-pressed={advisorFilter === 'critical'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('critical'); setMarginFilter('all'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'critical' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   {adviceSummary.critical} con pérdida
                 </button>
-                {adviceSummary.missing > 0 && <button type="button" aria-pressed={advisorFilter === 'missing'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('missing'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'missing' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
+                {adviceSummary.missing > 0 && <button type="button" aria-pressed={advisorFilter === 'missing'} onClick={() => { setPriceListInclusionFilter('all'); setAdvisorFilter('missing'); setMarginFilter('all'); setPriceProductPage(0); }} className={cn('min-h-8 rounded-full px-3 text-xs font-semibold', advisorFilter === 'missing' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>
                   {adviceSummary.missing} sin costo
                 </button>}
               </div>
@@ -2366,6 +2511,7 @@ export default function ResellerPriceListModal({
                       const resellerPrice = resolvePriceListPrice(product.salePrice, discount, pricingItem);
                       const profit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
                       const advice = pricingAdviceByProductId.get(product.id);
+                      const marginSuggestion = marginSuggestionsByProductId.get(product.id);
                       const sourceList = supplierListByProductId.get(product.id);
                       const statusLabel = advice?.status === 'balanced' ? 'Saludable'
                         : advice?.status === 'loss' ? 'Con pérdida'
@@ -2385,8 +2531,8 @@ export default function ResellerPriceListModal({
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink-muted)]">{formatCurrency(product.salePrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-[var(--ink)]">{formatCurrency(resellerPrice)}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-right text-[var(--ink)]">{profit === null ? '—' : formatCurrency(profit)}</td>
-                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p></div></td>
-                          <td className="px-3 py-3 text-right"><button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!item || !canWrite || bulkBusy} aria-expanded={expanded} className="min-h-8 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar' : 'Editar'}</button></td>
+                          <td className="px-3 py-3"><div className="space-y-1"><span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', item ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)]')}>{item ? 'En la lista' : 'Fuera de la lista'}</span><p className="text-xs text-[var(--ink-muted)]">{item?.availability === 'on_order' ? 'Por pedido' : item ? 'Disponible' : statusLabel}</p>{item && marginSuggestion?.low && <p className="max-w-52 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} (ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)})</p>}</div></td>
+                          <td className="space-y-1 px-3 py-3 text-right"><button type="button" onClick={() => setEditingPriceProductId(expanded ? null : product.id)} disabled={!item || !canWrite || bulkBusy} aria-expanded={expanded} className="min-h-8 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-45">{expanded ? 'Cerrar' : 'Editar'}</button>{item && marginSuggestion?.low && <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="block min-h-8 rounded-lg bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>}</td>
                         </tr>
                         {expanded && item && <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/60"><td colSpan={8} className="px-4 py-4">
                           <div className="grid gap-3 sm:grid-cols-3">
@@ -2411,6 +2557,7 @@ export default function ResellerPriceListModal({
                   const economics = getResellerProductEconomics(product, holdings, holdingsEnabled);
                   const resellerPrice = resolvePriceListPrice(product.salePrice, discount, item ?? { pricingMode: 'default', discountPercent: null, fixedPrice: null });
                   const profit = economics.purchaseCost === null ? null : resellerPrice - economics.purchaseCost;
+                  const marginSuggestion = marginSuggestionsByProductId.get(product.id);
                   const sourceList = supplierListByProductId.get(product.id);
                   return <li key={product.id}>
                     <article className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-3">
@@ -2434,6 +2581,10 @@ export default function ResellerPriceListModal({
                         <span className="whitespace-nowrap">{item ? 'En la lista' : 'Fuera'}</span>
                         {item && <span className="truncate">· {item.availability === 'on_order' ? 'Por pedido' : 'Disponible'}</span>}
                       </p>
+                      {item && marginSuggestion?.low && <div className="mt-2 flex items-center justify-between gap-2 pl-7">
+                        <p className="min-w-0 text-xs text-[var(--ink-muted)]">Sugerido: {formatCurrency(marginSuggestion.suggestedResellerPrice)} · ganás {formatCurrency(marginSuggestion.suggestedResellerPrice - marginSuggestion.cost)}</p>
+                        <button type="button" onClick={() => requestMarginPriceApply([product.id])} disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved'} className="min-h-8 shrink-0 rounded-lg bg-[var(--primary)] px-2.5 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-50">Aplicar</button>
+                      </div>}
                     </article>
                   </li>;
                 })}
@@ -2803,13 +2954,14 @@ export default function ResellerPriceListModal({
         <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAddIds.length === 0} onClick={() => requestBulkConfirmation('add', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-ink)] disabled:opacity-40">Agregar a la lista</button>
         <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedAvailableIds.length === 0} onClick={() => requestBulkConfirmation('in_stock', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Disponible</button>
         <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || selectedOnOrderIds.length === 0} onClick={() => requestBulkConfirmation('on_order', selectedProductIds)} className="min-h-9 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-40">Por pedido</button>
+        <button type="button" disabled={!canWrite || bulkBusy || itemsDirty || marginRulesSaveStatus !== 'saved' || selectedMarginApplyIds.length === 0} onClick={() => requestMarginPriceApply(selectedMarginApplyIds)} className="min-h-9 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 text-xs font-semibold text-[var(--accent-ink)] disabled:opacity-40">Aplicar ganancia sugerida ({selectedMarginApplyIds.length})</button>
         <button type="button" onClick={() => setSelectedPriceProductIds(new Set())} disabled={bulkBusy} className="min-h-9 whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-40">Cancelar</button>
       </div>
     )}
 
     {displayMode === 'page' && pageTab === 'prices' && bulkUndo && (
       <div role="status" className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[55] mx-auto flex w-fit max-w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--surface-1)] shadow-xl sm:bottom-4">
-        <span>{bulkUndo.type === 'remove' ? 'Productos quitados de la lista.' : bulkUndo.type === 'add' ? 'Productos agregados a la lista.' : 'Disponibilidad actualizada.'}</span>
+        <span>{bulkUndo.type === 'remove' ? 'Productos quitados de la lista.' : bulkUndo.type === 'add' ? 'Productos agregados a la lista.' : bulkUndo.type === 'prices' ? 'Precios sugeridos aplicados.' : 'Disponibilidad actualizada.'}</span>
         <button type="button" onClick={() => void handleUndoPriceListBulk()} disabled={bulkBusy} className="rounded-md bg-[var(--surface-1)] px-3 py-1.5 font-bold text-[var(--ink)] disabled:opacity-50">Deshacer</button>
       </div>
     )}
@@ -2838,6 +2990,25 @@ export default function ResellerPriceListModal({
           </div>
         </div>
       )}
+    </Modal>
+
+    <Modal
+      isOpen={marginApplyConfirmation !== null}
+      onClose={() => { if (!bulkBusy) { setMarginApplyConfirmation(null); setMarginApplyError(null); } }}
+      title="Confirmar precios sugeridos"
+      className="w-[calc(100%_-_1rem)] max-w-lg"
+    >
+      {marginApplyConfirmation && <div className="space-y-4">
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm leading-relaxed text-[var(--ink)]">
+          Vas a actualizar el precio para revendedores de <strong>{marginApplyConfirmation.nextItems.length.toLocaleString('es-AR')} producto{marginApplyConfirmation.nextItems.length === 1 ? '' : 's'}</strong> según los escalones y excepciones guardados. El precio minorista, el costo y el stock no cambian.
+        </p>
+        {bulkProgress && <p role="status" aria-live="polite" className="text-sm text-[var(--ink-muted)]">Aplicando {bulkProgress.completed.toLocaleString('es-AR')} de {bulkProgress.total.toLocaleString('es-AR')} precios…</p>}
+        {marginApplyError && <p role="alert" className="text-sm font-semibold text-[var(--danger-ink)]">{marginApplyError}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => { if (!bulkBusy) { setMarginApplyConfirmation(null); setMarginApplyError(null); } }} disabled={bulkBusy} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-45">Cancelar</button>
+          <button type="button" onClick={() => void handleConfirmMarginPriceApply()} disabled={!canWrite || bulkBusy} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-45">{bulkBusy ? 'Aplicando…' : 'Aplicar precios sugeridos'}</button>
+        </div>
+      </div>}
     </Modal>
 
     <Modal

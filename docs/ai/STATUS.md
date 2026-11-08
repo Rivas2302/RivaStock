@@ -1,10 +1,13 @@
-# 2026-11-08 — I35 implementado localmente; pendiente de Current
+# 2026-11-08 — I35 e I36 listos localmente; verificación de Current pendiente
 
-- Adopté del `ACTION_PLAN.md` del Escritorio solo las secciones nuevas I35 e I36 y su orden I35 → I36. Conservé las marcas completadas anteriores; no importé I37 porque no está en el pedido actual.
-- I35 muestra las cinco pestañas en una sola fila desplazable, presenta Lista de precios como tarjetas compactas en móvil, abre la edición en una hoja inferior, acorta el estado de inclusión, mueve creación/PDF al menú «⋯» y deja la barra fija de guardado solo cuando hay cambios. Las acciones en lote quedan por encima de la barra inferior. No se escribieron datos reales.
-- **Verificación I35 local:** `npm run lint` y `npm run build` pasaron; suite unitaria **203 archivos / 1.173 pruebas**; Playwright de proveedores **22/22**. El caso nuevo cubre 360, 412 y 1440 px, visita las cinco pestañas, verifica que no haya scroll horizontal y prueba selección, confirmación y deshacer con fixtures.
-- Las capturas de las cinco pestañas se generaron con datos de fixture a 360 px en `test-results/`; no son capturas de producción. I35 sigue `[ ]` hasta confirmar que el commit quede como Current en Vercel. No hubo migración ni escritura a productos o lista reales.
-- **Siguiente:** publicar/verificar I35; después implementar I36. Para I36 la persistencia de reglas requiere una migración aditiva; antes de aplicarla se exigirá backup completo verificado. La checklist de I36 no ejecutará cambios de precios en producción.
+- Adopté del `ACTION_PLAN.md` del Escritorio solo las secciones nuevas I35 e I36 y su orden I35 → I36. Conservé las marcas completadas anteriores; no importé I37.
+- I35 adapta las cinco pestañas, la lista de precios y su edición a móvil, conserva las acciones por encima de la barra inferior y no altera la navegación inferior. Las pruebas de pestañas generan capturas de fixtures a 360 y 412 px.
+- I36 implementa reglas de ganancia por costo en %, pesos fijos y límites en pesos; prioridad producto → categoría → escalón; simulador adaptable; filtro «Ganancia baja»; aplicación individual o en lote con confirmación propia y deshacer; y reutilización de las reglas guardadas en Precios de importación.
+- **Verificación local:** lint y build aprobados; suite completa **204 archivos / 1.181 pruebas**; Playwright de proveedores **23/23**, con I35 e I36 a 360, 412 y 1440 px. El e2e de I36 aplica precios y deshace solo sobre fixtures; no muta productos, costos, stock ni lista real.
+- **Backup previo verificado:** `%USERPROFILE%\rivastock-backups\20261108T135652Z`; Postgres `passed` (101 tablas / 20.164 filas) y Storage `passed` (2.559 objetos / 162.793.797 bytes).
+- Apliqué selectivamente solo `20261108134943_reseller_margin_rules` mediante Supabase MCP. La columna JSONB y su constraint se verificaron; la lista existente recibió los valores predeterminados. La migración no modifica `price_list_items`, productos, costos, stock ni precios. No usé `db push`.
+- Verificación SQL de solo lectura posterior: 1 lista de revendedores con reglas válidas; 1 fila en `price_list_items`. No se aplicó ninguna regla a precios reales.
+- I35 e I36 siguen `[ ]` hasta confirmar que la app de producción esté en `Current`, leer el conteo real de «Ganancia baja» y obtener el simulador con seis productos reales. La llamada a Vercel CLI indicó que esta sesión no tiene login; el despliegue se comprobará por la integración de GitHub y la respuesta pública del sitio.
 
 # 2026-11-08 — I30 en curso: nombres públicos limpios y revisión de fotos
 

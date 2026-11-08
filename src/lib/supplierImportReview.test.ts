@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Product } from '../types';
 import { planSupplierImport } from './supplierImportReview';
+import { DEFAULT_RESELLER_MARGIN_RULES } from './resellerMarginRules';
 
 const product = (changes: Partial<Product> = {}): Product => ({
   id: 'product-1', name: 'Cable iPhone C', categoryId: 'category-1', category: 'Cables',
@@ -40,6 +41,32 @@ describe('supplier import review', () => {
       rows: [item], supplierProducts: [], currency: 'USD', usdRate: 1000,
       discountPercent: 20, rounding: 'none', marginForRow: () => 25,
     })[0].action).toBe('new');
+  });
+
+  it('uses the saved cost tier and category exception for supplier import prices', () => {
+    const plan = planSupplierImport({
+      rows: [row()], supplierProducts: [], currency: 'USD', usdRate: 1000,
+      discountPercent: 20, rounding: 'none', marginRules: {
+        ...DEFAULT_RESELLER_MARGIN_RULES,
+        categoryOverrides: { cables: { mode: 'fixed', value: 5_000, minimumProfit: null, maximumProfit: null } },
+      },
+    });
+    expect(plan[0].supplierCostLocal).toBe(12345.67);
+    expect(plan[0].suggestedResellerPrice).toBe(17345.67);
+    expect(plan[0].suggestedProfit).toBe(5_000);
+    expect(plan[0].suggestedSalePrice).toBeCloseTo(21682.0875, 8);
+  });
+
+  it('lets a specific existing product rule take priority during supplier import', () => {
+    const plan = planSupplierImport({
+      rows: [row()], supplierProducts: [product()], currency: 'USD', usdRate: 1000,
+      discountPercent: 20, rounding: 'none', marginRules: {
+        ...DEFAULT_RESELLER_MARGIN_RULES,
+        categoryOverrides: { cables: { mode: 'fixed', value: 5_000, minimumProfit: null, maximumProfit: null } },
+        productOverrides: { 'product-1': { mode: 'percent', value: 50, minimumProfit: null, maximumProfit: null } },
+      },
+    });
+    expect(plan[0].suggestedResellerPrice).toBe(18518.51);
   });
 
   it('keeps photos with provider branding out of the ready rows until explicitly resolved', () => {

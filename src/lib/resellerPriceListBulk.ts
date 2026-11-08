@@ -3,6 +3,7 @@ import type { PriceListAvailability, PriceListItem } from '../types';
 export type ResellerPriceListBulkMutation =
   | { type: 'remove'; productIds: string[] }
   | { type: 'add'; items: PriceListItem[] }
+  | { type: 'prices'; items: PriceListItem[] }
   | { type: 'availability'; productIds: string[]; availability: PriceListAvailability };
 
 export interface ResellerPriceListBulkProgress {
@@ -50,13 +51,13 @@ export async function applyResellerPriceListBulkMutations(
   }
 
   const total = mutations.reduce((sum, mutation) => (
-    sum + (mutation.type === 'add' ? mutation.items.length : mutation.productIds.length)
+    sum + (mutation.type === 'add' || mutation.type === 'prices' ? mutation.items.length : mutation.productIds.length)
   ), 0);
   let completed = 0;
   onProgress?.({ completed, total });
 
   for (const mutation of mutations) {
-    if (mutation.type === 'add') {
+    if (mutation.type === 'add' || mutation.type === 'prices') {
       for (let offset = 0; offset < mutation.items.length; offset += batchSize) {
         const batch = mutation.items.slice(offset, offset + batchSize);
         try {

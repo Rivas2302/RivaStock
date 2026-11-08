@@ -2,7 +2,13 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const owner = '10000000-0000-4000-8000-000000000001';
 const now = new Date().toISOString();
-const priceList = { id: 'price-list-qa', user_id: owner, kind: 'reseller', default_discount_percent: 20, public_enabled: false, minimum_rule: 'none', minimum_order_amount: 0, minimum_order_quantity: 0 };
+const priceList = { id: 'price-list-qa', user_id: owner, kind: 'reseller', default_discount_percent: 20, public_enabled: false, minimum_rule: 'none', minimum_order_amount: 0, minimum_order_quantity: 0,
+  margin_rules: { tiers: [
+    { id: 'cost-5000', maximumCost: 5000, mode: 'percent', value: 40, minimumProfit: null, maximumProfit: null },
+    { id: 'cost-15000', maximumCost: 15000, mode: 'percent', value: 30, minimumProfit: null, maximumProfit: null },
+    { id: 'cost-30000', maximumCost: 30000, mode: 'fixed', value: 5000, minimumProfit: null, maximumProfit: null },
+    { id: 'cost-over-30000', maximumCost: null, mode: 'percent', value: 18, minimumProfit: null, maximumProfit: null },
+  ], categoryOverrides: {}, productOverrides: {}, rounding: 'none' } };
 const supplier = { id: 'supplier-qa', user_id: owner, name: '[QA] Mr Tecno', name_lower: '[qa] mr tecno', is_active: true };
 const secondarySupplier = { id: 'supplier-qa-secondary', user_id: owner, name: 'ZZ [QA] Otro proveedor', name_lower: 'zz [qa] otro proveedor', is_active: true };
 const supplierList = { id: 'supplier-list-qa', user_id: owner, price_list_id: priceList.id, supplier_id: supplier.id, enabled: false };
@@ -17,7 +23,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; useRealOcr?: boolean } = {}) {
   if (!options.useRealOcr) {
     await page.addInitScript(texts => {
       let index = 0;
@@ -34,7 +40,11 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
   ] : options.nameCleanupFixture ? [
     { id: 'supplier-name-1', user_id: owner, name: 'HM352 – HUMIFICADOR LED ESTILO FUEGO', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'HM352', image_url: null, images: [] },
-  ] : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
+  ] : options.marginFixture ? [
+    [1_000, 6_000, 16_000, 32_000, 20_000, 8_000].map((cost, index) => ({
+      id: `margin-product-${index + 1}`, user_id: owner, name: `[QA] Margen producto ${index + 1}`, category: index === 2 ? 'Perfumes' : 'General', category_id: index === 2 ? 'category-perfumes' : 'category-general', stock: 3, sale_price: cost + 500, purchase_price: cost, image_url: null, images: [],
+    })),
+  ].flat() : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
     id: `mobile-price-${index + 1}`, user_id: owner, name: `[QA] Móvil producto ${index + 1}`, category: 'General', category_id: 'category-general', stock: index + 1, sale_price: 2000 + index * 500, purchase_price: 1000 + index * 200, image_url: null, images: [],
   })) : options.largeFixture ? [
     ...Array.from({ length: 2_499 }, (_, index) => ({
@@ -50,11 +60,16 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'bulk-stock-excluded', user_id: owner, name: '[QA] Stock fuera de lista', category: 'General', category_id: 'category-general', stock: 2, sale_price: 3000, purchase_price: 1500, barcode: 'QA-STOCK-2', image_url: 'https://fixture.invalid/stock-2.webp', images: ['https://fixture.invalid/stock-2.webp'] },
     { id: 'bulk-provider-included', user_id: owner, name: '[QA] Producto proveedor', category: 'General', category_id: 'category-general', stock: 0, sale_price: 4000, catalog_only: true, catalog_cost: 2500, barcode: 'QA-PROVIDER-1', image_url: 'https://fixture.invalid/provider.webp', images: ['https://fixture.invalid/provider.webp'] },
   ] : [];
-  const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
+  const categories: Record<string, unknown>[] = [
+    { id: 'category-general', user_id: owner, name: 'General' },
+    ...(options.marginFixture ? [{ id: 'category-perfumes', user_id: owner, name: 'Perfumes' }] : []),
+  ];
   let supplierProductIds: string[] = options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
-  ] : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
+  ] : options.marginFixture ? Array.from({ length: 6 }, (_, index) => ({
+    id: `margin-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `margin-product-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
+  })) : options.mobileListFixture ? Array.from({ length: 3 }, (_, index) => ({
     id: `mobile-price-item-${index + 1}`, user_id: owner, price_list_id: priceList.id, product_id: `mobile-price-${index + 1}`, pricing_mode: 'default', availability: 'in_stock', sort_order: index,
   })) : options.bulkFixture ? [
     { id: 'bulk-item-stock', user_id: owner, price_list_id: priceList.id, product_id: 'bulk-stock-included', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
@@ -263,7 +278,8 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
           bulkCalls.push({ method, productIds, body: rows });
           for (const row of rows) {
             const existing = priceListItems.find(item => item.product_id === row.product_id && item.price_list_id === row.price_list_id);
-            if (!existing) priceListItems.push({ ...row, id: `bulk-item-${String(row.product_id)}` });
+            if (existing) Object.assign(existing, row);
+            else priceListItems.push({ ...row, id: `bulk-item-${String(row.product_id)}` });
           }
           return route.fulfill({ status: 201, json: [] });
         }
@@ -338,7 +354,7 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 
 
     await settings.getByRole('button', { name: 'Bajar descuento general' }).click();
     await expect.poll(() => settingsWrites.some(write => write.target === 'price_lists' && write.body.default_discount_percent === 19)).toBe(true);
-    await expect(settings.getByRole('status')).toHaveText('Cambios guardados');
+    await expect(settings.getByText('Cambios guardados', { exact: true })).toBeVisible();
 
     await settings.getByRole('group', { name: 'Tipo de compra mínima' }).getByRole('button', { name: 'Monto', exact: true }).click();
     const amount = settings.getByLabel('Monto mínimo');
@@ -643,18 +659,16 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     await page.getByRole('button', { name: 'Leer enlace' }).click();
     await expect(steps.getByRole('button', { name: '2. Precios' })).toHaveAttribute('aria-current', 'step');
     await expect(page.getByLabel('Los precios incluyen IVA')).toBeVisible();
-    await expect(page.getByLabel('Margen para revendedores')).toBeVisible();
+    const importMarginRules = page.getByLabel('Reglas de ganancia aplicadas');
+    await expect(importMarginRules).toBeVisible();
+    await expect(importMarginRules).toContainText(/Hasta\s+\$\s*5\.000: 40%/);
+    await expect(importMarginRules).toContainText(/Hasta\s+\$\s*15\.000: 30%/);
     await expect(page.getByRole('button', { name: 'Leer lista con IA' })).toHaveCount(0);
-    const marginButtonColors = await page.getByRole('button', { name: /^(20|25|30|40)%$/ }).evaluateAll(buttons => buttons.map(button => {
-      const style = getComputedStyle(button);
-      return { color: style.color, background: style.backgroundColor };
-    }));
-    expect(marginButtonColors).toHaveLength(4);
-    expect(marginButtonColors.every(({ color, background }) => color !== background)).toBe(true);
     await page.getByLabel('Cotización USD a pesos').fill('1600');
     await page.getByLabel('Los precios incluyen IVA').selectOption('false');
     await page.getByRole('button', { name: 'Seguir: revisar' }).click();
     await expect(steps.getByRole('button', { name: '3. Revisar' })).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByLabel('Ejemplo de precio')).toContainText(/precio revendedor\s+\$\s*16\.120/);
     await page.getByLabel('Buscar productos importados').fill('Lámpara solar');
     await expect(page.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
     await expect(page.getByLabel('Productos importados', { exact: true })).toBeVisible();
@@ -669,6 +683,56 @@ test('reseller supplier import follows its three steps and adds only filtered fi
     expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
     // Each viewport run starts from the same clean fixture state, as separate smoke runs would.
     products.splice(0, products.length);
+  }
+});
+
+test('I36 simulates six cost-based margins on mobile, applies one or many prices, and supports undo', async ({ page }, testInfo) => {
+  const { products, priceListItems, bulkCalls } = await mockApp(page, { marginFixture: true });
+  const originalProductPrices = products.map(product => [product.id, product.sale_price, product.purchase_price]);
+
+  for (const width of [360, 412, 1440]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 960 : 820 });
+    await page.goto('/revendedores');
+    const tabs = page.getByRole('tablist', { name: 'Secciones de Revendedores' });
+    await tabs.getByRole('tab', { name: 'Ajustes' }).click();
+    const assistant = page.getByTestId('reseller-margin-assistant');
+    await expect(assistant).toBeVisible();
+    await expect(assistant.getByTestId('reseller-margin-simulator').locator('article')).toHaveCount(6);
+    if (width === 360) await assistant.screenshot({ path: testInfo.outputPath('i36-margin-simulator-360.png') });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+    await tabs.getByRole('tab', { name: 'Lista de precios' }).click();
+    await page.getByRole('button', { name: 'Ganancia baja · 6' }).click();
+    const list = page.getByTestId('reseller-price-list-mobile');
+    if (width < 640) {
+      await expect(list.locator('article')).toHaveCount(6);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+
+    if (width === 360) {
+      const firstRow = list.locator('article').filter({ hasText: '[QA] Margen producto 1' });
+      await expect(firstRow).toContainText(/Sugerido:\s*\$\s*1\.400/);
+      await firstRow.getByRole('button', { name: 'Aplicar' }).click();
+      const confirmation = page.getByRole('dialog', { name: 'Confirmar precios sugeridos' });
+      await expect(confirmation).toContainText('1 producto');
+      await confirmation.getByRole('button', { name: 'Aplicar precios sugeridos' }).click();
+      await expect.poll(() => priceListItems.find(item => item.product_id === 'margin-product-1')?.fixed_price).toBe(1_400);
+      await page.getByRole('button', { name: 'Deshacer' }).click();
+      await expect.poll(() => priceListItems.find(item => item.product_id === 'margin-product-1')?.pricing_mode).toBe('default');
+
+      await list.getByLabel('Elegir [QA] Margen producto 1').check();
+      await list.getByLabel('Elegir [QA] Margen producto 2').check();
+      const toolbar = page.getByRole('toolbar', { name: 'Acciones para productos elegidos' });
+      await toolbar.getByRole('button', { name: 'Aplicar ganancia sugerida (2)' }).click();
+      const bulkConfirmation = page.getByRole('dialog', { name: 'Confirmar precios sugeridos' });
+      await expect(bulkConfirmation).toContainText('2 productos');
+      await bulkConfirmation.getByRole('button', { name: 'Aplicar precios sugeridos' }).click();
+      await expect.poll(() => priceListItems.filter(item => item.pricing_mode === 'fixed').length).toBe(2);
+      await page.getByRole('button', { name: 'Deshacer' }).click();
+      await expect.poll(() => priceListItems.every(item => item.pricing_mode === 'default')).toBe(true);
+      expect(products.map(product => [product.id, product.sale_price, product.purchase_price])).toEqual(originalProductPrices);
+      expect(bulkCalls.filter(call => call.method === 'POST').every(call => call.body)).toBe(true);
+    }
   }
 });
 
@@ -871,7 +935,7 @@ test('I35 keeps reseller tabs and price rows usable on mobile at 360 and 412 px'
       if (tabNames[index] === 'Encargos') await expect(page.getByRole('tabpanel', { name: 'Encargos' })).toBeVisible();
       if (tabNames[index] === 'Ajustes') await expect(page.getByRole('tabpanel', { name: 'Ajustes' })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      if (width === 360) await page.screenshot({ path: testInfo.outputPath(`i35-${tabFiles[index]}-360.png`), fullPage: true });
+      if (width !== 1440) await page.screenshot({ path: testInfo.outputPath(`i35-${tabFiles[index]}-${width}.png`), fullPage: true });
     }
 
     if (width === 360) {

@@ -1,3 +1,5 @@
+import type { ResellerMarginRules } from './lib/resellerMarginRules';
+
 export type UserRole = 'admin' | 'viewer';
 
 export interface UserProfile {
@@ -151,6 +153,7 @@ export interface PriceList {
   minimumOrderQuantity: number;
   minimumProfitMarginPercent: number;
   targetResellerDiscountPercent: number;
+  marginRules?: ResellerMarginRules;
   createdAt: string;
   updatedAt: string;
 }
