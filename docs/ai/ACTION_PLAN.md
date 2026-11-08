@@ -1010,7 +1010,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** tests de la división del envío (proporción y redondeo), del cambio a «En espera», del aviso al juntar el mínimo, del recargo por zona y del saldo a favor aplicado. E2E con fixtures del circuito completo: pedido chico en espera → otro pedido junta el mínimo → aviso → hacer pedido → llega → cargar envío → cada uno ve su parte → faltante → saldo → próximo pedido con descuento. Nada en la base real de Riva.
 
-### [ ] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
+### [x] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
 
 **Problema (verificado en `origin/main`):** los productos importados de proveedores (`catalogOnly = true`, disponibilidad «por pedido») aparecen en **Stock** y en el buscador de **Nueva venta** como «Sin stock». Captura de Riva: en Nueva venta aparecen «Marcadores virales…», «Ventilador 18…» y «Auricular bluetooth x37», todos de Mr Tecno. `Stock.tsx` solo los filtra para la lista de precios en PDF (`priceListProducts`, ~línea 275); `Sales.tsx`, `POS.tsx`, `Quotes.tsx` y el resto no los filtran. Riva quiere: **«no me gusta que los productos que importé en la lista de revendedores se vean en mi stock ni en el módulo de ventas»**.
 

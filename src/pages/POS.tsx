@@ -21,6 +21,9 @@ import { usePosCart, calculateCartTotals } from '../stores/pos-cart';
 import { getInventoryHoldings, getVisibleProductStock } from '../lib/inventoryHoldings';
 import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/attributedSales';
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
+import { calculateTotalWithShipping } from '../lib/saleShipping';
+
+const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
 
 export default function POS() {
   const navigate = useNavigate();
@@ -39,7 +42,6 @@ export default function POS() {
     () => calculateCartTotals({ items: cart.items, globalAdjustment: cart.globalAdjustment }),
     [cart.items, cart.globalAdjustment],
   );
-
   const [products, setProducts]   = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -54,10 +56,13 @@ export default function POS() {
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmOversell, setConfirmOversell] = useState(false);
+  const [shippingEnabled, setShippingEnabled] = useState(false);
+  const [shippingAmount, setShippingAmount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [lastSaleAt, setLastSaleAt] = useState<number | null>(null);
   const saleIntentRef = useRef<IdempotencyIntent | null>(null);
   const handledProductQueryRef = useRef<string | null>(null);
+  const saleTotalWithShipping = calculateTotalWithShipping(totals.total, shippingEnabled, shippingAmount);
 
   useEffect(() => {
     if (!user || inventoryAccessError) {
@@ -233,6 +238,7 @@ export default function POS() {
         p_status: status,
         p_customer_id: customerId,
         p_adjustment_total: roundPrice(cart.globalAdjustment),
+        p_shipping_amount: shippingEnabled ? shippingAmount : 0,
         p_date: todayString(),
       };
       if (holdingsEnabled) {
@@ -241,19 +247,21 @@ export default function POS() {
           { ...commonPayload, p_source: 'pos' },
           saleIntentRef.current,
         );
-        await callRpc('register_attributed_sale', {
+        await callRpc('register_attributed_sale_with_shipping', {
           ...commonPayload,
           p_source: 'pos',
           p_idempotency_key: saleIntentRef.current.key,
         });
       } else {
-        await callRpc('register_pos_sale', {
+        await callRpc('register_pos_sale_with_shipping', {
           ...commonPayload,
           p_allow_oversell: hasOversell,
         });
       }
 
       cart.clear();
+      setShippingEnabled(false);
+      setShippingAmount(0);
       setIsCreditSale(false);
       setCustomerSearch('');
       setConfirmOversell(false);
@@ -585,6 +593,15 @@ export default function POS() {
           value={cart.globalAdjustment}
           onChange={cart.setGlobalAdjustment}
         />
+        <React.Suspense fallback={<div className="min-h-12" aria-label="Cargando opción de envío" />}>
+          <LazySaleShippingControl
+            ownerUid={user?.uid}
+            enabled={shippingEnabled}
+            amount={shippingAmount}
+            onEnabledChange={setShippingEnabled}
+            onAmountChange={setShippingAmount}
+          />
+        </React.Suspense>
 
         {/* Totals + Cobrar */}
         {holdingsEnabled && attributedPreview.error && (
@@ -604,10 +621,11 @@ export default function POS() {
               {cart.globalAdjustment !== 0 && (
                 <span>{cart.globalAdjustment < 0 ? 'Descuento' : 'Recargo'} {cart.globalAdjustment < 0 ? '−' : '+'}{formatCurrency(Math.abs(cart.globalAdjustment))}</span>
               )}
+              {shippingEnabled && <span>Envío {formatCurrency(shippingAmount)}</span>}
             </div>
             <p className="mt-0.5 text-[10px] text-[var(--ink-muted)] uppercase font-bold">Total</p>
             <p className="text-2xl font-black text-[var(--ink)] leading-none">
-              {formatCurrency(roundPrice(totals.total))}
+              {formatCurrency(saleTotalWithShipping)}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">

@@ -22,6 +22,9 @@ import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileQuotes from '../components/quotes/MobileQuotes';
 import { useSearchParams } from 'react-router-dom';
+import { calculateTotalWithShipping } from '../lib/saleShipping';
+
+const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Borrador',
@@ -80,6 +83,8 @@ export default function Quotes() {
   const [formClientPhone, setFormClientPhone] = useState('');
   const [formClientEmail, setFormClientEmail] = useState('');
   const [formDiscount, setFormDiscount] = useState(0);
+  const [shippingEnabled, setShippingEnabled] = useState(false);
+  const [formShippingAmount, setFormShippingAmount] = useState(0);
   const [formValidDays, setFormValidDays] = useState<7 | 15 | 30>(15);
   const [formNotes, setFormNotes] = useState('');
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -161,8 +166,9 @@ export default function Quotes() {
   const subtotal = useMemo(() => items.reduce((acc, i) => acc + i.subtotal, 0), [items]);
   const total = useMemo(() => {
     const disc = Math.max(0, Math.min(100, formDiscount));
-    return subtotal * (1 - disc / 100);
-  }, [subtotal, formDiscount]);
+    const baseTotal = subtotal * (1 - disc / 100);
+    return calculateTotalWithShipping(baseTotal, shippingEnabled, formShippingAmount);
+  }, [subtotal, formDiscount, shippingEnabled, formShippingAmount]);
 
   const filteredQuotes = useMemo(() => {
     return quotes.filter(q => {
@@ -197,6 +203,8 @@ export default function Quotes() {
     setFormClientPhone('');
     setFormClientEmail('');
     setFormDiscount(0);
+    setShippingEnabled(false);
+    setFormShippingAmount(0);
     setFormValidDays(15);
     setFormNotes('');
     setItems([]);
@@ -232,6 +240,8 @@ export default function Quotes() {
     setFormClientPhone(q.clientPhone || '');
     setFormClientEmail(q.clientEmail || '');
     setFormDiscount(q.discount);
+    setFormShippingAmount(Number(q.shippingAmount) || 0);
+    setShippingEnabled(Number(q.shippingAmount) > 0);
     setFormValidDays(q.validDays);
     setFormNotes(q.notes);
     setItems(q.items);
@@ -352,6 +362,7 @@ export default function Quotes() {
           items,
           subtotal,
           discount: formDiscount,
+          shippingAmount: shippingEnabled ? formShippingAmount : 0,
           total,
           status: formStatus,
           validDays: formValidDays,
@@ -372,6 +383,7 @@ export default function Quotes() {
           items,
           subtotal,
           discount: formDiscount,
+          shippingAmount: shippingEnabled ? formShippingAmount : 0,
           total,
           status: formStatus,
           validDays: formValidDays,
@@ -437,7 +449,7 @@ export default function Quotes() {
     setSavingConvert(true);
     try {
       const isPaid = convertMode === 'paid';
-      await callRpc('convert_quote_to_sale', {
+      await callRpc('convert_quote_to_sale_with_shipping', {
         p_quote_id:       convertingQuote.id,
         p_status:         isPaid ? 'Pagado' : 'Pendiente',
         p_payment_method: isPaid ? convertMethod : null,
@@ -839,6 +851,15 @@ export default function Quotes() {
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
               />
             </div>
+        <React.Suspense fallback={<div className="min-h-12" aria-label="Cargando opción de envío" />}>
+          <LazySaleShippingControl
+            ownerUid={user?.uid}
+            enabled={shippingEnabled}
+            amount={formShippingAmount}
+            onEnabledChange={setShippingEnabled}
+            onAmountChange={setFormShippingAmount}
+          />
+        </React.Suspense>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Validez</label>
               <div className="flex gap-1">
@@ -892,7 +913,13 @@ export default function Quotes() {
             {formDiscount > 0 && (
               <div className="flex justify-between text-sm text-emerald-600 mb-1">
                 <span>Descuento ({formDiscount}%)</span>
-                <span>-{formatCurrency(subtotal - total)}</span>
+                <span>-{formatCurrency(subtotal * formDiscount / 100)}</span>
+              </div>
+            )}
+            {shippingEnabled && (
+              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300 mb-1">
+                <span>Envío</span>
+                <span>{formatCurrency(formShippingAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-black text-slate-900 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
@@ -939,7 +966,11 @@ export default function Quotes() {
                 {copied ? 'Link copiado' : 'Copiar link'}
               </button>
               <a
-                href={`https://wa.me/?text=${encodeURIComponent(`Hola, te comparto el presupuesto: ${shareUrl(sharingQuote)}`)}`}
+                href={`https://wa.me/?text=${encodeURIComponent([
+                  `Hola, te comparto el presupuesto: ${shareUrl(sharingQuote)}`,
+                  Number(sharingQuote.shippingAmount) > 0 ? `Envío: ${formatCurrency(Number(sharingQuote.shippingAmount))}` : '',
+                  `Total: ${formatCurrency(sharingQuote.total)}`,
+                ].filter(Boolean).join('\n'))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors"

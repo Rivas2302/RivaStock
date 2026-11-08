@@ -29,6 +29,7 @@ import {
   AlertCircle,
   Wallet,
   Clock,
+  Truck,
   BarChart3,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -380,7 +381,7 @@ export default function Reports() {
       {/* Loading skeleton */}
       {loading && !report && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-28 bg-slate-200 dark:bg-slate-800 rounded-2xl animate-pulse" />
             ))}
@@ -394,7 +395,7 @@ export default function Reports() {
       {report && !loading && (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <KpiCard
               title="Ventas Totales"
               value={formatCurrency(roundPrice(report.kpis.totalSales))}
@@ -426,6 +427,14 @@ export default function Reports() {
               icon={Clock}
               color="amber"
               delay={0.15}
+            />
+            <KpiCard
+              title="Envíos cobrados"
+              value={formatCurrency(roundPrice(report.shippingCollected))}
+              subtitle="Parte de los cobros del período"
+              icon={Truck}
+              color="blue"
+              delay={0.2}
             />
           </div>
 

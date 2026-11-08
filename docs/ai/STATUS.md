@@ -9,6 +9,12 @@
 - El commit `7005075` quedó en `main`; Vercel informó `success`. En producción, `/`, el worker, el core WASM y el modelo español devuelven HTTP 200 y todos incluyen `'wasm-unsafe-eval'`.
 - Con el header de producción ya publicado, el OCR real bajo esa política analizó 50 fotos públicas de Mr Tecno: **50/50 analizadas; 0 fallidas**. Las 8 fotos de Babaji siguen inaccesibles desde la captura disponible (**0/8 analizadas**), así que no alcanza el criterio ≥95 % y I43 permanece abierta.
 
+### I43 — revalidación con fotos reales (08/11)
+
+- El header público de `https://rivastock.vercel.app/` y el de los recursos Tesseract sigue incluyendo `script-src 'self' 'wasm-unsafe-eval'`; worker, core WASM y datos españoles responden 200. El test comparó el CSP del servidor de prueba con el header recibido del dominio de producción y exigió igualdad exacta.
+- Sin worker falso, el OCR real analizó **50/50 fotos reales de Mr Tecno en 12 segundos**, con 0 fallidas. Las imágenes se obtuvieron de la Store API pública y se procesaron con el worker/core/modelo reales de Tesseract.
+- El HTML capturado de Babaji contiene **924 tarjetas**. Las **8 fotos** de la primera tanda devolvieron HTTP 404 desde el host público actual: **0/8 analizadas; 8 no disponibles para OCR**. No son fallos del motor, pero no cumplen el criterio de I43. `OWNER_ACTIONS.md` pide una captura nueva desde Chrome con la extensión.
+- I43 permanece abierta hasta analizar al menos el 95 % de las 8 fotos de Babaji y confirmar el criterio completo.
 ## I38 — corrección móvil cerrada
 
 - Capturé el estado anterior y posterior a 360/412 px en `%TEMP%\rivastock-qa-artifacts\i38\i38-{before,after}-*.png`. La captura anterior mostraba el fondo transparente, la navegación inferior sobre la hoja y acciones de 36 px.
@@ -17,14 +23,22 @@
 - Sin migraciones. El commit `7cadbe3` está en `main`; Vercel informó `success`. `rivastock.vercel.app` sirve el chunk de Revendedores con el portal y la barra de acciones I38 (`reseller-module-page`, `Acciones para productos elegidos`, nivel de capa superior).
 - I38 queda cerrada: E2E completo de importación/Revendedores **30/30** aprobado, con capturas locales antes/después a 360/412 px. La prueba incluye fondo opaco, botón alcanzable, navegación oculta y foco/scroll restaurados.
 
-## I40 — en curso: ocultar productos de proveedor fuera de Revendedores
+## I40 — cerrada: ocultar productos de proveedor fuera de Revendedores
 
 - Implementé `isOwnInventoryProduct` y `filterOwnInventoryProducts`, usando `catalogOnly` como marca de proveedor existente. La regla filtra Stock en la ruta normal, ventas, POS, presupuestos, consulta rápida, calculadora, fotos, ingresos, selectores de automatización/IA y la selección de productos de Catálogo público. `/revendedores` y su flujo de lista conservan los productos de proveedor.
 - El Inicio ya excluía productos `catalogOnly` de alertas y reposición; ahora la valuación de stock también los excluye tanto con titulares de inventario como con el esquema legado. No encontré otro campo marcador de proveedor en `Product`; el informe de ventas no calcula valor de stock.
 - Pruebas locales: test unitario de clasificación/filtrado; prueba de valuación para ambos modos; E2E con fixtures que confirma producto proveedor ausente y producto propio visible en Stock, Nueva venta, POS, Presupuestos y Consulta rápida, y conserva el producto proveedor en la lista de Revendedores.
 - Verificaciones: `npm run lint` aprobado; `npm test -- --maxWorkers=4` **1.226/1.226**; `npm run build` aprobado; Playwright de la suite **30/30**, más el E2E ampliado de I40 **1/1**. Un intento inicial de suite completa con concurrencia alta excedió el límite de 5 s de un test PGlite; el test aislado pasó y la suite completa pasó al limitar workers.
-- Sin migraciones ni escrituras en datos reales. I40 queda pendiente del commit y la verificación en Current.
+- Sin migraciones ni escrituras en datos reales. Commit `5ef6449` en `main`; Vercel marcó `success`. La app pública carga el chunk `ownInventory-mV1H5l2B.js`; Stock, Ventas y POS devuelven HTTP 200 y lo importan. I40 queda cerrada.
 
+## I41 — implementación y migración aplicadas; publicación pendiente
+
+- Agregué el envío opcional a Nueva venta, edición, POS, Presupuestos y presupuesto público. El monto se conserva como `shipping_amount`; no altera precios unitarios ni ganancia de productos. La caja usa el mismo cobro con detalle «incluye envío» y Reportes separa los envíos cobrados.
+- Verificación local ya completada: lint; Vitest **1.234/1.234** con 215 archivos; Playwright focal **1/1** a 360 px con RPC simulado; build aprobado. `npm run perf:check` conserva solo los fallos previos de `Knowledge.tsx` y `Stock.tsx`; Ventas queda dentro del presupuesto ajustado.
+- Backup previo verificado: `C:\Users\USER\rivastock-backups\20261108T211645Z`, 101 tablas / 18.399 filas y 2.559 objetos de Storage (162.793.797 bytes), `verification: passed`.
+- Apliqué exclusivamente `20261108202943_i41_shipping_amounts.sql` con `supabase db query --linked --file` y registré esa versión con `supabase migration repair`; no usé `db push`. Confirmé ambas columnas `shipping_amount` con `NOT NULL DEFAULT 0`, los RPC y permisos, RLS activo en la tabla privada sin acceso de `anon`/`authenticated`, e historial remoto aplicado. No registré ni modifiqué ventas o presupuestos reales.
+- Los 10 avisos del advisor para estos RPC son por `SECURITY DEFINER` accesible al rol previsto: nueve RPC solo para `authenticated` y la lectura pública del presupuesto para `anon`, que sigue el diseño público existente. No hubo avisos sobre search_path mutable en las funciones nuevas.
+- I41 queda abierta hasta el commit, Vercel Current y el smoke de producción sin registrar una venta real.
 # 2026-11-08 — I37 importador universal: código listo, publicación web bloqueada
 
 - Reemplacé/adopté la sección I37 final desde el `ACTION_PLAN.md` del Escritorio; incluye seis proveedores, las observaciones de Oestech y Babaji, las respuestas de Riva y el criterio de cierre. No cambié otras secciones.

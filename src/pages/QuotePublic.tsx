@@ -12,7 +12,7 @@ interface PublicOwner {
 
 type PublicQuote = Pick<Quote,
   'id' | 'number' | 'clientName' | 'clientPhone' | 'clientEmail' | 'items'
-  | 'subtotal' | 'discount' | 'total' | 'expiresAt' | 'notes' | 'createdAt'
+  | 'subtotal' | 'discount' | 'shippingAmount' | 'total' | 'expiresAt' | 'notes' | 'createdAt'
 >;
 import { formatCurrency } from '../lib/utils';
 import { AlertTriangle, Clock, CheckCircle2, FileText } from 'lucide-react';
@@ -35,7 +35,7 @@ export default function QuotePublic() {
     if (!id) { setNotFound(true); setLoading(false); return; }
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('get_public_quote', { p_quote_id: id }).maybeSingle();
+        const { data, error } = await supabase.rpc('get_public_quote_with_shipping', { p_quote_id: id }).maybeSingle();
         if (error) throw error;
         if (!data) { setNotFound(true); setLoading(false); return; }
         const row = data as Record<string, unknown>;
@@ -189,7 +189,13 @@ export default function QuotePublic() {
               {quote.discount > 0 && (
                 <div className="flex justify-between text-sm text-emerald-600 font-medium">
                   <span>Descuento ({quote.discount}%)</span>
-                  <span>-{formatCurrency(quote.subtotal - quote.total)}</span>
+                  <span>-{formatCurrency(quote.subtotal * quote.discount / 100)}</span>
+                </div>
+              )}
+              {Number(quote.shippingAmount) > 0 && (
+                <div className="flex justify-between text-sm text-slate-600 font-medium">
+                  <span>Envío</span>
+                  <span>{formatCurrency(Number(quote.shippingAmount))}</span>
                 </div>
               )}
               <div className="flex justify-between text-xl font-black text-slate-900 pt-2 border-t border-slate-200">

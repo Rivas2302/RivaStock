@@ -23,10 +23,10 @@ describe('owner-attributed sales UI contract', () => {
 
   it('uses stable attributed command intentions and preserves the legacy rollout fallback', () => {
     expect(pos).toContain('resolveIdempotencyIntent');
-    expect(pos).toContain("callRpc('register_attributed_sale'");
-    expect(pos).toContain("callRpc('register_pos_sale'");
+    expect(pos).toContain("callRpc('register_attributed_sale_with_shipping'");
+    expect(pos).toContain("callRpc('register_pos_sale_with_shipping'");
     expect(pos).toContain('holdingsEnabled');
-    expect(pos.indexOf("await callRpc('register_attributed_sale'")).toBeLessThan(
+    expect(pos.indexOf("await callRpc('register_attributed_sale_with_shipping'")).toBeLessThan(
       pos.indexOf('saleIntentRef.current = null'),
     );
   });
@@ -34,7 +34,7 @@ describe('owner-attributed sales UI contract', () => {
   it('loads authorized allocation snapshots, filters by owner, and uses attributed edit/refund commands', () => {
     expect(sales).toContain("db.listAllColumns<SaleItemAllocation>('sale_item_allocations'");
     expect(sales).toContain('projectAttributedSales');
-    expect(sales).toContain("callRpc('edit_attributed_sale'");
+    expect(sales).toContain("callRpc('edit_attributed_sale_with_shipping'");
     expect(sales).toContain("callRpc('refund_attributed_sale'");
   });
 
@@ -51,12 +51,13 @@ describe('owner-attributed sales UI contract', () => {
   });
 
   it('forwards the free client name through attributed edit only (register RPC does not accept it)', () => {
-    expect(sales).toMatch(/p_client:\s*formData\.client[\s\S]*?edit_attributed_sale/);
-    const registerBlock = sales.slice(
-      sales.indexOf("callRpc('register_attributed_sale'"),
-      sales.indexOf("callRpc('register_attributed_sale'", sales.indexOf("callRpc('register_attributed_sale'") + 1),
+    expect(sales).toMatch(/p_client:\s*formData\.client[\s\S]*?edit_attributed_sale_with_shipping/);
+    const registerCall = sales.indexOf("await callRpc('register_attributed_sale_with_shipping'");
+    const registerPayload = sales.slice(
+      sales.lastIndexOf('const payload = {', registerCall),
+      sales.indexOf('\n          };', registerCall) + '\n          };'.length,
     );
-    expect(registerBlock).not.toContain('p_client: clientName');
+    expect(registerPayload).not.toContain('p_client:');
   });
 
   it('uses readable owners only for projection and operable owners for every mutation guard', () => {

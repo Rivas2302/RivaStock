@@ -84,19 +84,26 @@ const ATTRIBUTED_SALE_TABLES = [
 
 const RPC_INVALIDATIONS: Record<string, string[]> = {
   register_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  register_attributed_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   edit_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_attributed_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   refund_attributed_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   convert_quote_to_sale: ['quotes', 'sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  convert_quote_to_sale_with_shipping: ['quotes', 'sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   delete_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   edit_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   edit_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  edit_pos_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   intake_stock: ['products', 'stock_intakes', 'inventory_holdings'],
   reconcile_customer_balance: ['customers', 'customer_transactions', 'sales', 'cash_flow'],
   register_customer_payment: ['customers', 'customer_transactions', 'sales', 'cash_flow', 'cash_flow_allocations'],
   register_customer_payment_v2: ['customers', 'customer_transactions', 'sales', 'cash_flow', 'cash_flow_allocations'],
   register_customer_adjustment: ['customers', 'customer_transactions'],
   register_pos_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  register_pos_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   register_sale: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
+  register_sale_with_shipping: ['sales', 'cash_flow', 'products', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   toggle_sale_status: ['sales', 'cash_flow', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   toggle_attributed_sale_status: ['sales', 'cash_flow', 'customers', 'inventory_holdings', ...ATTRIBUTED_SALE_TABLES],
   register_supplier:    ['suppliers'],
@@ -314,6 +321,7 @@ export function normalizeSalesReport(data: unknown): SalesReportData {
       averageTicket: reportNumber(kpis.averageTicket ?? kpis.average_ticket),
       pendingAmount: reportNumber(kpis.pendingAmount ?? kpis.pending_amount),
     },
+    shippingCollected: reportNumber(raw.shippingCollected ?? raw.shipping_collected),
     daily: (Array.isArray(raw.daily) ? raw.daily : []).map((point) => {
       const row = reportRecord(point);
       return {
@@ -691,12 +699,16 @@ class SupabaseDB {
   async getSalesReport(ownerUid: string, from: string, to: string): Promise<SalesReportData> {
     const key = `${REPORT_CACHE_PREFIX}:${ownerUid}:${from}:${to}`;
     return readWithCache(key, async () => {
-      const { data, error } = await supabase.rpc('get_sales_report', {
-        p_from: from,
-        p_to:   to,
-      });
-      if (error) throw new Error(`[db.getSalesReport] ${error.message}`);
-      return normalizeSalesReport(data);
+      const [reportResponse, shippingResponse] = await Promise.all([
+        supabase.rpc('get_sales_report', { p_from: from, p_to: to }),
+        supabase.rpc('get_collected_shipping_report', { p_from: from, p_to: to }),
+      ]);
+      if (reportResponse.error) throw new Error(`[db.getSalesReport] ${reportResponse.error.message}`);
+      if (shippingResponse.error) throw new Error(`[db.getCollectedShippingReport] ${shippingResponse.error.message}`);
+      return {
+        ...normalizeSalesReport(reportResponse.data),
+        shippingCollected: reportNumber(shippingResponse.data),
+      };
     });
   }
 

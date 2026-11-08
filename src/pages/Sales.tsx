@@ -44,6 +44,7 @@ import {
 } from '../lib/sales';
 import { exportToExcel, exportToPDF } from '../lib/exportUtils';
 import { showToast } from '../lib/toast';
+import { calculateTotalWithShipping } from '../lib/saleShipping';
 import {
   buildAttributedSaleCommandItems,
   getSaleRefundEligibility,
@@ -59,7 +60,8 @@ import { calculateSaleTotals } from '../lib/salesTotals';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileSalesList from '../components/sales/MobileSalesList';
 
-const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_price,quantity,adjustment,total,status,payment_method,client,items,source';
+const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
+const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_price,quantity,adjustment,shipping_amount,total,status,payment_method,client,items,source';
 const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
 const CUSTOMER_TRANSACTION_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
 const SALE_ITEM_PROJECTION_COLUMNS = 'id,sale_id_snapshot,reversed_at';
@@ -113,6 +115,7 @@ export default function Sales() {
     quantity: 1,
     unitPrice: 0,
     adjustment: 0,
+    shippingAmount: 0,
     status: 'Pagado',
     paymentMethod: 'Efectivo',
     client: ''
@@ -124,7 +127,8 @@ export default function Sales() {
 
   const openNewSale = () => {
     setEditingSale(null);
-    setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
+    setFormData({ date: todayString(), productId: '', quantity: 1, unitPrice: 0, adjustment: 0, shippingAmount: 0, status: 'Pagado', paymentMethod: 'Efectivo', client: '' });
+    setShippingEnabled(false);
     setIsCreditSale(false);
     setCreditSearch('');
     setSelectedCustomer(null);
@@ -144,6 +148,7 @@ export default function Sales() {
   }, [canWrite, searchParams, setSearchParams]);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [preferredOwnerId, setPreferredOwnerId] = useState<string>('');
+  const [shippingEnabled, setShippingEnabled] = useState(false);
   const registerIntentRef = useRef<IdempotencyIntent | null>(null);
   const editIntentRef = useRef<IdempotencyIntent | null>(null);
   const refundIntentRef = useRef<IdempotencyIntent | null>(null);
@@ -411,6 +416,11 @@ export default function Sales() {
     Number(formData.unitPrice) || 0,
     Number(formData.adjustment) || 0,
   );
+  const saleTotalWithShipping = calculateTotalWithShipping(
+    saleTotals.total,
+    shippingEnabled,
+    Number(formData.shippingAmount) || 0,
+  );
 
   const saleMutationDenialReason = (
     sale: Sale,
@@ -501,15 +511,16 @@ export default function Sales() {
             p_customer_id: effectiveCustomerId,
             p_client: formData.client ?? null,
             p_date: formData.date,
+            p_shipping_amount: shippingEnabled ? Number(formData.shippingAmount) || 0 : 0,
           };
           editIntentRef.current = resolveIdempotencyIntent('sale:edit', payload, editIntentRef.current);
-          await callRpc('edit_attributed_sale', {
+          await callRpc('edit_attributed_sale_with_shipping', {
             ...payload,
             p_idempotency_key: editIntentRef.current.key,
           });
           editIntentRef.current = null;
         } else if (editPlan.rpc === 'edit_pos_sale') {
-          await callRpc('edit_pos_sale', {
+          await callRpc('edit_pos_sale_with_shipping', {
             p_sale_id: editingSale.id,
             p_new_items: [{
               productId: formData.productId,
@@ -522,9 +533,10 @@ export default function Sales() {
             p_new_payment_method: formData.paymentMethod ?? null,
             p_new_customer_id: null,
             p_new_date: formData.date,
+            p_shipping_amount: shippingEnabled ? Number(formData.shippingAmount) || 0 : 0,
           });
         } else {
-          await callRpc('edit_sale', {
+          await callRpc('edit_sale_with_shipping', {
             p_sale_id:            editingSale.id,
             p_new_product_id:     formData.productId,
             p_new_quantity:       formData.quantity,
@@ -534,6 +546,7 @@ export default function Sales() {
             p_new_payment_method: formData.paymentMethod ?? null,
             p_new_client:         formData.client ?? null,
             p_new_date:           formData.date,
+            p_shipping_amount:    shippingEnabled ? Number(formData.shippingAmount) || 0 : 0,
           });
         }
       } else {
@@ -558,17 +571,18 @@ export default function Sales() {
             p_adjustment_total: formData.adjustment ?? 0,
             p_date: formData.date,
             p_source: 'manual',
+            p_shipping_amount: shippingEnabled ? Number(formData.shippingAmount) || 0 : 0,
           };
           registerIntentRef.current = resolveIdempotencyIntent(
             'sale:register', payload, registerIntentRef.current,
           );
-          await callRpc('register_attributed_sale', {
+          await callRpc('register_attributed_sale_with_shipping', {
             ...payload,
             p_idempotency_key: registerIntentRef.current.key,
           });
           registerIntentRef.current = null;
         } else {
-          await callRpc('register_sale', {
+          await callRpc('register_sale_with_shipping', {
             p_date:           formData.date,
             p_product_id:     formData.productId,
             p_quantity:       formData.quantity,
@@ -578,6 +592,7 @@ export default function Sales() {
             p_payment_method: formData.paymentMethod ?? null,
             p_client:         clientName,
             p_customer_id:    (isCreditSale && selectedCustomer) ? selectedCustomer.id : null,
+            p_shipping_amount: shippingEnabled ? Number(formData.shippingAmount) || 0 : 0,
           });
         }
       }
@@ -590,6 +605,7 @@ export default function Sales() {
         quantity: 1,
         unitPrice: 0,
         adjustment: 0,
+        shippingAmount: 0,
         status: 'Pagado',
         paymentMethod: 'Efectivo',
         client: ''
@@ -601,6 +617,7 @@ export default function Sales() {
       setNewCustName('');
       setNewCustPhone('');
       setPreferredOwnerId('');
+      setShippingEnabled(false);
       fetchData();
     } catch (error) {
       console.error('Error al guardar venta:', error);
@@ -721,6 +738,7 @@ export default function Sales() {
     }
     setEditingSale(sale);
     setFormData(sale);
+    setShippingEnabled(Number(sale.shippingAmount) > 0);
     const ownerIds = [...new Set(
       saleAllocations
         .filter((allocation) => allocation.saleIdSnapshot === projection.id && !allocation.reversedAt)
@@ -1287,6 +1305,18 @@ export default function Sales() {
               onChange={(adjustment) => setFormData(prev => ({ ...prev, adjustment }))}
             />
 
+            <React.Suspense fallback={<div className="min-h-12" aria-label="Cargando opción de envío" />}>
+              <LazySaleShippingControl
+                ownerUid={user?.uid}
+                enabled={shippingEnabled}
+                amount={Number(formData.shippingAmount) || 0}
+                onEnabledChange={enabled => {
+                  setShippingEnabled(enabled);
+                }}
+                onAmountChange={shippingAmount => setFormData(previous => ({ ...previous, shippingAmount }))}
+              />
+            </React.Suspense>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Cliente (Opcional)</label>
               <input
@@ -1465,10 +1495,16 @@ export default function Sales() {
                   <span>{saleTotals.adjustment < 0 ? '−' : '+'}{formatCurrency(Math.abs(saleTotals.adjustment))}</span>
                 </div>
               )}
+              {shippingEnabled && (
+                <div className="flex items-center justify-between text-sm text-[var(--ink-subtle)]">
+                  <span>Envío</span>
+                  <span>{formatCurrency(Number(formData.shippingAmount) || 0)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-[var(--line)] pt-2">
                 <span className="text-lg font-bold text-[var(--ink)]">Total a Cobrar:</span>
                 <span className="text-2xl font-black text-[var(--brand)]">
-                  {formatCurrency(saleTotals.total)}
+                  {formatCurrency(saleTotalWithShipping)}
                 </span>
               </div>
             </div>

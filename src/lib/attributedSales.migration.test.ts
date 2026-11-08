@@ -211,7 +211,7 @@ describe('attributed sales migration contract', () => {
     const saveEnd = salesPageSource.indexOf('const handleToggleStatus', saveStart);
     const saveHandler = salesPageSource.slice(saveStart, saveEnd);
     expect(saveHandler).toContain("editPlan.rpc === 'edit_pos_sale'");
-    expect(saveHandler).toContain("await callRpc('edit_pos_sale'");
+    expect(saveHandler).toContain("await callRpc('edit_pos_sale_with_shipping'");
     expect(saveHandler).toContain('p_new_items:');
     expect(saveHandler).toContain('lineDiscount: editingSale.items?.[0]?.discount ?? 0');
   });

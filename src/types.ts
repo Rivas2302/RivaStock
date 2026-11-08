@@ -236,6 +236,7 @@ export interface Sale {
   unitPrice: number;
   quantity: number;
   adjustment: number;
+  shippingAmount?: number;
   total: number;
   status: 'Pagado' | 'No Pagado' | 'Pendiente';
   paymentMethod?: 'Efectivo' | 'Transferencia' | 'Débito' | 'Crédito' | 'Otro';
@@ -554,6 +555,7 @@ export interface Quote {
   items: QuoteItem[];
   subtotal: number;
   discount: number;
+  shippingAmount?: number;
   total: number;
   status: QuoteStatus;
   validDays: 7 | 15 | 30;
@@ -676,6 +678,7 @@ export interface ReportSaleRow {
 /** Payload completo que devuelve el RPC get_sales_report. */
 export interface SalesReportData {
   kpis:           ReportKpis;
+  shippingCollected: number;
   daily:          ReportDailyPoint[];
   byPayment:      ReportPaymentSlice[];
   topProducts:    ReportTopProduct[];
