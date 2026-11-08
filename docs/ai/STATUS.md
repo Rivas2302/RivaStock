@@ -1719,4 +1719,13 @@ Sin toque en src/, supabase/ ni extensions/.
 
 - Cambio local: `db.list`, `db.listColumns`, y las búsquedas no limitadas de `db.find` / `db.findBy` leen páginas estables de 1.000 filas ordenadas por ID. Las lecturas de artículos y precios de listas de proveedores también se paginan por bloques con orden estable.
 - Verificación local: `npm run lint`, `npm run build`, suite completa **1.157/1.157** y Playwright **11/11**. El fixture de 2.500 productos confirma contador total, búsqueda del P47 después de la primera página y acción en lote dirigida a ese producto, a 360 y 1440 px. Sin migraciones ni escrituras de producción.
-- Pendiente: publicar a `main`, confirmar Vercel `Current` y verificar en producción solo lectura el total aproximado de 1.330 productos y el P47 en la lista.
+- Cierre de producción: `4a61c8c` está en `main`; Vercel informó `success` y la app servida por `rivastock.vercel.app` refleja el cambio. Playwright autenticado de solo lectura confirmó que `Stock` cargó el conjunto completo y muestra **463 productos de inventario** (los 867 catalog-only se excluyen de esa vista), mientras Lista de precios muestra **Todos · 1330**, **En la lista · 1** y el **Auricular Bluetooth P47** dentro de esa lista. No hubo errores de consola ni cambios en datos reales.
+- Capturas de producción: `%TEMP%\rivastock-i34-production\stock-1440.png` y `price-list-p47-1440.png`.
+- I34 queda cerrada. Continúo con I29 según el orden vigente.
+
+### I29 — acceso móvil a Revendedores
+
+- Implementé la entrada «Revendedores» en «Clientes y proveedores» del menú «Más» y cambié el atajo móvil de Stock para abrir `/revendedores`; la barra inferior sigue sin esa entrada.
+- La prueba Playwright cubre el paso desde «Más», navegación a la página, pestañas y revisión hasta el paso Revisar, sin crear productos ni producir desbordamiento horizontal. También fija a 360 px y 1440 px los flujos actuales de importación.
+- Verificación local: lint aprobado; suite unitaria **1.158/1.158** (con configuración Supabase ficticia solo en el proceso); build aprobado; Playwright de `e2e/supplier-list-import.spec.ts` **12/12**.
+- Pendiente para cerrar: publicar y verificar el menú móvil y la página en producción; aún no marqué I29 como terminada.

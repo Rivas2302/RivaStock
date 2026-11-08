@@ -668,7 +668,7 @@ export default function Stock() {
             toggleSelect, startMobileCodeSelection,
             () => { setSelectingForCodes(false); setSelectedIds(new Set()); },
             () => { void handleBulkGenerate(); }, () => openProductEditor(),
-            () => setResellerPriceListOpen(true), () => { void handlePriceList('preview'); },
+            () => navigate('/revendedores'), () => { void handlePriceList('preview'); },
             () => { void handlePriceList('download'); },
             (product) => {
               const params = new URLSearchParams(location.search);

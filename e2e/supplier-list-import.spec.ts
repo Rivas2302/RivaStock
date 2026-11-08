@@ -228,6 +228,24 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   };
 }
 
+async function openMobileSupplierImportFromStock(page: Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
+  await page.getByRole('button', { name: /Lista revendedores/ }).click();
+  await expect(page).toHaveURL(/\/revendedores$/);
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+  const providers = page.getByRole('tabpanel', { name: 'Proveedores' });
+  await providers.getByRole('button', { name: 'Importar lista' }).first().click();
+  return providers.getByRole('region', { name: 'Importar lista del proveedor' });
+}
+
+async function continueSupplierImportToReview(page: Page, importRegion: ReturnType<Page['getByRole']>) {
+  await importRegion.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '3. Revisar' }))
+    .toHaveAttribute('aria-current', 'step');
+}
+
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
   test(`supplier removal requires typed confirmation and shows exact counts at ${viewport.width}px`, async ({ page }) => {
     const { removalCalls } = await mockApp(page, { removalFixture: true });
@@ -262,27 +280,24 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   page.on('console', message => { if (message.type() === 'error') pageErrors.push(message.text()); });
   const { products, pricingCalls, sourceCosts, changeCatalog } = await mockApp(page);
   page.on('dialog', dialog => dialog.accept());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/stock');
-  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
-  await page.getByRole('button', { name: /Lista revendedores/ }).click();
-
-  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
-  await expect(modal).toBeVisible();
-  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
+  const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
-  await expect(modal.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
+  await expect(modal.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
   await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(1);
 
   changeCatalog();
+  await page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '1. Importar' }).click();
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
   await expect(modal.getByText('3 productos · 0 listos · 0 para revisar')).toHaveCount(0);
   await expect(modal.getByText(/0 nuevos · 1 actualizados · 2 sin cambios/)).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
@@ -295,17 +310,12 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
 test('bulk import button confirms and creates only products matching the active search filter', async ({ page }) => {
   const { products } = await mockApp(page);
   page.on('dialog', dialog => dialog.accept());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/stock');
-  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
-  await page.getByRole('button', { name: /Lista revendedores/ }).click();
-  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
-  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
+  const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
   await modal.getByLabel('Buscar productos importados').fill('Lámpara solar');
   await expect(modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 1 listos con foto de "Lámpara solar"' }).click();
@@ -316,17 +326,12 @@ test('bulk import button confirms and creates only products matching the active 
 test('a failed supplier image does not block other photos or product import', async ({ page }) => {
   const { products, failImagesAt } = await mockApp(page, { failImageIndex: 2 });
   page.on('dialog', dialog => dialog.accept());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/stock');
-  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
-  await page.getByRole('button', { name: /Lista revendedores/ }).click();
-  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
-  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
+  const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
   await modal.getByLabel('Cotización USD a pesos').fill('1600');
   await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(2);
@@ -334,7 +339,11 @@ test('a failed supplier image does not block other photos or product import', as
   await expect(modal.getByRole('status', { name: 'Producto sin foto' })).toBeVisible();
 
   failImagesAt();
+  await page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '1. Importar' }).click();
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
   await expect(modal.getByRole('button', { name: 'Agregar los 3 listos con foto' })).toBeVisible();
   await modal.getByRole('button', { name: 'Agregar los 3 listos con foto' }).click();
   await expect.poll(() => products.filter(product => typeof product.image_url === 'string').length).toBe(3);
@@ -343,15 +352,12 @@ test('a failed supplier image does not block other photos or product import', as
 
 test('supplier import previews load through the same-origin image proxy', async ({ page }) => {
   await mockApp(page);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/stock');
-  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
-  await page.getByRole('button', { name: /Lista revendedores/ }).click();
-  const modal = page.getByRole('dialog', { name: 'Lista de precios para revendedores' });
-  await modal.locator('summary').filter({ hasText: 'Listas por proveedor' }).click();
-  await modal.getByRole('button', { name: /Editar productos|Crear lista/ }).first().click();
+  const modal = await openMobileSupplierImportFromStock(page);
   await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
   await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
   await modal.getByLabel('Buscar productos importados').waitFor();
 
   const preview = modal.getByTestId('supplier-import-photo-preview').first();
@@ -536,4 +542,42 @@ test('price list loads the product after row 1,000 and bulk actions can reach it
     expect(products).toHaveLength(2_500);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
+});
+
+test('mobile Más menu opens Revendedores page and reaches review without creating products', async ({ page }) => {
+  const { products } = await mockApp(page);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
+  const menu = page.getByRole('dialog');
+  const resellerLink = menu.getByRole('link', { name: 'Revendedores' });
+  await expect(resellerLink).toBeVisible();
+  await expect(resellerLink).toHaveAttribute('href', '/revendedores');
+  await resellerLink.click();
+  await expect(page).toHaveURL(/\/revendedores$/);
+  await expect(page.getByRole('tablist', { name: 'Secciones de Revendedores' })).toBeVisible();
+  await expect(page.locator('.mobile-navigation-bar a[href="/revendedores"]')).toHaveCount(0);
+
+  await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+  await page.getByRole('button', { name: /Importar lista|Editar productos|Crear lista/ }).first().click();
+  const steps = page.getByRole('navigation', { name: 'Pasos para importar' });
+  await expect(steps.getByRole('button', { name: '1. Importar' })).toHaveAttribute('aria-current', 'step');
+  await page.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await page.getByRole('button', { name: 'Leer enlace' }).click();
+  await expect(steps.getByRole('button', { name: '2. Precios' })).toHaveAttribute('aria-current', 'step');
+  await page.getByLabel('Cotización USD a pesos').fill('1600');
+  await page.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await page.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(steps.getByRole('button', { name: '3. Revisar' })).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByLabel('Productos importados', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('supplier-import-add-filtered')).toBeVisible();
+  expect(products).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+
+  await page.goto('/stock');
+  await page.getByRole('button', { name: 'Más acciones de stock' }).click();
+  await page.getByRole('button', { name: /Lista revendedores/ }).click();
+  await expect(page).toHaveURL(/\/revendedores$/);
+  await expect(page.getByRole('dialog', { name: 'Lista de precios para revendedores' })).toHaveCount(0);
+  await expect(page.getByRole('tablist', { name: 'Secciones de Revendedores' })).toBeVisible();
 });

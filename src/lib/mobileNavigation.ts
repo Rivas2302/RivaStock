@@ -19,7 +19,7 @@ export interface NavigationPermissionState {
 export const NAVIGATION_GROUPS = [
   { label: 'Vender', paths: ['/ventas', '/presupuestos', '/pedidos', '/consulta-rapida'] },
   { label: 'Productos', paths: ['/stock', '/ingresos', '/fotos'] },
-  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/compras'] },
+  { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/compras'] },
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
   { label: 'Herramientas', paths: ['/ia', '/automatizaciones', '/trazabilidad', '/config'] },
 ] as const;

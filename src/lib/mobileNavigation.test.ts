@@ -47,4 +47,19 @@ describe('mobile navigation visibility', () => {
       'Vender', 'Productos', 'Relaciones', 'Clientes y proveedores', 'Dinero', 'Herramientas',
     ]);
   });
+
+  it('places Revendedores after Proveedores in the mobile group without using a bottom-bar slot', () => {
+    const reseller = { name: 'Revendedores', path: '/revendedores', module: 'stock' as const };
+    const clientsAndProviders = NAVIGATION_GROUPS.find(group => group.label === 'Clientes y proveedores');
+    expect(clientsAndProviders?.paths).toEqual(['/clientes', '/proveedores', '/revendedores', '/compras']);
+
+    const quickSearch = { name: 'Consulta rápida', path: '/consulta-rapida', module: 'stock' as const };
+    const visible = getVisibleNavigation([...items, reseller, quickSearch], {
+      read: { stock: true, ventas: true },
+      businessModules: {},
+      isOwner: true,
+    });
+    expect(getMobilePrimaryItems(visible).map(item => item?.path)).not.toContain('/revendedores');
+    expect(DESKTOP_NAVIGATION_GROUPS.some(group => (group.paths as readonly string[]).includes('/revendedores'))).toBe(true);
+  });
 });

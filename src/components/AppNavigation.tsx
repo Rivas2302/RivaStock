@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Presupuestos', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
   { name: 'Clientes', path: '/clientes', icon: Users, module: 'clientes' },
   { name: 'Proveedores', path: '/proveedores', icon: Building2, module: 'proveedores' },
-  { name: 'Revendedores', path: '/revendedores', icon: Users, module: 'stock', desktopOnly: true },
+  { name: 'Revendedores', path: '/revendedores', icon: Users, module: 'stock' },
   { name: 'Compras a proveedores', path: '/compras', icon: Truck, module: 'proveedores' },
   { name: 'Ingresos de mercadería', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
   { name: 'Flujo de Caja', path: '/caja', icon: Wallet, module: 'caja' },

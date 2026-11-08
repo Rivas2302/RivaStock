@@ -821,7 +821,7 @@ Como las maquetas ya están aprobadas, **no hace falta mandar capturas antes de 
 
 **Verificación:** Playwright 360 px y 1440 px con fixtures: filtrar «Mi stock» → elegir todos → quitar → deshacer → quitar; y que el catálogo de revendedores refleje el cambio. No tocar la lista real de Riva en producción.
 
-### [ ] I34 🔴 URGENTE: la app solo carga 1.000 productos — **detectado el 07/11 23:11 (va antes que todo lo demás)**
+### [x] I34 🔴 URGENTE: la app solo carga 1.000 productos — **detectado el 07/11 23:11 (va antes que todo lo demás)**
 
 **Problema (verificado en `origin/main`):** `db.list` y `db.listColumns` (`src/lib/db.ts`, ~líneas 440-470) hacen `supabase.from(tbl).select(...)` **sin paginar**. Supabase devuelve como máximo **1.000 filas**. Con los productos de Mr Tecno, Riva tiene ~1.330 productos (463 propios + 867 importados), así que **en toda la app se cargan solo 1.000, en un orden cualquiera**: Stock, Ventas, POS, Presupuestos, Ingresos, Consulta rápida, Calculadora, Inicio, Buscar y enviar, la IA y Revendedores. Síntomas que vio Riva: «Todos · 1000» en Lista de precios, y «En la lista · 1» con la tabla vacía: el «Auricular Bluetooth P47» sigue en la lista de revendedores y aparece en el catálogo, pero no se cargó en la pantalla, así que la acción en lote de I33 no lo pudo quitar. **Riva podría no encontrar productos propios al vender.**
 
