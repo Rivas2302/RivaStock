@@ -1252,6 +1252,9 @@ export default function ResellerPriceListModal({
   };
 
   const selectedSupplierProductSet = useMemo(() => new Set(supplierDraftProductIds), [supplierDraftProductIds]);
+  const supplierPhotoBrandFlaggedProducts = useMemo(() => products.filter(product => (
+    selectedSupplierProductSet.has(product.id) && product.customFields?.supplierPhotoBrandFlag === true
+  )), [products, selectedSupplierProductSet]);
   const supplierImportReview = useMemo(() => planSupplierImport({
     rows: supplierImportRows,
     supplierProducts: products.filter(product => selectedSupplierProductSet.has(product.id)),
@@ -2029,6 +2032,10 @@ export default function ResellerPriceListModal({
                             <button type="button" onClick={() => void scanExistingSupplierPhotos()} disabled={!canWrite || supplierSaving || Boolean(supplierPhotoOcrProgress) || supplierDraftProductIds.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Analizar fotos importadas</button>
                             <button type="button" onClick={() => setEditingSupplierId(null)} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)]">Volver a proveedores</button>
                           </div>}
+                          {displayMode === 'page' && supplierPhotoBrandFlaggedProducts.length > 0 && <section role="status" aria-label="Fotos con marca del proveedor" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                            <p className="font-bold">{supplierPhotoBrandFlaggedProducts.length} producto{supplierPhotoBrandFlaggedProducts.length === 1 ? '' : 's'} con fotos marcadas del proveedor</p>
+                            {supplierPhotoBrandFlaggedProducts.map(product => <p key={product.id} className="font-medium">{product.name} · {Math.max(1, Number(product.customFields?.supplierPhotoBrandFlaggedCount) || 1)} {Number(product.customFields?.supplierPhotoBrandFlaggedCount) === 1 ? 'foto' : 'fotos'}</p>)}
+                          </section>}
                           {displayMode === 'page' && <nav aria-label="Pasos para importar" className="grid grid-cols-3 gap-2">
                             {([
                               [1, 'Importar'],
@@ -2064,9 +2071,9 @@ export default function ResellerPriceListModal({
                           {supplierImportProgress?.warning && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportProgress.warning}</p>}
                           </div>
                           {supplierNameCleanupNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierNameCleanupNotice}</p>}
+                          {supplierPhotoOcrProgress && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">Analizando fotos: {supplierPhotoOcrProgress.done} de {supplierPhotoOcrProgress.total}. Podés seguir usando la pantalla.</p>}
+                          {supplierPhotoOcrNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierPhotoOcrNotice}{supplierPhotoOcrFailures > 0 ? ` ${supplierPhotoOcrFailures} fotos no se pudieron analizar.` : ''}</p>}
                           {supplierImportRows.length > 0 && <>
-                            {supplierPhotoOcrProgress && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">Analizando fotos: {supplierPhotoOcrProgress.done} de {supplierPhotoOcrProgress.total}. Podés seguir usando la pantalla.</p>}
-                            {supplierPhotoOcrNotice && <p role="status" className="rounded-lg bg-[var(--surface-2)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierPhotoOcrNotice}{supplierPhotoOcrFailures > 0 ? ` ${supplierPhotoOcrFailures} fotos no se pudieron analizar.` : ''}</p>}
                             {supplierImportCurrency && <div className="grid gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm text-[var(--ink)]"><p className="font-semibold">Moneda de origen: {supplierImportCurrency}.</p>{supplierImportRateNotice && <p aria-live="polite" className="text-xs text-[var(--ink-muted)]">{supplierImportRateNotice}</p>}{supplierImportCurrency.toUpperCase() === 'USD' && <label className="max-w-sm text-xs font-semibold">Cotización USD → ARS
                               <input aria-label="Cotización USD a pesos" type="number" min="0.01" step="0.01" value={supplierImportUsdRate || ''} onChange={event => { const rate = Math.max(0, Number(event.target.value) || 0); setSupplierImportUsdRate(rate); try { if (rate > 0) localStorage.setItem('rivastock:supplier-import-usd-rate', String(rate)); } catch { /* Browser storage is optional. */ } }} onBlur={event => { const rate = Number(event.currentTarget.value); if (rate > 0) void persistSupplierImportRate(rate); }} className="mt-1 min-h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm text-[var(--ink)]" placeholder="Ingresá la cotización"/>
                               </label>}{supplierImportCurrency.toUpperCase() !== 'USD' && supplierImportCurrency.toUpperCase() !== 'ARS' && <p>Esta moneda todavía no se puede convertir de forma segura. La lista queda disponible para corregir los costos manualmente.</p>}</div>}

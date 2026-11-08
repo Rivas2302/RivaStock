@@ -17,7 +17,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean } = {}) {
   await page.addInitScript(texts => {
     let index = 0;
     Object.defineProperty(window, '__RIVASTOCK_SUPPLIER_OCR_WORKER_FACTORY__', {
@@ -28,7 +28,9 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       }),
     });
   }, options.ocrTexts ?? ['']);
-  const products: Record<string, unknown>[] = options.nameCleanupFixture ? [
+  const products: Record<string, unknown>[] = options.photoScanFixture ? [
+    { id: 'supplier-photo-1', user_id: owner, name: 'Cable USB C', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'USB-1', image_url: 'https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp', images: ['https://rivastock-test.invalid/storage/v1/object/public/assets/owner/products/supplier-photo-1/supplier-hash.webp'] },
+  ] : options.nameCleanupFixture ? [
     { id: 'supplier-name-1', user_id: owner, name: 'HM352 – HUMIFICADOR LED ESTILO FUEGO', category: 'General', category_id: 'category-general', stock: 0, sale_price: 45000, purchase_price: 30000, catalog_only: true, barcode: 'HM352', image_url: null, images: [] },
   ] : options.largeFixture ? [
     ...Array.from({ length: 2_499 }, (_, index) => ({
@@ -45,7 +47,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'bulk-provider-included', user_id: owner, name: '[QA] Producto proveedor', category: 'General', category_id: 'category-general', stock: 0, sale_price: 4000, catalog_only: true, catalog_cost: 2500, barcode: 'QA-PROVIDER-1', image_url: 'https://fixture.invalid/provider.webp', images: ['https://fixture.invalid/provider.webp'] },
   ] : [];
   const categories: Record<string, unknown>[] = [{ id: 'category-general', user_id: owner, name: 'General' }];
-  let supplierProductIds: string[] = options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
+  let supplierProductIds: string[] = options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.largeFixture ? [
     { id: 'item-p47', user_id: owner, price_list_id: priceList.id, product_id: 'zz-product-p47', pricing_mode: 'default', availability: 'in_stock', sort_order: 0 },
   ] : options.bulkFixture ? [
@@ -239,7 +241,12 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       if (table === 'collaborators') return route.fulfill({ json: [] });
       return route.fulfill({ json: [] });
     }
-    if (path.startsWith('/storage/v1/object/assets/')) return route.fulfill({ status: 200, json: { Key: path } });
+    if (path.startsWith('/storage/v1/object/assets/')) {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64') });
+      }
+      return route.fulfill({ status: 200, json: { Key: path } });
+    }
     return route.fulfill({ json: [] });
   });
 
@@ -271,6 +278,27 @@ async function continueSupplierImportToReview(page: Page, importRegion: ReturnTy
 }
 
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
+  test(`existing supplier photo OCR saves a visible provider-brand flag without changing the list at ${viewport.width}px`, async ({ page }) => {
+    const { products, bulkCalls } = await mockApp(page, { photoScanFixture: true, ocrTexts: ['www.mrtecno.com.ar'] });
+    const pageErrors: string[] = [];
+    page.on('pageerror', () => pageErrors.push('page'));
+    page.on('console', message => { if (message.type() === 'error') pageErrors.push('console'); });
+    await page.setViewportSize(viewport);
+    await page.goto('/revendedores');
+    await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
+    const providers = page.getByRole('tabpanel', { name: 'Proveedores' });
+    const provider = providers.locator('article').filter({ hasText: '[QA] Mr Tecno' }).first();
+    await provider.getByRole('button', { name: 'Importar lista' }).click();
+    await providers.getByRole('button', { name: 'Analizar fotos importadas' }).click();
+    await expect(providers.getByRole('status').filter({ hasText: 'Analizamos 1 fotos de la lista; 1 quedaron marcadas' })).toBeVisible();
+    const brandStatus = providers.getByRole('status', { name: 'Fotos con marca del proveedor' });
+    await expect(brandStatus).toContainText('1 producto con fotos marcadas del proveedor');
+    await expect(brandStatus).toContainText('Cable USB C · 1 foto');
+    expect(products[0].custom_fields).toMatchObject({ supplierPhotoBrandFlag: true, supplierPhotoBrandFlaggedCount: 1 });
+    expect(bulkCalls).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
+
   test(`historical supplier-name cleanup preserves the internal barcode at ${viewport.width}px`, async ({ page }) => {
     const { products } = await mockApp(page, { nameCleanupFixture: true });
     await page.setViewportSize(viewport);
