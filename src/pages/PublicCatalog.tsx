@@ -4,7 +4,7 @@ import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerBuyingPolicy, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerBuyingPolicy, getPublicResellerSupplierRounds, getResellerCatalogStatus, resolvePublicCatalogSlug, unlockResellerCatalog } from '../lib/publicCatalog';
 import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { buildRetailOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
@@ -285,6 +285,21 @@ useEffect(() => {
         const foundConfig = configs[0];
 
         if (!foundConfig) {
+          const canonicalSlug = await withTimeout(resolvePublicCatalogSlug(slug), 'resolve previous catalog link');
+          if (cancelled) return;
+          if (canonicalSlug && canonicalSlug !== slug) {
+            const oldSession = sessionStorage.getItem(`catalog-reseller-session:${slug}`);
+            const oldChannel = sessionStorage.getItem(`catalog-channel:${slug}`);
+            if (oldSession && !sessionStorage.getItem(`catalog-reseller-session:${canonicalSlug}`)) {
+              sessionStorage.setItem(`catalog-reseller-session:${canonicalSlug}`, oldSession);
+            }
+            if (oldChannel && !sessionStorage.getItem(`catalog-channel:${canonicalSlug}`)) {
+              sessionStorage.setItem(`catalog-channel:${canonicalSlug}`, oldChannel);
+            }
+            const productSuffix = productId ? `/${encodeURIComponent(productId)}` : '';
+            navigate(`/catalogo/${encodeURIComponent(canonicalSlug)}${productSuffix}${location.search}${location.hash}`, { replace: true });
+            return;
+          }
           setError('Catálogo no encontrado');
           return;
         }
@@ -348,7 +363,7 @@ useEffect(() => {
     init();
 
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [location.hash, location.search, navigate, slug]);
 
   const isProductOrderable = (product: PublicCatalogProduct): boolean => (
     channel === 'reseller'
@@ -461,7 +476,7 @@ useEffect(() => {
       const pendingProductId = (location.state as { catalogPendingProductId?: string } | null)?.catalogPendingProductId;
       if (pendingProductId && directProductSetupRef.current === pendingProductId) {
         directProductSetupRef.current = null;
-        navigate(`${basePath}/${encodeURIComponent(pendingProductId)}`, {
+        navigate(`${basePath}/${encodeURIComponent(pendingProductId)}${location.search}${location.hash}`, {
           state: { catalogModalBackground: basePath },
         });
         return;
@@ -475,7 +490,7 @@ useEffect(() => {
       if (!background) {
         if (directProductSetupRef.current !== productId) {
           directProductSetupRef.current = productId;
-          navigate(basePath, { replace: true, state: { catalogPendingProductId: productId } });
+          navigate(`${basePath}${location.search}${location.hash}`, { replace: true, state: { catalogPendingProductId: productId } });
         }
         return;
       }
@@ -487,7 +502,7 @@ useEffect(() => {
       directProductSetupRef.current = null;
       navigate(basePath, { replace: true });
     }
-  }, [catalogProducts, config, loading, location.pathname, location.state, navigate, productId, slug]);
+  }, [catalogProducts, config, loading, location.hash, location.pathname, location.search, location.state, navigate, productId, slug]);
   useEffect(() => {
     if (!selectedProductForLightbox) return;
     const previousOverflow = document.body.style.overflow;

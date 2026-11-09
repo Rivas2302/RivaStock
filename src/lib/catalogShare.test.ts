@@ -71,7 +71,7 @@ describe('public catalog share handler', () => {
     images: [],
   };
 
-  function makeFetch(options: { configRows?: unknown; product?: unknown; status?: number } = {}) {
+  function makeFetch(options: { configRows?: unknown; product?: unknown; canonicalSlug?: unknown; status?: number } = {}) {
     return vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.pathname.endsWith('/catalog_config')) {
@@ -79,6 +79,9 @@ describe('public catalog share handler', () => {
       }
       if (url.pathname.endsWith('/rpc/get_public_catalog_product')) {
         return Response.json(options.product === undefined ? product : options.product, { status: options.status ?? 200 });
+      }
+      if (url.pathname.endsWith('/rpc/resolve_public_catalog_slug')) {
+        return Response.json(options.canonicalSlug ?? null, { status: options.status ?? 200 });
       }
       if (url.pathname.endsWith('/public_profiles')) {
         return Response.json([{ currency_symbol: '$' }]);
@@ -116,6 +119,25 @@ describe('public catalog share handler', () => {
     expect(html).toContain('Tecnología para todos');
     expect(html).toContain('url=https://rivastock.vercel.app/catalogo/rivatech-2');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('redirects a historical catalog slug to the canonical link and preserves a product id', async () => {
+    const fetcher = makeFetch({ configRows: [], canonicalSlug: 'bazar-lucia' });
+    const handler = createShareHandler({ supabaseUrl: SUPABASE_URL, publishableKey: 'sb_publishable_test', fetcher });
+    const response = await handler(new Request(`https://project.supabase.co/functions/v1/share?slug=bazar-viejo&productId=${PRODUCT_ID}`, { headers: forwardedHost }));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe(`https://rivastock.vercel.app/p/bazar-lucia/${PRODUCT_ID}`);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the legacy catalog route for catalog-preview requests', async () => {
+    const fetcher = makeFetch({ configRows: [], canonicalSlug: 'bazar-lucia' });
+    const handler = createShareHandler({ supabaseUrl: SUPABASE_URL, publishableKey: 'sb_publishable_test', fetcher });
+    const response = await handler(new Request(`https://project.supabase.co/functions/v1/share?slug=bazar-viejo&productId=${PRODUCT_ID}&canonical=catalogo`, { headers: forwardedHost }));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe(`https://rivastock.vercel.app/catalogo/bazar-lucia/${PRODUCT_ID}`);
   });
 
   it('uses the neutral welcome message and catalog image when no configured tagline or logo exists', async () => {

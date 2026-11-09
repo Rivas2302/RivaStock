@@ -5,6 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogConfig, Category, Product } from '../../types';
 import CatalogCustomizer from './CatalogCustomizer';
 
+vi.mock('../../lib/catalogSlug', () => ({
+  normalizeCatalogSlug: (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''),
+  validateCatalogSlug: (value: string) => value.length < 3 || value.length > 40 ? 'El link debe tener entre 3 y 40 caracteres.' : null,
+  isCatalogSlugConflict: (error: unknown) => /duplicate key|23505|catalog_slug_registry/i.test(error instanceof Error ? error.message : String(error)),
+  isCatalogSlugAvailable: vi.fn().mockResolvedValue(true),
+  suggestCatalogSlug: vi.fn(async (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '-') || 'tienda-prueba'),
+}));
+
 const config: CatalogConfig = {
   id: 'config-1', ownerUid: 'owner-1', businessName: 'Tienda de prueba', slug: 'tienda-prueba',
   showPrices: true, showOutOfStock: false, showStock: true, showStockQuantity: false, enabled: true,
@@ -17,6 +25,12 @@ const product: Product = {
   inventoryOwnerId: 'owner-1', ownerUid: 'owner-1', createdAt: '2026-11-01', updatedAt: '2026-11-01',
 };
 const category: Category = { id: 'category-1', name: 'Cables', ownerUid: 'owner-1', createdAt: '2026-11-01' } as Category;
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
 describe('CatalogCustomizer', () => {
   let host: HTMLDivElement;
@@ -57,6 +71,44 @@ describe('CatalogCustomizer', () => {
     expect(host.textContent).toContain('{precio}');
     expect(host.textContent).toContain('{link}');
     expect(host.textContent).toContain('+ cantidad');
+  });
+
+  it('suggests a name-based link without changing it when the business name changes', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openBusiness = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Datos del negocio'));
+    await act(async () => openBusiness?.click());
+
+    const businessName = [...host.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'Tienda de prueba');
+    await act(async () => {
+      if (businessName) setInputValue(businessName, 'Bazar Lucía');
+    });
+
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Tu link"]')?.value).toBe('tienda-prueba');
+    expect(host.textContent).toContain('Cambiar el nombre no modifica el link');
+    const useBusinessName = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Usar el nombre del negocio'));
+    expect(useBusinessName).toBeDefined();
+    await act(async () => useBusinessName?.click());
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Tu link"]')?.value).toBe('bazar-lucia');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('shows a suggested free link when the database rejects a concurrent slug collision', async () => {
+    const onSave = vi.fn().mockRejectedValueOnce(new Error('duplicate key value violates unique constraint catalog_slug_registry_pkey'));
+    const { suggestCatalogSlug } = await import('../../lib/catalogSlug');
+    vi.mocked(suggestCatalogSlug).mockResolvedValueOnce('bazar-lucia-2');
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openBusiness = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Datos del negocio'));
+    await act(async () => openBusiness?.click());
+    const slugInput = host.querySelector<HTMLInputElement>('input[aria-label="Tu link"]');
+    await act(async () => {
+      if (slugInput) setInputValue(slugInput, 'bazar-lucia');
+    });
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => save?.click());
+
+    expect(host.textContent).toContain('Ese link ya está en uso. Elegí una sugerencia');
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')].some(button => button.textContent?.includes('Usar bazar-lucia-2'))).toBe(true);
   });
 
   it('enables save and persists a change to only the announcement ribbon color', async () => {

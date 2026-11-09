@@ -3,7 +3,8 @@ import { useAuth } from '../AuthContext';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import { db } from '../lib/db';
 import { showToast } from '../lib/toast';
-import { slugify, uuid } from '../lib/utils';
+import { uuid } from '../lib/utils';
+import { isCatalogSlugConflict, normalizeCatalogSlug } from '../lib/catalogSlug';
 import type { CatalogConfig, UserProfile } from '../types';
 
 const CURRENCIES = [
@@ -53,7 +54,7 @@ export default function BusinessSetupModal() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const proposedSlug = useMemo(() => slugify(businessName.trim()) || 'tu-negocio', [businessName]);
+  const proposedSlug = useMemo(() => normalizeCatalogSlug(businessName.trim()) || 'tu-negocio', [businessName]);
   const shouldShow = Boolean(user && isOwner && !user.onboardingCompletedAt);
 
   useEffect(() => {
@@ -76,52 +77,47 @@ export default function BusinessSetupModal() {
       return;
     }
 
-    const normalizedName = trimmedName.toLowerCase();
     setSaving(true);
     setError('');
 
     let catalogConfig: CatalogConfig | null = null;
     let createdCatalogConfigId: string | null = null;
-    let updatedCatalogConfigBeforeSave: Pick<CatalogConfig, 'businessName' | 'slug'> | null = null;
+    let updatedCatalogConfigBeforeSave: Pick<CatalogConfig, 'businessName'> | null = null;
     try {
-      const existingBusinesses = await db.find<UserProfile>('users', 'businessNameLower', normalizedName, 1);
-      if (existingBusinesses.some((profile) => profile.uid !== user.uid)) {
-        setError('Este nombre de negocio ya está en uso. Elegí otro.');
-        return;
-      }
-
       const existingConfigs = await db.list<CatalogConfig>('catalog_configs', user.uid);
       catalogConfig = existingConfigs[0] ?? null;
-      const baseSlug = slugify(trimmedName) || 'tienda';
-      const matchingConfig = (await db.find<CatalogConfig>('catalog_configs', 'slug', baseSlug, 1))[0];
-      const catalogSlug = matchingConfig && matchingConfig.ownerUid !== user.uid
-        ? await db.getUniqueSlug(baseSlug, 'catalog_configs')
-        : baseSlug;
+      let catalogSlug = catalogConfig?.slug
+        ?? await db.getUniqueSlug(normalizeCatalogSlug(trimmedName) || 'tienda');
 
       if (catalogConfig) {
-        updatedCatalogConfigBeforeSave = {
-          businessName: catalogConfig.businessName,
-          slug: catalogConfig.slug,
-        };
+        updatedCatalogConfigBeforeSave = { businessName: catalogConfig.businessName };
         await db.update<CatalogConfig>('catalog_configs', catalogConfig.id, {
           businessName: trimmedName,
-          slug: catalogSlug,
         });
       } else {
-        const created = await db.create<CatalogConfig>('catalog_configs', defaultCatalogConfig(user.uid, trimmedName, catalogSlug));
-        catalogConfig = created;
-        createdCatalogConfigId = created.id;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const created = await db.create<CatalogConfig>('catalog_configs', defaultCatalogConfig(user.uid, trimmedName, catalogSlug));
+            catalogConfig = created;
+            createdCatalogConfigId = created.id;
+            break;
+          } catch (cause) {
+            if (!isCatalogSlugConflict(cause) || attempt === 2) throw cause;
+            catalogSlug = await db.getUniqueSlug(catalogSlug);
+          }
+        }
+        if (!catalogConfig) throw new Error('No se pudo reservar un link único para el catálogo. Intentá de nuevo.');
       }
 
       let updated: UserProfile;
       try {
         updated = await db.update<UserProfile>('users', user.uid, {
           businessName: trimmedName,
-          businessNameLower: normalizedName,
+          businessNameLower: '',
           currencySymbol,
           phone: phone.trim(),
           email_contact: contactEmail.trim(),
-          catalogSlug,
+          catalogSlug: createdCatalogConfigId ? catalogSlug : user.catalogSlug ?? catalogSlug,
           onboardingCompletedAt: new Date().toISOString(),
         });
       } catch (cause) {

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
@@ -8,13 +8,15 @@ const root = resolve('dist');
 const manifest = JSON.parse(readFileSync(resolve(root, '.vite/manifest.json'), 'utf8'));
 const entryKey = Object.keys(manifest).find(key => manifest[key].isEntry);
 const report = {};
-// Rollup can rename a route entry to a shared chunk when optional dialogs use
-// the same helpers. Resolve every source page so budgets cannot silently skip it.
-const routes = [[entryKey, entryKey], ...readdirSync('src/pages')
-  .filter(file => file.endsWith('.tsx') && !/\.(?:test|spec)\.tsx$/.test(file))
-  .map(file => {
-  const source = `src/pages/${file}`;
-  const key = manifest[source] ? source : Object.keys(manifest).find(key => manifest[key].isDynamicEntry && manifest[key].name === file.replace(/\.tsx$/, ''));
+// Measure actual route modules from App.tsx; src/pages also contains unused
+// legacy screens that intentionally have no build-manifest entry.
+const appSource = readFileSync(resolve('src/App.tsx'), 'utf8');
+const routeSources = [...appSource.matchAll(/import\(['"]\.\/pages\/([^'"]+)['"]\)/g)]
+  .map(match => `src/pages/${match[1]}.tsx`);
+const routes = [[entryKey, entryKey], ...routeSources
+  .map(source => {
+  const routeName = source.split('/').at(-1).replace(/\.tsx$/, '');
+  const key = manifest[source] ? source : Object.keys(manifest).find(key => manifest[key].isDynamicEntry && manifest[key].name === routeName);
   if (!key) throw new Error(`Missing route in build manifest: ${source}`);
   return [source, key];
 })];

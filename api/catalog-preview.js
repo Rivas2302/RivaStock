@@ -47,11 +47,12 @@ export function createCatalogPreviewHandler(fetcher = fetch) {
       const upstream = await fetcher(upstreamUrl, {
         method,
         headers: { 'user-agent': userAgent },
+        redirect: 'manual',
       });
       response.status(upstream.status);
       for (const name of [
         'content-type', 'cache-control', 'vercel-cdn-cache-control',
-        'x-content-type-options', 'referrer-policy', 'content-security-policy',
+        'x-content-type-options', 'referrer-policy', 'content-security-policy', 'location',
       ]) {
         const value = upstream.headers.get(name);
         if (value) response.setHeader(name, value);

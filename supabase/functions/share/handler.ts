@@ -38,6 +38,14 @@ function notFound(method: string): Response {
   return htmlResponse(404, '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>No encontramos este catálogo</title></head><body><h1>No encontramos este catálogo</h1></body></html>', method);
 }
 
+function redirectToCanonical(origin: string, slug: string, productId: string, route: 'p' | 'catalogo'): Response {
+  const path = `/${route}/${encodeURIComponent(slug)}${productId ? `/${encodeURIComponent(productId)}` : ''}`;
+  return new Response(null, {
+    status: 308,
+    headers: { ...CACHE_HEADERS, 'Cache-Control': 'public, max-age=0, s-maxage=300', Location: `${origin}${path}` },
+  });
+}
+
 function publicSiteOrigin(request: Request, fallbackSiteHost: string): string | null {
   const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim().toLowerCase();
   const isAllowedHost = (host: string) => host.length <= 180
@@ -87,7 +95,23 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
       if (!configResponse.ok) return htmlResponse(503, '<!doctype html><title>Vista previa no disponible</title>', request.method);
       const configRows = await readJson<PublicConfigRow[]>(configResponse);
       const config = Array.isArray(configRows) ? configRows[0] : null;
-      if (!config?.enabled) return notFound(request.method);
+      if (!config?.enabled) {
+        const resolveUrl = `${supabaseUrl}/rest/v1/rpc/resolve_public_catalog_slug`;
+        const resolveResponse = await fetcher(resolveUrl, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_slug: slug }),
+          signal: request.signal,
+        });
+        if (!resolveResponse.ok) return htmlResponse(503, '<!doctype html><title>Vista previa no disponible</title>', request.method);
+        const canonicalSlug = await readJson<string>(resolveResponse);
+        if (!canonicalSlug) return notFound(request.method);
+        if (canonicalSlug !== slug) {
+          const canonicalRoute = requestUrl.searchParams.get('canonical') === 'catalogo' ? 'catalogo' : 'p';
+          return redirectToCanonical(origin, canonicalSlug, productId, canonicalRoute);
+        }
+        return notFound(request.method);
+      }
 
       let title = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let description = config.tagline?.trim() || config.welcome_message?.trim() || `Mirá los productos de ${config.business_name || 'este negocio'}.`;

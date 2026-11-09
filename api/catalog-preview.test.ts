@@ -34,6 +34,23 @@ describe('Vercel catalog preview proxy', () => {
     expect(upstreamUrl.searchParams.get('canonical')).toBe('catalogo');
   });
 
+  it('preserves a canonical redirect for old catalog and product share links', async () => {
+    const canonicalUrl = 'https://rivastock.vercel.app/catalogo/bazar-lucia/12345678-1234-4abc-8def-1234567890ab';
+    const fetcher = vi.fn(async () => new Response(null, {
+      status: 308,
+      headers: { location: canonicalUrl, 'cache-control': 'public, max-age=0, s-maxage=300' },
+    }));
+    const response = responseRecorder();
+    await createCatalogPreviewHandler(fetcher as typeof fetch)({
+      method: 'GET', headers: { 'user-agent': userAgent, host: 'rivastock.vercel.app' },
+      query: { slug: 'bazar-viejo', productId: '12345678-1234-4abc-8def-1234567890ab' },
+    }, response);
+
+    expect(response.statusCode).toBe(308);
+    expect(response.headers.location).toBe(canonicalUrl);
+    expect(fetcher.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ redirect: 'manual' }));
+  });
+
   it('passes an optional product UUID without accepting arbitrary hosts or methods', async () => {
     const fetcher = vi.fn(async () => new Response('ok'));
     const handler = createCatalogPreviewHandler(fetcher as typeof fetch);

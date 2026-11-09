@@ -34,14 +34,19 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
   const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
   await page.route('**/rest/v1/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
-    if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp }] });
+    if (pathname.endsWith('/catalog_config')) {
+      const requestedSlug = url.searchParams.get('slug')?.replace(/^eq\./, '');
+      if (legacyCatalogSlug && requestedSlug === legacyCatalogSlug) return route.fulfill({ json: [] });
+      return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp }] });
+    }
+    if (legacyCatalogSlug && pathname.endsWith('/rpc/resolve_public_catalog_slug')) return route.fulfill({ json: 'qa-catalog' });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: categoryOverrides ?? [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
     if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: catalogProducts });
     if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: catalogProduct });
@@ -128,6 +133,17 @@ test('category circles use visible product photos and product navigation returns
   await page.goBack();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
+});
+
+test('old catalog and product links redirect to the current slug without losing the product', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, 'bazar-viejo');
+
+  await page.goto(`/catalogo/bazar-viejo/${PRODUCT_ID}?origen=compartido#producto`);
+
+  await expect(page).toHaveURL(new RegExp(`/catalogo/qa-catalog/${PRODUCT_ID}\\?origen=compartido#producto$`));
+  await expect(page.getByTestId('catalog-product-detail-modal')).toBeVisible();
+  await expect(page.getByTestId('catalog-product-detail-modal').getByRole('heading', { name: 'Cable USB-C' })).toBeVisible();
 });
 
 test('product detail is a catalog modal with browser history, scroll, direct links, and related products', async ({ page }) => {

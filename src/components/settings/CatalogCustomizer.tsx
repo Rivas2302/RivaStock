@@ -3,6 +3,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, BadgePercent, Building2, Check, ChevronR
 import type { CatalogConfig, Category, Product } from '../../types';
 import { formatCurrency, roundPrice } from '../../lib/utils';
 import { getCatalogShareUrl } from '../../lib/catalogShare';
+import { isCatalogSlugAvailable, isCatalogSlugConflict, normalizeCatalogSlug, suggestCatalogSlug, validateCatalogSlug } from '../../lib/catalogSlug';
 import {
   CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation,
   formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogOfferPrice, moveCatalogSection,
@@ -89,9 +90,15 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [slugAvailability, setSlugAvailability] = useState<{
+    slug: string; state: 'checking' | 'available' | 'taken' | 'error'; suggestion?: string;
+  } | null>(null);
   const baseline = useMemo(() => catalogConfigSignature(config, normalize(config)), [config]);
   const current = catalogConfigSignature(draftConfig, draft);
   const dirty = baseline !== current;
+  const slugChanged = draftConfig.slug !== config.slug;
+  const slugValidationError = validateCatalogSlug(draftConfig.slug);
   const activeTheme = getActiveCatalogTheme(draft);
   const theme = CATALOG_THEME_OPTIONS.find(item => item.id === activeTheme) ?? CATALOG_THEME_OPTIONS[0];
   const publicUrl = getCatalogShareUrl(window.location.origin, config.slug);
@@ -104,6 +111,29 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
     return () => window.removeEventListener('beforeunload', confirmExit);
   }, [dirty]);
 
+  useEffect(() => {
+    const slug = draftConfig.slug.trim();
+    if (validateCatalogSlug(slug)) {
+      setSlugAvailability(null);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSlugAvailability({ slug, state: 'checking' });
+      void isCatalogSlugAvailable(slug, config.slug).then(async available => {
+        if (!active) return;
+        if (available) setSlugAvailability({ slug, state: 'available' });
+        else {
+          const suggestion = await suggestCatalogSlug(slug, config.slug).catch(() => undefined);
+          if (active) setSlugAvailability({ slug, state: 'taken', suggestion });
+        }
+      }).catch(() => {
+        if (active) setSlugAvailability({ slug, state: 'error' });
+      });
+    }, 300);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [draftConfig.slug]);
+
   const update = (changes: Partial<CatalogPresentation>) => { setDraft(value => ({ ...value, ...changes })); setSaved(false); };
   const updateConfig = (changes: Partial<CatalogConfig>) => { setDraftConfig(value => ({ ...value, ...changes })); setSaved(false); };
   const setCategoryPhoto = (categoryId: string, url: string | null) => {
@@ -112,14 +142,30 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
     else delete overrides[categoryId];
     updateConfig({ categoryPhotoOverrides: overrides });
   };
-  const back = () => { if (dirty && !window.confirm('Tenés cambios sin guardar. ¿Descartarlos y salir?')) return; setDraft(normalize(config)); setDraftConfig(config); setSection(null); setError(''); setSaved(false); };
+  const back = () => { if (dirty && !window.confirm('Tenés cambios sin guardar. ¿Descartarlos y salir?')) return; setDraft(normalize(config)); setDraftConfig(config); setSection(null); setError(''); setSaved(false); setSlugTouched(false); };
   const save = async () => {
     if (!dirty || saving || !canEdit) return;
     setSaving(true); setSaved(false); setError('');
     try {
+      if (slugChanged) {
+        const validationError = validateCatalogSlug(draftConfig.slug);
+        if (validationError) { setError(validationError); return; }
+        if (!await isCatalogSlugAvailable(draftConfig.slug, config.slug)) {
+          const suggestion = await suggestCatalogSlug(draftConfig.slug, config.slug).catch(() => undefined);
+          setSlugAvailability({ slug: draftConfig.slug, state: 'taken', suggestion });
+          setError('Ese link ya está en uso. Elegí una sugerencia y guardá de nuevo.');
+          return;
+        }
+      }
       await onSave({ ...draftConfig, presentation: draft, welcomeMessage: draft.heroDescription, bannerColor: draft.heroColor, primaryColor: draft.accentColor, bannerUrl: draft.useBusinessCover ? draft.heroImageUrl || config.bannerUrl : null });
       setSaved(true);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No pudimos guardar los cambios. Intentá de nuevo.'); }
+    } catch (reason) {
+      if (slugChanged && isCatalogSlugConflict(reason)) {
+        const suggestion = await suggestCatalogSlug(draftConfig.slug, config.slug).catch(() => undefined);
+        setSlugAvailability({ slug: draftConfig.slug, state: 'taken', suggestion });
+        setError('Ese link ya está en uso. Elegí una sugerencia y guardá de nuevo.');
+      } else setError(reason instanceof Error ? reason.message : 'No pudimos guardar los cambios. Intentá de nuevo.');
+    }
     finally { setSaving(false); }
   };
   const addProduct = (target: 'featured' | 'offer', id: string) => {
@@ -160,7 +206,7 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
         {section==='display'&&<div className="space-y-2">{([['showPrices','Mostrar precios'],['showStock','Mostrar disponibilidad'],['showStockQuantity','Mostrar cantidad disponible'],['showOutOfStock','Mostrar productos sin stock']] as const).map(([key,label])=><label key={key} className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={draftConfig[key]} onChange={event=>updateConfig({[key]:event.target.checked})} className="size-5 accent-[var(--brand)]"/>{label}</label>)}<label className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={draftConfig.categoryPhotosEnabled ?? true} onChange={event=>updateConfig({categoryPhotosEnabled:event.target.checked})} className="size-5 accent-[var(--brand)]"/>Mostrar foto en las categorías</label>{categories.map(category=>{const productsInCategory=products.filter(product=>product.categoryId===category.id&&photo(product));const selected=draftConfig.categoryPhotoOverrides?.[category.id]??'';return <fieldset key={category.id} className="space-y-2 border-b border-[var(--line)] py-3"><legend className="text-sm font-semibold">{category.name}</legend><select aria-label={`Foto para ${category.name}`} value={selected} onChange={event=>setCategoryPhoto(category.id,event.target.value||null)} className="min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-sm"><option value="">Automática</option>{productsInCategory.map(product=><option key={product.id} value={photo(product)}>{product.name}</option>)}</select><div className="flex flex-wrap gap-2"><label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-[var(--line)] px-3 text-sm font-semibold"><ImagePlus size={16}/>Subir foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={!canEdit} className="sr-only" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{setCategoryPhoto(category.id,await onUploadCategoryPhoto(file));setError('');}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo subir la foto.');}finally{event.target.value='';}}}/></label>{selected&&<button type="button" onClick={()=>setCategoryPhoto(category.id,null)} className="min-h-10 rounded-xl border border-[var(--line)] px-3 text-sm font-semibold">Volver a automática</button>}</div></fieldset>;})}<label className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={draft.showProductsWithoutPhoto} onChange={event=>update({showProductsWithoutPhoto:event.target.checked})} className="size-5 accent-[var(--brand)]"/>Mostrar productos sin foto</label></div>}
         {section==='whatsapp'&&<div className="space-y-4"><div className="rounded-2xl bg-emerald-950 p-4 text-white"><p className="mb-2 text-xs text-emerald-200">Así le llega a tu cliente</p><div className="ml-auto max-w-[290px] rounded-2xl bg-emerald-800 p-3 text-sm"><div className="mb-2 overflow-hidden rounded-lg bg-emerald-900 p-2"><div className="aspect-video overflow-hidden rounded bg-gradient-to-br from-indigo-400 to-fuchsia-500">{products[0]&&photo(products[0])&&<img src={photo(products[0])} alt="" className="size-full object-cover"/>}</div><p className="mt-2 font-bold">{products[0]?.name??'Nombre del producto'} · {formatCurrency(products[0]?.salePrice??0)}</p><p className="text-xs text-emerald-200">{draftConfig.businessName} · rivastock.vercel.app</p></div>{formatCatalogWhatsAppMessage(draft.whatsappMessageTemplate,{product:products[0]?.name??'Producto',price:formatCurrency(products[0]?.salePrice??0),link:getCatalogShareUrl(window.location.origin,config.slug,products[0]?.id),quantity:1})}</div></div><label className="block text-sm font-semibold">Número de WhatsApp<input type="tel" value={draftConfig.whatsappNumber??''} onChange={event=>updateConfig({whatsappNumber:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label><label className="block text-sm font-semibold">Mensaje al consultar un producto<textarea rows={4} value={draft.whatsappMessageTemplate} onChange={event=>update({whatsappMessageTemplate:event.target.value})} className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/></label><div className="flex flex-wrap gap-2">{[['{producto}','+ producto'],['{precio}','+ precio'],['{link}','+ link'],['{cantidad}','+ cantidad']].map(([value,label])=><button key={value} type="button" onClick={()=>update({whatsappMessageTemplate:`${draft.whatsappMessageTemplate} ${value}`})} className="min-h-10 rounded-full border border-[var(--line)] px-3 text-sm">{label}</button>)}</div>{([['allowOrders','Pedidos online'],['whatsapp','Botón de WhatsApp en cada producto']] as const).map(([key,label])=><label key={key} className="flex min-h-[60px] items-center gap-3 border-b border-[var(--line)] text-sm font-semibold"><input type="checkbox" checked={key==='allowOrders'?draftConfig.allowOrders:draft.showWhatsAppButton} onChange={event=>key==='allowOrders'?updateConfig({allowOrders:event.target.checked}):update({showWhatsAppButton:event.target.checked})} className="size-5 accent-[var(--brand)]"/>{label}</label>)}</div>}
         {section==='resellers'&&<div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4"><h3 className="font-semibold">Acceso para revendedores</h3><p className="mt-2 text-sm text-[var(--ink-muted)]">Los códigos y las listas por encargo se administran desde Revendedores.</p><a href="/revendedores" className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">Abrir Revendedores <ExternalLink size={15} className="ml-2"/></a></div>}
-        {section==='business'&&<div className="space-y-4">{([['businessName','Nombre del negocio'],['tagline','Frase corta'],['aboutText','Acerca del negocio']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}{key==='aboutText'?<textarea value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-28 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/>:<input value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/>}</label>)}<div className="flex items-center gap-3"><span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)]">{draftConfig.logoUrl?<img src={draftConfig.logoUrl} alt="Logo del negocio" className="size-full object-cover"/>:<ImagePlus size={22}/>}</span><label className="flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded-xl border border-dashed border-[var(--line)] px-3 text-sm font-semibold">{draftConfig.logoUrl?'Cambiar logo':'Subir logo'}<input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" disabled={!canEdit} className="sr-only" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{updateConfig({logoUrl:await onUploadLogo(file)});}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo subir el logo.');}finally{event.target.value='';}}}/></label></div>{([['instagramUrl','Instagram'],['facebookUrl','Facebook']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}<input type="url" value={draftConfig[key]??''} placeholder="https://" onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label>)}</div>}
+        {section==='business'&&<div className="space-y-4">{([['businessName','Nombre del negocio'],['tagline','Frase corta'],['aboutText','Acerca del negocio']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}{key==='aboutText'?<textarea value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-28 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3"/>:<input value={draftConfig[key]??''} onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/>}</label>)}<div className="space-y-2 rounded-xl border border-[var(--line)] p-3"><label className="block text-sm font-semibold">Tu link<div className="mt-1 flex min-h-12 items-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-raised)]"><span className="shrink-0 border-r border-[var(--line)] px-2 text-xs text-[var(--ink-muted)] sm:px-3">rivastock.vercel.app/p/</span><input aria-label="Tu link" type="text" maxLength={40} autoComplete="off" value={draftConfig.slug} onChange={event=>{updateConfig({slug:normalizeCatalogSlug(event.target.value)});setSlugTouched(true);}} className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm outline-none sm:px-3"/></div></label>{slugTouched&&slugChanged&&slugValidationError&&<p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{slugValidationError}</p>}{slugAvailability?.slug===draftConfig.slug&&!slugValidationError&&<p role={slugAvailability.state==='taken'||slugAvailability.state==='error'?'alert':'status'} className="text-sm text-[var(--ink-muted)]">{slugAvailability.state==='checking'?'Verificando disponibilidad…':slugAvailability.state==='available'?'Link disponible':slugAvailability.state==='taken'?'Ese link ya está en uso.': 'No se pudo verificar la disponibilidad.'}</p>}{slugAvailability?.slug===draftConfig.slug&&slugAvailability.state==='taken'&&slugAvailability.suggestion&&<button type="button" onClick={()=>{updateConfig({slug:slugAvailability.suggestion!});setSlugTouched(true);setError('');}} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold">Usar {slugAvailability.suggestion}</button>}{normalizeCatalogSlug(draftConfig.businessName||'')!==draftConfig.slug&&<p className="text-xs text-[var(--ink-muted)]">El nombre sugiere “{normalizeCatalogSlug(draftConfig.businessName||'')}”. Cambiar el nombre no modifica el link ni rompe los links anteriores.</p>}<button type="button" onClick={async()=>{try{const suggestion=await suggestCatalogSlug(draftConfig.businessName||'',config.slug);updateConfig({slug:suggestion});setSlugTouched(true);setError('');}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo sugerir un link disponible.');}}} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold">Usar el nombre del negocio</button></div><div className="flex items-center gap-3"><span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)]">{draftConfig.logoUrl?<img src={draftConfig.logoUrl} alt="Logo del negocio" className="size-full object-cover"/>:<ImagePlus size={22}/>}</span><label className="flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded-xl border border-dashed border-[var(--line)] px-3 text-sm font-semibold">{draftConfig.logoUrl?'Cambiar logo':'Subir logo'}<input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" disabled={!canEdit} className="sr-only" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{updateConfig({logoUrl:await onUploadLogo(file)});}catch(reason){setError(reason instanceof Error?reason.message:'No se pudo subir el logo.');}finally{event.target.value='';}}}/></label></div>{([['instagramUrl','Instagram'],['facebookUrl','Facebook']] as const).map(([key,label])=><label key={key} className="block text-sm font-semibold">{label}<input type="url" value={draftConfig[key]??''} placeholder="https://" onChange={event=>updateConfig({[key]:event.target.value})} className="mt-1 min-h-12 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3"/></label>)}</div>}
       </div>
     </div>}
     {error&&<p role="alert" className="fixed bottom-24 left-4 right-4 z-40 rounded-xl bg-rose-950 px-4 py-3 text-sm font-semibold text-white sm:left-auto sm:right-6 sm:max-w-lg">{error}</p>}

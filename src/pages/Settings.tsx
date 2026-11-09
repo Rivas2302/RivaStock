@@ -17,7 +17,8 @@ import {
   UserProfile,
   Product
 } from '../types';
-import { formatCurrency, cn, slugify } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
+import { normalizeCatalogSlug } from '../lib/catalogSlug';
 import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound } from 'lucide-react';
 import Modal from '../components/Modal';
 const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
@@ -96,7 +97,6 @@ export default function Settings() {
 
   // Form states
   const [businessName, setBusinessName] = useState(user?.businessName || '');
-  const [catalogSlug, setCatalogSlug] = useState(user?.catalogSlug || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [emailContact, setEmailContact] = useState(user?.email_contact || '');
   const [newCategory, setNewCategory] = useState('');
@@ -138,8 +138,8 @@ export default function Settings() {
 
     // Keep settings reads side-effect free for suspended accounts.
     if (!cc && canWriteBusiness) {
-      const baseSlug = slugify(user.businessName || 'tienda');
-      const uniqueSlug = await db.getUniqueSlug(baseSlug, 'catalog_configs');
+      const baseSlug = normalizeCatalogSlug(user.businessName || 'tienda') || 'tienda';
+      const uniqueSlug = await db.getUniqueSlug(baseSlug);
       
       cc = await db.create<CatalogConfig>('catalog_configs', {
         id: crypto.randomUUID(),
@@ -158,23 +158,6 @@ export default function Settings() {
         layout: 'Grid',
         fontStyle: 'Modern'
       });
-    }
-
-    // Ensure UserProfile has catalogSlug
-    if (cc && canWriteBusiness && (!user.catalogSlug || user.catalogSlug !== cc.slug)) {
-      try {
-        const updatedUser = await db.update<UserProfile>('users', user.uid, { catalogSlug: cc.slug });
-        updateUser(updatedUser);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'Not found') {
-          // If user not found in users collection, create it
-          const newUser = { ...user, catalogSlug: cc.slug };
-          await db.create('users', newUser);
-          updateUser(newUser);
-        } else {
-          throw err;
-        }
-      }
     }
 
     setCategories(cat);
@@ -226,33 +209,16 @@ export default function Settings() {
     if (!canWriteBusiness || !user) return;
 
     const trimmedName = businessName.trim();
-    const normalizedName = trimmedName.toLowerCase();
-
-    const existingBusinesses = await db.find<UserProfile>('users', 'businessNameLower', normalizedName, 1);
-    
-    // If name exists and it's not the current user's business
-    if (existingBusinesses.length > 0 && existingBusinesses[0].uid !== user.uid) {
-      showMessage('Este nombre de negocio ya está en uso. Elige otro.', 'error');
-      return;
-    }
-
-    // Generate slug from business name
-    const baseSlug = slugify(trimmedName);
-    const catalogSlug = await db.getUniqueSlug(baseSlug, 'users');
-    
     const updated = await db.update<UserProfile>('users', user.uid, {
       businessName: trimmedName,
-      businessNameLower: normalizedName,
       phone: phone.trim(),
       email_contact: emailContact.trim(),
-      catalogSlug 
     });
     updateUser(updated); // Update context
-    setCatalogSlug(catalogSlug);
     
     // Sync with catalog config
     if (catalogConfig) {
-      await db.update('catalog_configs', catalogConfig.id, { businessName: trimmedName, slug: catalogSlug });
+      await db.update('catalog_configs', catalogConfig.id, { businessName: trimmedName });
     }
     
     showMessage('Configuración general guardada');
@@ -502,6 +468,7 @@ export default function Settings() {
                           onChange={(e) => setBusinessName(e.target.value)}
                           className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white font-bold"
                         />
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Cambiar el nombre no cambia el link del catálogo. Podés actualizarlo en Catálogo Público → Datos del negocio.</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Teléfono de contacto</label>

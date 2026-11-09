@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+import { unaccent } from '@electric-sql/pglite/contrib/unaccent';
 import { readFileSync, readdirSync } from 'node:fs';
 
 // Execute production PL/pgSQL, triggers and constraints, not source-text assertions.
@@ -12,10 +13,11 @@ const secondSale = '30000000-0000-4000-8000-000000000002';
 let sql: PGlite;
 
 beforeAll(async () => {
-  sql = new PGlite({ extensions: { pgcrypto } });
+  sql = new PGlite({ extensions: { pgcrypto, unaccent } });
   await sql.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA auth; CREATE SCHEMA storage; CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto;
+    CREATE EXTENSION unaccent WITH SCHEMA extensions;
     CREATE FUNCTION extensions.digest(text, text) RETURNS bytea LANGUAGE sql IMMUTABLE
       AS $$ SELECT public.digest($1, $2) $$;
     CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb);

@@ -712,24 +712,11 @@ class SupabaseDB {
     });
   }
 
-  async getUniqueSlug(baseSlug: string, collectionName: string): Promise<string> {
-    const tbl   = tableName(collectionName);
-    const field = tbl === 'profiles' ? 'catalog_slug' : 'slug';
-
-    let slug    = baseSlug;
-    let counter = 1;
-    while (counter <= 100) {
-      const { data } = await supabase
-        .from(tbl)
-        .select(field)
-        .eq(field, slug)
-        .limit(1);
-
-      if (!data || data.length === 0) return slug;
-      slug = `${baseSlug}-${counter}`;
-      counter++;
-    }
-    return slug;
+  async getUniqueSlug(baseSlug: string): Promise<string> {
+    const { data, error } = await supabase.rpc('suggest_catalog_slug', { p_base_slug: baseSlug });
+    if (error) throw new Error(`[db.getUniqueSlug] ${error.message}`);
+    if (typeof data !== 'string') throw new Error('[db.getUniqueSlug] No se pudo sugerir un link disponible.');
+    return data;
   }
 }
 
