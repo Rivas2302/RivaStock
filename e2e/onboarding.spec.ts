@@ -63,6 +63,7 @@ function profile(businessName = 'Fixture Store') {
 interface FixtureOptions {
   businessName?: string;
   authenticated?: boolean;
+  platformAdmin?: boolean;
   orders?: Record<string, unknown>[];
   intercept?: (route: Route, url: URL) => Promise<boolean>;
 }
@@ -100,7 +101,7 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
     } else if (path.endsWith('/rpc/get_owner_profile')) {
       data = [currentProfile];
     } else if (path.endsWith('/rpc/is_platform_admin')) {
-      data = false;
+      data = options.platformAdmin ?? false;
     } else if (path.endsWith('/rpc/my_business_plan')) {
       data = {
         plan_code: 'base',
@@ -110,6 +111,14 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
       };
     } else if (path.endsWith('/rpc/platform_usage_overview')) {
       data = {};
+    } else if (path === '/functions/v1/platform-admin' && method === 'POST') {
+      data = {
+        budgets: { db_bytes: 500_000_000, storage_bytes: 10_000_000_000, warn_ratio: 0.8 },
+        live: { db_bytes: 0, storage_bytes: 0 },
+        last_snapshot_at: null,
+        plans: [],
+        businesses: [],
+      };
     } else if (path.endsWith('/rpc/get_sales_report')) {
       data = { sales: [], totals: {}, by_month: [], by_category: [] };
     } else if (path === '/rest/v1/rpc/get_reseller_catalog_status') {
@@ -337,6 +346,39 @@ test('catalog orders use readable dark status controls and safe delete confirmat
     { method: 'DELETE', pathname: '/rest/v1/orders', body: null },
     { method: 'DELETE', pathname: '/rest/v1/orders', body: null },
   ]);
+  expect(fixture.pageErrors).toEqual([]);
+  expect(fixture.consoleErrors).toEqual([]);
+});
+
+test('platform plan dropdown uses the approved dark palette', async ({ page }) => {
+  const fixture = await mountFixture(page, { businessName: 'Platform Fixture Store', platformAdmin: true });
+  await page.goto('/plataforma');
+  await expect(page.getByText('Plataforma RivaStock')).toBeVisible();
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+
+  const plan = page.locator('select').first();
+  await expect(plan).toBeVisible();
+  const colors = await plan.evaluate(element => {
+    const style = getComputedStyle(element);
+    const option = element.querySelector('option');
+    const optionStyle = option ? getComputedStyle(option) : null;
+    return {
+      background: style.backgroundColor,
+      foreground: style.color,
+      border: style.borderColor,
+      colorScheme: style.colorScheme,
+      optionBackground: optionStyle?.backgroundColor,
+      optionForeground: optionStyle?.color,
+    };
+  });
+  expect(colors).toEqual({
+    background: 'rgb(32, 32, 32)',
+    foreground: 'rgb(242, 242, 242)',
+    border: 'rgb(38, 38, 38)',
+    colorScheme: 'dark',
+    optionBackground: 'rgb(32, 32, 32)',
+    optionForeground: 'rgb(242, 242, 242)',
+  });
   expect(fixture.pageErrors).toEqual([]);
   expect(fixture.consoleErrors).toEqual([]);
 });

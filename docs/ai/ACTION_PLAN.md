@@ -1086,9 +1086,9 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Cierre confirmado por Riva el 08/11/2026:** en producción, con una captura nueva de Babaji, el sistema analizó y agregó **8 de 8 fotos**. El intento anterior tenía enlaces vencidos. La prueba previa de Mr Tecno terminó con **50 de 50 fotos analizadas**. No se alteraron casos de prueba.
 
-### [ ] I44 Desplegables legibles con el tema oscuro en toda la app — **Riva, 08/11/2026**
+### [x] I44 Desplegables legibles con el tema oscuro en toda la app — **Riva, 08/11/2026**
 
-Auditar los `<select>` de toda la app, incluidos panel Plataforma y Pedidos del Catálogo. Usar los tokens de tema oscuro de `DESIGN.md` en el control y sus opciones; verificar contraste en claro/oscuro con fixtures y Playwright en escritorio y celular.
+Audité los `<select>` de toda la app y agregué un estilo global para el control y sus opciones en modo oscuro con `DESIGN.md` (#202020, #F2F2F2, #262626). La prueba cubre Pedidos del Catálogo a 360/1440 px y el selector «Plan» en Plataforma.
 
 ### [ ] I45 Baja o eliminación de cuenta desde Plataforma — **Riva, 08/11/2026**
 

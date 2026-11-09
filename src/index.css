@@ -102,6 +102,20 @@
 
 html.catalog-dark { color-scheme: dark; }
 
+/* Native dropdowns inherit a light browser popup in some themes unless both
+   the control and its options opt into the dark palette explicitly. */
+:root.dark select {
+  color-scheme: dark;
+  background-color: #202020;
+  border-color: #262626;
+  color: #f2f2f2;
+}
+
+:root.dark select option {
+  background-color: #202020;
+  color: #f2f2f2;
+}
+
 @media (pointer: coarse) {
   button:not(.size-8):not(.w-8):not(.h-8),
   [role="button"] {

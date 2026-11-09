@@ -7,7 +7,9 @@
 - «Cómo comprar» guarda la política en `price_lists.buying_policy`, se configura desde Ajustes de Revendedores y se muestra antes de pedir después de validar el código del catálogo o la ronda. El valor inicial conserva las siete líneas exactas que pidió Riva.
 - En Pedidos del Catálogo, el selector de estado usa los tokens del tema y «Eliminar pedido» pide confirmación propia, luego borra exclusivamente `orders.id` seleccionado. No llama a RPC de ventas, productos ni clientes. Proveedor se probó con fixture PGlite, no con la base real.
 - Verificaciones locales: lint aprobado; suite completa Vitest **220 archivos / 1.254 pruebas** aprobadas; build aprobado; Playwright con fixtures aprobó 360 y 1440 px y confirmó una sola petición `DELETE` a `orders`. Una primera ejecución E2E quedó bloqueada por el modal de onboarding en el fixture; se completó el perfil del fixture y la repetición pasó.
-- Pendiente en esta fecha: completar el resto de los puntos nuevos I44–I48, hacer commit/push y confirmar Current.
+- Commit `bf3d4cb` quedó en `origin/main`; el check de Vercel terminó `success`, pero Current aún entrega la entrada `/assets/index-CZFl5j9w.js` frente a `/assets/index-Dvrszj6O.js` de este build. Pedir chunks nuevos devuelve el shell HTML (rewrite), no el archivo, así que no doy ese deployment por Current. La tarea I44 está implementada y verificada localmente; la siguiente publicación de código volverá a disparar el deploy y repetiré la verificación del alias.
+- **I44 local:** estilos globales para `<select>`/`<option>` oscuro con la paleta de `DESIGN.md`. Lint aprobado; E2E con fixtures pasó 2/2: pedidos 360/1440 px y plan de Plataforma. Pendiente desplegar y comprobar Current.
+- Pendiente: I45–I48.
 
 # 2026-11-08 — Revalidación I43, I38 e I40–I42
 
