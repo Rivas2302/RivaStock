@@ -1090,17 +1090,19 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 Audité los `<select>` de toda la app y agregué un estilo global para el control y sus opciones en modo oscuro con `DESIGN.md` (#202020, #F2F2F2, #262626). La prueba cubre Pedidos del Catálogo a 360/1440 px y el selector «Plan» en Plataforma.
 
-### [ ] I45 Baja o eliminación de cuenta desde Plataforma — **Riva, 08/11/2026**
+### [x] I45 Baja o eliminación de cuenta desde Plataforma — **Riva, 08/11/2026**
 
 La copia de seguridad es opcional y se ofrece con la casilla «Descargar copia antes (recomendado)». Permitir «Dar de baja en 30 días» o «Eliminar ahora» (definitivo), confirmando con el nombre del negocio y avisando que no se puede deshacer. La cuenta propia del propietario nunca se puede eliminar. Implementar y validar con fixtures, sin borrar cuentas ni datos reales.
 
-### [ ] I46 Plantillas de módulos en Plataforma — **Riva, 08/11/2026**
+### [x] I46 Plantillas de módulos en Plataforma — **Riva, 08/11/2026**
 
 Los planes se administran como plantillas editables por el propietario: nombre, módulos, colaboradores y retención. Al asignar una plantilla se copian sus módulos al cliente y luego cada uno se puede personalizar. Mostrar «Personalizado» y «Restablecer según la plantilla» cuando haya diferencias. Probar asignación y restauración con fixtures.
 
-### [ ] I47 Suspensión programada con aviso y bloqueo completo — **Riva, 08/11/2026**
+### [x] I47 Suspensión programada con aviso y bloqueo completo — **Riva, 08/11/2026**
 
 Programar suspensión con fecha (7 días por defecto). Desde que se programa, el cliente ve el aviso «Tu cuenta se suspende el DD/MM, comunicate con RivaTech» y un botón a WhatsApp; enviar el diseño `docs/design/emails/aviso-suspension.html`. En la fecha, bloquear lectura y escritura a nivel de base, mostrar solo «Tu cuenta está suspendida» y el botón a WhatsApp, y ocultar el catálogo público. Reactivar debe restituir la cuenta sin perder datos. Incluir pruebas de aislamiento de lectura/escritura con fixtures o transacción reversible.
+
+Decisión de Riva, 09/11/2026: los objetos del bucket público `assets` son fotos de productos y pueden permanecer públicos; las políticas de suspensión siguen protegiendo las lecturas autenticadas, escrituras y el catálogo público. Se acepta que una URL pública ya conocida de una foto pueda seguir descargándose durante la suspensión. El contacto de WhatsApp es el número público de RivaTech y queda configurado en el cliente y en `platform-admin`. La entrega del email de aviso requiere un remitente verificado.
 
 ### [x] I48 Preparar SMTP y plantillas aprobadas de email (I22) — **Riva, 08/11/2026**
 

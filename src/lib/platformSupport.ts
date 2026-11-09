@@ -1,5 +1,8 @@
+const DEFAULT_RIVATECH_WHATSAPP_NUMBER = '5492302381814';
+
 export function getRivaTechWhatsAppUrl(message: string): string {
-  const number = (import.meta.env.VITE_RIVATECH_WHATSAPP_NUMBER as string | undefined)?.replace(/\D/g, '') ?? '';
-  const base = number ? `https://wa.me/${number}` : 'https://wa.me/';
+  const configuredNumber = (import.meta.env.VITE_RIVATECH_WHATSAPP_NUMBER as string | undefined)?.replace(/\D/g, '');
+  const number = configuredNumber || DEFAULT_RIVATECH_WHATSAPP_NUMBER;
+  const base = `https://wa.me/${number}`;
   return `${base}?text=${encodeURIComponent(message)}`;
 }
