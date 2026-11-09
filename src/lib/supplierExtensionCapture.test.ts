@@ -9,6 +9,7 @@ const item = (index: number, currency = 'ARS') => ({
   price: index + 1,
   currency,
   category: 'Cables',
+  brand: 'Marca de prueba',
   imageUrl: 'https://images.example.test/item.webp',
   images: ['https://images.example.test/item.webp'],
   url: `https://supplier.example.test/product/${index}`,
@@ -42,6 +43,7 @@ describe('supplier extension capture transfer', () => {
     expect(offsets).toEqual([0, 500]);
     expect(result.items).toHaveLength(501);
     expect(result.rows[500].sourceCode).toBe('SKU-500');
+    expect(result.rows[0].brand).toBe('Marca de prueba');
     expect(result.rows[0].supplierCost).toBe(1);
   });
 

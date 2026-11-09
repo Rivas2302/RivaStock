@@ -49,6 +49,7 @@ try {
   const catalog = JSON.parse(await readFile(join(fixtures, 'spa-json.json'), 'utf8'));
   const infiniteFixture = await readFile(join(fixtures, 'infinite-scroll.html'), 'utf8');
   const wooFixture = await readFile(join(fixtures, 'woocommerce-dom.html'), 'utf8');
+  const brajaFixture = await readFile(join(fixtures, 'braja-cross-subdomain-webp.html'), 'utf8');
 
   context = await chromium.launchPersistentContext(profilePath, {
     headless: false,
@@ -58,7 +59,7 @@ try {
   });
   await context.route('**/*', async route => {
     const requestUrl = new URL(route.request().url());
-    if (requestUrl.hostname === 'images.example.test') {
+    if (requestUrl.hostname === 'images.example.test' || requestUrl.hostname === 'api.brajamayorista.com') {
       return route.fulfill({ status: 200, contentType: 'image/webp', body: Buffer.from('fixture-image') });
     }
     if (requestUrl.origin !== origin) return route.continue();
@@ -88,6 +89,38 @@ try {
     if (requestUrl.pathname === '/woocommerce-dom') {
       return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: wooFixture });
     }
+    if (requestUrl.pathname === '/braja/category-31') {
+      return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: brajaFixture });
+    }
+    if (requestUrl.pathname === '/mayori/electrobh/index.php') {
+      const productCard = (pageNumber, itemNumber) => {
+        const code = `EHB-${String(pageNumber).padStart(2,'0')}-${String(itemNumber).padStart(3,'0')}`;
+        return `<div class="item open_detail" data-id="qa-${pageNumber}-${itemNumber}"><a class="image"><img loading="lazy" src="/images/${code}.webp" alt=""></a><div class="content"><div class="header">Producto demostración ${pageNumber}-${itemNumber}</div><div class="meta"><span class="category">Accesorios</span><span class="brand">Marca Demo</span><span><i class="code icon"></i>${code}</span></div><div class="list_description">Texto fijo de demostración</div><div class="ui labeled button"><div class="ui basic right pointing label">$ 4.043,07</div><button class="ui add_to_cart button" type="button">Agregar</button></div></div></div>`;
+      };
+      const pageMarkup = pageNumber => Array.from({length:50},(_,index)=>productCard(pageNumber,index+1)).join('');
+      const pageLinks = Array.from({length:14},(_,index)=>`<a class="item" rel="${index+1}" href="#productos_page-${index+1}">${index+1}</a>`).join('');
+      const pages = JSON.stringify(Object.fromEntries(Array.from({length:14},(_,index)=>[index+1,pageMarkup(index+1)])));
+      const html = `<!doctype html><html lang="es"><body><main class="ui items">${pageMarkup(1)}</main><nav class="ui pagination menu">${pageLinks}</nav><script>
+        const productPages=${pages};
+        window.fixtureClicks={add:0,detail:0,pagination:0};
+        document.addEventListener('click',event=>{
+          if(event.target.closest('.add_to_cart'))window.fixtureClicks.add++;
+          if(event.target.closest('.item.open_detail'))window.fixtureClicks.detail++;
+          if(event.target.closest('.ui.pagination.menu a[rel]'))window.fixtureClicks.pagination++;
+        },true);
+        let currentPage=1;
+        document.querySelectorAll('.ui.pagination.menu a.item[rel]').forEach(anchor=>anchor.addEventListener('click',event=>{
+          const targetPage=Number(anchor.rel);
+          if(targetPage!==currentPage+1)return;
+          event.preventDefault();location.hash='productos_page-'+targetPage;currentPage=targetPage;
+          document.querySelector('.ui.items').innerHTML=productPages[targetPage];
+        }));
+      </script></body></html>`;
+      return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+    }
+    if (requestUrl.pathname.startsWith('/images/')) {
+      return route.fulfill({ status: 200, contentType: 'image/webp', body: Buffer.from('fixture-image') });
+    }
     return route.fulfill({ status: 404, body: 'Not found' });
   });
 
@@ -96,7 +129,10 @@ try {
   await extensionPage.setViewportSize({ width: 390, height: 760 });
   await extensionPage.goto(`chrome-extension://${extensionId}/connect.html`);
   await extensionPage.locator('#supplier-start').waitFor({ state: 'visible' });
-  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent === 'Versión 0.6.0');
+  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent === 'Versión 0.6.2');
+  if (!(await extensionPage.locator('.brand p').innerText()).includes('Importar listas de proveedores')) {
+    throw new Error('The supplier import popup title is missing.');
+  }
   const screenshotPath = join(root, 'test-results', 'i37-fixture-extension-popup.png');
   await mkdir(dirname(screenshotPath), { recursive: true });
   await extensionPage.locator('section.supplier-import').screenshot({ path: screenshotPath });
@@ -105,35 +141,61 @@ try {
     { name: 'spa-json', path: '/spa-json', expected: 44, source: 'network-json' },
     { name: 'infinite-scroll', path: '/infinite-scroll', expected: 4, source: 'dom-cards' },
     { name: 'woocommerce-dom', path: '/woocommerce-dom', expected: 3, source: 'dom-cards' },
+    { name: 'braja-cross-subdomain-webp', path: '/braja/category-31', expected: 5, source: 'dom-cards' },
+    { name: 'mayori-electrobh-14-pages', path: '/mayori/electrobh/index.php#productos_page-1', expected: 700, source: 'dom-cards' },
   ];
+  const requestedCase = process.env.RIVASTOCK_EXTENSION_E2E_CASE;
+  const activeCases = requestedCase ? cases.filter(testCase => testCase.name === requestedCase) : cases;
+  if (requestedCase && activeCases.length === 0) throw new Error('Unknown extension fixture case.');
   const results = [];
-  for (const testCase of cases) {
+  for (const testCase of activeCases) {
     const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message.slice(0, 200)));
     const pageUrl = `${origin}${testCase.path}`;
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
     const tabId = await worker.evaluate(async targetUrl => (await chrome.tabs.query({})).find(tab => tab.url === targetUrl)?.id ?? null, pageUrl);
     if (!Number.isSafeInteger(tabId)) throw new Error(`${testCase.name}: supplier tab not found.`);
+    await page.bringToFront();
     const started = await extensionPage.evaluate(({ targetTabId, targetOrigin }) => new Promise(resolvePromise => {
       chrome.runtime.sendMessage({ type: 'supplier-capture-start', tabId: targetTabId, origin: targetOrigin }, resolvePromise);
     }), { targetTabId: tabId, targetOrigin: origin });
     if (started?.error) throw new Error(`${testCase.name}: ${started.error}`);
 
-    const deadline = Date.now() + 90_000;
+    const deadline = Date.now() + (testCase.name === 'mayori-electrobh-14-pages' ? 180_000
+      : testCase.name === 'braja-cross-subdomain-webp' ? 20_000 : 90_000);
     let state = null;
     while (Date.now() < deadline) {
       state = await readLiveState(worker);
       if (state?.tabId === tabId && state.status === 'complete') break;
       await wait(250);
     }
-    if (!state || state.status !== 'complete') throw new Error(`${testCase.name}: capture did not complete within 90 seconds.`);
+    if (!state || state.status !== 'complete') {
+      const scrollState = await page.evaluate(() => ({
+        y: window.scrollY, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
+        viewport: window.innerHeight, cards: document.querySelectorAll('.product-card').length,
+      })).catch(() => null);
+      throw new Error(`${testCase.name}: capture did not complete (status=${state?.status ?? 'none'}, products=${state?.items?.length ?? 0}, pages=${state?.pagesVisited?.length ?? 0}, scroll=${JSON.stringify(scrollState)}, pageErrors=${JSON.stringify(pageErrors)}).`);
+    }
     if (state.items.length !== testCase.expected) throw new Error(`${testCase.name}: expected ${testCase.expected} items, received ${state.items.length}.`);
     if (!state.source.includes(testCase.source)) throw new Error(`${testCase.name}: expected source ${testCase.source}.`);
     if (!state.items.every(item => item.name && item.imageUrl && item.code)) throw new Error(`${testCase.name}: incomplete fixture item.`);
+    if (testCase.name === 'mayori-electrobh-14-pages'
+      && !state.items.every(item => item.brand && item.category && item.price === 4043.07)) {
+      throw new Error(`${testCase.name}: an item is missing brand/category or its unit price was misread.`);
+    }
     const pageSafety = testCase.name === 'infinite-scroll'
       ? await page.evaluate(() => window.fixtureClicks)
+      : testCase.name === 'mayori-electrobh-14-pages'
+        ? await page.evaluate(() => window.fixtureClicks)
       : { loadMore: 0, add: 0, carousel: 0 };
-    if (pageSafety.add !== 0 || pageSafety.carousel !== 0) throw new Error(`${testCase.name}: a prohibited control was clicked.`);
-    results.push({ name: testCase.name, products: state.items.length, source: state.source, prohibitedClicks: pageSafety.add + pageSafety.carousel });
+    if (pageSafety.add !== 0 || (pageSafety.carousel ?? 0) !== 0 || (pageSafety.detail ?? 0) !== 0
+      || (testCase.name === 'mayori-electrobh-14-pages' && pageSafety.pagination !== 13)) {
+      throw new Error(`${testCase.name}: a prohibited control was clicked or safe pagination did not advance.`);
+    }
+    results.push({ name: testCase.name, products: state.items.length, source: state.source,
+      prohibitedClicks: pageSafety.add + (pageSafety.carousel ?? 0) + (pageSafety.detail ?? 0),
+      paginationClicks: pageSafety.pagination ?? 0 });
 
     if (testCase.name === 'spa-json') {
       try {

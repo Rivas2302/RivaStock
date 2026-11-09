@@ -1,9 +1,9 @@
 import {
-  isBusinessPlanCode,
   isBusinessStatus,
   normalizeBusinessName,
   normalizePlatformEmail,
   parseBusinessLimitOverrides,
+  isPlanTemplateCode,
   type BusinessLimitOverrides,
   type BusinessPlanCode,
   type BusinessStatus,
@@ -27,10 +27,16 @@ export interface PlatformAdminBackend {
     limitOverrides: BusinessLimitOverrides;
     notes: string;
   }): Promise<void>;
+  scheduleBusinessSuspension(ownerUid: string, scheduledFor: string): Promise<{ scheduledFor: string; emailSent: boolean }>;
+  cancelBusinessSuspension(ownerUid: string): Promise<void>;
+  reactivateBusiness(ownerUid: string): Promise<void>;
+  sendBusinessSuspensionNotice(ownerUid: string): Promise<boolean>;
+  savePlanTemplate(input: { code: string | null; name: string; limits: BusinessLimitOverrides; isActive: boolean }): Promise<string>;
   resendInvite(ownerUid: string): Promise<void>;
   sendPasswordRecovery(ownerUid: string): Promise<void>;
   setTemporaryPassword(ownerUid: string, password: string): Promise<void>;
   requestBusinessDeletion(ownerUid: string, confirmedBusinessName: string): Promise<string>;
+  deleteBusinessNow(ownerUid: string, confirmedBusinessName: string): Promise<void>;
   cancelBusinessDeletion(ownerUid: string): Promise<void>;
   exportBusinessManifest(ownerUid: string): Promise<unknown>;
   exportBusinessTable(ownerUid: string, tableName: string, offset: number, limit: number): Promise<unknown>;
@@ -99,8 +105,8 @@ export function createPlatformAdminHandler(
         const overrides = parseBusinessLimitOverrides(body.limit_overrides ?? {});
         if (!email) return json({ error: 'Ingresá un email válido.' }, 400);
         if (!business) return json({ error: 'El nombre del negocio debe tener entre 2 y 80 caracteres.' }, 400);
-        if (!isBusinessPlanCode(planCode) || planCode === 'interno') return json({ error: 'Elegí un plan disponible para clientes.' }, 400);
-        if (!isBusinessStatus(status)) return json({ error: 'El estado del negocio no es válido.' }, 400);
+        if (!isPlanTemplateCode(planCode) || planCode === 'interno') return json({ error: 'Elegí una plantilla disponible para clientes.' }, 400);
+        if (!isBusinessStatus(status) || status === 'suspended') return json({ error: 'Para suspender una cuenta, programá la suspensión con fecha.' }, 400);
         if (!overrides) return json({ error: 'Los ajustes del plan no son válidos.' }, 400);
         if (notes.length > 1000) return json({ error: 'Las notas admiten hasta 1000 caracteres.' }, 400);
 
@@ -125,7 +131,7 @@ export function createPlatformAdminHandler(
         const notes = body.notes;
         const overrides = parseBusinessLimitOverrides(body.limit_overrides);
         if (!isUuid(ownerUid)) return json({ error: 'Negocio inválido.' }, 400);
-        if (!isBusinessPlanCode(planCode) || !isBusinessStatus(status)) return json({ error: 'El plan o estado no es válido.' }, 400);
+        if (!isPlanTemplateCode(planCode) || !isBusinessStatus(status) || status === 'suspended') return json({ error: 'El plan o estado no es válido. Para suspender una cuenta, programá la suspensión con fecha.' }, 400);
         if (typeof notes !== 'string' || notes.trim().length > 1000 || !overrides) {
           return json({ error: 'Los ajustes del negocio no son válidos.' }, 400);
         }
@@ -137,6 +143,46 @@ export function createPlatformAdminHandler(
           notes: notes.trim(),
         });
         return json({ ok: true });
+      }
+
+      if (body.action === 'save_plan_template') {
+        const code = body.code === null || body.code === undefined ? null : body.code;
+        const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : '';
+        const limits = parseBusinessLimitOverrides(body.limits);
+        if (code !== null && (!isPlanTemplateCode(code) || code === 'interno')) return json({ error: 'La plantilla no es válida.' }, 400);
+        if (name.length < 1 || name.length > 60) return json({ error: 'El nombre admite entre 1 y 60 caracteres.' }, 400);
+        if (!limits || !limits.modules || limits.collaborators === undefined || limits.trace_retention_days === undefined) {
+          return json({ error: 'Los módulos, colaboradores y retención de la plantilla no son válidos.' }, 400);
+        }
+        if (typeof body.is_active !== 'boolean') return json({ error: 'El estado de la plantilla no es válido.' }, 400);
+        const savedCode = await backend.savePlanTemplate({ code: code as string | null, name, limits, isActive: body.is_active });
+        return json({ ok: true, code: savedCode });
+      }
+
+      if (body.action === 'schedule_business_suspension') {
+        if (!isUuid(body.owner_uid) || typeof body.scheduled_for !== 'string' || !Number.isFinite(Date.parse(body.scheduled_for))) {
+          return json({ error: 'La fecha de suspensión no es válida.' }, 400);
+        }
+        const result = await backend.scheduleBusinessSuspension(body.owner_uid, body.scheduled_for);
+        return json({ ok: true, scheduled_for: result.scheduledFor, email_sent: result.emailSent });
+      }
+
+      if (body.action === 'cancel_business_suspension') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        await backend.cancelBusinessSuspension(body.owner_uid);
+        return json({ ok: true });
+      }
+
+      if (body.action === 'reactivate_business') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        await backend.reactivateBusiness(body.owner_uid);
+        return json({ ok: true });
+      }
+
+      if (body.action === 'send_business_suspension_notice') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        const sent = await backend.sendBusinessSuspensionNotice(body.owner_uid);
+        return json({ ok: true, email_sent: sent });
       }
 
       if (body.action === 'resend_invite') {
@@ -166,6 +212,14 @@ export function createPlatformAdminHandler(
         if (!confirmedName) return json({ error: 'Escribí el nombre completo del negocio.' }, 400);
         const scheduledFor = await backend.requestBusinessDeletion(body.owner_uid, confirmedName.name);
         return json({ ok: true, scheduled_for: scheduledFor });
+      }
+
+      if (body.action === 'delete_business_now') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        const confirmedName = normalizeBusinessName(body.confirm_business_name);
+        if (!confirmedName) return json({ error: 'Escribí el nombre completo del negocio.' }, 400);
+        await backend.deleteBusinessNow(body.owner_uid, confirmedName.name);
+        return json({ ok: true });
       }
 
       if (body.action === 'cancel_business_deletion') {
@@ -204,6 +258,11 @@ export function createPlatformAdminHandler(
       if (message === 'platform-business-deletion-already-pending') return json({ error: 'La baja de este negocio ya está programada.' }, 409);
       if (message === 'platform-business-deletion-not-pending') return json({ error: 'Este negocio no tiene una baja pendiente.' }, 409);
       if (message === 'platform-business-deletion-already-started') return json({ error: 'La eliminación ya empezó y no se puede cancelar.' }, 409);
+      if (message === 'platform-business-already-suspended') return json({ error: 'La cuenta ya está suspendida.' }, 409);
+      if (message === 'platform-business-suspension-already-scheduled') return json({ error: 'Ya hay una fecha de suspensión programada.' }, 409);
+      if (message === 'platform-business-suspension-date-invalid') return json({ error: 'Elegí una fecha futura, dentro de los próximos 90 días.' }, 400);
+      if (message === 'platform-business-suspension-not-pending') return json({ error: 'No hay una suspensión pendiente para cancelar o reactivar.' }, 409);
+      if (message === 'platform-business-immediate-deletion-incomplete') return json({ error: 'La eliminación empezó, pero falta completar la limpieza. La cuenta seguirá bloqueada y el proceso se reintentará automáticamente.' }, 503);
       return json({ error: 'No se pudo completar la operación de plataforma.' }, 500);
     }
   };

@@ -8,6 +8,7 @@ const AppNavigation = lazy(() => import('./AppNavigation'));
 
 import { cn } from '../lib/utils';
 import type { PermissionMatrix } from '../types';
+import { getRivaTechWhatsAppUrl } from '../lib/platformSupport';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ export default function Layout() {
   const displayInitial = displayName.charAt(0).toUpperCase() || '?';
 
   useEffect(() => {
+    if (plan?.status === 'suspended') return;
     const MIN_REFETCH_INTERVAL_MS = 10_000;
     const maybeRefetch = () => {
       const now = Date.now();
@@ -49,7 +51,7 @@ export default function Layout() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onOnline);
     };
-  }, [refetchData]);
+  }, [plan?.status, refetchData]);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -61,6 +63,15 @@ export default function Layout() {
       setLoggingOut(false);
     }
   };
+
+  if (plan?.status === 'suspended') {
+    return <main className="flex min-h-[100dvh] items-center justify-center bg-[var(--page)] p-6 text-[var(--ink)]">
+      <section className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 text-center shadow-xl">
+        <h1 className="text-2xl font-black">Tu cuenta está suspendida</h1>
+        <a href={getRivaTechWhatsAppUrl('Hola RivaTech, necesito regularizar mi cuenta de RivaStock.')} target="_blank" rel="noreferrer" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-600 px-5 font-bold text-white">Escribir por WhatsApp</a>
+      </section>
+    </main>;
+  }
 
   return (
     <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
@@ -81,11 +92,10 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {plan?.status === 'suspended' && (
-          <div role="alert" className="sticky top-0 z-30 border-b border-rose-300 bg-rose-100 px-4 py-3 text-center text-sm font-semibold text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
-            La cuenta está suspendida. Comunicate con RivaTech.
-          </div>
-        )}
+        {plan?.suspensionScheduledFor && <div role="alert" className="sticky top-0 z-30 flex flex-wrap items-center justify-center gap-3 border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-semibold text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          <span>Tu cuenta se suspende el {new Date(plan.suspensionScheduledFor).toLocaleDateString('es-AR')}, comunicate con RivaTech</span>
+          <a href={getRivaTechWhatsAppUrl('Hola RivaTech, quiero consultar el aviso de suspensión de mi cuenta de RivaStock.')} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-700 px-3 py-2 text-white">WhatsApp</a>
+        </div>}
         {needsBusinessSetup && (
           <Suspense fallback={<div className="fixed inset-0 z-[100] bg-black/50" />}>
             <BusinessSetupModal />

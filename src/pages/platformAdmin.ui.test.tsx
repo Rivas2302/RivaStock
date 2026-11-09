@@ -46,6 +46,9 @@ function makeBusiness(planCode: 'base' | 'pro'): PlatformBusiness {
     deletion_scheduled_for: null,
     deletion_purge_started_at: null,
     deletion_failure: null,
+    suspension_scheduled_for: null,
+    suspension_notice_sent_at: null,
+    suspension_notice_error: null,
   };
 }
 
@@ -85,8 +88,8 @@ describe('PlatformAdmin quota controls', () => {
     document.body.append(host);
     root = createRoot(host);
     business = makeBusiness('base');
-    mocks.request.mockReset().mockImplementation(({ action }: { action: string }) =>
-      Promise.resolve(action === 'list' ? makeDashboard(business) : {}),
+    mocks.request.mockReset().mockImplementation((request: { action: string; code?: string | null }) =>
+      Promise.resolve(request.action === 'list' ? makeDashboard(business) : request.action === 'save_plan_template' ? { code: request.code ?? 'plantilla_demo' } : {}),
     );
   });
 
@@ -98,18 +101,61 @@ describe('PlatformAdmin quota controls', () => {
   it('hides knowledge and central storage for RivaStock without those modules', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
 
-    expect(host.textContent).toContain('Según el plan RivaStock.');
+    expect(host.textContent).toContain('Según la plantilla Base.');
     expect(host.textContent).not.toContain('Cuota de Conocimientos');
     expect(host.textContent).not.toContain('Almacén de la central');
     expect(host.textContent).not.toContain('(bytes)');
     expect(host.textContent).toMatch(/\d+(?:\.\d+)? (?:MB|GB)/);
   });
 
+  it('creates a module template with the selected settings', async () => {
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const manager = host.querySelector<HTMLElement>('[aria-label="Plantillas de módulos"]');
+    expect(manager).not.toBeNull();
+    const create = [...(manager?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.includes('Nueva plantilla'));
+    await act(async () => { create?.click(); });
+    const nameInput = manager?.querySelector<HTMLInputElement>('input[maxlength="60"]');
+    await act(async () => { if (nameInput) setInputValue(nameInput, 'Revendedor Plus'); });
+    const knowledgeInput = [...(manager?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])]
+      .find((input) => input.parentElement?.textContent?.includes('Conocimientos'));
+    await act(async () => { knowledgeInput?.click(); });
+    const submit = [...(manager?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.includes('Crear plantilla'));
+    await act(async () => { submit?.click(); });
+    const call = mocks.request.mock.calls.find(([request]) => request.action === 'save_plan_template');
+    expect(call?.[0]).toMatchObject({
+      action: 'save_plan_template', code: null, name: 'Revendedor Plus', is_active: true,
+      limits: { modules: { ai: false, knowledge: true, automation: false }, collaborators: 5, trace_retention_days: 7 },
+    });
+  });
+
+  it('schedules a customer suspension seven days ahead by default and shows when the notice is pending', async () => {
+    mocks.request.mockImplementation((request: { action: string }) => Promise.resolve(
+      request.action === 'list' ? makeDashboard(business)
+        : request.action === 'schedule_business_suspension'
+          ? { scheduled_for: '2026-11-16T03:00:00.000Z', email_sent: false }
+          : {},
+    ));
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const card = host.querySelector('article');
+    const dateInput = card?.querySelector<HTMLInputElement>('input[type="date"]');
+    expect(dateInput?.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const selectedDate = new Date(`${dateInput?.value}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expect(Math.round((selectedDate.getTime() - today.getTime()) / 86_400_000)).toBe(7);
+    const schedule = [...(card?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.includes('Programar suspensión'));
+    await act(async () => { schedule?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'schedule_business_suspension', owner_uid: 'owner-base',
+    }));
+    expect(host.textContent).toContain('El email quedó pendiente de configurar');
+  });
+
   it('shows module quotas in MB/GB and saves the entered amount as bytes for RivaStock IA', async () => {
     business = makeBusiness('pro');
     await act(async () => { root.render(<PlatformAdmin/>); });
 
-    expect(host.textContent).toContain('Según el plan RivaStock IA.');
+    expect(host.textContent).toContain('Según la plantilla Pro.');
     expect(host.textContent).toContain('Cuota de Conocimientos');
     expect(host.textContent).toContain('Almacén de la central');
     expect(host.textContent).not.toContain('(bytes)');
@@ -142,16 +188,29 @@ describe('PlatformAdmin quota controls', () => {
 
   it('labels module values as a manual override and can restore plan defaults', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
-    const knowledgeModule = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    const businessCard = host.querySelector('article');
+    const planSelect = businessCard?.querySelector<HTMLSelectElement>('select');
+    await act(async () => { if (planSelect) setSelectValue(planSelect, 'pro'); });
+    expect(host.textContent).toContain('Según la plantilla Pro.');
+    const collaborators = businessCard?.querySelector<HTMLInputElement>('input[type="number"]');
+    expect(collaborators?.value).toBe('15');
+    const retention = [...(businessCard?.querySelectorAll<HTMLInputElement>('input[type="number"]') ?? [])]
+      .find((input) => input.parentElement?.textContent?.includes('Retención de trazas'));
+    expect(retention?.value).toBe('14');
+    const knowledgeModule = [...(businessCard?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])]
       .find((input) => input.parentElement?.textContent?.includes('Conocimientos'));
-    expect(knowledgeModule?.checked).toBe(false);
+    expect(knowledgeModule?.checked).toBe(true);
 
     await act(async () => { knowledgeModule?.click(); });
-    expect(host.textContent).toContain('Ajuste manual activo para los módulos.');
-    const reset = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Restablecer según el plan'));
+    expect(host.textContent).toContain('Personalizado');
+    const reset = [...(businessCard?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.includes('Restablecer según la plantilla'));
     expect(reset).not.toBeUndefined();
+    await act(async () => { if (collaborators) setInputValue(collaborators, '22'); });
+    expect(host.textContent).toContain('Personalizado');
     await act(async () => { reset?.click(); });
-    expect(host.textContent).toContain('Según el plan RivaStock.');
+    expect(host.textContent).toContain('Según la plantilla Pro.');
+    expect(collaborators?.value).toBe('15');
+    expect(retention?.value).toBe('14');
   });
 
   it('offers recovery and one-time password actions only for manageable customer accounts', async () => {
@@ -178,14 +237,33 @@ describe('PlatformAdmin quota controls', () => {
     expect(host.textContent).not.toContain('TempPass-123');
   });
 
-  it('requires an export before enabling the deletion confirmation and hides account controls for protected plans', async () => {
+  it('makes backup optional, checks exact business name, and hides controls for protected plans', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
     const openDelete = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'));
     await act(async () => { openDelete?.click(); });
-    const confirmDelete = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Dar de baja por 30 días'));
-    expect(confirmDelete?.disabled).toBe(true);
-    expect(host.textContent).toContain('Preparar copia');
-    expect(mocks.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'request_business_deletion' }));
+    expect(host.textContent).toContain('Descargar copia antes (recomendado)');
+    expect(host.textContent).not.toContain('Preparar copia');
+    const schedule = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Dar de baja en 30 días'));
+    const immediate = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar ahora'));
+    expect(schedule?.disabled).toBe(true);
+    expect(immediate?.disabled).toBe(true);
+    const nameInput = [...host.querySelectorAll('label')].find((label) => label.textContent?.includes('Escribí exactamente'))?.querySelector('input') ?? null;
+    await act(async () => { if (nameInput) setInputValue(nameInput, business.business_name); });
+    await act(async () => { schedule?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({
+      action: 'request_business_deletion', owner_uid: 'owner-base', confirm_business_name: 'base demo',
+    });
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    business = makeBusiness('base');
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'))?.click(); });
+    const immediateInput = [...host.querySelectorAll('label')].find((label) => label.textContent?.includes('Escribí exactamente'))?.querySelector('input') ?? null;
+    await act(async () => { if (immediateInput) setInputValue(immediateInput, business.business_name); });
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar ahora'))?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({
+      action: 'delete_business_now', owner_uid: 'owner-base', confirm_business_name: 'base demo',
+    });
 
     await act(async () => { root.unmount(); });
     business = { ...makeBusiness('pro'), plan_code: 'interno', can_manage_account: false };

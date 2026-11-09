@@ -7,11 +7,15 @@ import {
   SUPABASE_PUBLISHABLE_KEY,
 } from '../_shared/supabaseAdminKey.ts';
 import { createPlatformAdminHandler, type PlatformAdminBackend } from '../_shared/platformAdminHandler.ts';
-import type { BusinessLimitOverrides, BusinessPlanCode, BusinessStatus } from '../_shared/platformAdminRules.ts';
+import { effectiveBusinessStatus, type BusinessLimitOverrides, type BusinessPlanCode, type BusinessStatus } from '../_shared/platformAdminRules.ts';
 import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
+import { buildSuspensionEmail } from '../_shared/suspensionEmail.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
+const RESEND_FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL')?.trim() ?? '';
+const RIVATECH_WHATSAPP_NUMBER = Deno.env.get('RIVATECH_WHATSAPP_NUMBER')?.replace(/\D/g, '') ?? '';
 const storageAdmin = createProductionSupabaseS3Storage(SUPABASE_URL);
 const STORAGE_PAGE_SIZE = 500;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
@@ -42,7 +46,7 @@ function createBackend(req: Request): PlatformAdminBackend {
         userClient.rpc('platform_usage_overview'),
         userClient.rpc('platform_list_plans'),
         adminClient.from('business_subscriptions')
-          .select('owner_uid, plan_code, status, limit_overrides, notes'),
+          .select('owner_uid, plan_code, status, limit_overrides, notes, suspension_scheduled_for, suspension_notice_sent_at, suspension_notice_error'),
         adminClient.from('business_deletion_requests')
           .select('owner_uid, requested_at, scheduled_for, cancelled_at, purge_started_at, last_failure_code'),
         adminClient.from('platform_admins').select('user_id'),
@@ -81,7 +85,10 @@ function createBackend(req: Request): PlatformAdminBackend {
             ...business,
             plan_code: planCode,
             plan_limits: { ...planLimits, ...overrides },
-            status: subscription?.status ?? business.status ?? 'active',
+            status: effectiveBusinessStatus(
+              (subscription?.status ?? business.status ?? 'active') as BusinessStatus,
+              subscription?.suspension_scheduled_for ?? null,
+            ),
             limit_overrides: overrides,
             notes: subscription?.notes ?? '',
             can_manage_account: planCode !== 'interno' && !platformAdmins.has(String(business.owner_uid)),
@@ -89,6 +96,9 @@ function createBackend(req: Request): PlatformAdminBackend {
             deletion_scheduled_for: deletions.get(String(business.owner_uid))?.scheduled_for ?? null,
             deletion_purge_started_at: deletions.get(String(business.owner_uid))?.purge_started_at ?? null,
             deletion_failure: deletions.get(String(business.owner_uid))?.last_failure_code ?? null,
+            suspension_scheduled_for: subscription?.suspension_scheduled_for ?? null,
+            suspension_notice_sent_at: subscription?.suspension_notice_sent_at ?? null,
+            suspension_notice_error: subscription?.suspension_notice_error ?? null,
           };
         }),
       };
@@ -149,6 +159,52 @@ function createBackend(req: Request): PlatformAdminBackend {
       }
     },
 
+    async savePlanTemplate(input) {
+      const { data, error } = await userClient.rpc('platform_save_plan_template', {
+        p_code: input.code,
+        p_name: input.name,
+        p_limits: input.limits,
+        p_is_active: input.isActive,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      const code = row && typeof row === 'object' ? (row as { code?: unknown }).code : null;
+      if (typeof code !== 'string') throw new Error('platform-plan-template-save-failed');
+      return code;
+    },
+
+    async scheduleBusinessSuspension(ownerUid, scheduledFor) {
+      const account = await getManageableBusiness(ownerUid);
+      if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
+      const { data, error } = await userClient.rpc('platform_schedule_business_suspension', {
+        p_owner_uid: ownerUid,
+        p_scheduled_for: scheduledFor,
+      });
+      if (error) throw platformRpcError(error.message);
+      const emailSent = await sendSuspensionNotice(ownerUid, account.businessName, scheduledFor);
+      return { scheduledFor: String(data), emailSent };
+    },
+
+    async cancelBusinessSuspension(ownerUid) {
+      await getManageableBusiness(ownerUid);
+      const { error } = await userClient.rpc('platform_cancel_business_suspension', { p_owner_uid: ownerUid });
+      if (error) throw platformRpcError(error.message);
+    },
+
+    async reactivateBusiness(ownerUid) {
+      await getManageableBusiness(ownerUid);
+      const { error } = await userClient.rpc('platform_reactivate_business', { p_owner_uid: ownerUid });
+      if (error) throw platformRpcError(error.message);
+    },
+
+    async sendBusinessSuspensionNotice(ownerUid) {
+      const account = await getManageableBusiness(ownerUid);
+      const { data, error } = await adminClient.from('business_subscriptions')
+        .select('suspension_scheduled_for').eq('owner_uid', ownerUid).maybeSingle();
+      if (error || !data?.suspension_scheduled_for) throw new Error('platform-business-suspension-not-pending');
+      return await sendSuspensionNotice(ownerUid, account.businessName, data.suspension_scheduled_for);
+    },
+
     async resendInvite(ownerUid) {
       const account = await getManageableBusiness(ownerUid);
       if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
@@ -196,6 +252,61 @@ function createBackend(req: Request): PlatformAdminBackend {
         throw new Error('platform-business-block-failed');
       }
       return String(data);
+    },
+
+    async deleteBusinessNow(ownerUid, confirmedBusinessName) {
+      const account = await getManageableBusiness(ownerUid);
+      if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
+      const { error: requestError } = await userClient.rpc('platform_request_business_deletion_now', {
+        p_owner_uid: ownerUid,
+        p_confirmed_business_name: confirmedBusinessName,
+      });
+      if (requestError) throw platformRpcError(requestError.message);
+
+      const { error: banError } = await adminClient.auth.admin.updateUserById(ownerUid, { ban_duration: '876000h' });
+      if (banError) throw new Error('platform-business-immediate-deletion-incomplete');
+
+      let failureCode: 'storage_cleanup_failed' | 'database_cleanup_failed' | 'auth_delete_failed' = 'storage_cleanup_failed';
+      try {
+        const objects: Array<{ bucket_id: string; object_name: string }> = [];
+        for (let offset = 0; ; offset += STORAGE_PAGE_SIZE) {
+          const { data, error } = await adminClient.rpc('platform_business_storage_inventory', {
+            p_owner_uid: ownerUid,
+            p_offset: offset,
+            p_limit: STORAGE_PAGE_SIZE,
+          });
+          if (error) throw error;
+          const page = Array.isArray(data) ? data as typeof objects : [];
+          objects.push(...page);
+          if (page.length < STORAGE_PAGE_SIZE) break;
+        }
+        const byBucket = new Map<string, string[]>();
+        for (const object of objects) {
+          const paths = byBucket.get(object.bucket_id) ?? [];
+          paths.push(object.object_name);
+          byBucket.set(object.bucket_id, paths);
+        }
+        for (const [bucket, paths] of byBucket) {
+          for (let offset = 0; offset < paths.length; offset += 100) {
+            const { error } = await storageAdmin.from(bucket).remove(paths.slice(offset, offset + 100));
+            if (error) throw error;
+          }
+        }
+
+        failureCode = 'database_cleanup_failed';
+        const { error: databaseError } = await adminClient.rpc('platform_purge_business_rows', { p_owner_uid: ownerUid });
+        if (databaseError) throw databaseError;
+
+        failureCode = 'auth_delete_failed';
+        const { error: userError } = await adminClient.auth.admin.deleteUser(ownerUid);
+        if (userError) throw userError;
+      } catch {
+        await adminClient.rpc('platform_record_business_purge_failure', {
+          p_owner_uid: ownerUid,
+          p_failure_code: failureCode,
+        });
+        throw new Error('platform-business-immediate-deletion-incomplete');
+      }
     },
 
     async cancelBusinessDeletion(ownerUid) {
@@ -266,6 +377,36 @@ function createBackend(req: Request): PlatformAdminBackend {
     if (platformAdmin || collaborator || subscription?.plan_code === 'interno' || !subscription) throw new Error('platform-business-protected');
     return { email: accountResult.user.email, metadata: accountResult.user.user_metadata ?? {}, businessName: profile.business_name, deletionPending: Boolean(deletion) };
   }
+
+  async function sendSuspensionNotice(ownerUid: string, businessName: string, scheduledFor: string) {
+    let emailSent = false;
+    let emailError = 'email_sender_not_configured';
+    if (RESEND_API_KEY && RESEND_FROM_EMAIL && !/onboarding@resend\.dev/i.test(RESEND_FROM_EMAIL) && RIVATECH_WHATSAPP_NUMBER) {
+      const { data: authData } = await adminClient.auth.admin.getUserById(ownerUid);
+      if (authData.user?.email) {
+        const displayDate = new Date(scheduledFor).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+        const whatsappUrl = `https://wa.me/${RIVATECH_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola RivaTech, quiero consultar el aviso de suspensión de mi cuenta de RivaStock.')}`;
+        const message = buildSuspensionEmail({ businessName, suspensionDate: displayDate, whatsappUrl });
+        try {
+          const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: RESEND_FROM_EMAIL, to: [authData.user.email], subject: message.subject, html: message.html, text: message.text }),
+            signal: AbortSignal.timeout(15000),
+          });
+          emailSent = response.ok;
+          emailError = response.ok ? '' : `email_provider_${response.status}`;
+        } catch {
+          emailError = 'email_provider_unavailable';
+        }
+      } else emailError = 'business_email_missing';
+    } else if (!RIVATECH_WHATSAPP_NUMBER) emailError = 'whatsapp_contact_not_configured';
+    await adminClient.from('business_subscriptions').update({
+      suspension_notice_sent_at: emailSent ? new Date().toISOString() : null,
+      suspension_notice_error: emailSent ? null : emailError,
+    }).eq('owner_uid', ownerUid);
+    return emailSent;
+  }
 }
 
 function platformRpcError(message: string) {
@@ -273,6 +414,8 @@ function platformRpcError(message: string) {
     'platform-admin-required', 'platform-business-not-found', 'platform-business-protected',
     'platform-business-name-confirmation-mismatch', 'platform-business-deletion-already-pending',
     'platform-business-deletion-not-pending', 'platform-business-deletion-already-started',
+    'platform-business-already-suspended', 'platform-business-suspension-already-scheduled',
+    'platform-business-suspension-date-invalid', 'platform-business-suspension-not-pending',
   ];
   return new Error(known.find((code) => message.includes(code)) ?? 'platform-business-operation-failed');
 }

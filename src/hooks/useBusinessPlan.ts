@@ -58,6 +58,13 @@ export function useBusinessPlan() {
     setRefreshToken((token) => token + 1);
   }, [ownerUid]);
 
+  useEffect(() => {
+    const plan = state.identityKey === identityKey ? state.plan : null;
+    if (!plan?.suspensionScheduledFor || plan.status === 'suspended') return;
+    const timer = window.setInterval(() => { void refresh(); }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [identityKey, refresh, state.identityKey, state.plan?.status, state.plan?.suspensionScheduledFor]);
+
   const isCurrentIdentity = state.identityKey === identityKey;
   return {
     plan: isCurrentIdentity && !authLoading ? state.plan : null,

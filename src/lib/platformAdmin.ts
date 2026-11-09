@@ -30,6 +30,9 @@ export interface PlatformBusiness {
   deletion_scheduled_for: string | null;
   deletion_purge_started_at: string | null;
   deletion_failure: string | null;
+  suspension_scheduled_for: string | null;
+  suspension_notice_sent_at: string | null;
+  suspension_notice_error: string | null;
 }
 
 export interface PlatformDashboardData {

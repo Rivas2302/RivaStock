@@ -45,6 +45,29 @@ describe('supplier capture controller', () => {
     expect(api.tabs.reload).toHaveBeenCalledWith(7);
   });
 
+  it('requires the Braja CDN permission and permits only its image subdomain for captured photos', async () => {
+    const { api, local } = mockExtension('https://brajamayorista.com/tienda/centro/productos?categoria=31');
+    const controller = createSupplierCaptureController(api as never);
+    await controller.start(7, 'https://brajamayorista.com');
+    expect(api.permissions.contains).toHaveBeenCalledWith({ origins: [
+      'https://brajamayorista.com/*', 'https://api.brajamayorista.com/*',
+    ] });
+    local.values.supplierProductCaptures = {
+      'a1b2c3d4-e5f6-4789-a012-123456789abc': {
+        origin: 'https://brajamayorista.com', expiresAt: Date.now() + 60_000,
+        items: [{ imageUrl: 'https://api.brajamayorista.com/uploads/derivados/qa/v1-card-320.webp' }],
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+      headers: { 'content-type': 'image/webp' },
+    })));
+    await expect(controller.readCaptureImage('a1b2c3d4-e5f6-4789-a012-123456789abc',
+      'https://api.brajamayorista.com/uploads/derivados/qa/v1-card-320.webp'))
+      .resolves.toMatchObject({ mimeType: 'image/webp', size: 3 });
+    await expect(controller.readCaptureImage('a1b2c3d4-e5f6-4789-a012-123456789abc',
+      'https://evilbrajamayorista.com/uploads/derivados/qa/v1-card-320.webp')).rejects.toThrow('no pertenece al sitio leído');
+  });
+
   it('refuses insecure, private, protected, and tab-mismatched origins', async () => {
     const { api } = mockExtension();
     const controller = createSupplierCaptureController(api as never);
@@ -104,6 +127,24 @@ describe('supplier capture controller', () => {
     }, { tab: { id: 7 }, url: 'https://supplier.example.test/products' } as never);
 
     expect(api.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'supplier-capture-click-next', label: 'Pagina 2' });
+  });
+
+  it('advances only the next numbered mayori hash page through the page-script allowlist', async () => {
+    const origin = 'https://mayori.store';
+    const pageUrl = `${origin}/electrobh/index.php#productos_page-1`;
+    const { api } = mockExtension(pageUrl);
+    const controller = createSupplierCaptureController(api as never);
+    await controller.start(7, origin);
+    await controller.handleEvidence({
+      url: pageUrl, items: [{ name: 'Producto 1', code: 'SKU-1', price: 100 }], source: ['dom-cards'], warnings: [],
+    }, { tab: { id: 7 }, url: `${origin}/electrobh/index.php` } as never);
+    expect((await controller.readLive()).lastPageUrl).toBe(pageUrl);
+    vi.mocked(api.tabs.sendMessage).mockResolvedValue({ done: true } as never);
+    await controller.handlePageFinished({
+      url: pageUrl, navigation: { next: { kind: 'hash-page', page: 2, label: 'Página 2' } },
+    }, { tab: { id: 7 }, url: `${origin}/electrobh/index.php` } as never);
+    expect(api.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'supplier-capture-click-hash-page', page: 2 });
+    expect(api.tabs.update).not.toHaveBeenCalled();
   });
 
   it('stores the capture locally for 24 hours, serves bounded chunks, then removes it on acknowledgement', async () => {

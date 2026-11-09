@@ -6,7 +6,7 @@ import '../../extensions/shared/product-extract.js';
 
 type ExtractedItem = {
   key: string; code: string | null; altCode: string | null; name: string; price: number | null;
-  listPrice: number | null; currency: string; category: string | null; imageUrl: string | null;
+  listPrice: number | null; currency: string; category: string | null; brand: string | null; imageUrl: string | null;
   images: string[]; url: string | null; packSize: number | null; notes: string[];
   needsPriceReview: boolean; raw: string | null; priceOptions?: Array<{ label: string; price: number }> | null;
 };
@@ -161,6 +161,26 @@ describe('universal supplier product extraction', () => {
     expect(result.items[0]).toMatchObject({ code: 'PS-341', price: 11900, name: 'Alargue Zapatilla 9 Enchufes' });
     expect(result.items[0].url).toBe('https://brajamayorista.com/tienda/centro/productos/3408');
     expect(result.items[0].raw).not.toContain('AGREGAR');
+  });
+
+  it('reads all Braja WebP photos from the best srcset candidate on the image subdomain', () => {
+    const result = extract.readPage(page('braja-cross-subdomain-webp.html', 'https://brajamayorista.com/tienda/centro/productos?categoria=31'));
+    expect(result.items).toHaveLength(5);
+    expect(result.items.every(item => item.imageUrl?.startsWith('https://api.brajamayorista.com/uploads/derivados/'))).toBe(true);
+    expect(result.items[0].imageUrl).toBe('https://api.brajamayorista.com/uploads/derivados/qa-01/v1-card-320.webp');
+    expect(result.items.every(item => item.imageUrl?.endsWith('.webp'))).toBe(true);
+  });
+
+  it('extracts mayori.store cards, unit prices inside purchase controls, category, brand, code, and safe pagination data', () => {
+    const result = extract.readPage(page('mayori-store-electrobh.html', 'https://mayori.store/electrobh/index.php#productos_page-1'));
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]).toMatchObject({
+      name: 'Ventilador de prueba', code: 'MELECH-114', brand: 'Marca Demo', category: 'Hogar',
+      price: 4043.07, imageUrl: 'https://mayori.store/images/qa-01.webp',
+    });
+    expect(result.items[1]).toMatchObject({ name: 'SILLA plegable X 10U', code: '5702', altCode: 'BS', brand: 'Marca Ficticia', category: 'Muebles', price: 12500 });
+    expect(result.items[1].packSize).toBeNull();
+    expect(result.items.every(item => !item.raw?.includes('Texto fijo de demostración'))).toBe(true);
   });
 
   it('keeps sale and labeled wholesale/retail prices with a review warning', () => {

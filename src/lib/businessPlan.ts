@@ -12,6 +12,7 @@ export interface BusinessPlan {
   planCode: string;
   planName: string;
   status: 'trial' | 'active' | 'suspended';
+  suspensionScheduledFor: string | null;
   limits: Record<string, unknown> & { modules: BusinessModules };
 }
 
@@ -43,7 +44,7 @@ function parseBusinessPlan(value: unknown): BusinessPlan {
     throw new Error('La respuesta del plan del negocio no es válida.');
   }
 
-  const { plan_code, plan_name, status } = value;
+  const { plan_code, plan_name, status, suspension_scheduled_for } = value;
   if (typeof plan_code !== 'string' || typeof plan_name !== 'string'
     || !['trial', 'active', 'suspended'].includes(String(status))) {
     throw new Error('La respuesta del plan del negocio no es válida.');
@@ -58,6 +59,7 @@ function parseBusinessPlan(value: unknown): BusinessPlan {
     planCode: plan_code,
     planName: getBusinessPlanDisplayName(plan_code, plan_name),
     status: status as BusinessPlan['status'],
+    suspensionScheduledFor: typeof suspension_scheduled_for === 'string' ? suspension_scheduled_for : null,
     limits: {
       ...limits,
       modules: {

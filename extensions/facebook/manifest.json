@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "120",
   "name": "RivaStock",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Publica en Facebook e importa listas de proveedores",
   "permissions": [
     "storage",
@@ -12,6 +12,7 @@
   ],
   "optional_host_permissions": [
     "<all_urls>",
+    "https://api.brajamayorista.com/*",
     "https://*.supabase.co/*",
     "https://www.facebook.com/*"
   ],

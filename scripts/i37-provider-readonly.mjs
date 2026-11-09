@@ -11,6 +11,7 @@ const allProviders = [
   { name: 'Mr Tecno', url: 'https://mrtecno.com.ar/productos/' },
   { name: 'Inova', url: 'https://inovaarg.com/tienda/page/4' },
   { name: 'Braja', url: 'https://brajamayorista.com/tienda/centro/productos' },
+  { name: 'Braja categoría 31', url: 'https://brajamayorista.com/tienda/centro/productos?categoria=31', expectedProducts: 5 },
   { name: 'Mayorista Omega', url: 'https://mayoristaomega.com/#catalogo' },
 ];
 const requestedProviders = process.argv.slice(2).map(value => value.toLocaleLowerCase());
@@ -83,7 +84,10 @@ try {
   const manifestPath = join(extensionPath, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const extensionId = extensionIdFromManifestKey(manifest.key);
-  manifest.host_permissions = providerList.map(provider => `${new URL(provider.url).origin}/*`);
+  manifest.host_permissions = providerList.flatMap(provider => [
+    `${new URL(provider.url).origin}/*`,
+    ...(new URL(provider.url).hostname === 'brajamayorista.com' ? ['https://api.brajamayorista.com/*'] : []),
+  ]);
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
   context = await chromium.launchPersistentContext(profilePath, {
@@ -132,7 +136,9 @@ try {
       throw new Error(`${provider.name}: la lectura excedió tres minutos.`);
     }
 
-    if (state.status === 'categories-available' && state.categoryUrls?.length) {
+    // The category-31 check must validate the filtered page itself, not expand
+    // every category and accidentally report the entire supplier catalog.
+    if (provider.name !== 'Braja categoría 31' && state.status === 'categories-available' && state.categoryUrls?.length) {
       const readAll = await extensionPage.evaluate(targetTabId => new Promise(resolvePromise => {
         chrome.runtime.sendMessage({ type: 'supplier-capture-read-categories', tabId: targetTabId }, resolvePromise);
       }), tabId);
@@ -146,6 +152,12 @@ try {
     }
 
     const items = Array.isArray(state?.items) ? state.items : [];
+    if (provider.expectedProducts && items.length !== provider.expectedProducts) {
+      throw new Error(`${provider.name}: se esperaban ${provider.expectedProducts} productos filtrados y se leyeron ${items.length}.`);
+    }
+    if (provider.name === 'Braja categoría 31' && !items.every(item => item.imageUrl || item.images?.length)) {
+      throw new Error('Braja categoría 31: hay productos sin foto capturada.');
+    }
     const withoutPrice = items.filter(item => !Number.isFinite(item.price) || item.price <= 0);
     const withoutPriceWithMoneyText = withoutPrice.filter(item => /(?:ARS|USD|U\$S|\$)\s*[\d.,]+/i.test(String(item.raw ?? ''))).length;
     const withoutPriceConsultText = withoutPrice.filter(item => /\bconsultar\b|\ba consultar\b/i.test(String(item.raw ?? ''))).length;

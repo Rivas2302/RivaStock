@@ -11,6 +11,7 @@ export default function BusinessAccountActions({ business, onChange }: { busines
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const [deleteDialog, setDeleteDialog] = useState(false);
+  const [backupBeforeDelete, setBackupBeforeDelete] = useState(false);
   const [exportReady, setExportReady] = useState(false);
   const [exportAcknowledged, setExportAcknowledged] = useState(false);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
@@ -55,16 +56,18 @@ export default function BusinessAccountActions({ business, onChange }: { busines
     setFeedback('La copia está lista. Descargala antes de programar la baja.');
   }, 'No se pudo preparar una copia completa. No se programó la baja.');
 
-  const requestDeletion = async () => run('delete', async () => {
+  const requestDeletion = async (deleteNow = false) => run(deleteNow ? 'delete-now' : 'delete', async () => {
     await platformAdminRequest({
-      action: 'request_business_deletion',
+      action: deleteNow ? 'delete_business_now' : 'request_business_deletion',
       owner_uid: business.owner_uid,
       confirm_business_name: confirmedName,
     });
     closeDeleteDialog();
-    setFeedback('La baja quedó programada para dentro de 30 días.');
+    setFeedback(deleteNow
+      ? 'La cuenta, sus datos y archivos se eliminaron de forma definitiva.'
+      : 'La baja quedó programada para dentro de 30 días.');
     onChange();
-  }, 'No se pudo programar la baja.');
+  }, deleteNow ? 'No se pudo completar la eliminación definitiva.' : 'No se pudo programar la baja.');
 
   const cancelDeletion = async () => run('cancel', async () => {
     await platformAdminRequest({ action: 'cancel_business_deletion', owner_uid: business.owner_uid });
@@ -84,6 +87,7 @@ export default function BusinessAccountActions({ business, onChange }: { busines
 
   function closeDeleteDialog() {
     setDeleteDialog(false);
+    setBackupBeforeDelete(false);
     setExportReady(false);
     setExportAcknowledged(false);
     setConfirmedName('');
@@ -104,7 +108,7 @@ export default function BusinessAccountActions({ business, onChange }: { busines
     </div> : <>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={Boolean(busy)} onClick={() => void sendRecovery()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15}/>{busy === 'recovery' ? 'Enviando…' : 'Enviar enlace para cambiar contraseña'}</button>
-        <button type="button" disabled={Boolean(busy)} onClick={() => { setDeleteDialog(true); setError(''); setFeedback(''); }} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200"><Trash2 size={15}/>Eliminar cuenta</button>
+      <button type="button" disabled={Boolean(busy)} onClick={() => { setDeleteDialog(true); setError(''); setFeedback(''); setBackupBeforeDelete(false); setExportReady(false); setExportAcknowledged(false); }} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200"><Trash2 size={15}/>Eliminar cuenta</button>
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950/50">
         <label className="min-w-64 flex-1 text-xs font-semibold">Contraseña temporal
@@ -121,19 +125,34 @@ export default function BusinessAccountActions({ business, onChange }: { busines
     {deleteDialog && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="business-deletion-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
         <div className="flex items-start justify-between gap-3"><div><h3 id="business-deletion-title" className="text-lg font-bold">Eliminar {business.business_name}</h3><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">La cuenta quedará bloqueada y suspendida por 30 días. Después se borrarán los archivos y el usuario con sus datos. Podés cancelar antes de que empiece la eliminación.</p></div><button type="button" aria-label="Cerrar" onClick={closeDeleteDialog}><X size={18}/></button></div>
-        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
-          <h4 className="font-bold">1. Descargá una copia completa</h4>
+        <label className="mt-4 flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold dark:border-slate-700">
+          <input type="checkbox" checked={backupBeforeDelete} onChange={(event) => {
+            const checked = event.target.checked;
+            setBackupBeforeDelete(checked);
+            setExportReady(false);
+            setExportAcknowledged(false);
+            setExportSummary('');
+            setExportUrl((current) => { if (current) URL.revokeObjectURL(current); return null; });
+          }} />
+          Descargar copia antes (recomendado)
+        </label>
+        {backupBeforeDelete && <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <h4 className="font-bold">Copia completa de datos y archivos</h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Incluye los registros del negocio y los archivos de Storage.</p>
           <button type="button" disabled={Boolean(busy)} onClick={() => void prepareExport()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy === 'export' ? <Loader2 className="animate-spin" size={15}/> : <Download size={15}/>}Preparar copia</button>
           {exportReady && exportUrl && <div className="mt-3 rounded-lg bg-white p-3 text-sm dark:bg-slate-900"><p>Incluye {exportSummary}.</p><a className="mt-2 inline-flex font-bold text-indigo-700 underline dark:text-indigo-300" href={exportUrl} download={fileName} onClick={() => setExportAcknowledged(false)}>Descargar copia de datos</a><button type="button" className="ml-3 text-sm underline" onClick={() => setExportAcknowledged(true)}>Ya la descargué</button></div>}
-        </div>
+        </div>}
         <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/20">
-          <h4 className="font-bold">2. Confirmá el negocio</h4>
+          <h4 className="font-bold">Confirmá el negocio</h4>
           <label className="mt-2 block text-sm">Escribí exactamente <strong>{business.business_name}</strong>
             <input value={confirmedName} onChange={(event) => setConfirmedName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" />
           </label>
-          <button type="button" disabled={!exportAcknowledged || confirmedName.trim() !== business.business_name || Boolean(busy)} onClick={() => void requestDeletion()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : <><ShieldAlert size={15}/>Dar de baja por 30 días</>}</button>
-          {!exportAcknowledged && <p className="mt-2 text-xs text-slate-600">Primero prepará la copia, descargala y confirmá que la guardaste.</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || confirmedName.trim() !== business.business_name || Boolean(busy)} onClick={() => void requestDeletion()} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : 'Dar de baja en 30 días'}</button>
+            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || confirmedName.trim() !== business.business_name || Boolean(busy)} onClick={() => void requestDeletion(true)} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete-now' ? 'Eliminando…' : <><ShieldAlert size={15}/>Eliminar ahora</>}</button>
+          </div>
+          <p className="mt-2 text-xs text-rose-800 dark:text-rose-200">«Eliminar ahora» borra la cuenta, sus datos y archivos de forma definitiva. No se puede deshacer.</p>
+          {backupBeforeDelete && !exportAcknowledged && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Descargá y confirmá la copia para habilitar cualquiera de las dos opciones.</p>}
         </div>
       </section>
     </div>}

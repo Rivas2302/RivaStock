@@ -1447,20 +1447,19 @@ export default function ResellerPriceListModal({
             'catalogDownload',
           );
         } else {
-          try {
-            file = await withSupplierPhotoTimeout(
-              () => fetchSupplierCatalogImage(candidate.sourceUrl, supplierUrl),
-              SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
-              'catalogDownload',
-            );
-          } catch (serverError) {
-            if (!captureId) throw serverError;
+          if (captureId) {
             file = await withSupplierPhotoTimeout(
               () => fetchSupplierCaptureImage(captureId, candidate.sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
               SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
               'extensionResponse',
             );
             setSupplierImportPhotoFiles(current => ({ ...current, [candidate.row.sourceRow]: file }));
+          } else {
+            file = await withSupplierPhotoTimeout(
+              () => fetchSupplierCatalogImage(candidate.sourceUrl, supplierUrl),
+              SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
+              'catalogDownload',
+            );
           }
         }
         if (supplierPhotoOcrRun.current !== run) return;
@@ -1783,6 +1782,7 @@ export default function ResellerPriceListModal({
         ? catalog.items.map((item, index) => ({
           sourceRow: index + 1,
           sourceCode: item.code,
+          brand: item.brand ?? null,
           sourceCurrency: catalog.currency,
           name: item.name,
           supplierCost: item.price,
@@ -1895,7 +1895,7 @@ export default function ResellerPriceListModal({
     const query = supplierImportSearch.trim().toLocaleLowerCase('es-AR');
     return supplierImportReview.filter(entry => (
       (!supplierImportCategoryFilter || entry.row.category === supplierImportCategoryFilter)
-      && (!query || `${entry.row.name} ${entry.row.sourceCode ?? ''} ${entry.row.category}`.toLocaleLowerCase('es-AR').includes(query))
+      && (!query || `${entry.row.name} ${entry.row.sourceCode ?? ''} ${entry.row.brand ?? ''} ${entry.row.category}`.toLocaleLowerCase('es-AR').includes(query))
       && (!supplierImportOnlyPhotos || Boolean(
         supplierImportPhotoFiles[entry.row.sourceRow]
         || getSupplierImportImageUrls(entry.row, supplierImportPageUrl, Boolean(supplierRivaCatalogSource)).length > 0
@@ -1983,6 +1983,8 @@ export default function ResellerPriceListModal({
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
+          if (entry.row.brand) customFields.supplierBrand = entry.row.brand.slice(0, 100);
+          else delete customFields.supplierBrand;
           const product: Product = {
             ...(existing ?? {} as Product),
             id: resolvedIds.get(entry.row.sourceRow)!,
@@ -2051,18 +2053,17 @@ export default function ResellerPriceListModal({
               'catalogDownload',
             );
           } else {
-            try {
-              file = await withSupplierPhotoTimeout(
-                () => fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl),
-                SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
-                'catalogDownload',
-              );
-            } catch (serverError) {
-              if (!supplierExtensionCaptureId) throw serverError;
+            if (supplierExtensionCaptureId) {
               file = await withSupplierPhotoTimeout(
                 () => fetchSupplierCaptureImage(supplierExtensionCaptureId, sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
                 SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
                 'extensionResponse',
+              );
+            } else {
+              file = await withSupplierPhotoTimeout(
+                () => fetchSupplierCatalogImage(sourceUrl, supplierImportPageUrl),
+                SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload,
+                'catalogDownload',
               );
             }
           }
@@ -2690,7 +2691,7 @@ export default function ResellerPriceListModal({
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-semibold text-[var(--ink)]">{row.name}</p>
-                                    <p className="mt-1 text-xs text-[var(--ink-muted)]">{row.sourceCode || 'Sin código'} · {entry.supplierCostLocal === null ? 'Sin costo válido' : formatCurrency(entry.supplierCostLocal)} → {entry.suggestedSalePrice === null ? 'Sin precio sugerido' : formatCurrency(entry.suggestedSalePrice)}</p>
+                                    <p className="mt-1 text-xs text-[var(--ink-muted)]">{row.sourceCode || 'Sin código'}{row.brand ? ` · ${row.brand}` : ''} · {entry.supplierCostLocal === null ? 'Sin costo válido' : formatCurrency(entry.supplierCostLocal)} → {entry.suggestedSalePrice === null ? 'Sin precio sugerido' : formatCurrency(entry.suggestedSalePrice)}</p>
                                   </div>
                                   <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold', rowStatusClass)}>{rowStatus}</span>
                                 </summary>

@@ -7,10 +7,9 @@
   const BLOCKED = /^(?:agregar|a[nñ]adir|comprar|ver\s+pedido|carrito|pedido|enviar|whats?app|consultar)$/i;
   const PAGINATION = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
   const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
-  const CARDS = '.caja_producto,[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
+  const CARDS = '.caja_producto,div.item.open_detail[data-id],[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
   let timer = null;
   let crawlStarted = false;
-  let lastProductCount = 0;
   let pageFinished = false;
   let active = true;
 
@@ -39,7 +38,44 @@
       ?? candidateLabel(element).match(/^(\d{1,4})$/)?.[1]);
     return Number.isSafeInteger(currentNumber) && currentNumber > 0 && candidateNumber === currentNumber + 1;
   }
+  function currentHashPage() {
+    return Number(location.hash.match(/^#productos_page-(\d+)$/i)?.[1] || 0);
+  }
+  function findSafeMayoriHashPage() {
+    const current = currentHashPage();
+    if (!current) return null;
+    const targetPage = current + 1;
+    const target = [...document.querySelectorAll('.ui.pagination.menu a.item[rel]')].find(anchor => {
+      if (isExcluded(anchor) || anchor.closest(CARDS) || anchor.rel !== String(targetPage)) return false;
+      return anchor.getAttribute('href') === `#productos_page-${targetPage}`;
+    });
+    return target ? { kind: 'hash-page', page: targetPage, label: `Página ${targetPage}` } : null;
+  }
+  function productListSignature() {
+    const cards = [...document.querySelectorAll(CARDS)];
+    return `${cards.length}:${cards.map(card => card.getAttribute('data-id') || '').join('|')}`;
+  }
+  function waitForProductListChange(previous, timeoutMs = 15_000) {
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = changed => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(changed);
+      };
+      const observer = new MutationObserver(() => {
+        if (productListSignature() !== previous) finish(true);
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-id'] });
+      const timer = setTimeout(() => finish(productListSignature() !== previous), timeoutMs);
+      if (productListSignature() !== previous) finish(true);
+    });
+  }
   function findSafeNext() {
+    const hashPage = findSafeMayoriHashPage();
+    if (hashPage) return hashPage;
     for (const element of document.querySelectorAll('a[rel~="next"],.pagination a,nav[aria-label*="pagin" i] a,a,button[type="button"]')) {
       if (isExcluded(element) || element.disabled || element.getAttribute('aria-disabled') === 'true') continue;
       const label = candidateLabel(element);
@@ -79,6 +115,7 @@
       listPrice: Number.isFinite(item.listPrice) && item.listPrice > 0 ? item.listPrice : null,
       currency: item.currency === 'USD' || item.currency === 'EUR' || item.currency === 'GBP' ? item.currency : 'ARS',
       category: typeof item.category === 'string' ? item.category.slice(0, 120) : null,
+      brand: typeof item.brand === 'string' ? item.brand.slice(0, 100) : null,
       imageUrl: safeImageUrl(item.imageUrl), images: [...new Set((Array.isArray(item.images) ? item.images : []).map(safeImageUrl).filter(Boolean))].slice(0, 5),
       url: safePageUrl(item.url || location.href), packSize: Number.isFinite(item.packSize) && item.packSize > 0 ? item.packSize : null,
       notes: Array.isArray(item.notes) ? item.notes.map(note => String(note).slice(0, 80)).slice(0, 3) : [],
@@ -101,7 +138,6 @@
     try {
       const result = extractor.readPage(document, jsonResponses);
       const items = result.items.slice(0, MAX_PRODUCTS).map(sanitizeItem).filter(item => item.name);
-      lastProductCount = Math.max(lastProductCount, items.length);
       await chrome.runtime.sendMessage({
         type: 'supplier-capture-evidence', url: location.href, items,
         source: result.source.slice(0, 3), warnings: result.warnings.slice(0, 6),
@@ -128,15 +164,12 @@
   async function autoReadPage() {
     let unchangedAtBottom = 0;
     for (let step = 0; step < 180 && active; step += 1) {
-      const beforeHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
-      const beforeCount = document.querySelectorAll(CARDS).length;
       window.scrollBy({ top: Math.max(360, Math.floor(window.innerHeight * 0.8)), left: 0, behavior: 'instant' });
       await delay(350);
       const afterHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
-      const afterCount = document.querySelectorAll(CARDS).length;
       const atBottom = window.scrollY + window.innerHeight >= afterHeight - 4;
-      if (afterHeight > beforeHeight || afterCount > beforeCount || afterCount > lastProductCount) unchangedAtBottom = 0;
-      else if (atBottom) unchangedAtBottom += 1;
+      if (atBottom) unchangedAtBottom += 1;
+      else unchangedAtBottom = 0;
       if (!atBottom) continue;
       const next = findSafeNext();
       if (next) { finishPage({ next }); return; }
@@ -177,6 +210,28 @@
       setTimeout(() => { void autoReadPage(); }, 700);
       reply({ done: true });
       return;
+    }
+    if (message?.type === 'supplier-capture-click-hash-page') {
+      const page = Number(message.page);
+      const current = currentHashPage();
+      const expected = current + 1;
+      const target = Number.isSafeInteger(page) && page === expected
+        ? [...document.querySelectorAll('.ui.pagination.menu a.item[rel]')].find(anchor =>
+          !isExcluded(anchor) && !anchor.closest(CARDS) && anchor.rel === String(expected)
+          && anchor.getAttribute('href') === `#productos_page-${expected}`)
+        : null;
+      if (!target) { reply({ done: false }); return; }
+      const before = productListSignature();
+      const changed = waitForProductListChange(before);
+      target.click();
+      void changed.then(done => {
+        reply({ done });
+        if (done && active) {
+          pageFinished = false;
+          void autoReadPage();
+        }
+      });
+      return true;
     }
     if (message?.type === 'supplier-capture-resume-read') { pageFinished = false; void autoReadPage(); reply({ done: true }); }
   });

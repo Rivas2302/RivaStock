@@ -29,6 +29,7 @@ function extensionMessage(message: unknown, timeoutMs = 15_000): Promise<unknown
 export interface SupplierExtensionItem {
   name: string;
   code: string | null;
+  brand?: string | null;
   altCode?: string | null;
   price: number | null;
   currency: string;
@@ -85,6 +86,7 @@ function isCaptureItem(value: unknown): value is SupplierExtensionItem {
   return typeof item.name === 'string' && item.name.trim().length > 0 && item.name.length <= 200
     && (item.code === null || item.code === undefined || (typeof item.code === 'string' && item.code.length <= 100))
     && (item.altCode === null || item.altCode === undefined || (typeof item.altCode === 'string' && item.altCode.length <= 100))
+    && (item.brand === null || item.brand === undefined || (typeof item.brand === 'string' && item.brand.length <= 100))
     && (item.price === null || item.price === undefined || (Number.isFinite(item.price) && item.price > 0))
     && ['ARS', 'USD', 'EUR', 'GBP'].includes(String(item.currency))
     && (item.category === null || item.category === undefined || (typeof item.category === 'string' && item.category.length <= 120))
@@ -115,6 +117,7 @@ export function supplierExtensionItemsToRows(items: SupplierExtensionItem[]): Su
   return items.map((item, index) => normalizeSupplierImportRow({
     sourceRow: index + 1,
     sourceCode: item.code ?? item.altCode ?? null,
+    brand: typeof item.brand === 'string' ? item.brand.trim().slice(0, 100) : null,
     sourceCurrency: item.currency,
     name: item.name.trim().replace(/\s+/g, ' ').slice(0, 200),
     supplierCost: item.price && item.price > 0 ? item.price : null,

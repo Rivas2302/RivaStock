@@ -1,5 +1,5 @@
 export type BusinessStatus = 'trial' | 'active' | 'suspended';
-export type BusinessPlanCode = 'base' | 'pro' | 'interno';
+export type BusinessPlanCode = string;
 
 export interface BusinessLimitOverrides {
   cloud_knowledge_bytes?: number;
@@ -28,8 +28,18 @@ export function isBusinessPlanCode(value: unknown): value is BusinessPlanCode {
   return value === 'base' || value === 'pro' || value === 'interno';
 }
 
+export function isPlanTemplateCode(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z][a-z0-9_]{1,30}$/.test(value);
+}
+
 export function isBusinessStatus(value: unknown): value is BusinessStatus {
   return value === 'trial' || value === 'active' || value === 'suspended';
+}
+
+export function effectiveBusinessStatus(status: BusinessStatus, suspensionScheduledFor: string | null, now = Date.now()): BusinessStatus {
+  if (status === 'suspended') return 'suspended';
+  const deadline = suspensionScheduledFor ? Date.parse(suspensionScheduledFor) : Number.NaN;
+  return Number.isFinite(deadline) && deadline <= now ? 'suspended' : status;
 }
 
 export function parseBusinessLimitOverrides(value: unknown): BusinessLimitOverrides | null {

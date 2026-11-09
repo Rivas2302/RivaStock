@@ -6,9 +6,10 @@
   const PRODUCT_NAMES = ['name', 'nombre', 'title', 'titulo', 'description', 'descripcion', 'product_name'];
   const PRICE_NAMES = ['price', 'precio', 'amount', 'importe', 'valor', 'current_price', 'sale_price', 'precio_actual'];
   const IMAGE_NAMES = ['image', 'imagen', 'images', 'imagenes', 'photo', 'foto', 'thumbnail', 'picture', 'featured_image'];
+  const BRAND_NAMES = ['brand', 'marca', 'manufacturer', 'fabricante'];
   const CODE_NAMES = ['sku', 'code', 'codigo', 'product_code', 'barcode', 'id', 'permalink'];
   const CATEGORY_NAMES = ['category', 'categoria', 'rubro', 'product_category'];
-  const UNSAFE_DOM = 'form,button,input,select,textarea,[contenteditable="true"],.video_centrado,.carousel-control,.swiper-button-next,.swiper-button-prev,[aria-label*="slide" i]';
+  const UNSAFE_DOM = 'form,button,input,select,textarea,[contenteditable="true"],.list_description,.video_centrado,.carousel-control,.swiper-button-next,.swiper-button-prev,[aria-label*="slide" i]';
 
   function decodeHtmlEntities(value) {
     const named = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“' };
@@ -33,7 +34,7 @@
     }
     let altCode = null;
     const parenthetical = name.match(/^\(([A-Z0-9._/-]+)\)\s*[–—-]?\s*/i);
-    if (parenthetical && /\d/.test(parenthetical[1]) && !/\s/.test(parenthetical[1])) {
+    if (parenthetical && !/\s/.test(parenthetical[1])) {
       altCode = parenthetical[1];
       name = name.slice(parenthetical[0].length);
     } else {
@@ -41,6 +42,12 @@
       if (separatedCode && /\d/.test(separatedCode[1])) {
         altCode = separatedCode[1];
         name = name.slice(separatedCode[0].length);
+      } else {
+        const numericPrefix = name.match(/^(\d{4,})\s+(?=[\p{L}])/u);
+        if (numericPrefix) {
+          altCode = numericPrefix[1];
+          name = name.slice(numericPrefix[0].length);
+        }
       }
     }
     name = name.replace(/[_\s]+$/g, '').replace(/\s+/g, ' ').trim();
@@ -181,10 +188,12 @@
     code = code == null ? normalizedName.altCode : String(code).trim() || normalizedName.altCode;
     const images = imageValues(lookup(object, IMAGE_NAMES)).map(image => normalizeImage(image, pageUrl)).filter(Boolean);
     const category = lookup(object, CATEGORY_NAMES);
+    const brandRaw = firstNonEmpty([lookup(object, ['product.brand.name', 'brand.name', 'manufacturer.name']), lookup(object, BRAND_NAMES)]);
     const row = {
       key: '', code: code ? String(code).slice(0, 100) : null, altCode: normalizedName.altCode,
       name: normalizedName.name, price: parsedPrice.price, listPrice: parsedListPrice,
       currency: parsedPrice.currency, category: category ? normalizeCategory(String(category)) : null,
+      brand: brandRaw ? safeText(brandRaw) : null,
       imageUrl: images[0] ?? null, images, url: normalizeImage(lookup(object, ['permalink', 'url', 'link', 'product_url']), pageUrl),
       packSize: parsePackSize(firstNonEmpty([lookup(object, ['pack_size', 'packSize', 'quantity_per_pack', 'units_per_pack', 'minimum_quantity', 'min_quantity'])])),
       notes: normalizedName.notes, needsPriceReview: parsedPrice.needsReview, raw: null,
@@ -222,7 +231,7 @@
   function collectDomEvidence(document) {
     const candidates = new Set();
     const selectors = [
-      '.caja_producto', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
+      '.caja_producto', 'div.item.open_detail[data-id]', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
       'article.product', 'article.product-card', 'li.product', '.product-card', '.product-item', '.wd-product', '.product-grid-item',
       '.js-item-product', '.item-product', '.grid-item.product', '[class*="product-card"]',
     ];
@@ -231,8 +240,8 @@
     const cards = [];
     for (const node of all) {
       if (!visible(node)) continue;
-      const title = node.querySelector('.descrip h1, h1, h2, h3, [itemprop="name"], .product-title, .woocommerce-loop-product__title, .js-item-name, [class*="title"]');
-      const priceNode = node.querySelector('p.datos strong, strong.caja_precio_noimptk, [itemprop="price"], .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="precio"]')
+      const title = node.querySelector('.descrip h1, .header, h1, h2, h3, [itemprop="name"], .product-title, .woocommerce-loop-product__title, .js-item-name, [class*="title"]');
+      const priceNode = node.querySelector('.ui.basic.right.pointing.label, p.datos strong, strong.caja_precio_noimptk, [itemprop="price"], .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="precio"]')
         ?? [...node.querySelectorAll('[class*="price"]')].find(candidate => !candidate.matches('del,[class*="original"],[class*="regular"],[data-list-price]'));
       const imageNodes = [...node.querySelectorAll('.carousel-inner .item img, img')].filter(image => !image.closest(UNSAFE_DOM));
       if (!title || !priceNode || imageNodes.length === 0) continue;
@@ -242,8 +251,16 @@
       const codeElementText = codeElement && !codeElement.closest(UNSAFE_DOM)
         ? (codeElement.getAttribute('content') || codeElement.getAttribute('data-sku') || safeText(codeElement.textContent))
         : '';
-      const codeLine = codeElementText || safeTexts.find(text => /(?:sku|c[oó]d(?:igo)?|codigo)\s*[:#]/i.test(text)) || '';
-      const codeMatch = codeLine.match(/(?:sku|c[oó]d(?:igo)?|codigo)\s*\.?\s*[:#]\s*([\w./-]+)/i);
+      const codeIcon = node.querySelector('i.code.icon');
+      let iconCodeText = '';
+      if (codeIcon?.parentElement) {
+        const siblings = [...codeIcon.parentElement.childNodes];
+        const iconIndex = siblings.indexOf(codeIcon);
+        iconCodeText = siblings.slice(iconIndex + 1).map(sibling => safeText(sibling.textContent)).join(' ').trim();
+      }
+      const codeLine = codeElementText || iconCodeText || safeTexts.find(text => /(?:sku|c[oó]d(?:igo)?|codigo)\s*[:#]/i.test(text)) || '';
+      const labeledCodeMatch = codeLine.match(/(?:sku|c[oó]d(?:igo)?|codigo)\s*\.?\s*[:#]?\s*([\w./-]+)/i);
+      const codeMatch = labeledCodeMatch ?? (codeIcon ? codeLine.match(/^\s*([\w./-]+)\s*$/) : null);
       const productAnchor = node.querySelector('a.woocommerce-LoopProduct-link,a.product-link,a.js-item-name,a.wd-entities-title[href],.wd-entities-title a[href],a.product-card-link[href],[data-detalle-producto-id][href],[itemprop="url"]');
       const classProductId = String(node.className || '').match(/(?:^|\s)post-(\d+)(?:\s|$)/)?.[1];
       let permalinkCode = null;
@@ -256,15 +273,22 @@
         ?? classProductId
         ?? permalinkCode
         ?? node.getAttribute('data-product');
-      const categoryNode = node.querySelector('p.rubro_centrado, [itemprop="category"], [class*="category"], [class*="categoria"], [class*="rubro"]');
+      const categoryNode = node.querySelector('.meta .category, p.rubro_centrado, [itemprop="category"], [class*="category"], [class*="categoria"], [class*="rubro"]');
+      const brandNode = node.querySelector('.meta .brand, [itemprop="brand"], [class*="brand"], [class*="marca"]');
       const priceText = safeText(priceNode.textContent);
-      const imageUrls = imageNodes.map(image => image.getAttribute('data-src') || image.getAttribute('data-lazy') || image.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0] || image.getAttribute('src')).filter(Boolean);
+      const imageUrls = imageNodes.flatMap(image => [
+        image.currentSrc,
+        bestSrcsetCandidate(image.getAttribute('data-srcset')),
+        bestSrcsetCandidate(image.getAttribute('srcset')),
+        image.getAttribute('data-src'), image.getAttribute('data-lazy'), image.getAttribute('src'), image.src,
+      ]).filter(Boolean);
       const allText = safeTexts.join(' ');
       const listPriceNode = node.querySelector('del,.price-original,[class*="original"],[class*="regular"],[data-list-price]');
       cards.push({
         title: titleText, text: allText.slice(0, MAX_TEXT_LENGTH), priceText,
         code: codeMatch?.[1] ?? fallbackCode ?? null,
         category: categoryNode ? safeText(categoryNode.textContent) : safeTexts.find(text => /^rubro\s*:/i.test(text))?.replace(/^rubro\s*:\s*/i, '') ?? null,
+        brand: brandNode ? safeText(brandNode.textContent) : null,
         imageUrls: imageUrls.slice(0, 5), url: productAnchor?.href ?? document.location?.href ?? null,
         packText: safeTexts.find(text => /(?:p\/bulto|por\s+bulto|x\s*bulto|m[ií]nimo)/i.test(text)) ?? null,
         listPriceText: listPriceNode ? safeText(listPriceNode.textContent) : safeTexts.find(text => /(?:antes|lista|minorista|regular)/i.test(text)) ?? null,
@@ -301,6 +325,19 @@
     return values;
   }
 
+  function bestSrcsetCandidate(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const candidates = value.split(',').map((candidate, index) => {
+      const [url, descriptor] = candidate.trim().split(/\s+/, 2);
+      if (!url) return null;
+      const amount = Number.parseFloat(descriptor || '1');
+      const score = Number.isFinite(amount) ? amount : 1;
+      return { url, score, index };
+    }).filter(Boolean);
+    candidates.sort((left, right) => right.score - left.score || left.index - right.index);
+    return candidates[0]?.url ?? null;
+  }
+
   function deduplicateCards(cards) {
     const found = new Map();
     for (const card of cards) {
@@ -314,6 +351,7 @@
         name: normalized.name, price: parsed.price,
         listPrice: labeledPrices?.retail ?? (card.listPriceText ? parsePrice(card.listPriceText, { currency: card.currency, pageUrl: card.url }).price : null),
         currency: parsed.currency, category: card.category ? normalizeCategory(card.category) : null,
+        brand: card.brand ? safeText(card.brand) : null,
         imageUrl: (card.imageUrls ?? []).map(image => normalizeImage(image, card.url)).find(Boolean) ?? null,
         images: [...new Set((card.imageUrls ?? []).map(image => normalizeImage(image, card.url)).filter(Boolean))].slice(0, 5),
         url: normalizeImage(card.url, card.url), packSize: parsePackSize(card.packText), notes: normalized.notes,
@@ -329,7 +367,7 @@
   }
 
   function productScore(row) {
-    return (row.name ? 4 : 0) + (row.price ? 4 : 0) + (row.imageUrl ? 3 : 0) + (row.code ? 2 : 0) + (row.category ? 1 : 0);
+    return (row.name ? 4 : 0) + (row.price ? 4 : 0) + (row.imageUrl ? 3 : 0) + (row.code ? 2 : 0) + (row.category ? 1 : 0) + (row.brand ? 1 : 0);
   }
 
   function extractStructured(document) {

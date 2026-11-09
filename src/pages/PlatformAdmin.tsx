@@ -3,6 +3,8 @@ import { Building2, Loader2, Mail, RefreshCw, Save } from 'lucide-react';
 import { platformAdminRequest, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
 import { getBusinessPlanDisplayName } from '../lib/businessPlan';
 import BusinessAccountActions from '../components/platform/BusinessAccountActions';
+import PlanTemplateManager from '../components/platform/PlanTemplateManager';
+import BusinessSuspensionActions from '../components/platform/BusinessSuspensionActions';
 
 type EditableBusiness = {
   plan_code: string;
@@ -10,7 +12,6 @@ type EditableBusiness = {
   notes: string;
   limit_overrides: Record<string, unknown>;
 };
-
 type StorageUnit = 'MB' | 'GB';
 const STORAGE_UNIT_BYTES: Record<StorageUnit, number> = { MB: 1_048_576, GB: 1_073_741_824 };
 const GIGABYTE = STORAGE_UNIT_BYTES.GB;
@@ -111,7 +112,7 @@ export default function PlatformAdmin() {
   const [notice, setNotice] = useState('');
   const [email, setEmail] = useState('');
   const [businessName, setBusinessName] = useState('');
-  const [newPlan, setNewPlan] = useState<'base' | 'pro'>('base');
+  const [newPlan, setNewPlan] = useState('base');
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -226,11 +227,13 @@ export default function PlatformAdmin() {
         <form onSubmit={(event) => void createBusiness(event)} className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_14rem_auto]">
           <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Email de acceso<input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
           <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Nombre del negocio<input required minLength={2} maxLength={80} value={businessName} onChange={(event) => setBusinessName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Plan<select value={newPlan} onChange={(event) => setNewPlan(event.target.value as 'base' | 'pro')} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="base">RivaStock</option><option value="pro">RivaStock IA</option></select></label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Plantilla<select value={newPlan} onChange={(event) => setNewPlan(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{dashboard.plans.filter((plan) => plan.is_active && plan.code !== 'interno').map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</select></label>
           <button type="submit" disabled={creating} className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50"><Mail size={16} />{creating ? 'Enviando…' : 'Crear e invitar'}</button>
         </form>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">La cuenta queda en prueba hasta que cambies su estado. No se envían invitaciones al abrir esta página.</p>
       </section>
+
+      <PlanTemplateManager plans={dashboard.plans} onSaved={load} />
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-3">
@@ -280,6 +283,12 @@ function BusinessCard({
   const manualModules = edit.limit_overrides.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined;
   const hasManualModulesOverride = owns(edit.limit_overrides, 'modules');
   const modules = manualModules ?? planModules;
+  const isPlanCustomized = (hasManualModulesOverride && (['ai', 'knowledge', 'automation'] as const)
+    .some((key) => Boolean(manualModules?.[key]) !== Boolean(planModules[key])))
+    || (owns(edit.limit_overrides, 'collaborators')
+      && Number(edit.limit_overrides.collaborators) !== Number(planLimits.collaborators ?? 0))
+    || (owns(edit.limit_overrides, 'trace_retention_days')
+      && Number(edit.limit_overrides.trace_retention_days) !== Number(planLimits.trace_retention_days ?? 0));
   const cloudQuota = Number(edit.limit_overrides.cloud_knowledge_bytes ?? planLimits.cloud_knowledge_bytes ?? 0);
   const localQuota = Number(edit.limit_overrides.local_knowledge_bytes ?? planLimits.local_knowledge_bytes ?? 0);
   const [cloudUnit, setCloudUnit] = useState<StorageUnit>(() => initialStorageUnit(cloudQuota));
@@ -287,8 +296,17 @@ function BusinessCard({
   const deletionPending = Boolean(business.deletion_scheduled_for);
 
   const resetModuleOverride = () => {
-    const { modules: _modules, ...remainingOverrides } = edit.limit_overrides;
-    onEdit({ ...edit, limit_overrides: remainingOverrides });
+    const { modules: _modules, collaborators: _collaborators, trace_retention_days: _retention, ...otherOverrides } = edit.limit_overrides;
+    onEdit({ ...edit, limit_overrides: otherOverrides });
+  };
+
+  const selectPlan = (nextCode: string) => {
+    const { modules: _modules, collaborators: _collaborators, trace_retention_days: _retention, ...otherOverrides } = edit.limit_overrides;
+    onEdit({
+      ...edit,
+      plan_code: nextCode,
+      limit_overrides: otherOverrides,
+    });
   };
 
   const updateQuota = (key: 'cloud_knowledge_bytes' | 'local_knowledge_bytes', amount: number, unit: StorageUnit) => {
@@ -304,7 +322,7 @@ function BusinessCard({
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Alta: {business.created_at ? new Date(business.created_at).toLocaleDateString('es-AR') : '—'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">{planLabel(business.plan_code)}</span>
+          <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">{plans.find((plan) => plan.code === business.plan_code)?.name ?? planLabel(business.plan_code)}</span>
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${business.status === 'suspended' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'}`}>{statusLabel(business.status)}</span>
         </div>
       </div>
@@ -316,12 +334,14 @@ function BusinessCard({
         {modules.ai && <p><span className="text-slate-500 dark:text-slate-400">Almacén de la central:</span> <strong>{formatBytes(business.store_bytes)}</strong><span className="block text-xs text-slate-500">{business.mirror_status === 'ready' ? 'Respaldo sincronizado' : business.mirror_status === 'none' ? 'Sin respaldo configurado' : business.mirror_status} · {business.files_missing ?? 0} faltantes</span></p>}
       </div>
 
+      <BusinessSuspensionActions business={business} onChange={onAccountChange} />
+
       <fieldset disabled={deletionPending} className="mt-5 space-y-3 border-0 p-0">
       <legend className="sr-only">Configuración del negocio</legend>
       <div className="grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 md:grid-cols-3">
-        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Plan<select value={edit.plan_code} onChange={(event) => onEdit({ ...edit, plan_code: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{plans.filter((plan) => plan.code === 'base' || plan.code === 'pro' || plan.code === 'interno').map((plan) => <option key={plan.code} value={plan.code}>{planLabel(plan.code)}</option>)}</select></label>
-        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Estado<select value={edit.status} onChange={(event) => onEdit({ ...edit, status: event.target.value as EditableBusiness['status'] })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="trial">Prueba</option><option value="active">Activo</option><option value="suspended">Suspendido</option></select></label>
-        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Colaboradores permitidos<input type="number" min={0} max={1000} value={Number(edit.limit_overrides.collaborators ?? business.plan_limits.collaborators ?? 0)} onChange={(event) => onEdit(changedOverride(edit, 'collaborators', Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Plantilla<select value={edit.plan_code} onChange={(event) => selectPlan(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{plans.filter((plan) => plan.code !== 'interno' && (plan.is_active || plan.code === edit.plan_code)).map((plan) => <option key={plan.code} value={plan.code}>{plan.name}{plan.is_active ? '' : ' · Inactiva'}</option>)}</select></label>
+        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Estado<select disabled={edit.status === 'suspended'} value={edit.status} onChange={(event) => onEdit({ ...edit, status: event.target.value as EditableBusiness['status'] })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{edit.status === 'suspended' && <option value="suspended">Suspendido</option>}<option value="trial">Prueba</option><option value="active">Activo</option></select></label>
+        <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Colaboradores permitidos<input type="number" min={0} max={1000} value={Number(edit.limit_overrides.collaborators ?? planLimits.collaborators ?? 0)} onChange={(event) => onEdit(changedOverride(edit, 'collaborators', Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -332,9 +352,9 @@ function BusinessCard({
 
       <fieldset className="mt-3 flex flex-wrap gap-4 text-sm">
         <legend className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Módulos</legend>
-        <p className="w-full text-xs text-slate-500 dark:text-slate-400">{hasManualModulesOverride ? 'Ajuste manual activo para los módulos.' : `Según el plan ${planLabel(edit.plan_code)}.`}</p>
+        <p className="w-full text-xs text-slate-500 dark:text-slate-400">{isPlanCustomized ? 'Personalizado' : `Según la plantilla ${selectedPlan?.name ?? planLabel(edit.plan_code)}.`}</p>
         {(['ai', 'knowledge', 'automation'] as const).map((key) => <label key={key} className="inline-flex items-center gap-2"><input type="checkbox" checked={Boolean(modules[key])} onChange={(event) => onEdit(changedOverride(edit, 'modules', { ai: Boolean(modules.ai), knowledge: Boolean(modules.knowledge), automation: Boolean(modules.automation), [key]: event.target.checked }))} />{key === 'ai' ? 'IA' : key === 'knowledge' ? 'Conocimientos' : 'Automatizaciones'}</label>)}
-        {hasManualModulesOverride && <button type="button" onClick={resetModuleOverride} className="text-xs font-semibold text-indigo-700 underline dark:text-indigo-300">Restablecer según el plan</button>}
+        {isPlanCustomized && <button type="button" onClick={resetModuleOverride} className="text-xs font-semibold text-indigo-700 underline dark:text-indigo-300">Restablecer según la plantilla</button>}
       </fieldset>
 
       <label className="mt-3 block text-xs font-semibold text-slate-600 dark:text-slate-300">Notas internas<textarea rows={2} maxLength={1000} value={edit.notes} onChange={(event) => onEdit({ ...edit, notes: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>

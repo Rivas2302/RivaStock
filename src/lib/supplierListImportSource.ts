@@ -20,6 +20,7 @@ export interface SupplierCatalogSourceResult {
   items: Array<{
     code: string | null;
     name: string;
+    brand?: string | null;
     price: number | null;
     category: string;
     imageUrl: string | null;

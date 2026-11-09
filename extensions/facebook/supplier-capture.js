@@ -50,6 +50,25 @@ function safePageUrl(value, origin) {
   } catch { return null; }
 }
 
+function imageOriginsForSupplier(origin) {
+  try {
+    const hostname = new URL(origin).hostname.toLowerCase();
+    return hostname === 'brajamayorista.com' || hostname.endsWith('.brajamayorista.com')
+      ? ['https://api.brajamayorista.com/*']
+      : [];
+  } catch { return []; }
+}
+
+function isAllowedCaptureImage(origin, imageUrl) {
+  try {
+    const sourceHost = new URL(origin).hostname.toLowerCase();
+    const candidate = new URL(imageUrl);
+    if (candidate.origin === origin) return true;
+    return (sourceHost === 'brajamayorista.com' || sourceHost.endsWith('.brajamayorista.com'))
+      && candidate.origin === 'https://api.brajamayorista.com';
+  } catch { return false; }
+}
+
 function normalizeItem(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const name = typeof value.name === 'string' ? value.name.trim().replace(/\s+/g, ' ').slice(0, 200) : '';
@@ -65,6 +84,7 @@ function normalizeItem(value) {
     key, code, altCode: typeof value.altCode === 'string' ? value.altCode.slice(0, 100) : null,
     name, price, listPrice: Number.isFinite(value.listPrice) && value.listPrice > 0 ? value.listPrice : null,
     currency, category, imageUrl, images,
+    brand: typeof value.brand === 'string' ? value.brand.trim().replace(/\s+/g, ' ').slice(0, 100) || null : null,
     packSize: Number.isFinite(value.packSize) && value.packSize > 0 ? Math.floor(value.packSize) : null,
     notes: Array.isArray(value.notes) ? value.notes.map(note => String(note).slice(0, 80)).slice(0, 3) : [],
     needsPriceReview: value.needsPriceReview === true || price === null,
@@ -75,7 +95,7 @@ function normalizeItem(value) {
 }
 
 function itemScore(item) {
-  return (item.name ? 4 : 0) + (item.price ? 4 : 0) + (item.imageUrl ? 3 : 0) + (item.code ? 2 : 0) + (item.category ? 1 : 0);
+  return (item.name ? 4 : 0) + (item.price ? 4 : 0) + (item.imageUrl ? 3 : 0) + (item.code ? 2 : 0) + (item.category ? 1 : 0) + (item.brand ? 1 : 0);
 }
 
 function mergeItems(previous, incoming) {
@@ -148,7 +168,8 @@ export function createSupplierCaptureController(api = chrome) {
     let tabOrigin = null;
     try { tabOrigin = new URL(tab.url).origin; } catch { /* Browser-owned tabs are not supplier pages. */ }
     if (tabOrigin !== origin) throw new Error('La pestaña activa cambió. Volvé a la tienda e intentá de nuevo.');
-    if (!await api.permissions.contains({ origins: [`${origin}/*`] })) throw new Error('Chrome todavía no dio permiso para leer esta tienda.');
+    const imageOrigins = imageOriginsForSupplier(origin);
+    if (!await api.permissions.contains({ origins: [`${origin}/*`, ...imageOrigins] })) throw new Error('Chrome todavía no dio permiso para leer esta tienda y sus fotos.');
     const current = await readLive();
     if (current?.status === 'reading' && current.tabId !== tabId) throw new Error('Ya hay una lectura en curso en otra pestaña.');
     await registerScripts(origin);
@@ -195,6 +216,21 @@ export function createSupplierCaptureController(api = chrome) {
         return;
       }
     }
+    if (pagination?.kind === 'hash-page' && Number.isSafeInteger(pagination.page)) {
+      let currentPage = 0;
+      try {
+        const current = new URL(state.lastPageUrl);
+        currentPage = Number(current.hash.match(/^#productos_page-(\d+)$/i)?.[1] || 0);
+      } catch { /* Non-hash pages use the existing pagination paths. */ }
+      if (currentPage > 0 && pagination.page === currentPage + 1 && pagination.page <= PAGE_LIMIT) {
+        state.pageStartingProductCount = state.items.length;
+        await writeLive(state);
+        const result = await api.tabs.sendMessage(state.tabId, {
+          type: 'supplier-capture-click-hash-page', page: pagination.page,
+        }).catch(() => null);
+        if (result?.done) return;
+      }
+    }
     if (pagination?.kind === 'button' && typeof pagination.label === 'string' && pagination.label.length <= 80 && SAFE_PAGINATION_LABEL.test(pagination.label)) {
       state.pageStartingProductCount = state.items.length;
       await writeLive(state);
@@ -221,8 +257,11 @@ export function createSupplierCaptureController(api = chrome) {
     const state = await readLive();
     if (!state || state.status !== 'reading' || sender.tab?.id !== state.tabId) return;
     let url;
-    try { url = new URL(sender.url || message.url); } catch { return; }
-    if (url.origin !== state.origin || typeof message.url !== 'string') return;
+    try {
+      url = new URL(typeof message.url === 'string' ? message.url : sender.url);
+      if (sender.url && new URL(sender.url).origin !== state.origin) return;
+    } catch { return; }
+    if (url.origin !== state.origin) return;
     state.lastPageUrl = url.href;
     state.items = mergeItems(state.items, message.items);
     state.source = [...new Set([...state.source, ...(Array.isArray(message.source) ? message.source.filter(item => ['network-json', 'structured-data', 'dom-cards'].includes(item)) : [])])].slice(0, 3);
@@ -243,7 +282,10 @@ export function createSupplierCaptureController(api = chrome) {
     const state = await readLive();
     if (!state || state.status !== 'reading' || sender.tab?.id !== state.tabId) return;
     let url;
-    try { url = new URL(sender.url || message.url); } catch { return; }
+    try {
+      url = new URL(typeof message.url === 'string' ? message.url : sender.url);
+      if (sender.url && new URL(sender.url).origin !== state.origin) return;
+    } catch { return; }
     if (url.origin !== state.origin) return;
     state.lastPageUrl = url.href;
     if (!state.pagesVisited.includes(url.href)) state.pagesVisited.push(url.href);
@@ -293,7 +335,7 @@ export function createSupplierCaptureController(api = chrome) {
     const capture = captures[captureId];
     if (!capture) throw new Error('La captura venció o ya fue recibida. Volvé a leer la tienda.');
     const imageUrl = safeHttps(rawImageUrl);
-    if (!imageUrl || new URL(imageUrl).origin !== capture.origin) throw new Error('La foto no pertenece al sitio leído.');
+    if (!imageUrl || !isAllowedCaptureImage(capture.origin, imageUrl)) throw new Error('La foto no pertenece al sitio leído.');
     if (!capture.items.some(item => item.imageUrl === imageUrl || item.images?.includes(imageUrl))) {
       throw new Error('La foto no pertenece a un producto de la captura.');
     }
@@ -372,3 +414,4 @@ export function createSupplierCaptureController(api = chrome) {
 }
 
 export const supplierCaptureLimits = { CHUNK_SIZE, CAPTURE_TTL, MAX_PRODUCTS, PAGE_LIMIT };
+export const supplierCaptureImagePermissions = { imageOriginsForSupplier, isAllowedCaptureImage };

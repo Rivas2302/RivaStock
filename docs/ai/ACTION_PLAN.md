@@ -1102,9 +1102,18 @@ Los planes se administran como plantillas editables por el propietario: nombre, 
 
 Programar suspensión con fecha (7 días por defecto). Desde que se programa, el cliente ve el aviso «Tu cuenta se suspende el DD/MM, comunicate con RivaTech» y un botón a WhatsApp; enviar el diseño `docs/design/emails/aviso-suspension.html`. En la fecha, bloquear lectura y escritura a nivel de base, mostrar solo «Tu cuenta está suspendida» y el botón a WhatsApp, y ocultar el catálogo público. Reactivar debe restituir la cuenta sin perder datos. Incluir pruebas de aislamiento de lectura/escritura con fixtures o transacción reversible.
 
-### [ ] I48 Preparar SMTP y plantillas aprobadas de email (I22) — **Riva, 08/11/2026**
+### [x] I48 Preparar SMTP y plantillas aprobadas de email (I22) — **Riva, 08/11/2026**
 
 Usar los diseños aprobados de `docs/design/emails/`. Verificar con documentación oficial si el SMTP predeterminado de Supabase puede enviar a destinatarios externos. Dejar en `OWNER_ACTIONS.md` los pasos exactos para configurar SMTP de Gmail con contraseña de aplicación y pegar en Supabase → Authentication → Email Templates las tres plantillas (invitación, recuperar contraseña y cambio de email), incluyendo sus asuntos. No pedir ni almacenar credenciales.
+
+### [ ] I49 Importador de Braja y ElectroBH en la extensión — **Riva, 08/11/2026**
+
+- Braja: capturar `currentSrc` o el mejor `srcset`, resolver rutas relativas y permitir las imágenes `.webp` de `api.brajamayorista.com` al capturar desde el sitio; analizar las imágenes en el momento de la captura. Criterio: categoría 31, 5/5 productos con foto.
+- ElectroBH usa el sistema compartido de `mayori.store`: leer `div.item.open_detail[data-id]` sin hacer clic, permitir lectura de texto dentro de botones sin activar `.add_to_cart` ni `.open_detail`, tomar nombre, categoría, marca, código, foto y precio unitario, e ignorar `.list_description`. Recorrer `#productos_page-N` con la paginación `a.item[rel=N]` esperando cambios del DOM; normalizar nombres y códigos con las reglas existentes; «X 10U» es informativo, el precio es unitario.
+- No llamar a APIs privadas desde servidores ni commitear `tmp/proveedores/`. Mantener el permiso web limitado a los hosts necesarios para capturar imágenes.
+- Agregar tests con fixtures de ElectroBH y una imagen WebP de subdominio, más regresiones de Mr Tecno, Inova, Braja, Omega, Babaji y Oestech. Verificar el paquete actualizado de la extensión y la publicación web en Current.
+- Criterio: categoría Braja 31 con 5/5 fotos; ElectroBH ~700 productos con al menos 95 % de nombre, código, precio y foto correctos, sin clics de compra.
+- Implementación lista para publicar: Braja categoría 31 en vivo dio 5/5 con foto y código. La muestra real anonimizada de ElectroBH dio 50/50 campos; el fixture de 14 páginas dio 700/700, con 13 avances y cero clics prohibidos. El smoke real de las 14 páginas requiere una sesión autenticada de mayori.store y queda pendiente; no se importaron datos.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 

@@ -6,6 +6,14 @@ const MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261104002800_platform_account_lifecycle.sql', import.meta.url),
   'utf8',
 ).replace(/CREATE EXTENSION IF NOT EXISTS pg_net;\r?\n/, '');
+const IMMEDIATE_DELETION_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261109011024_platform_immediate_business_deletion.sql', import.meta.url),
+  'utf8',
+);
+const PLAN_TEMPLATE_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261109012210_platform_plan_templates.sql', import.meta.url),
+  'utf8',
+);
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const ADMIN = '10000000-0000-4000-8000-000000000002';
 const INTERNAL = '10000000-0000-4000-8000-000000000003';
@@ -86,6 +94,22 @@ async function setup() {
     GRANT ALL ON ALL TABLES IN SCHEMA public, storage, vault TO anon, authenticated, service_role;
   `);
   await db.exec(MIGRATION);
+  await db.exec(IMMEDIATE_DELETION_MIGRATION);
+  await db.exec(`
+    CREATE TABLE public.business_plans(
+      code text PRIMARY KEY,
+      name text NOT NULL,
+      limits jsonb NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    INSERT INTO public.business_plans(code, name, limits) VALUES
+      ('base', 'Base', '{"modules":{"ai":false,"knowledge":false,"automation":false},"collaborators":5,"trace_retention_days":7}'),
+      ('interno', 'Interno', '{"modules":{"ai":true,"knowledge":true,"automation":true},"collaborators":50,"trace_retention_days":14}');
+  `);
+  await db.exec(PLAN_TEMPLATE_MIGRATION);
 }
 
 describe('business account lifecycle migration', () => {
@@ -117,6 +141,39 @@ describe('business account lifecycle migration', () => {
     await db.query(`SELECT public.platform_cancel_business_deletion('${OWNER}')`);
     expect((await db.query<{ status: string }>(`SELECT status FROM public.business_subscriptions WHERE owner_uid='${OWNER}'`)).rows[0].status).toBe('active');
     expect((await db.query<{ cancelled: boolean }>(`SELECT cancelled_at IS NOT NULL AS cancelled FROM public.business_deletion_requests WHERE owner_uid='${OWNER}'`)).rows[0].cancelled).toBe(true);
+  });
+
+  it('requires an exact name, protects the signed-in owner, and claims only that account for immediate deletion', async () => {
+    await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ADMIN}'; SET test.platform_admin='true';`);
+    await expect(db.query(`SELECT public.platform_request_business_deletion_now('${OWNER}', 'Wrong name')`))
+      .rejects.toThrow('platform-business-name-confirmation-mismatch');
+    await db.exec(`SET request.jwt.claim.sub='${OWNER}';`);
+    await expect(db.query(`SELECT public.platform_request_business_deletion_now('${OWNER}', 'Tienda QA')`))
+      .rejects.toThrow('platform-business-protected');
+
+    await db.exec(`SET request.jwt.claim.sub='${ADMIN}';`);
+    const { rows } = await db.query<{ scheduled_for: Date }>(
+      `SELECT public.platform_request_business_deletion_now('${OWNER}', 'Tienda QA') AS scheduled_for`,
+    );
+    expect(new Date(rows[0].scheduled_for).getTime()).toBeLessThanOrEqual(Date.now());
+    expect((await db.query<{ started: boolean }>(`SELECT purge_started_at IS NOT NULL AS started FROM public.business_deletion_requests WHERE owner_uid='${OWNER}'`)).rows[0].started).toBe(true);
+    expect((await db.query<{ status: string }>(`SELECT status FROM public.business_subscriptions WHERE owner_uid='${OWNER}'`)).rows[0].status).toBe('suspended');
+    expect((await db.query<{ count: number }>(`SELECT count(*)::int AS count FROM public.products WHERE user_id='${OWNER}'`)).rows[0].count).toBe(1);
+  });
+
+  it('creates and edits templates but cannot rename the protected internal template', async () => {
+    await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ADMIN}'; SET test.platform_admin='true';`);
+    const { rows } = await db.query<{ code: string; name: string; limits: { modules: { knowledge: boolean } } }>(
+      `SELECT (public.platform_save_plan_template(NULL, 'Revendedor', '{"modules":{"ai":true,"knowledge":true,"automation":false},"collaborators":8,"trace_retention_days":10}'::jsonb, true)).*`,
+    );
+    const template = rows[0];
+    expect(template.code).toMatch(/^plantilla_[a-f0-9]{12}$/);
+    expect(template.name).toBe('Revendedor');
+    expect(template.limits.modules.knowledge).toBe(true);
+    await db.query(`SELECT public.platform_save_plan_template($1, 'Revendedor Plus', '{"modules":{"ai":true,"knowledge":false,"automation":false},"collaborators":8,"trace_retention_days":10}'::jsonb, true)`, [template.code]);
+    expect((await db.query<{ name: string }>(`SELECT name FROM public.business_plans WHERE code=$1`, [template.code])).rows[0].name).toBe('Revendedor Plus');
+    await expect(db.query(`SELECT public.platform_save_plan_template('interno', 'Otro nombre', '{"modules":{"ai":true,"knowledge":true,"automation":true},"collaborators":50,"trace_retention_days":14}'::jsonb, true)`))
+      .rejects.toThrow('platform-plan-template-protected');
   });
 
   it('exports only tenant-owned tables and Storage inventory, with authenticated-admin checks', async () => {

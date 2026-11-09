@@ -53,8 +53,11 @@ supplierStart.addEventListener('click',async()=>{
     const tab=activeSupplierTab??await refreshActiveSupplierTab();
     const origin=supportedSupplierOrigin(tab?.url);
     if(!origin||tab?.id===undefined)throw new Error('Abrí una página de productos de un proveedor en Chrome.');
-    // Request host access for this site only; never request a wildcard here.
-    const granted=await chrome.permissions.request({origins:[`${origin}/*`]});
+    // Request only the current supplier and, for Braja, its public image CDN.
+    const supplierHost=new URL(origin).hostname.toLowerCase();
+    const extraImageOrigins=(supplierHost==='brajamayorista.com'||supplierHost.endsWith('.brajamayorista.com'))
+      ? ['https://api.brajamayorista.com/*'] : [];
+    const granted=await chrome.permissions.request({origins:[`${origin}/*`,...extraImageOrigins]});
     if(!granted)throw new Error('No se dio permiso para leer esta tienda. Podés volver a intentarlo cuando quieras.');
     const [current]=await chrome.tabs.query({active:true,currentWindow:true});
     if(current?.id!==tab.id||supportedSupplierOrigin(current?.url)!==origin)throw new Error('La pestaña activa cambió. Volvé a la tienda e intentá de nuevo.');
