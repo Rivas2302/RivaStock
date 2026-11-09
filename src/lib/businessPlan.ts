@@ -67,13 +67,15 @@ export async function getMyBusinessPlan(): Promise<BusinessPlan> {
   return parseBusinessPlan(data);
 }
 
-export function getBusinessPlanForOwner(ownerUid: string): Promise<BusinessPlan> {
-  const cached = cache.get(ownerUid);
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.plan);
-  cache.delete(ownerUid);
+export function getBusinessPlanForOwner(ownerUid: string, forceRefresh = false): Promise<BusinessPlan> {
+  if (forceRefresh) cache.delete(ownerUid);
 
   const existing = inFlight.get(ownerUid);
   if (existing) return existing;
+
+  const cached = cache.get(ownerUid);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.plan);
+  cache.delete(ownerUid);
 
   const request = getMyBusinessPlan()
     .then((plan) => {

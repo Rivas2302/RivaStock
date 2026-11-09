@@ -53,6 +53,7 @@ import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 const fileIndex = args.indexOf('--file');
 const target = args[fileIndex + 1];
+if (!args.some((arg) => arg.startsWith('--snapshot='))) process.exit(2);
 if (args.includes('--schema-only')) {
   writeFileSync(target, 'CREATE TABLE public.items (id integer);\\n');
 } else {
@@ -60,7 +61,17 @@ if (args.includes('--schema-only')) {
 }
 `);
       await writeFile(fakePsql, `
-process.stdout.write(JSON.stringify([{ schema: 'public', table: 'items', count: 2 }]) + '\\n');
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  input += chunk;
+  if (input.includes('SELECT pg_export_snapshot();') && !input.includes('snapshot-sent')) {
+    input += 'snapshot-sent';
+    process.stdout.write('00000003-0000001A-1\\n');
+    process.stdout.write(JSON.stringify([{ schema: 'public', table: 'items', count: 2 }]) + '\\n');
+  }
+  if (input.includes('COMMIT;')) process.exit(0);
+});
 `);
 
       const stdout = execFileSync(process.execPath, [SCRIPT], {

@@ -108,6 +108,30 @@ describe('PlatformAdmin quota controls', () => {
     expect(host.textContent).toMatch(/\d+(?:\.\d+)? (?:MB|GB)/);
   });
 
+  it('confirms a saved module override and displays the server error when saving fails', async () => {
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const businessCard = host.querySelector('article');
+    const budgetsCheckbox = [...(businessCard?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])]
+      .find(input => input.parentElement?.textContent?.includes('Presupuestos'));
+    await act(async () => { budgetsCheckbox?.click(); });
+    const save = [...(businessCard?.querySelectorAll('button') ?? [])]
+      .find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => { save?.click(); });
+
+    expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'update_business',
+      owner_uid: 'owner-base',
+      limit_overrides: expect.objectContaining({ modules: expect.objectContaining({ quotes: false }) }),
+    }));
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Se guardaron los cambios para base demo.');
+
+    mocks.request.mockImplementation((request: { action: string }) => request.action === 'list'
+      ? Promise.resolve(makeDashboard(business))
+      : Promise.reject(new Error('Las banderas del plan no son válidas.')));
+    await act(async () => { save?.click(); });
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Las banderas del plan no son válidas.');
+  });
+
   it('creates a module template with the selected settings', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
     const manager = host.querySelector<HTMLElement>('[aria-label="Plantillas de módulos"]');

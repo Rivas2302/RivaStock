@@ -1953,3 +1953,15 @@ Sin toque en src/, supabase/ ni extensions/.
 - No se incluyó «Mantener la sesión iniciada»: Supabase ya persiste la sesión de forma predeterminada en esta app y no expone un cambio seguro/simple de persistencia por formulario.
 - Verificación local: lint aprobado; suite unitaria **1.299/1.299** incluyendo sesión temporal e invitación; Playwright Auth **6/6** en 390 y 1280 px, claro y oscuro; build aprobado. No se usaron cuentas ni credenciales reales.
 - I51 y I50.5–8 quedan implementadas en el worktree, con el deploy de Current pendiente por la discrepancia de promoción descrita arriba.
+
+## 2026-11-09 — I46: módulos personalizados por negocio
+
+- Diagnóstico de solo lectura para `leokevinr23`: no hay fila en `business_subscriptions`, por lo que no existe una personalización guardada. `my_business_plan` devuelve la plantilla Base y solo las tres banderas heredadas (`ai`, `knowledge`, `automation`); el resto de las claves no está en el JSON. La selección de módulos que se intentó guardar nunca llegó a producción.
+- Causa: el parser de `platform-admin` solo aceptaba las tres banderas heredadas y rechazaba el mapa completo de módulos que envía Plataforma. Además, `business_limits` combinaba `modules` como un objeto superior, reemplazando el mapa en lugar de combinar plantilla y personalización por clave.
+- Implementación: el parser valida las 18 claves de módulo; `business_limits` combina módulos Base → plantilla asignada → override del negocio. El plan del cliente se vuelve a consultar al montar la app y al volver a la pestaña; los estados de error/carga mantienen módulos de negocio ocultos. Plataforma muestra confirmación al guardar y conserva el error devuelto por el servidor. Revendedores no se duplica en la navegación de escritorio.
+- Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261109T202935Z`; 102 tablas y 23.109 filas, 893 objetos en 5 buckets y 149.941.487 bytes de Storage. Postgres y Storage: `verification: passed`. Los dos intentos anteriores quedaron como no verificados por escrituras concurrentes en `audit_events`; no se usaron.
+- La verificación se hizo con un único snapshot PostgreSQL compartido por el conteo y ambos volcados, para que las tablas de auditoría concurrentes se comparen en el mismo instante.
+- Migración aditiva `20261109203213_platform_business_module_override_merge` aplicada: solo reemplaza `business_limits`; no modifica datos. Edge Function `platform-admin` versión 10 desplegada con autenticación JWT habilitada.
+- Pruebas locales: lint y build de producción aprobados; suite focal **57/57**; Playwright de navegación **14/14** (7 casos omitidos por pertenecer solo a móvil/escritorio), incluyendo el fixture de solo Ventas y Stock en escritorio, Android e iPhone y el bloqueo de rutas directas.
+- No se modificó el negocio real `leokevinr23`. Como no se guardó ninguna fila antes de la corrección, la selección que quería aplicar deberá guardarse de nuevo en Plataforma después de que el frontend quede en Current.
+- Publicación del frontend en Vercel Current pendiente.

@@ -6,13 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   auth: { ownerUid: null as string | null, authUser: null as { uid: string } | null, loading: true },
   getBusinessPlanForOwner: vi.fn(),
-  invalidateBusinessPlan: vi.fn(),
 }));
 
 vi.mock('../AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('../lib/businessPlan', () => ({
   getBusinessPlanForOwner: mocks.getBusinessPlanForOwner,
-  invalidateBusinessPlan: mocks.invalidateBusinessPlan,
 }));
 
 import { useBusinessPlan } from './useBusinessPlan';
@@ -45,7 +43,6 @@ describe('useBusinessPlan', () => {
     mocks.auth.authUser = null;
     mocks.auth.loading = true;
     mocks.getBusinessPlanForOwner.mockReset().mockResolvedValue(plan);
-    mocks.invalidateBusinessPlan.mockReset();
   });
 
   afterEach(async () => {
@@ -63,7 +60,23 @@ describe('useBusinessPlan', () => {
     mocks.auth.loading = false;
     await render(<PlanStatus/>);
     expect(host.textContent).toBe('base');
-    expect(mocks.getBusinessPlanForOwner).toHaveBeenCalledWith('owner-1');
+    expect(mocks.getBusinessPlanForOwner).toHaveBeenCalledWith('owner-1', true);
+  });
+
+  it('refreshes the plan when the customer returns to the app after switching tabs', async () => {
+    mocks.auth.ownerUid = 'owner-1';
+    mocks.auth.authUser = { uid: 'actor-1' };
+    mocks.auth.loading = false;
+    await render(<PlanStatus/>);
+    expect(mocks.getBusinessPlanForOwner).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('blur'));
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    expect(mocks.getBusinessPlanForOwner).toHaveBeenCalledTimes(2);
+    expect(mocks.getBusinessPlanForOwner).toHaveBeenLastCalledWith('owner-1', true);
   });
 
   it('keeps a failed plan lookup empty so callers can hide restricted modules', async () => {

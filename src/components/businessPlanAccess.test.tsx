@@ -127,6 +127,9 @@ describe('business plan UI access', () => {
     await renderLayout();
     expect(host.querySelector('a[href="/ia"]')).toBeNull();
     expect(host.querySelector('a[href="/automatizaciones"]')).toBeNull();
+    expect(host.querySelector('a[href="/ventas"]')).toBeNull();
+    expect(host.querySelector('a[href="/stock"]')).toBeNull();
+    expect(host.querySelector('a[href="/calculadora"]')).toBeNull();
   });
 
   it.each([

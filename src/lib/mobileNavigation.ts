@@ -30,7 +30,7 @@ export const DESKTOP_NAVIGATION_GROUPS = [
   NAVIGATION_GROUPS[0],
   NAVIGATION_GROUPS[1],
   { label: 'Relaciones', paths: ['/revendedores'] },
-  NAVIGATION_GROUPS[2],
+  { ...NAVIGATION_GROUPS[2], paths: NAVIGATION_GROUPS[2].paths.filter(path => path !== '/revendedores') },
   NAVIGATION_GROUPS[3],
   NAVIGATION_GROUPS[4],
 ] as const;

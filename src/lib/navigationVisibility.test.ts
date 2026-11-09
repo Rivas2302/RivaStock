@@ -17,6 +17,7 @@ describe('isNavigationItemVisible', () => {
 
   it('requires the plan to include business modules', () => {
     expect(isNavigationItemVisible({ module: null, businessModule: 'ai' }, ALL_TRUE_PERMISSIONS, true, null)).toBe(false);
+    expect(isNavigationItemVisible({ module: 'ventas', businessModule: 'sales' }, ALL_TRUE_PERMISSIONS, true, null)).toBe(false);
     expect(isNavigationItemVisible(
       { module: null, businessModule: 'ai' },
       ALL_TRUE_PERMISSIONS,

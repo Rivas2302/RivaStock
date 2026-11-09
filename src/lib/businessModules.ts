@@ -90,6 +90,10 @@ export const DEFAULT_BUSINESS_MODULES: BusinessModules = {
   traceability: true,
 };
 
+export const DISABLED_BUSINESS_MODULES: BusinessModules = Object.fromEntries(
+  BUSINESS_MODULE_KEYS.map(key => [key, false]),
+) as BusinessModules;
+
 export function normalizeBusinessModules(value: unknown): BusinessModules {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>

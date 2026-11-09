@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { BUSINESS_MODULE_KEYS } from './businessModules';
 
 const RIVA = '10000000-0000-4000-8000-000000000001';
 const EXTERNAL = '10000000-0000-4000-8000-000000000002';
@@ -19,6 +20,10 @@ const MODULE_MIGRATION = readFileSync(
 );
 const E7_MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261103200000_platform_business_onboarding_and_suspension.sql', import.meta.url),
+  'utf8',
+);
+const MODULE_OVERRIDE_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261109203213_platform_business_module_override_merge.sql', import.meta.url),
   'utf8',
 );
 
@@ -156,6 +161,7 @@ beforeAll(async () => {
   `);
   await db.exec(MODULE_MIGRATION);
   await db.exec(E7_MIGRATION);
+  await db.exec(MODULE_OVERRIDE_MIGRATION);
   await db.exec(`CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();`);
 }, 60_000);
@@ -346,6 +352,32 @@ describe('F2b server-side business module guards', () => {
       "SELECT public.knowledge_owner_for('read')::text AS owner",
     );
     expect(collaboratorKnowledge.rows[0].owner).toBeNull();
+  });
+
+  it('returns template modules merged with the business override through my_business_plan', async () => {
+    const templateModules = Object.fromEntries(BUSINESS_MODULE_KEYS.map(key => [key, true]));
+    const businessModules = Object.fromEntries(BUSINESS_MODULE_KEYS.map(key => [key, key === 'sales' || key === 'stock']));
+    await db.exec(`INSERT INTO public.platform_admins (user_id) VALUES ('${RIVA}');`);
+    await db.query(
+      `UPDATE public.business_plans
+       SET limits = jsonb_set(limits, '{modules}', $1::jsonb)
+       WHERE code = 'base'`,
+      [JSON.stringify(templateModules)],
+    );
+
+    await asUser(RIVA);
+    await db.query(
+      `SELECT public.platform_set_business_plan(
+        $1, 'base', 'active', $2::jsonb, ''
+      )`,
+      [EXTERNAL, JSON.stringify({ modules: businessModules })],
+    );
+
+    await asUser(EXTERNAL);
+    const result = await db.query<{ modules: Record<string, boolean> }>(
+      "SELECT public.my_business_plan()->'limits'->'modules' AS modules",
+    );
+    expect(result.rows[0].modules).toEqual(businessModules);
   });
 });
 

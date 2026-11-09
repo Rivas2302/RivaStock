@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -341,6 +341,109 @@ async function getLiveCounts(connection, psqlBinary) {
   return parseCountRows(result.stdout || '');
 }
 
+function makeExactCountSelect() {
+  return `SELECT COALESCE(json_agg(json_build_object('schema', schemaname, 'table', tablename, 'count', exact_count) ORDER BY tablename), '[]'::json)::text
+` +
+    `FROM (
+` +
+    `  SELECT schemaname, tablename,
+` +
+    `    ((xpath('/table/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I', schemaname, tablename), false, false, '')))[1]::text)::bigint AS exact_count
+` +
+    `  FROM pg_tables WHERE schemaname = 'public'
+` +
+    `) counts;`;
+}
+
+function startVerifiedSnapshot(connection, psqlBinary) {
+  const spec = processSpec(psqlBinary, ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1']);
+  return new Promise((resolve, reject) => {
+    const child = spawn(spec.command, spec.args, {
+      cwd: ROOT,
+      env: makePgEnvironment(connection),
+      windowsHide: true,
+      shell: spec.shell,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdoutBuffer = '';
+    let stderr = '';
+    let snapshot = '';
+    let stage = 'snapshot';
+    let settled = false;
+    let closedCode = null;
+    const timer = setTimeout(() => fail(new Error('snapshot-timeout')), 180_000);
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      reject(new Error(`PostgreSQL snapshot verification failed (${error.message})`));
+    };
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdoutBuffer += chunk;
+      let newline = stdoutBuffer.indexOf('\n');
+      while (newline >= 0) {
+        const line = stdoutBuffer.slice(0, newline).trim();
+        stdoutBuffer = stdoutBuffer.slice(newline + 1);
+        if (stage === 'snapshot') {
+          if (!/^[0-9A-Fa-f]+-[0-9A-Fa-f]+-\d+$/.test(line)) {
+            if (line) fail(new Error('snapshot-id-invalid'));
+            if (settled) return;
+            continue;
+          }
+          snapshot = line;
+          stage = 'counts';
+        } else if (stage === 'counts' && line.startsWith('[')) {
+          try {
+            const counts = parseCountRows(`${line}\n`);
+            stage = 'ready';
+            settled = true;
+            clearTimeout(timer);
+            resolve({
+              snapshot,
+              counts,
+              isOpen: () => closedCode === null,
+              close: () => new Promise((closeResolve, closeReject) => {
+                if (closedCode !== null) {
+                  if (closedCode === 0) closeResolve();
+                  else closeReject(new Error('PostgreSQL snapshot session closed unexpectedly'));
+                  return;
+                }
+                const closeTimer = setTimeout(() => {
+                  child.kill();
+                  closeReject(new Error('PostgreSQL snapshot session did not close'));
+                }, 10_000);
+                child.once('close', (code) => {
+                  clearTimeout(closeTimer);
+                  if (code === 0) closeResolve();
+                  else closeReject(new Error('PostgreSQL snapshot session closed unexpectedly'));
+                });
+                child.stdin.end('COMMIT;\n\\q\n');
+              }),
+            });
+          } catch {
+            fail(new Error('snapshot-counts-invalid'));
+          }
+          if (settled) return;
+        }
+        newline = stdoutBuffer.indexOf('\n');
+      }
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', () => fail(new Error('psql-process-error')));
+    child.on('close', (code) => {
+      closedCode = code;
+      if (!settled) fail(new Error(`psql-exit-${code ?? 'unknown'}`));
+    });
+
+    child.stdin.write(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL ROLE postgres;\nSELECT pg_export_snapshot();\n${makeExactCountSelect()}\n`);
+  });
+}
+
 function parseCopyTable(line) {
   const match = line.match(/^COPY\s+(?:"((?:[^"]|"")+)"|([A-Za-z_][\w$]*))\.(?:"((?:[^"]|"")+)"|([A-Za-z_][\w$]*))\s*\(/i);
   if (!match) return null;
@@ -447,29 +550,39 @@ async function runBackup(argv = process.argv.slice(2)) {
   }
   const schemaPath = join(backupDir, 'schema.sql');
   const dataPath = join(backupDir, 'data.sql');
-  const before = await getLiveCounts(connection, psqlBinary);
-  runCaptured(pgDumpBinary, [
-    '--role=postgres', '--schema-only', '--schema=public', '--no-owner', '--no-privileges',
-    '--file', schemaPath,
-  ], { env: pgEnvironment, label: 'PostgreSQL schema export', connection });
-  runCaptured(pgDumpBinary, [
-    '--role=postgres', '--data-only', '--schema=public', '--no-owner', '--no-privileges',
-    '--file', dataPath,
-  ], { env: pgEnvironment, label: 'PostgreSQL data export', connection });
-  const after = await getLiveCounts(connection, psqlBinary);
+  const snapshotSession = await startVerifiedSnapshot(connection, psqlBinary);
+  let exported;
+  try {
+    runCaptured(pgDumpBinary, [
+      '--role=postgres', `--snapshot=${snapshotSession.snapshot}`, '--schema-only', '--schema=public', '--no-owner', '--no-privileges',
+      '--file', schemaPath,
+    ], { env: pgEnvironment, label: 'PostgreSQL schema export', connection });
+    runCaptured(pgDumpBinary, [
+      '--role=postgres', `--snapshot=${snapshotSession.snapshot}`, '--data-only', '--schema=public', '--no-owner', '--no-privileges',
+      '--file', dataPath,
+    ], { env: pgEnvironment, label: 'PostgreSQL data export', connection });
+    if (!snapshotSession.isOpen()) throw new Error('PostgreSQL snapshot ended before verification');
+
+    const [schemaInfo, dataInfo] = await Promise.all([stat(schemaPath), stat(dataPath)]);
+    if (!schemaInfo.isFile() || schemaInfo.size === 0 || !dataInfo.isFile() || dataInfo.size === 0) {
+      throw new Error('Backup files are missing or empty');
+    }
+
+    exported = await countExportedRows(dataPath);
+    const mismatches = compareCounts(snapshotSession.counts, exported, snapshotSession.counts);
+    if (mismatches.length > 0) {
+      throw new Error(`Backup row-count verification failed for ${mismatches.length} table(s)`);
+    }
+  } finally {
+    await snapshotSession.close();
+  }
 
   const [schemaInfo, dataInfo] = await Promise.all([stat(schemaPath), stat(dataPath)]);
   if (!schemaInfo.isFile() || schemaInfo.size === 0 || !dataInfo.isFile() || dataInfo.size === 0) {
     throw new Error('Backup files are missing or empty');
   }
 
-  const exported = await countExportedRows(dataPath);
-  const mismatches = compareCounts(before, exported, after);
-  if (mismatches.length > 0) {
-    throw new Error(`Backup row-count verification failed for ${mismatches.length} table(s)`);
-  }
-
-  const tableCounts = [...before.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const tableCounts = [...snapshotSession.counts.entries()].sort(([left], [right]) => left.localeCompare(right));
   await writeFile(join(backupDir, 'table-counts.csv'), [
     'schema,table,exact_rows',
     ...tableCounts.map(([relation, count]) => {
@@ -511,7 +624,7 @@ async function runBackup(argv = process.argv.slice(2)) {
   await rm(unverifiedMarker, { force: true });
   console.log(JSON.stringify({
     backup: backupDir,
-    tables: before.size,
+    tables: snapshotSession.counts.size,
     rows: exportedRows,
     schemaBytes: schemaInfo.size,
     dataBytes: dataInfo.size,

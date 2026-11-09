@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import type { BusinessPlan } from '../lib/businessPlan';
 
@@ -19,6 +19,7 @@ export function useBusinessPlan() {
     error: null,
   });
   const [refreshToken, setRefreshToken] = useState(0);
+  const wasInactive = useRef(document.visibilityState === 'hidden');
 
   useEffect(() => {
     if (authLoading) {
@@ -34,7 +35,7 @@ export function useBusinessPlan() {
     const requestKey = `${ownerUid}:${authUser.uid}`;
     setState({ identityKey: requestKey, plan: null, loading: true, error: null });
     void import('../lib/businessPlan')
-      .then(({ getBusinessPlanForOwner }) => getBusinessPlanForOwner(ownerUid))
+      .then(({ getBusinessPlanForOwner }) => getBusinessPlanForOwner(ownerUid, true))
       .then((plan) => {
         if (active) setState({ identityKey: requestKey, plan, loading: false, error: null });
       })
@@ -52,11 +53,32 @@ export function useBusinessPlan() {
     return () => { active = false; };
   }, [authLoading, authUser?.uid, ownerUid, refreshToken]);
 
-  const refresh = useCallback(async () => {
-    const { invalidateBusinessPlan } = await import('../lib/businessPlan');
-    invalidateBusinessPlan(ownerUid ?? undefined);
+  const refresh = useCallback(() => {
     setRefreshToken((token) => token + 1);
-  }, [ownerUid]);
+  }, []);
+
+  useEffect(() => {
+    if (!ownerUid || !authUser?.uid) return;
+    const markInactive = () => { wasInactive.current = true; };
+    const refreshOnReturn = () => {
+      if (!wasInactive.current) return;
+      wasInactive.current = false;
+      refresh();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markInactive();
+      else refreshOnReturn();
+    };
+
+    window.addEventListener('blur', markInactive);
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', markInactive);
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [authUser?.uid, ownerUid, refresh]);
 
   useEffect(() => {
     const plan = state.identityKey === identityKey ? state.plan : null;

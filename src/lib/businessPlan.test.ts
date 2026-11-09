@@ -68,6 +68,19 @@ describe('business plan client', () => {
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
 
+  it('can bypass a cached plan to apply module changes immediately', async () => {
+    await getBusinessPlanForOwner('owner-1');
+    mocks.rpc.mockResolvedValueOnce({
+      data: { ...response, limits: { ...response.limits, modules: { ai: false, knowledge: false, automation: false, sales: true, stock: true, calculator: false } } },
+      error: null,
+    });
+
+    const refreshed = await getBusinessPlanForOwner('owner-1', true);
+
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+    expect(refreshed.limits.modules).toMatchObject({ sales: true, stock: true, calculator: false });
+  });
+
   it('does not reuse a cached plan across businesses', async () => {
     await getBusinessPlanForOwner('owner-1');
     await getBusinessPlanForOwner('owner-2');

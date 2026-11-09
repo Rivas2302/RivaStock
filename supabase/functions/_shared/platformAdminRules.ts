@@ -1,6 +1,16 @@
 export type BusinessStatus = 'trial' | 'active' | 'suspended';
 export type BusinessPlanCode = string;
 
+export const PLATFORM_BUSINESS_MODULE_KEYS = [
+  'sales', 'quotes', 'orders', 'quickPrice', 'stock', 'intake', 'sendPhotos',
+  'customers', 'suppliers', 'resellers', 'supplierOrders', 'cash', 'reports',
+  'calculator', 'ai', 'knowledge', 'automation', 'traceability',
+] as const;
+
+export type PlatformBusinessModuleKey = typeof PLATFORM_BUSINESS_MODULE_KEYS[number];
+type PlatformBusinessModules = Partial<Record<PlatformBusinessModuleKey, boolean>>
+  & Pick<Record<PlatformBusinessModuleKey, boolean>, 'ai' | 'knowledge' | 'automation'>;
+
 export interface BusinessLimitOverrides {
   cloud_knowledge_bytes?: number;
   local_knowledge_bytes?: number;
@@ -8,7 +18,7 @@ export interface BusinessLimitOverrides {
   trace_retention_days?: number;
   collaborators?: number;
   codex_sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
-  modules?: { ai: boolean; knowledge: boolean; automation: boolean };
+  modules?: PlatformBusinessModules;
 }
 
 export function normalizePlatformEmail(value: unknown): string | null {
@@ -67,13 +77,10 @@ export function parseBusinessLimitOverrides(value: unknown): BusinessLimitOverri
     if (key === 'modules') {
       if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return null;
       const modules = entry as Record<string, unknown>;
-      if (Object.keys(modules).some((module) => !['ai', 'knowledge', 'automation'].includes(module))
+      if (Object.keys(modules).some((module) => !(PLATFORM_BUSINESS_MODULE_KEYS as readonly string[]).includes(module)
+        || typeof modules[module] !== 'boolean')
         || !['ai', 'knowledge', 'automation'].every((module) => typeof modules[module] === 'boolean')) return null;
-      parsed.modules = {
-        ai: modules.ai as boolean,
-        knowledge: modules.knowledge as boolean,
-        automation: modules.automation as boolean,
-      };
+      parsed.modules = Object.fromEntries(Object.entries(modules)) as PlatformBusinessModules;
       continue;
     }
     return null;

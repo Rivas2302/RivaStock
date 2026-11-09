@@ -11,6 +11,7 @@ import type { PermissionMatrix } from '../types';
 import { getRivaTechWhatsAppUrl } from '../lib/platformSupport';
 import { useUnreadCatalogOrders } from '../hooks/useUnreadCatalogOrders';
 import { Link } from 'react-router-dom';
+import { DISABLED_BUSINESS_MODULES } from '../lib/businessModules';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -23,7 +24,9 @@ export default function Layout() {
   const lastRefetchAtRef = useRef(0);
   const { unreadCount, notice, clearNotice } = useUnreadCatalogOrders(user?.uid);
 
-  const includedModules = !planLoading && !planError ? plan?.limits.modules : null;
+  const includedModules = !planLoading && !planError && plan
+    ? plan.limits.modules
+    : DISABLED_BUSINESS_MODULES;
   const displayName = isOwner
     ? (user?.displayName || authUser?.email || '')
     : (authUser?.email || '');
@@ -80,7 +83,7 @@ export default function Layout() {
     <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       <Suspense fallback={<div className="hidden w-64 shrink-0 lg:block" />}><AppNavigation
         permissions={permissions as PermissionMatrix}
-        businessModules={includedModules ?? {}}
+        businessModules={includedModules}
         isOwner={isOwner}
         canWrite={businessCanWrite}
         businessName={user?.businessName ?? 'RivaStock'}
