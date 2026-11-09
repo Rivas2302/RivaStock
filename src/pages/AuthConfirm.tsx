@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
+import AuthPageShell from '../components/auth/AuthPageShell';
 
 type OtpType = 'invite' | 'recovery' | 'signup' | 'email' | 'magiclink' | 'email_change';
 
@@ -44,34 +45,7 @@ export default function AuthConfirm() {
     });
   }, [searchParams, navigate]);
 
-  return (
-    <div className="auth-page">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="auth-card text-center"
-      >
-        {error ? (
-          <>
-            <div className="w-16 h-16 bg-rose-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <AlertCircle className="text-rose-600" size={32} />
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Link inválido</h1>
-            <p className="text-slate-500 font-medium mb-6">{error}</p>
-            <button
-              onClick={() => navigate('/login')}
-              className="auth-primary w-full py-3 font-semibold transition-colors"
-            >
-              Volver al login
-            </button>
-          </>
-        ) : (
-          <>
-            <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={36} />
-            <p className="text-slate-500 font-medium">Validando link...</p>
-          </>
-        )}
-      </motion.div>
-    </div>
-  );
+  return <AuthPageShell><motion.section initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} className="text-center" aria-live="polite">
+    {error ? <><AlertCircle className="mx-auto mb-4 text-[var(--danger-ink)]" size={32}/><h2 className="mb-2">Link inválido</h2><p className="auth-v2-subtitle mb-6">{error}</p><button type="button" onClick={()=>navigate('/login')} className="auth-v2-submit w-full">Volver al ingreso</button></> : <><Loader2 className="mx-auto mb-4 animate-spin text-[var(--auth-accent)]" size={32}/><p className="auth-v2-subtitle">Validando el link…</p></>}
+  </motion.section></AuthPageShell>;
 }

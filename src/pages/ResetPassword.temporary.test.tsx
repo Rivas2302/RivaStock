@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   onAuthStateChange: vi.fn(),
   updateUser: vi.fn(),
   signOut: vi.fn(),
+  businessName: 'Bazar de prueba',
 }));
 
 vi.mock('../lib/supabase', () => ({
@@ -18,6 +19,7 @@ vi.mock('../lib/supabase', () => ({
     signOut: mocks.signOut,
   } },
 }));
+vi.mock('../AuthContext', () => ({ useAuth: () => ({ user: { businessName: mocks.businessName }, authUser: { email: 'test@example.com' } }) }));
 
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ResetPassword from './ResetPassword';
@@ -74,5 +76,20 @@ describe('temporary password reset flow', () => {
     expect(mocks.updateUser).toHaveBeenCalledWith({ password: 'New-Password-123', data: { must_change_password: false } });
     expect(mocks.signOut).not.toHaveBeenCalled();
     expect(host.textContent).toContain('La contraseña temporal quedó reemplazada.');
+  });
+
+  it('shows the invitation first-entry form with the real business name and fixed email', async () => {
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={['/reset-password?type=invite']}>
+        <Routes><Route path="/reset-password" element={<ResetPassword/>}/></Routes>
+      </MemoryRouter>);
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain('Bienvenida, Bazar de prueba');
+    expect(host.querySelector<HTMLInputElement>('#invite-email')?.value).toBe('test@example.com');
+    expect(host.querySelector<HTMLInputElement>('#invite-email')?.readOnly).toBe(true);
+    expect(host.textContent).toContain('8 caracteres o más');
+    expect(host.textContent).toContain('Al menos un número');
+    expect(host.querySelector('#confirm-password')).not.toBeNull();
   });
 });

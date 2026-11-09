@@ -1,98 +1,41 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../AuthContext';
-import { Mail, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, Loader2, Mail } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '../AuthContext';
+import AuthPageShell from '../components/auth/AuthPageShell';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  
   const { sendResetEmail } = useAuth();
-  const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
     setLoading(true);
-    
     try {
-      await sendResetEmail(email);
+      await sendResetEmail(email.trim());
       setSuccess(true);
-    } catch (err: any) {
-      // Generic error message for security
-      setError('Si el email existe, recibirás un link para recuperar tu contraseña.');
+    } catch {
+      setError('No pudimos enviar el link. Revisá el email e intentá de nuevo.');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="auth-page">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="auth-card"
-      >
-        <button 
-          onClick={() => navigate('/login')}
-          className="mb-8 text-slate-400 hover:text-slate-600 flex items-center gap-2 font-medium transition-colors"
-        >
-          <ArrowLeft size={18} /> Volver al login
-        </button>
-
-        <div className="text-center space-y-2 mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-200">
-            <Mail className="text-white" size={32} />
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Recuperar Contraseña</h1>
-          <p className="text-slate-500 font-medium">Ingresa tu email para recibir instrucciones</p>
-        </div>
-
-        {error && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="auth-alert mb-6 p-4 flex items-center gap-3 text-sm font-semibold"
-          >
-            <AlertCircle size={18} className="shrink-0" />
-            {error}
-          </motion.div>
-        )}
-
-        {success ? (
-          <div className="text-center p-6 bg-emerald-50 border border-emerald-100 rounded-3xl text-emerald-700 font-bold">
-            Si el email existe, recibirás un link para recuperar tu contraseña.
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-sm font-black text-slate-700 ml-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
-                  className="auth-input pl-12 pr-4 py-3.5 font-medium"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              disabled={loading}
-              className="auth-primary w-full py-3.5 font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Enviar link de recuperación'}
-            </button>
-          </form>
-        )}
-      </motion.div>
-    </div>
-  );
+  return <AuthPageShell>
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} aria-labelledby="forgot-heading">
+      <Link to="/login" className="auth-v2-link mb-6 inline-flex items-center gap-2"><ArrowLeft size={17}/>Volver al login</Link>
+      <h2 id="forgot-heading">Recuperá tu contraseña</h2>
+      <p className="auth-v2-subtitle">Te enviamos un link al email de tu cuenta.</p>
+      {error && <p role="alert" className="auth-v2-alert mt-6 flex items-center gap-2"><AlertCircle size={18}/>{error}</p>}
+      {success ? <p role="status" className="auth-v2-alert mt-6">Si el email existe, vas a recibir un link para recuperar tu contraseña.</p> : <form onSubmit={handleSubmit} className="auth-v2-form">
+        <div className="auth-v2-field"><label htmlFor="recovery-email">Email</label><div className="relative"><Mail size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--auth-muted)]"/><input id="recovery-email" className="auth-v2-input pl-11" type="email" inputMode="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)} placeholder="tu@email.com"/></div></div>
+        <button type="submit" disabled={loading} className="auth-v2-submit w-full">{loading?<><Loader2 size={18} className="animate-spin"/>Enviando…</>:'Enviar link de recuperación'}</button>
+      </form>}
+    </motion.section>
+  </AuthPageShell>;
 }
