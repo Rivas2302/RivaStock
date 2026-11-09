@@ -1918,3 +1918,11 @@ Sin toque en src/, supabase/ ni extensions/.
 - Publicación: `d9b1031` está en `main`; Vercel informó `success`. En producción, el perfil persistente llegó desde Stock por «Abrir menú» → Revendedores y mostró las cinco pestañas. A 360 px, ancho de documento y body = 360 px, sin errores de consola ni cambios de datos.
 - Capturas de producción: `%TEMP%\rivastock-i29-production\mobile-more-revendedores.png` y `revendedores-360.png`.
 - I29 queda cerrada.
+
+### 2026-11-09 — actualizador automático de la extensión (listo para publicar)
+
+- La extensión sube a 0.6.4 y conserva su identidad fijada por el manifest. El popup informa «Versión 0.6.4 · actualizada automáticamente». El worker compara el manifest en disco cada cinco minutos y se recarga solo cuando termina una captura/importación, publicación, ensayo o revisión activa.
+- Se agregó el paquete de instalación de Windows: tarea del usuario al iniciar sesión y cada hora, sin permisos de administrador. El actualizador acepta solo HTTPS de `rivastock.vercel.app`, rechaza redirecciones, valida versión y SHA-256, extrae una lista cerrada en staging dentro de `%LOCALAPPDATA%\RivaStock`, reemplaza archivos individualmente de forma atómica y publica `manifest.json` al final; si falla, restaura la copia previa. Registra solo eventos breves en `updater.log` y no ejecuta archivos descargados.
+- El build genera `extension-version.json`, el ZIP de la extensión y el ZIP con instalador/desinstalador. Verifiqué que el SHA-256 publicado coincide con el ZIP y que el manifiesto y los paquetes están presentes en `dist/downloads`.
+- Verificación local: lint aprobado; suite completa **1.284/1.284** con variables ficticias solo en el proceso; tests focales de empaquetado/recarga **8/8**; build aprobado; simulación PowerShell de actualización **0.6.4 → 0.6.5** aprobada, conservando el mismo ID; XML de tarea validado sin instalarla. No se instaló la tarea ni se tocó Chrome, Supabase o datos reales.
+- Pasos únicos para instalar desde la carpeta fija y retirar la copia de Descargas: `OWNER_ACTIONS.md`. La publicación en Current se verificará después del push.

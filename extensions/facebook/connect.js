@@ -4,7 +4,7 @@ import { getSupplierSiteDomain } from './supplier-site-domain.js';
 
 
 const form=document.querySelector('#connect');
-document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version}`;
+document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version} · actualizada automáticamente`;
 const supplierStart=document.querySelector('#supplier-start');
 const supplierStatus=document.querySelector('#supplier-status');
 const supplierFullCatalog=document.querySelector('#supplier-full-catalog');

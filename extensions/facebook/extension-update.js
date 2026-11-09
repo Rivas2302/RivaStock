@@ -9,13 +9,30 @@ export function isNewerExtensionVersion(requiredVersion, installedVersion) {
   return false;
 }
 
+export function hasExtensionWorkInProgress(state = {}, supplierCapture = null, runtimeBusy = false) {
+  return runtimeBusy === true
+    || Boolean(state.activeJob || state.activeRehearsal || state.historicalReview
+      || state.pendingClaim || state.pendingRehearsalClaim
+      || Object.keys(state.ownContentTrackers ?? {}).length > 0
+      || supplierCapture?.status === 'reading');
+}
+
+export function shouldReloadForDiskVersion({ diskVersion, installedVersion, localWorkInProgress }) {
+  return localWorkInProgress === false && isNewerExtensionVersion(diskVersion, installedVersion);
+}
+
 export function shouldReloadForServerTarget({
   requiredVersion,
+  diskVersion,
   installedVersion,
   reloadSafe,
   localWorkInProgress,
 }) {
   return reloadSafe === true
     && localWorkInProgress === false
-    && isNewerExtensionVersion(requiredVersion, installedVersion);
+    && isNewerExtensionVersion(requiredVersion, installedVersion)
+    && isNewerExtensionVersion(diskVersion, installedVersion)
+    && typeof requiredVersion === 'string'
+    && /^\d+\.\d+\.\d+$/.test(requiredVersion)
+    && !isNewerExtensionVersion(requiredVersion, diskVersion);
 }

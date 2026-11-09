@@ -8,6 +8,7 @@
     "prebuild": "node scripts/check-no-secrets.mjs && node scripts/copy-tesseract-assets.mjs && node scripts/package-facebook-extension.mjs && node scripts/package-ai-bridge.mjs",
     "package:ai-bridge": "node scripts/package-ai-bridge.mjs",
     "update:facebook-extension": "node scripts/update-installed-facebook-extension.mjs",
+    "test:extension-updater": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/test-rivastock-extension-updater.ps1",
     "e2e:i37:extension": "node scripts/i37-extension-fixture-e2e.mjs",
     "test:e2e:i43-ocr": "playwright test --config=playwright.i43-real-ocr.config.ts",
     "dump:automation-traces": "node scripts/automation-trace-dump.mjs",

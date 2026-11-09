@@ -23,6 +23,8 @@ public/downloads/rivastock-ai-bridge-*.tgz
 public/tesseract/
 
 public/downloads/rivastock-facebook-version.json
+public/downloads/extension-version.json
+public/downloads/rivastock-extension-updater.zip
 
 # Impeccable local cache
 .impeccable/

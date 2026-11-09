@@ -8,7 +8,7 @@ import { finishTrace, flushTraceQueue, startTrace, step as recordTraceStep, step
 import { collectPostSubmitObservations, POST_SUBMIT_SAMPLE_OFFSETS } from './post-submit.js';
 import { isResultListUrl, isSupervisedResultAssessment } from './result-verification.js';
 import { queueAlarmPeriodMinutes, shouldSkipPausedQueuePoll } from './polling-schedule.js';
-import { shouldReloadForServerTarget } from './extension-update.js';
+import { hasExtensionWorkInProgress, shouldReloadForDiskVersion, shouldReloadForServerTarget } from './extension-update.js';
 const supplierCapture=createSupplierCaptureController();
 supplierCapture.registerInternalMessages();
 registerPairing({wakeGroups:connection=>syncGroups(connection,true),wakePublications:signal=>{void poll(signal,true);},reviewUnknown:reviewHistoricalUnknown,getCapture:supplierCapture.readCapture,getCaptureImage:supplierCapture.readCaptureImage,acknowledgeCapture:supplierCapture.acknowledgeCapture});
@@ -21,6 +21,7 @@ let reviewingHistorical = false;
 
 const capabilities=['attempts','causal-results','recovery','result-candidates','evidence-receipts','causal-results-v2','own-content-tracking','self-reload','supplier-product-capture'];
 const POST_SUBMIT_QUEUE_KEY='pendingPostSubmitObservations';
+const DISK_VERSION_ALARM='rivastock-extension-disk-version';
 let flushingPostSubmitObservations=false;
 function extensionVersion(){try{return chrome.runtime.getManifest().version;}catch{return '0.6.0';}}
 // Contract rejections cannot be resolved by sending the same payload again.
@@ -108,9 +109,37 @@ export async function ensureQueueAlarm() {
   const alarm=await chrome.alarms.get('rivastock-queue');
   if(alarm?.periodInMinutes!==periodInMinutes)await chrome.alarms.create('rivastock-queue',{periodInMinutes});
 }
+async function ensureDiskVersionAlarm() {
+  const alarm=await chrome.alarms.get(DISK_VERSION_ALARM);
+  if(alarm?.periodInMinutes!==5)await chrome.alarms.create(DISK_VERSION_ALARM,{periodInMinutes:5});
+}
+async function readDiskExtensionVersion() {
+  try {
+    const response=await fetch(chrome.runtime.getURL('manifest.json'),{cache:'no-store',credentials:'omit'});
+    if(!response.ok)return null;
+    const manifest=await response.json();
+    return manifest?.name==='RivaStock'&&/^\d+\.\d+\.\d+$/.test(manifest.version??'')?manifest.version:null;
+  } catch { return null; }
+}
+async function localExtensionWorkInProgress(state={}) {
+  const capture=await supplierCapture.readLive().catch(()=>null);
+  return hasExtensionWorkInProgress(state,capture,polling||readingGroups||reviewingHistorical||flushingPostSubmitObservations);
+}
+async function reloadForDiskVersionIfSafe() {
+  const [diskVersion,state]=await Promise.all([
+    readDiskExtensionVersion(),
+    chrome.storage.local.get(['activeJob','activeRehearsal','historicalReview','pendingClaim','pendingRehearsalClaim','ownContentTrackers']),
+  ]);
+  const localWork=await localExtensionWorkInProgress(state);
+  if(shouldReloadForDiskVersion({diskVersion,installedVersion:extensionVersion(),localWorkInProgress:localWork})) {
+    await chrome.storage.local.set({status:`Versión ${diskVersion} lista; se aplicará automáticamente al terminar el trabajo.`});
+    chrome.runtime.reload();
+  }
+}
 // MV3 alarms may disappear across browser sessions or extension updates.
 // Recreate them whenever the worker is loaded, respecting queue pause and active work.
 void ensureQueueAlarm().catch(()=>{});
+void ensureDiskVersionAlarm().catch(()=>{});
 chrome.storage.onChanged.addListener((changes,area)=>{
   if(area==='local'&&['connection','paused','activeJob','activeRehearsal','pendingClaim','pendingRehearsalClaim','ownContentTrackers'].some(key=>key in changes))
     void ensureQueueAlarm().catch(()=>{});
@@ -510,7 +539,9 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     const saved=await chrome.storage.local.get(['connection','paused','activeJob','activeRehearsal','lastIssue','status','queueCommandAt','pendingClaim','pendingRehearsalClaim','ownContentTrackers','workerProtocol','serverFeatures']);
     let serverFeatures=saved.serverFeatures??[];
     const {connection,activeJob}=saved;if(!connection)return;
-    const hasInProgressWork=Boolean(activeJob||saved.activeRehearsal||saved.pendingClaim||saved.pendingRehearsalClaim||Object.keys(saved.ownContentTrackers??{}).length>0);
+    const [diskVersion,capture]=await Promise.all([readDiskExtensionVersion(),supplierCapture.readLive().catch(()=>null)]);
+    const hasInProgressWork=hasExtensionWorkInProgress(saved,capture,readingGroups||reviewingHistorical||flushingPostSubmitObservations)
+      ||Object.keys(saved.ownContentTrackers??{}).length>0;
     let protocol=saved.workerProtocol??1;let heartbeat;
     // Upgrade only on an explicit V2 handshake. A missing endpoint is the only safe fallback.
     if(chrome.runtime.getManifest){
@@ -521,6 +552,7 @@ export async function poll(signal={source:'alarm',received:performance.now(),rec
     if(heartbeat?.required_protocol>=2&&protocol<2)throw new Error('PROTOCOL_UNSUPPORTED');
     if(shouldReloadForServerTarget({
       requiredVersion:heartbeat?.required_extension_version,
+      diskVersion,
       installedVersion:extensionVersion(),
       reloadSafe:heartbeat?.reload_safe,
       localWorkInProgress:hasInProgressWork,
@@ -820,9 +852,10 @@ export async function disconnectLocal(archiveUnresolved=false){
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === 'rivastock-queue') void poll(undefined,true);
   if (alarm.name === 'rivastock-trace-upload') void flushTraceQueue();
+  if (alarm.name === DISK_VERSION_ALARM) void reloadForDiskVersionIfSafe().catch(()=>{});
 });
-chrome.runtime.onInstalled.addListener(() => { void ensureQueueAlarm().then(()=>{void flushTraceQueue();return poll();}).catch(()=>{}); });
-chrome.runtime.onStartup.addListener(() => { void ensureQueueAlarm().then(()=>{void flushTraceQueue();return poll({source:'startup',received:performance.now(),receivedAt:new Date().toISOString()},true);}).catch(()=>{}); });
+chrome.runtime.onInstalled.addListener(() => { void Promise.all([ensureQueueAlarm(),ensureDiskVersionAlarm()]).then(()=>{void flushTraceQueue();void poll();void reloadForDiskVersionIfSafe();}).catch(()=>{}); });
+chrome.runtime.onStartup.addListener(() => { void Promise.all([ensureQueueAlarm(),ensureDiskVersionAlarm()]).then(()=>{void flushTraceQueue();void poll({source:'startup',received:performance.now(),receivedAt:new Date().toISOString()},true);void reloadForDiskVersionIfSafe();}).catch(()=>{}); });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(message.type==='disconnect-local'&&sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('connect.html')){
     void disconnectLocal(message.archive===true).then(reply).catch(error=>reply({error:error.message}));return true;
