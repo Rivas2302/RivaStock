@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Building2, Loader2, Mail, RefreshCw, Save } from 'lucide-react';
 import { platformAdminRequest, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
 import { getBusinessPlanDisplayName } from '../lib/businessPlan';
+import { BUSINESS_MODULE_KEYS, normalizeBusinessModules } from '../lib/businessModules';
+import BusinessModuleEditor from '../components/platform/BusinessModuleEditor';
 import BusinessAccountActions from '../components/platform/BusinessAccountActions';
 import PlanTemplateManager from '../components/platform/PlanTemplateManager';
 import BusinessSuspensionActions from '../components/platform/BusinessSuspensionActions';
@@ -278,13 +280,12 @@ function BusinessCard({
   const planLimits = selectedPlan?.limits ?? business.plan_limits;
   const knowledgeLimit = Number(planLimits.cloud_knowledge_bytes ?? 0);
   const knowledgeUsed = Number(business.storage_bytes?.knowledge ?? 0);
-  const planModules = planLimits.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined
-    ?? { ai: false, knowledge: false, automation: false };
-  const manualModules = edit.limit_overrides.modules as { ai?: boolean; knowledge?: boolean; automation?: boolean } | undefined;
+  const planModules = normalizeBusinessModules(planLimits.modules);
   const hasManualModulesOverride = owns(edit.limit_overrides, 'modules');
+  const manualModules = hasManualModulesOverride ? normalizeBusinessModules(edit.limit_overrides.modules) : null;
   const modules = manualModules ?? planModules;
-  const isPlanCustomized = (hasManualModulesOverride && (['ai', 'knowledge', 'automation'] as const)
-    .some((key) => Boolean(manualModules?.[key]) !== Boolean(planModules[key])))
+  const isPlanCustomized = (hasManualModulesOverride && BUSINESS_MODULE_KEYS
+    .some((key) => manualModules?.[key] !== planModules[key]))
     || (owns(edit.limit_overrides, 'collaborators')
       && Number(edit.limit_overrides.collaborators) !== Number(planLimits.collaborators ?? 0))
     || (owns(edit.limit_overrides, 'trace_retention_days')
@@ -350,12 +351,11 @@ function BusinessCard({
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Retención de trazas (días)<input type="number" min={0} value={Number(edit.limit_overrides.trace_retention_days ?? planLimits.trace_retention_days ?? 0)} onChange={(event) => onEdit(changedOverride(edit, 'trace_retention_days', Number(event.target.value)))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       </div>
 
-      <fieldset className="mt-3 flex flex-wrap gap-4 text-sm">
-        <legend className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Módulos</legend>
-        <p className="w-full text-xs text-slate-500 dark:text-slate-400">{isPlanCustomized ? 'Personalizado' : `Según la plantilla ${selectedPlan?.name ?? planLabel(edit.plan_code)}.`}</p>
-        {(['ai', 'knowledge', 'automation'] as const).map((key) => <label key={key} className="inline-flex items-center gap-2"><input type="checkbox" checked={Boolean(modules[key])} onChange={(event) => onEdit(changedOverride(edit, 'modules', { ai: Boolean(modules.ai), knowledge: Boolean(modules.knowledge), automation: Boolean(modules.automation), [key]: event.target.checked }))} />{key === 'ai' ? 'IA' : key === 'knowledge' ? 'Conocimientos' : 'Automatizaciones'}</label>)}
+      <div className="mt-3 space-y-2">
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{isPlanCustomized ? 'Personalizado' : `Según la plantilla ${selectedPlan?.name ?? planLabel(edit.plan_code)}.`}</p>
+        <BusinessModuleEditor modules={modules} onChange={nextModules => onEdit(changedOverride(edit, 'modules', nextModules))}/>
         {isPlanCustomized && <button type="button" onClick={resetModuleOverride} className="text-xs font-semibold text-indigo-700 underline dark:text-indigo-300">Restablecer según la plantilla</button>}
-      </fieldset>
+      </div>
 
       <label className="mt-3 block text-xs font-semibold text-slate-600 dark:text-slate-300">Notas internas<textarea rows={2} maxLength={1000} value={edit.notes} onChange={(event) => onEdit({ ...edit, notes: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       <div className="mt-4 flex flex-wrap justify-end gap-2">

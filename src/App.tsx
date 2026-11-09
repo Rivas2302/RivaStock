@@ -105,26 +105,26 @@ function AppRoutes() {
           <Route index element={withSuspense(<Dashboard />)} />
           <Route path="bienvenida" element={withSuspense(<Welcome />)} />
           <Route path="plataforma" element={<PlatformAdminRoute>{withSuspense(<PlatformAdmin />)}</PlatformAdminRoute>} />
-          <Route path="consulta-rapida" element={withSuspense(<RequirePermission module="stock" action="read"><QuickPrice /></RequirePermission>)} />
-          <Route path="fotos" element={withSuspense(<ProductPhotos />)} />
-          <Route path="stock" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
-          <Route path="revendedores" element={withSuspense(<RequirePermission module="stock"><Stock /></RequirePermission>)} />
-          <Route path="ventas" element={withSuspense(<RequirePermission module="ventas"><Sales /></RequirePermission>)} />
-          <Route path="reportes" element={withSuspense(<RequirePermission module="ventas" action="read"><Reports /></RequirePermission>)} />
-          <Route path="pos" element={withSuspense(<RequirePermission module="ventas" action="write"><POS /></RequirePermission>)} />
-          <Route path="presupuestos" element={withSuspense(<RequirePermission module="presupuestos"><Quotes /></RequirePermission>)} />
-          <Route path="clientes" element={withSuspense(<RequirePermission module="clientes"><Customers /></RequirePermission>)} />
-          <Route path="proveedores" element={withSuspense(<RequirePermission module="proveedores"><Suppliers /></RequirePermission>)} />
-          <Route path="compras" element={withSuspense(<RequirePermission module="proveedores"><SupplierOrders /></RequirePermission>)} />
-          <Route path="ingresos" element={withSuspense(<RequirePermission module="ingresos"><Intake /></RequirePermission>)} />
-          <Route path="caja" element={withSuspense(<RequirePermission module="caja"><CashFlow /></RequirePermission>)} />
-          <Route path="pedidos" element={withSuspense(<RequirePermission module="pedidos"><Orders /></RequirePermission>)} />
-          <Route path="calculadora" element={withSuspense(<Calculator />)} />
+          <Route path="consulta-rapida" element={withSuspense(<RequireBusinessModule module="quickPrice"><RequirePermission module="stock" action="read"><QuickPrice /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="fotos" element={withSuspense(<RequireBusinessModule module="sendPhotos"><ProductPhotos /></RequireBusinessModule>)} />
+          <Route path="stock" element={withSuspense(<RequireBusinessModule module="stock"><RequirePermission module="stock"><Stock /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="revendedores" element={withSuspense(<RequireBusinessModule module="resellers"><RequirePermission module="stock"><Stock /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="ventas" element={withSuspense(<RequireBusinessModule module="sales"><RequirePermission module="ventas"><Sales /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="reportes" element={withSuspense(<RequireBusinessModule module="reports"><RequirePermission module="ventas" action="read"><Reports /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="pos" element={withSuspense(<RequireBusinessModule module="sales"><RequirePermission module="ventas" action="write"><POS /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="presupuestos" element={withSuspense(<RequireBusinessModule module="quotes"><RequirePermission module="presupuestos"><Quotes /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="clientes" element={withSuspense(<RequireBusinessModule module="customers"><RequirePermission module="clientes"><Customers /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="proveedores" element={withSuspense(<RequireBusinessModule module="suppliers"><RequirePermission module="proveedores"><Suppliers /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="compras" element={withSuspense(<RequireBusinessModule module="supplierOrders"><RequirePermission module="proveedores"><SupplierOrders /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="ingresos" element={withSuspense(<RequireBusinessModule module="intake"><RequirePermission module="ingresos"><Intake /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="caja" element={withSuspense(<RequireBusinessModule module="cash"><RequirePermission module="caja"><CashFlow /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="pedidos" element={withSuspense(<RequireBusinessModule module="orders"><RequirePermission module="pedidos"><Orders /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="calculadora" element={withSuspense(<RequireBusinessModule module="calculator"><Calculator /></RequireBusinessModule>)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
           <Route path="automatizaciones" element={withSuspense(<RequireBusinessModule module="automation"><RequirePermission module="stock"><Automations /></RequirePermission></RequireBusinessModule>)} />
           <Route path="ia/conocimientos/*" element={withSuspense(<RequireBusinessModule module="knowledge"><OwnerRoute><Knowledge /></OwnerRoute></RequireBusinessModule>)} />
           <Route path="ia" element={withSuspense(<RequireBusinessModule module="ai"><OwnerRoute><AIHub /></OwnerRoute></RequireBusinessModule>)} />
-          <Route path="trazabilidad" element={withSuspense(<RequirePermission module="config"><AuditTrail /></RequirePermission>)} />
+          <Route path="trazabilidad" element={withSuspense(<RequireBusinessModule module="traceability"><RequirePermission module="config"><AuditTrail /></RequirePermission></RequireBusinessModule>)} />
         </Route>
 
       <Route path="*" element={<Navigate to="/" />} />

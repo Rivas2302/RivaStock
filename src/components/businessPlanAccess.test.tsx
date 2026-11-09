@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
     updateUser: vi.fn(),
     refetchToken: 0,
   },
-  businessPlan: { plan: null as null | { limits: { modules: { ai: boolean; knowledge: boolean; automation: boolean } } }, loading: false, error: null as Error | null },
+  businessPlan: { plan: null as null | { limits: { modules: Record<string, boolean> } }, loading: false, error: null as Error | null },
   showToast: vi.fn(),
   useTheme: vi.fn(() => ({ theme: 'light', toggleTheme: vi.fn() })),
 }));
@@ -91,14 +91,14 @@ describe('business plan UI access', () => {
         <Routes>
           <Route path="/" element={<CurrentPath/>}/>
           <Route path="/ia/conocimientos/:id" element={
-            <RequireBusinessModule module="knowledge"><span>Knowledge page</span></RequireBusinessModule>
+            <><CurrentPath/><RequireBusinessModule module="knowledge"><span>Knowledge page</span></RequireBusinessModule></>
           }/>
         </Routes>
       </MemoryRouter>,
     );
-    expect(host.textContent).toContain('/');
+    expect(host.querySelector('[data-testid="current-path"]')?.textContent).toBe('/ia/conocimientos/manual');
     expect(host.textContent).not.toContain('Knowledge page');
-    expect(mocks.showToast).toHaveBeenCalledWith('Este módulo no está incluido en tu plan.', 'error');
+    expect(host.textContent).toContain('Este módulo no está incluido en tu plan');
   });
 
   it('shows IA and Automatizaciones for the internal plan', async () => {
@@ -133,38 +133,55 @@ describe('business plan UI access', () => {
     ['/ia', 'ai'],
     ['/ia/conocimientos/doc-1', 'knowledge'],
     ['/automatizaciones', 'automation'],
-  ] as const)('redirects a base-plan user from %s to home with notice', async (path, module) => {
+  ] as const)('shows the unavailable module message on a disabled direct route: %s', async (path, module) => {
     const route = path === '/ia/conocimientos/doc-1' ? '/ia/conocimientos/:id' : path;
     await render(
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/" element={<CurrentPath/>}/>
           <Route path={route} element={
-            <RequireBusinessModule module={module}><span>Restricted page</span></RequireBusinessModule>
+            <><CurrentPath/><RequireBusinessModule module={module}><span>Restricted page</span></RequireBusinessModule></>
           }/>
         </Routes>
       </MemoryRouter>,
     );
-    expect(host.querySelector('[data-testid="current-path"]')?.textContent).toBe('/');
+    expect(host.querySelector('[data-testid="current-path"]')?.textContent).toBe(path);
     expect(host.textContent).not.toContain('Restricted page');
-    expect(mocks.showToast).toHaveBeenCalledWith('Este módulo no está incluido en tu plan.', 'error');
+    expect(host.textContent).toContain('Este módulo no está incluido en tu plan');
+    expect(mocks.showToast).not.toHaveBeenCalled();
   });
 
-  it('fails closed and redirects when the plan lookup fails', async () => {
+  it('fails closed with an explanatory message when the plan lookup fails', async () => {
     mocks.businessPlan = { plan: null, loading: false, error: new Error('unavailable') };
     await render(
       <MemoryRouter initialEntries={['/automatizaciones']}>
         <Routes>
           <Route path="/" element={<CurrentPath/>}/>
           <Route path="/automatizaciones" element={
-            <RequireBusinessModule module="automation"><span>Restricted page</span></RequireBusinessModule>
+            <><CurrentPath/><RequireBusinessModule module="automation"><span>Restricted page</span></RequireBusinessModule></>
           }/>
         </Routes>
       </MemoryRouter>,
     );
-    expect(host.querySelector('[data-testid="current-path"]')?.textContent).toBe('/');
+    expect(host.querySelector('[data-testid="current-path"]')?.textContent).toBe('/automatizaciones');
     expect(host.textContent).not.toContain('Restricted page');
-    expect(mocks.showToast).toHaveBeenCalledWith('No se pudo verificar tu plan; el módulo quedó oculto.', 'error');
+    expect(host.textContent).toContain('No pudimos verificar tu plan');
+  });
+
+  it('shows only Sales and Stock for a business assigned those modules', async () => {
+    mocks.businessPlan = { plan: { limits: { modules: {
+      ai: false, knowledge: false, automation: false,
+      sales: true, stock: true, orders: false, quotes: false, quickPrice: false,
+      sendPhotos: false, intake: false, customers: false, suppliers: false, resellers: false,
+      supplierOrders: false, cash: false, reports: false, calculator: false, traceability: false,
+    } } }, loading: false, error: null };
+    await renderLayout();
+    expect(host.querySelector('a[href="/"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/ventas"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/stock"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/revendedores"]')).toBeNull();
+    expect(host.querySelector('a[href="/clientes"]')).toBeNull();
+    expect(host.textContent).toContain('Cerrar sesión');
   });
 
   it('hides the Facebook configuration tab for base and redirects direct tab access', async () => {

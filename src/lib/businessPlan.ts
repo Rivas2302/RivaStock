@@ -1,12 +1,7 @@
 import { supabase } from './supabase';
+import { BUSINESS_MODULE_KEYS, normalizeBusinessModules, type BusinessModules, type BusinessModuleKey } from './businessModules';
 
-export type BusinessModuleKey = 'ai' | 'knowledge' | 'automation';
-
-export interface BusinessModules {
-  ai: boolean;
-  knowledge: boolean;
-  automation: boolean;
-}
+export type { BusinessModuleKey, BusinessModules } from './businessModules';
 
 export interface BusinessPlan {
   planCode: string;
@@ -50,8 +45,7 @@ function parseBusinessPlan(value: unknown): BusinessPlan {
     throw new Error('La respuesta del plan del negocio no es válida.');
   }
 
-  if (typeof modules.ai !== 'boolean' || typeof modules.knowledge !== 'boolean'
-    || typeof modules.automation !== 'boolean') {
+  if (BUSINESS_MODULE_KEYS.some(key => modules[key] !== undefined && typeof modules[key] !== 'boolean')) {
     throw new Error('La configuración de módulos del plan no es válida.');
   }
 
@@ -62,11 +56,7 @@ function parseBusinessPlan(value: unknown): BusinessPlan {
     suspensionScheduledFor: typeof suspension_scheduled_for === 'string' ? suspension_scheduled_for : null,
     limits: {
       ...limits,
-      modules: {
-        ai: modules.ai,
-        knowledge: modules.knowledge,
-        automation: modules.automation,
-      },
+      modules: normalizeBusinessModules(modules) as BusinessModules,
     },
   };
 }

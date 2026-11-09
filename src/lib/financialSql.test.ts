@@ -34,7 +34,8 @@ beforeAll(async () => {
   for (const file of readdirSync(migrations).sort()) {
     // Knowledge, AI memory, and suspension guards have dedicated PGlite fixtures.
     if (file.includes('_knowledge_') || file.includes('_ai_memory_')
-      || file === '20261103225950_platform_suspension_write_guards.sql') continue;
+      || file === '20261103225950_platform_suspension_write_guards.sql'
+      || file === '20261109024437_platform_scheduled_suspensions.sql') continue;
     // Mobile stock adjustment RPC adds suspension triggers and has a dedicated PGlite smoke fixture.
     if (file === '20261104124859_mobile_stock_adjustments.sql') continue;
     // This migration requires hosted pg_net and Vault; account lifecycle has a dedicated local fixture with Vault stubs.

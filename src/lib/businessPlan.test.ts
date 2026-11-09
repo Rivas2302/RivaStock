@@ -34,7 +34,7 @@ describe('business plan client', () => {
       planCode: 'base',
       planName: 'RivaStock',
       status: 'active',
-      limits: { modules: { ai: false, knowledge: false, automation: false } },
+      limits: { modules: { ai: false, knowledge: false, automation: false, stock: true, sales: true } },
     });
 
     mocks.rpc.mockResolvedValueOnce({

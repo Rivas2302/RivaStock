@@ -1,10 +1,12 @@
 import type { ModuleKey } from '../types';
+import type { BusinessModuleKey } from './businessModules';
+import { normalizeBusinessModules } from './businessModules';
 
 export interface NavigationEntry {
   name: string;
   path: string;
   module: ModuleKey | null;
-  businessModule?: 'ai' | 'knowledge' | 'automation';
+  businessModule?: BusinessModuleKey;
   ownerOnly?: boolean;
   desktopOnly?: boolean;
 }
@@ -12,7 +14,7 @@ export interface NavigationEntry {
 export interface NavigationPermissionState {
   read: Partial<Record<ModuleKey, boolean>>;
   write?: Partial<Record<ModuleKey, boolean>>;
-  businessModules: Partial<Record<'ai' | 'knowledge' | 'automation', boolean>>;
+  businessModules: Partial<Record<BusinessModuleKey, boolean>>;
   isOwner: boolean;
 }
 
@@ -21,7 +23,7 @@ export const NAVIGATION_GROUPS = [
   { label: 'Productos', paths: ['/stock', '/ingresos', '/fotos'] },
   { label: 'Clientes y proveedores', paths: ['/clientes', '/proveedores', '/revendedores', '/compras'] },
   { label: 'Dinero', paths: ['/caja', '/reportes', '/calculadora'] },
-  { label: 'Herramientas', paths: ['/ia', '/automatizaciones', '/trazabilidad', '/config'] },
+  { label: 'Herramientas', paths: ['/ia', '/ia/conocimientos', '/automatizaciones', '/trazabilidad', '/config'] },
 ] as const;
 
 export const DESKTOP_NAVIGATION_GROUPS = [
@@ -33,23 +35,26 @@ export const DESKTOP_NAVIGATION_GROUPS = [
   NAVIGATION_GROUPS[4],
 ] as const;
 
-export const QUICK_ACTIONS: Array<{ label: string; description: string; path: string; module: ModuleKey; write?: boolean }> = [
-  { label: 'Nueva venta', description: 'Un producto o varios', path: '/ventas?action=new', module: 'ventas', write: true },
-  { label: 'Modo POS', description: 'Escanear y cobrar', path: '/pos', module: 'ventas', write: true },
-  { label: 'Registrar gasto', description: 'Sale de la caja', path: '/caja?action=expense', module: 'caja', write: true },
-  { label: 'Cobro de cliente', description: 'Cuenta corriente', path: '/clientes?action=collect', module: 'clientes', write: true },
-  { label: 'Presupuesto', description: 'Para mandar al cliente', path: '/presupuestos?action=new', module: 'presupuestos', write: true },
-  { label: 'Ingreso de mercadería', description: 'Cargar lo que llegó', path: '/ingresos?action=new', module: 'ingresos', write: true },
+export const QUICK_ACTIONS: Array<{ label: string; description: string; path: string; module: ModuleKey; businessModule: BusinessModuleKey; write?: boolean }> = [
+  { label: 'Nueva venta', description: 'Un producto o varios', path: '/ventas?action=new', module: 'ventas', businessModule: 'sales', write: true },
+  { label: 'Modo POS', description: 'Escanear y cobrar', path: '/pos', module: 'ventas', businessModule: 'sales', write: true },
+  { label: 'Registrar gasto', description: 'Sale de la caja', path: '/caja?action=expense', module: 'caja', businessModule: 'cash', write: true },
+  { label: 'Cobro de cliente', description: 'Cuenta corriente', path: '/clientes?action=collect', module: 'clientes', businessModule: 'customers', write: true },
+  { label: 'Presupuesto', description: 'Para mandar al cliente', path: '/presupuestos?action=new', module: 'presupuestos', businessModule: 'quotes', write: true },
+  { label: 'Ingreso de mercadería', description: 'Cargar lo que llegó', path: '/ingresos?action=new', module: 'ingresos', businessModule: 'intake', write: true },
 ];
 
 export function getVisibleNavigation<T extends NavigationEntry>(items: T[], state: NavigationPermissionState): T[] {
+  const businessModules = normalizeBusinessModules(state.businessModules);
   return items.filter(item => (!item.ownerOnly || state.isOwner)
     && (item.module === null || state.read[item.module] === true)
-    && (!item.businessModule || state.businessModules[item.businessModule] === true));
+    && (!item.businessModule || businessModules[item.businessModule] === true));
 }
 
 export function getQuickActions(state: NavigationPermissionState) {
+  const businessModules = normalizeBusinessModules(state.businessModules);
   return QUICK_ACTIONS.filter(action => state.read[action.module] === true
+    && businessModules[action.businessModule] === true
     && (!action.write || state.write?.[action.module] === true));
 }
 

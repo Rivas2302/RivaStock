@@ -126,6 +126,9 @@ describe('PlatformAdmin quota controls', () => {
       action: 'save_plan_template', code: null, name: 'Revendedor Plus', is_active: true,
       limits: { modules: { ai: false, knowledge: true, automation: false }, collaborators: 5, trace_retention_days: 7 },
     });
+    expect(call?.[0].limits.modules).toMatchObject({
+      sales: true, stock: true, resellers: true, suppliers: true, calculator: true,
+    });
   });
 
   it('schedules a customer suspension seven days ahead by default and shows when the notice is pending', async () => {
@@ -263,6 +266,21 @@ describe('PlatformAdmin quota controls', () => {
     await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar ahora'))?.click(); });
     expect(mocks.request).toHaveBeenCalledWith({
       action: 'delete_business_now', owner_uid: 'owner-base', confirm_business_name: 'base demo',
+    });
+
+    await act(async () => { root.unmount(); });
+    business = { ...makeBusiness('base'), business_name: '' };
+    root = createRoot(host);
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'))?.click(); });
+    expect(host.textContent).toContain('Escribí exactamente base@example.test');
+    expect(host.textContent).toContain('Dar de baja en 30 días:');
+    expect(host.textContent).toContain('Eliminar ahora:');
+    const emailInput = [...host.querySelectorAll('label')].find((label) => label.textContent?.includes('Escribí exactamente'))?.querySelector('input') ?? null;
+    await act(async () => { if (emailInput) setInputValue(emailInput, business.email); });
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar ahora'))?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({
+      action: 'delete_business_now', owner_uid: 'owner-base', confirm_business_name: 'base@example.test',
     });
 
     await act(async () => { root.unmount(); });

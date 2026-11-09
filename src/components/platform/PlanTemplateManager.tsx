@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Loader2, Plus, Save } from 'lucide-react';
 import { platformAdminRequest, type PlatformPlan } from '../../lib/platformAdmin';
+import { normalizeBusinessModules, type BusinessModules } from '../../lib/businessModules';
+import BusinessModuleEditor from './BusinessModuleEditor';
 
-type ModuleSet = { ai: boolean; knowledge: boolean; automation: boolean };
-type Draft = { name: string; limits: Record<string, unknown>; modules: ModuleSet; collaborators: number; retentionDays: number; isActive: boolean };
+type Draft = { name: string; limits: Record<string, unknown>; modules: BusinessModules; collaborators: number; retentionDays: number; isActive: boolean };
 
 function draftFromPlan(plan: PlatformPlan | undefined, creating = false): Draft {
   const limits = { ...(plan?.limits ?? {}) };
-  const modules = limits.modules as Partial<ModuleSet> | undefined;
+  const modules = limits.modules;
   return {
     name: creating ? '' : plan?.name ?? '',
     limits,
-    modules: { ai: Boolean(modules?.ai), knowledge: Boolean(modules?.knowledge), automation: Boolean(modules?.automation) },
+    modules: normalizeBusinessModules(modules),
     collaborators: Number(limits.collaborators ?? 5),
     retentionDays: Number(limits.trace_retention_days ?? 7),
     isActive: creating ? true : plan?.is_active ?? true,
@@ -84,10 +85,7 @@ export default function PlanTemplateManager({ plans, onSaved }: { plans: Platfor
       <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Nombre<input required minLength={1} maxLength={60} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Colaboradores permitidos<input type="number" min={0} max={1000} value={draft.collaborators} onChange={(event) => setDraft((current) => ({ ...current, collaborators: Number(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Retención de trazas (días)<input type="number" min={0} max={14} value={draft.retentionDays} onChange={(event) => setDraft((current) => ({ ...current, retentionDays: Number(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-      <fieldset className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700 md:col-span-2">
-        <legend className="px-1 text-xs font-bold text-slate-600 dark:text-slate-300">Módulos incluidos</legend>
-        {(['ai', 'knowledge', 'automation'] as const).map((key) => <label key={key} className="inline-flex items-center gap-2"><input type="checkbox" checked={draft.modules[key]} onChange={(event) => setDraft((current) => ({ ...current, modules: { ...current.modules, [key]: event.target.checked } }))}/>{key === 'ai' ? 'IA' : key === 'knowledge' ? 'Conocimientos' : 'Automatizaciones'}</label>)}
-      </fieldset>
+      <div className="md:col-span-2"><BusinessModuleEditor modules={draft.modules} onChange={modules => setDraft(current => ({ ...current, modules }))}/></div>
       {!creating && <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 md:col-span-2"><input type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))}/>Disponible al asignar a un negocio</label>}
       {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300 md:col-span-2">{error}</p>}
       {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300 md:col-span-2">{notice}</p>}

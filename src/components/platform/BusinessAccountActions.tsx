@@ -97,6 +97,8 @@ export default function BusinessAccountActions({ business, onChange }: { busines
 
   const deletionPending = Boolean(business.deletion_scheduled_for);
   const deleteStarted = Boolean(business.deletion_purge_started_at);
+  const confirmationTarget = business.business_name.trim() || business.email;
+  const confirmationMatches = confirmedName.trim().toLocaleLowerCase('es-AR') === confirmationTarget.toLocaleLowerCase('es-AR');
   const fileName = `RivaStock-copia-${business.business_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'negocio'}.zip`;
 
   return <section className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800" aria-label={`Gestión de cuenta: ${business.business_name}`}>
@@ -124,7 +126,7 @@ export default function BusinessAccountActions({ business, onChange }: { busines
 
     {deleteDialog && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="business-deletion-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
-        <div className="flex items-start justify-between gap-3"><div><h3 id="business-deletion-title" className="text-lg font-bold">Eliminar {business.business_name}</h3><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">La cuenta quedará bloqueada y suspendida por 30 días. Después se borrarán los archivos y el usuario con sus datos. Podés cancelar antes de que empiece la eliminación.</p></div><button type="button" aria-label="Cerrar" onClick={closeDeleteDialog}><X size={18}/></button></div>
+        <div className="flex items-start justify-between gap-3"><div><h3 id="business-deletion-title" className="text-lg font-bold">Eliminar {business.business_name.trim() || business.email}</h3><div className="mt-1 space-y-2 text-sm text-slate-600 dark:text-slate-300"><p><strong>Dar de baja en 30 días:</strong> la cuenta queda bloqueada y se elimina al cumplirse el plazo. Podés cancelar la baja antes de que empiece el borrado.</p><p><strong>Eliminar ahora:</strong> borra la cuenta, sus datos y archivos de forma definitiva. No se puede deshacer.</p></div></div><button type="button" aria-label="Cerrar" onClick={closeDeleteDialog}><X size={18}/></button></div>
         <label className="mt-4 flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold dark:border-slate-700">
           <input type="checkbox" checked={backupBeforeDelete} onChange={(event) => {
             const checked = event.target.checked;
@@ -143,15 +145,14 @@ export default function BusinessAccountActions({ business, onChange }: { busines
           {exportReady && exportUrl && <div className="mt-3 rounded-lg bg-white p-3 text-sm dark:bg-slate-900"><p>Incluye {exportSummary}.</p><a className="mt-2 inline-flex font-bold text-indigo-700 underline dark:text-indigo-300" href={exportUrl} download={fileName} onClick={() => setExportAcknowledged(false)}>Descargar copia de datos</a><button type="button" className="ml-3 text-sm underline" onClick={() => setExportAcknowledged(true)}>Ya la descargué</button></div>}
         </div>}
         <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/20">
-          <h4 className="font-bold">Confirmá el negocio</h4>
-          <label className="mt-2 block text-sm">Escribí exactamente <strong>{business.business_name}</strong>
+          <h4 className="font-bold">Confirmá la cuenta</h4>
+          <label className="mt-2 block text-sm">Escribí exactamente <strong>{confirmationTarget}</strong>
             <input value={confirmedName} onChange={(event) => setConfirmedName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" />
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || confirmedName.trim() !== business.business_name || Boolean(busy)} onClick={() => void requestDeletion()} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : 'Dar de baja en 30 días'}</button>
-            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || confirmedName.trim() !== business.business_name || Boolean(busy)} onClick={() => void requestDeletion(true)} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete-now' ? 'Eliminando…' : <><ShieldAlert size={15}/>Eliminar ahora</>}</button>
+            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion()} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : 'Dar de baja en 30 días'}</button>
+            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion(true)} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete-now' ? 'Eliminando…' : <><ShieldAlert size={15}/>Eliminar ahora</>}</button>
           </div>
-          <p className="mt-2 text-xs text-rose-800 dark:text-rose-200">«Eliminar ahora» borra la cuenta, sus datos y archivos de forma definitiva. No se puede deshacer.</p>
           {backupBeforeDelete && !exportAcknowledged && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Descargá y confirmá la copia para habilitar cualquiera de las dos opciones.</p>}
         </div>
       </section>

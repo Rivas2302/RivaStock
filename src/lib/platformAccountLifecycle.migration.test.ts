@@ -14,10 +14,15 @@ const PLAN_TEMPLATE_MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261109012210_platform_plan_templates.sql', import.meta.url),
   'utf8',
 );
+const DELETION_EMAIL_CONFIRMATION_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261109041016_platform_deletion_email_confirmation.sql', import.meta.url),
+  'utf8',
+);
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const ADMIN = '10000000-0000-4000-8000-000000000002';
 const INTERNAL = '10000000-0000-4000-8000-000000000003';
 const COLLABORATOR = '10000000-0000-4000-8000-000000000004';
+const EMPTY_NAME_OWNER = '10000000-0000-4000-8000-000000000005';
 
 let db: PGlite;
 
@@ -30,7 +35,7 @@ async function setup() {
     CREATE SCHEMA auth;
     CREATE SCHEMA storage;
     CREATE SCHEMA vault;
-    CREATE TABLE auth.users(id uuid PRIMARY KEY);
+    CREATE TABLE auth.users(id uuid PRIMARY KEY, email text);
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
       SELECT nullif(current_setting('request.jwt.claim.role', true), '')
     $$;
@@ -72,12 +77,17 @@ async function setup() {
       LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
         SELECT coalesce(current_setting('test.platform_admin', true), 'false') = 'true'
       $$;
-    INSERT INTO auth.users(id) VALUES ('${OWNER}'), ('${ADMIN}'), ('${INTERNAL}'), ('${COLLABORATOR}');
+    INSERT INTO auth.users(id, email) VALUES
+      ('${OWNER}', 'owner@example.test'), ('${ADMIN}', 'admin@example.test'),
+      ('${INTERNAL}', 'internal@example.test'), ('${COLLABORATOR}', 'collaborator@example.test'),
+      ('${EMPTY_NAME_OWNER}', 'empty.owner@example.test');
     INSERT INTO public.profiles(id, business_name) VALUES
       ('${OWNER}', 'Tienda QA'), ('${ADMIN}', 'Equipo QA'), ('${INTERNAL}', 'Cuenta interna'), ('${COLLABORATOR}', 'Perfil colaborador');
+    INSERT INTO public.profiles(id, business_name) VALUES ('${EMPTY_NAME_OWNER}', '');
     INSERT INTO public.collaborators(owner_uid, user_uid) VALUES ('${OWNER}', '${COLLABORATOR}');
     INSERT INTO public.business_subscriptions(owner_uid, plan_code, status) VALUES
-      ('${OWNER}', 'base', 'active'), ('${ADMIN}', 'base', 'active'), ('${INTERNAL}', 'interno', 'active');
+      ('${OWNER}', 'base', 'active'), ('${ADMIN}', 'base', 'active'), ('${INTERNAL}', 'interno', 'active'),
+      ('${EMPTY_NAME_OWNER}', 'base', 'active');
     INSERT INTO public.platform_admins(user_id) VALUES ('${ADMIN}');
     INSERT INTO public.customer_financial_commands(id, user_id, payload) VALUES
       ('20000000-0000-4000-8000-000000000001', '${OWNER}', 'tenant row');
@@ -95,6 +105,7 @@ async function setup() {
   `);
   await db.exec(MIGRATION);
   await db.exec(IMMEDIATE_DELETION_MIGRATION);
+  await db.exec(DELETION_EMAIL_CONFIRMATION_MIGRATION);
   await db.exec(`
     CREATE TABLE public.business_plans(
       code text PRIMARY KEY,
@@ -132,6 +143,17 @@ describe('business account lifecycle migration', () => {
     expect(scheduledFor).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
     expect(scheduledFor).toBeLessThan(Date.now() + 31 * 24 * 60 * 60 * 1000);
     expect((await db.query<{ status: string }>(`SELECT status FROM public.business_subscriptions WHERE owner_uid='${OWNER}'`)).rows[0].status).toBe('suspended');
+  });
+
+  it('uses the account email for both deletion options when the business name is blank', async () => {
+    await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ADMIN}'; SET test.platform_admin='true';`);
+    await db.query(`SELECT public.platform_request_business_deletion('${EMPTY_NAME_OWNER}', 'EMPTY.OWNER@EXAMPLE.TEST')`);
+    expect((await db.query<{ status: string }>(`SELECT status FROM public.business_subscriptions WHERE owner_uid='${EMPTY_NAME_OWNER}'`)).rows[0].status).toBe('suspended');
+    await db.query(`SELECT public.platform_cancel_business_deletion('${EMPTY_NAME_OWNER}')`);
+    await db.query(`SELECT public.platform_request_business_deletion_now('${EMPTY_NAME_OWNER}', 'empty.owner@example.test')`);
+    expect((await db.query<{ started: boolean }>(`SELECT purge_started_at IS NOT NULL AS started FROM public.business_deletion_requests WHERE owner_uid='${EMPTY_NAME_OWNER}'`)).rows[0].started).toBe(true);
+    await expect(db.query(`SELECT public.platform_request_business_deletion_now('${EMPTY_NAME_OWNER}', 'wrong@example.test')`))
+      .rejects.toThrow('platform-business-name-confirmation-mismatch');
   });
 
   it('allows cancellation before purge starts and restores the original business status', async () => {

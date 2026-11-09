@@ -21,12 +21,12 @@ export interface MobileQuickAction {
 }
 
 const QUICK_ACTIONS: MobileQuickAction[] = [
-  { label: 'Vender', path: '/pos', icon: ShoppingCart, module: 'ventas', requiredAction: 'write' },
-  { label: 'Consultar precio', path: '/consulta-rapida', icon: ScanLine, module: 'stock' },
-  { label: 'Enviar fotos', path: '/fotos', icon: Images, module: 'stock' },
-  { label: 'Cargar ingreso', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos' },
-  { label: 'Presupuesto', path: '/presupuestos', icon: FileText, module: 'presupuestos' },
-  { label: 'Caja', path: '/caja', icon: Wallet, module: 'caja' },
+  { label: 'Vender', path: '/pos', icon: ShoppingCart, module: 'ventas', requiredAction: 'write', businessModule: 'sales' },
+  { label: 'Consultar precio', path: '/consulta-rapida', icon: ScanLine, module: 'stock', businessModule: 'quickPrice' },
+  { label: 'Enviar fotos', path: '/fotos', icon: Images, module: 'stock', businessModule: 'sendPhotos' },
+  { label: 'Cargar ingreso', path: '/ingresos', icon: ArrowDownCircle, module: 'ingresos', businessModule: 'intake' },
+  { label: 'Presupuesto', path: '/presupuestos', icon: FileText, module: 'presupuestos', businessModule: 'quotes' },
+  { label: 'Caja', path: '/caja', icon: Wallet, module: 'caja', businessModule: 'cash' },
 ];
 
 export function getMobileQuickActions(
