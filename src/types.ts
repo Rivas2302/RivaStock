@@ -471,6 +471,8 @@ export interface CatalogConfig {
   showOutOfStock: boolean;
   showStock: boolean;
   showStockQuantity: boolean;
+  categoryPhotosEnabled?: boolean;
+  categoryPhotoOverrides?: Record<string, string>;
   enabled: boolean;
   welcomeMessage: string;
   primaryColor: string;

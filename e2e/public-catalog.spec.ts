@@ -20,6 +20,7 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   return {
     id: '8af7667f-e8db-46aa-b246-4fba337d9580', user_id: OWNER_ID, business_name: 'Tienda de prueba', slug: 'qa-catalog',
     enabled: true, show_prices: true, show_out_of_stock: showOutOfStock, show_stock: true, show_stock_quantity: false,
+    category_photos_enabled: true, category_photo_overrides: {},
     welcome_message: emptyCatalog ? '' : 'Productos elegidos con cuidado.', primary_color: accentColors[theme], accent_color: accentColors[theme],
     allow_orders: true, layout: 'Grid', font_style: 'Modern', whatsapp_number: '5491100000000',
     presentation: {
@@ -111,6 +112,22 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
   await expect(page.getByRole('heading', { name: 'Finalizar Pedido' })).toBeVisible();
   expect(orderSubmitted).toBe(false);
+});
+
+test('category circles use visible product photos and product navigation returns to the catalog', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+  const avatars = page.locator('section[aria-label="Categorías"] [data-testid="catalog-category-avatar"]');
+  await expect(avatars).toHaveCount(2);
+  await expect(avatars.first().locator('img')).toHaveCount(1);
+  await expect(avatars.first()).toHaveClass(/rounded-full/);
+  await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/catalogo/qa-catalog/${PRODUCT_ID}$`));
+  await expect(page.getByRole('heading', { name: 'Cable USB-C' })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
 });
 
 test('retail checkout saves a fixture order code and prepares the exact WhatsApp message', async ({ page }) => {

@@ -9,6 +9,8 @@ const AppNavigation = lazy(() => import('./AppNavigation'));
 import { cn } from '../lib/utils';
 import type { PermissionMatrix } from '../types';
 import { getRivaTechWhatsAppUrl } from '../lib/platformSupport';
+import { useUnreadCatalogOrders } from '../hooks/useUnreadCatalogOrders';
+import { Link } from 'react-router-dom';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -19,6 +21,7 @@ export default function Layout() {
   const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
+  const { unreadCount, notice, clearNotice } = useUnreadCatalogOrders(user?.uid);
 
   const includedModules = !planLoading && !planError ? plan?.limits.modules : null;
   const displayName = isOwner
@@ -84,6 +87,7 @@ export default function Layout() {
         displayName={displayName}
         displayInitial={displayInitial}
         roleLabel={isOwner ? 'Propietario' : 'Colaborador'}
+        unreadOrderCount={unreadCount}
         pathname={location.pathname}
         hideBottomNav={mobileChrome.hideBottomNav}
         loggingOut={loggingOut}
@@ -92,6 +96,7 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {notice && <div role="status" aria-live="polite" className="z-20 flex items-center gap-3 border-b border-[var(--line)] bg-[var(--brand-soft)] px-4 py-3 text-sm font-semibold text-[var(--brand-strong)]"><span className="min-w-0 flex-1">Nuevo pedido{notice.orderCode ? ` ${notice.orderCode}` : ''}</span><Link to={notice.orderCode ? `/pedidos/${encodeURIComponent(notice.orderCode)}` : '/pedidos'} onClick={clearNotice} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-white">Ver</Link><button type="button" aria-label="Cerrar aviso de nuevo pedido" onClick={clearNotice} className="grid size-9 place-items-center rounded-full">×</button></div>}
         {plan?.suspensionScheduledFor && <div role="alert" className="sticky top-0 z-30 flex flex-wrap items-center justify-center gap-3 border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-semibold text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
           <span>Tu cuenta se suspende el {new Date(plan.suspensionScheduledFor).toLocaleDateString('es-AR')}, comunicate con RivaTech</span>
           <a href={getRivaTechWhatsAppUrl('Hola RivaTech, quiero consultar el aviso de suspensión de mi cuenta de RivaStock.')} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-700 px-3 py-2 text-white">WhatsApp</a>

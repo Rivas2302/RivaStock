@@ -1936,3 +1936,20 @@ Sin toque en src/, supabase/ ni extensions/.
 - El build genera `extension-version.json`, el ZIP de la extensión y el ZIP con instalador/desinstalador. Verifiqué que el SHA-256 publicado coincide con el ZIP y que el manifiesto y los paquetes están presentes en `dist/downloads`.
 - Verificación local: lint aprobado; suite completa **1.284/1.284** con variables ficticias solo en el proceso; tests focales de empaquetado/recarga **8/8**; build aprobado; simulación PowerShell de actualización **0.6.4 → 0.6.5** aprobada, conservando el mismo ID; XML de tarea validado sin instalarla. No se instaló la tarea ni se tocó Chrome, Supabase o datos reales.
 - Pasos únicos para instalar desde la carpeta fija y retirar la copia de Descargas: `OWNER_ACTIONS.md`. La publicación en Current se verificará después del push.
+
+## 2026-11-09 — I50.5–8: notificaciones, categorías y navegación
+
+- Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261109T170244Z`; 102 tablas / 18.669 filas y 893 objetos de Storage / 149.941.487 bytes. Postgres y Storage: `verification: passed`.
+- Migración aditiva `20261109170530_i50_catalog_realtime_and_category_photos` aplicada en `RivaStock_Oficial`: opciones de foto de categoría y `orders` añadido a `supabase_realtime`. Se verificaron las dos columnas y la publicación; no se crearon pedidos ni se cambiaron datos de catálogos reales.
+- Implementado el contador de pedidos minoristas sin leer otros negocios, aviso Realtime con link al código, marcado como leído al abrir el pedido, y búsqueda por código, nombre o WhatsApp. Las notificaciones se prueban con un canal y respuestas simuladas en unit tests; no se generó ningún pedido real para forzar el evento.
+- Implementadas las categorías con foto automática, mosaico de hasta cuatro fotos en «Todos», selección de una foto de producto, carga de una foto propia a Storage y vuelta a automática. El control global queda encendido por defecto.
+- Los productos del catálogo ahora abren `/catalogo/:slug/:productId`; «atrás» vuelve al catálogo. La configuración muestra vista previa en vivo en Portada y Tema, y reemplazó las letras de navegación por iconos.
+- Verificación local: lint aprobado; `npm test` **1.299/1.299**; Playwright de catálogo **21/21** incluyendo foto, navegación atrás y compra interceptada; build aprobado. Los tests no envían órdenes a Supabase.
+- Publicación pendiente: los commits `ca88980` y `a5e9ed8` tienen check de Vercel `success`, pero el dominio sigue sirviendo el bundle previo. No puedo afirmar que I50 esté en Current ni que se haya validado en el sitio publicado.
+
+## 2026-11-09 — I51: ingreso, recuperación y primer acceso
+
+- Login, recuperación, restablecimiento de contraseña, confirmación de invitación y primer ingreso comparten el diseño aprobado: dos columnas en PC, una en celular, colores claro/oscuro según el sistema, email de invitación fijo, negocio real, reglas de contraseña en vivo y repetición. Los errores de ingreso se muestran en español claro; no se agregó registro público.
+- No se incluyó «Mantener la sesión iniciada»: Supabase ya persiste la sesión de forma predeterminada en esta app y no expone un cambio seguro/simple de persistencia por formulario.
+- Verificación local: lint aprobado; suite unitaria **1.299/1.299** incluyendo sesión temporal e invitación; Playwright Auth **6/6** en 390 y 1280 px, claro y oscuro; build aprobado. No se usaron cuentas ni credenciales reales.
+- I51 y I50.5–8 quedan implementadas en el worktree, con el deploy de Current pendiente por la discrepancia de promoción descrita arriba.

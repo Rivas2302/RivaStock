@@ -56,6 +56,7 @@ interface AppNavigationProps {
   pathname: string;
   hideBottomNav: boolean;
   loggingOut: boolean;
+  unreadOrderCount?: number;
   onLogout: () => void;
 }
 
@@ -97,7 +98,7 @@ export default function AppNavigation(props: AppNavigationProps) {
           {group.items.map(item => {
             const Icon = item.icon;
             const active = item.path === '/' ? props.pathname === '/' : props.pathname === item.path || props.pathname.startsWith(`${item.path}/`);
-            return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={cn('nav-item flex min-h-11 items-center gap-3 px-3 py-2 transition-colors group', active ? 'nav-item-active text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white')}><Icon size={19} strokeWidth={1.8} /><span className="font-medium">{item.name}</span></Link>;
+            return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={cn('nav-item flex min-h-11 items-center gap-3 px-3 py-2 transition-colors group', active ? 'nav-item-active text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white')}><Icon size={19} strokeWidth={1.8} /><span className="font-medium">{item.name}</span>{item.path === '/pedidos' && Boolean(props.unreadOrderCount) && <span aria-label={`${props.unreadOrderCount} pedidos nuevos`} className="ml-auto grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-black text-white">{props.unreadOrderCount}</span>}</Link>;
           })}
         </section>)}
       </nav>
@@ -106,6 +107,6 @@ export default function AppNavigation(props: AppNavigationProps) {
         <button type="button" onClick={props.onLogout} disabled={props.loggingOut} className="nav-item flex min-h-11 w-full items-center gap-3 px-3 py-2 text-slate-400 transition-colors hover:text-rose-300 disabled:opacity-50"><LogOut size={20} /><span className="font-medium">Cerrar sesión</span></button>
       </div>
     </aside>
-    {!props.hideBottomNav && <MobileNavigation primaryItems={primaryItems} navItems={mobileItems} navGroups={mobileGroups} quickActions={actions} pathname={props.pathname} onLogout={props.onLogout} loggingOut={props.loggingOut} displayName={props.displayName} displayInitial={props.displayInitial} roleLabel={props.roleLabel} />}
+    {!props.hideBottomNav && <MobileNavigation primaryItems={primaryItems} navItems={mobileItems} navGroups={mobileGroups} quickActions={actions} pathname={props.pathname} onLogout={props.onLogout} loggingOut={props.loggingOut} displayName={props.displayName} displayInitial={props.displayInitial} roleLabel={props.roleLabel} unreadOrderCount={props.unreadOrderCount ?? 0} />}
   </>;
 }

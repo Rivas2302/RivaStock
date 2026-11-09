@@ -36,13 +36,14 @@ interface MobileNavigationProps {
   displayName: string;
   displayInitial: string;
   roleLabel: string;
+  unreadOrderCount?: number;
 }
 
 function isActive(path: string, pathname: string) {
   return path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export default function MobileNavigation({ primaryItems, navItems, navGroups, quickActions, pathname, onLogout, loggingOut, displayName, displayInitial, roleLabel }: MobileNavigationProps) {
+export default function MobileNavigation({ primaryItems, navItems, navGroups, quickActions, pathname, onLogout, loggingOut, displayName, displayInitial, roleLabel, unreadOrderCount = 0 }: MobileNavigationProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [search, setSearch] = useState('');
   const isMobile = useIsMobile();
@@ -91,8 +92,9 @@ export default function MobileNavigation({ primaryItems, navItems, navGroups, qu
     <nav aria-label="Navegación principal" className="mobile-navigation-bar lg:hidden">
       {primaryItems[0] && <NavLink item={primaryItems[0]} pathname={pathname} />}
       {primaryItems[1] && <NavLink item={primaryItems[1]} pathname={pathname} />}
-      <button type="button" aria-label={sheetOpen ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={sheetOpen} onClick={() => sheetOpen ? closeSheet() : setSheetOpen(true)} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--action-bg)] text-[var(--action-ink)] shadow-md">
+      <button type="button" aria-label={sheetOpen ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={sheetOpen} onClick={() => sheetOpen ? closeSheet() : setSheetOpen(true)} className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--action-bg)] text-[var(--action-ink)] shadow-md">
         {sheetOpen ? <X size={23} /> : <Plus size={24} />}
+        {!sheetOpen && unreadOrderCount > 0 && <span aria-label={`${unreadOrderCount} pedidos nuevos`} className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-black text-white">{unreadOrderCount}</span>}
       </button>
       {primaryItems[2] && <NavLink item={primaryItems[2]} pathname={pathname} />}
       {primaryItems[3] && <NavLink item={primaryItems[3]} pathname={pathname} label={primaryItems[3].path === '/consulta-rapida' ? 'Consulta' : undefined} />}
@@ -127,7 +129,7 @@ export default function MobileNavigation({ primaryItems, navItems, navGroups, qu
                 {visibleItems.map(item => {
                   const Icon = item.icon;
                   const active = isActive(item.path, pathname);
-                  return <Link key={item.path} to={item.path} onClick={event => { event.preventDefault(); navigateFromSheet(item.path); }} aria-current={active ? 'page' : undefined} className={cn('flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl p-2 text-center text-xs font-medium', active ? 'bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'text-[var(--ink-subtle)] hover:bg-[var(--surface-muted)]')}><Icon size={21} /><span>{item.name}</span></Link>;
+                  return <Link key={item.path} to={item.path} onClick={event => { event.preventDefault(); navigateFromSheet(item.path); }} aria-current={active ? 'page' : undefined} className={cn('relative flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl p-2 text-center text-xs font-medium', active ? 'bg-[var(--brand-soft)] text-[var(--brand-strong)]' : 'text-[var(--ink-subtle)] hover:bg-[var(--surface-muted)]')}><Icon size={21} /><span>{item.name}</span>{item.path === '/pedidos' && unreadOrderCount > 0 && <span aria-label={`${unreadOrderCount} pedidos nuevos`} className="absolute right-1 top-1 grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-black text-white">{unreadOrderCount}</span>}</Link>;
                 })}
               </div>
             </section>;

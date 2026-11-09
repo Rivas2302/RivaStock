@@ -4,10 +4,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Orders from './Orders';
 
-const { list, deleteOrder, user, params } = vi.hoisted(() => ({ list: vi.fn(), deleteOrder: vi.fn(), user: { uid: 'owner-1' }, params: { codigo: undefined as string | undefined } }));
+const { list, updateOrder, deleteOrder, user, params } = vi.hoisted(() => ({ list: vi.fn(), updateOrder: vi.fn(), deleteOrder: vi.fn(), user: { uid: 'owner-1' }, params: { codigo: undefined as string | undefined } }));
 
 vi.mock('../lib/db', () => ({
-  db: { list, update: vi.fn(), delete: deleteOrder },
+  db: { list, update: updateOrder, delete: deleteOrder },
   callRpc: vi.fn(),
 }));
 vi.mock('../AuthContext', () => ({ useAuth: () => ({ user, refetchToken: 0 }) }));
@@ -33,6 +33,7 @@ describe('Orders convert-to-sale action', () => {
       total: 1000, status: 'Nuevo', isRead: false, ownerUid: 'owner-1',
     }]);
     deleteOrder.mockReset().mockResolvedValue(undefined);
+    updateOrder.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -67,6 +68,26 @@ describe('Orders convert-to-sale action', () => {
     await act(async () => { await Promise.resolve(); });
     expect(host.querySelector('[data-testid="order-code"]')?.textContent).toBe('P-0042');
     expect(host.textContent).toContain('Cliente QA');
+    await act(async () => { await Promise.resolve(); });
+    expect(updateOrder).toHaveBeenCalledWith('orders', 'order-1', { isRead: true });
+  });
+
+  it('searches catalog orders by code, customer name, or WhatsApp number', async () => {
+    list.mockResolvedValueOnce([
+      { id: 'order-1', orderCode: 'P-0042', date: '2026-11-07', customerName: 'Cliente QA', customerPhone: '5550000', customerEmail: '', customerAddress: '', items: [], total: 0, status: 'Nuevo', isRead: false, ownerUid: 'owner-1' },
+      { id: 'order-2', orderCode: 'P-0043', date: '2026-11-06', customerName: 'Otra Persona', customerPhone: '5551111', customerEmail: '', customerAddress: '', items: [], total: 0, status: 'Nuevo', isRead: false, ownerUid: 'owner-1' },
+    ]);
+    await act(async () => { root.render(<Orders />); await Promise.resolve(); });
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Buscar pedidos por código, nombre o WhatsApp"]');
+    expect(input).toBeTruthy();
+    await act(async () => {
+      if (!input) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '5551111');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(host.textContent).toContain('Otra Persona');
+    expect(host.textContent).not.toContain('Cliente QA');
   });
 
   it('deletes only the selected catalog order after the app confirmation', async () => {

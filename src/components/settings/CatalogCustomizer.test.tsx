@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogConfig, Product } from '../../types';
+import type { CatalogConfig, Category, Product } from '../../types';
 import CatalogCustomizer from './CatalogCustomizer';
 
 const config: CatalogConfig = {
@@ -16,6 +16,7 @@ const product: Product = {
   purchasePrice: 100, salePrice: 8500, stock: 3, minStock: 1, images: [], showInCatalog: true,
   inventoryOwnerId: 'owner-1', ownerUid: 'owner-1', createdAt: '2026-11-01', updatedAt: '2026-11-01',
 };
+const category: Category = { id: 'category-1', name: 'Cables', ownerUid: 'owner-1', createdAt: '2026-11-01' } as Category;
 
 describe('CatalogCustomizer', () => {
   let host: HTMLDivElement;
@@ -29,7 +30,7 @@ describe('CatalogCustomizer', () => {
 
   it('shows a compact catalog hub and saves offer mode changes with a success message', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
     expect(host.textContent).toContain('Tu link');
     expect(host.textContent).toContain('Vista previa');
     expect(host.textContent).toContain('Destacados y ofertas');
@@ -46,7 +47,7 @@ describe('CatalogCustomizer', () => {
   });
 
   it('edits the WhatsApp template with preview variables and keeps save disabled when unchanged', async () => {
-    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={vi.fn().mockResolvedValue(undefined)} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={vi.fn().mockResolvedValue(undefined)} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
     const saveInitially = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
     expect(saveInitially?.disabled).toBe(true);
     const openWhatsApp = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('WhatsApp y pedidos'));
@@ -60,7 +61,7 @@ describe('CatalogCustomizer', () => {
 
   it('defaults to hiding out-of-stock products and saves the catalog toggle', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()}/>));
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
     const openDisplay = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Qué se muestra'));
     await act(async () => openDisplay?.click());
     const showOutOfStock = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(input => input.closest('label')?.textContent?.includes('Mostrar productos sin stock'));
@@ -69,5 +70,33 @@ describe('CatalogCustomizer', () => {
     const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
     await act(async () => save?.click());
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ showOutOfStock: true }));
+  });
+
+  it('previews category photos and persists a manually selected product photo', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const productWithPhoto = { ...product, images: ['https://assets.test/cable.webp'] };
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[category]} products={[productWithPhoto]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openDisplay = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Qué se muestra'));
+    await act(async () => openDisplay?.click());
+    const photoToggle = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(input => input.closest('label')?.textContent?.includes('Mostrar foto en las categorías'));
+    expect(photoToggle?.checked).toBe(true);
+    const selector = host.querySelector<HTMLSelectElement>('select[aria-label="Foto para Cables"]');
+    expect(selector?.querySelector('option[value="https://assets.test/cable.webp"]')?.textContent).toBe('Cable USB-C');
+    await act(async () => {
+      if (!selector) return;
+      selector.value = 'https://assets.test/cable.webp';
+      selector.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => save?.click());
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryPhotoOverrides: { 'category-1': 'https://assets.test/cable.webp' } }));
+  });
+
+  it('shows the live catalog preview while editing the cover', async () => {
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={vi.fn()} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openCover = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Portada'));
+    await act(async () => openCover?.click());
+    expect(host.querySelector('[aria-label="Vista previa en vivo del catálogo"]')).not.toBeNull();
+    expect(host.textContent).toContain('Encontrá lo que buscás');
   });
 });

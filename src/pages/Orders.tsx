@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import { useAuth } from '../AuthContext';
@@ -20,6 +20,7 @@ import {
   Filter,
   ChevronDown,
   Trash2,
+  Search,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -37,6 +38,8 @@ export default function Orders() {
   const [orderPendingDelete, setOrderPendingDelete] = useState<Order | null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [deleteOrderError, setDeleteOrderError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const readReceiptIds = useRef(new Set<string>());
   const deferredStatusFilter = useDeferredValue(statusFilter);
 
   const fetchData = async () => {
@@ -68,6 +71,17 @@ export default function Orders() {
     })();
     return () => { cancelled = true; };
   }, [user, refetchToken]);
+
+  useEffect(() => {
+    if (!codigo || !canWrite) return;
+    const matchingOrder = orders.find(order => order.orderCode?.toLocaleLowerCase('es-AR') === codigo.trim().toLocaleLowerCase('es-AR'));
+    if (!matchingOrder || matchingOrder.isRead || readReceiptIds.current.has(matchingOrder.id)) return;
+    readReceiptIds.current.add(matchingOrder.id);
+    setOrders(current => current.map(order => order.id === matchingOrder.id ? { ...order, isRead: true } : order));
+    void Promise.resolve().then(() => db.update<Order>('orders', matchingOrder.id, { isRead: true })).catch(() => {
+      setOrders(current => current.map(order => order.id === matchingOrder.id ? { ...order, isRead: false } : order));
+    });
+  }, [canWrite, codigo, orders]);
 
   const updateOrderStatus = async (id: string, status: Order['status']) => {
     await db.update<Order>('orders', id, { status, isRead: true });
@@ -121,13 +135,16 @@ export default function Orders() {
 
   const filteredOrders = useMemo(
     () => {
-      const query = codigo?.trim().toLocaleLowerCase('es-AR') ?? '';
+      const routeCode = codigo?.trim().toLocaleLowerCase('es-AR') ?? '';
+      const query = searchTerm.trim().toLocaleLowerCase('es-AR');
       return orders.filter(order => {
         const matchesStatus = deferredStatusFilter === 'all' || order.status === deferredStatusFilter;
-        return matchesStatus && (!query || order.orderCode?.toLocaleLowerCase('es-AR') === query);
+        const searchableText = `${order.orderCode ?? ''} ${order.customerName} ${order.customerPhone}`.toLocaleLowerCase('es-AR');
+        const matchesRoute = !routeCode || order.orderCode?.toLocaleLowerCase('es-AR') === routeCode;
+        return matchesStatus && matchesRoute && (!query || searchableText.includes(query));
       });
     },
-    [codigo, deferredStatusFilter, orders],
+    [codigo, deferredStatusFilter, orders, searchTerm],
   );
   const pagination = usePagination(filteredOrders);
 
@@ -154,6 +171,8 @@ export default function Orders() {
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
         </div>
       </div>
+
+      <label className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-[var(--ink-muted)]"><Search size={18}/><input aria-label="Buscar pedidos por código, nombre o WhatsApp" value={searchTerm} onChange={event=>setSearchTerm(event.target.value)} placeholder="Buscar por código, nombre o WhatsApp" className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"/></label>
 
       <div className="grid grid-cols-1 gap-4">
         {Array.isArray(filteredOrders) && filteredOrders.length > 0 ? pagination.rows.map((order) => (

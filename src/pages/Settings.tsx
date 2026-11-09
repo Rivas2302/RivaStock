@@ -317,6 +317,13 @@ export default function Settings() {
     return uploadToStorage(`${user.uid}/catalog-cover/${crypto.randomUUID()}.webp`, optimized, 'image/webp');
   };
 
+  const uploadCatalogCategoryPhoto = async (file: File) => {
+    if (!user) throw new Error('No se pudo verificar la sesión.');
+    const optimized = await optimizeCatalogCover(file);
+    if (optimized.size > 300_000) throw new Error('La foto debe pesar menos de 300 KB.');
+    return uploadToStorage(`${user.uid}/catalog-category/${crypto.randomUUID()}.webp`, optimized, 'image/webp');
+  };
+
   const [selectedModules, setSelectedModules] = useState<Record<string, boolean>>({
     products: false,
     sales: false,
@@ -724,6 +731,7 @@ export default function Settings() {
                       onSave={handleUpdateCatalog}
                       onUploadCover={uploadCatalogCover}
                       onUploadLogo={uploadCatalogLogo}
+                      onUploadCategoryPhoto={uploadCatalogCategoryPhoto}
                     />
                   </Suspense>
                 </motion.div>

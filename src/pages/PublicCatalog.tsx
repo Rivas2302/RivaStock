@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
@@ -17,6 +17,7 @@ import {
   type ResellerAvailabilityFilter,
 } from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
+import { getAllCategoryPhotoUrls, getCategoryPhotoUrls } from '../lib/catalogCategoryPhotos';
 import {
   ShoppingBag,
   Search,
@@ -69,6 +70,7 @@ function toRoundProducts(round: PublicResellerSupplierRound): PublicCatalogProdu
 
 export default function PublicCatalog() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -144,9 +146,8 @@ export default function PublicCatalog() {
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const openProduct = (product: PublicCatalogProduct) => {
-    setSelectedProductForLightbox(product);
-    setLightboxImageIndex(0);
-    setDetailQuantity(1);
+    if (!slug) return;
+    navigate(`/catalogo/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`);
   };
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
@@ -1136,7 +1137,12 @@ if (loading) {
         {visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="flex gap-3 overflow-x-auto pb-2">
-            {[{ id: 'all', name: 'Todos' }, ...categories].map((category, index) => <button key={category.id} type="button" aria-pressed={activeCategory === category.id} onClick={() => setActiveCategory(category.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={cn('group flex min-w-[4.75rem] flex-col items-center gap-2 px-1 py-1 text-center text-xs font-semibold transition-colors focus-visible:outline-none', activeCategory === category.id ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}><span className={cn('grid size-14 place-items-center rounded-full text-base font-black text-white shadow-sm transition-shadow', activeCategory === category.id && 'ring-2 ring-offset-2 ring-[var(--brand)] ring-offset-[var(--surface)]', 'group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--brand-strong)] group-focus-visible:ring-offset-[var(--surface)]')} style={{ background: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))` }} aria-hidden="true">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span><span className="max-w-[4.75rem] truncate">{category.name}</span></button>)}
+            {[{ id: 'all', name: 'Todos' }, ...categories].map((category, index) => {
+              const categoryPhotos = category.id === 'all'
+                ? (config.categoryPhotosEnabled === false ? [] : getAllCategoryPhotoUrls(catalogProducts, 4))
+                : getCategoryPhotoUrls(category.id, catalogProducts, config.categoryPhotoOverrides?.[category.id], config.categoryPhotosEnabled !== false);
+              return <button key={category.id} type="button" aria-pressed={activeCategory === category.id} onClick={() => setActiveCategory(category.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={cn('group flex min-w-[4.75rem] flex-col items-center gap-2 px-1 py-1 text-center text-xs font-semibold transition-colors focus-visible:outline-none', activeCategory === category.id ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}><span data-testid="catalog-category-avatar" className={cn('relative grid size-14 place-items-center overflow-hidden rounded-full bg-gradient-to-br text-base font-black text-white shadow-sm transition-shadow', activeCategory === category.id && 'ring-2 ring-offset-2 ring-[var(--brand)] ring-offset-[var(--surface)]', 'group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--brand-strong)] group-focus-visible:ring-offset-[var(--surface)]')} style={{ backgroundImage: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))` }} aria-hidden="true"><span className="relative z-0">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span>{categoryPhotos.length === 1 ? <img src={categoryPhotos[0]} alt="" loading="lazy" className="absolute inset-0 z-10 size-full object-cover"/> : categoryPhotos.length > 1 ? <span className="absolute inset-0 z-10 grid grid-cols-2 grid-rows-2">{categoryPhotos.map((url, photoIndex)=><img key={`${url}-${photoIndex}`} src={url} alt="" loading="lazy" className="size-full object-cover"/>)}</span> : null}</span><span className="max-w-[4.75rem] truncate">{category.name}</span></button>;
+            })}
           </div>
         </section>}
         {visibleSections.find(section => section.id === 'featured')?.visible && renderProductRail(CATALOG_SECTION_LABELS.featured, featuredProducts, 'featured')}

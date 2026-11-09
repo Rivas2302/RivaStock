@@ -15,6 +15,7 @@ describe('mobile single navigation menu', () => {
     { name: 'Stock', path: '/stock', icon: Package },
     { name: 'Ventas', path: '/ventas', icon: ShoppingCart },
     { name: 'Consulta rápida', path: '/consulta-rapida', icon: ScanLine },
+    { name: 'Pedidos', path: '/pedidos', icon: ShoppingCart },
     { name: 'Buscar y enviar', path: '/fotos', icon: Images },
     { name: 'Configuración', path: '/config', icon: Settings },
   ];
@@ -27,9 +28,9 @@ describe('mobile single navigation menu', () => {
     { label: 'Ingreso de mercadería', description: 'Cargar lo que llegó', path: '/ingresos?action=new' },
   ];
   const groups = [
-    { label: 'Vender', items: [items[2], items[3]] },
-    { label: 'Productos', items: [items[1], items[4]] },
-    { label: 'Herramientas', items: [items[5]] },
+    { label: 'Vender', items: [items[2], items[3], items[4]] },
+    { label: 'Productos', items: [items[1], items[5]] },
+    { label: 'Herramientas', items: [items[6]] },
   ];
   const render = async (ui: ReactElement) => act(async () => { root.render(ui); });
 
@@ -54,8 +55,16 @@ describe('mobile single navigation menu', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Abrir menú"]')?.click(); });
     expect(host.querySelectorAll('[role="dialog"]')).toHaveLength(1);
     expect(host.querySelectorAll('[aria-label="Crear"] a')).toHaveLength(6);
-    expect(host.querySelectorAll('[aria-label="Ir a"] a')).toHaveLength(5);
+    expect(host.querySelectorAll('[aria-label="Ir a"] a')).toHaveLength(6);
     expect(host.querySelectorAll('[aria-label="Herramientas"] a[href="/config"]')).toHaveLength(1);
+  });
+
+  it('shows unread order counts on the bottom plus button and the Pedidos shortcut', async () => {
+    await render(<MemoryRouter><MobileNavigation primaryItems={[items[0], items[1], items[2], items[3]]} navItems={items} navGroups={groups} quickActions={actions} pathname="/" onLogout={vi.fn()} loggingOut={false} displayName="Riva" displayInitial="R" roleLabel="Propietario" unreadOrderCount={7}/></MemoryRouter>);
+    expect(host.querySelectorAll('[aria-label="7 pedidos nuevos"]')).toHaveLength(1);
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Abrir menú"]')?.click(); });
+    expect(host.querySelectorAll('[aria-label="7 pedidos nuevos"]')).toHaveLength(1);
+    expect(host.querySelector('a[href="/pedidos"] [aria-label="7 pedidos nuevos"]')).not.toBeNull();
   });
 
   it('uses the same case-insensitive search rule for actions and sections', () => {
