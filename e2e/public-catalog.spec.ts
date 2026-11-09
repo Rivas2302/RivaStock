@@ -13,17 +13,17 @@ const product = {
   availability: 'in_stock', createdAt: '2026-11-05T12:00:00.000Z',
 };
 
-function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00', showOutOfStock = false) {
+function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00', showOutOfStock = false, emptyCatalog = false) {
   const titles = { normal: 'Encontrá lo que buscás', christmas: 'Regalos para compartir', 'children-day': 'Un regalo para cada aventura', 'new-year': 'Empezá el año con algo nuevo' };
   const heroColors = { normal: '#172033', christmas: '#164632', 'children-day': '#F1D98B', 'new-year': '#202226' };
   const accentColors = { normal: '#3156A6', christmas: '#B23A48', 'children-day': '#6B55A1', 'new-year': '#9B7A35' };
   return {
     id: '8af7667f-e8db-46aa-b246-4fba337d9580', user_id: OWNER_ID, business_name: 'Tienda de prueba', slug: 'qa-catalog',
     enabled: true, show_prices: true, show_out_of_stock: showOutOfStock, show_stock: true, show_stock_quantity: false,
-    welcome_message: 'Productos elegidos con cuidado.', primary_color: accentColors[theme], accent_color: accentColors[theme],
+    welcome_message: emptyCatalog ? '' : 'Productos elegidos con cuidado.', primary_color: accentColors[theme], accent_color: accentColors[theme],
     allow_orders: true, layout: 'Grid', font_style: 'Modern', whatsapp_number: '5491100000000',
     presentation: {
-      theme, schedules: [], heroTitle: titles[theme], heroDescription: 'Productos elegidos con cuidado.',
+      theme, schedules: [], heroTitle: emptyCatalog ? '' : titles[theme], heroDescription: emptyCatalog ? '' : 'Productos elegidos con cuidado.',
       heroImageUrl: null, heroColor: heroColors[theme], accentColor: accentColors[theme],
       sections: [{ id: 'featured', visible: false }, { id: 'offers', visible: true }, { id: 'categories', visible: true }, { id: 'new', visible: false }, { id: 'all', visible: true }],
       featuredProductIds: [], featuredCategoryId: null, offerProductIds: [PRODUCT_ID], offerDiscountPercentByProduct: { [PRODUCT_ID]: 20 }, offerEndsAt,
@@ -33,21 +33,24 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
-  const catalogProducts = includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
+  const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
   await page.route('**/rest/v1/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
-    if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [fixtureConfig(theme, offerEndsAt, showOutOfStock)] });
+    if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp }] });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
     if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: catalogProducts });
     if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: catalogProduct });
     if (pathname.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
     if (pathname.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: Boolean(resellerRounds) } });
     if (resellerRounds && pathname.endsWith('/rpc/unlock_reseller_catalog')) {
-      if (resellerRounds === 'group') return route.fulfill({ status: 400, json: { message: 'El código no es válido.' } });
+      const accessCode = (route.request().postDataJSON() as { p_access_code?: string }).p_access_code;
+      if (resellerRounds === 'group' && accessCode !== 'CODIGO-GRUPO-QA') {
+        return route.fulfill({ status: 400, json: { message: 'El código no es válido.' } });
+      }
       return route.fulfill({ json: {
       enabled: true, priceListId: '109d526d-eb86-4367-99ea-e24fc35eea41', minimumRule: 'none', minimumOrderAmount: 0,
       minimumOrderQuantity: 0, products: [{ ...product, availability: 'on_order' }],
@@ -63,10 +66,17 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
       products: [{ ...product, salePrice: 6800 }],
       }] });
     }
+    if (resellerRounds && pathname.endsWith('/rpc/get_public_reseller_buying_policy')) return route.fulfill({ json: 'Pago coordinado por WhatsApp.' });
     if (resellerRounds && pathname.endsWith('/rpc/create_public_reseller_supplier_round_order')) return route.fulfill({ json: {
       id: '9c2a6eab-e43d-40cc-9a58-5533d3c3ec6d', total: 6800, closesAt: '2099-12-01T21:00:00.000Z',
     } });
-    if (pathname.endsWith('/rpc/create_public_catalog_order')) throw new Error('The catalog preview must never create an order.');
+    if (pathname.endsWith('/rpc/create_public_catalog_order')) {
+      if (!allowPublicOrder) throw new Error('The catalog preview must never create an order.');
+      return route.fulfill({ json: {
+        id: 'c0000000-0000-4000-8000-000000000001', orderCode: 'P-0042', total: 6800, channel: 'retail',
+        items: [{ productId: PRODUCT_ID, productName: 'Cable USB-C', quantity: 1, price: 6800 }],
+      } });
+    }
     return route.fulfill({ status: 200, json: [] });
   });
 }
@@ -101,6 +111,81 @@ test('public catalog mobile flow reaches checkout without submitting an order', 
   await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
   await expect(page.getByRole('heading', { name: 'Finalizar Pedido' })).toBeVisible();
   expect(orderSubmitted).toBe(false);
+});
+
+test('retail checkout saves a fixture order code and prepares the exact WhatsApp message', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, true);
+  let submittedPayload: Record<string, unknown> | null = null;
+  page.on('request', request => {
+    if (request.url().endsWith('/rpc/create_public_catalog_order')) submittedPayload = request.postDataJSON() as Record<string, unknown>;
+  });
+
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByPlaceholder('Nombre completo').fill('Compradora de prueba');
+  await page.getByPlaceholder('WhatsApp').fill('2302000000');
+  await expect(page.getByPlaceholder('Email')).not.toHaveAttribute('required', '');
+  await expect(page.getByPlaceholder('Dirección de entrega')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retiro' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+
+  await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
+  await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
+  const whatsappLink = page.getByRole('link', { name: 'Enviar pedido por WhatsApp' });
+  const whatsappUrl = new URL(await whatsappLink.getAttribute('href') ?? '');
+  expect(whatsappUrl.hostname).toBe('wa.me');
+  expect(whatsappUrl.searchParams.get('text')).toContain('Pedido P-0042');
+  expect(whatsappUrl.searchParams.get('text')).toContain('1 × Cable USB-C · $ 6.800');
+  expect(whatsappUrl.searchParams.get('text')).toContain('Total: $ 6.800');
+  expect(whatsappUrl.searchParams.get('text')).toContain('Entrega: Retiro');
+  expect(whatsappUrl.searchParams.get('text')).toContain('Ver pedido: https://rivastock.vercel.app/pedidos/P-0042');
+  expect(submittedPayload?.p_customer).toMatchObject({ name: 'Compradora de prueba', phone: '2302000000', email: '', address: '', deliveryMethod: 'pickup' });
+
+  await page.getByRole('button', { name: 'Cerrar' }).click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
+  await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toBeVisible();
+});
+
+test('retail shipping requires an address and enables address autocomplete', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByRole('button', { name: 'Envío' }).click();
+  const address = page.getByPlaceholder('Dirección de entrega');
+  await expect(address).toHaveAttribute('required', '');
+  await expect(address).toHaveAttribute('autocomplete', 'street-address');
+});
+
+test('an empty catalog uses neutral defaults and keeps the business separate from RivaTech', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, null, true);
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByRole('heading', { name: 'Tienda de prueba' })).toBeVisible();
+  await expect(page.getByText('Encontrá lo que buscás.')).toBeVisible();
+  await expect(page.getByText(/RivaTech|Premium Tech Experience|TECNOLOGIA AL MEJOR PRECIO/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Abrir carrito' })).toBeVisible();
+});
+
+test('a retail order without a configured WhatsApp number still saves and shows its code', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, true, null);
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByPlaceholder('Nombre completo').fill('Compradora de prueba');
+  await page.getByPlaceholder('WhatsApp').fill('2302000000');
+  await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
+  await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Ver pedido' })).toBeVisible();
 });
 
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {

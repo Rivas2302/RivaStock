@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Comprador: finalizar pedido</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2F55A4}a:hover{color:#1E3D7E}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; background: #F4F1EA; font-family: Inter, system-ui, sans-serif; color: #111827; display: flex; flex-direction: column">
+  <header style="display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: #FBF9F4; border-bottom: 1px solid #E7E2D7">
+    <button type="button" aria-label="Volver al carrito" style="width: 44px; height: 44px; border-radius: 999px; border: none; background: #EAE6DC; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></svg>
+    </button>
+    <h1 style="margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 20px">Finalizar pedido</h1>
+  </header>
+
+  <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; flex: 1">
+    <div style="background: #FFFFFF; border-radius: 16px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center">
+      <span style="font-size: 14px; color: #374151">2 productos</span>
+      <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px">$ 22.000</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="nombre" style="font-size: 13px; font-weight: 600">Nombre</label>
+      <input id="nombre" type="text" autocomplete="name" placeholder="Tu nombre" style="height: 50px; border: 1px solid #DCD6C8; border-radius: 14px; padding: 0 14px; font-size: 16px; font-family: Inter, sans-serif; background: #FFFFFF; color: #111827">
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="wsp" style="font-size: 13px; font-weight: 600">WhatsApp</label>
+      <input id="wsp" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 2302 123456" style="height: 50px; border: 1px solid #DCD6C8; border-radius: 14px; padding: 0 14px; font-size: 16px; font-family: Inter, sans-serif; background: #FFFFFF; color: #111827">
+    </div>
+
+    <fieldset style="border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px">
+      <legend style="font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 6px">¿Cómo lo recibís?</legend>
+      <div>
+        <sc-if value="{{isRetiro}}" hint-placeholder-val="{{true}}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <button type="button" onClick="{{pickRetiro}}" aria-pressed="true" style="height: 50px; border-radius: 14px; border: 2px solid #2F55A4; background: #E6ECF8; color: #1E3D7E; font-weight: 700; font-size: 15px; font-family: Inter, sans-serif; cursor: pointer">Retiro</button>
+          <button type="button" onClick="{{pickEnvio}}" aria-pressed="false" style="height: 50px; border-radius: 14px; border: 1px solid #DCD6C8; background: #FFFFFF; color: #1F2937; font-weight: 600; font-size: 15px; font-family: Inter, sans-serif; cursor: pointer">Envío</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{isEnvio}}" hint-placeholder-val="{{false}}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <button type="button" onClick="{{pickRetiro}}" aria-pressed="false" style="height: 50px; border-radius: 14px; border: 1px solid #DCD6C8; background: #FFFFFF; color: #1F2937; font-weight: 600; font-size: 15px; font-family: Inter, sans-serif; cursor: pointer">Retiro</button>
+          <button type="button" onClick="{{pickEnvio}}" aria-pressed="true" style="height: 50px; border-radius: 14px; border: 2px solid #2F55A4; background: #E6ECF8; color: #1E3D7E; font-weight: 700; font-size: 15px; font-family: Inter, sans-serif; cursor: pointer">Envío</button>
+          </div>
+        </sc-if>
+      </div>
+    </fieldset>
+
+    <sc-if value="{{isEnvio}}" hint-placeholder-val="{{false}}">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="dir" style="font-size: 13px; font-weight: 600">Dirección de entrega</label>
+        <input id="dir" type="text" autocomplete="street-address" placeholder="Calle, número y localidad" style="height: 50px; border: 1px solid #DCD6C8; border-radius: 14px; padding: 0 14px; font-size: 16px; font-family: Inter, sans-serif; background: #FFFFFF; color: #111827">
+      </div>
+    </sc-if>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="email" style="font-size: 13px; font-weight: 600">Email <span style="font-weight: 400; color: #4B5563">(opcional)</span></label>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="tu@email.com" style="height: 50px; border: 1px solid #DCD6C8; border-radius: 14px; padding: 0 14px; font-size: 16px; font-family: Inter, sans-serif; background: #FFFFFF; color: #111827">
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="notas" style="font-size: 13px; font-weight: 600">Notas <span style="font-weight: 400; color: #4B5563">(opcional)</span></label>
+      <textarea id="notas" rows="2" placeholder="Ej: color, horario para retirar" style="border: 1px solid #DCD6C8; border-radius: 14px; padding: 12px 14px; font-size: 16px; font-family: Inter, sans-serif; background: #FFFFFF; color: #111827; resize: none"></textarea>
+    </div>
+  </div>
+
+  <div style="padding: 12px 18px 22px 18px; background: #FBF9F4; border-top: 1px solid #E7E2D7">
+    <a href="PedidoRecibido.dc.html" style="height: 54px; border-radius: 16px; background: #2F55A4; color: #FFFFFF; font-weight: 700; font-size: 16px; text-decoration: none; display: flex; align-items: center; justify-content: center">Confirmar pedido</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { modo: 'retiro' }; }
+  renderVals() {
+    var self = this;
+    var envio = this.state.modo === 'envio';
+    return {
+      isEnvio: envio, isRetiro: !envio,
+      pickRetiro: function () { self.setState({ modo: 'retiro' }); },
+      pickEnvio: function () { self.setState({ modo: 'envio' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

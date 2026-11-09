@@ -1307,3 +1307,35 @@ Sos el agente ejecutor autónomo de RivaStock. Riva no va a estar disponible: no
 6) STATUS.md es tu memoria: leelo antes de cada tarea y actualizalo después. Si la sesión se corta, una sesión nueva debe poder seguir solo con este prompt.
 7) No me escribas hasta que no quede nada que avanzar sin mí; entonces mandá un único mensaje con el formato de §9.
 ```
+
+### [ ] I50 🔴 Catálogo listo para entregar a clientes — **Riva, 09/11 12:49 (maquetas aprobadas)**
+
+**Contexto:** hoy se entrega RivaStock a 2 clientes que lo quieren sobre todo por el catálogo online. Maquetas aprobadas en `docs/design/catalogo-v2/` (ver `LEEME.md`). **El diseño del catálogo NO se rediseña:** solo cambian las categorías y lo que dice cada punto. Auditoría de Claude del 09/11 sobre `/catalogo/rivatech-2` en 375 px: carga en ~3 s sin errores; los problemas son los de abajo.
+
+Orden de trabajo (los 4 primeros son para hoy): 1 → 2 → 3 → 4, después 5 → 6 → 7 → 8.
+
+1. **Sin textos fijos de RivaTech.** `PublicCatalog` tiene "Premium Tech Experience" escrito en el código, y hay que revisar de dónde sale "TECNOLOGIA AL MEJOR PRECIO". Todo texto de la portada, barra de anuncios y pie sale de la configuración de cada catálogo, o no se muestra. Un catálogo nuevo no puede mostrar nada de RivaTech. Defaults neutros ("Encontrá lo que buscás").
+2. **Pedido por WhatsApp con código (maquetas 3 y 4).**
+   - Código corto **por negocio**, correlativo y legible: `P-0001`, `P-0002`… (migración aditiva; los pedidos existentes reciben código sin cambiar nada más).
+   - Pantalla "¡Pedido recibido!" con el código y botón principal **"Enviar pedido por WhatsApp"** al número del negocio, con este mensaje: `Hola <negocio>! Te hice un pedido por el catálogo.` / `Pedido P-0042` / una línea por producto (`1 × Nombre · $ precio`) / `Total: $ …` / `Nombre: …` / `Entrega: Retiro|Envío (+ dirección)` / `Ver pedido: https://rivastock.vercel.app/pedidos/P-0042`.
+   - Ese link abre el pedido dentro de RivaStock solo con la sesión del dueño (sin sesión, va al login y después al pedido). No expone datos a terceros.
+   - Si el negocio no tiene WhatsApp configurado, no se muestra el botón. El pedido se guarda siempre, lo mande o no. El código queda visible en el carrito para reenviarlo.
+   - Los pedidos de revendedores mantienen su pantalla actual.
+3. **Formulario de compra simple (maqueta 3):** Nombre y WhatsApp obligatorios; selector **Retiro / Envío**; Dirección obligatoria solo con Envío; Email y Notas opcionales; `autocomplete`, `inputmode` y letra de 16 px (sin zoom en iPhone). Guardar la forma de entrega en el pedido (aditivo).
+4. **Vista previa al compartir el link.** Para `/catalogo/:slug`, `/catalogo/:slug/:productId` y el link corto `/p/:slug`, el HTML que recibe WhatsApp/Instagram/Facebook trae `<title>`, `og:title`, `og:description`, `og:image`, `og:url` y `twitter:card` del negocio (nombre, mensaje de bienvenida, logo o portada) o del producto (nombre, precio, foto). Hoy `curl` devuelve solo `<title>RivaStock</title>`. Hacelo con una función de Vercel (gratis) que lea solo datos públicos del catálogo, con caché corta. Actualizá también `document.title`. Probalo con user-agent de WhatsApp y facebookexternalhit.
+5. **Aviso de pedidos al vendedor (maqueta 5):** contador de pedidos nuevos en "Pedidos" (menú de PC, barra inferior del celular y botón +), aviso dentro de la app en tiempo real (Supabase Realtime) con "Ver", y buscador en Pedidos por **código, nombre o WhatsApp**. La ruta `/pedidos/:codigo` abre ese pedido.
+6. **Categorías con foto (maquetas 1 y 2), automático:** cada categoría muestra la foto del **primer producto visible en el catálogo que tenga foto**; "Todos" muestra un mosaico de 4 fotos; sin productos con foto, queda la letra como hoy. En la configuración del catálogo: interruptor "Mostrar foto en las categorías" (encendido por defecto) y, por categoría, "Cambiar" para elegir la foto de uno de sus productos, "Subir" una propia o "Volver a automática" (migración aditiva). Nada más del catálogo cambia.
+7. **Vista previa en vivo en la configuración del catálogo:** en "Portada" (y en "Tema y ambientación"), una mini portada arriba del formulario con la foto, el título, la descripción y los colores, que se actualiza mientras se edita, antes de guardar. En el menú de configuración, reemplazá los cuadrados con letra (P, S, D, Q…) por íconos de `lucide-react`.
+8. **Botón atrás del celular:** al abrir un producto, la URL pasa a `/catalogo/:slug/:productId` y "atrás" cierra el producto en vez de salir del catálogo.
+
+**Verificación:** catálogo de prueba **nuevo y vacío** (no muestra nada de RivaTech) y uno con productos, en 375 px y en PC; recorrido completo de compra hasta el WhatsApp; `curl -A WhatsApp` con OG del negocio y de un producto; aviso al vendedor en tiempo real; búsqueda por código. Nada en datos reales: no crear pedidos en catálogos reales.
+
+### [ ] I51 Login y primer ingreso con el diseño nuevo — **Riva, 09/11 12:49 (maquetas aprobadas)**
+
+Maquetas en `docs/design/login-v2/` (ver `LEEME.md`), con los tokens de `DESIGN.md`. Aplica **solo** a Login, Recuperar contraseña, Restablecer contraseña y el primer ingreso desde la invitación ("Creá tu contraseña"); el resto de la app no cambia todavía (eso es el Bloque J).
+- PC: dos columnas (qué es RivaStock en tres frases + formulario); en el celular, una columna. Claro y oscuro según la preferencia del sistema.
+- Mantener todo lo que hoy funciona: mostrar contraseña, "¿Te la olvidaste?", redirecciones, mensajes de error en español claro ("Email o contraseña incorrectos").
+- "¿No tenés cuenta? Pedila por WhatsApp" abre el WhatsApp de RivaTech ya configurado (no hay registro público).
+- "Mantener la sesión iniciada": hacelo solo si es simple y seguro con Supabase Auth; si no, sacalo y avisame.
+- Primer ingreso: saludo con el nombre real del negocio, email fijo, contraseña nueva con requisitos que se tildan mientras se escribe y "Repetila".
+- Verificación con Playwright en 390 px y 1280 px, claro y oscuro, sin cuentas reales.

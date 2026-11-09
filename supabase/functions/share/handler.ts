@@ -77,7 +77,7 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
 
     const headers = { apikey: options.publishableKey };
     const configUrl = new URL(`${supabaseUrl}/rest/v1/catalog_config`);
-    configUrl.searchParams.set('select', 'slug,business_name,show_prices,tagline,logo_url,enabled');
+    configUrl.searchParams.set('select', 'slug,business_name,show_prices,tagline,welcome_message,logo_url,banner_url,enabled');
     configUrl.searchParams.set('slug', `eq.${slug}`);
     configUrl.searchParams.set('enabled', 'eq.true');
     configUrl.searchParams.set('limit', '1');
@@ -90,8 +90,8 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
       if (!config?.enabled) return notFound(request.method);
 
       let title = `Catálogo de ${config.business_name || 'RivaStock'}`;
-      let description = config.tagline?.trim() || `Mirá los productos de ${config.business_name || 'este negocio'} en RivaStock.`;
-      let imageUrl = config.logo_url ?? null;
+      let description = config.tagline?.trim() || config.welcome_message?.trim() || `Mirá los productos de ${config.business_name || 'este negocio'}.`;
+      let imageUrl = config.logo_url ?? config.banner_url ?? null;
       let imageContentType: string | null = null;
       let imageAlt = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let catalogPath = `/catalogo/${encodeURIComponent(slug)}`;
@@ -136,7 +136,8 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         }
       }
 
-      const canonicalUrl = `${origin}/p/${encodeURIComponent(slug)}${productId ? `/${encodeURIComponent(productId)}` : ''}`;
+      const canonicalRoute = requestUrl.searchParams.get('canonical') === 'catalogo' ? 'catalogo' : 'p';
+      const canonicalUrl = `${origin}/${canonicalRoute}/${encodeURIComponent(slug)}${productId ? `/${encodeURIComponent(productId)}` : ''}`;
       const html = renderShareHtml({
         canonicalUrl,
         catalogUrl: `${origin}${catalogPath}`,

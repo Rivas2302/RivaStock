@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Orders from './Orders';
 
-const { list, deleteOrder, user } = vi.hoisted(() => ({ list: vi.fn(), deleteOrder: vi.fn(), user: { uid: 'owner-1' } }));
+const { list, deleteOrder, user, params } = vi.hoisted(() => ({ list: vi.fn(), deleteOrder: vi.fn(), user: { uid: 'owner-1' }, params: { codigo: undefined as string | undefined } }));
 
 vi.mock('../lib/db', () => ({
   db: { list, update: vi.fn(), delete: deleteOrder },
@@ -12,7 +12,7 @@ vi.mock('../lib/db', () => ({
 }));
 vi.mock('../AuthContext', () => ({ useAuth: () => ({ user, refetchToken: 0 }) }));
 vi.mock('../hooks/usePermission', () => ({ usePermission: () => true }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => ({ pathname: '/pedidos' }) }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => params, useLocation: () => ({ pathname: '/pedidos' }) }));
 
 describe('Orders convert-to-sale action', () => {
   let host: HTMLDivElement;
@@ -23,11 +23,12 @@ describe('Orders convert-to-sale action', () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     previousTheme = document.documentElement.className;
     document.documentElement.classList.add('dark');
+    params.codigo = undefined;
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
     list.mockReset().mockResolvedValue([{
-      id: 'order-1', date: '2026-11-07', customerName: 'Cliente QA', customerPhone: '5550000',
+      id: 'order-1', orderCode: 'P-0042', date: '2026-11-07', customerName: 'Cliente QA', customerPhone: '5550000',
       customerEmail: '', customerAddress: 'Dirección QA', items: [{ productId: 'product-1', productName: 'Producto QA', quantity: 1, price: 1000 }],
       total: 1000, status: 'Nuevo', isRead: false, ownerUid: 'owner-1',
     }]);
@@ -58,6 +59,14 @@ describe('Orders convert-to-sale action', () => {
     expect(select?.className).toContain('text-[var(--ink)]');
     expect(select?.className).toContain('dark:[color-scheme:dark]');
     expect(select?.querySelector('option')?.className).toContain('text-[var(--ink)]');
+  });
+
+  it('opens only the requested owner order from its short code route', async () => {
+    params.codigo = 'P-0042';
+    await act(async () => { root.render(<Orders />); });
+    await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector('[data-testid="order-code"]')?.textContent).toBe('P-0042');
+    expect(host.textContent).toContain('Cliente QA');
   });
 
   it('deletes only the selected catalog order after the app confirmation', async () => {

@@ -35,7 +35,7 @@ function defaultCatalogConfig(ownerUid: string, businessName: string, slug: stri
     showStockQuantity: false,
     showOutOfStock: false,
     allowOrders: true,
-    welcomeMessage: '¡Bienvenido a nuestra tienda!',
+    welcomeMessage: 'Encontrá lo que buscás.',
     primaryColor: '#6366f1',
     accentColor: '#6366f1',
     layout: 'Grid',

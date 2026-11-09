@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { LogIn, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -15,6 +15,7 @@ export default function Login() {
 
   const { login } = useAuth();
   const navigate  = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +30,8 @@ export default function Login() {
     try {
       await login(email, password);
       setAttempts(0);
-      navigate('/');
+      const requestedPath = (location.state as { from?: unknown } | null)?.from;
+      navigate(typeof requestedPath === 'string' && requestedPath.startsWith('/pedidos/') ? requestedPath : '/', { replace: true });
     } catch (err: unknown) {
       const next = attempts + 1;
       setAttempts(next);

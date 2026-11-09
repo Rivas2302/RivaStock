@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Vendedor: pedidos por código</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5FC2A5}a:hover{color:#8ED9C2}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; background: #121212; color: #F2F2F2; font-family: 'Hanken Grotesk', system-ui, sans-serif; display: flex; flex-direction: column; position: relative">
+  <div style="margin: 12px 14px 0 14px; display: flex; align-items: center; gap: 10px; background: #202020; border: 1px solid #5FC2A5; border-radius: 14px; padding: 12px 14px">
+    <div style="width: 36px; height: 36px; border-radius: 10px; background: #0E2A22; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5FC2A5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+      <span style="font-size: 14px; font-weight: 700">Pedido nuevo P-0042</span>
+      <span style="font-size: 12px; color: #A7A7A7">Marina · $ 22.000 · Retiro</span>
+    </div>
+    <button type="button" style="height: 36px; padding: 0 12px; border-radius: 10px; border: none; background: #5FC2A5; color: #0E2A22; font-weight: 700; font-size: 13px; font-family: 'Hanken Grotesk', sans-serif; cursor: pointer">Ver</button>
+  </div>
+
+  <header style="padding: 18px 18px 10px 18px; display: flex; flex-direction: column; gap: 12px">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 800">Pedidos del catálogo</h1>
+    <label for="buscar-codigo" style="position: absolute; left: -9999px">Buscar por código, nombre o WhatsApp</label>
+    <div style="display: flex; align-items: center; gap: 10px; background: #181818; border: 1px solid #2B2B2B; border-radius: 14px; padding: 0 14px; height: 48px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <input id="buscar-codigo" type="search" value="P-0042" style="border: none; outline: none; flex: 1; font-size: 16px; font-family: 'Hanken Grotesk', sans-serif; background: transparent; color: #F2F2F2">
+    </div>
+    <span style="font-size: 12px; color: #A7A7A7">Buscá por código, nombre o WhatsApp. El link del mensaje abre el pedido directo.</span>
+  </header>
+
+  <div style="margin: 4px 14px 0 14px; background: #181818; border: 1px solid #2B2B2B; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span style="font-size: 18px; font-weight: 800; letter-spacing: 0.5px">P-0042</span>
+        <span style="font-size: 11px; font-weight: 700; color: #0E2A22; background: #5FC2A5; border-radius: 999px; padding: 3px 8px">NUEVO</span>
+      </div>
+      <span style="font-size: 12px; color: #A7A7A7">hoy 11:58</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+      <span style="font-weight: 700">Marina</span>
+      <span style="color: #A7A7A7">WhatsApp 2302 123456 · Retiro en el local</span>
+    </div>
+    <div style="border-top: 1px solid #2B2B2B; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+      <div style="display: flex; justify-content: space-between"><span>1 × Auricular M90 Flux</span><span>$ 11.200</span></div>
+      <div style="display: flex; justify-content: space-between"><span>1 × Mate</span><span>$ 10.800</span></div>
+      <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 16px; padding-top: 4px"><span>Total</span><span>$ 22.000</span></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <button type="button" style="height: 44px; border-radius: 12px; border: 1px solid #2B2B2B; background: #202020; color: #F2F2F2; font-weight: 600; font-size: 14px; font-family: 'Hanken Grotesk', sans-serif; cursor: pointer">Responder por WhatsApp</button>
+      <button type="button" style="height: 44px; border-radius: 12px; border: none; background: #5FC2A5; color: #0E2A22; font-weight: 700; font-size: 14px; font-family: 'Hanken Grotesk', sans-serif; cursor: pointer">Convertir en venta</button>
+    </div>
+  </div>
+
+  <nav aria-label="Menú" style="position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: #181818; border-top: 1px solid #2B2B2B; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center">
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #A7A7A7; text-decoration: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 11 12 4l9 7"></path><path d="M5 10v10h14V10"></path></svg>Inicio</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #A7A7A7; text-decoration: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18l-2 12H5L3 7Z"></path></svg>Ventas</a>
+    <a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #5FC2A5; font-weight: 700; text-decoration: none; position: relative">
+      <span style="position: relative; display: inline-flex">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5FC2A5" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M9 8h6M9 12h6M9 16h4"></path></svg>
+        <span aria-label="1 pedido nuevo" style="position: absolute; top: -6px; right: -10px; min-width: 18px; height: 18px; border-radius: 999px; background: #F07B6E; color: #121212; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center">1</span>
+      </span>Pedidos</a>
+    <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #A7A7A7; text-decoration: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A7A7A7" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"></path></svg>Stock</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -126,14 +126,17 @@ interface PublicOrderInput {
     email: string;
     address: string;
     message: string;
+    deliveryMethod?: 'pickup' | 'shipping';
   };
   items: { productId: string; quantity: number }[];
 }
 
 export async function createPublicCatalogOrder(input: PublicOrderInput): Promise<{
   id: string;
+  orderCode: string;
   total: number;
   channel: CatalogChannel;
+  items: Array<{ productName: string; quantity: number; price: number }>;
 }> {
   const { data, error } = await supabase.rpc('create_public_catalog_order', {
     p_slug: input.slug,
@@ -143,8 +146,15 @@ export async function createPublicCatalogOrder(input: PublicOrderInput): Promise
     p_items: input.items,
   });
   if (error) throw new Error(error.message);
-  const result = data as { id: string; total: number; channel: CatalogChannel };
-  return { ...result, total: Number(result.total) };
+  const result = data as {
+    id: string; orderCode: string; total: number; channel: CatalogChannel;
+    items: Array<{ productName: string; quantity: number; price: number }>;
+  };
+  return {
+    ...result,
+    total: Number(result.total),
+    items: (result.items ?? []).map(item => ({ ...item, quantity: Number(item.quantity), price: Number(item.price) })),
+  };
 }
 
 export async function notifyPublicOrderOwner(orderId: string): Promise<void> {

@@ -2,6 +2,16 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/catalogo/:slug/:productId",
+      "has": [{ "type": "header", "key": "user-agent", "value": { "re": "(?i)(whatsapp|facebookexternalhit|meta-externalagent|instagram|twitterbot|linkedinbot)" } }],
+      "destination": "/api/catalog-preview?slug=:slug&productId=:productId"
+    },
+    {
+      "source": "/catalogo/:slug",
+      "has": [{ "type": "header", "key": "user-agent", "value": { "re": "(?i)(whatsapp|facebookexternalhit|meta-externalagent|instagram|twitterbot|linkedinbot)" } }],
+      "destination": "/api/catalog-preview?slug=:slug"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "routes": [

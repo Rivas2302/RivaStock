@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Catálogo actual con categorías con foto</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2F55A4}a:hover{color:#1E3D7E}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; background: #F4F1EA; font-family: Inter, system-ui, sans-serif; color: #111827; display: flex; flex-direction: column; position: relative">
+  <header style="display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: #FBF9F4">
+    <div style="width: 40px; height: 40px; border-radius: 6px; background: #0B0F14; color: #4ADE80; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center">RT</div>
+    <div style="display: flex; gap: 8px">
+      <button type="button" aria-label="Modo oscuro" style="width: 44px; height: 44px; border-radius: 999px; border: none; background: #EAE6DC; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"></path></svg>
+      </button>
+      <button type="button" aria-label="Ver carrito" style="width: 44px; height: 44px; border-radius: 999px; border: none; background: #EAE6DC; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7Z"></path><path d="M9 7a3 3 0 0 1 6 0"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="background: #2F55A4; color: #FFFFFF; font-size: 12px; font-weight: 800; padding: 8px 18px; letter-spacing: 0.2px">TECNOLOGIA AL MEJOR PRECIO</div>
+
+  <div style="background: #1E2D4F; color: #FFFFFF; padding: 28px 18px 60px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center">
+    <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.8px">Encontrá lo que buscás</span>
+    <span style="font-size: 14px; color: #D6DEEE">Una selección para todos los días.</span>
+  </div>
+
+  <div style="margin: -40px 18px 0 18px; background: #FFFFFF; border-radius: 18px; padding: 14px; box-shadow: 0 6px 20px rgba(17,24,39,0.08); display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px; background: #F6F7F9; border-radius: 12px; padding: 0 14px; height: 46px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <span style="font-size: 14px; color: #6B7280">Busca en nuestra colección...</span>
+    </div>
+    <div style="display: flex; gap: 8px">
+      <span style="height: 36px; padding: 0 18px; border-radius: 999px; background: #2F55A4; color: #FFFFFF; font-weight: 800; font-size: 12px; display: flex; align-items: center">TIENDA</span>
+      <span style="height: 36px; padding: 0 18px; border-radius: 999px; background: #EEF1FB; color: #3B3FA8; font-weight: 800; font-size: 12px; display: flex; align-items: center">REVENDEDORES</span>
+    </div>
+  </div>
+
+  <div style="margin: 20px 18px 0 18px; display: flex; align-items: center; gap: 8px">
+    <h2 style="margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.4px">Categorías</h2>
+    <span style="font-size: 11px; font-weight: 700; color: #1E3D7E; background: #DCE4F5; border-radius: 999px; padding: 3px 8px">NUEVO: con foto</span>
+  </div>
+
+  <div style="display: flex; gap: 12px; overflow-x: auto; padding: 12px 18px 14px 18px; flex: 0 0 auto">
+    <sc-for list="{{cats}}" as="c" hint-placeholder-count="5">
+      <button type="button" onClick="{{c.pick}}" style="flex: 0 0 auto; width: 72px; border: none; background: transparent; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font-family: Inter, sans-serif">
+        <sc-if value="{{c.on}}" hint-placeholder-val="{{false}}">
+          <div style="width: 68px; height: 68px; box-sizing: border-box; border-radius: 999px; border: 3px solid #2F55A4; padding: 2px; background: #FFFFFF">
+            <sc-if value="{{c.collage}}" hint-placeholder-val="{{false}}">
+              <div style="width: 58px; height: 58px; border-radius: 999px; overflow: hidden; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #FFFFFF">
+                <img src="/_blob/665d2c40b8d63f7848b121d272cc538a" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/6b4cee5d00dbae0eaaca684e40154166" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/7f93fd182017fe12798329b59308598e" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/7e513c3381c5dd5c91aa650d1584d601" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+              </div>
+            </sc-if>
+            <sc-if value="{{c.photo}}" hint-placeholder-val="{{false}}">
+              <img src="{{c.img}}" alt="" style="width: 58px; height: 58px; border-radius: 999px; object-fit: cover; display: block">
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{c.off}}" hint-placeholder-val="{{true}}">
+          <div style="width: 68px; height: 68px; box-sizing: border-box; border-radius: 999px; border: 3px solid transparent; padding: 2px">
+            <sc-if value="{{c.collage}}" hint-placeholder-val="{{false}}">
+              <div style="width: 58px; height: 58px; border-radius: 999px; overflow: hidden; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #FFFFFF">
+                <img src="/_blob/665d2c40b8d63f7848b121d272cc538a" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/6b4cee5d00dbae0eaaca684e40154166" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/7f93fd182017fe12798329b59308598e" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+                <img src="/_blob/7e513c3381c5dd5c91aa650d1584d601" alt="" style="width: 29px; height: 29px; object-fit: cover; display: block">
+              </div>
+            </sc-if>
+            <sc-if value="{{c.photo}}" hint-placeholder-val="{{true}}">
+              <img src="{{c.img}}" alt="" style="width: 58px; height: 58px; border-radius: 999px; object-fit: cover; display: block">
+            </sc-if>
+            <sc-if value="{{c.letter}}" hint-placeholder-val="{{false}}">
+              <div style="width: 58px; height: 58px; border-radius: 999px; background: #3B5BA9; color: #FFFFFF; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 20px; display: flex; align-items: center; justify-content: center">{{c.initial}}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <span style="font-size: 12px; font-weight: 600; color: #1F2937; max-width: 72px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="padding: 2px 18px 10px 18px">
+    <h2 style="margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.4px">{{title}}</h2>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 18px 18px 18px">
+    <sc-for list="{{products}}" as="p" hint-placeholder-count="2">
+      <div style="background: #FFFFFF; border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px">
+        <img src="{{p.img}}" alt="{{p.name}}" style="width: 100%; height: 130px; object-fit: cover; border-radius: 12px; display: block">
+        <span style="align-self: flex-start; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; color: #374151; background: #EEF1F7; border-radius: 999px; padding: 3px 8px">{{p.cat}}</span>
+        <span style="font-weight: 700; font-size: 14px">{{p.name}}</span>
+        <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 16px">{{p.price}}</span>
+        <span style="height: 36px; border-radius: 12px; background: #2F55A4; color: #FFFFFF; font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center">+ Agregar</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 'todos' }; }
+  renderVals() {
+    var B = '/_blob/';
+    var self = this;
+    var picked = this.state.picked;
+    var cats = [
+      { id: 'todos', name: 'Todos', kind: 'collage' },
+      { id: 'bazar', name: 'Bazar', kind: 'photo', img: B + '665d2c40b8d63f7848b121d272cc538a' },
+      { id: 'auriculares', name: 'Auriculares', kind: 'photo', img: B + '6b4cee5d00dbae0eaaca684e40154166' },
+      { id: 'parlantes', name: 'Parlantes', kind: 'photo', img: B + '7e513c3381c5dd5c91aa650d1584d601' },
+      { id: 'perfumes', name: 'Perfumes', kind: 'photo', img: B + '7f93fd182017fe12798329b59308598e' },
+      { id: 'joystick', name: 'Joystick', kind: 'photo', img: B + '12010ab235ac64fd2f0e3d80a945380c' },
+      { id: 'termo', name: 'Termo', kind: 'photo', img: B + 'ed2dfed428c870c5b2208b4c4cb5b401' },
+      { id: 'ofertas', name: 'Ofertas', kind: 'letter', initial: 'O' }
+    ];
+    var all = [
+      { c: 'auriculares', name: 'Auricular M90 Flux', cat: 'AURICULARES', price: '$ 11.200', img: B + '6b4cee5d00dbae0eaaca684e40154166' },
+      { c: 'bazar', name: 'Mate', cat: 'BAZAR', price: '$ 10.800', img: B + '665d2c40b8d63f7848b121d272cc538a' },
+      { c: 'perfumes', name: 'Perfume ASAD bourbon', cat: 'PERFUMES', price: '$ 20.000', img: B + '7f93fd182017fe12798329b59308598e' },
+      { c: 'parlantes', name: 'Parlante + Micrófono', cat: 'PARLANTES', price: '$ 15.800', img: B + '7e513c3381c5dd5c91aa650d1584d601' },
+      { c: 'joystick', name: 'Joystick PS2', cat: 'JOYSTICK', price: '$ 13.000', img: B + '12010ab235ac64fd2f0e3d80a945380c' },
+      { c: 'termo', name: 'Termo Digital', cat: 'TERMO', price: '$ 13.800', img: B + 'ed2dfed428c870c5b2208b4c4cb5b401' }
+    ];
+    var shown = picked === 'todos' ? all.slice(0, 2) : all.filter(function (p) { return p.c === picked; });
+    var cur = cats.filter(function (c) { return c.id === picked; })[0];
+    return {
+      title: picked === 'todos' ? 'Todos los productos' : cur.name,
+      products: shown,
+      cats: cats.map(function (c) {
+        return {
+          name: c.name, img: c.img || '', initial: c.initial || '',
+          on: c.id === picked, off: c.id !== picked,
+          collage: c.kind === 'collage', photo: c.kind === 'photo', letter: c.kind === 'letter',
+          pick: function () { self.setState({ picked: c.id }); }
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -59,7 +59,8 @@ describe('public catalog share handler', () => {
   const forwardedHost = { 'x-forwarded-host': 'rivastock.vercel.app' };
   const configRow = {
     slug: 'rivatech-2', business_name: 'RivaTech', show_prices: true,
-    tagline: 'Tecnología para todos', logo_url: null, user_id: '11111111-1111-4111-8111-111111111111', enabled: true,
+    tagline: 'Tecnología para todos', welcome_message: 'Encontrá lo que buscás.', logo_url: null, banner_url: null,
+    user_id: '11111111-1111-4111-8111-111111111111', enabled: true,
   };
   const product = {
     id: PRODUCT_ID,
@@ -115,6 +116,17 @@ describe('public catalog share handler', () => {
     expect(html).toContain('Tecnología para todos');
     expect(html).toContain('url=https://rivastock.vercel.app/catalogo/rivatech-2');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the neutral welcome message and catalog image when no configured tagline or logo exists', async () => {
+    const fetcher = makeFetch({ configRows: [{ ...configRow, tagline: null, welcome_message: 'Encontrá lo que buscás.', banner_url: `${SUPABASE_URL}/storage/v1/object/public/assets/banner.webp` }] });
+    const handler = createShareHandler({ supabaseUrl: SUPABASE_URL, publishableKey: 'sb_publishable_test', fetcher });
+    const response = await handler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2&canonical=catalogo', { headers: forwardedHost }));
+    const html = await response.text();
+
+    expect(html).toContain('og:description" content="Encontrá lo que buscás."');
+    expect(html).toContain(`og:image" content="${SUPABASE_URL}/storage/v1/object/public/assets/banner.webp`);
+    expect(html).toContain('og:url" content="https://rivastock.vercel.app/catalogo/rivatech-2"');
   });
 
   it('uses the configured production host when an upstream replaces the forwarded host', async () => {

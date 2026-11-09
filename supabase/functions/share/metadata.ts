@@ -3,7 +3,9 @@ export interface ShareCatalogConfig {
   business_name: string;
   show_prices: boolean;
   tagline?: string | null;
+  welcome_message?: string | null;
   logo_url?: string | null;
+  banner_url?: string | null;
   user_id?: string;
   currency_symbol?: string | null;
 }

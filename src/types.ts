@@ -408,6 +408,7 @@ export interface AuditEvent {
 
 export interface Order {
   id: string;
+  orderCode?: string;
   date: string;
   customerName: string;
   customerPhone: string;
@@ -426,6 +427,7 @@ export interface Order {
   ownerUid: string;
   channel?: CatalogChannel;
   priceListId?: string | null;
+  deliveryMethod?: 'pickup' | 'shipping';
 }
 
 export interface PublicCatalogProduct extends Product {

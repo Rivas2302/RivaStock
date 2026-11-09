@@ -82,6 +82,13 @@ export default function PublicProductPage() {
     return () => { cancelled = true; };
   }, [slug, productId]);
 
+  useEffect(() => {
+    if (!product || !config) return;
+    const previousTitle = document.title;
+    document.title = `${product.name} · ${config.businessName || 'Catálogo'}`;
+    return () => { document.title = previousTitle; };
+  }, [config, product]);
+
   const presentation = config ? { ...defaultCatalogPresentation(config), ...config.presentation } : null;
   const offerEnd = presentation?.offerEndsAt ? Date.parse(presentation.offerEndsAt) : 0;
   const offerDiscount = product && presentation && offerEnd > Date.now() && presentation.offerProductIds.includes(product.id)

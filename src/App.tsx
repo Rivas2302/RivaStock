@@ -58,6 +58,7 @@ function withSuspense(element: React.ReactNode) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, authUser, loading, authError, refetchData, logout } = useAuth();
+  const location = useLocation();
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50 dark:bg-slate-950">
@@ -79,7 +80,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}${location.hash}` }} replace />;
   if (authUser?.forcePass) return <Navigate to="/reset-password?type=temporary" replace />;
   return <>{children}</>;
 }
@@ -119,6 +120,7 @@ function AppRoutes() {
           <Route path="ingresos" element={withSuspense(<RequireBusinessModule module="intake"><RequirePermission module="ingresos"><Intake /></RequirePermission></RequireBusinessModule>)} />
           <Route path="caja" element={withSuspense(<RequireBusinessModule module="cash"><RequirePermission module="caja"><CashFlow /></RequirePermission></RequireBusinessModule>)} />
           <Route path="pedidos" element={withSuspense(<RequireBusinessModule module="orders"><RequirePermission module="pedidos"><Orders /></RequirePermission></RequireBusinessModule>)} />
+          <Route path="pedidos/:codigo" element={withSuspense(<RequireBusinessModule module="orders"><RequirePermission module="pedidos"><Orders /></RequirePermission></RequireBusinessModule>)} />
           <Route path="calculadora" element={withSuspense(<RequireBusinessModule module="calculator"><Calculator /></RequireBusinessModule>)} />
           <Route path="config" element={withSuspense(<RequirePermission module="config"><Settings /></RequirePermission>)} />
           <Route path="automatizaciones" element={withSuspense(<RequireBusinessModule module="automation"><RequirePermission module="stock"><Automations /></RequirePermission></RequireBusinessModule>)} />

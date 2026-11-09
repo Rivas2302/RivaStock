@@ -17,13 +17,12 @@ import {
   XCircle,
   Clock,
   ArrowRight,
-  Search,
   Filter,
   ChevronDown,
   Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import '../styles/business-redesign.css';
 
 export default function Orders() {
@@ -31,6 +30,7 @@ export default function Orders() {
   const canWrite = usePermission('pedidos', 'write');
   const canDelete = usePermission('pedidos', 'delete');
   const navigate = useNavigate();
+  const { codigo } = useParams<{ codigo?: string }>();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -120,8 +120,14 @@ export default function Orders() {
   };
 
   const filteredOrders = useMemo(
-    () => orders.filter((order) => deferredStatusFilter === 'all' || order.status === deferredStatusFilter),
-    [deferredStatusFilter, orders],
+    () => {
+      const query = codigo?.trim().toLocaleLowerCase('es-AR') ?? '';
+      return orders.filter(order => {
+        const matchesStatus = deferredStatusFilter === 'all' || order.status === deferredStatusFilter;
+        return matchesStatus && (!query || order.orderCode?.toLocaleLowerCase('es-AR') === query);
+      });
+    },
+    [codigo, deferredStatusFilter, orders],
   );
   const pagination = usePagination(filteredOrders);
 
@@ -167,6 +173,7 @@ export default function Orders() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">{order.customerName}</h3>
+                    {order.orderCode && <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-xs font-bold text-[var(--ink)]" data-testid="order-code">{order.orderCode}</span>}
                     {!order.isRead && (
                       <span className="bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Nuevo</span>
                     )}
