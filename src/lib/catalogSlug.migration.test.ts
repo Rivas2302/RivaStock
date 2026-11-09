@@ -10,6 +10,8 @@ const OWNER_THREE = '10000000-0000-4000-8000-000000000003';
 describe('catalog link registry migration', () => {
   it('creates name-based links, reserves prior links, rejects collisions and reserved words', async () => {
     const migration = await readFile('supabase/migrations/20261109232617_catalog_slug_history_and_unique_links.sql', 'utf8');
+    const permissionMigration = await readFile('supabase/migrations/20261109234354_catalog_slug_key_authenticated_execute.sql', 'utf8');
+    const anonPermissionsMigration = await readFile('supabase/migrations/20261109235404_catalog_slug_rpc_anon_permissions.sql', 'utf8');
     const db = new PGlite({ extensions: { unaccent } });
     try {
       await db.exec(`
@@ -48,7 +50,33 @@ describe('catalog link registry migration', () => {
           ('${OWNER_ONE}', 'riva-sucursal');
       `);
       await db.exec('CREATE EXTENSION unaccent WITH SCHEMA extensions');
+      await db.exec('GRANT USAGE ON SCHEMA extensions TO authenticated, anon');
       await db.exec(migration);
+      await db.exec(permissionMigration);
+      await db.exec(anonPermissionsMigration);
+
+      await db.exec('SET ROLE authenticated');
+      const authenticatedKey = await db.query<{ catalog_slug_key: string }>(
+        `SELECT public.catalog_slug_key('Bázar-Lucia')`,
+      );
+      expect(authenticatedKey.rows[0].catalog_slug_key).toBe('bazar-lucia');
+      await db.exec('RESET ROLE');
+
+      await db.exec('SET ROLE anon');
+      const anonymousFunctionAccess = await db.query<{ key_execute: boolean; available_execute: boolean; suggest_execute: boolean; resolve_execute: boolean }>(`
+        SELECT has_function_privilege('anon', 'public.catalog_slug_key(text)', 'EXECUTE') AS key_execute,
+               has_function_privilege('anon', 'public.catalog_slug_available(text,text)', 'EXECUTE') AS available_execute,
+               has_function_privilege('anon', 'public.suggest_catalog_slug(text,text)', 'EXECUTE') AS suggest_execute,
+               has_function_privilege('anon', 'public.resolve_public_catalog_slug(text)', 'EXECUTE') AS resolve_execute
+      `);
+      expect(anonymousFunctionAccess.rows[0]).toEqual({
+        key_execute: false, available_execute: false, suggest_execute: false, resolve_execute: true,
+      });
+      const anonymousAlias = await db.query<{ resolve_public_catalog_slug: string }>(
+        `SELECT public.resolve_public_catalog_slug('riva-antiguo')`,
+      );
+      expect(anonymousAlias.rows[0].resolve_public_catalog_slug).toBe('riva-actual');
+      await db.exec('RESET ROLE');
 
       await db.exec(`
         CREATE TRIGGER test_handle_new_user AFTER INSERT ON auth.users
