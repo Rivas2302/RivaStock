@@ -68,6 +68,16 @@ export async function unlockResellerCatalog(slug: string, accessCode: string): P
   };
 }
 
+export async function getPublicResellerBuyingPolicy(slug: string, accessCode: string): Promise<string> {
+  const { data, error } = await supabase.rpc('get_public_reseller_buying_policy', {
+    p_slug: slug,
+    p_access_code: accessCode,
+  });
+  if (error) throw new Error(`[get_public_reseller_buying_policy] ${error.message}`);
+  if (typeof data !== 'string') throw new Error('No se pudieron cargar las condiciones de compra.');
+  return data;
+}
+
 export async function getPublicResellerSupplierRounds(
   slug: string,
   accessCode: string,

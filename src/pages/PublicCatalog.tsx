@@ -4,7 +4,8 @@ import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
-import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerBuyingPolicy, getPublicResellerSupplierRounds, getResellerCatalogStatus, unlockResellerCatalog } from '../lib/publicCatalog';
+import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
@@ -102,6 +103,7 @@ export default function PublicCatalog() {
   const [channel, setChannel] = useState<CatalogChannel>('retail');
   const [resellerAvailable, setResellerAvailable] = useState(false);
   const [resellerCatalog, setResellerCatalog] = useState<PublicResellerCatalog | null>(null);
+  const [resellerBuyingPolicy, setResellerBuyingPolicy] = useState('');
   const [supplierRounds, setSupplierRounds] = useState<PublicResellerSupplierRound[]>([]);
   const [selectedSupplierRoundId, setSelectedSupplierRoundId] = useState<string | null>(null);
   const [roundOrderReceipt, setRoundOrderReceipt] = useState<{ id: string; total: number; closesAt: string; itemsSummary: string[] } | null>(null);
@@ -417,11 +419,14 @@ useEffect(() => {
     if (!slug || unlocking) return;
     setUnlocking(true);
     setAccessError(null);
+    let accessCodeAccepted = false;
     try {
       const rounds = await getPublicResellerSupplierRounds(slug, accessCodeInput).catch(() => []);
+      accessCodeAccepted = rounds.length > 0;
       let unlocked: PublicResellerCatalog;
       try {
         unlocked = await unlockResellerCatalog(slug, accessCodeInput);
+        accessCodeAccepted = true;
       } catch (catalogAccessError) {
         if (rounds.length === 0) throw catalogAccessError;
         const firstRound = rounds[0];
@@ -434,7 +439,9 @@ useEffect(() => {
           products: toRoundProducts(firstRound),
         };
       }
+      const buyingPolicy = await getPublicResellerBuyingPolicy(slug, accessCodeInput);
       setResellerCatalog(unlocked);
+      setResellerBuyingPolicy(buyingPolicy);
       setSupplierRounds(rounds);
       setSelectedSupplierRoundId(rounds[0]?.id ?? null);
       setResellerAccessCode(accessCodeInput.trim());
@@ -445,7 +452,9 @@ useEffect(() => {
       setAvailabilityFilter('all');
       setIsAccessOpen(false);
     } catch {
-      setAccessError('El código no es válido. Revisalo e intentá nuevamente.');
+      setAccessError(accessCodeAccepted
+        ? 'No se pudieron cargar las condiciones de compra. Intentá de nuevo.'
+        : 'El código no es válido. Revisalo e intentá nuevamente.');
     } finally {
       setUnlocking(false);
     }
@@ -1023,6 +1032,22 @@ if (loading) {
               </div>
             </div>
           </div>
+        )}
+        {channel === 'reseller' && getResellerBuyingPolicyLines(resellerBuyingPolicy).length > 0 && (
+          <section aria-labelledby="reseller-buying-policy-title" data-testid="public-reseller-buying-policy" className={cn(
+            'mb-8 rounded-2xl border p-4 sm:mb-10 sm:rounded-[2rem] sm:p-6',
+            darkMode ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)]',
+          )}>
+            <h2 id="reseller-buying-policy-title" className="text-lg font-black sm:text-xl">Cómo comprar</h2>
+            <ul className="mt-3 grid gap-2 text-sm leading-relaxed sm:grid-cols-2">
+              {getResellerBuyingPolicyLines(resellerBuyingPolicy).map((line, index) => (
+                <li key={`${index}-${line}`} className="flex gap-2">
+                  <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {channel === 'reseller' && supplierRounds.length > 0 && <section aria-label="Rondas de pedidos por encargo" className="mb-8 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:rounded-[2rem] sm:p-6">
           <h2 className="text-lg font-black">Pedidos por encargo</h2>

@@ -54,6 +54,7 @@ function profile(businessName = 'Fixture Store') {
     dark_mode: false,
     phone: null,
     email_contact: null,
+    onboarding_completed_at: '2026-01-01T00:00:00Z',
     catalog_slug: businessName ? 'fixture-store' : null,
     created_at: '2026-01-01T00:00:00Z',
   };
@@ -62,6 +63,7 @@ function profile(businessName = 'Fixture Store') {
 interface FixtureOptions {
   businessName?: string;
   authenticated?: boolean;
+  orders?: Record<string, unknown>[];
   intercept?: (route: Route, url: URL) => Promise<boolean>;
 }
 
@@ -70,6 +72,7 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   const requests: { method: string; pathname: string; body: unknown }[] = [];
+  const fixtureOrders = [...(options.orders ?? [])];
 
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
@@ -132,6 +135,18 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
       } else if (method === 'PATCH') {
         data = requestBody;
       }
+    } else if (path === '/rest/v1/orders') {
+      if (method === 'GET') {
+        data = fixtureOrders;
+      } else if (method === 'DELETE') {
+        const idFilter = url.searchParams.get('id') ?? '';
+        if (idFilter.startsWith('eq.')) {
+          const id = idFilter.slice(3);
+          const index = fixtureOrders.findIndex(order => order.id === id);
+          if (index >= 0) fixtureOrders.splice(index, 1);
+        }
+        data = [];
+      }
     } else if (path === '/rest/v1/inventory_owners') {
       data = [{ id: inventoryOwnerId, user_id: ownerId, name: 'Principal', is_primary: true, sort_order: 0 }];
     } else if (path === '/rest/v1/inventory_owner_memberships') {
@@ -150,7 +165,7 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
     await page.addInitScript((value) => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   }
 
-  return { consoleErrors, pageErrors, requests, profile: currentProfile };
+  return { consoleErrors, pageErrors, requests, profile: currentProfile, orders: fixtureOrders };
 }
 
 test('invite link verifies through /auth/confirm and enters without signing out', async ({ page }) => {
@@ -270,6 +285,58 @@ test('empty base-plan pages have helpful empty states and no runtime or console 
     await expect(page.locator('main'), `Missing helpful empty state on ${path}`).toContainText(emptyState);
   }
 
+  expect(fixture.pageErrors).toEqual([]);
+  expect(fixture.consoleErrors).toEqual([]);
+});
+
+test('catalog orders use readable dark status controls and safe delete confirmation on mobile and desktop', async ({ page }) => {
+  const order = {
+    id: 'order-qa-mobile-delete',
+    user_id: ownerId,
+    customer_name: 'Revendedor QA',
+    customer_phone: '5490000000000',
+    customer_email: 'qa@example.test',
+    customer_address: 'General Pico',
+    customer_message: '',
+    items: [{ productId: 'product-qa', productName: 'Producto QA', quantity: 1, price: 1000 }],
+    total: 1000,
+    status: 'Nuevo',
+    date: '2026-11-08T12:00:00Z',
+    is_read: false,
+    channel: 'reseller',
+  };
+  const fixture = await mountFixture(page, { businessName: 'Order Fixture Store', orders: [order] });
+
+  for (const width of [360, 1440]) {
+    if (fixture.orders.length === 0) fixture.orders.push(order);
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto('/pedidos');
+    await expect(page.getByText('Revendedor QA', { exact: true })).toBeVisible();
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+
+    const status = page.getByTestId('order-status-select');
+    await expect(status).toBeVisible();
+    const colors = await status.evaluate(element => ({
+      background: getComputedStyle(element).backgroundColor,
+      foreground: getComputedStyle(element).color,
+      optionClass: element.querySelector('option')?.className ?? '',
+    }));
+    expect(colors.background).not.toBe('rgb(255, 255, 255)');
+    expect(colors.foreground).not.toBe('rgb(255, 255, 255)');
+    expect(colors.optionClass).toContain('text-[var(--ink)]');
+
+    await page.getByRole('button', { name: 'Eliminar pedido' }).first().click();
+    const confirmation = page.getByRole('alertdialog', { name: 'Eliminar pedido' });
+    await expect(confirmation).toContainText('¿Eliminar el pedido de Revendedor QA? No se puede deshacer.');
+    await expect(confirmation).toBeInViewport();
+    await confirmation.getByRole('button', { name: 'Eliminar pedido' }).click();
+    await expect(page.getByText('Todavía no hay pedidos recibidos desde tu catálogo.')).toBeVisible();
+  }
+
+  expect(fixture.requests.filter(request => request.method === 'DELETE')).toEqual([
+    { method: 'DELETE', pathname: '/rest/v1/orders', body: null },
+    { method: 'DELETE', pathname: '/rest/v1/orders', body: null },
+  ]);
   expect(fixture.pageErrors).toEqual([]);
   expect(fixture.consoleErrors).toEqual([]);
 });

@@ -19,7 +19,8 @@ import {
   ArrowRight,
   Search,
   Filter,
-  ChevronDown
+  ChevronDown,
+  Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +34,9 @@ export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [orderPendingDelete, setOrderPendingDelete] = useState<Order | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState(false);
+  const [deleteOrderError, setDeleteOrderError] = useState<string | null>(null);
   const deferredStatusFilter = useDeferredValue(statusFilter);
 
   const fetchData = async () => {
@@ -68,6 +72,21 @@ export default function Orders() {
   const updateOrderStatus = async (id: string, status: Order['status']) => {
     await db.update<Order>('orders', id, { status, isRead: true });
     fetchData();
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!orderPendingDelete || !canDelete || deletingOrder) return;
+    setDeletingOrder(true);
+    setDeleteOrderError(null);
+    try {
+      await db.delete('orders', orderPendingDelete.id);
+      setOrders(current => current.filter(order => order.id !== orderPendingDelete.id));
+      setOrderPendingDelete(null);
+    } catch {
+      setDeleteOrderError('No se pudo eliminar el pedido. Revisá tu conexión e intentá de nuevo.');
+    } finally {
+      setDeletingOrder(false);
+    }
   };
 
   const handleConvertToSale = async (order: Order) => {
@@ -206,18 +225,15 @@ export default function Orders() {
                     value={order.status}
                     onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
                     disabled={!canWrite}
+                    data-testid="order-status-select"
                     className={cn(
-                      "w-full pl-4 pr-10 py-2 rounded-xl text-sm font-bold border-2 appearance-none transition-all disabled:opacity-50 disabled:cursor-not-allowed",
-                      order.status === 'Nuevo' && "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400",
-                      order.status === 'En Proceso' && "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400",
-                      order.status === 'Entregado' && "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400",
-                      order.status === 'Cancelado' && "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-400",
+                      "w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] py-2 pl-4 pr-10 text-sm font-bold text-[var(--ink)] [color-scheme:light] transition-all dark:[color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50",
                     )}
                   >
-                    <option value="Nuevo">Nuevo</option>
-                    <option value="En Proceso">En Proceso</option>
-                    <option value="Entregado">Entregado</option>
-                    <option value="Cancelado">Cancelado</option>
+                    <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Nuevo">Nuevo</option>
+                    <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="En Proceso">En Proceso</option>
+                    <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Entregado">Entregado</option>
+                    <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Cancelado">Cancelado</option>
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
                 </div>
@@ -231,6 +247,15 @@ export default function Orders() {
                   <ArrowRight size={18} />
                   Convertir en Venta
                 </button>
+
+                {canDelete && <button
+                  type="button"
+                  onClick={() => { setDeleteOrderError(null); setOrderPendingDelete(order); }}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--danger-line)] bg-[var(--danger-surface)] px-3 py-2 text-sm font-bold text-[var(--danger-ink)] transition-colors hover:brightness-95"
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  Eliminar pedido
+                </button>}
 
                 <div className="grid grid-cols-2 gap-2">
                   <a 
@@ -259,6 +284,17 @@ export default function Orders() {
         )}
       </div>
       <Pagination {...pagination} />
+      {orderPendingDelete && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="delete-catalog-order-title" aria-describedby="delete-catalog-order-description" className="w-full max-w-md rounded-t-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-[var(--ink)] shadow-2xl sm:rounded-2xl">
+          <h2 id="delete-catalog-order-title" className="text-lg font-bold">Eliminar pedido</h2>
+          <p id="delete-catalog-order-description" className="mt-2 text-sm leading-relaxed">¿Eliminar el pedido de {orderPendingDelete.customerName}? No se puede deshacer.</p>
+          {deleteOrderError && <p role="alert" className="mt-3 text-sm text-[var(--danger-ink)]">{deleteOrderError}</p>}
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" disabled={deletingOrder} onClick={() => { setOrderPendingDelete(null); setDeleteOrderError(null); }} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold disabled:opacity-50">Cancelar</button>
+            <button type="button" disabled={deletingOrder || !canDelete} onClick={() => void handleDeleteOrder()} className="min-h-11 rounded-xl bg-[var(--danger-ink)] px-4 text-sm font-bold text-white disabled:opacity-50">{deletingOrder ? 'Eliminando…' : 'Eliminar pedido'}</button>
+          </div>
+        </section>
+      </div>}
     </div>
   );
 }

@@ -975,7 +975,7 @@ Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `k
 
 **Criterio de cierre:** Riva puede importar **Braja, Mayorista Omega, Inova, Oestech y Babaji** desde su PC en menos de 3 minutos cada uno, sin escribir nada salvo elegir el proveedor y los márgenes (y la clave en Oestech y Babaji, que la pone él en la página del proveedor). Con ≥ 95 % de los productos con nombre, precio y foto correctos, y **cero clics en botones de compra**.
 
-### [x] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
+### [ ] I38 🔴 La hoja de edición del celular sale transparente y tapada por la barra inferior — **Riva, 08/11 11:37 (con captura)**
 
 **Síntoma:** en Revendedores › Lista de precios, en el celular, al tocar cualquier producto se abre la hoja inferior de edición (`ResellerPriceListModal.tsx` ~línea 2924, `role="dialog"`). Pero sale **sin fondo**: se ve la lista a través de la hoja y el texto se superpone. Además, la **barra inferior de la app y el botón «+» quedan por encima** del botón «Agregar a la lista», que no se puede tocar bien.
 
@@ -995,22 +995,29 @@ Extender la extensión actual (`extensions/facebook/`). **No crear otra**: la `k
 
 Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
-### [ ] I39 Reglas del negocio de revendedores en la app — **definidas por Riva el 08/11 12:40** (documento: https://claude.ai/artifact/NU8ScdfEo1Ef4Us4Pdsyiw)
+### [ ] I39 Reglas del negocio de revendedores en la app — **definidas por Riva el 08/11 12:40** (documento: https://claude.ai/artifact/NU8ScdfEo1Ef4Us4Pdsyiw; punto 6 entregado, resto pendiente a futuro)
 
 **Modelo:** los revendedores **piden cuando quieren** y **pagan por adelantado**. Riva junta los pedidos y hace un solo pedido al proveedor. El envío se cobra aparte, **al costo**. Riva entrega en su domicilio en General Pico; afuera de Pico (La Pampa) hay un recargo por zona y la entrega es con viaje de Riva o por comisionista. Hoy se lanza a mano: esta tarea automatiza lo manual. Va **después de I37 e I38**.
 
-1. **Pedido siempre abierto por proveedor** (reemplaza las rondas con fecha de cierre de I19, sin romper las que ya existen). En Encargos, cada proveedor tiene un «lote actual» que acepta pedidos. El botón «Hacer pedido al proveedor» cierra ese lote, genera el pedido consolidado (PDF, WhatsApp y «Crear compra», que ya existen) y abre el siguiente. En el lote cerrado, Riva carga la **fecha estimada de llegada**, que se le avisa a cada revendedor.
-2. **Mínimo por proveedor y por revendedor** (ej. Mr Tecno: $150.000, editable en cada proveedor). Un pedido por debajo del mínimo se acepta como **«En espera»**: el revendedor **paga igual**, y el catálogo le explica que se confirma cuando, entre todos los pedidos en espera, se junta el mínimo, o cuando Riva hace el pedido. La app **avisa a Riva** cuando la suma de los pedidos en espera de un proveedor llega al mínimo. «Hacer pedido al proveedor» incluye los pedidos en espera. Si en **15 días** (editable) un pedido en espera no se confirma, se marca para que el revendedor elija devolución o saldo a favor.
-3. **Envío dividido:** cuando el lote llega, Riva carga el costo real de Vía Cargo. RivaStock lo **divide en proporción al monto** de cada pedido del lote (redondeando a $10, con la diferencia de redondeo en el último) y lo muestra en cada pedido como «Envío a pagar al retirar». Sin ganancia para Riva.
-4. **Zonas:** al pedir, el revendedor elige «General Pico (retiro en domicilio de Riva)» u «Otra localidad de La Pampa» (lista de localidades, editable). Para las otras localidades, los precios llevan un **recargo % configurable** (inicial 10 %). En Encargos, los pedidos se agrupan por localidad con la cuenta «¿conviene viajar?»: recargo cobrado en esa localidad frente al costo del viaje (Riva carga km ida y vuelta, km por litro, precio del litro y horas por el valor de su hora) y frente al costo del comisionista.
-5. **Faltantes:** en un pedido del lote, Riva marca qué producto no vino y cuántos. El revendedor recibe por WhatsApp el monto que le corresponde y la pregunta «¿devolución o saldo a favor?». Riva registra la respuesta. El **saldo a favor** queda en la ficha del revendedor y **se descuenta solo** en su próximo pedido.
-6. **Políticas visibles en el catálogo de revendedores:** una sección «Cómo comprar» con el texto del documento: mínimo por proveedor, pedidos en espera, pago, envío dividido, retiro en el domicilio, recargo afuera de Pico, faltantes, garantía del proveedor y productos «Sin cambio». Editable desde Ajustes.
-7. **Avisos por WhatsApp con un botón** (sin envío automático): pedido en espera, fecha de llegada, «llegó tu pedido» con el envío que le toca, y faltante. Los textos base están en el documento y son editables.
-8. Sin datos de pago en el sistema (como en I19): el pago se coordina por WhatsApp y Riva lo marca a mano.
+1. **Pendiente a futuro — pedido siempre abierto por proveedor:** reemplaza las rondas con fecha de cierre de I19 sin romper las existentes. En Encargos, cada proveedor tiene un lote actual. «Hacer pedido al proveedor» cierra ese lote, genera el pedido consolidado (PDF, WhatsApp y «Crear compra») y abre el siguiente; en el lote cerrado se carga la fecha estimada de llegada y se avisa a cada revendedor.
+2. **Pendiente a futuro — mínimo por proveedor y por revendedor:** un pedido debajo del mínimo queda «En espera» y se acepta con pago por adelantado. La app avisa cuando se junta el mínimo; tras 15 días (editable) se ofrece devolución o saldo a favor.
+3. **Pendiente a futuro — envío dividido:** cargar el costo real de Vía Cargo, dividirlo en proporción al monto de cada pedido, redondear a $10 y asignar la diferencia al último pedido.
+4. **Pendiente a futuro — zonas:** elegir General Pico u otra localidad de La Pampa, configurar el recargo por zona y comparar el monto recaudado con viaje o comisionista.
+5. **Pendiente a futuro — faltantes y saldo:** registrar productos faltantes, ofrecer devolución o saldo a favor y descontar este saldo en el siguiente pedido.
+6. **[x] Políticas visibles en el catálogo de revendedores:** sección «Cómo comprar», visible antes de pedir y editable desde Ajustes de Revendedores. Se guardan con la configuración existente; incluye exactamente el texto inicial confirmado por Riva el 08/11/2026:
+   - Pedís cuando quieras y pagás por adelantado (se coordina por WhatsApp).
+   - Cada proveedor tiene un mínimo de compra. Si tu pedido no llega al mínimo, queda “En espera”.
+   - Los precios son por unidad.
+   - El envío se cobra una vez que el pedido llega a General Pico, antes de la entrega.
+   - Retiro en General Pico.
+   - Si falta un producto, elegís devolución o saldo a favor.
+   - Los productos con falla tienen la garantía del proveedor.
+7. **Pendiente a futuro — avisos por WhatsApp con un botón, sin envío automático:** pedido en espera, fecha de llegada, pedido recibido y faltante.
+8. **Pendiente a futuro — pago:** no guardar datos de pago; coordinar por WhatsApp y marcarlo manualmente.
 
 **Verificación:** tests de la división del envío (proporción y redondeo), del cambio a «En espera», del aviso al juntar el mínimo, del recargo por zona y del saldo a favor aplicado. E2E con fixtures del circuito completo: pedido chico en espera → otro pedido junta el mínimo → aviso → hacer pedido → llega → cargar envío → cada uno ve su parte → faltante → saldo → próximo pedido con descuento. Nada en la base real de Riva.
 
-### [x] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
+### [ ] I40 Los productos de proveedores (por pedido) NO van en Stock ni en Ventas — **Riva, 08/11 14:16 (con captura)**
 
 **Problema (verificado en `origin/main`):** los productos importados de proveedores (`catalogOnly = true`, disponibilidad «por pedido») aparecen en **Stock** y en el buscador de **Nueva venta** como «Sin stock». Captura de Riva: en Nueva venta aparecen «Marcadores virales…», «Ventilador 18…» y «Auricular bluetooth x37», todos de Mr Tecno. `Stock.tsx` solo los filtra para la lista de precios en PDF (`priceListProducts`, ~línea 275); `Sales.tsx`, `POS.tsx`, `Quotes.tsx` y el resto no los filtran. Riva quiere: **«no me gusta que los productos que importé en la lista de revendedores se vean en mi stock ni en el módulo de ventas»**.
 
@@ -1022,7 +1029,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** test unitario de `isOwnInventoryProduct`. E2E con fixtures (un producto propio y uno de proveedor): el de proveedor no aparece en Stock, Nueva venta, POS, Presupuestos ni Consulta rápida, y sí aparece en Revendedores. Contadores de Stock e Inicio sin los de proveedor.
 
-### [x] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
+### [ ] I41 Botón «Con envío» en las ventas — **Riva, 08/11 14:16**
 
 **Pedido:** «Un botón con o sin envío, así no tengo que sumarlo a mano en el flujo de caja».
 
@@ -1036,7 +1043,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** tests del total con y sin envío, con descuento y recargo; de que la caja refleja el envío sin carga manual; y de que la ganancia por producto no cambia. E2E: venta con envío → caja con el ingreso correcto. Migración solo la nueva; nada en la base real.
 
-### [x] I42 Importar el catálogo de otra cuenta de RivaStock como proveedor — **Riva, 08/11 14:25 (reemplaza la versión anterior de I42)**
+### [ ] I42 Importar el catálogo de otra cuenta de RivaStock como proveedor — **Riva, 08/11 14:25 (reemplaza la versión anterior de I42)**
 
 **Decisión de Riva:** su mamá tiene **su propia cuenta de RivaStock** (otro negocio, con todas las funciones; la crea Riva). Riva quiere **solo lo suyo** en su cuenta. Cuando ella tenga sus productos cargados, Riva **importa la lista de ella a su catálogo**. **No** hay vínculo en vivo entre las cuentas, ni rol de titular, ni catálogo compartido.
 
@@ -1051,7 +1058,7 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 
 **Verificación:** test de la lectura del catálogo de otra cuenta, que solo trae lo público, con un fixture de dos negocios. E2E: importar el catálogo B en el negocio A → los productos aparecen en el catálogo público de A y en Revendedores, no en Stock ni en Ventas → reimportar actualiza precios sin duplicar. Nada en la base real.
 
-### [ ] I43 🔴 URGENTE: el análisis de fotos se queda trabado y no deja agregar productos — **Riva, 08/11 15:13 (con capturas, Babaji por extensión)**
+### [x] I43 🔴 URGENTE: el análisis de fotos se queda trabado y no deja agregar productos — **Riva, 08/11 15:13 (con capturas, Babaji por extensión)**
 
 **Síntoma:** después de importar Babaji con la extensión, Revisar muestra «Analizando fotos: 0 de 8» y cada fila dice «Analizando foto» para siempre. El resumen queda en «0 listos · 8 para revisar» y el botón «Agregar los 0 listos con foto» está deshabilitado. **Riva no puede agregar nada.**
 
@@ -1076,6 +1083,28 @@ Hacer lo mismo con la barra de acciones en lote. Capturas antes y después.
 6. **Error de precio en Precios:** en el ejemplo, el «público sugerido» sale **igual** al precio revendedor ($2.660 y $2.660). Tiene que ser el precio revendedor dividido por (1 − descuento general), como en I24. Revisar la fórmula después de I36.
 
 **Verificación:** e2e con fixtures en los que el OCR **se cuelga** y en los que la foto **no descarga**: el progreso llega al final en menos de 1 minuto y los productos se pueden agregar. Unit tests de `isSupplierPhotoReviewBlocking` (solo `flagged` bloquea). Fixture de Babaji con 924 tarjetas: se leen ≥ 900. Deploy en **Current**, verificado en el sitio publicado.
+
+**Cierre confirmado por Riva el 08/11/2026:** en producción, con una captura nueva de Babaji, el sistema analizó y agregó **8 de 8 fotos**. El intento anterior tenía enlaces vencidos. La prueba previa de Mr Tecno terminó con **50 de 50 fotos analizadas**. No se alteraron casos de prueba.
+
+### [ ] I44 Desplegables legibles con el tema oscuro en toda la app — **Riva, 08/11/2026**
+
+Auditar los `<select>` de toda la app, incluidos panel Plataforma y Pedidos del Catálogo. Usar los tokens de tema oscuro de `DESIGN.md` en el control y sus opciones; verificar contraste en claro/oscuro con fixtures y Playwright en escritorio y celular.
+
+### [ ] I45 Baja o eliminación de cuenta desde Plataforma — **Riva, 08/11/2026**
+
+La copia de seguridad es opcional y se ofrece con la casilla «Descargar copia antes (recomendado)». Permitir «Dar de baja en 30 días» o «Eliminar ahora» (definitivo), confirmando con el nombre del negocio y avisando que no se puede deshacer. La cuenta propia del propietario nunca se puede eliminar. Implementar y validar con fixtures, sin borrar cuentas ni datos reales.
+
+### [ ] I46 Plantillas de módulos en Plataforma — **Riva, 08/11/2026**
+
+Los planes se administran como plantillas editables por el propietario: nombre, módulos, colaboradores y retención. Al asignar una plantilla se copian sus módulos al cliente y luego cada uno se puede personalizar. Mostrar «Personalizado» y «Restablecer según la plantilla» cuando haya diferencias. Probar asignación y restauración con fixtures.
+
+### [ ] I47 Suspensión programada con aviso y bloqueo completo — **Riva, 08/11/2026**
+
+Programar suspensión con fecha (7 días por defecto). Desde que se programa, el cliente ve el aviso «Tu cuenta se suspende el DD/MM, comunicate con RivaTech» y un botón a WhatsApp; enviar el diseño `docs/design/emails/aviso-suspension.html`. En la fecha, bloquear lectura y escritura a nivel de base, mostrar solo «Tu cuenta está suspendida» y el botón a WhatsApp, y ocultar el catálogo público. Reactivar debe restituir la cuenta sin perder datos. Incluir pruebas de aislamiento de lectura/escritura con fixtures o transacción reversible.
+
+### [ ] I48 Preparar SMTP y plantillas aprobadas de email (I22) — **Riva, 08/11/2026**
+
+Usar los diseños aprobados de `docs/design/emails/`. Verificar con documentación oficial si el SMTP predeterminado de Supabase puede enviar a destinatarios externos. Dejar en `OWNER_ACTIONS.md` los pasos exactos para configurar SMTP de Gmail con contraseña de aplicación y pegar en Supabase → Authentication → Email Templates las tres plantillas (invitación, recuperar contraseña y cambio de email), incluyendo sus asuntos. No pedir ni almacenar credenciales.
 
 ## 4e. Pendiente a futuro — Revisión de la estructura de la app (anotado por Riva el 07/11)
 

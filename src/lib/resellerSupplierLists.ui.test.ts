@@ -16,6 +16,9 @@ describe('reseller supplier lists UI', () => {
     expect(modal).toContain('Publicación y acceso');
     expect(modal).toContain('Precios');
     expect(modal).toContain('Compra mínima');
+    expect(modal).toContain('Cómo comprar');
+    expect(modal).toContain('reseller-buying-policy-input');
+    expect(modal).toContain('saveResellerBuyingPolicy');
     expect(modal).toContain('Cambiar código');
     expect(modal).toContain('reseller-code-new');
     expect(modal).toContain('reseller-code-repeat');

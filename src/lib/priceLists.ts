@@ -14,6 +14,7 @@ import { db, fromDb, invalidateDbCache } from './db';
 import { supabase } from './supabase';
 import { clampPriceListDiscount } from './priceListPricing';
 import { normalizeResellerMarginRules, type ResellerMarginRules } from './resellerMarginRules';
+import { DEFAULT_RESELLER_BUYING_POLICY } from './resellerBuyingPolicy';
 
 type RawPriceList = PriceList & { accessCodeHash?: string | null };
 const SUPPLIER_ITEMS_PAGE_SIZE = 1_000;
@@ -27,6 +28,7 @@ const normalizePriceList = (value: RawPriceList): PriceList => {
     minimumRule: list.minimumRule ?? 'none',
     minimumOrderAmount: Number(list.minimumOrderAmount ?? 0),
     minimumOrderQuantity: Number(list.minimumOrderQuantity ?? 0),
+    buyingPolicy: list.buyingPolicy ?? DEFAULT_RESELLER_BUYING_POLICY,
     minimumProfitMarginPercent: Number(list.minimumProfitMarginPercent ?? 25),
     targetResellerDiscountPercent: Number(list.targetResellerDiscountPercent ?? 15),
     marginRules: normalizeResellerMarginRules(list.marginRules),
@@ -406,6 +408,13 @@ export async function configureResellerPricingAdvisor(input: {
   if (error) throw new Error(`[configure_reseller_pricing_advisor] ${error.message}`);
   invalidateDbCache('price_lists');
   return normalizePriceList(fromDb<RawPriceList>(data as Record<string, unknown>));
+}
+
+export async function saveResellerBuyingPolicy(listId: string, buyingPolicy: string): Promise<void> {
+  const normalizedPolicy = buyingPolicy.replace(/\r\n/g, '\n');
+  if (normalizedPolicy.length > 5_000) throw new Error('Las condiciones no pueden superar los 5.000 caracteres.');
+  await db.update<RawPriceList>('price_lists', listId, { buyingPolicy: normalizedPolicy });
+  invalidateDbCache('price_lists');
 }
 
 export async function addProductToResellerPriceList(

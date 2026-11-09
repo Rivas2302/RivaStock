@@ -5,6 +5,13 @@ import { describe, expect, it } from 'vitest';
 const catalog = readFileSync(resolve(process.cwd(), 'src/pages/PublicCatalog.tsx'), 'utf8');
 
 describe('public reseller catalog on-order disclosure', () => {
+  it('shows the approved buying policies before the reseller product and order flow', () => {
+    expect(catalog).toContain('public-reseller-buying-policy');
+    expect(catalog).toContain('Cómo comprar');
+    expect(catalog).toContain('getPublicResellerBuyingPolicy');
+    expect(catalog).toContain("'No se pudieron cargar las condiciones de compra. Intentá de nuevo.'");
+  });
+
   it('explains that on-order products have no immediate stock and an additional delay', () => {
     expect(catalog).toContain('¿Qué significa “Por pedido”?');
     expect(catalog).toContain('no tienen stock inmediato');

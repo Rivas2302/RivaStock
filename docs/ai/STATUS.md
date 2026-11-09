@@ -1,3 +1,14 @@
+# 2026-11-08 — I39 punto 6, RPC de proveedores y Pedidos del Catálogo
+
+- Copié la versión más reciente de `ACTION_PLAN.md` del Escritorio. Agregué al plan I44–I48 para las nuevas solicitudes, cerré I43 con la confirmación de Riva (Babaji **8/8** fotos analizadas y agregadas; Mr Tecno **50/50** en la prueba anterior) y marqué solo el punto 6 de I39 completo. Los otros puntos 1–5, 7 y 8 de I39 quedaron en «Pendiente a futuro».
+- Copié `docs/design/emails/` desde el Escritorio, incluido `LEEME.md` y los cuatro diseños HTML aprobados. No copié credenciales.
+- Antes de las migraciones hice un backup verificado en `C:\Users\USER\rivastock-backups\20261109T000903Z` (101 tablas, 18.439 filas, 2.559 objetos de Storage, `verification: passed`) y otro inmediatamente antes de la reparación de RPC en `C:\Users\USER\rivastock-backups\20261109T003654Z` (101 tablas, 18.567 filas, 2.559 objetos; Postgres y Storage `verification: passed`).
+- La auditoría de solo lectura comparó 120 RPC invocadas por el frontend con producción. No faltaban nombres; `register_supplier` y `update_supplier` tenían firmas incompletas. La migración 0021 figuraba aplicada, pero faltaban `suppliers.facebook_url` e `instagram_url`. Apliqué dos migraciones aditivas: `20261109003643_reseller_catalog_buying_policy` y `20261109003932_supplier_rpc_signature_repair`. Esta última agrega las dos columnas faltantes y reemplaza las funciones de 12 y 13 argumentos; conserva las sobrecargas anteriores. La verificación posterior encontró las firmas completas, columnas y RPC nuevas. No se crearon, editaron ni borraron filas reales.
+- «Cómo comprar» guarda la política en `price_lists.buying_policy`, se configura desde Ajustes de Revendedores y se muestra antes de pedir después de validar el código del catálogo o la ronda. El valor inicial conserva las siete líneas exactas que pidió Riva.
+- En Pedidos del Catálogo, el selector de estado usa los tokens del tema y «Eliminar pedido» pide confirmación propia, luego borra exclusivamente `orders.id` seleccionado. No llama a RPC de ventas, productos ni clientes. Proveedor se probó con fixture PGlite, no con la base real.
+- Verificaciones locales: lint aprobado; suite completa Vitest **220 archivos / 1.254 pruebas** aprobadas; build aprobado; Playwright con fixtures aprobó 360 y 1440 px y confirmó una sola petición `DELETE` a `orders`. Una primera ejecución E2E quedó bloqueada por el modal de onboarding en el fixture; se completó el perfil del fixture y la repetición pasó.
+- Pendiente en esta fecha: completar el resto de los puntos nuevos I44–I48, hacer commit/push y confirmar Current.
+
 # 2026-11-08 — Revalidación I43, I38 e I40–I42
 
 - Sincronizé desde la copia más reciente del Escritorio las secciones I38–I43 y las publiqué en `main` como `acb13c7`; Desktop había reabierto I38, I40 e I41 y aclarado que la causa de I43 era una hipótesis. Después de verificar, cerré I38 e I40–I42 en el plan; I43 sigue abierto.

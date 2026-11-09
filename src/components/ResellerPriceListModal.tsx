@@ -39,6 +39,7 @@ import {
   loadResellerSupplierListPricing,
   loadResellerSupplierLists,
   saveResellerPriceList,
+  saveResellerBuyingPolicy,
   saveResellerMarginRules,
   saveResellerSupplierList,
   saveResellerSupplierImportCategories,
@@ -53,6 +54,7 @@ import { normalizeBarcode } from '../lib/barcode';
 import { buildAvailabilityMap, buildPriceListProducts, resolvePriceListPrice } from '../lib/priceListPricing';
 import { createPriceListPdf } from '../lib/priceListPdf';
 import { getCommercialRuleMessage } from '../lib/commercialRules';
+import { DEFAULT_RESELLER_BUYING_POLICY } from '../lib/resellerBuyingPolicy';
 import { getResellerProductEconomics } from '../lib/resellerProductEconomics';
 import {
   calculateResellerMarginSuggestion,
@@ -205,6 +207,7 @@ type PriceListBulkConfirmation = {
 type ResellerSettingsSnapshot = {
   publicEnabled: boolean;
   discount: number;
+  buyingPolicy: string;
   minimumRule: MinimumOrderRule;
   minimumOrderAmount: number;
   minimumOrderQuantity: number;
@@ -226,6 +229,7 @@ function sameResellerSettings(left: ResellerSettingsSnapshot | null, right: Rese
   return Boolean(left
     && left.publicEnabled === right.publicEnabled
     && left.discount === right.discount
+    && left.buyingPolicy === right.buyingPolicy
     && left.minimumRule === right.minimumRule
     && left.minimumOrderAmount === right.minimumOrderAmount
     && left.minimumOrderQuantity === right.minimumOrderQuantity
@@ -330,6 +334,7 @@ export default function ResellerPriceListModal({
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);
+  const [buyingPolicy, setBuyingPolicy] = useState(DEFAULT_RESELLER_BUYING_POLICY);
   const [publicEnabled, setPublicEnabled] = useState(false);
   const [accessCodeDialogOpen, setAccessCodeDialogOpen] = useState(false);
   const [newAccessCode, setNewAccessCode] = useState('');
@@ -382,12 +387,13 @@ export default function ResellerPriceListModal({
   const settingsSnapshot = useMemo<ResellerSettingsSnapshot>(() => ({
     publicEnabled,
     discount,
+    buyingPolicy,
     minimumRule,
     minimumOrderAmount,
     minimumOrderQuantity,
     minimumProfitMarginPercent,
     targetResellerDiscountPercent,
-  }), [discount, minimumOrderAmount, minimumOrderQuantity, minimumProfitMarginPercent, minimumRule, publicEnabled, targetResellerDiscountPercent]);
+  }), [buyingPolicy, discount, minimumOrderAmount, minimumOrderQuantity, minimumProfitMarginPercent, minimumRule, publicEnabled, targetResellerDiscountPercent]);
   const currentSettingsSnapshot = useRef(settingsSnapshot);
   currentSettingsSnapshot.current = settingsSnapshot;
   const pricePageSelectAllRef = useRef<HTMLInputElement>(null);
@@ -527,6 +533,7 @@ export default function ResellerPriceListModal({
         savedSettingsSnapshot.current = {
           publicEnabled: loaded.list.publicEnabled,
           discount: loaded.list.defaultDiscountPercent,
+          buyingPolicy: loaded.list.buyingPolicy ?? DEFAULT_RESELLER_BUYING_POLICY,
           minimumRule: loaded.list.minimumRule,
           minimumOrderAmount: loaded.list.minimumOrderAmount,
           minimumOrderQuantity: loaded.list.minimumOrderQuantity,
@@ -535,6 +542,7 @@ export default function ResellerPriceListModal({
         };
         setList(loaded.list);
         setDiscount(loaded.list.defaultDiscountPercent);
+        setBuyingPolicy(loaded.list.buyingPolicy ?? DEFAULT_RESELLER_BUYING_POLICY);
         setPublicEnabled(loaded.list.publicEnabled);
         setMinimumRule(loaded.list.minimumRule);
         setMinimumOrderAmount(loaded.list.minimumOrderAmount);
@@ -591,12 +599,14 @@ export default function ResellerPriceListModal({
         minimumProfitMarginPercent: snapshot.minimumProfitMarginPercent,
         targetResellerDiscountPercent: snapshot.targetResellerDiscountPercent,
       });
+      await saveResellerBuyingPolicy(list.id, snapshot.buyingPolicy);
       await db.update<PriceList>('price_lists', list.id, { defaultDiscountPercent: snapshot.discount });
       savedSettingsSnapshot.current = snapshot;
       setList(current => current ? {
         ...current,
         publicEnabled: snapshot.publicEnabled,
         defaultDiscountPercent: snapshot.discount,
+        buyingPolicy: snapshot.buyingPolicy,
         minimumRule: snapshot.minimumRule,
         minimumOrderAmount: snapshot.minimumOrderAmount,
         minimumOrderQuantity: snapshot.minimumOrderQuantity,
@@ -1096,7 +1106,8 @@ export default function ResellerPriceListModal({
         minimumProfitMarginPercent,
         targetResellerDiscountPercent,
       });
-      setList({ ...configured, ...configuredAdvisor });
+      await saveResellerBuyingPolicy(list.id, buyingPolicy);
+      setList({ ...configured, ...configuredAdvisor, buyingPolicy });
       setItemsDirty(false);
       savedSettingsSnapshot.current = currentSettingsSnapshot.current;
       setSettingsSaveStatus('saved');
@@ -2396,6 +2407,26 @@ export default function ResellerPriceListModal({
                   <div className="flex shrink-0 gap-2"><button type="button" onClick={() => void handlePdf('preview')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Ver</button><button type="button" onClick={() => void handlePdf('download')} disabled={generating || items.length === 0} className="min-h-9 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)] disabled:opacity-50">Descargar</button></div>
                 </div>
               </div>
+            </section>
+
+            <section aria-labelledby="reseller-settings-buying-policy-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">
+              <div>
+                <h3 id="reseller-settings-buying-policy-title" className="text-base font-bold">Cómo comprar</h3>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Estas condiciones se muestran en el catálogo para revendedores antes de pedir.</p>
+              </div>
+              <label className="block">
+                <span className="sr-only">Condiciones de compra para revendedores</span>
+                <textarea
+                  aria-label="Condiciones de compra para revendedores"
+                  data-testid="reseller-buying-policy-input"
+                  rows={8}
+                  maxLength={5000}
+                  value={buyingPolicy}
+                  disabled={!canWrite}
+                  onChange={event => setBuyingPolicy(event.target.value)}
+                  className="min-h-48 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 text-sm leading-relaxed text-[var(--ink)] disabled:opacity-50"
+                />
+              </label>
             </section>
 
             <section aria-labelledby="reseller-settings-prices-title" className="grid gap-5 border-b border-[var(--line)] py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-12">

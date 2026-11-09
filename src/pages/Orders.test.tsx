@@ -4,13 +4,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Orders from './Orders';
 
-const { list } = vi.hoisted(() => ({ list: vi.fn() }));
+const { list, deleteOrder, user } = vi.hoisted(() => ({ list: vi.fn(), deleteOrder: vi.fn(), user: { uid: 'owner-1' } }));
 
 vi.mock('../lib/db', () => ({
-  db: { list, update: vi.fn() },
+  db: { list, update: vi.fn(), delete: deleteOrder },
   callRpc: vi.fn(),
 }));
-vi.mock('../AuthContext', () => ({ useAuth: () => ({ user: { uid: 'owner-1' }, refetchToken: 0 }) }));
+vi.mock('../AuthContext', () => ({ useAuth: () => ({ user, refetchToken: 0 }) }));
 vi.mock('../hooks/usePermission', () => ({ usePermission: () => true }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => ({ pathname: '/pedidos' }) }));
 
@@ -31,6 +31,7 @@ describe('Orders convert-to-sale action', () => {
       customerEmail: '', customerAddress: 'Dirección QA', items: [{ productId: 'product-1', productName: 'Producto QA', quantity: 1, price: 1000 }],
       total: 1000, status: 'Nuevo', isRead: false, ownerUid: 'owner-1',
     }]);
+    deleteOrder.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -48,5 +49,34 @@ describe('Orders convert-to-sale action', () => {
     expect(button?.className).toContain('bg-blue-600');
     expect(button?.className).toContain('text-white');
     expect(button?.className).not.toContain('dark:bg-white');
+  });
+
+  it('uses dark theme tokens for the catalog order status selector', async () => {
+    await act(async () => { root.render(<Orders />); });
+    const select = host.querySelector('[data-testid="order-status-select"]');
+    expect(select?.className).toContain('bg-[var(--surface-raised)]');
+    expect(select?.className).toContain('text-[var(--ink)]');
+    expect(select?.className).toContain('dark:[color-scheme:dark]');
+    expect(select?.querySelector('option')?.className).toContain('text-[var(--ink)]');
+  });
+
+  it('deletes only the selected catalog order after the app confirmation', async () => {
+    await act(async () => { root.render(<Orders />); });
+    const openConfirmation = [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === 'Eliminar pedido');
+    expect(openConfirmation).toBeTruthy();
+    await act(async () => { openConfirmation?.click(); });
+
+    expect(host.querySelector('[role="alertdialog"]')?.textContent).toContain('¿Eliminar el pedido de Cliente QA? No se puede deshacer.');
+    expect(deleteOrder).not.toHaveBeenCalled();
+    const confirm = [...host.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(item => item.textContent?.trim() === 'Eliminar pedido');
+    await act(async () => {
+      confirm?.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(deleteOrder).toHaveBeenCalledTimes(1);
+    expect(deleteOrder).toHaveBeenCalledWith('orders', 'order-1');
+    expect(host.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(host.textContent).toContain('Todavía no hay pedidos recibidos');
   });
 });

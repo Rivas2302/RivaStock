@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">
+<title>Cambiá tu contraseña de RivaStock</title></head>
+<body style="margin:0;padding:0;background:#121212;" bgcolor="#121212">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#121212;">Elegí una contraseña nueva para tu cuenta.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#121212" style="background:#121212;">
+<tr><td align="center" style="padding:32px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+<tr><td style="padding:0 4px 20px 4px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td width="32" height="32" align="center" valign="middle" bgcolor="#5FC2A5" style="background:#5FC2A5;border-radius:9px;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:17px;font-weight:800;color:#0E2A22;">R</td>
+<td style="padding-left:10px;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:19px;font-weight:800;letter-spacing:-0.3px;color:#F2F2F2;">RivaStock</td>
+</tr></table></td></tr>
+<tr><td bgcolor="#181818" style="background:#181818;border:1px solid #2B2B2B;border-radius:18px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:32px 32px 8px 32px;">
+<p style="margin:0 0 10px 0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#5FC2A5;">Contraseña</p>
+<h1 style="margin:0 0 16px 0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:24px;line-height:30px;font-weight:800;letter-spacing:-0.4px;color:#F2F2F2;">Elegí una contraseña nueva</h1>
+<p style="margin:0 0 14px 0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:15px;line-height:23px;color:#A7A7A7;">Recibimos un pedido para cambiar la contraseña de la cuenta <span style="color:#F2F2F2;">{{ .Email }}</span>.</p><p style="margin:0 0 14px 0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:15px;line-height:23px;color:#A7A7A7;">Tocá el botón y escribí tu contraseña nueva.</p>
+</td></tr>
+<tr><td style="padding:8px 32px 28px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td bgcolor="#5FC2A5" style="background:#5FC2A5;border-radius:12px;">
+<a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:14px 26px;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:15px;font-weight:700;color:#0E2A22;text-decoration:none;border-radius:12px;">Cambiar contraseña</a>
+</td></tr></table></td></tr>
+<tr><td style="padding:0 32px 24px 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#202020" style="background:#202020;border:1px solid #2B2B2B;border-radius:12px;padding:14px 16px;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:13px;line-height:20px;color:#A7A7A7;"><span style="color:#F2F2F2;font-weight:700;">¿No lo pediste vos?</span><br>Ignorá este email. Tu contraseña actual sigue funcionando y nadie puede cambiarla sin este enlace.</td></tr></table></td></tr>
+<tr><td style="padding:0 32px 28px 32px;border-top:1px solid #2B2B2B;">
+<p style="margin:20px 0 6px 0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:12px;line-height:18px;color:#A7A7A7;">Si el botón no funciona, copiá este enlace en tu navegador:</p>
+<p style="margin:0;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:12px;line-height:18px;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#5FC2A5;text-decoration:underline;">{{ .ConfirmationURL }}</a></p>
+</td></tr>
+</table></td></tr>
+<tr><td align="center" style="padding:20px 8px 0 8px;font-family:'Hanken Grotesk', 'Segoe UI', Arial, Helvetica, sans-serif;font-size:12px;line-height:18px;color:#A7A7A7;">
+Por seguridad, el enlace se puede usar una sola vez.<br><span style="color:#6E6E6E;">RivaStock · RivaTech · General Pico, La Pampa</span></td></tr>
+</table></td></tr></table>
+</body></html>
