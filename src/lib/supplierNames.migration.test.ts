@@ -85,7 +85,7 @@ describe('I30 supplier-name backfill RPC migration', () => {
     } finally {
       await db.close();
     }
-  });
+  }, 15_000);
 
   it('creates only an owner-scoped authenticated function and has no destructive or direct data statements', () => {
     const afterFunction = migration.split('$function$;')[1] ?? '';

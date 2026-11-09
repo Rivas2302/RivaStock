@@ -5,6 +5,7 @@ import {
   validateSupplierPageUrl,
   type DnsResolver,
 } from './supplierUrlProxy.ts';
+import { isSameSupplierSiteDomain } from './supplierSiteDomain.ts';
 
 export type SupplierCatalogSource = 'woocommerce' | 'shopify' | 'jsonld' | 'text';
 
@@ -236,11 +237,11 @@ async function fetchValidated(
   rawUrl: string,
   resolveDns: DnsResolver,
   fetcher: typeof fetch,
-  expectedOrigin?: string,
+  expectedSiteUrl?: string,
 ): Promise<{ response: Response; url: URL }> {
   let url = validateSupplierPageUrl(rawUrl);
   for (let redirectCount = 0; ; redirectCount++) {
-    if (expectedOrigin && url.origin !== expectedOrigin) throw new UnsafeSupplierRedirectError();
+    if (expectedSiteUrl && !isSameSupplierSiteDomain(expectedSiteUrl, url.href)) throw new UnsafeSupplierRedirectError();
     await assertPublicDns(url.hostname, resolveDns);
     const response = await fetcher(url, {
       method: 'GET',
@@ -259,7 +260,7 @@ async function fetchValidated(
     if (!location) throw new Error('El sitio devolvió una redirección sin destino.');
     try {
       url = validateSupplierPageUrl(new URL(location, url).href);
-      if (expectedOrigin && url.origin !== expectedOrigin) throw new UnsafeSupplierRedirectError();
+      if (expectedSiteUrl && !isSameSupplierSiteDomain(expectedSiteUrl, url.href)) throw new UnsafeSupplierRedirectError();
     }
     catch { throw new UnsafeSupplierRedirectError(); }
   }
@@ -269,9 +270,11 @@ export async function fetchSupplierCatalogImage(
   rawUrl: string,
   resolveDns: DnsResolver,
   fetcher: typeof fetch = fetch,
+  expectedSiteUrl = rawUrl,
 ): Promise<{ response: Response; url: URL }> {
-  const sourceUrl = validateSupplierPageUrl(rawUrl);
-  return fetchValidated(rawUrl, resolveDns, fetcher, sourceUrl.origin);
+  validateSupplierPageUrl(expectedSiteUrl);
+  if (!isSameSupplierSiteDomain(expectedSiteUrl, rawUrl)) throw new UnsafeSupplierRedirectError();
+  return fetchValidated(rawUrl, resolveDns, fetcher, expectedSiteUrl);
 }
 
 export async function readLimitedSupplierImage(response: Response, maxBytes = 5 * 1024 * 1024): Promise<Uint8Array> {

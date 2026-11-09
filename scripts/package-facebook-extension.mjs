@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 
 // Explicit allowlist: the download contains extension code only, never local
 // credentials, browser data, source maps or repository configuration.
-export const extensionFiles=['manifest.json','worker.js','recorder.js','post-submit.js','result-verification.js','polling-schedule.js','extension-update.js','adapter.js','publication-policy.js','form-actions.js','automation-tabs.js','marketplace-contract.js','group-contract.js','group-discovery.js','pairing.js','supplier-capture.js','supplier-capture-main.js','supplier-capture-page.js','supplier-capture-ui.js','shared/product-extract.js','connect.html','connect.js','connect.css'];
+export const extensionFiles=['manifest.json','worker.js','recorder.js','post-submit.js','result-verification.js','polling-schedule.js','extension-update.js','adapter.js','publication-policy.js','form-actions.js','automation-tabs.js','marketplace-contract.js','group-contract.js','group-discovery.js','pairing.js','supplier-capture.js','supplier-site-domain.js','supplier-capture-main.js','supplier-capture-page.js','supplier-capture-ui.js','shared/product-extract.js','connect.html','connect.js','connect.css'];
 function crc32(bytes) {
   let crc=0xffffffff;
   for(const byte of bytes) {

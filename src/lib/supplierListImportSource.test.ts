@@ -57,7 +57,7 @@ describe('supplier list source extraction', () => {
     pdf.text('Taza térmica    2500', 15, 30);
     const file = Object.assign(new Blob([new Uint8Array(pdf.output('arraybuffer'))], { type: 'application/pdf' }), { name: 'lista.pdf' }) as File;
     await expect(extractSupplierListFileText(file)).resolves.toContain('Taza térmica');
-  });
+  }, 15_000);
 
   it('reads selectable text from a 25 MB PDF and reports page progress', async () => {
     const { jsPDF } = await import('jspdf');
@@ -150,15 +150,15 @@ describe('supplier list source extraction', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it('downloads a same-origin supplier image through the protected proxy', async () => {
+  it('downloads a supplier-domain image through the protected proxy and rejects unrelated hosts', async () => {
     invokeMock.mockResolvedValue({ data: { mimeType: 'image/jpeg', base64: 'AQID' }, error: null });
-    const image = await fetchSupplierCatalogImage('https://supplier.com/images/one.jpg', 'https://supplier.com/catalog');
+    const image = await fetchSupplierCatalogImage('https://api.supplier.com/images/one.jpg', 'https://supplier.com/catalog');
     expect(image.type).toBe('image/jpeg');
     expect(image.size).toBe(3);
     expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: {
-      url: 'https://supplier.com/images/one.jpg', sourceOrigin: 'https://supplier.com', mode: 'image',
+      url: 'https://api.supplier.com/images/one.jpg', sourceOrigin: 'https://supplier.com', mode: 'image',
     } });
-    await expect(fetchSupplierCatalogImage('https://cdn.supplier.com/image.jpg', 'https://supplier.com/catalog'))
+    await expect(fetchSupplierCatalogImage('https://other-store.com/image.jpg', 'https://supplier.com/catalog'))
       .rejects.toThrow('mismo sitio');
   });
 

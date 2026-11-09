@@ -11,7 +11,7 @@ import {
   type ResellerMarginValueRule,
 } from './resellerMarginRules';
 
-export type SupplierImportAction = 'new' | 'updated' | 'unchanged' | 'review';
+export type SupplierImportAction = 'new' | 'updated' | 'unchanged' | 'review' | 'no_price';
 
 export interface SupplierImportReviewEntry {
   row: SupplierListDraftRow;
@@ -62,9 +62,12 @@ export function planSupplierImport(input: {
   }
   return input.rows.map(sourceRow => {
     const row = normalizeSupplierImportRow(sourceRow);
-    const photoBlocked = isSupplierPhotoReviewBlocking(row.photoBrandReview, input.hasReplacementForRow?.(row) ?? false);
     const existingProduct = (row.sourceCode ? existingByCode.get(normalizeSourceCode(row.sourceCode)) : undefined)
       ?? existingByName.get(normalizeSupplierProductName(row.name)) ?? null;
+    if (row.supplierCost === null || !Number.isFinite(row.supplierCost) || row.supplierCost <= 0) {
+      return { row, action: 'no_price', existingProduct, supplierCostLocal: null, suggestedResellerPrice: null, suggestedProfit: null, suggestedSalePrice: null };
+    }
+    const photoBlocked = isSupplierPhotoReviewBlocking(row.photoBrandReview, input.hasReplacementForRow?.(row) ?? false);
     const convertedCost = row.supplierCost === null ? null
       : currency === 'USD' ? (Number.isFinite(input.usdRate) && input.usdRate > 0 ? row.supplierCost * input.usdRate : null)
         : currency === null || currency === 'ARS' ? row.supplierCost : null;
@@ -98,6 +101,7 @@ export function planSupplierImport(input: {
       && Number(existingProduct.catalogCost ?? 0) === cost
       && existingProduct.salePrice === suggested
       && existingProduct.category === row.category
+      && existingProduct.customFields?.supplierImportPriceStatus !== 'Sin precio'
       && (!row.imageUrl || existingProduct.imageUrl === row.imageUrl || isSupplierManagedPhotoUrl(existingProduct.imageUrl));
     return { row, action: unchanged ? 'unchanged' : 'updated', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
   });

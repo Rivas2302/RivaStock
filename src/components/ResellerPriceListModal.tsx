@@ -76,6 +76,13 @@ import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, fetchRivaCatalogImage, fetchSupplierCatalogImage, parseSupplierListText } from '../lib/supplierListImportSource';
 import { planSupplierImport, type SupplierImportReviewEntry } from '../lib/supplierImportReview';
+import {
+  clearSupplierProductNoPriceStatus,
+  getSupplierImportMatchingProducts,
+  getSupplierProductIdsAfterImport,
+  markSupplierProductWithoutPrice,
+  SUPPLIER_IMPORT_PRICE_STATUS_FIELD,
+} from '../lib/supplierImportProductStatus';
 import { getSupplierCatalogImageUrl, hasProductPhoto, shouldReplaceWithSupplierPhoto, withImportedProductPhoto, withImportedProductPhotos } from '../lib/supplierCatalogPhoto';
 import { getRivaCatalogStoragePath } from '../lib/rivaCatalogSupplierImport';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
@@ -216,6 +223,7 @@ type ResellerSettingsSnapshot = {
 };
 type SupplierImportAddConfirmation = {
   count: number;
+  noPriceCount: number;
   withPhoto: boolean;
   filterText: string;
 };
@@ -1871,12 +1879,16 @@ export default function ResellerPriceListModal({
   );
 
   const selectedSupplierProductSet = useMemo(() => new Set(supplierDraftProductIds), [supplierDraftProductIds]);
+  const supplierMatchingProducts = useMemo(() => editingSupplierId
+    ? getSupplierImportMatchingProducts(products, supplierDraftProductIds, editingSupplierId)
+    : products.filter(product => selectedSupplierProductSet.has(product.id)),
+  [editingSupplierId, products, selectedSupplierProductSet, supplierDraftProductIds]);
   const supplierPhotoBrandFlaggedProducts = useMemo(() => products.filter(product => (
     selectedSupplierProductSet.has(product.id) && product.customFields?.supplierPhotoBrandFlag === true
   )), [products, selectedSupplierProductSet]);
   const supplierImportReview = useMemo(() => planSupplierImport({
     rows: supplierImportRows,
-    supplierProducts: products.filter(product => selectedSupplierProductSet.has(product.id)),
+    supplierProducts: supplierMatchingProducts,
     currency: supplierImportCurrency,
     usdRate: supplierImportUsdRate,
     discountPercent: discount,
@@ -1885,11 +1897,11 @@ export default function ResellerPriceListModal({
     marginRuleForRow: row => getSupplierImportMarginOverride(row),
     hasReplacementForRow: row => Boolean(supplierImportPhotoFiles[row.sourceRow]),
     preserveZeroMarginPrice: Boolean(supplierRivaCatalogSource),
-  }), [discount, marginRules, products, selectedSupplierProductSet, supplierImportCurrency, supplierImportRows, supplierImportUsdRate, supplierImportPhotoFiles, supplierRivaCatalogSource]);
+  }), [discount, marginRules, supplierMatchingProducts, supplierImportCurrency, supplierImportRows, supplierImportUsdRate, supplierImportPhotoFiles, supplierRivaCatalogSource]);
   const supplierImportCounts = useMemo(() => supplierImportReview.reduce((counts, entry) => {
     counts[entry.action]++;
     return counts;
-  }, { new: 0, updated: 0, unchanged: 0, review: 0 }), [supplierImportReview]);
+  }, { new: 0, updated: 0, unchanged: 0, review: 0, no_price: 0 }), [supplierImportReview]);
   const supplierImportExample = supplierImportReview.find(entry => entry.supplierCostLocal !== null && entry.suggestedSalePrice !== null);
   const supplierImportFiltered = useMemo(() => {
     const query = supplierImportSearch.trim().toLocaleLowerCase('es-AR');
@@ -1905,7 +1917,8 @@ export default function ResellerPriceListModal({
   }, [supplierImportCategoryFilter, supplierImportOnlyPhotos, supplierImportPageUrl, supplierImportPhotoFiles, supplierImportReview, supplierImportSearch, supplierRivaCatalogSource]);
   const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
   const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
-  const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => entry.action !== 'review').length;
+  const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => ['new', 'updated', 'unchanged'].includes(entry.action)).length;
+  const supplierImportFilteredExistingNoPriceCount = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct).length;
   const supplierImportWithPhotoCount = supplierImportReview.filter(entry => Boolean(
     supplierImportPhotoFiles[entry.row.sourceRow]
     || (getSupplierImportImageUrls(entry.row, supplierImportPageUrl, Boolean(supplierRivaCatalogSource)).length > 0 && !supplierImportPhotoFailedRows.includes(entry.row.sourceRow))
@@ -1917,7 +1930,8 @@ export default function ResellerPriceListModal({
   const handleAddSupplierImportBatch = async (confirmed = false) => {
     if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
     const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
-    if (ready.length === 0) return;
+    const noPriceEntries = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct);
+    if (ready.length === 0 && noPriceEntries.length === 0) return;
     const filterText = supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : '';
     const photoTargets: Array<{ entry: typeof ready[number]; file?: File; sourceUrl?: string }> = ready.flatMap(entry => {
       const file = supplierImportPhotoFiles[entry.row.sourceRow];
@@ -1927,15 +1941,14 @@ export default function ResellerPriceListModal({
         ? sourceUrls.map(sourceUrl => ({ entry, sourceUrl }))
         : [];
     });
-    const buttonPhotoLabel = supplierImportOnlyPhotos ? ' con foto' : '';
     if (!confirmed) {
-      setSupplierImportConfirmation({ count: ready.length, withPhoto: supplierImportOnlyPhotos, filterText });
+      setSupplierImportConfirmation({ count: ready.length, noPriceCount: noPriceEntries.length, withPhoto: supplierImportOnlyPhotos, filterText });
       return;
     }
     setSupplierImportConfirmation(null);
     setSupplierSaving(true);
     setError(null);
-    setSupplierImportBatchProgress({ done: 0, total: ready.length });
+    setSupplierImportBatchProgress(ready.length > 0 ? { done: 0, total: ready.length } : null);
     setSupplierImportPhotoProgress(photoTargets.length ? { done: 0, total: photoTargets.length } : null);
     setSupplierImportPhotoFailures(0);
     setSupplierImportPhotoFailedRows([]);
@@ -1969,6 +1982,14 @@ export default function ResellerPriceListModal({
 
       const updatedProducts: Product[] = [];
       const productsById = new Map<string, Product>();
+      const noPriceUpdatedProducts: Product[] = [];
+      for (const entry of noPriceEntries) {
+        const product = entry.existingProduct!;
+        if (product.customFields?.[SUPPLIER_IMPORT_PRICE_STATUS_FIELD] === 'Sin precio'
+          && product.customFields?.supplierImportSupplierId === editingSupplierId) continue;
+        const saved = await db.update<Product>('products', product.id, markSupplierProductWithoutPrice(product, editingSupplierId));
+        noPriceUpdatedProducts.push(saved);
+      }
       for (let start = 0; start < ready.length; start += 50) {
         const batch = ready.slice(start, start + 50);
         const createRows: Product[] = [];
@@ -1981,6 +2002,7 @@ export default function ResellerPriceListModal({
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
+          Object.assign(customFields, clearSupplierProductNoPriceStatus(customFields, editingSupplierId));
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
           if (entry.row.brand) customFields.supplierBrand = entry.row.brand.slice(0, 100);
@@ -2031,8 +2053,8 @@ export default function ResellerPriceListModal({
         const id = resolvedIds.get(entry.row.sourceRow)!;
         if (!productsById.has(id) && entry.existingProduct) productsById.set(id, entry.existingProduct);
       }
-      if (updatedProducts.length) {
-        onProductsImported(updatedProducts);
+      if (updatedProducts.length || noPriceUpdatedProducts.length) {
+        onProductsImported([...updatedProducts, ...noPriceUpdatedProducts]);
         setSupplierDraftProductIds(current => Array.from(new Set([...current, ...updatedProducts.map(product => product.id)])));
       }
 
@@ -2103,8 +2125,9 @@ export default function ResellerPriceListModal({
       setSupplierImportPhotoFailures(photoFailures);
       setSupplierImportPhotoFailedRows(failedPhotoRows);
 
-      const allProductIds = Array.from(new Set([...supplierDraftProductIds, ...ready.map(entry => resolvedIds.get(entry.row.sourceRow)!)]));
+      const allProductIds = getSupplierProductIdsAfterImport(supplierDraftProductIds, supplierImportFiltered, resolvedIds);
       const savedSupplierList = await saveResellerSupplierList({ priceListId: list.id, supplierId: editingSupplierId, productIds: allProductIds });
+      setSupplierDraftProductIds(savedSupplierList.productIds);
       if (newCategories.length) {
         await saveResellerSupplierImportCategories(savedSupplierList.id, newCategories.map(category => category.id));
       }
@@ -2123,8 +2146,8 @@ export default function ResellerPriceListModal({
         await acknowledgeSupplierCapture(supplierExtensionCaptureId).catch(() => {});
         setSupplierExtensionCaptureId(null);
       }
-      setSupplierImportBatchProgress({ done: ready.length, total: ready.length });
-      showToast(`Importación lista: ${supplierImportCounts.new} nuevos, ${supplierImportCounts.updated} actualizados y ${supplierImportCounts.unchanged} sin cambios.`, 'success');
+      setSupplierImportBatchProgress(ready.length > 0 ? { done: ready.length, total: ready.length } : null);
+      showToast(`Importación lista: ${supplierImportCounts.new} nuevos, ${supplierImportCounts.updated} actualizados, ${supplierImportCounts.unchanged} sin cambios y ${supplierImportCounts.no_price} sin precio, no se importan.`, 'success');
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'No pudimos completar la importación. Podés reintentar; los productos ya guardados se conservan.');
     } finally {
@@ -2618,6 +2641,7 @@ export default function ResellerPriceListModal({
                             <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-3">
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
+                            {supplierImportCounts.no_price > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{supplierImportCounts.no_price.toLocaleString('es-AR')} sin precio, no se importan.</p>}
                             <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--ink)] sm:flex-row sm:items-center sm:justify-between">
                               <p>{supplierImportWithPhotoCount} con foto · {supplierImportWithoutPhotoCount} sin foto</p>
                               <label className="flex min-h-10 cursor-pointer items-center gap-2 font-semibold">
@@ -2629,7 +2653,7 @@ export default function ResellerPriceListModal({
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredReadyCount === 0 || discount >= 100} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}`}</button>
+                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || (supplierImportFilteredReadyCount === 0 && supplierImportFilteredExistingNoPriceCount === 0) || (supplierImportFilteredReadyCount > 0 && discount >= 100)} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : supplierImportFilteredReadyCount > 0 ? `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}` : `Quitar ${supplierImportFilteredExistingNoPriceCount} sin precio de la lista`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
                             {supplierImportPhotoProgress && <div><progress aria-label="Progreso de fotos" max={supplierImportPhotoProgress.total || 1} value={supplierImportPhotoProgress.done} className="h-2 w-full"/><p role="status" className="text-xs text-slate-600 dark:text-slate-300">Fotos {supplierImportPhotoProgress.done} de {supplierImportPhotoProgress.total}</p></div>}
                             {supplierImportPhotoFailures > 0 && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportPhotoFailures} foto{supplierImportPhotoFailures === 1 ? '' : 's'} {supplierImportPhotoFailures === 1 ? 'no se pudo copiar' : 'no se pudieron copiar'}. Podés reintentar la importación.</p>}
@@ -2672,10 +2696,11 @@ export default function ResellerPriceListModal({
                                   : activePhotoReview?.status === 'flagged' && !activePhotoReview.approved ? 'Con marca del proveedor'
                                     : activePhotoReview?.status === 'failed' && !activePhotoReview.approved ? 'No se pudo revisar'
                                       : activePhotoReview?.status === 'unreviewed' ? 'Foto sin revisar'
+                                      : entry.action === 'no_price' ? 'Sin precio'
                                       : entry.action === 'review' ? 'Revisar' : hasPhoto ? 'Listo' : 'Sin foto';
                                 const rowStatusClass = rowStatus === 'Con marca del proveedor' || rowStatus === 'Revisar'
                                   ? 'bg-rose-50 text-rose-700'
-                                  : rowStatus === 'Sin foto' || rowStatus === 'No se pudo revisar' || rowStatus === 'Foto sin revisar' ? 'bg-amber-50 text-amber-800'
+                                  : rowStatus === 'Sin precio' || rowStatus === 'Sin foto' || rowStatus === 'No se pudo revisar' || rowStatus === 'Foto sin revisar' ? 'bg-amber-50 text-amber-800'
                                     : rowStatus === 'Analizando foto' ? 'bg-[var(--surface-2)] text-[var(--ink-muted)]'
                                       : 'bg-[var(--surface-2)] text-[var(--ink-muted)]';
                                 return <article key={row.sourceRow} className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3">
@@ -2708,8 +2733,8 @@ export default function ResellerPriceListModal({
                                       {(row.marginValue !== undefined || row.marginPercent !== undefined) && <button type="button" aria-label={`Usar regla de ganancia fila ${row.sourceRow}`} onClick={() => updateSupplierImportRow(row.sourceRow, { marginPercent: undefined, marginValue: undefined })} className="min-h-10 shrink-0 rounded border border-slate-200 px-2 text-xs dark:border-slate-700">Regla</button>}
                                     </span>
                                   </label>
-                                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : 'Para revisar'}</p>
-                                  {row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
+                                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2">Precio sugerido: {entry.suggestedSalePrice === null ? '—' : formatCurrency(entry.suggestedSalePrice)} · {entry.action === 'new' ? 'Nuevo' : entry.action === 'updated' ? 'Se actualizará' : entry.action === 'unchanged' ? 'Sin cambios' : entry.action === 'no_price' ? 'No se importa' : 'Para revisar'}</p>
+                                  {entry.action === 'no_price' ? <p className="text-xs font-semibold text-amber-800 dark:text-amber-200 sm:col-span-2">No se importa porque no tiene precio, figura en $0 o el proveedor indica «Consultar».</p> : row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">{row.error}</p>}
                                   {entry.action === 'review' && !row.error && <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Ingresá una cotización válida para convertir el costo.</p>}
                                   {activePhotoReview?.status === 'pending' && <p role="status" className="text-xs font-semibold text-[var(--ink-muted)] sm:col-span-2">Analizando la foto con OCR local…</p>}
                                   {activePhotoReview?.status === 'flagged' && <p role="note" className="text-xs font-semibold text-rose-700 dark:text-rose-300 sm:col-span-2">Con marca del proveedor: {activePhotoReview.matches.join(', ')}. Elegí otra foto o usala solo si confirmás que está bien.</p>}
@@ -3344,8 +3369,8 @@ export default function ResellerPriceListModal({
       className="w-[calc(100%_-_1rem)] max-w-lg"
     >
       {supplierImportConfirmation && <div className="space-y-4">
-        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm leading-relaxed text-[var(--ink)]">Vas a agregar <strong>{supplierImportConfirmation.count.toLocaleString('es-AR')} producto{supplierImportConfirmation.count === 1 ? '' : 's'}</strong>{supplierImportConfirmation.withPhoto ? ' con foto' : ''}{supplierImportConfirmation.filterText ? ` de «${supplierImportConfirmation.filterText}»` : ''} a la lista del proveedor.</p>
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setSupplierImportConfirmation(null)} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]">Cancelar</button><button type="button" onClick={() => void handleAddSupplierImportBatch(true)} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)]">Agregar productos</button></div>
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm leading-relaxed text-[var(--ink)]">{supplierImportConfirmation.count > 0 ? <>Vas a agregar <strong>{supplierImportConfirmation.count.toLocaleString('es-AR')} producto{supplierImportConfirmation.count === 1 ? '' : 's'}</strong>{supplierImportConfirmation.withPhoto ? ' con foto' : ''}{supplierImportConfirmation.filterText ? ` de «${supplierImportConfirmation.filterText}»` : ''} a la lista del proveedor.</> : 'No hay productos con precio para agregar.'}{supplierImportConfirmation.noPriceCount > 0 && <span className="mt-2 block">También se quitarán {supplierImportConfirmation.noPriceCount} productos sin precio de la lista. Se conservan en Stock.</span>}</p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setSupplierImportConfirmation(null)} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]">Cancelar</button><button type="button" onClick={() => void handleAddSupplierImportBatch(true)} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)]">{supplierImportConfirmation.count > 0 ? 'Actualizar lista' : 'Quitar productos sin precio'}</button></div>
       </div>}
     </Modal>
 

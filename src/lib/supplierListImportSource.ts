@@ -1,6 +1,7 @@
 import { parseSupplierListRows, type SupplierListDraftRow } from './supplierListImport';
 import { supabase } from './supabase';
 import { fetchRivaCatalogImage, loadRivaCatalogSupplierSource } from './rivaCatalogSupplierImport';
+import { isSameSupplierSiteDomain } from './supplierSiteDomain';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
@@ -267,7 +268,9 @@ export { fetchRivaCatalogImage };
 export async function fetchSupplierCatalogImage(rawImageUrl: string, rawSupplierUrl: string): Promise<File> {
   const imageUrl = validateSupplierPageUrl(rawImageUrl);
   const supplierUrl = validateSupplierPageUrl(rawSupplierUrl);
-  if (imageUrl.origin !== supplierUrl.origin) throw new Error('La foto debe pertenecer al mismo sitio del proveedor.');
+  if (imageUrl.protocol !== 'https:' || !isSameSupplierSiteDomain(supplierUrl.href, imageUrl.href)) {
+    throw new Error('La foto debe pertenecer al mismo sitio del proveedor.');
+  }
   let data: { base64?: unknown; mimeType?: unknown; error?: unknown } | null;
   let error: Error | null;
   try {

@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { Product } from '../types';
 import { calculateSupplierSuggestedPublicPrice, planSupplierImport } from './supplierImportReview';
 import { DEFAULT_RESELLER_MARGIN_RULES } from './resellerMarginRules';
+import { parseSupplierListRows } from './supplierListImport';
+import {
+  clearSupplierProductNoPriceStatus,
+  getSupplierImportMatchingProducts,
+  getSupplierProductIdsAfterImport,
+  markSupplierProductWithoutPrice,
+  SUPPLIER_IMPORT_PRICE_STATUS_FIELD,
+} from './supplierImportProductStatus';
 
 const product = (changes: Partial<Product> = {}): Product => ({
   id: 'product-1', name: 'Cable iPhone C', categoryId: 'category-1', category: 'Cables',
@@ -114,5 +122,43 @@ describe('supplier import review', () => {
       });
       expect(plan[0].action).toBe('new');
     }
+  });
+
+  it('drops unpriced Mr Tecno sample rows and unlists an existing product without deleting it', () => {
+    const mrTecnoSample = parseSupplierListRows([
+      ['Código', 'Producto', 'Costo', 'Categoría'],
+      ['C91015', 'Cable iPhone C', 'Consultar', 'Cargadores'],
+      ['YH88214N', 'Cargador USB', '$ 0', 'Cargadores'],
+      ['1015', 'Lámpara solar', '$ 7.75', 'Iluminación'],
+    ]);
+    const previouslyImported = product({ id: 'mrtecno-cable', barcode: 'C91015', salePrice: 16000, catalogCost: 12345.67 });
+    const review = planSupplierImport({
+      rows: mrTecnoSample,
+      supplierProducts: [previouslyImported],
+      currency: 'USD', usdRate: 1000, discountPercent: 20, rounding: 'none',
+    });
+
+    expect(review.map(entry => entry.action)).toEqual(['no_price', 'no_price', 'new']);
+    expect(review[0].existingProduct?.id).toBe('mrtecno-cable');
+    expect(review[1].existingProduct).toBeNull();
+    expect(review.filter(entry => entry.action === 'no_price')).toHaveLength(2);
+
+    const marked = markSupplierProductWithoutPrice(previouslyImported, 'mrtecno-supplier');
+    expect(marked).toMatchObject({ id: 'mrtecno-cable', salePrice: 16000, catalogCost: 12345.67,
+      customFields: { supplierImportSupplierId: 'mrtecno-supplier', supplierImportPriceStatus: 'Sin precio' } });
+    expect(getSupplierProductIdsAfterImport(
+      ['mrtecno-cable', 'manual-product'], review, new Map([[4, 'new-priced-product']]),
+    )).toEqual(['manual-product', 'new-priced-product']);
+    expect(getSupplierImportMatchingProducts([marked], [], 'mrtecno-supplier')).toEqual([marked]);
+
+    const restored = planSupplierImport({
+      rows: [row({ sourceCode: 'C91015', supplierCost: 10, sourceCurrency: 'USD' })],
+      supplierProducts: [marked], currency: 'USD', usdRate: 1000,
+      discountPercent: 20, rounding: 'none',
+    })[0];
+    expect(restored).toMatchObject({ action: 'updated', existingProduct: { id: 'mrtecno-cable' } });
+    const restoredFields = clearSupplierProductNoPriceStatus(marked.customFields, 'mrtecno-supplier');
+    expect(restoredFields?.supplierImportSupplierId).toBe('mrtecno-supplier');
+    expect(restoredFields).not.toHaveProperty(SUPPLIER_IMPORT_PRICE_STATUS_FIELD);
   });
 });

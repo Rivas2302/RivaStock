@@ -34,6 +34,21 @@ Deno.test('supplier image proxy allows a redirect that stays on the source host'
   }
 });
 
+Deno.test('supplier image proxy allows an image subdomain redirect within the supplier site', async () => {
+  let requests = 0;
+  const fetcher: typeof fetch = async input => {
+    requests++;
+    if (requests === 1) return new Response(null, { status: 302, headers: { location: 'https://api.supplier.com/images/final.webp' } });
+    return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/webp' } });
+  };
+
+  const result = await fetchSupplierCatalogImage('https://supplier.com/image.jpg', publicDns, fetcher, 'https://supplier.com');
+  const bytes = await readLimitedSupplierImage(result.response, 3);
+  if (requests !== 2 || result.url.href !== 'https://api.supplier.com/images/final.webp' || bytes.length !== 3) {
+    throw new Error('Image redirects should be allowed across HTTPS subdomains of the same supplier domain.');
+  }
+});
+
 Deno.test('supplier image body reader cancels when a streamed image exceeds the byte ceiling', async () => {
   const response = new Response(new ReadableStream<Uint8Array>({
     start(controller) {

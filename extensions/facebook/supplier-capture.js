@@ -1,3 +1,5 @@
+import { getSupplierSiteDomain, isSameSupplierSiteDomain } from './supplier-site-domain.js';
+
 const LIVE_KEY = 'supplierCaptureLive';
 const CAPTURES_KEY = 'supplierProductCaptures';
 const APP_URL = 'https://rivastock.vercel.app/revendedores';
@@ -52,20 +54,17 @@ function safePageUrl(value, origin) {
 
 function imageOriginsForSupplier(origin) {
   try {
-    const hostname = new URL(origin).hostname.toLowerCase();
-    return hostname === 'brajamayorista.com' || hostname.endsWith('.brajamayorista.com')
-      ? ['https://api.brajamayorista.com/*']
-      : [];
+    const domain = getSupplierSiteDomain(origin);
+    return domain ? [`https://*.${domain}/*`] : [];
   } catch { return []; }
 }
 
 function isAllowedCaptureImage(origin, imageUrl) {
   try {
-    const sourceHost = new URL(origin).hostname.toLowerCase();
+    const sourceUrl = new URL(origin);
     const candidate = new URL(imageUrl);
-    if (candidate.origin === origin) return true;
-    return (sourceHost === 'brajamayorista.com' || sourceHost.endsWith('.brajamayorista.com'))
-      && candidate.origin === 'https://api.brajamayorista.com';
+    return candidate.protocol === 'https:' && !candidate.username && !candidate.password
+      && isSameSupplierSiteDomain(sourceUrl.href, candidate.href);
   } catch { return false; }
 }
 

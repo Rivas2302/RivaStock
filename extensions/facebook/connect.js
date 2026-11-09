@@ -1,5 +1,6 @@
 // Connection approval and permission request stay inside the extension page.
 import { supplierBabajiFullCatalogHint, supplierCaptureStatus } from './supplier-capture-ui.js';
+import { getSupplierSiteDomain } from './supplier-site-domain.js';
 
 
 const form=document.querySelector('#connect');
@@ -53,10 +54,9 @@ supplierStart.addEventListener('click',async()=>{
     const tab=activeSupplierTab??await refreshActiveSupplierTab();
     const origin=supportedSupplierOrigin(tab?.url);
     if(!origin||tab?.id===undefined)throw new Error('Abrí una página de productos de un proveedor en Chrome.');
-    // Request only the current supplier and, for Braja, its public image CDN.
-    const supplierHost=new URL(origin).hostname.toLowerCase();
-    const extraImageOrigins=(supplierHost==='brajamayorista.com'||supplierHost.endsWith('.brajamayorista.com'))
-      ? ['https://api.brajamayorista.com/*'] : [];
+    // Request only the current supplier and HTTPS subdomains for its public images.
+    const supplierDomain=getSupplierSiteDomain(origin);
+    const extraImageOrigins=supplierDomain?[`https://*.${supplierDomain}/*`]:[];
     const granted=await chrome.permissions.request({origins:[`${origin}/*`,...extraImageOrigins]});
     if(!granted)throw new Error('No se dio permiso para leer esta tienda. Podés volver a intentarlo cuando quieras.');
     const [current]=await chrome.tabs.query({active:true,currentWindow:true});

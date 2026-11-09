@@ -37,7 +37,7 @@ function session() {
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean; noPriceFixture?: boolean; brajaLiveFixture?: boolean; brajaExtensionFixture?: boolean; brajaItems?: Array<Record<string, unknown>> } = {}) {
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
@@ -59,7 +59,9 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       });
     }, { texts: options.ocrTexts ?? [''], hangWorkerCreation: options.hangWorkerCreation ?? false, hangFirstRecognition: options.hangFirstRecognition ?? false });
   }
-  const products: Record<string, unknown>[] = options.inventoryVisibilityFixture ? [
+  const products: Record<string, unknown>[] = options.noPriceFixture ? [
+    { id: 'mrtecno-existing-cable', user_id: owner, name: 'Cable iPhone C', category: 'Cargadores', category_id: 'category-general', stock: 0, sale_price: 16000, purchase_price: 0, catalog_only: true, catalog_cost: 12345, barcode: 'C91015', image_url: null, images: [], custom_fields: {} },
+  ] : options.inventoryVisibilityFixture ? [
     { id: 'own-inventory-qa', user_id: owner, name: '[QA] Producto propio visible', category: 'General', category_id: 'category-general', stock: 4, sale_price: 2000, purchase_price: 1000, catalog_only: false, image_url: null, images: [] },
     { id: 'supplier-inventory-qa', user_id: owner, name: '[QA] Producto proveedor oculto', category: 'General', category_id: 'category-general', stock: 0, sale_price: 3000, purchase_price: 1500, catalog_only: true, catalog_cost: 1500, image_url: null, images: [] },
   ] : options.photoScanFixture ? [
@@ -90,7 +92,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
     { id: 'category-general', user_id: owner, name: 'General' },
     ...(options.marginFixture ? [{ id: 'category-perfumes', user_id: owner, name: 'Perfumes' }] : []),
   ];
-  let supplierProductIds: string[] = options.inventoryVisibilityFixture ? ['supplier-inventory-qa'] : options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
+  let supplierProductIds: string[] = options.noPriceFixture ? ['mrtecno-existing-cable'] : options.inventoryVisibilityFixture ? ['supplier-inventory-qa'] : options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.inventoryVisibilityFixture ? [
     { id: 'supplier-visibility-item', user_id: owner, price_list_id: priceList.id, product_id: 'supplier-inventory-qa', pricing_mode: 'default', availability: 'on_order', supplier_list_id: supplierList.id, sort_order: 0 },
   ] : options.largeFixture ? [
@@ -111,10 +113,14 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   const bulkCalls: Array<{ method: string; productIds: string[]; body?: unknown }> = [];
   const productReadPages: string[] = [];
   const settingsWrites: Array<{ target: string; body: Record<string, unknown> }> = [];
+  const uploadedPhotoSizes: number[] = [];
+  const livePhotoDownloadSizes: number[] = [];
+  const livePhotoDownloadUrls: string[] = [];
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if ((options.brajaLiveFixture || options.brajaExtensionFixture) && ['brajamayorista.com', 'api.brajamayorista.com'].includes(url.hostname)) return route.continue();
     if (url.hostname !== 'rivastock-test.invalid') return route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
     const path = url.pathname;
     if (path === '/auth/v1/user') return route.fulfill({ json: session().user });
@@ -126,6 +132,25 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       } });
       const requestBody = route.request().postDataJSON() as { mode?: string; url?: string };
       if (requestBody.mode === 'image') {
+        if (options.brajaLiveFixture || options.brajaExtensionFixture) {
+          const imageUrl = new URL(String(requestBody.url ?? ''));
+          if (imageUrl.hostname !== 'api.brajamayorista.com'
+            || !/^\/uploads\/derivados\/[a-f0-9-]+\/v1-card-320\.webp$/i.test(imageUrl.pathname)
+            || imageUrl.search || imageUrl.username || imageUrl.password) {
+            return route.fulfill({ status: 422, headers: { 'access-control-allow-origin': 'http://127.0.0.1:4173' }, json: { error: 'No pudimos descargar la foto del proveedor.' } });
+          }
+          try {
+            const response = await fetch(imageUrl.href, { redirect: 'error', signal: AbortSignal.timeout(15_000) });
+            const mimeType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (!response.ok || mimeType !== 'image/webp' || bytes.length === 0 || bytes.length > 5 * 1024 * 1024) throw new Error('invalid live image');
+            livePhotoDownloadSizes.push(bytes.length);
+            livePhotoDownloadUrls.push(imageUrl.href);
+            return route.fulfill({ headers: { 'access-control-allow-origin': 'http://127.0.0.1:4173' }, json: { mimeType, base64: bytes.toString('base64') } });
+          } catch {
+            return route.fulfill({ status: 422, headers: { 'access-control-allow-origin': 'http://127.0.0.1:4173' }, json: { error: 'No pudimos descargar la foto del proveedor.' } });
+          }
+        }
         const imageIndex = Number(requestBody.url?.match(/photo-(\d+)\.jpg/)?.[1] ?? 0);
         if (imageIndex === failedImageIndex) {
           return route.fulfill({ status: 422, json: { error: 'No pudimos descargar la foto del proveedor.' } });
@@ -135,7 +160,13 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
           base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
         } });
       }
+      if (options.brajaLiveFixture) return route.fulfill({ json: { source: 'woocommerce', currency: 'ARS', items: options.brajaItems ?? [] } });
       if (options.emptyCatalog) return route.fulfill({ json: { source: 'unknown', currency: 'ARS', items: [], text: '' } });
+      if (options.noPriceFixture) return route.fulfill({ json: { source: 'woocommerce', currency: 'USD', items: [
+        { code: 'C91015', name: 'Cable iPhone C', price: null, category: 'Cargadores', imageUrl: null },
+        { code: 'YH88214N', name: 'Cargador USB sin cotización', price: 0, category: 'Cargadores', imageUrl: null },
+        { code: '1015', name: 'Lámpara solar', price: 7.75, category: 'Iluminación', imageUrl: null },
+      ] } });
       sourceCosts.push(changedCatalog ? 8.75 : 7.75);
       return route.fulfill({ json: {
         source: 'woocommerce', currency: 'USD', items: [
@@ -362,6 +393,8 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
       if (route.request().method() === 'GET') {
         return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64') });
       }
+      const upload = route.request().postDataBuffer();
+      if (upload?.byteLength) uploadedPhotoSizes.push(upload.byteLength);
       return route.fulfill({ status: 200, json: { Key: path } });
     }
     return route.fulfill({ json: [] });
@@ -369,7 +402,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites,
+    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites, uploadedPhotoSizes, livePhotoDownloadSizes, livePhotoDownloadUrls,
     supplierProducts: () => [...supplierProductIds],
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
@@ -398,8 +431,40 @@ async function continueSupplierImportToReview(page: Page, importRegion: ReturnTy
 async function confirmSupplierProductImport(page: Page) {
   const confirmation = page.getByRole('dialog', { name: 'Confirmar productos' });
   await expect(confirmation).toBeVisible();
-  await confirmation.getByRole('button', { name: 'Agregar productos' }).click();
+  await confirmation.getByRole('button', { name: /Actualizar lista|Agregar productos|Quitar productos sin precio/ }).click();
   await expect(confirmation).toBeHidden();
+}
+
+async function readBrajaLiveProducts(page: Page) {
+  await page.goto('https://brajamayorista.com/tienda/centro/productos?categoria=31', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => [...document.images].filter(image =>
+    image.currentSrc.startsWith('https://api.brajamayorista.com/uploads/derivados/')
+    && image.naturalWidth > 0 && image.naturalHeight > 0,
+  ).length === 5, { timeout: 30_000 });
+  return page.evaluate(() => [...document.images]
+    .filter(image => image.currentSrc.startsWith('https://api.brajamayorista.com/uploads/derivados/')
+      && image.naturalWidth > 0 && image.naturalHeight > 0)
+    .slice(0, 5)
+    .map(image => {
+      let card = image.parentElement;
+      for (let depth = 0; depth < 6 && card; depth++, card = card.parentElement) {
+        const text = (card.innerText ?? '').trim();
+        if (/SKU:/i.test(text) && /\$\s*[\d.,]+/.test(text)) break;
+      }
+      const text = (card?.innerText ?? '').trim();
+      const priceText = text.match(/\$\s*([\d.,]+)/)?.[1] ?? '';
+      const price = Number(priceText.replace(/\./g, '').replace(',', '.'));
+      const code = text.match(/SKU:\s*([^\s]+)/i)?.[1] ?? null;
+      return {
+        code,
+        name: image.alt.trim(),
+        price,
+        category: text.split('\n')[0]?.trim() ?? '',
+        imageUrl: image.currentSrc,
+        images: [image.currentSrc],
+        currency: 'ARS',
+      };
+    }));
 }
 
 for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 }]) {
@@ -657,6 +722,117 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
   await expect(modal.getByText(/0 nuevos · 0 actualizados · 3 sin cambios/)).toBeVisible();
+});
+
+test('Mr Tecno rows without a price stay out of imports and unlist already imported products', async ({ page }) => {
+  const { products, pricingCalls, supplierProducts } = await mockApp(page, { noPriceFixture: true });
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1000');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await modal.getByRole('button', { name: 'Seguir: revisar' }).click();
+  await expect(page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '3. Revisar' }))
+    .toHaveAttribute('aria-current', 'step');
+  await modal.getByLabel('Solo con foto').uncheck();
+
+  await expect(modal.getByText('3 productos · 1 listos · 0 para revisar')).toBeVisible();
+  await expect(modal.getByRole('status').filter({ hasText: '2 sin precio, no se importan.' })).toBeVisible();
+  await expect(modal.getByText('Sin precio').first()).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 1 listos' }).click();
+  await confirmSupplierProductImport(page);
+
+  await expect.poll(() => products.length).toBe(2);
+  expect(products.find(product => product.id === 'mrtecno-existing-cable')).toMatchObject({
+    sale_price: 16000,
+    catalog_cost: 12345,
+    custom_fields: { supplierImportSupplierId: supplier.id, supplierImportPriceStatus: 'Sin precio' },
+  });
+  expect(supplierProducts()).not.toContain('mrtecno-existing-cable');
+  expect(supplierProducts()).toHaveLength(1);
+  expect(pricingCalls).toHaveLength(1);
+  expect((pricingCalls[0] as Array<{ productId: string }>).map(item => item.productId)).toHaveLength(1);
+});
+
+test('Braja category 31 imports five real subdomain WebP photos from the live page', async ({ page }) => {
+  test.setTimeout(120_000);
+  const brajaItems: Array<Record<string, unknown>> = [];
+  const { products, uploadedPhotoSizes } = await mockApp(page, { brajaLiveFixture: true, brajaItems });
+  const liveProducts = await readBrajaLiveProducts(page);
+  expect(liveProducts).toHaveLength(5);
+  expect(liveProducts.every(item => item.name && item.code && item.price > 0
+    && item.imageUrl.endsWith('.webp') && new URL(item.imageUrl).hostname === 'api.brajamayorista.com')).toBe(true);
+
+  brajaItems.push(...liveProducts);
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://brajamayorista.com/tienda/centro/productos?categoria=31');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
+  await expect(modal.getByText('5 productos · 5 listos · 0 para revisar')).toBeVisible();
+  await expect(modal.getByText('5 con foto · 0 sin foto')).toBeVisible();
+  await modal.getByRole('button', { name: 'Agregar los 5 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
+
+  await expect.poll(() => products.length).toBe(5);
+  await expect.poll(() => uploadedPhotoSizes.length).toBe(10);
+  expect(uploadedPhotoSizes.every(size => size > 0)).toBe(true);
+  expect(products.every(product => typeof product.image_url === 'string'
+    && (product.image_url as string).includes('/storage/v1/object/public/assets/')
+    && (product.image_url as string).endsWith('.webp'))).toBe(true);
+});
+
+test('Braja extension capture reviews and saves five real subdomain WebP photos', async ({ page }) => {
+  test.setTimeout(120_000);
+  const captureId = 'a1b2c3d4-e5f6-4789-a012-123456789abc';
+  const { products, uploadedPhotoSizes, livePhotoDownloadSizes, livePhotoDownloadUrls } = await mockApp(page, { brajaExtensionFixture: true });
+  const liveProducts = await readBrajaLiveProducts(page);
+  expect(liveProducts).toHaveLength(5);
+  expect(liveProducts.every(item => item.name && item.code && item.price > 0
+    && item.imageUrl.endsWith('.webp') && new URL(item.imageUrl).hostname === 'api.brajamayorista.com')).toBe(true);
+  await page.addInitScript(({ id, items }) => {
+    const capture = {
+      captureId: id, offset: 0, nextOffset: items.length, total: items.length, done: true,
+      items, origin: 'https://brajamayorista.com', source: ['dom-cards'], warnings: [], capturedAt: new Date().toISOString(),
+    };
+    Object.defineProperty(window, 'chrome', { configurable: true, value: { runtime: { sendMessage: (_extensionId: string, message: { type: string; imageUrl?: string }, callback: (response: unknown) => void) => {
+      if (message.type === 'rivastock-get-capture') { callback(capture); return; }
+      if (message.type === 'rivastock-capture-received') { callback({ received: true }); return; }
+      if (message.type === 'supplier-capture-read-image' && message.imageUrl) {
+        void fetch('https://rivastock-test.invalid/functions/v1/fetch-url', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url: message.imageUrl, sourceOrigin: 'https://brajamayorista.com', mode: 'image' }),
+        }).then(response => response.json()).then(result => callback({ ...result, size: typeof result.base64 === 'string' ? atob(result.base64).length : 0 }))
+          .catch(() => callback({ error: 'No pudimos descargar la foto del proveedor.' }));
+        return;
+      }
+      callback({ error: 'Solicitud de extensión no admitida en el fixture.' });
+    } } } });
+  }, { id: captureId, items: liveProducts });
+
+  await page.goto(`/revendedores?importar=extension&captura=${captureId}`);
+  const capture = page.getByRole('region', { name: 'Captura recibida desde la extensión' });
+  await expect(capture.getByRole('heading', { name: 'Recibimos 5 productos de brajamayorista.com' })).toBeVisible();
+  await capture.getByLabel('Proveedor para la captura').selectOption(supplier.id);
+  await capture.getByRole('button', { name: 'Seguir a Precios' }).click();
+  const modal = page.getByRole('region', { name: 'Importar lista del proveedor' });
+  await expect(modal.getByText(/Revisamos 5 fotos:/)).toBeVisible();
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
+  await expect(modal.getByText('5 productos · 5 listos · 0 para revisar')).toBeVisible();
+  await expect(modal.getByText('5 con foto · 0 sin foto')).toBeVisible();
+  expect(new Set(livePhotoDownloadUrls).size).toBe(5);
+  expect(livePhotoDownloadSizes.length).toBeGreaterThanOrEqual(5);
+  expect(livePhotoDownloadSizes.every(size => size > 0)).toBe(true);
+  await modal.getByRole('button', { name: 'Agregar los 5 listos con foto' }).click();
+  await confirmSupplierProductImport(page);
+
+  await expect.poll(() => products.length).toBe(5);
+  await expect.poll(() => uploadedPhotoSizes.length).toBe(10);
+  await expect(page.getByRole('status').filter({ hasText: /fotos no se pudieron copiar/ })).toHaveCount(0);
+  expect(products.every(product => typeof product.image_url === 'string'
+    && (product.image_url as string).includes('/storage/v1/object/public/assets/')
+    && (product.image_url as string).endsWith('.webp'))).toBe(true);
 });
 
 test('I42 imports only public RivaStock catalog data, copies photos, stays out of Stock and Sales, and reimports by source id', async ({ page }) => {

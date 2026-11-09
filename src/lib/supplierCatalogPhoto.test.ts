@@ -18,11 +18,13 @@ const product = (patch: Partial<Product> = {}): Product => ({
 });
 
 describe('supplier catalog photos', () => {
-  it('accepts only HTTPS images from the supplier origin', () => {
+  it('accepts HTTPS images from the supplier domain and its subdomains only', () => {
     expect(getSupplierCatalogImageUrl('https://supplier.example/photo.jpg?size=small', supplierUrl))
       .toBe('https://supplier.example/photo.jpg?size=small');
     expect(getSupplierCatalogImageUrl('http://supplier.example/photo.jpg', supplierUrl)).toBeNull();
-    expect(getSupplierCatalogImageUrl('https://cdn.supplier.example/photo.jpg', supplierUrl)).toBeNull();
+    expect(getSupplierCatalogImageUrl('https://cdn.supplier.example/photo.jpg', supplierUrl))
+      .toBe('https://cdn.supplier.example/photo.jpg');
+    expect(getSupplierCatalogImageUrl('https://supplier-other.example/photo.jpg', supplierUrl)).toBeNull();
     expect(getSupplierCatalogImageUrl('data:image/png;base64,abc', supplierUrl)).toBeNull();
   });
 

@@ -43,13 +43,19 @@ try {
   await cp(join(root, 'extensions', 'shared', 'product-extract.js'), join(extensionPath, 'shared', 'product-extract.js'));
   const manifestPath = join(extensionPath, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  manifest.host_permissions = [`${origin}/*`];
+  manifest.host_permissions = [
+    `${origin}/*`,
+    'https://*.example.test/*',
+    'https://brajamayorista.com/*',
+    'https://*.brajamayorista.com/*',
+  ];
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   const extensionId = extensionIdFromManifestKey(manifest.key);
   const catalog = JSON.parse(await readFile(join(fixtures, 'spa-json.json'), 'utf8'));
   const infiniteFixture = await readFile(join(fixtures, 'infinite-scroll.html'), 'utf8');
   const wooFixture = await readFile(join(fixtures, 'woocommerce-dom.html'), 'utf8');
   const brajaFixture = await readFile(join(fixtures, 'braja-cross-subdomain-webp.html'), 'utf8');
+  let allowLiveBrajaRequests = false;
 
   context = await chromium.launchPersistentContext(profilePath, {
     headless: false,
@@ -59,6 +65,7 @@ try {
   });
   await context.route('**/*', async route => {
     const requestUrl = new URL(route.request().url());
+    if (requestUrl.hostname === 'brajamayorista.com' || (requestUrl.hostname === 'api.brajamayorista.com' && allowLiveBrajaRequests)) return route.continue();
     if (requestUrl.hostname === 'images.example.test' || requestUrl.hostname === 'api.brajamayorista.com') {
       return route.fulfill({ status: 200, contentType: 'image/webp', body: Buffer.from('fixture-image') });
     }
@@ -129,7 +136,7 @@ try {
   await extensionPage.setViewportSize({ width: 390, height: 760 });
   await extensionPage.goto(`chrome-extension://${extensionId}/connect.html`);
   await extensionPage.locator('#supplier-start').waitFor({ state: 'visible' });
-  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent === 'Versión 0.6.2');
+  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent === 'Versión 0.6.3');
   if (!(await extensionPage.locator('.brand p').innerText()).includes('Importar listas de proveedores')) {
     throw new Error('The supplier import popup title is missing.');
   }
@@ -142,6 +149,7 @@ try {
     { name: 'infinite-scroll', path: '/infinite-scroll', expected: 4, source: 'dom-cards' },
     { name: 'woocommerce-dom', path: '/woocommerce-dom', expected: 3, source: 'dom-cards' },
     { name: 'braja-cross-subdomain-webp', path: '/braja/category-31', expected: 5, source: 'dom-cards' },
+    { name: 'braja-live-category-31', origin: 'https://brajamayorista.com', path: '/tienda/centro/productos?categoria=31', expected: 5, source: 'dom-cards' },
     { name: 'mayori-electrobh-14-pages', path: '/mayori/electrobh/index.php#productos_page-1', expected: 700, source: 'dom-cards' },
   ];
   const requestedCase = process.env.RIVASTOCK_EXTENSION_E2E_CASE;
@@ -152,25 +160,28 @@ try {
     const page = await context.newPage();
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message.slice(0, 200)));
-    const pageUrl = `${origin}${testCase.path}`;
+    const testOrigin = testCase.origin ?? origin;
+    allowLiveBrajaRequests = testCase.name === 'braja-live-category-31';
+    const pageUrl = `${testOrigin}${testCase.path}`;
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
     const tabId = await worker.evaluate(async targetUrl => (await chrome.tabs.query({})).find(tab => tab.url === targetUrl)?.id ?? null, pageUrl);
     if (!Number.isSafeInteger(tabId)) throw new Error(`${testCase.name}: supplier tab not found.`);
     await page.bringToFront();
     const started = await extensionPage.evaluate(({ targetTabId, targetOrigin }) => new Promise(resolvePromise => {
       chrome.runtime.sendMessage({ type: 'supplier-capture-start', tabId: targetTabId, origin: targetOrigin }, resolvePromise);
-    }), { targetTabId: tabId, targetOrigin: origin });
+    }), { targetTabId: tabId, targetOrigin: testOrigin });
     if (started?.error) throw new Error(`${testCase.name}: ${started.error}`);
 
+    const readyStatuses = testCase.name === 'braja-live-category-31' ? ['complete', 'categories-available'] : ['complete'];
     const deadline = Date.now() + (testCase.name === 'mayori-electrobh-14-pages' ? 180_000
-      : testCase.name === 'braja-cross-subdomain-webp' ? 20_000 : 90_000);
+      : testCase.name.startsWith('braja-') ? 45_000 : 90_000);
     let state = null;
     while (Date.now() < deadline) {
       state = await readLiveState(worker);
-      if (state?.tabId === tabId && state.status === 'complete') break;
+      if (state?.tabId === tabId && readyStatuses.includes(state.status)) break;
       await wait(250);
     }
-    if (!state || state.status !== 'complete') {
+    if (!state || !readyStatuses.includes(state.status)) {
       const scrollState = await page.evaluate(() => ({
         y: window.scrollY, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
         viewport: window.innerHeight, cards: document.querySelectorAll('.product-card').length,
@@ -180,6 +191,9 @@ try {
     if (state.items.length !== testCase.expected) throw new Error(`${testCase.name}: expected ${testCase.expected} items, received ${state.items.length}.`);
     if (!state.source.includes(testCase.source)) throw new Error(`${testCase.name}: expected source ${testCase.source}.`);
     if (!state.items.every(item => item.name && item.imageUrl && item.code)) throw new Error(`${testCase.name}: incomplete fixture item.`);
+    if (testCase.name === 'braja-live-category-31' && !state.items.every(item => item.imageUrl.startsWith('https://api.brajamayorista.com/uploads/derivados/') && item.imageUrl.endsWith('.webp'))) {
+      throw new Error(`${testCase.name}: captured images do not point to the HTTPS WebP subdomain.`);
+    }
     if (testCase.name === 'mayori-electrobh-14-pages'
       && !state.items.every(item => item.brand && item.category && item.price === 4043.07)) {
       throw new Error(`${testCase.name}: an item is missing brand/category or its unit price was misread.`);
@@ -193,7 +207,28 @@ try {
       || (testCase.name === 'mayori-electrobh-14-pages' && pageSafety.pagination !== 13)) {
       throw new Error(`${testCase.name}: a prohibited control was clicked or safe pagination did not advance.`);
     }
-    results.push({ name: testCase.name, products: state.items.length, source: state.source,
+    let liveImageReads = 0;
+    if (testCase.name === 'braja-live-category-31') {
+      const captureId = 'a1b2c3d4-e5f6-4789-a012-123456789abc';
+      await worker.evaluate(({ id, capture }) => chrome.storage.local.set({ supplierProductCaptures: {
+        [id]: { origin: capture.origin, capturedAt: new Date().toISOString(), expiresAt: Date.now() + 60_000,
+          source: capture.source, warnings: capture.warnings, items: capture.items },
+      } }), { id: captureId, capture: state });
+      const imageResults = await extensionPage.evaluate(({ id, imageUrls }) => Promise.all(imageUrls.map(imageUrl => new Promise(resolvePromise => {
+        chrome.runtime.sendMessage({ type: 'supplier-capture-read-image', captureId: id, imageUrl }, resolvePromise);
+      }))), { id: captureId, imageUrls: state.items.map(item => item.imageUrl) });
+      if (imageResults.length !== 5 || imageResults.some(result => result.error || result.mimeType !== 'image/webp' || !Number.isSafeInteger(result.size) || result.size < 1)) {
+        throw new Error(`${testCase.name}: the extension could not read every real WebP image (${JSON.stringify(imageResults.map(result => result.error ?? { mimeType: result.mimeType, size: result.size }))}).`);
+      }
+      liveImageReads = imageResults.length;
+      await worker.evaluate(async id => {
+        const stored = await chrome.storage.local.get('supplierProductCaptures');
+        const captures = stored.supplierProductCaptures ?? {};
+        delete captures[id];
+        await chrome.storage.local.set({ supplierProductCaptures: captures });
+      }, captureId);
+    }
+    results.push({ name: testCase.name, products: state.items.length, source: state.source, liveImageReads,
       prohibitedClicks: pageSafety.add + (pageSafety.carousel ?? 0) + (pageSafety.detail ?? 0),
       paginationClicks: pageSafety.pagination ?? 0 });
 

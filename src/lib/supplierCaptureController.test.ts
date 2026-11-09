@@ -38,19 +38,21 @@ describe('supplier capture controller', () => {
     const { api } = mockExtension();
     const controller = createSupplierCaptureController(api as never);
     await expect(controller.start(7, 'https://supplier.example.test')).resolves.toEqual({ started: true, origin: 'https://supplier.example.test' });
-    expect(api.permissions.contains).toHaveBeenCalledWith({ origins: ['https://supplier.example.test/*'] });
+    expect(api.permissions.contains).toHaveBeenCalledWith({ origins: [
+      'https://supplier.example.test/*', 'https://*.example.test/*',
+    ] });
     expect(api.scripting.registerContentScripts).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({ matches: ['https://supplier.example.test/*'], world: 'MAIN', persistAcrossSessions: false }),
     ]));
     expect(api.tabs.reload).toHaveBeenCalledWith(7);
   });
 
-  it('requires the Braja CDN permission and permits only its image subdomain for captured photos', async () => {
+  it('requests generic HTTPS subdomain permissions and accepts only photos on the supplier site', async () => {
     const { api, local } = mockExtension('https://brajamayorista.com/tienda/centro/productos?categoria=31');
     const controller = createSupplierCaptureController(api as never);
     await controller.start(7, 'https://brajamayorista.com');
     expect(api.permissions.contains).toHaveBeenCalledWith({ origins: [
-      'https://brajamayorista.com/*', 'https://api.brajamayorista.com/*',
+      'https://brajamayorista.com/*', 'https://*.brajamayorista.com/*',
     ] });
     local.values.supplierProductCaptures = {
       'a1b2c3d4-e5f6-4789-a012-123456789abc': {
@@ -66,6 +68,15 @@ describe('supplier capture controller', () => {
       .resolves.toMatchObject({ mimeType: 'image/webp', size: 3 });
     await expect(controller.readCaptureImage('a1b2c3d4-e5f6-4789-a012-123456789abc',
       'https://evilbrajamayorista.com/uploads/derivados/qa/v1-card-320.webp')).rejects.toThrow('no pertenece al sitio leído');
+  });
+
+  it('uses the same generic domain permission for suppliers outside Braja', async () => {
+    const { api } = mockExtension('https://shop.example.com/products');
+    const controller = createSupplierCaptureController(api as never);
+    await controller.start(7, 'https://shop.example.com');
+    expect(api.permissions.contains).toHaveBeenCalledWith({ origins: [
+      'https://shop.example.com/*', 'https://*.example.com/*',
+    ] });
   });
 
   it('refuses insecure, private, protected, and tab-mismatched origins', async () => {
