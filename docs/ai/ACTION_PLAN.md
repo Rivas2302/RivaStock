@@ -1108,6 +1108,8 @@ Decisión de Riva, 09/11/2026: los objetos del bucket público `assets` son foto
 
 Usar los diseños aprobados de `docs/design/emails/`. Verificar con documentación oficial si el SMTP predeterminado de Supabase puede enviar a destinatarios externos. Dejar en `OWNER_ACTIONS.md` los pasos exactos para configurar SMTP de Gmail con contraseña de aplicación y pegar en Supabase → Authentication → Email Templates las tres plantillas (invitación, recuperar contraseña y cambio de email), incluyendo sus asuntos. No pedir ni almacenar credenciales.
 
+Riva confirmó que ya configuró SMTP con Gmail; no modificarlo. El 09/11 pidió instalar solo los tres asuntos y HTML por Management API, con backup previo. Las herramientas disponibles en esta sesión no exponen el endpoint `PATCH /v1/projects/{ref}/config/auth`; no se guardó backup ni se modificó Auth. Mantener pendiente la instalación hasta disponer de acceso directo a esa API.
+
 ### [ ] I49 Importador de Braja y ElectroBH en la extensión — **Riva, 08/11/2026**
 
 - Braja: capturar `currentSrc` o el mejor `srcset`, resolver rutas relativas y permitir las imágenes `.webp` de `api.brajamayorista.com` al capturar desde el sitio; analizar las imágenes en el momento de la captura. Criterio: categoría 31, 5/5 productos con foto.
