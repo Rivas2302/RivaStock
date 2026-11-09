@@ -59,6 +59,29 @@ describe('CatalogCustomizer', () => {
     expect(host.textContent).toContain('+ cantidad');
   });
 
+  it('enables save and persists a change to only the announcement ribbon color', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openTheme = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Tema y ambientación'));
+    await act(async () => openTheme?.click());
+
+    const ribbonMode = host.querySelector<HTMLSelectElement>('select[aria-label="Color de la cinta"]');
+    await act(async () => {
+      if (!ribbonMode) return;
+      ribbonMode.value = 'custom';
+      ribbonMode.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const greenSuggestion = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === 'Verde');
+    await act(async () => greenSuggestion?.click());
+
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    expect(save?.disabled).toBe(false);
+    await act(async () => save?.click());
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ announcementColor: '#15803D' }));
+    expect(host.textContent).toContain('Cambios guardados');
+  });
+
   it('defaults to hiding out-of-stock products and saves the catalog toggle', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));

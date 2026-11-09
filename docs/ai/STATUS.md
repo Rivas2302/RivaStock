@@ -1977,3 +1977,10 @@ Sin toque en src/, supabase/ ni extensions/.
 - Commit `616ee9f` enviado directamente a `main` con `Rivas2302`. Vercel lo marcó **Ready** en Production y asignó el alias `rivastock.vercel.app`; se confirmó con `vercel inspect` y respuesta HTTP 200 del dominio.
 - Smoke de producción de solo lectura a 375 y 1440 px: abrir desde la grilla, abrir un enlace directo, cerrar con Atrás y volver al catálogo; ambas rutas mostraron la superposición y no registraron errores de página. Con `facebookexternalhit/1.1`, la URL de producto conservó `og:title` y `og:image` (HTTP 200). No se escribieron datos reales.
 - En modo Revendedores, los E2E con fixtures probaron detalle directo y desde la grilla a 375/1440 px, precio del grupo y ausencia de proveedor/costo/código; no se usó un código real.
+
+## 2026-11-09 — Catálogo: detección de cambios del color de cinta
+
+- La detección de cambios de `CatalogCustomizer` ahora compara todos los campos editables de `CatalogConfig` automáticamente, junto con la presentación normalizada; nuevas opciones de configuración quedan incluidas sin ampliar una lista manual.
+- Prueba unitaria: cambiar únicamente el color habilita Guardar y envía el valor elegido. E2E integrado: lo guarda en el fixture y verifica el color aplicado en la cinta del catálogo público.
+- Verificación: lint y build aprobados; suite unitaria **1.317/1.317** con variables de Supabase ficticias solo en el proceso de test; E2E del flujo de color **1/1**. Sin cambios de datos reales ni migraciones.
+- Publicación en Vercel Current pendiente.

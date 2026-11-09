@@ -71,6 +71,13 @@ function normalize(config: CatalogConfig): CatalogPresentation {
   };
 }
 
+function catalogConfigSignature(config: CatalogConfig, presentation: CatalogPresentation): string {
+  const editableConfig = Object.fromEntries(
+    Object.entries(config).filter(([key]) => !['id', 'ownerUid', 'updatedAt', 'presentation'].includes(key)),
+  );
+  return JSON.stringify({ ...editableConfig, presentation });
+}
+
 export default function CatalogCustomizer({ config, categories, products, canEdit, onSave, onUploadCover, onUploadLogo, onUploadCategoryPhoto }: Props) {
   const [draftConfig, setDraftConfig] = useState(config);
   const [draft, setDraft] = useState(() => normalize(config));
@@ -82,14 +89,8 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const baseline = useMemo(() => JSON.stringify({
-    config: [config.enabled, config.whatsappNumber, config.allowOrders, config.showPrices, config.showStock, config.showStockQuantity, config.showOutOfStock, config.categoryPhotosEnabled ?? true, config.categoryPhotoOverrides ?? {}, config.businessName, config.tagline, config.aboutText],
-    presentation: normalize(config),
-  }), [config]);
-  const current = JSON.stringify({
-    config: [draftConfig.enabled, draftConfig.whatsappNumber, draftConfig.allowOrders, draftConfig.showPrices, draftConfig.showStock, draftConfig.showStockQuantity, draftConfig.showOutOfStock, draftConfig.categoryPhotosEnabled ?? true, draftConfig.categoryPhotoOverrides ?? {}, draftConfig.businessName, draftConfig.tagline, draftConfig.aboutText],
-    presentation: draft,
-  });
+  const baseline = useMemo(() => catalogConfigSignature(config, normalize(config)), [config]);
+  const current = catalogConfigSignature(draftConfig, draft);
   const dirty = baseline !== current;
   const activeTheme = getActiveCatalogTheme(draft);
   const theme = CATALOG_THEME_OPTIONS.find(item => item.id === activeTheme) ?? CATALOG_THEME_OPTIONS[0];
