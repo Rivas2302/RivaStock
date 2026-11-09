@@ -88,6 +88,8 @@ import { getRivaCatalogStoragePath } from '../lib/rivaCatalogSupplierImport';
 import { prepareSupplierCatalogPhoto, uploadPreparedSupplierCatalogPhoto } from '../lib/supplierListPhotos';
 import { processSupplierPhotoBatch } from '../lib/supplierImportPhotoBatch';
 import { SUPPLIER_PHOTO_TIMEOUT_MS, withSupplierPhotoTimeout } from '../lib/supplierPhotoTimeout';
+import { buildSupplierCategoryReviewGroups, buildSupplierCategorySuggestionPrompt, normalizeSupplierCategoryKey, parseSupplierCategoryAiOutput, suggestSupplierCategoryId, type SupplierCategoryReviewGroup } from '../lib/resellerCatalogCategories';
+import { loadSupplierCategoryMappings, saveSupplierCategoryMappings, supplierCategoryMappingKey } from '../lib/supplierCategoryMappings';
 import { createSupplierPhotoOcrWorker, getActiveSupplierPhotoReview, inspectSupplierPhotoBrand, isSupplierPhotoReviewBlocking, normalizeSupplierImportRow, supplierPhotoReviewFields, type SupplierPhotoBrandIndicators, type SupplierPhotoReview } from '../lib/supplierPrivacy';
 import { getSupplierAssetStoragePath } from '../lib/supplierPhotoStorage';
 import { useMobileAppChrome } from '../hooks/useMobileAppChrome';
@@ -387,6 +389,13 @@ export default function ResellerPriceListModal({
   const [marginApplyConfirmation, setMarginApplyConfirmation] = useState<MarginApplyConfirmation | null>(null);
   const [marginApplyError, setMarginApplyError] = useState<string | null>(null);
   const [supplierImportConfirmation, setSupplierImportConfirmation] = useState<SupplierImportAddConfirmation | null>(null);
+  const [supplierCategoryMappings, setSupplierCategoryMappings] = useState<Map<string, string>>(() => new Map());
+  const [supplierCategoryMappingsLoaded, setSupplierCategoryMappingsLoaded] = useState(false);
+  const [supplierCategoryOrganizationOpen, setSupplierCategoryOrganizationOpen] = useState(false);
+  const [supplierCategorySelections, setSupplierCategorySelections] = useState<Record<string, string>>({});
+  const [supplierCategoryOrganizationBusy, setSupplierCategoryOrganizationBusy] = useState(false);
+  const [supplierCategoryOrganizationError, setSupplierCategoryOrganizationError] = useState<string | null>(null);
+  const supplierCategoryAiRequestKey = useRef('');
   const [settingsSaveStatus, setSettingsSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const settingsSaveInProgress = useRef(false);
   const queuedSettingsSave = useRef<ResellerSettingsSnapshot | null>(null);
@@ -453,6 +462,72 @@ export default function ResellerPriceListModal({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !ownerUid) return;
+    let cancelled = false;
+    setSupplierCategoryMappingsLoaded(false);
+    void loadSupplierCategoryMappings(ownerUid).then(mappings => {
+      if (!cancelled) setSupplierCategoryMappings(mappings);
+    }).catch(() => {
+      if (!cancelled) setSupplierImportAiStatus('No pudimos cargar los mapeos de categorías guardados. Podés elegirlos manualmente.');
+    }).finally(() => {
+      if (!cancelled) setSupplierCategoryMappingsLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, ownerUid]);
+
+  useEffect(() => {
+    if (!editingSupplierId || !supplierCategoryMappingsLoaded || !supplierImportRows.length || !categories.length) return;
+    const mappedRows = supplierImportRows.map(row => {
+      if (row.targetCategoryId && categories.some(category => category.id === row.targetCategoryId)) return row;
+      const remembered = supplierCategoryMappings.get(supplierCategoryMappingKey(editingSupplierId, row.category));
+      const suggestion = suggestSupplierCategoryId(row.name, row.category, categories, remembered);
+      return suggestion ? { ...row, targetCategoryId: suggestion } : row;
+    });
+    if (mappedRows.some((row, index) => row.targetCategoryId !== supplierImportRows[index]?.targetCategoryId)) {
+      setSupplierImportRows(mappedRows);
+    }
+
+    const ambiguousRows = mappedRows.filter(row => !row.targetCategoryId
+      && !suggestSupplierCategoryId(row.name, row.category, categories, supplierCategoryMappings.get(supplierCategoryMappingKey(editingSupplierId, row.category))));
+    const sourceKeys = [...new Set(ambiguousRows.map(row => normalizeSupplierCategoryKey(row.category)).filter(Boolean))].sort();
+    if (sourceKeys.length === 0) return;
+    const requestKey = `${editingSupplierId}:${sourceKeys.join('|')}`;
+    if (supplierCategoryAiRequestKey.current === requestKey) return;
+    supplierCategoryAiRequestKey.current = requestKey;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setSupplierImportAiStatus('Buscando una categoría sugerida para las categorías nuevas…');
+        const job = await createAIJob(
+          buildSupplierCategorySuggestionPrompt(ambiguousRows, categories),
+          'codex',
+          crypto.randomUUID(),
+          { includeBusinessContext: false, includeProjectContext: false, modelId: 'gpt-6-luna', reasoningEffort: 'low' },
+        );
+        const deadline = Date.now() + 120_000;
+        let current = job;
+        while ((current.status === 'pending' || current.status === 'processing') && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 1_500));
+          current = await getAIJob(job.id);
+        }
+        if (current.status !== 'completed' || !current.output) throw new Error(current.error || 'La central de IA no respondió a tiempo.');
+        const suggestions = parseSupplierCategoryAiOutput(current.output, categories);
+        if (cancelled) return;
+        setSupplierImportRows(rows => rows.map(row => row.targetCategoryId ? row : {
+          ...row,
+          targetCategoryId: suggestions[normalizeSupplierCategoryKey(row.category)] ?? '',
+        }));
+        setSupplierImportAiStatus(Object.keys(suggestions).length
+          ? `La IA propuso categorías para ${Object.keys(suggestions).length} categorías del proveedor. Revisalas antes de importar.`
+          : 'La IA no encontró una coincidencia clara. Elegí la categoría propia en cada fila.');
+      } catch {
+        if (!cancelled) setSupplierImportAiStatus('No pudimos sugerir algunas categorías. Elegilas manualmente antes de importar.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [categories, editingSupplierId, supplierCategoryMappings, supplierCategoryMappingsLoaded, supplierImportRows]);
 
   useEffect(() => {
     if (!isOpen || displayMode !== 'page' || searchParams.get('importar') !== 'extension'
@@ -760,6 +835,13 @@ export default function ResellerPriceListModal({
     }
     return result;
   }, [supplierLists]);
+  const supplierCategoryReviewGroups = useMemo<SupplierCategoryReviewGroup[]>(() => buildSupplierCategoryReviewGroups(
+    products,
+    supplierLists,
+    suppliers,
+    categories,
+    supplierCategoryMappings,
+  ), [categories, products, supplierCategoryMappings, supplierLists, suppliers]);
   const resellerVisibleProducts = useMemo(() => visibleProducts.filter(product => {
     if (priceListInclusionFilter === 'included' && !itemByProductId.has(product.id)) return false;
     if (productListSourceFilter === 'all') return true;
@@ -1895,9 +1977,10 @@ export default function ResellerPriceListModal({
     rounding: marginRules.rounding,
     marginRules,
     marginRuleForRow: row => getSupplierImportMarginOverride(row),
+    categoryForRow: row => categories.find(category => category.id === row.targetCategoryId)?.name ?? row.category,
     hasReplacementForRow: row => Boolean(supplierImportPhotoFiles[row.sourceRow]),
     preserveZeroMarginPrice: Boolean(supplierRivaCatalogSource),
-  }), [discount, marginRules, supplierMatchingProducts, supplierImportCurrency, supplierImportRows, supplierImportUsdRate, supplierImportPhotoFiles, supplierRivaCatalogSource]);
+  }), [categories, discount, marginRules, supplierMatchingProducts, supplierImportCurrency, supplierImportRows, supplierImportUsdRate, supplierImportPhotoFiles, supplierRivaCatalogSource]);
   const supplierImportCounts = useMemo(() => supplierImportReview.reduce((counts, entry) => {
     counts[entry.action]++;
     return counts;
@@ -1918,6 +2001,10 @@ export default function ResellerPriceListModal({
   const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
   const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
   const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => ['new', 'updated', 'unchanged'].includes(entry.action)).length;
+  const supplierImportFilteredUnmappedCount = categories.length > 0
+    ? supplierImportFiltered.filter(entry => ['new', 'updated', 'unchanged'].includes(entry.action)
+      && !categories.some(category => category.id === entry.row.targetCategoryId)).length
+    : 0;
   const supplierImportFilteredExistingNoPriceCount = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct).length;
   const supplierImportWithPhotoCount = supplierImportReview.filter(entry => Boolean(
     supplierImportPhotoFiles[entry.row.sourceRow]
@@ -1931,6 +2018,11 @@ export default function ResellerPriceListModal({
     if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
     const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
     const noPriceEntries = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct);
+    const missingCategoryMapping = categories.length > 0 && ready.some(entry => !categories.some(category => category.id === entry.row.targetCategoryId));
+    if (missingCategoryMapping) {
+      setError('Elegí una categoría de tu tienda para cada producto listo antes de importar.');
+      return;
+    }
     if (ready.length === 0 && noPriceEntries.length === 0) return;
     const filterText = supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : '';
     const photoTargets: Array<{ entry: typeof ready[number]; file?: File; sourceUrl?: string }> = ready.flatMap(entry => {
@@ -1960,13 +2052,15 @@ export default function ResellerPriceListModal({
       }
       const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase('es-AR'), category]));
       const newCategories: Category[] = [];
-      for (const entry of ready) {
-        const categoryName = entry.row.category.trim();
-        const key = categoryName.toLocaleLowerCase('es-AR');
-        if (!categoryName || categoryByName.has(key)) continue;
-        const created = await db.create<Category>('categories', { id: crypto.randomUUID(), name: categoryName, ownerUid });
-        categoryByName.set(key, created);
-        newCategories.push(created);
+      if (categories.length === 0) {
+        for (const entry of ready) {
+          const categoryName = entry.row.category.trim();
+          const key = categoryName.toLocaleLowerCase('es-AR');
+          if (!categoryName || categoryByName.has(key)) continue;
+          const created = await db.create<Category>('categories', { id: crypto.randomUUID(), name: categoryName, ownerUid });
+          categoryByName.set(key, created);
+          newCategories.push(created);
+        }
       }
       if (newCategories.length) onCategoriesImported(newCategories);
 
@@ -1997,12 +2091,16 @@ export default function ResellerPriceListModal({
         for (const entry of batch) {
           if (entry.action === 'unchanged') continue;
           const existing = entry.existingProduct;
-          const categoryName = entry.row.category.trim();
-          const category = categoryByName.get(categoryName.toLocaleLowerCase('es-AR'));
+          const sourceCategory = entry.row.category.trim() || 'General';
+          const category = categories.find(item => item.id === entry.row.targetCategoryId)
+            ?? categoryByName.get(sourceCategory.toLocaleLowerCase('es-AR'));
+          const categoryName = category?.name ?? sourceCategory;
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
           Object.assign(customFields, clearSupplierProductNoPriceStatus(customFields, editingSupplierId));
+          customFields.supplierImportSupplierId = editingSupplierId;
+          customFields.supplierImportSourceCategory = sourceCategory;
           if (supplierRivaCatalogSource) customFields.rivaCatalogSupplierImport = true;
           else delete customFields.rivaCatalogSupplierImport;
           if (entry.row.brand) customFields.supplierBrand = entry.row.brand.slice(0, 100);
@@ -2141,6 +2239,35 @@ export default function ResellerPriceListModal({
         }] : [];
       });
       if (prices.length) await saveResellerSupplierListPricingBatch(savedSupplierList.id, prices);
+      const mappingCandidates = new Map<string, { sourceCategory: string; targetCategoryIds: Set<string> }>();
+      for (const entry of ready) {
+        const sourceCategory = entry.row.category.trim();
+        const category = categories.find(item => item.id === entry.row.targetCategoryId)
+          ?? categoryByName.get(sourceCategory.toLocaleLowerCase('es-AR'));
+        if (!sourceCategory || !category) continue;
+        const key = normalizeSupplierCategoryKey(sourceCategory);
+        const candidate = mappingCandidates.get(key) ?? { sourceCategory, targetCategoryIds: new Set<string>() };
+        candidate.targetCategoryIds.add(category.id);
+        mappingCandidates.set(key, candidate);
+      }
+      const remembered = [...mappingCandidates.entries()].flatMap(([sourceCategoryKey, candidate]) => candidate.targetCategoryIds.size === 1 ? [{
+        supplierId: editingSupplierId,
+        sourceCategoryKey,
+        sourceCategoryLabel: candidate.sourceCategory,
+        targetCategoryId: [...candidate.targetCategoryIds][0],
+      }] : []);
+      if (remembered.length) {
+        try {
+          await saveSupplierCategoryMappings(ownerUid, remembered);
+          setSupplierCategoryMappings(current => {
+            const next = new Map(current);
+            for (const mapping of remembered) next.set(`${mapping.supplierId}:${mapping.sourceCategoryKey}`, mapping.targetCategoryId!);
+            return next;
+          });
+        } catch {
+          setSupplierImportAiStatus('Los productos se guardaron, pero no pudimos recordar las categorías para este proveedor.');
+        }
+      }
       await reloadSupplierLists();
       if (supplierExtensionCaptureId) {
         await acknowledgeSupplierCapture(supplierExtensionCaptureId).catch(() => {});
@@ -2176,6 +2303,71 @@ export default function ResellerPriceListModal({
         : next.supplierCost === null || next.supplierCost <= 0 ? 'Revisá el precio de costo.' : null;
       return { ...next, error };
     }));
+  };
+
+  const openSupplierCategoryOrganization = () => {
+    setSupplierCategorySelections(Object.fromEntries(supplierCategoryReviewGroups.map(group => [group.key, group.suggestedCategoryId ?? ''])));
+    setSupplierCategoryOrganizationError(null);
+    setSupplierCategoryOrganizationOpen(true);
+  };
+
+  const handleApplySupplierCategoryOrganization = async () => {
+    if (!canWrite || supplierCategoryOrganizationBusy) return;
+    const selections = supplierCategoryReviewGroups.map(group => ({
+      group,
+      category: categories.find(category => category.id === supplierCategorySelections[group.key]),
+    }));
+    if (selections.some(selection => !selection.category)) {
+      setSupplierCategoryOrganizationError('Elegí una categoría de tu tienda para cada grupo antes de aplicar.');
+      return;
+    }
+    setSupplierCategoryOrganizationBusy(true);
+    setSupplierCategoryOrganizationError(null);
+    try {
+      const updatedProducts: Product[] = [];
+      for (const { group, category } of selections) {
+        if (!category) continue;
+        const matchingProducts = products.filter(product => group.productIds.includes(product.id));
+        for (let start = 0; start < matchingProducts.length; start += 10) {
+          const saved = await Promise.all(matchingProducts.slice(start, start + 10).map(async product => {
+            const sourceCategory = String(product.customFields?.supplierImportSourceCategory ?? product.category ?? group.sourceCategory).trim();
+            const customFields = {
+              ...(product.customFields ?? {}),
+              supplierImportSupplierId: group.supplierId,
+              supplierImportSourceCategory: sourceCategory,
+            };
+            const { data, error: updateError } = await supabase.from('products')
+              .update(toDb({ categoryId: category.id, category: category.name, customFields }))
+              .eq('user_id', ownerUid)
+              .eq('id', product.id)
+              .select('*')
+              .single();
+            if (updateError || !data) throw new Error(updateError?.message ?? `No se pudo ordenar ${product.name}.`);
+            return fromDb<Product>(data as Record<string, unknown>);
+          }));
+          updatedProducts.push(...saved);
+        }
+      }
+      const mappingRows = selections.flatMap(({ group, category }) => category ? [{
+        supplierId: group.supplierId,
+        sourceCategoryKey: normalizeSupplierCategoryKey(group.sourceCategory),
+        sourceCategoryLabel: group.sourceCategory,
+        targetCategoryId: category.id,
+      }] : []);
+      await saveSupplierCategoryMappings(ownerUid, mappingRows);
+      setSupplierCategoryMappings(current => {
+        const next = new Map(current);
+        for (const mapping of mappingRows) next.set(`${mapping.supplierId}:${mapping.sourceCategoryKey}`, mapping.targetCategoryId!);
+        return next;
+      });
+      onProductsImported(updatedProducts);
+      setSupplierCategoryOrganizationOpen(false);
+      showToast(`Se ordenaron ${updatedProducts.length.toLocaleString('es-AR')} productos en tus categorías.`, 'success');
+    } catch (applyError) {
+      setSupplierCategoryOrganizationError(applyError instanceof Error ? applyError.message : 'No pudimos aplicar las categorías.');
+    } finally {
+      setSupplierCategoryOrganizationBusy(false);
+    }
   };
 
   const handlePdf = async (action: 'preview' | 'download') => {
@@ -2641,6 +2833,8 @@ export default function ResellerPriceListModal({
                             <div hidden={displayMode === 'page' && supplierImportStep !== 3} className="space-y-3">
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
+                            {supplierImportAiStatus && <p role="status" className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierImportAiStatus}</p>}
+                            {supplierImportFilteredUnmappedCount > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">Elegí una categoría de tu tienda para {supplierImportFilteredUnmappedCount} producto{supplierImportFilteredUnmappedCount === 1 ? '' : 's'} antes de importar.</p>}
                             {supplierImportCounts.no_price > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{supplierImportCounts.no_price.toLocaleString('es-AR')} sin precio, no se importan.</p>}
                             <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--ink)] sm:flex-row sm:items-center sm:justify-between">
                               <p>{supplierImportWithPhotoCount} con foto · {supplierImportWithoutPhotoCount} sin foto</p>
@@ -2653,7 +2847,7 @@ export default function ResellerPriceListModal({
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || (supplierImportFilteredReadyCount === 0 && supplierImportFilteredExistingNoPriceCount === 0) || (supplierImportFilteredReadyCount > 0 && discount >= 100)} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : supplierImportFilteredReadyCount > 0 ? `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}` : `Quitar ${supplierImportFilteredExistingNoPriceCount} sin precio de la lista`}</button>
+                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredUnmappedCount > 0 || (supplierImportFilteredReadyCount === 0 && supplierImportFilteredExistingNoPriceCount === 0) || (supplierImportFilteredReadyCount > 0 && discount >= 100)} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : supplierImportFilteredReadyCount > 0 ? `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}` : `Quitar ${supplierImportFilteredExistingNoPriceCount} sin precio de la lista`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
                             {supplierImportPhotoProgress && <div><progress aria-label="Progreso de fotos" max={supplierImportPhotoProgress.total || 1} value={supplierImportPhotoProgress.done} className="h-2 w-full"/><p role="status" className="text-xs text-slate-600 dark:text-slate-300">Fotos {supplierImportPhotoProgress.done} de {supplierImportPhotoProgress.total}</p></div>}
                             {supplierImportPhotoFailures > 0 && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportPhotoFailures} foto{supplierImportPhotoFailures === 1 ? '' : 's'} {supplierImportPhotoFailures === 1 ? 'no se pudo copiar' : 'no se pudieron copiar'}. Podés reintentar la importación.</p>}
@@ -2723,7 +2917,8 @@ export default function ResellerPriceListModal({
                                 <div className="mt-3 border-t border-[var(--line)] pt-3">
                                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                                   <label className="text-[11px] font-semibold text-slate-500">Producto<input aria-label={`Producto de fila ${row.sourceRow}`} value={row.name} onChange={event => updateSupplierImportRow(row.sourceRow, { name: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
-                                  <label className="text-[11px] font-semibold text-slate-500">Categoría<input aria-label={`Categoría de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
+                                  <label className="text-[11px] font-semibold text-slate-500">Categoría del proveedor<input aria-label={`Categoría del proveedor de fila ${row.sourceRow}`} value={row.category} onChange={event => updateSupplierImportRow(row.sourceRow, { category: event.target.value, targetCategoryId: undefined })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>
+                                  {categories.length > 0 && <label className="text-[11px] font-semibold text-slate-500">Mi categoría<select aria-label={`Mi categoría para fila ${row.sourceRow}`} value={row.targetCategoryId ?? ''} onChange={event => { updateSupplierImportRow(row.sourceRow, { targetCategoryId: event.target.value || undefined }); setError(null); }} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Elegir categoría…</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
                                   <div><label className="text-[11px] font-semibold text-slate-500">Costo de origen{row.sourceCurrency ? ` (${row.sourceCurrency})` : ''}<input aria-label={`Costo de fila ${row.sourceRow}`} type="number" min="0" step="0.01" value={row.supplierCost ?? ''} onChange={event => updateSupplierImportRow(row.sourceRow, { supplierCost: event.target.value === '' ? null : Number(event.target.value) })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"/></label>{row.sourceCurrency?.toUpperCase() === 'USD' && <p className="mt-1 text-sm font-bold text-[var(--ink)]">Costo en pesos: {entry.supplierCostLocal === null ? '—' : formatCurrency(entry.supplierCostLocal)} <span className="text-xs font-normal text-[var(--ink-muted)]">(USD {row.supplierCost?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span></p>}</div>
                                   <label className="text-[11px] font-semibold text-slate-500">Excepción de ganancia
                                     <span className="mt-1 flex items-center gap-1">
@@ -2873,6 +3068,14 @@ export default function ResellerPriceListModal({
                   <PackagePlus size={17} /> Crear producto por pedido
                 </button>
               </div>
+
+              {categories.length > 0 && supplierCategoryReviewGroups.length > 0 && <section className="flex flex-col gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-[var(--ink)]">Categorías de proveedores</p>
+                  <p className="text-xs text-[var(--ink-muted)]">Revisá una propuesta para {supplierCategoryReviewGroups.reduce((count, group) => count + group.productCount, 0).toLocaleString('es-AR')} productos importados. No se cambia nada hasta confirmar.</p>
+                </div>
+                <button type="button" onClick={openSupplierCategoryOrganization} disabled={!canWrite || supplierCategoryOrganizationBusy} className="min-h-10 shrink-0 rounded-lg border border-[var(--line)] bg-[var(--surface-1)] px-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">Ordenar en mis categorías</button>
+              </section>}
 
               {productListSourceFilter === 'stock' && (
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
@@ -3435,6 +3638,28 @@ export default function ResellerPriceListModal({
         <button type="button" onClick={() => void handleUndoPriceListBulk()} disabled={bulkBusy} className="rounded-md bg-[var(--surface-1)] px-3 py-1.5 font-bold text-[var(--ink)] disabled:opacity-50">Deshacer</button>
       </div>
     )}
+
+    <Modal
+      isOpen={supplierCategoryOrganizationOpen}
+      onClose={() => { if (!supplierCategoryOrganizationBusy) setSupplierCategoryOrganizationOpen(false); }}
+      title="Ordenar en mis categorías"
+      className="w-[calc(100%_-_1rem)] max-w-2xl"
+    >
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-[var(--ink-muted)]">La propuesta agrupa los productos por proveedor y categoría de origen. Revisá cada destino; solo se aplicará al confirmar.</p>
+        <div className="max-h-[55dvh] space-y-3 overflow-y-auto">
+          {supplierCategoryReviewGroups.map(group => <label key={group.key} className="grid gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] sm:items-center">
+            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[var(--ink)]">{group.supplierName} · {group.sourceCategory}</span><span className="mt-1 block text-xs text-[var(--ink-muted)]">{group.productCount} producto{group.productCount === 1 ? '' : 's'}</span></span>
+            <select aria-label={`Categoría para ${group.supplierName} · ${group.sourceCategory}`} value={supplierCategorySelections[group.key] ?? ''} onChange={event => setSupplierCategorySelections(current => ({ ...current, [group.key]: event.target.value }))} disabled={supplierCategoryOrganizationBusy} className="min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-sm text-[var(--ink)]"><option value="">Elegí una categoría…</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          </label>)}
+        </div>
+        {supplierCategoryOrganizationError && <p role="alert" className="text-sm font-semibold text-[var(--danger-ink)]">{supplierCategoryOrganizationError}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => setSupplierCategoryOrganizationOpen(false)} disabled={supplierCategoryOrganizationBusy} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={() => void handleApplySupplierCategoryOrganization()} disabled={!canWrite || supplierCategoryOrganizationBusy || supplierCategoryReviewGroups.length === 0} className="min-h-11 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{supplierCategoryOrganizationBusy ? 'Aplicando categorías…' : 'Aplicar categorías'}</button>
+        </div>
+      </div>
+    </Modal>
 
     <Modal
       isOpen={bulkConfirmation !== null}

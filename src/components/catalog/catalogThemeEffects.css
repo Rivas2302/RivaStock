@@ -9,8 +9,8 @@
   justify-content: center;
   overflow: hidden;
   padding: .25rem 1rem;
-  background: var(--brand-strong);
-  color: var(--action-ink);
+  background: var(--catalog-announcement-background, var(--brand));
+  color: var(--catalog-announcement-ink, var(--action-ink));
   font-size: .75rem;
   font-weight: 700;
   text-align: center;

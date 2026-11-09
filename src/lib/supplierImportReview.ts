@@ -38,6 +38,11 @@ function normalizeSourceCode(value: string | null | undefined): string {
   return (value ?? '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/[^\p{L}\d]/gu, '');
 }
 
+function normalizeSourceCategory(value: string | null | undefined): string {
+  return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es-AR').replace(/\s+/g, ' ').trim();
+}
+
 export function planSupplierImport(input: {
   rows: SupplierListDraftRow[];
   supplierProducts: Product[];
@@ -46,6 +51,7 @@ export function planSupplierImport(input: {
   discountPercent: number;
   rounding: SupplierPriceRounding;
   marginForRow?: (row: SupplierListDraftRow) => number;
+  categoryForRow?: (row: SupplierListDraftRow) => string | null | undefined;
   marginRules?: ResellerMarginRules;
   marginRuleForRow?: (row: SupplierListDraftRow, existingProduct: Product | null) => ResellerMarginValueRule | null;
   hasReplacementForRow?: (row: SupplierListDraftRow) => boolean;
@@ -85,7 +91,11 @@ export function planSupplierImport(input: {
       ? rules
         ? explicitRule
           ? calculateResellerMarginSuggestionForRule(explicitRule, cost, exactCatalogPrice ? 'none' : rules.rounding)
-          : calculateResellerMarginSuggestion(rules, { cost, productId: existingProduct?.id, category: row.category })
+          : calculateResellerMarginSuggestion(rules, {
+            cost,
+            productId: existingProduct?.id,
+            category: input.categoryForRow?.(row) ?? row.category,
+          })
         : { suggestedResellerPrice: calculateSupplierSuggestedPrice(cost, explicitRule?.mode === 'fixed' ? explicitRule.value * 100 / cost : explicitRule?.value ?? input.marginForRow?.(row) ?? 25, rounding) }
       : null;
     const suggestedResellerPrice = marginSuggestion?.suggestedResellerPrice ?? null;
@@ -97,10 +107,14 @@ export function planSupplierImport(input: {
       return { row, action: 'review', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
     }
     if (!existingProduct) return { row, action: 'new', existingProduct: null, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };
+    const existingSourceCategory = existingProduct.customFields?.supplierImportSourceCategory;
+    const categoryMatches = existingSourceCategory != null
+      ? normalizeSourceCategory(String(existingSourceCategory)) === normalizeSourceCategory(row.category)
+      : existingProduct.category === row.category;
     const unchanged = existingProduct.name === row.name
       && Number(existingProduct.catalogCost ?? 0) === cost
       && existingProduct.salePrice === suggested
-      && existingProduct.category === row.category
+      && categoryMatches
       && existingProduct.customFields?.supplierImportPriceStatus !== 'Sin precio'
       && (!row.imageUrl || existingProduct.imageUrl === row.imageUrl || isSupplierManagedPhotoUrl(existingProduct.imageUrl));
     return { row, action: unchanged ? 'unchanged' : 'updated', existingProduct, supplierCostLocal: cost, suggestedResellerPrice, suggestedProfit, suggestedSalePrice: suggested };

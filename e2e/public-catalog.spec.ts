@@ -34,7 +34,7 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
   const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
@@ -42,7 +42,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
     const url = new URL(route.request().url());
     const pathname = url.pathname;
     if (pathname.endsWith('/catalog_config')) return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp }] });
-    if (pathname.endsWith('/categories')) return route.fulfill({ json: [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
+    if (pathname.endsWith('/categories')) return route.fulfill({ json: categoryOverrides ?? [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
     if (pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: catalogProducts });
     if (pathname.endsWith('/rpc/get_public_catalog_product')) return route.fulfill({ json: catalogProduct });
     if (pathname.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
@@ -54,7 +54,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
       }
       return route.fulfill({ json: {
       enabled: true, priceListId: '109d526d-eb86-4367-99ea-e24fc35eea41', minimumRule: 'none', minimumOrderAmount: 0,
-      minimumOrderQuantity: 0, products: [{ ...product, availability: 'on_order' }],
+      minimumOrderQuantity: 0, products: [{ ...catalogProduct, availability: 'on_order' }],
       } });
     }
     if (resellerRounds && pathname.endsWith('/rpc/get_public_reseller_supplier_rounds')) {
@@ -64,7 +64,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
       id: roundId, supplierListId: '1f3e5fb4-c82d-4a75-b867-c4e571dfb64b', supplierName: 'Proveedor de prueba',
       audienceName: resellerRounds === 'group' ? 'Revendedores de General Pico' : 'Todos los revendedores',
       closesAt: '2099-12-01T21:00:00.000Z', minimumOrderAmount: 0,
-      products: [{ ...product, salePrice: 6800 }],
+      products: [{ ...catalogProduct, salePrice: 6800 }],
       }] });
     }
     if (resellerRounds && pathname.endsWith('/rpc/get_public_reseller_buying_policy')) return route.fulfill({ json: 'Pago coordinado por WhatsApp.' });
@@ -124,10 +124,115 @@ test('category circles use visible product photos and product navigation returns
   await expect(avatars.first()).toHaveClass(/rounded-full/);
   await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/catalogo/qa-catalog/${PRODUCT_ID}$`));
-  await expect(page.getByRole('heading', { name: 'Cable USB-C' })).toBeVisible();
+  await expect(page.getByTestId('catalog-product-detail-modal').getByRole('heading', { name: 'Cable USB-C' })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
+});
+
+test('product detail is a catalog modal with browser history, scroll, direct links, and related products', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => localStorage.setItem('catalog-dark-mode', 'false'));
+  await mockCatalogApi(page, 'christmas', undefined, false, {}, false, true);
+
+  for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/catalogo/qa-catalog');
+    const cableCategory = page.getByRole('button', { name: 'Cables', exact: true });
+    await cableCategory.click();
+    await expect(cableCategory).toHaveAttribute('aria-pressed', 'true');
+    const search = page.getByPlaceholder('Busca en nuestra colección...');
+    await search.fill('Cable');
+    await page.locator('.catalog-theme-card').last().scrollIntoViewIfNeeded();
+    const scrollBeforeOpen = await page.evaluate(() => window.scrollY);
+    await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/catalogo/qa-catalog/${PRODUCT_ID}$`));
+    await expect(page.getByTestId('catalog-product-detail-overlay')).toBeVisible();
+    await expect(page.getByTestId('public-catalog-hero')).toBeAttached();
+    const detailModal = page.getByTestId('catalog-product-detail-modal');
+    await expect(detailModal).toHaveAttribute('data-catalog-theme', 'christmas');
+    await expect(detailModal.locator('img[alt="Cable USB-C"]')).toBeVisible();
+    await expect(detailModal.getByRole('button', { name: 'WhatsApp' }).first()).toBeVisible();
+    expect(await detailModal.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(252, 250, 245)');
+    expect(await detailModal.getByRole('button', { name: /Agregar al carrito/ }).last()
+      .evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(178, 58, 72)');
+    await expect(page.getByRole('button', { name: 'Copiar link' }).last()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Agregar al carrito' }).last()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+    await expect(search).toHaveValue('Cable');
+    await expect(cableCategory).toHaveAttribute('aria-pressed', 'true');
+    expect(Math.abs(await page.evaluate(() => window.scrollY) - scrollBeforeOpen)).toBeLessThanOrEqual(2);
+
+    await page.getByRole('button', { name: 'Activar modo oscuro' }).click();
+    await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+    await expect(detailModal).toBeVisible();
+    expect(await detailModal.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(17, 17, 17)');
+    await page.getByRole('button', { name: 'Volver al catálogo' }).click();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+
+    await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+    await page.getByRole('button', { name: 'Cerrar ficha del producto' }).click({ position: { x: 5, y: 5 } });
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+
+    await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+    await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+    await page.getByTestId('catalog-product-detail-modal').getByRole('button', { name: 'Cable Lightning', exact: true }).click();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog\/related-product$/);
+    await expect(page.getByRole('dialog', { name: 'Cable Lightning' })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+
+    await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+    await expect(page.getByTestId('catalog-product-detail-overlay')).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+    await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
+  }
+});
+
+test('reseller direct product details require the reseller session and show only reseller-facing data', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, 'group', {}, false, false, false, '5491100000000', true);
+  await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
+  await page.evaluate(() => {
+    sessionStorage.setItem('catalog-reseller-session:qa-catalog', 'CODIGO-GRUPO-QA');
+    sessionStorage.setItem('catalog-channel:qa-catalog', 'reseller');
+  });
+  for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
+    const modal = page.getByTestId('catalog-product-detail-modal');
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText('6.800');
+    await expect(modal).not.toContainText(/proveedor|costo|código/i);
+    await page.getByRole('button', { name: 'Volver al catálogo' }).click();
+    await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  }
+});
+
+test('reseller catalog categories filter imported products and open their detail modal', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, 'group', { categoryId: '', category: 'Electrónica y accesorios', stock: 0 }, false, false);
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Revendedores' }).click();
+  await page.getByPlaceholder('Código de acceso').fill('CODIGO-GRUPO-QA');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  const category = page.getByRole('button', { name: /Electrónica y accesorios/ });
+  await expect(category).toContainText('1');
+  await category.click();
+  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+  const modal = page.getByTestId('catalog-product-detail-modal');
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('6.800');
+  await expect(modal).not.toContainText(/proveedor|costo|código/i);
 });
 
 test('retail checkout saves a fixture order code and prepares the exact WhatsApp message', async ({ page }) => {
@@ -246,13 +351,14 @@ test('direct product route hides out-of-stock products unless the owner enables 
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' });
   await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
-  await expect(page.getByText('Producto no encontrado')).toBeVisible();
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
   await mockCatalogApi(page, 'normal', undefined, false, { stock: 0, availability: 'out_of_stock' }, true);
   await page.goto(`/catalogo/qa-catalog/${PRODUCT_ID}`);
   await expect(page.getByText(/Disponible|Sin stock|unidades/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Agregar una unidad' }).click();
-  await expect(page.getByRole('button', { name: 'Agregar al carrito' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Agregar al carrito' }).click();
+  await expect(page.getByTestId('catalog-product-detail-modal').getByRole('button', { name: /Agregar al carrito/ }).last()).toBeEnabled();
+  await page.getByTestId('catalog-product-detail-modal').getByRole('button', { name: /Agregar al carrito/ }).last().click();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: /Abrir carrito/ })).toContainText('2');
 });
@@ -378,6 +484,7 @@ test('category labels and seasonal countdown meet automated contrast checks', as
   await mockCatalogApi(page, 'christmas');
   await page.goto('/catalogo/qa-catalog');
   await expect(page.getByTestId('public-catalog-hero')).toBeVisible();
+  await expect(page.locator('.catalog-theme-card').first()).toHaveCSS('opacity', '1');
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   const contrastFailures = results.violations.filter(violation => violation.id === 'color-contrast');
   expect(contrastFailures, JSON.stringify(contrastFailures.map(item => item.nodes.map(node => node.html)), null, 2)).toHaveLength(0);
@@ -400,7 +507,7 @@ test('category chips stay circular on mobile and desktop in light and dark mode'
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mkdir(resolve('test-results/i25-categories'), { recursive: true });
 
-  for (const viewport of [{ width: 360, height: 740 }, { width: 1440, height: 900 }]) {
+  for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
     for (const darkMode of [false, true]) {
       await page.setViewportSize(viewport);
       await page.addInitScript((dark) => localStorage.setItem('catalog-dark-mode', String(dark)), darkMode);
@@ -420,6 +527,8 @@ test('category chips stay circular on mobile and desktop in light and dark mode'
         .evaluate(element => ({ borderRadius: Number.parseFloat(getComputedStyle(element).borderRadius), bounds: element.getBoundingClientRect().toJSON() }));
       expect(chipGeometry.borderRadius).toBeGreaterThanOrEqual(chipGeometry.bounds.height / 2);
       expect(Math.abs(chipGeometry.bounds.width - chipGeometry.bounds.height)).toBeLessThanOrEqual(1);
+      expect(chipGeometry.bounds.width).toBe(viewport.width < 640 ? 76 : 96);
+      expect(await page.locator('.catalog-category-strip').evaluate(element => getComputedStyle(element).scrollbarWidth)).toBe('none');
       const focusedGeometry = await allCategories.locator('span[aria-hidden="true"]').evaluate(element => ({
         borderRadius: Number.parseFloat(getComputedStyle(element).borderRadius),
         shadow: getComputedStyle(element).boxShadow,
@@ -434,4 +543,15 @@ test('category chips stay circular on mobile and desktop in light and dark mode'
       });
     }
   }
+});
+
+test('desktop category strip shows arrows only when more categories can be scrolled', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const categoryRows = Array.from({ length: 18 }, (_, index) => ({ id: `category-${index}`, name: `Categoría ${index + 1}`, user_id: OWNER_ID }));
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, categoryRows);
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByRole('button', { name: 'Desplazar categorías a la derecha' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Desplazar categorías a la izquierda' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Desplazar categorías a la derecha' }).click();
+  await expect(page.getByRole('button', { name: 'Desplazar categorías a la izquierda' })).toBeVisible();
 });

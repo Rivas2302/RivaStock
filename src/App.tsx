@@ -28,7 +28,6 @@ const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const AuthConfirm = lazy(() => import('./pages/AuthConfirm'));
-const PublicProductPage = lazy(() => import('./pages/PublicProductPage'));
 const POS = lazy(() => import('./pages/POS'));
 const Reports = lazy(() => import('./pages/Reports'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail'));
@@ -98,8 +97,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={withSuspense(<ForgotPassword />)} />
       <Route path="/reset-password" element={withSuspense(<ResetPassword />)} />
       <Route path="/auth/confirm" element={withSuspense(<AuthConfirm />)} />
-      <Route path="/catalogo/:slug" element={withSuspense(<PublicCatalog />)} />
-      <Route path="/catalogo/:slug/:productId" element={withSuspense(<PublicProductPage />)} />
+      <Route path="/catalogo/:slug/:productId?" element={withSuspense(<PublicCatalog />)} />
       <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
 
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>

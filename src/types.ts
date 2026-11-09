@@ -461,6 +461,7 @@ export interface CatalogConfig {
   logoUrl?: string;
   bannerUrl?: string;
   bannerColor?: string;
+  announcementColor?: string | null;
   whatsappNumber?: string;
   instagramUrl?: string;
   facebookUrl?: string;

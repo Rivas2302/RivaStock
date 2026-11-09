@@ -1965,3 +1965,13 @@ Sin toque en src/, supabase/ ni extensions/.
 - Pruebas locales: lint y build de producción aprobados; suite focal **57/57**; Playwright de navegación **14/14** (7 casos omitidos por pertenecer solo a móvil/escritorio), incluyendo el fixture de solo Ventas y Stock en escritorio, Android e iPhone y el bloqueo de rutas directas.
 - No se modificó el negocio real `leokevinr23`. Como no se guardó ninguna fila antes de la corrección, la selección que quería aplicar deberá guardarse de nuevo en Plataforma después de que el frontend quede en Current.
 - Publicación del frontend en Vercel Current pendiente.
+
+## 2026-11-09 — Catálogo: ficha de producto superpuesta
+
+- La ficha abre como modal/hoja sobre el catálogo y conserva el mismo montaje, filtros, búsqueda y scroll. La URL del producto se agrega al historial; atrás, Escape, X y fondo cierran la ficha. Un enlace directo prepara primero el catálogo y luego abre el modal, por lo que cerrar siempre deja el catálogo visible.
+- La ficha conserva fotos, precio, copiar link, WhatsApp, carrito y relacionados. Los relacionados cambian el producto en el mismo modal. La plantilla OG del enlace no se modificó. Tienda y Revendedores usan el mismo flujo; el modo Revendedores exige la sesión de acceso, muestra el precio correspondiente y omite proveedor, costo y código.
+- Se verificaron temas claro, oscuro y Navidad, y anchos de 375 y 1440 px. Playwright de `e2e/public-catalog.spec.ts`: **25/25**; smoke de importación y reimportación por categoría: **1/1**. Suite unitaria completa: **1.316/1.316** con variables Supabase ficticias solo durante el proceso; lint y build aprobados.
+- Se cerraron también los cambios acumulados de color de cinta, categorías de Revendedores (filtro/conteo/foto), mapeo recordado proveedor/categoría, organización revisable de productos ya importados, círculos de 76/96 px con flechas de escritorio y respeto de reglas de margen usando la categoría propia seleccionada. La reimportación conserva la categoría del proveedor para evitar falsos cambios.
+- Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261109T214633Z`; 102 tablas / 23.981 filas, 893 objetos / 149.941.487 bytes en cinco buckets. Postgres y Storage: `verification: passed`.
+- Migración aditiva aplicada en `RivaStock_Oficial`: versión `20261109214859`, con la columna `catalog_config.announcement_color` y la tabla `reseller_supplier_category_mappings` protegida por RLS. La verificación de solo lectura confirmó columna, tabla y política; no se insertaron ni actualizaron filas reales.
+- **Despliegue a Current pendiente de confirmación** en este registro; el push y la comprobación del bundle publicado se documentarán al terminar.

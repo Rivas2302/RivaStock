@@ -1,5 +1,5 @@
-import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
@@ -8,7 +8,7 @@ import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerS
 import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { buildRetailOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
-import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
+import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 
 const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
@@ -18,6 +18,7 @@ import {
 } from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import { getAllCategoryPhotoUrls, getCategoryPhotoUrls } from '../lib/catalogCategoryPhotos';
+import { buildResellerCatalogCategories, getResellerProductCategoryKey } from '../lib/resellerCatalogCategories';
 import {
   ShoppingBag,
   Search,
@@ -69,8 +70,9 @@ function toRoundProducts(round: PublicResellerSupplierRound): PublicCatalogProdu
 }
 
 export default function PublicCatalog() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, productId } = useParams<{ slug: string; productId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -143,12 +145,30 @@ export default function PublicCatalog() {
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem('catalog-dark-mode') === 'true',
   );
+  const categoryStripRef = useRef<HTMLDivElement>(null);
+  const catalogScrollPosition = useRef(0);
+  const directProductSetupRef = useRef<string | null>(null);
+  const [categoryCanScrollLeft, setCategoryCanScrollLeft] = useState(false);
+  const [categoryCanScrollRight, setCategoryCanScrollRight] = useState(false);
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
-  const openProduct = (product: PublicCatalogProduct) => {
+  const openProduct = (product: PublicCatalogProduct, replaceCurrent = Boolean(productId)) => {
     if (!slug) return;
-    navigate(`/catalogo/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`);
+    if (!productId) catalogScrollPosition.current = window.scrollY;
+    const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground ?? location.pathname;
+    navigate(`/catalogo/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`, {
+      replace: replaceCurrent,
+      state: { catalogModalBackground: background },
+    });
   };
+
+  const closeProduct = useCallback(() => {
+    if (!slug) return;
+    const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground;
+    setSelectedProductForLightbox(null);
+    if (productId && background) navigate(-1);
+    else if (productId) navigate(`/catalogo/${encodeURIComponent(slug)}`, { replace: true });
+  }, [location.state, navigate, productId, slug]);
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
     const url = getCatalogShareUrl(window.location.origin, slug ?? '', product.id);
@@ -291,6 +311,28 @@ useEffect(() => {
         setRetailProducts(allProducts);
         setCategories(cats);
         setResellerAvailable(hasResellerCatalog);
+        const savedAccessCode = sessionStorage.getItem(`catalog-reseller-session:${slug}`)?.trim() ?? '';
+        const savedChannel = sessionStorage.getItem(`catalog-channel:${slug}`);
+        if (hasResellerCatalog && savedAccessCode && savedChannel === 'reseller') {
+          try {
+            const [unlocked, policy, rounds] = await Promise.all([
+              unlockResellerCatalog(slug, savedAccessCode),
+              getPublicResellerBuyingPolicy(slug, savedAccessCode),
+              getPublicResellerSupplierRounds(slug, savedAccessCode).catch(() => []),
+            ]);
+            if (cancelled) return;
+            setResellerCatalog(unlocked);
+            setResellerBuyingPolicy(policy);
+            setSupplierRounds(rounds);
+            setSelectedSupplierRoundId(rounds[0]?.id ?? null);
+            setResellerAccessCode(savedAccessCode);
+            setChannel('reseller');
+            setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
+          } catch {
+            sessionStorage.removeItem(`catalog-reseller-session:${slug}`);
+            sessionStorage.setItem(`catalog-channel:${slug}`, 'retail');
+          }
+        }
       } catch (err) {
         if (cancelled) return;
         console.error('[catalog] init failed:', err);
@@ -383,6 +425,80 @@ useEffect(() => {
     () => products.filter(product => config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
     [config?.showOutOfStock, products],
   );
+  const resellerCategoryOptions = useMemo(
+    () => buildResellerCatalogCategories(catalogProducts, categories),
+    [catalogProducts, categories],
+  );
+  const categoryOptions = useMemo(() => channel === 'reseller'
+    ? resellerCategoryOptions
+    : categories.map(category => ({
+      id: category.id,
+      name: category.name,
+      count: catalogProducts.filter(product => product.categoryId === category.id).length,
+      photoUrl: getCategoryPhotoUrls(category.id, catalogProducts, config?.categoryPhotoOverrides?.[category.id], config?.categoryPhotosEnabled !== false)[0] ?? null,
+    })), [catalogProducts, categories, channel, config?.categoryPhotoOverrides, config?.categoryPhotosEnabled, resellerCategoryOptions]);
+  const refreshCategoryScrollState = useCallback(() => {
+    const strip = categoryStripRef.current;
+    if (!strip) return;
+    setCategoryCanScrollLeft(strip.scrollLeft > 2);
+    setCategoryCanScrollRight(strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 2);
+  }, []);
+  useEffect(() => {
+    const strip = categoryStripRef.current;
+    if (!strip) return;
+    refreshCategoryScrollState();
+    strip.addEventListener('scroll', refreshCategoryScrollState, { passive: true });
+    window.addEventListener('resize', refreshCategoryScrollState);
+    return () => {
+      strip.removeEventListener('scroll', refreshCategoryScrollState);
+      window.removeEventListener('resize', refreshCategoryScrollState);
+    };
+  }, [categoryOptions.length, refreshCategoryScrollState]);
+  useEffect(() => {
+    const basePath = `/catalogo/${encodeURIComponent(slug ?? '')}`;
+    if (!productId) {
+      setSelectedProductForLightbox(null);
+      const pendingProductId = (location.state as { catalogPendingProductId?: string } | null)?.catalogPendingProductId;
+      if (pendingProductId && directProductSetupRef.current === pendingProductId) {
+        directProductSetupRef.current = null;
+        navigate(`${basePath}/${encodeURIComponent(pendingProductId)}`, {
+          state: { catalogModalBackground: basePath },
+        });
+        return;
+      }
+      requestAnimationFrame(() => window.scrollTo(0, catalogScrollPosition.current));
+      return;
+    }
+    const product = catalogProducts.find(item => item.id === productId);
+    if (product) {
+      const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground;
+      if (!background) {
+        if (directProductSetupRef.current !== productId) {
+          directProductSetupRef.current = productId;
+          navigate(basePath, { replace: true, state: { catalogPendingProductId: productId } });
+        }
+        return;
+      }
+      setSelectedProductForLightbox(product);
+      setLightboxImageIndex(0);
+      setDetailQuantity(1);
+      catalogScrollPosition.current = window.scrollY || catalogScrollPosition.current;
+    } else if (!loading && config) {
+      directProductSetupRef.current = null;
+      navigate(basePath, { replace: true });
+    }
+  }, [catalogProducts, config, loading, location.pathname, location.state, navigate, productId, slug]);
+  useEffect(() => {
+    if (!selectedProductForLightbox) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProduct(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [closeProduct, selectedProductForLightbox]);
   const filteredProducts = useMemo(() => {
     const searchValue = deferredSearch.toLowerCase();
 
@@ -393,14 +509,16 @@ useEffect(() => {
         product.name.toLowerCase().includes(searchValue) ||
         product.description?.toLowerCase().includes(searchValue);
       const matchesPhoto = showWithoutPhoto || hasPhoto;
-      const matchesCategory = activeCategory === 'all' || product.categoryId === activeCategory;
+      const matchesCategory = activeCategory === 'all' || (channel === 'reseller'
+        ? getResellerProductCategoryKey(product, categories) === activeCategory
+        : product.categoryId === activeCategory);
       const matchesAvailability = channel !== 'reseller'
         || matchesResellerAvailabilityFilter(product, availabilityFilter);
       return matchesSearch && matchesPhoto && matchesCategory && matchesAvailability;
     });
 
     return filteredProducts;
-  }, [activeCategory, availabilityFilter, catalogProducts, channel, deferredSearch]);
+  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch]);
   const pagination = usePagination(filteredProducts, 48);
 
   const availabilityCounts = useMemo(() => ({
@@ -424,6 +542,7 @@ useEffect(() => {
 
   const selectRetailCatalog = () => {
     if (channel !== 'retail') setCart([]);
+    if (slug) sessionStorage.setItem(`catalog-channel:${slug}`, 'retail');
     setChannel('retail');
     setProducts(retailProducts);
     setActiveCategory('all');
@@ -433,6 +552,7 @@ useEffect(() => {
   const selectResellerCatalog = () => {
     if (resellerCatalog) {
       if (channel !== 'reseller') setCart([]);
+      if (slug) sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
       setChannel('reseller');
       const selectedRound = supplierRounds.find(round => round.id === selectedSupplierRoundId);
       setProducts(selectedRound ? toRoundProducts(selectedRound) : resellerCatalog.products);
@@ -476,6 +596,8 @@ useEffect(() => {
       setSupplierRounds(rounds);
       setSelectedSupplierRoundId(rounds[0]?.id ?? null);
       setResellerAccessCode(accessCodeInput.trim());
+      sessionStorage.setItem(`catalog-reseller-session:${slug}`, accessCodeInput.trim());
+      sessionStorage.setItem(`catalog-channel:${slug}`, 'reseller');
       setChannel('reseller');
       setProducts(rounds[0] ? toRoundProducts(rounds[0]) : unlocked.products);
       setCart([]);
@@ -692,6 +814,8 @@ if (loading) {
   const sectionOrder = (id: string) => visibleSections.findIndex(section => section.id === id);
   const scheduledThemeActive = activeTheme !== presentation.theme;
   const accentColor = scheduledThemeActive ? activeThemeConfig.accentColor : presentation.accentColor || config.accentColor || activeThemeConfig.accentColor;
+  const announcementBackgroundColor = getCatalogAnnouncementBackgroundColor(config.announcementColor, accentColor);
+  const announcementTextColor = getCatalogAnnouncementTextColor(announcementBackgroundColor);
   const heroColor = scheduledThemeActive ? activeThemeConfig.heroColor : presentation.heroColor || config.bannerColor || activeThemeConfig.heroColor;
   const heroTextTone = getCatalogHeroTextTone(heroColor);
   const heroTitle = scheduledThemeActive ? activeThemeConfig.title : presentation.heroTitle;
@@ -716,6 +840,7 @@ if (loading) {
     && getCatalogOfferPrice(product.salePrice, presentation.offerDiscountPercentByProduct?.[product.id] ?? 0) !== null);
   const maxOfferDiscount = offerProducts.reduce((maximum, product) => Math.max(maximum, presentation.offerDiscountPercentByProduct[product.id] ?? 0), 0);
   const getDisplayedPrice = (product: PublicCatalogProduct) => {
+    if (channel === 'reseller') return roundPrice(product.salePrice);
     const discount = offersAreActive && presentation.offerProductIds?.includes(product.id)
       ? presentation.offerDiscountPercentByProduct?.[product.id] ?? 0 : 0;
     return getCatalogOfferPrice(product.salePrice, discount) ?? roundPrice(product.salePrice);
@@ -763,7 +888,7 @@ if (loading) {
       presentation.ambience.themedFont && activeTheme === 'new-year' && 'catalog-theme-font--new-year',
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
     )}>
-      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience}/></Suspense>
+      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience} announcementBackgroundColor={announcementBackgroundColor} announcementTextColor={announcementTextColor}/></Suspense>
       <AnimatePresence>
         {message && (
           <motion.div
@@ -1136,15 +1261,28 @@ if (loading) {
         </section>}
         {visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {[{ id: 'all', name: 'Todos' }, ...categories].map((category, index) => {
-              const categoryPhotos = category.id === 'all'
-                ? (config.categoryPhotosEnabled === false ? [] : getAllCategoryPhotoUrls(catalogProducts, 4))
-                : getCategoryPhotoUrls(category.id, catalogProducts, config.categoryPhotoOverrides?.[category.id], config.categoryPhotosEnabled !== false);
-              return <button key={category.id} type="button" aria-pressed={activeCategory === category.id} onClick={() => setActiveCategory(category.id)} style={{ WebkitTapHighlightColor: 'transparent' }} className={cn('group flex min-w-[4.75rem] flex-col items-center gap-2 px-1 py-1 text-center text-xs font-semibold transition-colors focus-visible:outline-none', activeCategory === category.id ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}><span data-testid="catalog-category-avatar" className={cn('relative grid size-14 place-items-center overflow-hidden rounded-full bg-gradient-to-br text-base font-black text-white shadow-sm transition-shadow', activeCategory === category.id && 'ring-2 ring-offset-2 ring-[var(--brand)] ring-offset-[var(--surface)]', 'group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--brand-strong)] group-focus-visible:ring-offset-[var(--surface)]')} style={{ backgroundImage: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))` }} aria-hidden="true"><span className="relative z-0">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span>{categoryPhotos.length === 1 ? <img src={categoryPhotos[0]} alt="" loading="lazy" className="absolute inset-0 z-10 size-full object-cover"/> : categoryPhotos.length > 1 ? <span className="absolute inset-0 z-10 grid grid-cols-2 grid-rows-2">{categoryPhotos.map((url, photoIndex)=><img key={`${url}-${photoIndex}`} src={url} alt="" loading="lazy" className="size-full object-cover"/>)}</span> : null}</span><span className="max-w-[4.75rem] truncate">{category.name}</span></button>;
-            })}
-          </div>
-        </section>}
+          <div className="relative">
+            {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}
+            <div ref={categoryStripRef} className="catalog-category-strip flex gap-4 overflow-x-auto scroll-smooth px-1 pb-3 sm:gap-6 md:px-10" onScroll={refreshCategoryScrollState}>
+              {[
+                { id: 'all', name: 'Todos', count: catalogProducts.length, photoUrl: null },
+                ...categoryOptions,
+              ].map((category, index) => {
+                const photos = category.id === 'all'
+                  ? (config.categoryPhotosEnabled === false ? [] : getAllCategoryPhotoUrls(catalogProducts, 4))
+                  : category.photoUrl ? [category.photoUrl] : [];
+                const selectedId = category.id;
+                return <button key={category.id} type="button" aria-pressed={activeCategory === selectedId} onClick={() => setActiveCategory(selectedId)} style={{ WebkitTapHighlightColor: 'transparent' }} className={cn('group flex w-[88px] shrink-0 flex-col items-center gap-2 px-1 py-1 text-center font-semibold transition-colors focus-visible:outline-none sm:w-[112px]', activeCategory === selectedId ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}>
+                  <span data-testid="catalog-category-avatar" className={cn('relative grid size-[76px] place-items-center overflow-hidden rounded-full bg-gradient-to-br text-white shadow-sm transition-shadow sm:size-24', activeCategory === selectedId && 'ring-2 ring-offset-2 ring-[var(--brand)] ring-offset-[var(--surface)]', 'group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--brand-strong)] group-focus-visible:ring-offset-[var(--surface)]')} style={{ backgroundImage: `linear-gradient(135deg, ${accentColor}, hsl(${(index * 57 + 208) % 360} 52% 44%))` }} aria-hidden="true">
+                    {photos.length === 1 ? <img src={photos[0]} alt="" loading="lazy" className="absolute inset-0 size-full scale-[1.06] object-cover object-center"/> : photos.length > 1 ? <span className="absolute inset-0 z-10 grid grid-cols-2 grid-rows-2">{photos.map((url, photoIndex)=><img key={`${url}-${photoIndex}`} src={url} alt="" loading="lazy" className="size-full scale-[1.04] object-cover object-center"/>)}</span> : <span className="relative z-0 text-3xl font-black sm:text-4xl">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span>}
+                  </span>
+                  <span className="line-clamp-2 min-h-[2.25rem] max-w-[84px] whitespace-normal break-words text-[13px] leading-tight sm:max-w-[108px] sm:text-sm">{category.name}</span>
+                  {channel === 'reseller' && <span data-testid="reseller-category-count" className="-mt-1 text-[11px] font-medium text-[var(--ink-muted)]">{category.count}</span>}
+                </button>;
+              })}
+            </div>
+            {categoryCanScrollRight && <button type="button" aria-label="Desplazar categorías a la derecha" onClick={() => categoryStripRef.current?.scrollBy({ left: Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute right-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">›</button>}
+          </div>        </section>}
         {visibleSections.find(section => section.id === 'featured')?.visible && renderProductRail(CATALOG_SECTION_LABELS.featured, featuredProducts, 'featured')}
         {visibleSections.find(section => section.id === 'offers')?.visible && renderProductRail(CATALOG_SECTION_LABELS.offers, offerProducts, 'offers')}
         {visibleSections.find(section => section.id === 'new')?.visible && renderProductRail(CATALOG_SECTION_LABELS.new, newProducts, 'new')}
@@ -1803,21 +1941,23 @@ if (loading) {
         {selectedProductForLightbox && (() => {
           const product = selectedProductForLightbox;
           const images = product.images?.length ? product.images : product.imageUrl ? [product.imageUrl] : [];
-          const related = products.filter(row => row.id !== product.id && row.categoryId === product.categoryId).slice(0, 4);
+          const related = products.filter(row => row.id !== product.id && (channel === 'reseller'
+            ? getResellerProductCategoryKey(row, categories) === getResellerProductCategoryKey(product, categories)
+            : row.categoryId === product.categoryId)).slice(0, 4);
           const price = getDisplayedPrice(product);
-          const close = () => setSelectedProductForLightbox(null);
+          const close = closeProduct;
           const addSelected = () => { for (let index = 0; index < detailQuantity; index += 1) addToCart(product, price); close(); };
-          return <div className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
+          return <div data-testid="catalog-product-detail-overlay" className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
             <button type="button" aria-label="Cerrar ficha del producto" onClick={close} className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
-            <section className={cn('relative z-10 flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-white text-slate-900')}>
+            <section data-testid="catalog-product-detail-modal" data-catalog-theme={activeTheme} className={cn('relative z-10 flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-[var(--line)] md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-[#fcfaf5] text-[#1d2026]')} style={{ '--line': darkMode ? 'rgb(255 255 255 / .12)' : '#ddd8ce', '--ink-muted': darkMode ? '#a8abb3' : '#72757d', '--surface-muted': darkMode ? '#292c33' : '#f0ede6', '--surface-raised': darkMode ? '#24272d' : '#fffdf9' } as React.CSSProperties}>
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
               <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
                 <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
-                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{config.showStock&&<p className={`inline-flex min-h-9 items-center rounded-full px-3 text-sm font-bold ${product.stock>0?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}`}>{product.stock>0?(config.showStockQuantity?`Disponible · ${product.stock} unidades`:'Disponible'):'Sin stock'}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Compartir'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
-              </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>openProduct(row)} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
+                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" aria-label="Copiar link" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
+              </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4 pb-8"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>openProduct(row,true)} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
               <footer className="grid shrink-0 gap-2 border-t border-[var(--line)] bg-[var(--surface-raised)] p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:hidden">
                 <button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button>
-                <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Compartir'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={() => void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div>
+                <div className="grid grid-cols-2 gap-2"><button type="button" aria-label="Copiar link" onClick={() => void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={() => void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div>
               </footer>
             </section>
           </div>;

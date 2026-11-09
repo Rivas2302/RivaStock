@@ -38,6 +38,7 @@ function session() {
 }
 
 async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean; noPriceFixture?: boolean; brajaLiveFixture?: boolean; brajaExtensionFixture?: boolean; brajaItems?: Array<Record<string, unknown>> } = {}) {
+  await page.routeWebSocket('wss://rivastock-test.invalid/**', () => {});
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
   if (!options.useRealOcr) {
@@ -523,7 +524,7 @@ for (const viewport of [{ width: 360, height: 800 }, { width: 1440, height: 900 
     const { products, bulkCalls } = await mockApp(page, { photoScanFixture: true, ocrTexts: ['www.mrtecno.com.ar'] });
     const pageErrors: string[] = [];
     page.on('pageerror', () => pageErrors.push('page'));
-    page.on('console', message => { if (message.type() === 'error') pageErrors.push('console'); });
+    page.on('console', message => { if (message.type() === 'error') pageErrors.push(message.text()); });
     await page.setViewportSize(viewport);
     await page.goto('/revendedores');
     await page.getByRole('tablist', { name: 'Secciones de Revendedores' }).getByRole('tab', { name: 'Proveedores' }).click();
@@ -707,6 +708,9 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await confirmSupplierProductImport(page);
   await expect.poll(() => products.length).toBe(3);
   await expect.poll(() => pricingCalls.length).toBe(1);
+  expect(products.every(product => product.category_id === 'category-general' && product.category === 'General')).toBe(true);
+  expect(products.map(product => (product.custom_fields as Record<string, unknown>).supplierImportSourceCategory).sort())
+    .toEqual(['Cargadores', 'Cargadores', 'Iluminación']);
 
   changeCatalog();
   await page.getByRole('navigation', { name: 'Pasos para importar' }).getByRole('button', { name: '1. Importar' }).click();

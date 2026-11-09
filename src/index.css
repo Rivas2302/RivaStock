@@ -103,6 +103,15 @@
 
 html.catalog-dark { color-scheme: dark; }
 
+.catalog-category-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.catalog-category-strip::-webkit-scrollbar {
+  display: none;
+}
+
 /* Native dropdowns inherit a light browser popup in some themes unless both
    the control and its options opt into the dark palette explicitly. */
 :root.dark select {

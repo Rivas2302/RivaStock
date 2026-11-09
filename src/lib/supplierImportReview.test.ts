@@ -57,6 +57,22 @@ describe('supplier import review', () => {
     })[0].action).toBe('new');
   });
 
+  it('does not treat a saved owner category as a supplier category change on reimport', () => {
+    const sourceRow = row({ category: 'Accesorios', supplierCost: 100, sourceCurrency: 'ARS' });
+    const mappedProduct = product({
+      category: 'General',
+      catalogCost: 100,
+      salePrice: 100,
+      customFields: { supplierImportSourceCategory: 'Accesorios' },
+    });
+    const [entry] = planSupplierImport({
+      rows: [sourceRow], supplierProducts: [mappedProduct], currency: 'ARS', usdRate: 0,
+      discountPercent: 0, rounding: 'none', marginForRow: () => 0,
+    });
+
+    expect(entry.action).toBe('unchanged');
+  });
+
   it('uses the saved cost tier and category exception for supplier import prices', () => {
     const plan = planSupplierImport({
       rows: [row()], supplierProducts: [], currency: 'USD', usdRate: 1000,
@@ -69,6 +85,19 @@ describe('supplier import review', () => {
     expect(plan[0].suggestedResellerPrice).toBe(17345.67);
     expect(plan[0].suggestedProfit).toBe(5_000);
     expect(plan[0].suggestedSalePrice).toBeCloseTo(21682.0875, 8);
+  });
+
+  it('uses the selected owner category when applying category margin rules during import', () => {
+    const plan = planSupplierImport({
+      rows: [row({ category: 'Electrónica del proveedor' })], supplierProducts: [], currency: 'USD', usdRate: 1000,
+      discountPercent: 20, rounding: 'none', marginRules: {
+        ...DEFAULT_RESELLER_MARGIN_RULES,
+        categoryOverrides: { accesorios: { mode: 'fixed', value: 5_000, minimumProfit: null, maximumProfit: null } },
+      },
+      categoryForRow: () => 'Accesorios',
+    });
+
+    expect(plan[0].suggestedProfit).toBe(5_000);
   });
 
   it('lets a specific existing product rule take priority during supplier import', () => {

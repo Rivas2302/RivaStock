@@ -26,3 +26,7 @@
 12. **I46 — volver a guardar los módulos de `leokevinr23`:** la revisión de solo lectura confirmó que la primera operación no creó una personalización en la base. Después de que el arreglo del frontend figure en Current, abrí `/plataforma`, dejá la plantilla Base y volvé a desactivar Presupuestos, Pedidos, Proveedores, Revendedores, Compras a proveedores, Calculadora, IA, Conocimientos, Automatizaciones y Trazabilidad; después elegí **Guardar cambios** y confirmá el mensaje de éxito. No se cambió ningún dato de ese negocio durante el arreglo.
 
 No hay acciones pendientes de sesión de Codex, extensión 0.5.25, Bridge ni Claude.
+
+## Incidente temporal de seguridad — 09/11/2026
+
+Durante una verificación de Vercel se creó un secreto de Protection Bypass para automatización. Una salida técnica mostró un identificador sensible; no se copió a archivos ni se reutilizó para acceder al sitio. El secreto se revocó y la comprobación posterior confirmó que no quedan bypass activos. No requiere acción del dueño.

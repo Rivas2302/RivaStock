@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, moveCatalogSection, moveCatalogSectionToIndex, normalizeCatalogSections, type CatalogPresentation } from './catalogPresentation';
+import { defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, moveCatalogSection, moveCatalogSectionToIndex, normalizeCatalogColor, normalizeCatalogSections, type CatalogPresentation } from './catalogPresentation';
 
 const presentation = (schedules: CatalogPresentation['schedules'], theme: CatalogPresentation['theme'] = 'christmas') => ({ theme, schedules });
 
@@ -55,6 +55,17 @@ describe('public catalog presentation', () => {
     expect(getCatalogHeroTextTone('#164632')).toBe('light');
   });
 
+  it('uses the catalog accent automatically and chooses black or white for readable ribbon text', () => {
+    expect(getCatalogAnnouncementBackgroundColor(null, '#B23A48')).toBe('#B23A48');
+    expect(getCatalogAnnouncementBackgroundColor('#ff8800', '#3156A6')).toBe('#FF8800');
+    expect(getCatalogAnnouncementBackgroundColor('invalid', 'invalid')).toBe('#3156A6');
+    expect(getCatalogAnnouncementTextColor('#FFFFFF')).toBe('#000000');
+    expect(getCatalogAnnouncementTextColor('#000000')).toBe('#FFFFFF');
+    expect(getCatalogAnnouncementTextColor('#B23A48')).toBe('#FFFFFF');
+    expect(normalizeCatalogColor('#12abEF')).toBe('#12ABEF');
+    expect(normalizeCatalogColor('rgb(1,2,3)')).toBeNull();
+  });
+
   it('provides a countdown target for holiday themes without inventing dates for other themes', () => {
     expect(getCatalogThemeCountdown('christmas', new Date(2026, 10, 6))?.target).toEqual(new Date(2026, 11, 24));
     expect(getCatalogThemeCountdown('new-year', new Date(2026, 10, 6))?.target).toEqual(new Date(2027, 0, 1));
@@ -92,5 +103,16 @@ describe('public catalog presentation migration', () => {
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.get_public_catalog_products(text) FROM PUBLIC');
     expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.get_public_catalog_products(text) TO anon, authenticated');
     expect(sql).not.toContain('purchase_price');
+  });
+
+  it('adds ribbon color and owner-scoped supplier mappings without changing catalog or product data', () => {
+    const sql = readFileSync('supabase/migrations/20261109214859_20261109210209_catalog_reseller_category_mappings_and_ribbon_color.sql', 'utf8');
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS announcement_color text');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS public.reseller_supplier_category_mappings');
+    expect(sql).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(sql).toContain('get_owner_uid(auth.uid())');
+    expect(sql).toContain('s.user_id = reseller_supplier_category_mappings.user_id');
+    expect(sql).toContain('c.user_id = reseller_supplier_category_mappings.user_id');
+    expect(sql).not.toMatch(/\b(UPDATE|DELETE)\s+(public\.)?[a-z_]+\s+SET\b|\b(DROP\s+TABLE|TRUNCATE)\b/i);
   });
 });

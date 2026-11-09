@@ -128,6 +128,27 @@ export function getCatalogHeroTextTone(hexColor: string): 'light' | 'dark' {
   return luminance > 0.42 ? 'dark' : 'light';
 }
 
+export function normalizeCatalogColor(hexColor: string | null | undefined): string | null {
+  return typeof hexColor === 'string' && /^#[\da-f]{6}$/i.test(hexColor)
+    ? hexColor.toUpperCase()
+    : null;
+}
+
+export function getCatalogAnnouncementBackgroundColor(selectedColor: string | null | undefined, primaryColor: string | null | undefined): string {
+  return normalizeCatalogColor(selectedColor) ?? normalizeCatalogColor(primaryColor) ?? '#3156A6';
+}
+
+export function getCatalogAnnouncementTextColor(backgroundColor: string): '#000000' | '#FFFFFF' {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(backgroundColor);
+  if (!match) return '#000000';
+  const channels = match.slice(1).map(value => Number.parseInt(value, 16) / 255);
+  const [red, green, blue] = channels.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+  const blackContrast = (luminance + 0.05) / 0.05;
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  return blackContrast >= whiteContrast ? '#000000' : '#FFFFFF';
+}
+
 export function getCatalogThemeCountdown(theme: CatalogThemeId, now = new Date()): { target: Date; label: string } | null {
   const currentYear = now.getFullYear();
   if (theme === 'christmas') {

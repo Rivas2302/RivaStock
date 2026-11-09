@@ -9,6 +9,7 @@ export interface SupplierListDraftRow {
   sourceCurrency?: string | null;
   supplierCost: number | null;
   category: string;
+  targetCategoryId?: string;
   marginPercent?: number;
   marginMode?: 'percent' | 'fixed';
   marginValue?: number;
