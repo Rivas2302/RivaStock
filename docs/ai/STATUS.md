@@ -1983,4 +1983,4 @@ Sin toque en src/, supabase/ ni extensions/.
 - La detección de cambios de `CatalogCustomizer` ahora compara todos los campos editables de `CatalogConfig` automáticamente, junto con la presentación normalizada; nuevas opciones de configuración quedan incluidas sin ampliar una lista manual.
 - Prueba unitaria: cambiar únicamente el color habilita Guardar y envía el valor elegido. E2E integrado: lo guarda en el fixture y verifica el color aplicado en la cinta del catálogo público.
 - Verificación: lint y build aprobados; suite unitaria **1.317/1.317** con variables de Supabase ficticias solo en el proceso de test; E2E del flujo de color **1/1**. Sin cambios de datos reales ni migraciones.
-- Publicación en Vercel Current pendiente.
+- Commit `0701809` publicado desde `main`; Vercel lo marcó **Ready** en Production y `rivastock.vercel.app` apunta a ese deployment, confirmado con `vercel inspect`.
