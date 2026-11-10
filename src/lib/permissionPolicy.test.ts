@@ -14,6 +14,11 @@ describe('account write permissions', () => {
     expect(isAccountPermissionAllowed(true, 'delete', { status: 'active' }, false, null)).toBe(true);
   });
 
+  it('keeps allowed mutations available from the last verified plan during refresh', () => {
+    expect(isAccountPermissionAllowed(true, 'write', { status: 'active' }, true, null)).toBe(true);
+    expect(isAccountPermissionAllowed(true, 'delete', { status: 'trial' }, true, new Error('network'))).toBe(true);
+  });
+
   it('fails closed for mutations until the plan can be verified', () => {
     expect(isAccountPermissionAllowed(true, 'write', null, true, null)).toBe(false);
     expect(isAccountPermissionAllowed(true, 'delete', null, false, new Error('network'))).toBe(false);

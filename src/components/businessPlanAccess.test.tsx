@@ -117,11 +117,11 @@ describe('business plan UI access', () => {
     expect(host.querySelector('a[href="/automatizaciones"]')).toBeNull();
   });
 
-  it('keeps plan modules hidden while the plan is loading or cannot be verified', async () => {
+  it('keeps the last verified plan modules visible while revalidating and fails closed without a plan', async () => {
     mocks.businessPlan = { plan: internalPlan, loading: true, error: null };
     await renderLayout();
-    expect(host.querySelector('a[href="/ia"]')).toBeNull();
-    expect(host.querySelector('a[href="/automatizaciones"]')).toBeNull();
+    expect(host.querySelector('a[href="/ia"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/automatizaciones"]')).not.toBeNull();
 
     mocks.businessPlan = { plan: null, loading: false, error: new Error('unavailable') };
     await renderLayout();

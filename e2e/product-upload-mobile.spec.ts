@@ -50,10 +50,16 @@ async function photoFile(page: Page, name: string) {
   return { name, mimeType: 'image/jpeg', buffer: Buffer.from(bytes) };
 }
 
-async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; unsupportedHeic?: boolean } = {}) {
+async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; unsupportedHeic?: boolean; deferPlanRefresh?: boolean } = {}) {
   const rows: Record<string, unknown>[] = [];
   const uploads: Array<{ path: string; imageType: string; sizeBytes: number }> = [];
   const pageErrors: string[] = [];
+  let planRequestCount = 0;
+  let stockModuleEnabled = true;
+  let signalPlanRefreshStarted!: () => void;
+  let releaseDeferredPlanRefresh!: () => void;
+  const planRefreshStarted = new Promise<void>((resolve) => { signalPlanRefreshStarted = resolve; });
+  const deferredPlanRefresh = new Promise<void>((resolve) => { releaseDeferredPlanRefresh = resolve; });
   page.on('pageerror', (error) => pageErrors.push(error.message));
   if (options.unsupportedHeic) {
     await page.addInitScript(() => {
@@ -78,10 +84,17 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
       onboarding_completed_at: CREATED_AT, created_at: CREATED_AT,
     }] });
     if (path.endsWith('/rpc/is_platform_admin')) return route.fulfill({ json: false });
-    if (path.endsWith('/rpc/my_business_plan')) return route.fulfill({ json: {
-      plan_code: 'base', plan_name: 'RivaStock', status: 'active',
-      limits: { modules: { stock: true, sendPhotos: true, sales: true } },
-    } });
+    if (path.endsWith('/rpc/my_business_plan')) {
+      planRequestCount += 1;
+      if (options.deferPlanRefresh && planRequestCount >= 2) {
+        signalPlanRefreshStarted();
+        await deferredPlanRefresh;
+      }
+      return route.fulfill({ json: {
+        plan_code: 'base', plan_name: 'RivaStock', status: 'active',
+        limits: { modules: { stock: stockModuleEnabled, sendPhotos: true, sales: true } },
+      } });
+    }
     if (path.endsWith('/rpc/storage_upload_check')) return route.fulfill({ json: { allowed: true, reason: null } });
     if (path.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
     if (path.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: false } });
@@ -152,8 +165,77 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
   } else {
     await expect(page.getByRole('button', { name: 'Agregar Producto' })).toBeVisible();
   }
-  return { rows, uploads, pageErrors };
+  return {
+    rows,
+    uploads,
+    pageErrors,
+    planRefreshStarted,
+    releasePlanRefresh: releaseDeferredPlanRefresh,
+    setStockModuleEnabled: (enabled: boolean) => { stockModuleEnabled = enabled; },
+  };
 }
+
+test('a pending background plan refresh does not remount the new-product form or lose its photo on desktop and Android', async ({ page }, testInfo) => {
+  const isAndroid = testInfo.project.name === 'android-mobile-ai';
+  test.skip(!isAndroid && testInfo.project.name !== 'chromium', 'Run on Android emulation and desktop Chrome.');
+  const fixture = await mountNewBusinessStock(page, { deferPlanRefresh: true });
+
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = isAndroid ? page.getByTestId('mobile-product-form') : page.getByRole('dialog', { name: 'Agregar Nuevo Producto' });
+  await expect(form).toBeVisible();
+  const formHandle = await form.elementHandle();
+  const inputHandle = await form.locator('input[type="file"]').first().elementHandle();
+  expect(formHandle).not.toBeNull();
+  expect(inputHandle).not.toBeNull();
+
+  const productName = isAndroid ? '[QA] Plan estable Android' : '[QA] Plan estable escritorio';
+  await form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto').fill(productName);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('blur'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await fixture.planRefreshStarted;
+  expect(await formHandle!.evaluate((element) => element.isConnected)).toBe(true);
+  expect(await inputHandle!.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto')).toHaveValue(productName);
+
+  const photo = await photoFile(page, 'photo-after-background-refresh.jpg');
+  const chooser = page.waitForEvent('filechooser');
+  if (isAndroid) await form.getByRole('button', { name: 'Galería' }).click();
+  else await form.getByText(/Agregar\s*imagen/i).click();
+  await (await chooser).setFiles(photo);
+  await expect(form.getByRole('img', { name: 'Imagen 1' })).toBeVisible();
+
+  fixture.releasePlanRefresh();
+  await expect(form).toBeVisible();
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  if (isAndroid) await form.getByLabel('Precio de venta').fill('1800');
+  else await form.getByRole('textbox', { name: 'Precio de venta' }).fill('1800');
+  await form.getByRole('button', { name: isAndroid ? 'Guardar producto' : 'Crear Producto' }).click();
+  await expect(form).toHaveCount(0);
+  expect(fixture.rows).toHaveLength(1);
+  expect(fixture.rows[0].name).toBe(productName);
+  expect(fixture.uploads).toHaveLength(2);
+  expect(fixture.pageErrors).toEqual([]);
+});
+
+test('a module removal from Platform takes effect after the business returns to the tab', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Run the account module-change check in desktop Chrome.');
+  const fixture = await mountNewBusinessStock(page, { deferPlanRefresh: true });
+  fixture.setStockModuleEnabled(false);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await fixture.planRefreshStarted;
+  fixture.releasePlanRefresh();
+  await expect(page.getByRole('heading', { name: 'Este módulo no está incluido en tu plan' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Agregar producto/i })).toHaveCount(0);
+});
 
 test('a new authenticated business uploads a photo from a new product form in Android Chrome and desktop, then shows it in Stock and catalog', async ({ page }, testInfo) => {
   const isAndroid = testInfo.project.name === 'android-mobile-ai';

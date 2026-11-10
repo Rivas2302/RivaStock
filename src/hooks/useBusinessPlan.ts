@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../AuthContext';
 import type { BusinessPlan } from '../lib/businessPlan';
 
@@ -9,61 +9,103 @@ interface BusinessPlanState {
   error: Error | null;
 }
 
-export function useBusinessPlan() {
+interface BusinessPlanContextValue {
+  plan: BusinessPlan | null;
+  loading: boolean;
+  error: Error | null;
+  refresh: () => Promise<void>;
+}
+
+const EMPTY_STATE: BusinessPlanState = { identityKey: null, plan: null, loading: true, error: null };
+const BusinessPlanContext = createContext<BusinessPlanContextValue | null>(null);
+
+export function BusinessPlanProvider({ children }: { children: ReactNode }) {
   const { ownerUid, authUser, loading: authLoading } = useAuth();
-  const identityKey = ownerUid && authUser?.uid ? `${ownerUid}:${authUser.uid}` : null;
-  const [state, setState] = useState<BusinessPlanState>({
-    identityKey: null,
-    plan: null,
-    loading: true,
-    error: null,
-  });
-  const [refreshToken, setRefreshToken] = useState(0);
-  const wasInactive = useRef(document.visibilityState === 'hidden');
+  const actorUid = authUser?.uid ?? null;
+  const identityKey = ownerUid && actorUid ? `${ownerUid}:${actorUid}` : null;
+  const identityRef = useRef<string | null>(identityKey);
+  identityRef.current = identityKey;
+  const [state, setState] = useState<BusinessPlanState>(EMPTY_STATE);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const mountedRef = useRef(false);
+  const requestRef = useRef<{ identityKey: string; promise: Promise<void> } | null>(null);
+  const wasInactive = useRef(typeof document !== 'undefined' && document.visibilityState === 'hidden');
+
+  const commitState = useCallback((next: BusinessPlanState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  const refresh = useCallback((): Promise<void> => {
+    if (authLoading || !ownerUid || !actorUid || !identityKey) return Promise.resolve();
+    const existingRequest = requestRef.current;
+    if (existingRequest?.identityKey === identityKey) return existingRequest.promise;
+
+    const previousState = stateRef.current;
+    const retainedPlan = previousState.identityKey === identityKey ? previousState.plan : null;
+    commitState({ identityKey, plan: retainedPlan, loading: retainedPlan === null, error: null });
+
+    const promise = (async () => {
+      try {
+        const { getBusinessPlanForOwner } = await import('../lib/businessPlan');
+        const plan = await getBusinessPlanForOwner(ownerUid, true);
+        if (!mountedRef.current || identityRef.current !== identityKey) return;
+        commitState({ identityKey, plan, loading: false, error: null });
+      } catch (cause: unknown) {
+        if (!mountedRef.current || identityRef.current !== identityKey) return;
+        const currentState = stateRef.current;
+        const lastValidPlan = currentState.identityKey === identityKey ? currentState.plan : retainedPlan;
+        if (lastValidPlan) {
+          commitState({ identityKey, plan: lastValidPlan, loading: false, error: null });
+          console.warn('[BusinessPlan] Background refresh failed; keeping the last verified plan.');
+          return;
+        }
+        commitState({
+          identityKey,
+          plan: null,
+          loading: false,
+          error: cause instanceof Error ? cause : new Error('No se pudo verificar el plan del negocio.'),
+        });
+      }
+    })();
+    const request = { identityKey, promise };
+    requestRef.current = request;
+    void promise.finally(() => {
+      if (requestRef.current === request) requestRef.current = null;
+    });
+    return promise;
+  }, [actorUid, authLoading, commitState, identityKey, ownerUid]);
 
   useEffect(() => {
-    if (authLoading) {
-      setState({ identityKey: null, plan: null, loading: true, error: null });
-      return;
-    }
-    if (!ownerUid || !authUser?.uid) {
-      setState({ identityKey: null, plan: null, loading: false, error: null });
-      return;
-    }
-
-    let active = true;
-    const requestKey = `${ownerUid}:${authUser.uid}`;
-    setState({ identityKey: requestKey, plan: null, loading: true, error: null });
-    void import('../lib/businessPlan')
-      .then(({ getBusinessPlanForOwner }) => getBusinessPlanForOwner(ownerUid, true))
-      .then((plan) => {
-        if (active) setState({ identityKey: requestKey, plan, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (active) {
-          setState({
-            identityKey: requestKey,
-            plan: null,
-            loading: false,
-            error: cause instanceof Error ? cause : new Error('No se pudo verificar el plan del negocio.'),
-          });
-        }
-      });
-
-    return () => { active = false; };
-  }, [authLoading, authUser?.uid, ownerUid, refreshToken]);
-
-  const refresh = useCallback(() => {
-    setRefreshToken((token) => token + 1);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (!ownerUid || !authUser?.uid) return;
+    if (authLoading) {
+      commitState({ identityKey: null, plan: null, loading: true, error: null });
+      return;
+    }
+    if (!identityKey) {
+      commitState({ identityKey: null, plan: null, loading: false, error: null });
+      return;
+    }
+    if (stateRef.current.identityKey !== identityKey) {
+      commitState({ identityKey, plan: null, loading: true, error: null });
+    }
+    void refresh();
+  }, [authLoading, commitState, identityKey, refresh]);
+
+  useEffect(() => {
+    if (!identityKey || authLoading) return;
     const markInactive = () => { wasInactive.current = true; };
     const refreshOnReturn = () => {
       if (!wasInactive.current) return;
       wasInactive.current = false;
-      refresh();
+      void refresh();
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') markInactive();
@@ -78,20 +120,28 @@ export function useBusinessPlan() {
       window.removeEventListener('focus', refreshOnReturn);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [authUser?.uid, ownerUid, refresh]);
+  }, [actorUid, authLoading, identityKey, ownerUid, refresh]);
 
+  const currentPlan = state.identityKey === identityKey && !authLoading ? state.plan : null;
   useEffect(() => {
-    const plan = state.identityKey === identityKey ? state.plan : null;
-    if (!plan?.suspensionScheduledFor || plan.status === 'suspended') return;
+    if (!identityKey || !currentPlan?.suspensionScheduledFor || currentPlan.status === 'suspended') return;
     const timer = window.setInterval(() => { void refresh(); }, 30_000);
     return () => window.clearInterval(timer);
-  }, [identityKey, refresh, state.identityKey, state.plan?.status, state.plan?.suspensionScheduledFor]);
+  }, [currentPlan?.status, currentPlan?.suspensionScheduledFor, identityKey, refresh]);
 
   const isCurrentIdentity = state.identityKey === identityKey;
-  return {
-    plan: isCurrentIdentity && !authLoading ? state.plan : null,
+  const value: BusinessPlanContextValue = {
+    plan: currentPlan,
     loading: authLoading || (identityKey !== null && !isCurrentIdentity) || (isCurrentIdentity && state.loading),
     error: isCurrentIdentity && !authLoading ? state.error : null,
     refresh,
   };
+
+  return createElement(BusinessPlanContext.Provider, { value }, children);
+}
+
+export function useBusinessPlan(): BusinessPlanContextValue {
+  const context = useContext(BusinessPlanContext);
+  if (!context) throw new Error('useBusinessPlan must be used within a BusinessPlanProvider');
+  return context;
 }

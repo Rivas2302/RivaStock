@@ -199,7 +199,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const activateSession = useCallback((session: Session) => {
-    if (currentUserIdRef.current !== session.user.id) {
+    const isNewIdentity = currentUserIdRef.current !== session.user.id;
+    if (isNewIdentity) {
       setDatabaseActor(null);
       authVersionRef.current++;
       refreshControllerRef.current?.abort();
@@ -213,19 +214,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuth(null);
       setLoading(true);
     }
-    const metadata = session.user.user_metadata ?? {};
-    const displayName = normalizeDisplayName(metadata.display_name) || normalizeDisplayName(metadata.full_name);
-    const passwordSet = metadata.password_set === true;
-    const needsProfileSetup = !passwordSet || !displayName;
-    setAuthUser({
-      uid: session.user.id,
-      email: session.user.email ?? '',
-      displayName,
-      passwordSet,
-      forcePass: metadata.must_change_password === true || needsProfileSetup,
-      needsProfileSetup,
-      signupKind: typeof metadata.signup_kind === 'string' ? metadata.signup_kind : null,
-    });
+    // Keep the last verified first-login state during token/profile refreshes.
+    // A successful profile read below applies updated metadata without briefly
+    // redirecting an already mounted route during background revalidation.
+    if (isNewIdentity) {
+      const metadata = session.user.user_metadata ?? {};
+      const displayName = normalizeDisplayName(metadata.display_name) || normalizeDisplayName(metadata.full_name);
+      const passwordSet = metadata.password_set === true;
+      const needsProfileSetup = !passwordSet || !displayName;
+      setAuthUser({
+        uid: session.user.id,
+        email: session.user.email ?? '',
+        displayName,
+        passwordSet,
+        forcePass: metadata.must_change_password === true || needsProfileSetup,
+        needsProfileSetup,
+        signupKind: typeof metadata.signup_kind === 'string' ? metadata.signup_kind : null,
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -262,6 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const requestProfile = useCallback((session: Session, refreshData = false): Promise<boolean> => {
     if (!mountedRef.current) return Promise.resolve(false);
     activateSession(session);
+    const previouslyVerifiedAuth = authRef.current;
     const existing = profileJobRef.current;
     if (existing?.actorUid === session.user.id && existing.version === authVersionRef.current) {
       existing.refreshData ||= refreshData;
@@ -305,8 +312,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       } catch (error) {
         if (!isCurrent()) return false;
-        // Fail closed, but retain the actual auth session so reconnecting does
-        // not require a page reload or signing in again.
+        if (previouslyVerifiedAuth && authRef.current === previouslyVerifiedAuth) {
+          console.warn('[Auth] Background profile refresh failed; keeping the last verified account.');
+          return false;
+        }
         authRef.current = null;
         setDatabaseActor(null);
         clearDbCache();
@@ -333,6 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const controller = new AbortController();
     refreshControllerRef.current = controller;
     const version = authVersionRef.current;
+    const previouslyVerifiedAuth = authRef.current;
     clearDbCache();
     setAuthError(null);
     if (!authRef.current) setLoading(true);
@@ -344,11 +354,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await requestProfile(session, true);
       } catch (error) {
         if (!mountedRef.current || version !== authVersionRef.current) return;
-        authRef.current = null;
-        setAuth(null);
-        setAuthError('No se pudo restablecer la conexión. Volvé a intentar en unos segundos.');
-        setLoading(false);
-        console.error('[Auth] session refresh failed:', error);
+        if (!previouslyVerifiedAuth || authRef.current !== previouslyVerifiedAuth) {
+          authRef.current = null;
+          setAuth(null);
+          setAuthError('No se pudo restablecer la conexión. Volvé a intentar en unos segundos.');
+          setLoading(false);
+        }
+        console.warn('[Auth] Background session refresh failed; keeping the last verified account.');
       } finally {
         if (refreshJobRef.current === refresh) {
           refreshJobRef.current = null;

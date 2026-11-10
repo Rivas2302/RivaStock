@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import './styles/public-settings.css';
 import { AuthProvider } from './AuthContext';
+import { BusinessPlanProvider } from './hooks/useBusinessPlan';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './lib/mobileNavigationGuard';
@@ -24,9 +25,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <AuthProvider>
-        <ThemeProvider>
-          <App />
-        </ThemeProvider>
+        <BusinessPlanProvider>
+          <ThemeProvider>
+            <App />
+          </ThemeProvider>
+        </BusinessPlanProvider>
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,

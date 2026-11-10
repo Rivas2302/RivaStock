@@ -18,16 +18,14 @@ export default function Layout() {
   const navigate = useNavigate();
   const { user, authUser, isOwner, logout, refetchData, permissions } = useAuth();
   const [mobileChrome, setMobileChrome] = useState({ hideHeader: false, hideBottomNav: false });
-  const { plan, loading: planLoading, error: planError } = useBusinessPlan();
-  const businessCanWrite = !planLoading && !planError && Boolean(plan && plan.status !== 'suspended');
+  const { plan } = useBusinessPlan();
+  const businessCanWrite = Boolean(plan && plan.status !== 'suspended');
   const needsBusinessSetup = !user?.onboardingCompletedAt && isOwner;
   const [loggingOut, setLoggingOut] = useState(false);
   const lastRefetchAtRef = useRef(0);
   const { unreadCount, notice, clearNotice } = useUnreadCatalogOrders(user?.uid);
 
-  const includedModules = !planLoading && !planError && plan
-    ? plan.limits.modules
-    : DISABLED_BUSINESS_MODULES;
+  const includedModules = plan ? plan.limits.modules : DISABLED_BUSINESS_MODULES;
   const displayName = normalizeDisplayName(authUser?.displayName)
     || normalizeDisplayName(user?.displayName)
     || 'Mi perfil';

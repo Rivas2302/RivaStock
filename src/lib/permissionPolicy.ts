@@ -6,10 +6,10 @@ export function isAccountPermissionAllowed(
   permissionGranted: boolean,
   action: ActionKey,
   plan: AccountPlanState,
-  planLoading: boolean,
-  planError: unknown,
+  _planLoading: boolean,
+  _planError: unknown,
 ): boolean {
   if (!permissionGranted) return false;
   if (action === 'read') return true;
-  return !planLoading && !planError && plan !== null && plan.status !== 'suspended';
+  return plan !== null && plan.status !== 'suspended';
 }
