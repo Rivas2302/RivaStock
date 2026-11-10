@@ -168,7 +168,7 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
     else delete overrides[categoryId];
     updateConfig({ categoryPhotoOverrides: overrides });
   };
-  const back = () => { if (dirty && !window.confirm('Tenés cambios sin guardar. ¿Descartarlos y salir?')) return; setDraft(normalize(config)); setDraftConfig(config); setSection(null); setError(''); setSaved(false); setSlugTouched(false); };
+  const back = () => { if (dirty && !saved && !window.confirm('Tenés cambios sin guardar. ¿Descartarlos y salir?')) return; setDraft(normalize(config)); setDraftConfig(config); setSection(null); setError(''); setSaved(false); setSlugTouched(false); };
   const save = async () => {
     if (!dirty || saving || !canEdit) return;
     setSaving(true); setSaved(false); setError('');

@@ -2098,4 +2098,14 @@ Sin toque en src/, supabase/ ni extensions/.
 
 - El rewrite de la SPA ahora excluye `/assets/`; las rutas de app siguen usando `index.html`, mientras los objetos no encontrados en `/assets/*` pueden resolver al 404 nativo de Vercel. Los archivos estáticos existentes conservan prioridad de filesystem y el caché actual.
 - Test de configuración confirma la exclusión de `/assets/*` y que las rutas de catálogo siguen entrando al fallback SPA: `deployment.security.test.ts`, 3/3.
-- Sin cambios a datos ni migraciones. Deploy Current pendiente.
+- Sin cambios a datos ni migraciones. Commit `4d9447e`; Vercel deployment `dpl_CY2gPoXdcpye5aRRkbCbNdQ5ZtJB` quedó Ready y conserva el alias Current `rivastock.vercel.app`.
+- Smoke de producción: un asset inexistente respondió 404 `text/plain`; un asset existente respondió 200.
+
+## 2026-11-10 — Recorrido de cuenta nueva para entrega a clientes
+
+- Recorrido completo con fixture aislado a 375 px: invitación → contraseña y nombre → Inicio con módulos Stock, Pedidos, Ventas y Clientes → alta móvil de producto con foto → configuración del catálogo (nombre, link, logo y WhatsApp) → catálogo público como visitante anónimo → pedido → enlace de WhatsApp → pedido visible en Pedidos.
+- La sesión autenticada y las llamadas anónimas se probaron con identidades y respuestas de red ficticias en Playwright; no se creó usuario, producto, catálogo ni pedido real. El E2E verifica que la subida y lectura de datos de dueño usan el contexto `authenticated`, y que catálogo/pedido público usan `anon`. El aviso de pedido nuevo quedó cubierto además por `useUnreadCatalogOrders.test.tsx`, que verifica el evento Realtime y el alcance al dueño.
+- Durante la revisión se corrigió un falso aviso de “cambios sin guardar” al volver de una sección después de guardar correctamente la configuración. Agregada prueba de regresión del editor.
+- No se encontró texto de RivaTech, central, Facebook ni texto técnico en inglés en Inicio/prioridades de primer ingreso. Los cuatro pasos son concretos: datos del negocio, primer producto, catálogo e invitar empleados (opcional). No quedó otro texto simple/confuso que corregir en este recorrido.
+- Verificación local: Playwright del recorrido completo **1/1**, suite de `CatalogCustomizer` **11/11**, suite completa **238 archivos / 1.370 pruebas**, lint y build aprobados. Playwright aisló los requests del tenant y no escribió contra Supabase; los valores de configuración de la suite fueron ficticios.
+- Sin migraciones. Pendiente: commit, push y despliegue Current de este cierre antes de completar el smoke público.

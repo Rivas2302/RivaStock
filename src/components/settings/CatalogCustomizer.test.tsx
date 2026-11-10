@@ -93,6 +93,23 @@ describe('CatalogCustomizer', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it('returns to the catalog overview without a false unsaved-changes prompt after saving', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openBusiness = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Datos del negocio'));
+    await act(async () => openBusiness?.click());
+    const businessName = [...host.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'Tienda de prueba');
+    await act(async () => { if (businessName) setInputValue(businessName, 'Tienda guardada'); });
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => save?.click());
+    const back = host.querySelector<HTMLButtonElement>('button[aria-label="Volver a configuración del catálogo"]');
+    await act(async () => back?.click());
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('Tu catálogo');
+  });
+
   it('shows a suggested free link when the database rejects a concurrent slug collision', async () => {
     const onSave = vi.fn().mockRejectedValueOnce(new Error('duplicate key value violates unique constraint catalog_slug_registry_pkey'));
     const { suggestCatalogSlug } = await import('../../lib/catalogSlug');
