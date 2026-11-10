@@ -2116,6 +2116,7 @@ Sin toque en src/, supabase/ ni extensions/.
 - En iPhone no instalado, la app ofrece una sola vez los tres pasos para agregar RivaStock a la pantalla de inicio; «Ahora no» guarda la pausa por 30 días. En Android se conserva el aviso nativo y el botón «Instalar app» también está en Configuración.
 - El manifest usa íconos locales de 192 y 512 px, y `apple-touch-icon` de 180 px; se quitó la dependencia de imágenes de marcador externo.
 - Pruebas de instalación: utilidades **3/3**; Playwright **9 aprobadas / 6 omitidas por plataforma** en Chromium, iPhone 11/13/15 y Android. Suite completa tras integrar el `main` actualizado: **239 archivos / 1.377 pruebas**. Lint y build aprobados.
+- La entrega quedó incluida en el commit `910eed5` y en el deployment Production/Current `dpl_HmV8t6XKK7hEVMXRQsSQQ9t7S87Y`, en estado READY con el alias `rivastock.vercel.app`.
 
 ## 2026-11-10 — Pedidos de catálogo con código y WhatsApp en ambos modos
 
@@ -2125,4 +2126,4 @@ Sin toque en src/, supabase/ ni extensions/.
 - Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261110T185355Z`; Postgres **104 tablas / 24.266 filas**, Storage **2.716 objetos / 171.090.601 bytes en cinco buckets**. PostgreSQL y Storage: `verification: passed`.
 - Migración aditiva `20261110185939_reseller_catalog_order_whatsapp_receipts` aplicada. Solo reemplaza las dos RPC; producción confirma que ambas devuelven código y entrega, no dependen del WhatsApp del negocio y tienen EXECUTE para `anon` y `authenticated`. No borra ni modifica filas existentes.
 - Pruebas locales: unitarias/migración/Realtime/Orders/PWA **18/18**; Playwright de checkout **20/20** con fixtures a 375 px en Chromium, iPhone 11/13/15 y Android; suite completa **1.377/1.377**; lint y build aprobados. El test PGlite ejecuta el pedido público como rol `anon`; Playwright intercepta las RPC. No se creó ningún pedido en catálogos de producción.
-- La migración está en producción; el deploy Current del frontend y el smoke GET de solo lectura quedan pendientes hasta publicar el commit.
+- Commit `910eed5` en `main`; Vercel Production/Current `dpl_HmV8t6XKK7hEVMXRQsSQQ9t7S87Y` quedó **READY** y conserva el alias `rivastock.vercel.app`. Smoke GET de solo lectura: raíz HTTP 200; los bundles publicados contienen el recibo, el botón WhatsApp, la alternativa sin número y el aviso de instalación. No se envió ningún pedido real.
