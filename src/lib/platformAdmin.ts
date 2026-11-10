@@ -9,7 +9,7 @@ export interface PlatformPlan {
 
 export interface PlatformBusiness {
   owner_uid: string;
-  business_name: string;
+  business_name: string | null;
   email: string;
   created_at: string;
   plan_code: string;
@@ -26,6 +26,9 @@ export interface PlatformBusiness {
   limit_overrides: Record<string, unknown>;
   notes: string;
   can_manage_account: boolean;
+  account_action_disabled_reason: string | null;
+  has_business_subscription: boolean;
+  business_action_disabled_reason: string | null;
   deletion_requested_at: string | null;
   deletion_scheduled_for: string | null;
   deletion_purge_started_at: string | null;
@@ -34,6 +37,8 @@ export interface PlatformBusiness {
   suspension_notice_sent_at: string | null;
   suspension_notice_error: string | null;
 }
+
+export { platformBusinessDisplayName } from './platformAccountProtection';
 
 export interface PlatformDashboardData {
   budgets: { db_bytes: number; storage_bytes: number; warn_ratio: number };

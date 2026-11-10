@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Building2, Loader2, Mail, RefreshCw, Save } from 'lucide-react';
-import { platformAdminRequest, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
+import { platformAdminRequest, platformBusinessDisplayName, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
 import { getBusinessPlanDisplayName } from '../lib/businessPlan';
 import { BUSINESS_MODULE_KEYS, normalizeBusinessModules } from '../lib/businessModules';
 import BusinessModuleEditor from '../components/platform/BusinessModuleEditor';
@@ -148,7 +148,7 @@ export default function PlatformAdmin() {
         notes: edit.notes,
         limit_overrides: edit.limit_overrides,
       });
-      setNotice(`Se guardaron los cambios para ${business.business_name || business.email}.`);
+      setNotice(`Se guardaron los cambios para ${platformBusinessDisplayName(business.business_name, business.email)}.`);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudieron guardar los cambios.');
@@ -318,7 +318,7 @@ function BusinessCard({
     <article className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="text-lg font-bold text-slate-900 dark:text-white">{business.business_name || 'Negocio sin nombre'}</h4>
+          <h4 className="text-lg font-bold text-slate-900 dark:text-white">{platformBusinessDisplayName(business.business_name, business.email)}</h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{business.email}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Alta: {business.created_at ? new Date(business.created_at).toLocaleDateString('es-AR') : '—'}</p>
         </div>
@@ -337,7 +337,8 @@ function BusinessCard({
 
       <BusinessSuspensionActions business={business} onChange={onAccountChange} />
 
-      <fieldset disabled={deletionPending} className="mt-5 space-y-3 border-0 p-0">
+      {!business.can_manage_account && <p role="note" className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">{business.account_action_disabled_reason ?? 'Esta cuenta no se puede administrar.'}</p>}
+      <fieldset disabled={deletionPending || !business.can_manage_account} className="mt-5 space-y-3 border-0 p-0">
       <legend className="sr-only">Configuración del negocio</legend>
       <div className="grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 md:grid-cols-3">
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Plantilla<select value={edit.plan_code} onChange={(event) => selectPlan(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{plans.filter((plan) => plan.code !== 'interno' && (plan.is_active || plan.code === edit.plan_code)).map((plan) => <option key={plan.code} value={plan.code}>{plan.name}{plan.is_active ? '' : ' · Inactiva'}</option>)}</select></label>
@@ -359,11 +360,12 @@ function BusinessCard({
 
       <label className="mt-3 block text-xs font-semibold text-slate-600 dark:text-slate-300">Notas internas<textarea rows={2} maxLength={1000} value={edit.notes} onChange={(event) => onEdit({ ...edit, notes: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onResend} disabled={resending} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15} />{resending ? 'Reenviando…' : 'Reenviar invitación'}</button>
+        <button type="button" onClick={onResend} disabled={resending || !business.can_manage_account || Boolean(business.deletion_scheduled_for)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15} />{resending ? 'Reenviando…' : 'Reenviar invitación'}</button>
         <button type="button" onClick={onSave} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save size={15} />{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
       </fieldset>
-      {business.can_manage_account && <BusinessAccountActions business={business} onChange={onAccountChange} />}
+      {business.deletion_scheduled_for && <p role="note" className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">La invitación no se puede reenviar mientras la baja esté programada.</p>}
+      <BusinessAccountActions business={business} onChange={onAccountChange} />
     </article>
   );
 }

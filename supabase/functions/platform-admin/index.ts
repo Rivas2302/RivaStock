@@ -10,6 +10,7 @@ import { createPlatformAdminHandler, type PlatformAdminBackend } from '../_share
 import { effectiveBusinessStatus, type BusinessLimitOverrides, type BusinessPlanCode, type BusinessStatus } from '../_shared/platformAdminRules.ts';
 import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 import { buildSuspensionEmail } from '../_shared/suspensionEmail.ts';
+import { platformAccountProtectionMessage, platformAccountProtectionReason } from '../_shared/platformAccountProtection.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
@@ -31,18 +32,20 @@ function createBackend(req: Request): PlatformAdminBackend {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
   });
+  let authenticatedAdminUid: string | null = null;
 
   return {
     async authenticate() {
       const { data: { user }, error } = await userClient.auth.getUser();
       if (error || !user) return { userId: null, isPlatformAdmin: false };
+      authenticatedAdminUid = user.id;
       const { data, error: adminError } = await userClient.rpc('is_platform_admin');
       if (adminError) throw adminError;
       return { userId: user.id, isPlatformAdmin: data === true };
     },
 
     async listDashboard() {
-      const [overviewResult, plansResult, subscriptionsResult, deletionsResult, adminsResult] = await Promise.all([
+      const [overviewResult, plansResult, subscriptionsResult, deletionsResult, adminsResult, ownCollaboratorsResult] = await Promise.all([
         userClient.rpc('platform_usage_overview'),
         userClient.rpc('platform_list_plans'),
         adminClient.from('business_subscriptions')
@@ -50,9 +53,12 @@ function createBackend(req: Request): PlatformAdminBackend {
         adminClient.from('business_deletion_requests')
           .select('owner_uid, requested_at, scheduled_for, cancelled_at, purge_started_at, last_failure_code'),
         adminClient.from('platform_admins').select('user_id'),
+        authenticatedAdminUid
+          ? adminClient.from('collaborators').select('user_uid').eq('owner_uid', authenticatedAdminUid)
+          : Promise.resolve({ data: [], error: null }),
       ]);
-      if (overviewResult.error || plansResult.error || subscriptionsResult.error || deletionsResult.error || adminsResult.error) {
-        throw overviewResult.error ?? plansResult.error ?? subscriptionsResult.error ?? deletionsResult.error ?? adminsResult.error;
+      if (overviewResult.error || plansResult.error || subscriptionsResult.error || deletionsResult.error || adminsResult.error || ownCollaboratorsResult.error) {
+        throw overviewResult.error ?? plansResult.error ?? subscriptionsResult.error ?? deletionsResult.error ?? adminsResult.error ?? ownCollaboratorsResult.error;
       }
       const overview = overviewResult.data as Record<string, unknown>;
       const planRows = Array.isArray(plansResult.data) ? plansResult.data : [];
@@ -64,6 +70,7 @@ function createBackend(req: Request): PlatformAdminBackend {
         String(deletion.owner_uid), deletion,
       ]));
       const platformAdmins = new Set((adminsResult.data ?? []).map((admin) => String(admin.user_id)));
+      const ownBusinessCollaborators = new Set((ownCollaboratorsResult.data ?? []).map((collaborator) => String(collaborator.user_uid)));
       const businesses = Array.isArray(overview.businesses) ? overview.businesses : [];
       return {
         budgets: overview.budgets,
@@ -74,6 +81,14 @@ function createBackend(req: Request): PlatformAdminBackend {
           const business = value as Record<string, unknown>;
           const subscription = subscriptions.get(String(business.owner_uid));
           const planCode = String(subscription?.plan_code ?? business.plan_code ?? 'base');
+          const protectionReason = platformAccountProtectionReason({
+            targetUid: String(business.owner_uid),
+            actorUid: authenticatedAdminUid ?? '',
+            platformAdminUids: platformAdmins,
+            ownBusinessCollaboratorUids: ownBusinessCollaborators,
+            planCode: subscription?.plan_code ?? null,
+          });
+          const protectionMessage = platformAccountProtectionMessage(protectionReason);
           const plan = planByCode.get(planCode);
           const planLimits = typeof plan?.limits === 'object' && plan.limits !== null
             ? plan.limits as Record<string, unknown>
@@ -83,6 +98,7 @@ function createBackend(req: Request): PlatformAdminBackend {
             : {};
           return {
             ...business,
+            business_name: typeof business.business_name === 'string' ? business.business_name.trim() : '',
             plan_code: planCode,
             plan_limits: { ...planLimits, ...overrides },
             status: effectiveBusinessStatus(
@@ -91,7 +107,12 @@ function createBackend(req: Request): PlatformAdminBackend {
             ),
             limit_overrides: overrides,
             notes: subscription?.notes ?? '',
-            can_manage_account: planCode !== 'interno' && !platformAdmins.has(String(business.owner_uid)),
+            can_manage_account: protectionReason === null,
+            account_action_disabled_reason: protectionMessage,
+            has_business_subscription: Boolean(subscription),
+          business_action_disabled_reason: protectionMessage ?? (!subscription
+              ? 'Esta cuenta no tiene un negocio asociado para programar una suspensión.'
+              : null),
             deletion_requested_at: deletions.get(String(business.owner_uid))?.requested_at ?? null,
             deletion_scheduled_for: deletions.get(String(business.owner_uid))?.scheduled_for ?? null,
             deletion_purge_started_at: deletions.get(String(business.owner_uid))?.purge_started_at ?? null,
@@ -181,6 +202,7 @@ function createBackend(req: Request): PlatformAdminBackend {
 
     async scheduleBusinessSuspension(ownerUid, scheduledFor) {
       const account = await getManageableBusiness(ownerUid);
+      requireBusinessSubscription(account);
       if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
       const { data, error } = await userClient.rpc('platform_schedule_business_suspension', {
         p_owner_uid: ownerUid,
@@ -192,19 +214,20 @@ function createBackend(req: Request): PlatformAdminBackend {
     },
 
     async cancelBusinessSuspension(ownerUid) {
-      await getManageableBusiness(ownerUid);
+      requireBusinessSubscription(await getManageableBusiness(ownerUid));
       const { error } = await userClient.rpc('platform_cancel_business_suspension', { p_owner_uid: ownerUid });
       if (error) throw platformRpcError(error.message);
     },
 
     async reactivateBusiness(ownerUid) {
-      await getManageableBusiness(ownerUid);
+      requireBusinessSubscription(await getManageableBusiness(ownerUid));
       const { error } = await userClient.rpc('platform_reactivate_business', { p_owner_uid: ownerUid });
       if (error) throw platformRpcError(error.message);
     },
 
     async sendBusinessSuspensionNotice(ownerUid) {
       const account = await getManageableBusiness(ownerUid);
+      requireBusinessSubscription(account);
       const { data, error } = await adminClient.from('business_subscriptions')
         .select('suspension_scheduled_for').eq('owner_uid', ownerUid).maybeSingle();
       if (error || !data?.suspension_scheduled_for) throw new Error('platform-business-suspension-not-pending');
@@ -375,19 +398,38 @@ function createBackend(req: Request): PlatformAdminBackend {
   };
 
   async function getManageableBusiness(ownerUid: string) {
-    const [{ data: accountResult, error: accountError }, { data: profile, error: profileError }, { data: subscription, error: subscriptionError }, { data: platformAdmin, error: adminError }, { data: collaborator, error: collaboratorError }, { data: deletion, error: deletionError }] = await Promise.all([
+    const [{ data: accountResult, error: accountError }, { data: profile, error: profileError }, { data: subscription, error: subscriptionError }, { data: platformAdmin, error: adminError }, { data: ownBusinessMembership, error: collaboratorError }, { data: deletion, error: deletionError }] = await Promise.all([
       adminClient.auth.admin.getUserById(ownerUid),
       adminClient.from('profiles').select('business_name').eq('id', ownerUid).maybeSingle(),
       adminClient.from('business_subscriptions').select('plan_code').eq('owner_uid', ownerUid).maybeSingle(),
       adminClient.from('platform_admins').select('user_id').eq('user_id', ownerUid).maybeSingle(),
-      adminClient.from('collaborators').select('id').eq('user_uid', ownerUid).maybeSingle(),
+      authenticatedAdminUid
+        ? adminClient.from('collaborators').select('id').eq('owner_uid', authenticatedAdminUid).eq('user_uid', ownerUid).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       adminClient.from('business_deletion_requests').select('owner_uid').eq('owner_uid', ownerUid).is('cancelled_at', null).maybeSingle(),
     ]);
     if (accountError || profileError || subscriptionError || adminError || collaboratorError || deletionError || !accountResult.user?.email || !profile) {
       throw new Error('platform-business-not-found');
     }
-    if (platformAdmin || collaborator || subscription?.plan_code === 'interno' || !subscription) throw new Error('platform-business-protected');
-    return { email: accountResult.user.email, metadata: accountResult.user.user_metadata ?? {}, businessName: profile.business_name, deletionPending: Boolean(deletion) };
+    const reason = platformAccountProtectionReason({
+      targetUid: ownerUid,
+      actorUid: authenticatedAdminUid ?? '',
+      platformAdminUids: new Set(platformAdmin ? [ownerUid] : []),
+      ownBusinessCollaboratorUids: new Set(ownBusinessMembership ? [ownerUid] : []),
+      planCode: subscription?.plan_code ?? null,
+    });
+    if (reason) throw new Error('platform-business-protected');
+    return {
+      email: accountResult.user.email,
+      metadata: accountResult.user.user_metadata ?? {},
+      businessName: typeof profile.business_name === 'string' ? profile.business_name.trim() : '',
+      hasBusinessSubscription: Boolean(subscription),
+      deletionPending: Boolean(deletion),
+    };
+  }
+
+  function requireBusinessSubscription(account: { hasBusinessSubscription: boolean }) {
+    if (!account.hasBusinessSubscription) throw new Error('platform-business-no-subscription');
   }
 
   async function sendSuspensionNotice(ownerUid: string, businessName: string, scheduledFor: string) {
@@ -424,6 +466,7 @@ function createBackend(req: Request): PlatformAdminBackend {
 function platformRpcError(message: string) {
   const known = [
     'platform-admin-required', 'platform-business-not-found', 'platform-business-protected',
+    'platform-business-no-subscription',
     'platform-business-name-confirmation-mismatch', 'platform-business-deletion-already-pending',
     'platform-business-deletion-not-pending', 'platform-business-deletion-already-started',
     'platform-business-already-suspended', 'platform-business-suspension-already-scheduled',

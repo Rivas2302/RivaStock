@@ -8,7 +8,7 @@ const owner = {
   email_confirmed_at: '2026-01-01T00:00:00Z',
   aud: 'authenticated',
   app_metadata: {},
-  user_metadata: {},
+  user_metadata: { password_set: true, display_name: 'Fixture Owner' },
   created_at: '2026-01-01T00:00:00Z',
 };
 
@@ -43,7 +43,18 @@ function profile(complete: boolean) {
   };
 }
 
-async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true, adminCheckDelayMs = 0 }: { isAdmin?: boolean; onboardingComplete?: boolean; adminCheckDelayMs?: number } = {}) {
+async function mountMock(page: Page, {
+  isAdmin = true,
+  onboardingComplete = true,
+  adminCheckDelayMs = 0,
+  businessRecord = {},
+}: {
+  isAdmin?: boolean;
+  onboardingComplete?: boolean;
+  adminCheckDelayMs?: number;
+  businessRecord?: Record<string, unknown>;
+} = {}) {
+  const platformRequests: Record<string, unknown>[] = [];
   const currentProfile = profile(onboardingComplete);
   const catalog = {
     id: catalogId,
@@ -67,17 +78,21 @@ async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true
     live: { db_bytes: 10_000_000, storage_bytes: 20_000_000 },
     last_snapshot_at: '2026-01-01T00:00:00Z',
     plans: [
-      { code: 'base', name: 'Base', limits: { cloud_knowledge_bytes: 52_428_800, collaborators: 5, modules: { ai: false, knowledge: false, automation: false } }, is_active: true },
-      { code: 'pro', name: 'Pro', limits: { cloud_knowledge_bytes: 157_286_400, collaborators: 15, modules: { ai: true, knowledge: true, automation: true } }, is_active: true },
+      { code: 'base', name: 'RivaStock', limits: { cloud_knowledge_bytes: 52_428_800, collaborators: 5, modules: { ai: false, knowledge: false, automation: false } }, is_active: true },
+      { code: 'pro', name: 'RivaStock IA', limits: { cloud_knowledge_bytes: 157_286_400, collaborators: 15, modules: { ai: true, knowledge: true, automation: true } }, is_active: true },
       { code: 'interno', name: 'Interno', limits: { cloud_knowledge_bytes: 524_288_000, collaborators: 50, modules: { ai: true, knowledge: true, automation: true } }, is_active: true },
     ],
     businesses: [{
-      owner_uid: ownerId,
+      owner_uid: '10000000-0000-4000-8000-000000000203',
       business_name: 'Fixture Store',
       email: owner.email,
       created_at: '2026-01-01T00:00:00Z',
       plan_code: 'base',
       status: 'active',
+      can_manage_account: true,
+      account_action_disabled_reason: null,
+      has_business_subscription: true,
+      business_action_disabled_reason: null,
       db_bytes: 120_000,
       storage_bytes: { assets: 1_200_000, knowledge: 0 },
       storage_total_bytes: 1_200_000,
@@ -89,6 +104,14 @@ async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true
       plan_limits: { collaborators: 5, cloud_knowledge_bytes: 52_428_800, local_knowledge_bytes: 21_474_836_480, trace_retention_days: 7, modules: { ai: false, knowledge: false, automation: false } },
       limit_overrides: {},
       notes: '',
+      deletion_requested_at: null,
+      deletion_scheduled_for: null,
+      deletion_purge_started_at: null,
+      deletion_failure: null,
+      suspension_scheduled_for: null,
+      suspension_notice_sent_at: null,
+      suspension_notice_error: null,
+      ...businessRecord,
     }],
   };
 
@@ -106,9 +129,14 @@ async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true
       if (adminCheckDelayMs) await new Promise((resolve) => setTimeout(resolve, adminCheckDelayMs));
       data = isAdmin;
     }
+    else if (path.endsWith('/rpc/suggest_catalog_slug')) data = 'tienda-nueva';
     else if (path.endsWith('/rpc/my_business_plan')) data = { plan_code: 'base', plan_name: 'Base', status: 'active', limits: { collaborators: 5, modules: { ai: false, knowledge: false, automation: false } } };
     else if (path.endsWith('/rpc/platform_usage_overview')) data = { budgets: platformDashboard.budgets, live: platformDashboard.live, businesses: [], last_snapshot_at: platformDashboard.last_snapshot_at };
-    else if (path === '/functions/v1/platform-admin') data = platformDashboard;
+    else if (path === '/functions/v1/platform-admin') {
+      const body = method === 'POST' ? route.request().postDataJSON() as Record<string, unknown> | undefined : undefined;
+      if (body) platformRequests.push(body);
+      data = body?.action === 'list' || !body ? platformDashboard : { ok: true };
+    }
     else if (path === '/rest/v1/ai_bridge_devices') data = [];
     else if (path === '/rest/v1/profiles') {
       if (method === 'GET') data = url.searchParams.has('business_name_lower') ? [] : [currentProfile];
@@ -116,9 +144,9 @@ async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true
         Object.assign(currentProfile, route.request().postDataJSON() ?? {});
         data = currentProfile;
       }
-    } else if (path === '/rest/v1/catalog_config') {
+    } else if (path === '/rest/v1/catalog_config' || path === '/rest/v1/catalog_configs') {
       if (method === 'GET') data = currentProfile.business_name ? [catalog] : [];
-      if (method === 'POST') data = route.request().postDataJSON() ?? catalog;
+      if (method === 'POST') data = { ...catalog, ...(route.request().postDataJSON() ?? {}), id: catalogId };
       if (method === 'PATCH') data = { ...catalog, ...(route.request().postDataJSON() ?? {}) };
     }
 
@@ -130,7 +158,7 @@ async function mountMock(page: Page, { isAdmin = true, onboardingComplete = true
   });
 
   await page.addInitScript((session) => localStorage.setItem('rivastock-auth', JSON.stringify(session)), fixtureSession());
-  return { currentProfile };
+  return { currentProfile, platformRequests };
 }
 
 test('platform dashboard shows customer-facing plan names and project usage', async ({ page }) => {
@@ -151,7 +179,70 @@ test('platform route waits for the admin check before deciding access', async ({
   await expect(page.getByRole('heading', { name: 'Plataforma RivaStock' })).toBeVisible();
 });
 
-test('welcome flow completes owner details and leaves the central setup as a first-step action', async ({ page }) => {
+test('unnamed account deletion confirms with its email under an authenticated admin fixture', async ({ page }) => {
+  const fixture = await mountMock(page, { businessRecord: {
+    business_name: '',
+    email: 'demoemma@example.test',
+    has_business_subscription: false,
+    business_action_disabled_reason: 'Esta cuenta no tiene un negocio asociado para programar una suspensión.',
+  } });
+  await page.goto('/plataforma');
+  const businessCard = page.getByRole('article').filter({ hasText: 'Sin nombre · demoemma@example.test' });
+  await expect(businessCard).toBeVisible();
+  await expect(businessCard.getByRole('button', { name: 'Programar suspensión' })).toBeDisabled();
+  await businessCard.getByRole('button', { name: 'Eliminar cuenta' }).click();
+  await expect(page.getByText('Escribí exactamente demoemma@example.test')).toBeVisible();
+  await page.getByLabel('Escribí exactamente').fill('demoemma@example.test');
+  await page.getByRole('button', { name: 'Eliminar ahora' }).click();
+  await expect.poll(() => fixture.platformRequests.some((request) =>
+    request.action === 'delete_business_now' && request.confirm_business_name === 'demoemma@example.test',
+  )).toBe(true);
+});
+
+test('named account deletion confirms with the business name under an authenticated admin fixture', async ({ page }) => {
+  const fixture = await mountMock(page, { businessRecord: { business_name: 'Named Fixture Store' } });
+  await page.goto('/plataforma');
+  const businessCard = page.getByRole('article').filter({ hasText: 'Named Fixture Store' });
+  await businessCard.getByRole('button', { name: 'Eliminar cuenta' }).click();
+  await expect(page.getByText('Escribí exactamente Named Fixture Store')).toBeVisible();
+  await page.getByLabel('Escribí exactamente').fill('Named Fixture Store');
+  await page.getByRole('button', { name: 'Dar de baja en 30 días' }).click();
+  await expect.poll(() => fixture.platformRequests.some((request) =>
+    request.action === 'request_business_deletion' && request.confirm_business_name === 'Named Fixture Store',
+  )).toBe(true);
+});
+
+test('real collaborator and administrator identities stay protected with visible reasons', async ({ page }) => {
+  const collaborator = await mountMock(page, { businessRecord: {
+    business_name: 'Collaborator Fixture',
+    can_manage_account: false,
+    account_action_disabled_reason: 'Esta persona pertenece al equipo de tu negocio.',
+    business_action_disabled_reason: 'Esta persona pertenece al equipo de tu negocio.',
+  } });
+  await page.goto('/plataforma');
+  let businessCard = page.getByRole('article').filter({ hasText: 'Collaborator Fixture' });
+  await expect(businessCard.getByText('Esta persona pertenece al equipo de tu negocio.')).toBeVisible();
+  await expect(businessCard.getByRole('button', { name: 'Eliminar cuenta' })).toBeDisabled();
+  await expect(businessCard.getByRole('button', { name: 'Reenviar invitación' })).toBeDisabled();
+  expect(collaborator.platformRequests.some((request) => request.action === 'delete_business_now')).toBe(false);
+
+  const adminPage = await page.context().newPage();
+  const administrator = await mountMock(adminPage, { businessRecord: {
+    owner_uid: ownerId,
+    business_name: 'Admin Fixture',
+    can_manage_account: false,
+    account_action_disabled_reason: 'No podés administrar tu propia cuenta.',
+    business_action_disabled_reason: 'No podés administrar tu propia cuenta.',
+  } });
+  await adminPage.goto('/plataforma');
+  businessCard = adminPage.getByRole('article').filter({ hasText: 'Admin Fixture' });
+  await expect(businessCard.getByText('No podés administrar tu propia cuenta.')).toBeVisible();
+  await expect(businessCard.getByRole('button', { name: 'Eliminar cuenta' })).toBeDisabled();
+  expect(administrator.platformRequests.some((request) => request.action === 'delete_business_now')).toBe(false);
+  await adminPage.close();
+});
+
+test('welcome flow completes owner details without showing central setup on the base plan', async ({ page }) => {
   const fixture = await mountMock(page, { onboardingComplete: false });
   await page.goto('/bienvenida');
   const dialog = page.getByRole('dialog', { name: 'Completá los datos de tu negocio' });
@@ -162,6 +253,6 @@ test('welcome flow completes owner details and leaves the central setup as a fir
   await page.getByRole('button', { name: 'Guardar y continuar' }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Bienvenido a RivaStock, Tienda Nueva' })).toBeVisible();
-  await expect(page.getByText('La central con IA está disponible en el plan RivaStock IA.')).toBeVisible();
+  await expect(page.getByText('5. Instalá la central del negocio')).toHaveCount(0);
   expect(fixture.currentProfile).toMatchObject({ business_name: 'Tienda Nueva', onboarding_completed_at: expect.any(String) });
 });

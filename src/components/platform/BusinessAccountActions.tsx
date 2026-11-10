@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, Loader2, LockKeyhole, Mail, ShieldAlert, Trash2, X } from 'lucide-react';
 import { platformAdminRequest } from '../../lib/platformAdmin';
 import { buildBusinessExportArchive, fetchBusinessExportObject, type BusinessExportManifest } from '../../lib/businessExport';
-import type { PlatformBusiness } from '../../lib/platformAdmin';
+import { platformBusinessDisplayName, type PlatformBusiness } from '../../lib/platformAdmin';
 
 export default function BusinessAccountActions({ business, onChange }: { business: PlatformBusiness; onChange: () => void }) {
   const [password, setPassword] = useState('');
@@ -97,26 +97,28 @@ export default function BusinessAccountActions({ business, onChange }: { busines
 
   const deletionPending = Boolean(business.deletion_scheduled_for);
   const deleteStarted = Boolean(business.deletion_purge_started_at);
-  const confirmationTarget = business.business_name.trim() || business.email;
+  const actionsDisabled = !business.can_manage_account;
+  const displayName = platformBusinessDisplayName(business.business_name, business.email);
+  const confirmationTarget = business.business_name?.trim() || business.email;
   const confirmationMatches = confirmedName.trim().toLocaleLowerCase('es-AR') === confirmationTarget.toLocaleLowerCase('es-AR');
-  const fileName = `RivaStock-copia-${business.business_name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'negocio'}.zip`;
+  const fileName = `RivaStock-copia-${(business.business_name ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'negocio'}.zip`;
 
-  return <section className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800" aria-label={`Gestión de cuenta: ${business.business_name}`}>
+  return <section className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800" aria-label={`Gestión de cuenta: ${displayName}`}>
     <h5 className="text-sm font-bold text-slate-800 dark:text-slate-100">Gestión de cuenta</h5>
     {deletionPending ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
       <div><strong>Baja programada</strong><span className="ml-2">{new Date(business.deletion_scheduled_for!).toLocaleString('es-AR')}</span>{business.deletion_failure && <span className="ml-2">La limpieza se reintentará automáticamente.</span>}</div>
-      {!deleteStarted && <button type="button" disabled={Boolean(busy)} onClick={() => void cancelDeletion()} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">{busy === 'cancel' ? 'Cancelando…' : 'Cancelar baja'}</button>}
+      {!deleteStarted && <button type="button" disabled={actionsDisabled || Boolean(busy)} onClick={() => void cancelDeletion()} className="rounded-lg border border-amber-600 px-3 py-2 text-sm font-semibold disabled:opacity-50">{busy === 'cancel' ? 'Cancelando…' : 'Cancelar baja'}</button>}
       {deleteStarted && <span className="font-semibold">La eliminación está en curso.</span>}
     </div> : <>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" disabled={Boolean(busy)} onClick={() => void sendRecovery()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15}/>{busy === 'recovery' ? 'Enviando…' : 'Enviar enlace para cambiar contraseña'}</button>
-      <button type="button" disabled={Boolean(busy)} onClick={() => { setDeleteDialog(true); setError(''); setFeedback(''); setBackupBeforeDelete(false); setExportReady(false); setExportAcknowledged(false); }} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200"><Trash2 size={15}/>Eliminar cuenta</button>
+        <button type="button" disabled={actionsDisabled || Boolean(busy)} onClick={() => void sendRecovery()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15}/>{busy === 'recovery' ? 'Enviando…' : 'Enviar enlace para cambiar contraseña'}</button>
+      <button type="button" disabled={actionsDisabled || Boolean(busy)} onClick={() => { setDeleteDialog(true); setError(''); setFeedback(''); setBackupBeforeDelete(false); setExportReady(false); setExportAcknowledged(false); }} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200"><Trash2 size={15}/>Eliminar cuenta</button>
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950/50">
         <label className="min-w-64 flex-1 text-xs font-semibold">Contraseña temporal
-          <input type="password" autoComplete="new-password" minLength={10} maxLength={128} value={password} onChange={(event) => { setPassword(event.target.value); setTemporaryPasswordToShow(''); }} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+          <input type="password" autoComplete="new-password" minLength={10} maxLength={128} disabled={actionsDisabled} value={password} onChange={(event) => { setPassword(event.target.value); setTemporaryPasswordToShow(''); }} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900" />
         </label>
-        <button type="button" disabled={Boolean(busy) || password.length < 10} onClick={() => void setTemporaryPassword()} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-700"><LockKeyhole size={15}/>{busy === 'password' ? 'Guardando…' : 'Establecer contraseña temporal'}</button>
+        <button type="button" disabled={actionsDisabled || Boolean(busy) || password.length < 10} onClick={() => void setTemporaryPassword()} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-700"><LockKeyhole size={15}/>{busy === 'password' ? 'Guardando…' : 'Establecer contraseña temporal'}</button>
         <p className="basis-full text-xs text-slate-500 dark:text-slate-400">Se envía solo para actualizar Auth; se borra del formulario al guardar y no queda registrada. Al entrar, la persona debe cambiarla.</p>
         {temporaryPasswordToShow && <div className="basis-full flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><code className="select-all font-semibold">{temporaryPasswordToShow}</code><button type="button" onClick={() => setTemporaryPasswordToShow('')} className="shrink-0 font-semibold underline">Ocultar y borrar</button></div>}
       </div>
@@ -126,7 +128,7 @@ export default function BusinessAccountActions({ business, onChange }: { busines
 
     {deleteDialog && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="business-deletion-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
-        <div className="flex items-start justify-between gap-3"><div><h3 id="business-deletion-title" className="text-lg font-bold">Eliminar {business.business_name.trim() || business.email}</h3><div className="mt-1 space-y-2 text-sm text-slate-600 dark:text-slate-300"><p><strong>Dar de baja en 30 días:</strong> la cuenta queda bloqueada y se elimina al cumplirse el plazo. Podés cancelar la baja antes de que empiece el borrado.</p><p><strong>Eliminar ahora:</strong> borra la cuenta, sus datos y archivos de forma definitiva. No se puede deshacer.</p></div></div><button type="button" aria-label="Cerrar" onClick={closeDeleteDialog}><X size={18}/></button></div>
+        <div className="flex items-start justify-between gap-3"><div><h3 id="business-deletion-title" className="text-lg font-bold">Eliminar {displayName}</h3><div className="mt-1 space-y-2 text-sm text-slate-600 dark:text-slate-300"><p><strong>Dar de baja en 30 días:</strong> la cuenta queda bloqueada y se elimina al cumplirse el plazo. Podés cancelar la baja antes de que empiece el borrado.</p><p><strong>Eliminar ahora:</strong> borra la cuenta, sus datos y archivos de forma definitiva. No se puede deshacer.</p></div></div><button type="button" aria-label="Cerrar" onClick={closeDeleteDialog}><X size={18}/></button></div>
         <label className="mt-4 flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold dark:border-slate-700">
           <input type="checkbox" checked={backupBeforeDelete} onChange={(event) => {
             const checked = event.target.checked;
@@ -150,8 +152,8 @@ export default function BusinessAccountActions({ business, onChange }: { busines
             <input value={confirmedName} onChange={(event) => setConfirmedName(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" />
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion()} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : 'Dar de baja en 30 días'}</button>
-            <button type="button" disabled={(backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion(true)} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete-now' ? 'Eliminando…' : <><ShieldAlert size={15}/>Eliminar ahora</>}</button>
+            <button type="button" disabled={actionsDisabled || (backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion()} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete' ? 'Programando…' : 'Dar de baja en 30 días'}</button>
+            <button type="button" disabled={actionsDisabled || (backupBeforeDelete && !exportAcknowledged) || !confirmationMatches || Boolean(busy)} onClick={() => void requestDeletion(true)} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'delete-now' ? 'Eliminando…' : <><ShieldAlert size={15}/>Eliminar ahora</>}</button>
           </div>
           {backupBeforeDelete && !exportAcknowledged && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Descargá y confirmá la copia para habilitar cualquiera de las dos opciones.</p>}
         </div>

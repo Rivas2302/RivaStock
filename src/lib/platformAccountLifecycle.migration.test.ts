@@ -18,11 +18,16 @@ const DELETION_EMAIL_CONFIRMATION_MIGRATION = readFileSync(
   new URL('../../supabase/migrations/20261109041016_platform_deletion_email_confirmation.sql', import.meta.url),
   'utf8',
 );
+const ACCOUNT_ACTIONS_MIGRATION = readFileSync(
+  new URL('../../supabase/migrations/20261110042550_platform_account_actions_without_subscription.sql', import.meta.url),
+  'utf8',
+);
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const ADMIN = '10000000-0000-4000-8000-000000000002';
 const INTERNAL = '10000000-0000-4000-8000-000000000003';
 const COLLABORATOR = '10000000-0000-4000-8000-000000000004';
 const EMPTY_NAME_OWNER = '10000000-0000-4000-8000-000000000005';
+const UNSUBSCRIBED_OWNER = '10000000-0000-4000-8000-000000000006';
 
 let db: PGlite;
 
@@ -47,7 +52,7 @@ async function setup() {
       business_name text NOT NULL
     );
     CREATE TABLE public.collaborators(owner_uid uuid NOT NULL, user_uid uuid);
-    CREATE TABLE public.business_subscriptions(owner_uid uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, plan_code text NOT NULL, status text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE public.business_subscriptions(owner_uid uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, plan_code text NOT NULL, status text NOT NULL, suspension_previous_status text, suspension_scheduled_for timestamptz, suspension_notice_sent_at timestamptz, suspension_notice_error text, updated_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.platform_admins(user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE);
     CREATE TABLE public.customer_financial_commands(
       id uuid PRIMARY KEY,
@@ -80,11 +85,11 @@ async function setup() {
     INSERT INTO auth.users(id, email) VALUES
       ('${OWNER}', 'owner@example.test'), ('${ADMIN}', 'admin@example.test'),
       ('${INTERNAL}', 'internal@example.test'), ('${COLLABORATOR}', 'collaborator@example.test'),
-      ('${EMPTY_NAME_OWNER}', 'empty.owner@example.test');
+      ('${EMPTY_NAME_OWNER}', 'empty.owner@example.test'), ('${UNSUBSCRIBED_OWNER}', 'unsubscribed@example.test');
     INSERT INTO public.profiles(id, business_name) VALUES
       ('${OWNER}', 'Tienda QA'), ('${ADMIN}', 'Equipo QA'), ('${INTERNAL}', 'Cuenta interna'), ('${COLLABORATOR}', 'Perfil colaborador');
-    INSERT INTO public.profiles(id, business_name) VALUES ('${EMPTY_NAME_OWNER}', '');
-    INSERT INTO public.collaborators(owner_uid, user_uid) VALUES ('${OWNER}', '${COLLABORATOR}');
+    INSERT INTO public.profiles(id, business_name) VALUES ('${EMPTY_NAME_OWNER}', ''), ('${UNSUBSCRIBED_OWNER}', '');
+    INSERT INTO public.collaborators(owner_uid, user_uid) VALUES ('${OWNER}', '${COLLABORATOR}'), ('${ADMIN}', '${COLLABORATOR}');
     INSERT INTO public.business_subscriptions(owner_uid, plan_code, status) VALUES
       ('${OWNER}', 'base', 'active'), ('${ADMIN}', 'base', 'active'), ('${INTERNAL}', 'interno', 'active'),
       ('${EMPTY_NAME_OWNER}', 'base', 'active');
@@ -106,6 +111,7 @@ async function setup() {
   await db.exec(MIGRATION);
   await db.exec(IMMEDIATE_DELETION_MIGRATION);
   await db.exec(DELETION_EMAIL_CONFIRMATION_MIGRATION);
+  await db.exec(ACCOUNT_ACTIONS_MIGRATION);
   await db.exec(`
     CREATE TABLE public.business_plans(
       code text PRIMARY KEY,
@@ -154,6 +160,26 @@ describe('business account lifecycle migration', () => {
     expect((await db.query<{ started: boolean }>(`SELECT purge_started_at IS NOT NULL AS started FROM public.business_deletion_requests WHERE owner_uid='${EMPTY_NAME_OWNER}'`)).rows[0].started).toBe(true);
     await expect(db.query(`SELECT public.platform_request_business_deletion_now('${EMPTY_NAME_OWNER}', 'wrong@example.test')`))
       .rejects.toThrow('platform-business-name-confirmation-mismatch');
+  });
+
+  it('allows an unnamed account without a subscription to be scheduled and immediately deleted by email confirmation', async () => {
+    await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ADMIN}'; SET test.platform_admin='true';`);
+    await expect(db.query(`SELECT public.platform_request_business_deletion('${UNSUBSCRIBED_OWNER}', 'wrong@example.test')`))
+      .rejects.toThrow('platform-business-name-confirmation-mismatch');
+
+    await db.query(`SELECT public.platform_request_business_deletion('${UNSUBSCRIBED_OWNER}', 'unsubscribed@example.test')`);
+    expect((await db.query<{ status: string }>(`SELECT status FROM public.business_subscriptions WHERE owner_uid='${UNSUBSCRIBED_OWNER}'`)).rows).toHaveLength(0);
+    await db.query(`SELECT public.platform_cancel_business_deletion('${UNSUBSCRIBED_OWNER}')`);
+    await db.query(`SELECT public.platform_request_business_deletion_now('${UNSUBSCRIBED_OWNER}', 'unsubscribed@example.test')`);
+    expect((await db.query<{ started: boolean }>(`SELECT purge_started_at IS NOT NULL AS started FROM public.business_deletion_requests WHERE owner_uid='${UNSUBSCRIBED_OWNER}'`)).rows[0].started).toBe(true);
+  });
+
+  it('protects the current admin and an actual collaborator in that admin business', async () => {
+    await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ADMIN}'; SET test.platform_admin='true';`);
+    await expect(db.query(`SELECT public.platform_request_business_deletion('${ADMIN}', 'Equipo QA')`))
+      .rejects.toThrow('platform-business-protected');
+    await expect(db.query(`SELECT public.platform_request_business_deletion('${COLLABORATOR}', 'collaborator@example.test')`))
+      .rejects.toThrow('platform-business-protected');
   });
 
   it('allows cancellation before purge starts and restores the original business status', async () => {

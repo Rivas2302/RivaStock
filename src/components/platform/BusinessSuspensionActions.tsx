@@ -23,6 +23,7 @@ export default function BusinessSuspensionActions({ business, onChange }: { busi
   const [notice, setNotice] = useState('');
   const [emailSent, setEmailSent] = useState(Boolean(business.suspension_notice_sent_at));
   const deletionPending = Boolean(business.deletion_scheduled_for);
+  const actionDisabled = busy || Boolean(business.business_action_disabled_reason);
 
   const run = async (operation: () => Promise<void>) => {
     if (busy) return;
@@ -65,7 +66,7 @@ export default function BusinessSuspensionActions({ business, onChange }: { busi
     setNotice(response.email_sent ? 'Se envió el email de aviso.' : 'El email sigue pendiente de configurar el remitente y el WhatsApp de RivaTech.');
   });
 
-  return <section aria-label={`Suspensión de ${business.business_name}`} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
+  return <section aria-label={`Suspensión de ${business.business_name?.trim() || business.email}`} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h5 className="inline-flex items-center gap-2 text-sm font-bold"><ShieldAlert size={15}/>Suspensión</h5>
@@ -75,16 +76,17 @@ export default function BusinessSuspensionActions({ business, onChange }: { busi
             ? <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Acceso bloqueado; los datos se conservan.</p>
             : <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">El cliente recibe un aviso antes del bloqueo.</p>}
       </div>
-      {!deletionPending && business.status === 'suspended' && <button type="button" disabled={busy} onClick={() => void reactivate()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><RotateCcw size={15}/>{busy ? 'Reactivando…' : 'Reactivar cuenta'}</button>}
+      {!deletionPending && business.status === 'suspended' && <button type="button" disabled={actionDisabled} onClick={() => void reactivate()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><RotateCcw size={15}/>{busy ? 'Reactivando…' : 'Reactivar cuenta'}</button>}
       {!deletionPending && business.status !== 'suspended' && business.suspension_scheduled_for && <div className="flex flex-wrap gap-2">
-        {!emailSent && <button type="button" disabled={busy} onClick={() => void retryEmail()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-50"><MessageCircle size={15}/>Reintentar email</button>}
-        <button type="button" disabled={busy} onClick={() => void cancel()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Cancelar programación</button>
+        {!emailSent && <button type="button" disabled={actionDisabled} onClick={() => void retryEmail()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-50"><MessageCircle size={15}/>Reintentar email</button>}
+        <button type="button" disabled={actionDisabled} onClick={() => void cancel()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Cancelar programación</button>
       </div>}
       {!deletionPending && business.status !== 'suspended' && !business.suspension_scheduled_for && <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs font-semibold">Fecha de suspensión<input type="date" value={date} min={localDateAfterDays(1)} max={localDateAfterDays(90)} onChange={(event) => setDate(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-900 dark:border-amber-800 dark:bg-slate-950 dark:text-white" /></label>
-        <button type="button" disabled={busy || !date} onClick={() => void schedule()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><ShieldAlert size={15}/>{busy ? 'Programando…' : 'Programar suspensión'}</button>
+        <label className="text-xs font-semibold">Fecha de suspensión<input type="date" disabled={actionDisabled} value={date} min={localDateAfterDays(1)} max={localDateAfterDays(90)} onChange={(event) => setDate(event.target.value)} className="mt-1 block min-h-10 rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-900 disabled:opacity-50 dark:border-amber-800 dark:bg-slate-950 dark:text-white" /></label>
+        <button type="button" disabled={actionDisabled || !date} onClick={() => void schedule()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><ShieldAlert size={15}/>{busy ? 'Programando…' : 'Programar suspensión'}</button>
       </div>}
     </div>
+    {business.business_action_disabled_reason && business.business_action_disabled_reason !== business.account_action_disabled_reason && <p role="note" className="mt-2 text-xs font-medium text-amber-900 dark:text-amber-200">{business.business_action_disabled_reason}</p>}
     {notice && <p role="status" className="mt-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">{notice}</p>}
     {error && <p role="alert" className="mt-2 text-xs font-semibold text-rose-800 dark:text-rose-300">{error}</p>}
     {business.suspension_notice_error && <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">El email no llegó a salir: falta configurar un remitente verificado y el WhatsApp de RivaTech.</p>}

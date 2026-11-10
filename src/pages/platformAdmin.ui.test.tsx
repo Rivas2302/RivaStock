@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 
-vi.mock('../lib/platformAdmin', () => ({ platformAdminRequest: mocks.request }));
+vi.mock('../lib/platformAdmin', () => ({
+  platformAdminRequest: mocks.request,
+  platformBusinessDisplayName: (name: string | null | undefined, email: string) => name?.trim() || `Sin nombre · ${email}`,
+}));
 vi.mock('../lib/businessPlan', () => ({
   getBusinessPlanDisplayName: (code: string) => code === 'base' ? 'RivaStock' : code === 'pro' ? 'RivaStock IA' : 'RivaStock Interno',
 }));
@@ -42,6 +45,9 @@ function makeBusiness(planCode: 'base' | 'pro'): PlatformBusiness {
     limit_overrides: {},
     notes: '',
     can_manage_account: true,
+    account_action_disabled_reason: null,
+    has_business_subscription: true,
+    business_action_disabled_reason: null,
     deletion_requested_at: null,
     deletion_scheduled_for: null,
     deletion_purge_started_at: null,
@@ -240,7 +246,7 @@ describe('PlatformAdmin quota controls', () => {
     expect(retention?.value).toBe('14');
   });
 
-  it('offers recovery and one-time password actions only for manageable customer accounts', async () => {
+  it('offers recovery and one-time password actions for manageable customer accounts', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
     const recovery = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Enviar enlace para cambiar contraseña'));
     expect(recovery).not.toBeUndefined();
@@ -264,7 +270,7 @@ describe('PlatformAdmin quota controls', () => {
     expect(host.textContent).not.toContain('TempPass-123');
   });
 
-  it('makes backup optional, checks exact business name, and hides controls for protected plans', async () => {
+  it('makes backup optional, checks the business name or email, and disables protected-account actions with a reason', async () => {
     await act(async () => { root.render(<PlatformAdmin/>); });
     const openDelete = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'));
     await act(async () => { openDelete?.click(); });
@@ -308,10 +314,53 @@ describe('PlatformAdmin quota controls', () => {
     });
 
     await act(async () => { root.unmount(); });
-    business = { ...makeBusiness('pro'), plan_code: 'interno', can_manage_account: false };
+    business = {
+      ...makeBusiness('pro'),
+      plan_code: 'interno',
+      can_manage_account: false,
+      account_action_disabled_reason: 'Las cuentas del plan interno están protegidas.',
+    };
     root = createRoot(host);
     await act(async () => { root.render(<PlatformAdmin/>); });
-    expect(host.textContent).not.toContain('Gestión de cuenta');
+    expect(host.textContent).toContain('Las cuentas del plan interno están protegidas.');
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'))?.disabled).toBe(true);
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Enviar enlace para cambiar contraseña'))?.disabled).toBe(true);
+  });
+
+  it('keeps account actions available without a business subscription but disables suspension with a reason', async () => {
+    business = {
+      ...makeBusiness('base'),
+      business_name: null,
+      has_business_subscription: false,
+      business_action_disabled_reason: 'Esta cuenta no tiene un negocio asociado para programar una suspensión.',
+    };
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    expect(host.textContent).toContain('Sin nombre · base@example.test');
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'))?.disabled).toBe(false);
+    expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Programar suspensión'))?.disabled).toBe(true);
+    expect(host.textContent).toContain('Esta cuenta no tiene un negocio asociado para programar una suspensión.');
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar cuenta'))?.click(); });
+    expect(host.textContent).toContain('Escribí exactamente base@example.test');
+    const confirmationInput = [...host.querySelectorAll('label')].find((label) => label.textContent?.includes('Escribí exactamente'))?.querySelector('input') ?? null;
+    await act(async () => { if (confirmationInput) setInputValue(confirmationInput, business.email); });
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Eliminar ahora'))?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({
+      action: 'delete_business_now', owner_uid: 'owner-base', confirm_business_name: 'base@example.test',
+    });
+  });
+
+  it('shows the collaborator warning before disabling account, invite, and suspension actions', async () => {
+    business = {
+      ...makeBusiness('base'),
+      can_manage_account: false,
+      account_action_disabled_reason: 'Esta persona pertenece al equipo de tu negocio.',
+      business_action_disabled_reason: 'Esta persona pertenece al equipo de tu negocio.',
+    };
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    expect(host.textContent).toContain('Esta persona pertenece al equipo de tu negocio.');
+    for (const label of ['Reenviar invitación', 'Eliminar cuenta', 'Enviar enlace para cambiar contraseña', 'Programar suspensión']) {
+      expect([...host.querySelectorAll('button')].find((button) => button.textContent?.includes(label))?.disabled).toBe(true);
+    }
   });
 
   it('locks plan changes while a scheduled deletion is pending and offers cancellation', async () => {

@@ -60,6 +60,12 @@ function isUuid(value: unknown): value is string {
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function normalizeDeletionConfirmation(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const confirmation = value.trim().replace(/\s+/g, ' ');
+  return confirmation.length > 0 && confirmation.length <= 254 ? confirmation : null;
+}
+
 async function readBody(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const value: unknown = await request.json();
@@ -208,17 +214,17 @@ export function createPlatformAdminHandler(
 
       if (body.action === 'request_business_deletion') {
         if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
-        const confirmedName = normalizeBusinessName(body.confirm_business_name);
-        if (!confirmedName) return json({ error: 'Escribí el nombre completo del negocio.' }, 400);
-        const scheduledFor = await backend.requestBusinessDeletion(body.owner_uid, confirmedName.name);
+        const confirmation = normalizeDeletionConfirmation(body.confirm_business_name);
+        if (!confirmation) return json({ error: 'Escribí el nombre del negocio o el email de la cuenta.' }, 400);
+        const scheduledFor = await backend.requestBusinessDeletion(body.owner_uid, confirmation);
         return json({ ok: true, scheduled_for: scheduledFor });
       }
 
       if (body.action === 'delete_business_now') {
         if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
-        const confirmedName = normalizeBusinessName(body.confirm_business_name);
-        if (!confirmedName) return json({ error: 'Escribí el nombre completo del negocio.' }, 400);
-        await backend.deleteBusinessNow(body.owner_uid, confirmedName.name);
+        const confirmation = normalizeDeletionConfirmation(body.confirm_business_name);
+        if (!confirmation) return json({ error: 'Escribí el nombre del negocio o el email de la cuenta.' }, 400);
+        await backend.deleteBusinessNow(body.owner_uid, confirmation);
         return json({ ok: true });
       }
 
@@ -253,7 +259,9 @@ export function createPlatformAdminHandler(
       if (message === 'platform-business-name-exists') return json({ error: 'Ese nombre de negocio ya está en uso.' }, 409);
       if (message === 'platform-business-not-found') return json({ error: 'No se encontró el negocio.' }, 404);
       if (message === 'platform-invite-already-accepted') return json({ error: 'La invitación ya fue aceptada; no hace falta reenviarla.' }, 409);
-      if (message === 'platform-business-protected') return json({ error: 'No se puede administrar la cuenta del equipo RivaTech.' }, 403);
+      if (message === 'platform-business-protected') return json({ error: 'Esta cuenta está protegida por pertenecer a la administración o al equipo de tu negocio.' }, 403);
+      if (message === 'platform-business-no-subscription') return json({ error: 'Esta cuenta no tiene un negocio asociado para administrar la suspensión.' }, 409);
+      if (message === 'platform-business-no-subscription') return json({ error: 'Esta cuenta no tiene un negocio asociado para administrar la suspensión.' }, 409);
       if (message === 'platform-business-name-confirmation-mismatch') return json({ error: 'El nombre no coincide con el negocio.' }, 409);
       if (message === 'platform-business-deletion-already-pending') return json({ error: 'La baja de este negocio ya está programada.' }, 409);
       if (message === 'platform-business-deletion-not-pending') return json({ error: 'Este negocio no tiene una baja pendiente.' }, 409);

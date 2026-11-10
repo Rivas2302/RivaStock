@@ -39,3 +39,7 @@ Durante el smoke, `vercel curl` creó un bypass automático y una salida técnic
 ## Incidente temporal de seguridad — 09/11/2026
 
 Durante una verificación de Vercel se creó un secreto de Protection Bypass para automatización. Una salida técnica mostró un identificador sensible; no se copió a archivos ni se reutilizó para acceder al sitio. El secreto se revocó y la comprobación posterior confirmó que no quedan bypass activos. No requiere acción del dueño.
+
+## Plataforma — E2E destructivo de baja pendiente
+
+Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de administrador `authenticated` de prueba. No se eliminó ninguna cuenta de producción. Para completar un recorrido de borrado real, designá por la app una cuenta de negocio QA descartable para baja programada y otra para eliminación inmediata; no usar cuentas de clientes ni las dos cuentas reportadas hasta confirmar que son descartables.

@@ -195,6 +195,21 @@ describe('platform admin function', () => {
     expect(await response.json()).toEqual({ ok: true });
   });
 
+  it('accepts an account email as deletion confirmation when the business name is absent', async () => {
+    const backend = createBackend();
+    const response = await createPlatformAdminHandler(() => backend)(request({
+      action: 'delete_business_now',
+      owner_uid: '10000000-0000-4000-8000-000000000002',
+      confirm_business_name: ' demoemma+account@example.test ',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(backend.deleteBusinessNow).toHaveBeenCalledWith(
+      '10000000-0000-4000-8000-000000000002',
+      'demoemma+account@example.test',
+    );
+  });
+
   it('validates and saves an editable module template', async () => {
     const backend = createBackend();
     const response = await createPlatformAdminHandler(() => backend)(request({
