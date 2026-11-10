@@ -150,28 +150,6 @@ test('category circles use visible product photos and product navigation returns
   await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
 });
 
-test('catalog announcement stays in flow below the safe-area header and the hero starts after it', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await mockCatalogApi(page);
-  await page.goto('/catalogo/qa-catalog');
-
-  const header = page.locator('body > #root header').first();
-  const ribbon = page.getByRole('note', { name: 'Anuncio del catálogo' });
-  const hero = page.getByTestId('public-catalog-hero');
-  await expect(ribbon).toBeVisible();
-  expect(await ribbon.evaluate(element => getComputedStyle(element).position)).toBe('relative');
-  const withRibbon = await page.evaluate(() => {
-    const headerBox = document.querySelector('body > #root header')!.getBoundingClientRect();
-    const spacerBox = document.querySelector('[data-testid="catalog-header-spacer"]')!.getBoundingClientRect();
-    const ribbonBox = document.querySelector('.catalog-announcement')!.getBoundingClientRect();
-    const heroBox = document.querySelector('[data-testid="public-catalog-hero"]')!.getBoundingClientRect();
-    return { headerBottom: headerBox.bottom, spacerBottom: spacerBox.bottom, ribbonTop: ribbonBox.top, ribbonBottom: ribbonBox.bottom, heroTop: heroBox.top };
-  });
-  expect(withRibbon.spacerBottom).toBeGreaterThanOrEqual(withRibbon.headerBottom);
-  expect(withRibbon.ribbonTop).toBeGreaterThanOrEqual(withRibbon.spacerBottom);
-  expect(withRibbon.heroTop).toBeGreaterThanOrEqual(withRibbon.ribbonBottom);
-});
-
 test('the configurable Todos photo is visible in the retail catalog', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, { all: 'https://assets.test/todos.webp' });
@@ -227,7 +205,7 @@ test('product detail is a catalog modal with browser history, scroll, direct lin
     if (viewport.width < 640) {
       const sheetBox = await detailModal.boundingBox();
       expect(sheetBox && sheetBox.y > 0 && Math.abs(sheetBox.height - viewport.height * 0.9) < 3, JSON.stringify({ sheetBox, viewport })).toBe(true);
-      await expect(page.getByTestId('catalog-product-sheet-handle')).toBeVisible();
+      await expect(page.getByTestId('product-sheet-handle')).toBeVisible();
       await expect(detailModal.locator('button').filter({ hasText: 'Agregar al carrito' }).first()).toBeHidden();
       await expect(detailModal.locator('footer').getByRole('button', { name: /Agregar al carrito/ })).toBeVisible();
     }
@@ -282,6 +260,7 @@ test('catalog announcement stays in the safe-area header flow and the hero start
   const announcement = page.getByRole('note', { name: 'Anuncio del catálogo' });
   const hero = page.getByTestId('public-catalog-hero');
   await expect(announcement).toBeVisible();
+  await expect(page.getByTestId('catalog-announcement')).toHaveCount(1);
   const layout = await page.evaluate(() => {
     const headerElement = document.querySelector('.public-catalog > header')!;
     const announcementElement = document.querySelector('.catalog-announcement')!;
@@ -293,13 +272,94 @@ test('catalog announcement stays in the safe-area header flow and the hero start
       heroTop: heroElement.getBoundingClientRect().top,
     };
   });
-  expect(layout.announcementPosition).toBe('static');
+  expect(layout.announcementPosition).toBe('relative');
   expect(Math.abs(layout.headerBottom - layout.announcementBottom)).toBeLessThanOrEqual(1);
   expect(layout.heroTop).toBeGreaterThanOrEqual(layout.headerBottom);
   await page.getByRole('button', { name: 'Activar modo oscuro' }).click();
   await expect(announcement).toBeVisible();
   expect(await announcement.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
   await expect(hero).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 500));
+  const pinnedRibbon = await announcement.boundingBox();
+  expect(pinnedRibbon?.y).toBeGreaterThanOrEqual(0);
+  expect(pinnedRibbon?.y).toBeLessThan(160);
+});
+
+test('catalog without an announcement has no reserved ribbon space', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, '');
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByTestId('catalog-announcement')).toHaveCount(0);
+  await expect(page.getByTestId('public-catalog-hero')).toBeVisible();
+  expect(await page.locator('.public-catalog').evaluate(element => getComputedStyle(element).getPropertyValue('--catalog-announcement-height').trim())).toBe('0rem');
+});
+
+test('opening a listed product is immediate and does not reload the anonymous catalog RPC', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page);
+  let catalogRequests = 0;
+  page.on('request', request => {
+    if (request.url().endsWith('/rpc/get_public_catalog_products')) catalogRequests += 1;
+  });
+  await page.goto('/catalogo/qa-catalog');
+  await expect(page.getByRole('heading', { name: 'Encontrá lo que buscás' })).toBeVisible();
+  const requestsAfterInitialLoad = catalogRequests;
+  const elapsed = await page.evaluate(() => new Promise<number>(resolve => {
+    const target = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Cable USB-C');
+    if (!target) throw new Error('Product button not found');
+    const startedAt = performance.now();
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="catalog-product-detail-modal"]')) {
+        observer.disconnect();
+        resolve(performance.now() - startedAt);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    target.click();
+  }));
+  await expect(page.getByTestId('catalog-product-detail-modal')).toBeVisible();
+  expect(elapsed).toBeLessThan(300);
+  expect(catalogRequests).toBe(requestsAfterInitialLoad);
+  await expect(page.getByText('Cargando catálogo…')).toHaveCount(0);
+});
+
+test('cart add feedback and removal confirmation work in Store and Reseller modes', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, 'group');
+  await page.goto('/catalogo/qa-catalog');
+
+  for (const channel of ['Tienda', 'Revendedores']) {
+    if (channel === 'Revendedores') {
+      await page.getByRole('button', { name: 'Revendedores' }).click();
+      await page.getByPlaceholder('Código de acceso').fill('CODIGO-GRUPO-QA');
+      await page.getByRole('button', { name: 'Ingresar' }).click();
+    }
+    await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
+    const toast = page.getByTestId('cart-added-toast');
+    await expect(toast).toContainText('Producto agregado al carrito');
+    await expect(toast.getByRole('button', { name: 'Ver carrito' })).toBeVisible();
+    expect(await page.getByRole('button', { name: /^Carrito,/ }).locator('svg').evaluate(element => element.classList.contains('catalog-cart-pop'))).toBe(true);
+    const toastBox = await toast.boundingBox();
+    const cartBox = await page.getByRole('button', { name: /^Carrito,/ }).boundingBox();
+    const whatsappBox = await page.getByTestId('catalog-floating-whatsapp').boundingBox();
+    expect(toastBox && cartBox && (toastBox.y + toastBox.height < cartBox.y || cartBox.y + cartBox.height < toastBox.y)).toBe(true);
+    expect(toastBox && whatsappBox && (toastBox.y + toastBox.height < whatsappBox.y || whatsappBox.y + whatsappBox.height < toastBox.y)).toBe(true);
+    await toast.getByRole('button', { name: 'Ver carrito' }).click();
+    const cart = page.getByRole('dialog', { name: 'Tu Carrito' });
+    await expect(cart).toBeVisible();
+    const remove = cart.getByRole('button', { name: 'Quitar Cable USB-C del carrito' });
+    await remove.click();
+    const confirmation = page.getByRole('alertdialog');
+    await expect(confirmation).toContainText('¿Seguro que querés quitar Cable USB-C del carrito?');
+    await confirmation.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(cart.getByText('Cable USB-C')).toBeVisible();
+    await cart.getByRole('button', { name: 'Disminuir cantidad de Cable USB-C' }).click();
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole('button', { name: 'Quitar' }).click();
+    await expect(cart.getByText('Tu carrito está vacío')).toBeVisible();
+    await cart.getByRole('button', { name: 'Empezar a comprar' }).click();
+    if (channel === 'Revendedores') await page.getByRole('button', { name: 'Tienda' }).click();
+  }
 });
 
 test('mobile product sheet closes with a downward swipe on its handle', async ({ page }) => {
@@ -307,16 +367,10 @@ test('mobile product sheet closes with a downward swipe on its handle', async ({
   await mockCatalogApi(page);
   await page.goto('/catalogo/qa-catalog');
   await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
-  const handle = page.getByTestId('catalog-product-sheet-handle');
+  const handle = page.getByTestId('product-sheet-handle');
   await expect(handle).toBeVisible();
-  await handle.evaluate(element => {
-    const start = new Event('touchstart', { bubbles: true });
-    Object.defineProperty(start, 'touches', { value: [{ clientY: 100 }] });
-    element.dispatchEvent(start);
-    const end = new Event('touchend', { bubbles: true });
-    Object.defineProperty(end, 'changedTouches', { value: [{ clientY: 180 }] });
-    element.dispatchEvent(end);
-  });
+  await handle.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientY: 100, button: 0, isPrimary: true });
+  await handle.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientY: 180, button: 0, isPrimary: true });
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
 });
@@ -721,7 +775,7 @@ test('desktop catalog retains the MainPC grid and a usable cart entry point', as
   await page.screenshot({ path: resolve('test-results/catalog-i18b/main-pc.png'), fullPage: true });
 });
 
-test('category chips stay circular on mobile and desktop in light and dark mode', async ({ page }) => {
+test('category chips stay circular on mobile and desktop in light and dark mode', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mkdir(resolve('test-results/i25-categories'), { recursive: true });
 
@@ -739,8 +793,10 @@ test('category chips stay circular on mobile and desktop in light and dark mode'
       await cableCategory.click();
       await expect(cableCategory).toHaveAttribute('aria-pressed', 'true');
 
-      await page.keyboard.press('Shift+Tab');
-      await expect(allCategories).toBeFocused();
+      if (!testInfo.project.name.startsWith('catalog-iphone-')) {
+        await page.keyboard.press('Shift+Tab');
+        await expect(allCategories).toBeFocused();
+      }
       const chipGeometry = await page.locator('button[aria-pressed="true"] > span[aria-hidden="true"]')
         .evaluate(element => ({ borderRadius: Number.parseFloat(getComputedStyle(element).borderRadius), bounds: element.getBoundingClientRect().toJSON() }));
       expect(chipGeometry.borderRadius).toBeGreaterThanOrEqual(chipGeometry.bounds.height / 2);

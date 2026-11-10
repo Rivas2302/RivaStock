@@ -11,7 +11,7 @@ export default function CatalogAnnouncement({ text, backgroundColor, textColor }
   const message = text.trim();
   if (!message) return null;
 
-  return <div className="catalog-announcement" role="note" aria-label="Anuncio del catálogo" style={{ '--catalog-announcement-background': backgroundColor, '--catalog-announcement-ink': textColor } as CSSProperties}>
+  return <div data-testid="catalog-announcement" className="catalog-announcement" role="note" aria-label="Anuncio del catálogo" style={{ '--catalog-announcement-background': backgroundColor, '--catalog-announcement-ink': textColor } as CSSProperties}>
     <span className="sr-only">{message}</span>
     <span className="catalog-announcement__track" aria-hidden="true"><span>{message}</span><span>{message}</span></span>
   </div>;

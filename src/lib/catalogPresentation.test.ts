@@ -83,6 +83,17 @@ describe('public catalog presentation', () => {
     })).toBe('Quiero Cable USB-C, 2 por $ 8.500. https://rivastock.vercel.app/p/tienda/cable');
   });
 
+  it('provides and formats the default catalog inquiry message', () => {
+    const defaults = defaultCatalogPresentation();
+    expect(defaults.whatsappCatalogMessageTemplate).toBe('Hola {negocio}! Vi su catálogo y quería hacer una consulta.');
+    expect(formatCatalogWhatsAppMessage(defaults.whatsappCatalogMessageTemplate, {
+      product: '', price: '', businessName: 'Electro Pasión', link: 'https://rivastock.vercel.app/p/electro-pasion',
+    })).toBe('Hola Electro Pasión! Vi su catálogo y quería hacer una consulta.');
+    expect(formatCatalogWhatsAppMessage('Hola {negocio}: {link}', {
+      product: '', price: '', businessName: 'Negocio QA', link: 'https://rivastock.vercel.app/p/qa',
+    })).toBe('Hola Negocio QA: https://rivastock.vercel.app/p/qa');
+  });
+
   it('shows an offer price only for a valid positive discount', () => {
     expect(getCatalogOfferPrice(8500, 20)).toBe(6800);
     expect(getCatalogOfferPrice(8500, 0)).toBeNull();

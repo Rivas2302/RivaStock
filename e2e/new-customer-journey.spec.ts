@@ -153,20 +153,30 @@ function createBackend() {
       } });
       if (path.endsWith('/rpc/storage_upload_check')) return route.fulfill({ json: { allowed: true, reason: null } });
       if (path.endsWith('/rpc/get_public_inventory_owner_labels')) return route.fulfill({ json: [] });
-      if (path.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: false } });
+      if (path.endsWith('/rpc/get_reseller_catalog_status')) return route.fulfill({ json: { enabled: true } });
+      if (path.endsWith('/rpc/unlock_reseller_catalog')) {
+        const accessCode = (body as { p_access_code?: string } | null)?.p_access_code;
+        if (accessCode !== 'RES-QA-2026') return route.fulfill({ status: 400, json: { message: 'El código no es válido.' } });
+        return route.fulfill({ json: { enabled: true, minimumRule: 'none', minimumOrderAmount: 0, minimumOrderQuantity: 0, products: publicProducts() } });
+      }
+      if (path.endsWith('/rpc/get_public_reseller_buying_policy')) return route.fulfill({ json: 'Pago coordinado por WhatsApp.' });
+      if (path.endsWith('/rpc/get_public_reseller_supplier_rounds')) return route.fulfill({ json: [] });
       if (path.endsWith('/rpc/resolve_public_catalog_slug')) return route.fulfill({ json: null });
       if (path.endsWith('/rpc/catalog_slug_available')) return route.fulfill({ json: true });
       if (path.endsWith('/rpc/suggest_catalog_slug')) return route.fulfill({ json: (body as { p_base_slug?: string } | null)?.p_base_slug ?? 'tienda-qa' });
       if (path.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: publicProducts() });
       if (path.endsWith('/rpc/create_public_catalog_order')) {
-        const payload = body as { p_customer?: Record<string, unknown>; p_items?: Array<Record<string, unknown>> } | null;
+        const payload = body as { p_customer?: Record<string, unknown>; p_items?: Array<Record<string, unknown>>; p_channel?: string } | null;
         const itemRequest = payload?.p_items?.[0] ?? {};
         const product = products.find(row => row.id === itemRequest.product_id || row.id === itemRequest.productId) ?? products[0];
         const quantity = Number(itemRequest.quantity ?? 1);
         const price = Number(product?.sale_price ?? 0);
+        const channel = payload?.p_channel === 'reseller' ? 'reseller' : 'retail';
+        const orderCode = channel === 'reseller' ? 'P-QA-0002' : 'P-QA-0001';
+        const orderId = channel === 'reseller' ? '10000000-0000-4000-8000-000000000906' : ORDER_ID;
         const order: Record<string, unknown> = {
-          id: ORDER_ID,
-          order_code: 'P-QA-0001',
+          id: orderId,
+          order_code: orderCode,
           user_id: OWNER_ID,
           date: CREATED_AT,
           customer_name: payload?.p_customer?.name ?? 'Comprador QA',
@@ -178,13 +188,13 @@ function createBackend() {
           total: price * quantity,
           status: 'Nuevo',
           is_read: false,
-          channel: 'retail',
+          channel,
           delivery_method: 'pickup',
         };
-        orders.splice(0, orders.length, order);
+        orders.push(order);
         return route.fulfill({ json: {
-          id: ORDER_ID, orderCode: 'P-QA-0001', total: price * quantity, channel: 'retail',
-          items: [{ productId: product?.id, productName: product?.name, quantity, price }],
+          id: orderId, orderCode, total: price * quantity, channel,
+          items: [{ productId: product?.id, productName: product?.name, quantity, price, ...(channel === 'reseller' ? { availability: 'in_stock' } : {}) }],
         } });
       }
       if (path === '/functions/v1/send-order-notification') return route.fulfill({ status: 202, json: { ok: true } });
@@ -245,7 +255,7 @@ function createBackend() {
   return { mount, user, profile, catalog, products, orders, uploadedPaths, requestRoles, orderRow };
 }
 
-test('new invited business configures catalog and receives an anonymous WhatsApp order on mobile', async ({ page, browser }) => {
+test('new invited business configures catalog and receives anonymous WhatsApp orders in Store and Reseller mode', async ({ page, browser }, testInfo) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 375, height: 812 });
   const backend = createBackend();
@@ -260,13 +270,17 @@ test('new invited business configures catalog and receives an anonymous WhatsApp
   await page.getByRole('button', { name: 'Crear contraseña y entrar' }).click();
   await expect(page.getByText('Tu nombre y contraseña quedaron guardados.')).toBeVisible();
   await page.getByRole('button', { name: 'Entrar a RivaStock', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /Buenas tardes, María/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Primeros pasos' })).toBeVisible();
   await expect(page.locator('body')).toContainText('María QA');
   await expect(page.locator('body')).not.toContainText(/RivaTech|Instalá la central|Vincular la central|Conectá Facebook/i);
   await expect(page.getByRole('link', { name: 'Stock' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Ventas' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Clientes' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Proveedores' })).toHaveCount(0);
+  const iosInstallHint = page.getByRole('note', { name: 'Instalar RivaStock en iPhone' });
+  if (await iosInstallHint.isVisible().catch(() => false)) {
+    await iosInstallHint.getByRole('button', { name: 'Ahora no' }).click();
+  }
   await page.getByRole('button', { name: 'Abrir menú' }).click();
   await expect(page.getByRole('link', { name: 'Pedidos' })).toBeVisible();
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
@@ -312,7 +326,8 @@ test('new invited business configures catalog and receives an anonymous WhatsApp
   expect(backend.catalog).toMatchObject({ business_name: 'Electro Pasión QA', slug: 'electro-pasion-qa', whatsapp_number: '5492302111111' });
   expect(backend.catalog.logo_url).toContain('/storage/v1/object/public/assets/');
 
-  const anonContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const isMobileDevice = /catalog-(iphone|android)/.test(testInfo.project.name);
+  const anonContext = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: isMobileDevice, hasTouch: isMobileDevice, deviceScaleFactor: isMobileDevice ? 2 : 1 });
   const anonPage = await anonContext.newPage();
   await backend.mount(anonPage);
   const publicUrl = new URL(await catalogLink.getAttribute('href') ?? '', 'http://127.0.0.1:4173');
@@ -333,13 +348,32 @@ test('new invited business configures catalog and receives an anonymous WhatsApp
   expect(whatsappUrl.hostname).toBe('wa.me');
   expect(whatsappUrl.searchParams.get('text')).toContain('P-QA-0001');
   expect(whatsappUrl.searchParams.get('text')).toContain('Producto QA Cliente');
+
+  await anonPage.goto('/catalogo/electro-pasion-qa');
+  await anonPage.getByRole('button', { name: 'Revendedores' }).click();
+  await anonPage.getByPlaceholder('Código de acceso').fill('RES-QA-2026');
+  await anonPage.getByRole('button', { name: 'Ingresar' }).click();
+  await anonPage.getByRole('button', { name: 'Agregar Producto QA Cliente al carrito' }).last().click();
+  await anonPage.getByRole('button', { name: /Abrir carrito/ }).click();
+  await anonPage.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await anonPage.getByPlaceholder('Nombre completo').fill('Revendedor QA');
+  await anonPage.getByPlaceholder('WhatsApp').fill('2302000001');
+  await anonPage.getByRole('button', { name: 'Enviar Pedido' }).click();
+  await expect(anonPage.getByTestId('reseller-order-code')).toHaveText('P-QA-0002');
+  const resellerWhatsapp = new URL(await anonPage.getByTestId('send-order-whatsapp').getAttribute('href') ?? '');
+  expect(resellerWhatsapp.searchParams.get('text')).toContain('P-QA-0002');
+  expect(resellerWhatsapp.searchParams.get('text')).toContain('Producto QA Cliente');
+  expect(backend.requestRoles.some(request => request.path.endsWith('/rpc/create_public_catalog_order') && request.role === 'anon')).toBe(true);
+  expect(backend.orders.map(order => order.channel)).toEqual(['retail', 'reseller']);
+
   expect(backend.requestRoles.some(request => request.path.endsWith('/rpc/create_public_catalog_order') && request.role === 'anon')).toBe(true);
   expect(backend.requestRoles.some(request => request.path.endsWith('/rpc/get_public_catalog_products') && request.role === 'anon')).toBe(true);
   expect(backend.orderRow()).toMatchObject({ customer_name: 'Comprador QA', channel: 'retail', status: 'Nuevo' });
 
   await page.goto('/pedidos');
   await expect(page.getByRole('heading', { name: 'Pedidos del Catálogo' })).toBeVisible();
-  await expect(page.getByTestId('order-code')).toContainText('P-QA-0001');
+  await expect(page.getByTestId('order-code').filter({ hasText: 'P-QA-0001' })).toBeVisible();
+  await expect(page.getByTestId('order-code').filter({ hasText: 'P-QA-0002' })).toBeVisible();
   expect(backend.requestRoles.some(request => request.path.startsWith('/rest/v1/orders') && request.role === 'authenticated')).toBe(true);
   expect(backend.user.user_metadata).toMatchObject({ display_name: 'María QA', password_set: true, must_change_password: false });
   await anonContext.close();

@@ -46,6 +46,7 @@ export interface CatalogPresentation {
   showWhatsAppButton: boolean;
   showProductsWithoutPhoto: boolean;
   whatsappMessageTemplate: string;
+  whatsappCatalogMessageTemplate: string;
 }
 
 export const CATALOG_THEME_OPTIONS: Array<{ id: CatalogThemeId; label: string; heroColor: string; accentColor: string; title: string; description: string }> = [
@@ -96,12 +97,13 @@ export function defaultCatalogPresentation(legacy?: { welcomeMessage?: string; b
     ambience: { ...DEFAULT_CATALOG_AMBIENCE },
     showWhatsAppButton: true, showProductsWithoutPhoto: false,
     whatsappMessageTemplate: 'Hola! Quiero consultar por {producto} ({precio}).\n{link}',
+    whatsappCatalogMessageTemplate: 'Hola {negocio}! Vi su catálogo y quería hacer una consulta.',
   };
 }
 
-export function formatCatalogWhatsAppMessage(template: string, values: { product: string; price: string; link: string; quantity?: number }): string {
-  const replacements: Record<string, string> = { producto: values.product, precio: values.price, link: values.link, cantidad: String(values.quantity ?? 1) };
-  return template.replace(/\{(producto|precio|link|cantidad)\}/g, (_, key: string) => replacements[key]);
+export function formatCatalogWhatsAppMessage(template: string, values: { product: string; price: string; link: string; quantity?: number; businessName?: string }): string {
+  const replacements: Record<string, string> = { producto: values.product, precio: values.price, link: values.link, cantidad: String(values.quantity ?? 1), negocio: values.businessName ?? '' };
+  return template.replace(/\{(producto|precio|link|cantidad|negocio)\}/g, (_, key: string) => replacements[key]);
 }
 
 export function getCatalogOfferPrice(price: number, discountPercent: number): number | null {

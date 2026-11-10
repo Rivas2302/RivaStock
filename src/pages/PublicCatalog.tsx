@@ -11,6 +11,7 @@ import { buildCatalogOrderWhatsAppMessage, type DeliveryMethod } from '../lib/ca
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
+import '../components/catalog/catalogInteractions.css';
 
 const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
 import {
@@ -85,6 +86,10 @@ export default function PublicCatalog() {
   const { slug, productId } = useParams<{ slug: string; productId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const routeLocationRef = useRef({ search: location.search, hash: location.hash });
+  routeLocationRef.current = { search: location.search, hash: location.hash };
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -147,6 +152,9 @@ export default function PublicCatalog() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedProductForLightbox, setSelectedProductForLightbox] = useState<PublicCatalogProduct | null>(null);
+  const [cartItemPendingRemoval, setCartItemPendingRemoval] = useState<PublicCatalogProduct | null>(null);
+  const [cartToastVisible, setCartToastVisible] = useState(false);
+  const [cartAnimationKey, setCartAnimationKey] = useState(0);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -161,6 +169,7 @@ export default function PublicCatalog() {
   const productSheetDragStartY = useRef<number | null>(null);
   const catalogScrollPosition = useRef(0);
   const directProductSetupRef = useRef<string | null>(null);
+  const cartToastTimerRef = useRef<number | null>(null);
   const [categoryCanScrollLeft, setCategoryCanScrollLeft] = useState(false);
   const [categoryCanScrollRight, setCategoryCanScrollRight] = useState(false);
   const [shareProductId, setShareProductId] = useState<string | null>(null);
@@ -170,6 +179,9 @@ export default function PublicCatalog() {
     if (!slug) return;
     if (!productId) catalogScrollPosition.current = window.scrollY;
     const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground ?? location.pathname;
+    setSelectedProductForLightbox(product);
+    setLightboxImageIndex(0);
+    setDetailQuantity(1);
     navigate(`/catalogo/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`, {
       replace: replaceCurrent,
       state: { catalogModalBackground: background },
@@ -178,7 +190,8 @@ export default function PublicCatalog() {
 
   const closeProduct = useCallback(() => {
     if (!slug) return;
-    const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground;
+    const routeState = location.state as { catalogModalBackground?: string | null } | null;
+    const background = routeState?.catalogModalBackground;
     setSelectedProductForLightbox(null);
     if (productId && background) navigate(-1);
     else if (productId) navigate(`/catalogo/${encodeURIComponent(slug)}`, { replace: true });
@@ -209,6 +222,7 @@ export default function PublicCatalog() {
         price: config?.showPrices ? formatCurrency(getDisplayedPrice(product)) : 'Consultar precio',
         link: url,
         quantity: detailQuantity,
+        businessName: config?.businessName ?? '',
       });
       window.open(`https://wa.me/${config?.whatsappNumber ?? ''}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
       setShareProductId(null);
@@ -224,6 +238,10 @@ export default function PublicCatalog() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (cartToastTimerRef.current !== null) window.clearTimeout(cartToastTimerRef.current);
   }, []);
 
 useEffect(() => {
@@ -324,7 +342,7 @@ useEffect(() => {
               sessionStorage.setItem(`catalog-channel:${canonicalSlug}`, oldChannel);
             }
             const productSuffix = productId ? `/${encodeURIComponent(productId)}` : '';
-            navigate(`/catalogo/${encodeURIComponent(canonicalSlug)}${productSuffix}${location.search}${location.hash}`, { replace: true });
+            navigateRef.current(`/catalogo/${encodeURIComponent(canonicalSlug)}${productSuffix}${routeLocationRef.current.search}${routeLocationRef.current.hash}`, { replace: true });
             return;
           }
           setError('Catálogo no encontrado');
@@ -390,7 +408,7 @@ useEffect(() => {
     init();
 
     return () => { cancelled = true; };
-  }, [location.hash, location.search, navigate, slug]);
+  }, [slug]);
 
   const isProductOrderable = (product: PublicCatalogProduct): boolean => (
     channel === 'reseller'
@@ -418,6 +436,10 @@ useEffect(() => {
       }
       return [...prev, { product: cartProduct, quantity: 1 }];
     });
+    setCartToastVisible(true);
+    setCartAnimationKey(key => key + 1);
+    if (cartToastTimerRef.current !== null) window.clearTimeout(cartToastTimerRef.current);
+    cartToastTimerRef.current = window.setTimeout(() => setCartToastVisible(false), 3200);
   };
 
   useEffect(() => {
@@ -443,11 +465,22 @@ useEffect(() => {
     }
   }, [slug, products, channel, config]);
 
+  const requestRemoveFromCart = (productId: string) => {
+    const item = cart.find(row => row.product.id === productId);
+    if (item) setCartItemPendingRemoval(item.product);
+  };
+
   const removeFromCart = (productId: string) => {
     setCart(prev => prev.filter(item => item.product.id !== productId));
+    setCartItemPendingRemoval(null);
   };
 
   const updateQuantity = (productId: string, delta: number) => {
+    const current = cart.find(item => item.product.id === productId);
+    if (delta < 0 && current?.quantity === 1) {
+      requestRemoveFromCart(productId);
+      return;
+    }
     setCart(prev => prev.map(item => {
       if (item.product.id !== productId) return item;
       const max = channel === 'reseller' && item.product.availability !== 'on_order'
@@ -499,7 +532,6 @@ useEffect(() => {
   useEffect(() => {
     const basePath = `/catalogo/${encodeURIComponent(slug ?? '')}`;
     if (!productId) {
-      setSelectedProductForLightbox(null);
       const pendingProductId = (location.state as { catalogPendingProductId?: string } | null)?.catalogPendingProductId;
       if (pendingProductId && directProductSetupRef.current === pendingProductId) {
         directProductSetupRef.current = null;
@@ -508,19 +540,26 @@ useEffect(() => {
         });
         return;
       }
+      directProductSetupRef.current = null;
+      setSelectedProductForLightbox(null);
       requestAnimationFrame(() => window.scrollTo(0, catalogScrollPosition.current));
       return;
     }
     const product = catalogProducts.find(item => item.id === productId);
     if (product) {
-      const background = (location.state as { catalogModalBackground?: string | null } | null)?.catalogModalBackground;
+      const routeState = location.state as { catalogModalBackground?: string | null } | null;
+      const background = routeState?.catalogModalBackground;
       if (!background) {
         if (directProductSetupRef.current !== productId) {
           directProductSetupRef.current = productId;
+          setSelectedProductForLightbox(product);
+          setLightboxImageIndex(0);
+          setDetailQuantity(1);
           navigate(`${basePath}${location.search}${location.hash}`, { replace: true, state: { catalogPendingProductId: productId } });
         }
         return;
       }
+      directProductSetupRef.current = null;
       setSelectedProductForLightbox(product);
       setLightboxImageIndex(0);
       setDetailQuantity(1);
@@ -1002,6 +1041,24 @@ if (loading) {
       </AnimatePresence>
 
       <AnimatePresence>
+        {cartToastVisible && (
+          <motion.div
+            role="status"
+            data-testid="cart-added-toast"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed left-3 right-3 z-[60] mx-auto flex min-h-12 max-w-sm items-center gap-3 rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-xl"
+            style={{ top: 'calc(5rem + env(safe-area-inset-top) + var(--catalog-announcement-height, 0rem) + .5rem)' }}
+          >
+            <CheckCircle2 size={18} aria-hidden="true" />
+            <span className="min-w-0 flex-1">Producto agregado al carrito</span>
+            <button type="button" onClick={() => { setCartToastVisible(false); setIsCartOpen(true); }} className="min-h-9 shrink-0 rounded-lg px-2 underline underline-offset-2">Ver carrito</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {isAccessOpen && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
             <motion.button
@@ -1123,9 +1180,10 @@ if (loading) {
                 darkMode ? "bg-white/5 hover:bg-white/10" : "bg-slate-100 hover:bg-slate-200"
               )}
             >
-              <ShoppingBag size={20} className={cn(
+              <ShoppingBag key={cartAnimationKey} size={20} className={cn(
                 "transition-transform group-hover:scale-110",
-                darkMode ? "text-white" : "text-slate-700"
+                darkMode ? "text-white" : "text-slate-700",
+                cartAnimationKey > 0 && 'catalog-cart-pop',
               )} />
               {cart.length > 0 && (
                 <span 
@@ -1138,14 +1196,8 @@ if (loading) {
             </button>
           </div>
         </div>
-        {presentation.ambience.announcementText.trim() && <div className="catalog-announcement" role="note" aria-label="Anuncio del catálogo" style={{ '--catalog-announcement-background': announcementBackgroundColor, '--catalog-announcement-ink': announcementTextColor } as React.CSSProperties}>
-          <span className="sr-only">{presentation.ambience.announcementText.trim()}</span>
-          <span className="catalog-announcement__track" aria-hidden="true"><span>{presentation.ambience.announcementText.trim()}</span><span>{presentation.ambience.announcementText.trim()}</span></span>
-        </div>}
+        <CatalogAnnouncement text={presentation.ambience.announcementText} backgroundColor={announcementBackgroundColor} textColor={announcementTextColor}/>
       </header>
-
-      <div aria-hidden="true" data-testid="catalog-header-spacer" className="h-[calc(5rem+env(safe-area-inset-top))]" />
-      <CatalogAnnouncement text={presentation.ambience.announcementText} backgroundColor={announcementBackgroundColor} textColor={announcementTextColor}/>
 
       {/* Hero Section / Banner */}
       <div className="relative" data-testid="public-catalog-hero">
@@ -1601,14 +1653,15 @@ if (loading) {
       </footer>
 
       {/* Floating Cart Button (Mobile) */}
-      {presentation.showWhatsAppButton && config.whatsappNumber && <a href={`https://wa.me/${config.whatsappNumber}`} aria-label="Escribir por WhatsApp" target="_blank" rel="noreferrer" className="catalog-floating-whatsapp fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-40 flex min-h-14 items-center gap-2 rounded-full bg-emerald-600 px-4 font-bold text-white shadow-xl"><MessageCircle size={21}/><span className="hidden sm:inline">WhatsApp</span></a>}
+      {presentation.showWhatsAppButton && config.whatsappNumber && <a href={`https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(formatCatalogWhatsAppMessage(presentation.whatsappCatalogMessageTemplate, { product: '', price: '', businessName, link: getCatalogShareUrl(window.location.origin, slug ?? '') }))}`} aria-label="Escribir por WhatsApp" target="_blank" rel="noreferrer" data-testid="catalog-floating-whatsapp" className="catalog-floating-whatsapp fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-40 flex min-h-14 items-center gap-2 rounded-full bg-emerald-600 px-4 font-bold text-white shadow-xl"><MessageCircle size={21}/><span className="hidden sm:inline">WhatsApp</span></a>}
       <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 md:hidden">
         <button 
+          aria-label={`Carrito, ${cartItemCount} productos`}
           onClick={() => setIsCartOpen(true)}
           className="w-16 h-16 rounded-full text-white shadow-2xl flex items-center justify-center relative active:scale-95 transition-all"
           style={{ backgroundColor: accentColor, boxShadow: `0 20px 40px -5px ${accentColor}60` }}
         >
-          <ShoppingBag size={28} />
+          <ShoppingBag key={cartAnimationKey} size={28} className={cartAnimationKey ? 'catalog-cart-pop' : undefined} />
           {cart.length > 0 && (
             <span className="absolute -top-1 -right-1 bg-white text-slate-900 text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
                   {cartItemCount}
@@ -1629,6 +1682,9 @@ if (loading) {
               className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50"
             />
             <motion.div 
+              role="dialog"
+              aria-modal="true"
+              aria-label="Tu Carrito"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
@@ -1716,6 +1772,7 @@ if (loading) {
                           darkMode ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100"
                         )}>
                           <button 
+                            aria-label={`Disminuir cantidad de ${item.product.name}`}
                             onClick={() => updateQuantity(item.product.id, -1)} 
                             className={cn(
                               "w-8 h-8 flex items-center justify-center rounded-lg shadow-sm transition-all active:scale-90",
@@ -1741,7 +1798,8 @@ if (loading) {
                           </button>
                         </div>
                         <button 
-                          onClick={() => removeFromCart(item.product.id)} 
+                          aria-label={`Quitar ${item.product.name} del carrito`}
+                          onClick={() => requestRemoveFromCart(item.product.id)}
                           className={cn(
                             "p-2 rounded-xl transition-colors",
                             darkMode ? "text-white/20 hover:text-rose-500 hover:bg-rose-500/10" : "text-slate-400 hover:text-rose-500 hover:bg-rose-50"
@@ -2068,6 +2126,20 @@ if (loading) {
               </motion.section>
           </motion.div>;
         })()}
+      </AnimatePresence>
+      <AnimatePresence>
+        {cartItemPendingRemoval && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="presentation">
+            <motion.button type="button" aria-label="Cancelar y cerrar confirmación" onClick={() => setCartItemPendingRemoval(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
+            <motion.section role="alertdialog" aria-modal="true" aria-labelledby="remove-cart-item-title" initial={{ opacity: 0, scale: .96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .96 }} className={cn('relative z-10 w-full max-w-sm rounded-3xl border p-5 shadow-2xl', darkMode ? 'border-white/10 bg-[#171717] text-white' : 'border-slate-200 bg-white text-slate-900')}>
+              <h2 id="remove-cart-item-title" className="text-lg font-bold">¿Seguro que querés quitar {cartItemPendingRemoval.name} del carrito?</h2>
+              <div className="mt-5 flex gap-3">
+                <button type="button" onClick={() => setCartItemPendingRemoval(null)} className={cn('min-h-12 flex-1 rounded-xl border font-semibold', darkMode ? 'border-white/15 bg-white/5' : 'border-slate-200 bg-white')}>Cancelar</button>
+                <button type="button" onClick={() => removeFromCart(cartItemPendingRemoval.id)} className="min-h-12 flex-1 rounded-xl bg-rose-600 font-semibold text-white">Quitar</button>
+              </div>
+            </motion.section>
+          </div>
+        )}
       </AnimatePresence>
       {/* Success Modal */}
       <AnimatePresence>
