@@ -2051,4 +2051,5 @@ Sin toque en src/, supabase/ ni extensions/.
 - El borrador móvil se guarda en `sessionStorage`, separado por UID y ruta, antes de abrir la cámara; se restaura al volver y muestra “Recuperamos tu producto”. Si el almacenamiento del borrador falla, no se abre la cámara y se informa el motivo.
 - El indicador “Preparando y subiendo la foto…” aparece al recibir el archivo. La compresión original y la miniatura cortan la espera a los 20 segundos y muestran un error localizado.
 - Verificación: suite completa **237 archivos / 1.359 pruebas**, lint y build aprobados. Playwright de alta nueva con foto en Android Chrome emulado y escritorio: **2/2**; recuperación después de recarga, error HEIC y permiso denegado en Android: **3/3**. Sin altas ni cambios de datos reales.
-- Pendiente de cierre: desplegar el frontend y ampliar en `product-upload-diagnostics` los motivos aceptados para UUID faltante y timeout; verificar que Vercel Current sirva el bundle nuevo.
+- `product-upload-diagnostics` quedó ACTIVE v2 con `verify_jwt=true`, y acepta los motivos `product_id_missing` y `processing_timeout`.
+- Commit `d1b37cc` se envió a `main`; Vercel marcó el deployment como `success`. `rivastock.vercel.app` respondió HTTP 200 y su bundle principal referencia `Stock-DiD9vPY8.js` (HTTP 200), que incluye el mensaje de recuperación y la clave del borrador móvil.
