@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createShareHandler } from '../../supabase/functions/share/handler';
 import { getCatalogSharePath, getCatalogShareUrl } from './catalogShare';
-import { DEFAULT_SHARE_IMAGE_URL, formatPrice, getPublicAssetUrl, readImageDimensions, renderShareHtml } from '../../supabase/functions/share/metadata';
+import { DEFAULT_SHARE_IMAGE_URL, formatPrice, getPublicAssetUrl, getPublicShareImageUrl, readEmbeddedShareImage, readImageDimensions, renderShareHtml } from '../../supabase/functions/share/metadata';
 
 const SUPABASE_URL = 'https://nkfqhuqrgrpfufdymkcr.supabase.co';
 const PROJECT_HOST = new URL(SUPABASE_URL).hostname;
@@ -26,6 +26,14 @@ describe('share metadata', () => {
     expect(getPublicAssetUrl('https://images.example.test/item.jpg', PROJECT_HOST)).toBeNull();
     expect(getPublicAssetUrl('data:image/webp;base64,UklGRg==', PROJECT_HOST)).toBeNull();
     expect(getPublicAssetUrl(`${SUPABASE_URL}:8443/storage/v1/object/public/assets/item.webp`, PROJECT_HOST)).toBeNull();
+  });
+
+  it('accepts only the same function’s scoped catalog image endpoint', () => {
+    const imageUrl = `${SUPABASE_URL}/functions/v1/share?slug=rivatech-2&siteHost=rivastock.vercel.app&image=catalog`;
+    expect(getPublicShareImageUrl(imageUrl, PROJECT_HOST)).toBe(imageUrl);
+    expect(getPublicShareImageUrl('https://evil.example/functions/v1/share?slug=rivatech-2&siteHost=rivastock.vercel.app&image=catalog', PROJECT_HOST)).toBeNull();
+    expect(getPublicShareImageUrl(`${SUPABASE_URL}/functions/v1/share?slug=rivatech-2&siteHost=evil.example&image=catalog`, PROJECT_HOST)).toBeNull();
+    expect(getPublicShareImageUrl(`${SUPABASE_URL}/functions/v1/share?slug=rivatech-2&siteHost=rivastock.vercel.app&image=catalog&next=https://evil.example`, PROJECT_HOST)).toBeNull();
   });
 
   it('escapes metadata, emits Open Graph and Twitter tags, and redirects browsers to the catalog', () => {
@@ -69,6 +77,14 @@ describe('share metadata', () => {
       .toEqual({ width: 640, height: 344 });
     expect(readImageDimensions(new Uint8Array([1, 2, 3]))).toBeNull();
   });
+
+  it('decodes only small base64 images whose declared MIME matches their bytes', () => {
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x01, 0x2c, 0x02, 0x58, 0x01, 0x01, 0x11, 0x00, 0xff, 0xd9]);
+    const dataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpeg))}`;
+    expect(readEmbeddedShareImage(dataUrl)).toMatchObject({ contentType: 'image/jpeg', width: 600, height: 300 });
+    expect(readEmbeddedShareImage(dataUrl.replace('image/jpeg', 'image/png'))).toBeNull();
+    expect(readEmbeddedShareImage('data:image/jpeg;base64,AAAA')).toBeNull();
+  });
 });
 
 describe('public catalog share handler', () => {
@@ -76,7 +92,7 @@ describe('public catalog share handler', () => {
   const configRow = {
     slug: 'rivatech-2', business_name: 'RivaTech', show_prices: true,
     tagline: 'Tecnología para todos', welcome_message: 'Encontrá lo que buscás.', logo_url: null, banner_url: null,
-    user_id: '11111111-1111-4111-8111-111111111111', enabled: true,
+    presentation: null, user_id: '11111111-1111-4111-8111-111111111111', enabled: true,
   };
   const product = {
     id: PRODUCT_ID,
@@ -92,6 +108,20 @@ describe('public catalog share handler', () => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.pathname.endsWith('/catalog_config')) {
         return Response.json(options.configRows ?? [configRow], { status: options.status ?? 200 });
+      }
+      if (url.pathname.endsWith('/functions/v1/share') && url.searchParams.get('image') === 'catalog') {
+        const row = (options.configRows ?? [configRow]) as Array<Record<string, unknown>>;
+        const config = row[0];
+        const presentation = config?.presentation && typeof config.presentation === 'object'
+          ? config.presentation as { heroImageUrl?: string }
+          : {};
+        const imageUrl = [presentation.heroImageUrl, config?.banner_url, config?.logo_url]
+          .find((candidate): candidate is string => typeof candidate === 'string' && Boolean(readEmbeddedShareImage(candidate)));
+        if (!imageUrl) return new Response('not found', { status: 404 });
+        const image = readEmbeddedShareImage(imageUrl);
+        return image
+          ? new Response(image.bytes, { status: 200, headers: { 'Content-Type': image.contentType } })
+          : new Response('not found', { status: 404 });
       }
       if (url.pathname.endsWith('/rpc/get_public_catalog_product')) {
         return Response.json(options.product === undefined ? product : options.product, { status: options.status ?? 200 });
@@ -173,6 +203,41 @@ describe('public catalog share handler', () => {
     });
     const logoResponse = await logoOnlyHandler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2', { headers: forwardedHost }));
     expect(await logoResponse.text()).toContain(`og:image" content="${logo}`);
+  });
+
+  it('serves an embedded catalog cover as a validated public image and uses it for OG metadata', async () => {
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x01, 0x2c, 0x02, 0x58, 0x01, 0x01, 0x11, 0x00, 0xff, 0xd9]);
+    const dataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpeg))}`;
+    const fetcher = makeFetch({ configRows: [{ ...configRow, presentation: { useBusinessCover: true, heroImageUrl: dataUrl } }] });
+    const handler = createShareHandler({ supabaseUrl: SUPABASE_URL, publishableKey: 'sb_publishable_test', fetcher });
+    const response = await handler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2', { headers: forwardedHost }));
+    const html = await response.text();
+    const imageUrl = `${SUPABASE_URL}/functions/v1/share?slug=rivatech-2&siteHost=rivastock.vercel.app&image=catalog`;
+
+    expect(response.status).toBe(200);
+    expect(html).toContain(`og:image" content="${imageUrl.replaceAll('&', '&amp;')}`);
+    expect(html).toContain('property="og:image:type" content="image/jpeg"');
+    expect(html).toContain('property="og:image:width" content="600"');
+    expect(html).toContain('property="og:image:height" content="300"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
+
+    const imageResponse = await handler(new Request(imageUrl));
+    expect(imageResponse.status).toBe(200);
+    expect(imageResponse.headers.get('content-type')).toBe('image/jpeg');
+    expect(new Uint8Array(await imageResponse.arrayBuffer())).toEqual(jpeg);
+  });
+
+  it('falls back to an embedded logo when the catalog has no cover', async () => {
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x01, 0x2c, 0x02, 0x58, 0x01, 0x01, 0x11, 0x00, 0xff, 0xd9]);
+    const logoDataUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...jpeg))}`;
+    const handler = createShareHandler({
+      supabaseUrl: SUPABASE_URL,
+      publishableKey: 'sb_publishable_test',
+      fetcher: makeFetch({ configRows: [{ ...configRow, logo_url: logoDataUrl }] }),
+    });
+    const response = await handler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2', { headers: forwardedHost }));
+
+    expect(await response.text()).toContain(`og:image" content="${SUPABASE_URL}/functions/v1/share?slug=rivatech-2&amp;siteHost=rivastock.vercel.app&amp;image=catalog`);
   });
 
   it.each([

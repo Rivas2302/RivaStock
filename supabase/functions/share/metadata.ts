@@ -6,6 +6,7 @@ export interface ShareCatalogConfig {
   welcome_message?: string | null;
   logo_url?: string | null;
   banner_url?: string | null;
+  presentation?: unknown;
   user_id?: string;
   currency_symbol?: string | null;
 }
@@ -20,6 +21,7 @@ export interface ShareProduct {
 }
 
 export const DEFAULT_SHARE_IMAGE_URL = 'https://rivastock.vercel.app/og-default.png';
+export const MAX_EMBEDDED_SHARE_IMAGE_BYTES = 1024 * 1024;
 
 export function isValidCatalogSlug(value: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,63}$/i.test(value);
@@ -47,7 +49,67 @@ export function getPublicAssetUrl(value: unknown, projectHost: string): string |
 }
 
 export function getPublicShareImageUrl(value: unknown, projectHost: string): string | null {
-  return getPublicAssetUrl(value, projectHost) ?? (value === DEFAULT_SHARE_IMAGE_URL ? DEFAULT_SHARE_IMAGE_URL : null);
+  const publicAsset = getPublicAssetUrl(value, projectHost);
+  if (publicAsset) return publicAsset;
+  if (value === DEFAULT_SHARE_IMAGE_URL) return DEFAULT_SHARE_IMAGE_URL;
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    const image = new URL(value);
+    const slug = image.searchParams.get('slug') ?? '';
+    const siteHost = image.searchParams.get('siteHost') ?? '';
+    const allowedSiteHost = siteHost === 'rivastock.vercel.app' || /^rivastock-[a-z0-9-]+\.vercel\.app$/.test(siteHost);
+    if (image.protocol !== 'https:' || image.hostname !== projectHost || image.port !== ''
+      || image.username !== '' || image.password !== '' || image.pathname !== '/functions/v1/share'
+      || image.searchParams.get('image') !== 'catalog' || !isValidCatalogSlug(slug) || !allowedSiteHost
+      || image.searchParams.size !== 3) return null;
+    return image.toString();
+  } catch {
+    return null;
+  }
+}
+
+export interface EmbeddedShareImage {
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+}
+
+function detectImageContentType(bytes: Uint8Array): EmbeddedShareImage['contentType'] | null {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46
+    && bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) return 'image/gif';
+  return null;
+}
+
+export function readEmbeddedShareImage(value: unknown): EmbeddedShareImage | null {
+  if (typeof value !== 'string' || value.length > Math.ceil(MAX_EMBEDDED_SHARE_IMAGE_BYTES * 4 / 3) + 64) return null;
+  const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+  if (!match || match[2].length % 4 !== 0) return null;
+  try {
+    const binary = atob(match[2]);
+    if (binary.length === 0 || binary.length > MAX_EMBEDDED_SHARE_IMAGE_BYTES) return null;
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const contentType = detectImageContentType(bytes);
+    if (!contentType || contentType !== match[1].toLowerCase()) return null;
+    const dimensions = readImageDimensions(bytes);
+    if (!dimensions) return null;
+    return { contentType, bytes, ...dimensions };
+  } catch {
+    return null;
+  }
+}
+
+export function getCatalogShareImageEndpoint(supabaseUrl: string, slug: string, siteHost: string): string {
+  const endpoint = new URL('/functions/v1/share', supabaseUrl);
+  endpoint.searchParams.set('slug', slug);
+  endpoint.searchParams.set('siteHost', siteHost);
+  endpoint.searchParams.set('image', 'catalog');
+  return endpoint.toString();
 }
 
 export function selectProductImage(product: ShareProduct, projectHost: string): string | null {

@@ -1,3 +1,11 @@
+# 2026-11-10 — cierre del catálogo e I52 retomada
+
+- Corregí la imagen Open Graph del catálogo cuando portada o logo están guardados como URI de datos: la función share entrega una imagen pública de solo lectura, validada por MIME y dimensiones, y el HTML incluye ancho, alto y tarjeta grande. No se escribieron datos del negocio.
+- Desplegué share en producción: ACTIVE v10, verify_jwt=false. Con curl y los agentes WhatsApp/2.23 y facebookexternalhit/1.1, /p/rivatech-2, /catalogo/rivatech-2 y sus links de producto respondieron 200. Catálogo: imagen portada JPEG 1920×1280; producto: imagen pública de Storage; ambos con tarjeta grande. Vercel ya tenía el commit 02a3a87 en Current.
+- Verificación local tras el hotfix: npm run lint aprobado; npm test, 239 archivos y 1.382 pruebas aprobadas; npm run build aprobado; pruebas focales de catalogShare, 21/21. La matriz Playwright del cierre previo había pasado 155/155 (PC Chromium, iPhone 11/13/15 WebKit y Android 375 px); el hotfix no toca UI.
+- Copié la sección I52 vigente desde el plan del Escritorio a esta copia local. I52 sigue abierta: extensions aún contiene reglas de DOM específicas de proveedores y falta mover la extracción/paginación a la app. Se omite Chrome Web Store por la decisión previa de Riva; se conserva el actualizador de Windows. El smoke real de ElectroBH requiere la sesión autenticada de mayori.store ya listada en OWNER_ACTIONS.md.
+- Siguiente: refactorizar la captura para que la extensión transporte snapshots saneados y la app extraiga productos/paginación; mantener los fixtures anonimizados y sin acciones de compra.
+
 # 2026-11-09 — I50 puntos 1–4 (pendiente de publicar en Current)
 
 - Copié desde la carpeta principal las secciones I50/I51 del plan y las maquetas aprobadas `docs/design/catalogo-v2/` y `docs/design/login-v2/`. La fase en curso cubre solo I50 puntos 1–4.

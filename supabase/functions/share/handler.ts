@@ -1,10 +1,12 @@
 import {
   formatPrice,
   DEFAULT_SHARE_IMAGE_URL,
+  getCatalogShareImageEndpoint,
   getPublicAssetUrl,
   getPublicShareImageUrl,
   isValidCatalogSlug,
   isValidProductId,
+  readEmbeddedShareImage,
   renderShareHtml,
   readImageDimensions,
   selectProductImage,
@@ -19,6 +21,11 @@ type ShareHandlerOptions = {
 };
 
 type PublicConfigRow = ShareCatalogConfig & { enabled: boolean };
+
+type ShareImageCandidate = {
+  url: string;
+  embedded?: ReturnType<typeof readEmbeddedShareImage>;
+};
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=600',
@@ -58,6 +65,43 @@ function publicSiteOrigin(request: Request, fallbackSiteHost: string): string | 
   if (forwardedHost && isAllowedHost(forwardedHost)) return `https://${forwardedHost}`;
   const fallback = fallbackSiteHost.trim().toLowerCase();
   return isAllowedHost(fallback) ? `https://${fallback}` : null;
+}
+
+function catalogImageCandidates(config: PublicConfigRow, projectHost: string, supabaseUrl: string, slug: string, siteHost: string): ShareImageCandidate[] {
+  const presentation = config.presentation && typeof config.presentation === 'object'
+    ? config.presentation as { heroImageUrl?: unknown }
+    : {};
+  const candidates = [presentation.heroImageUrl, config.banner_url, config.logo_url];
+  const result: ShareImageCandidate[] = [];
+  const seen = new Set<string>();
+  for (const value of candidates) {
+    const assetUrl = getPublicAssetUrl(value, projectHost);
+    if (assetUrl && !seen.has(assetUrl)) {
+      seen.add(assetUrl);
+      result.push({ url: assetUrl });
+      continue;
+    }
+    const embedded = readEmbeddedShareImage(value);
+    if (embedded && typeof value === 'string' && !seen.has(value)) {
+      seen.add(value);
+      result.push({ url: getCatalogShareImageEndpoint(supabaseUrl, slug, siteHost), embedded });
+    }
+  }
+  if (result.length === 0) result.push({ url: DEFAULT_SHARE_IMAGE_URL });
+  return result;
+}
+
+function imageResponse(image: NonNullable<ReturnType<typeof readEmbeddedShareImage>>, method: string): Response {
+  return new Response(method === 'HEAD' ? null : image.bytes, {
+    status: 200,
+    headers: {
+      ...CACHE_HEADERS,
+      'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=600',
+      'Content-Type': image.contentType,
+      'Content-Length': String(image.bytes.byteLength),
+      'Content-Disposition': 'inline',
+    },
+  });
 }
 
 async function readJson<T>(response: Response): Promise<T | null> {
@@ -112,11 +156,13 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
 
     const slug = requestUrl.searchParams.get('slug')?.trim() ?? '';
     const productId = requestUrl.searchParams.get('productId')?.trim() ?? '';
-    if (!isValidCatalogSlug(slug) || (productId && !isValidProductId(productId))) return notFound(request.method);
+    const imageMode = requestUrl.searchParams.get('image') ?? '';
+    if (!isValidCatalogSlug(slug) || (productId && !isValidProductId(productId))
+      || (imageMode && imageMode !== 'catalog') || (imageMode && productId)) return notFound(request.method);
 
     const headers = { apikey: options.publishableKey };
     const configUrl = new URL(`${supabaseUrl}/rest/v1/catalog_config`);
-    configUrl.searchParams.set('select', 'slug,business_name,show_prices,tagline,welcome_message,logo_url,banner_url,enabled');
+    configUrl.searchParams.set('select', 'slug,business_name,show_prices,tagline,welcome_message,logo_url,banner_url,presentation,enabled');
     configUrl.searchParams.set('slug', `eq.${slug}`);
     configUrl.searchParams.set('enabled', 'eq.true');
     configUrl.searchParams.set('limit', '1');
@@ -144,12 +190,15 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         return notFound(request.method);
       }
 
+      const catalogImages = catalogImageCandidates(config, projectHost, supabaseUrl, slug, new URL(origin).host);
+      if (imageMode === 'catalog') {
+        const embeddedImage = catalogImages.find(candidate => candidate.embedded)?.embedded;
+        return embeddedImage ? imageResponse(embeddedImage, request.method) : notFound(request.method);
+      }
+
       let title = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let description = config.tagline?.trim() || config.welcome_message?.trim() || `Mirá los productos de ${config.business_name || 'este negocio'}.`;
-      const catalogImageUrl = getPublicAssetUrl(config.banner_url, projectHost)
-        || getPublicAssetUrl(config.logo_url, projectHost)
-        || DEFAULT_SHARE_IMAGE_URL;
-      let imageUrl = catalogImageUrl;
+      let imageCandidates = catalogImages;
       let imageContentType: string | null = null;
       let imageWidth: number | null = null;
       let imageHeight: number | null = null;
@@ -175,14 +224,23 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         }
         if (product.description?.trim()) parts.push(product.description.trim());
         description = parts.join(' · ');
-        imageUrl = selectProductImage(product, projectHost) ?? catalogImageUrl;
+        const productImage = selectProductImage(product, projectHost);
+        imageCandidates = productImage ? [{ url: productImage }, ...catalogImages] : catalogImages;
         imageAlt = product.name;
         catalogPath += `/${encodeURIComponent(productId)}`;
       }
 
       let allowedImageUrl: string | null = null;
-      for (const candidate of [...new Set([imageUrl, catalogImageUrl])]) {
-        const safeCandidate = getPublicShareImageUrl(candidate, projectHost);
+      for (const candidate of imageCandidates) {
+        const embedded = candidate.embedded;
+        if (embedded) {
+          allowedImageUrl = candidate.url;
+          imageContentType = embedded.contentType;
+          imageWidth = embedded.width;
+          imageHeight = embedded.height;
+          break;
+        }
+        const safeCandidate = getPublicShareImageUrl(candidate.url, projectHost);
         if (!safeCandidate) continue;
         try {
           const imageResponse = await fetcher(safeCandidate, {

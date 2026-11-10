@@ -1339,3 +1339,41 @@ Maquetas en `docs/design/login-v2/` (ver `LEEME.md`), con los tokens de `DESIGN.
 - "Mantener la sesión iniciada": hacelo solo si es simple y seguro con Supabase Auth; si no, sacalo y avisame.
 - Primer ingreso: saludo con el nombre real del negocio, email fijo, contraseña nueva con requisitos que se tildan mientras se escribe y "Repetila".
 - Verificación con Playwright en 390 px y 1280 px, claro y oscuro, sin cuentas reales.
+
+### [ ] I52 🔴 Importador universal de verdad: la extensión no se parchea más por proveedor — **Riva, 09/11 13:25**
+
+**Problema:** cada proveedor nuevo (Braja, ElectroBH…) terminó en un parche de la extensión con reglas de ese sitio (`brajamayorista.com`, `.ui.pagination.menu`, `#productos_page-N`, `href` exigido). Eso no escala: mañana otros clientes van a importar sus propias listas y no podemos sacar una versión de la extensión por cada tienda. Además, en MV3 la extensión no puede bajar código nuevo; por eso **la inteligencia tiene que vivir en la app** (que se actualiza sola con cada deploy) y **la extensión tiene que ser chica, genérica y casi nunca cambiar**.
+
+**Regla de oro de I52:** en `extensions/` no puede quedar ningún dominio, clase CSS ni patrón de un proveedor puntual. Si un sitio nuevo no funciona, se arregla en la app o en su "receta" guardada, nunca en la extensión.
+
+#### 1. Extensión = agente del navegador, fijo y seguro (se versiona una vez)
+Solo hace cuatro cosas, con un vocabulario cerrado de mensajes:
+- **Foto de la página (snapshot):** árbol simplificado y saneado del DOM visible: etiqueta, clases, atributos útiles (`data-*`, `rel`, `aria-*`, `href` del mismo sitio, `src`/`srcset`/`currentSrc`), texto visible, posición y un id estable por nodo. Sin cookies, sin inputs de formularios, sin scripts. Además, las respuestas JSON de la página (mismo sitio **y sus subdominios**, ej. `api.` de la tienda) que hoy solo se leen si son del mismo origen.
+- **Acciones genéricas pedidas por la app:** `click(nodeId)`, `scroll(bottom)`, `selectOption(nodeId, value)`, `waitForChange(timeout)`. Antes de ejecutar, la extensión **revalida** que el nodo no sea de compra: nada dentro de un formulario, input, ni con texto o atributos tipo agregar, comprar, carrito, pagar, checkout, cart, buy, add; y que no esté dentro de una tarjeta de producto salvo que sea paginación. Si no pasa, lo rechaza.
+- **Lectura de fotos desde el navegador** (IP y sesión del usuario), para cualquier imagen que esté en la página o en las respuestas capturadas. Sin pasar por el servidor.
+- **Permiso único:** pedir una sola vez el permiso opcional amplio ("Permitir que RivaStock lea las tiendas que abrás para importar"), en vez de un permiso por sitio y otro por subdominio de fotos. Se puede revocar desde el popup.
+
+#### 2. App = cerebro del importador (se actualiza con cada deploy)
+Con el snapshot, la app decide todo:
+- **Extracción por capas:** (a) JSON capturado de la API de la tienda; (b) datos estructurados (JSON-LD, microdata, Open Graph); (c) **detección de patrón repetido** en el DOM: el grupo más grande de hermanos con la misma estructura que tienen foto + texto con precio + nombre, y el mapeo de campos por heurística (precio por formato de moneda, nombre por texto más destacado, código por "SKU / Cód / Código" o etiqueta corta junto a un ícono, categoría, marca). Sin selectores de sitios puntuales.
+- **Paginación universal**, probando en orden, siempre con acciones seguras: `rel=next` o link con parámetro de página; **grupo de números consecutivos** clickeables (con o sin `href`), con la actual marcada (active/current/aria-current/deshabilitada/estilo distinto) → clic en actual + 1; flecha "siguiente / › / » / →" dentro de ese grupo; botón "Cargar más / Ver más"; scroll infinito; y si hay selector "Mostrar N productos", elegir el máximo. Corta cuando una página no trae productos nuevos dos veces seguidas o se repite.
+- **Modo manual de respaldo:** "Seguir leyendo mientras navego". El usuario pasa las páginas a mano y cada página visitada se suma a la captura. Así funciona en cualquier tienda aunque la paginación automática falle.
+- **IA solo cuando hace falta:** si la confianza de la extracción es baja (pocos productos, campos dudosos), mandar al AI Bridge 2 o 3 tarjetas de ejemplo ya saneadas para que proponga el mapeo de campos y de paginación. Riva (o el cliente) confirma en una vista previa: "Así leímos tu lista: nombre, precio, código, foto. ¿Está bien?".
+- **Recetas por proveedor:** el mapeo confirmado y el método de paginación se guardan por dominio (tabla nueva, migración aditiva) y se reusan la próxima vez y para otros clientes que usen la misma tienda o la misma plataforma. Se pueden borrar o rehacer desde la app.
+
+#### 3. Fotos
+Para capturas por extensión, la miniatura de la revisión y la copia al agregar usan la lectura del navegador (punto 1). Todas las fotos se **copian a nuestro Storage** al importar; nunca quedan enlazadas al proveedor. `fetch-url` queda solo para el modo enlace sin extensión. El texto "Con foto / Sin foto" tiene que coincidir con lo que se ve.
+
+#### 4. Distribución y actualizaciones para clientes
+- La extensión ya no cambia por proveedor, así que las actualizaciones van a ser raras.
+- Para Riva: el actualizador automático de Windows que ya existe.
+- Para clientes: dejar en `OWNER_ACTIONS.md` los pasos para publicarla en la **Chrome Web Store como "no listada"** (pago único de USD 5 de Google; se instala con un clic y se actualiza sola). Riva decide.
+- La app avisa si la extensión instalada es más vieja que la mínima que necesita.
+
+#### 5. Pruebas (corpus de regresión)
+- Guardar en `tests/fixtures/proveedores/` el HTML real **saneado** (sin cookies ni datos de sesión) de todos los proveedores conocidos: Mr Tecno, Inova, Braja, Omega, Babaji, Oestech y ElectroBH. Las páginas originales siguen sin subirse; el saneado sí.
+- Cada cambio del importador tiene que pasar **todos**: productos leídos, campos correctos ≥ 95 %, paginación completa, cero clics de compra.
+- Más 3 tiendas "desconocidas" armadas con estructuras distintas (tarjetas, filas, tabla; paginación con números sin `href`, "cargar más" y scroll infinito) que pasen **sin tocar la extensión**.
+- Prueba explícita: `grep` en `extensions/` no encuentra ningún dominio ni clase de proveedor.
+
+**Criterio de cierre:** ElectroBH completo (~650, todas las páginas), Braja con fotos visibles en la revisión, los 7 proveedores del corpus sin regresiones y las 3 tiendas desconocidas, todo con **la misma versión de la extensión**. Después de I52, agregar un proveedor nuevo no requiere tocar la extensión.
