@@ -11,7 +11,7 @@ export interface HookPayload {
   };
 }
 
-export function buildInviteConfirmationUrl(payload: Pick<HookPayload, 'email_data'>): string {
+export function buildAuthConfirmationUrl(payload: Pick<HookPayload, 'email_data'>): string {
   const { token_hash, email_action_type, redirect_to, site_url } = payload.email_data;
   const destination = new URL(redirect_to || site_url);
   if (!['https:', 'http:'].includes(destination.protocol)) {

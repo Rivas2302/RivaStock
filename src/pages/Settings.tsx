@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { normalizeCatalogSlug } from '../lib/catalogSlug';
+import { saveAccountProfile, validateDisplayName } from '../lib/accountProfile';
 import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound } from 'lucide-react';
 import Modal from '../components/Modal';
 const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
@@ -38,6 +39,7 @@ function isTab(value: string): value is Tab {
 function mobileSettingsScreenTitle(screen: MobileSettingsScreen): string {
   const titles: Record<MobileSettingsScreen, string> = {
     business: 'Datos del negocio',
+    profile: 'Mi perfil',
     categories: 'Categorías',
     prices: 'Rangos de precio',
     catalog: 'Catálogo público',
@@ -51,11 +53,11 @@ function mobileSettingsScreenTitle(screen: MobileSettingsScreen): string {
 }
 
 function isMobileSettingsScreen(value: unknown): value is MobileSettingsScreen {
-  return ['business', 'categories', 'prices', 'catalog', 'owners', 'team', 'maintenance', 'appearance', 'danger'].includes(String(value));
+  return ['business', 'profile', 'categories', 'prices', 'catalog', 'owners', 'team', 'maintenance', 'appearance', 'danger'].includes(String(value));
 }
 
 export default function Settings() {
-  const { user, updateUser, refetchToken, isOwner } = useAuth();
+  const { user, authUser, updateUser, refetchToken, isOwner, refreshAuthProfile } = useAuth();
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const canWriteBusiness = !businessPlanLoading && !businessPlanError && businessPlan !== null && businessPlan.status !== 'suspended';
   const { theme, toggleTheme } = useTheme();
@@ -99,6 +101,10 @@ export default function Settings() {
   const [businessName, setBusinessName] = useState(user?.businessName || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [emailContact, setEmailContact] = useState(user?.email_contact || '');
+  const [profileName, setProfileName] = useState(authUser?.displayName ?? '');
+  const [newAccountPassword, setNewAccountPassword] = useState('');
+  const [confirmAccountPassword, setConfirmAccountPassword] = useState('');
+  const [savingAccountProfile, setSavingAccountProfile] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [newPriceRange, setNewPriceRange] = useState<Partial<PriceRange>>({
@@ -110,6 +116,10 @@ export default function Settings() {
   const [isDeleteDataModalOpen, setIsDeleteDataModalOpen] = useState(false);
   const [isDeletingData, setIsDeletingData] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+
+  useEffect(() => {
+    if (authUser?.displayName && !profileName) setProfileName(authUser.displayName);
+  }, [authUser?.displayName, profileName]);
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -222,6 +232,35 @@ export default function Settings() {
     }
     
     showMessage('Configuración general guardada');
+  };
+
+  const handleUpdateAccountProfile = async () => {
+    const nameError = validateDisplayName(profileName);
+    if (nameError) { showMessage(nameError, 'error'); return; }
+    if (newAccountPassword && newAccountPassword.length < 8) {
+      showMessage('La contraseña debe tener 8 caracteres o más.', 'error');
+      return;
+    }
+    if (newAccountPassword && !/\d/.test(newAccountPassword)) {
+      showMessage('La contraseña debe incluir al menos un número.', 'error');
+      return;
+    }
+    if (newAccountPassword !== confirmAccountPassword) {
+      showMessage('Las contraseñas no coinciden.', 'error');
+      return;
+    }
+    setSavingAccountProfile(true);
+    try {
+      await saveAccountProfile(profileName, newAccountPassword || undefined);
+      await refreshAuthProfile();
+      setNewAccountPassword('');
+      setConfirmAccountPassword('');
+      showMessage('Mi perfil quedó actualizado');
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'No se pudo guardar tu perfil.', 'error');
+    } finally {
+      setSavingAccountProfile(false);
+    }
   };
 
   const handleToggleDarkMode = () => {
@@ -457,6 +496,26 @@ export default function Settings() {
                   exit={{ opacity: 0, x: -10 }}
                   className="space-y-8"
                 >
+                  <section className={cn('max-w-xl', isMobile && mobileSubscreen !== 'profile' && 'hidden')}>
+                    <h3 className="mb-2 text-lg font-bold text-slate-900 dark:text-white">Mi perfil</h3>
+                    <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">Tu nombre se muestra en el saludo y en el equipo. Tu email se usa para iniciar sesión.</p>
+                    <div className="max-w-md space-y-4">
+                      <div>
+                        <label htmlFor="account-display-name" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">¿Cómo te llamás?</label>
+                        <input id="account-display-name" autoComplete="name" maxLength={80} value={profileName} onChange={event => setProfileName(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 font-medium outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                      </div>
+                      <div>
+                        <label htmlFor="account-new-password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Nueva contraseña (opcional)</label>
+                        <input id="account-new-password" type="password" autoComplete="new-password" value={newAccountPassword} onChange={event => setNewAccountPassword(event.target.value)} placeholder="8 caracteres y al menos un número" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                      </div>
+                      {newAccountPassword && <div>
+                        <label htmlFor="account-confirm-password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Repetí la contraseña</label>
+                        <input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmAccountPassword} onChange={event => setConfirmAccountPassword(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                      </div>}
+                      <button type="button" disabled={savingAccountProfile} onClick={() => void handleUpdateAccountProfile()} className="rounded-xl bg-indigo-600 px-6 py-2.5 font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-60">{savingAccountProfile ? 'Guardando…' : 'Guardar mi perfil'}</button>
+                    </div>
+                  </section>
+
                   <div className={cn(isMobile && mobileSubscreen !== 'business' && 'hidden')}>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Información del Negocio</h3>
                     <div className="max-w-md space-y-4">

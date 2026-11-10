@@ -11,6 +11,7 @@ import type { DashboardSummary } from '../../lib/dashboardSummary';
 import type { RestockRecommendation } from '../../lib/stockIntelligence';
 import { getMobileQuickActions } from '../../lib/mobileQuickActions';
 import { formatCurrency, formatDate } from '../../lib/utils';
+import { normalizeDisplayName } from '../../lib/accountProfile';
 import { useBusinessPlan } from '../../hooks/useBusinessPlan';
 import { useMobileAppChrome } from '../../hooks/useMobileAppChrome';
 import BottomSheet from './BottomSheet';
@@ -66,8 +67,7 @@ function greeting(now: Date): string {
 }
 
 function greetingName(user: UserProfile | null): string {
-  const displayName = user?.displayName.trim().split(/\s+/)[0];
-  return displayName || user?.businessName.trim() || 'tu negocio';
+  return normalizeDisplayName(user?.displayName).split(/\s+/)[0] ?? '';
 }
 
 function initials(value: string): string {
@@ -296,7 +296,7 @@ export default function MobileHome({
 
       <div>
         <p className="text-sm text-[var(--ink-subtle)]">{localDateLabel(now)}</p>
-        <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[var(--ink)]">{greeting(now)}, {greetingName(user)}</h1>
+        <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[var(--ink)]">{greeting(now)}{greetingName(user) ? `, ${greetingName(user)}` : ''}</h1>
       </div>
 
       {(showSales || showCash) && (

@@ -222,8 +222,14 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(
       normalizedEmail,
       {
-        data: { business_name: businessName, signup_kind: 'collaborator' },
-        redirectTo: `${APP_URL}/reset-password`,
+        data: {
+          business_name: businessName,
+          signup_kind: 'collaborator',
+          password_set: false,
+          must_change_password: true,
+          display_name: '',
+        },
+        redirectTo: `${APP_URL}/auth/confirm?type=invite`,
       },
     );
     if (inviteErr) {

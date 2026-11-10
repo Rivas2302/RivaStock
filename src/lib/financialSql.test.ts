@@ -20,7 +20,7 @@ beforeAll(async () => {
     CREATE EXTENSION unaccent WITH SCHEMA extensions;
     CREATE FUNCTION extensions.digest(text, text) RETURNS bytea LANGUAGE sql IMMUTABLE
       AS $$ SELECT public.digest($1, $2) $$;
-    CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb);
+    CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz, raw_user_meta_data jsonb);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$

@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Download, Eye, FileSpreadsheet, History, Search, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { normalizeDisplayName } from '../lib/accountProfile';
 import Modal from '../components/Modal';
 import { db } from '../lib/db';
 import type { AuditEvent } from '../types';
@@ -84,10 +85,10 @@ function getActorLabel(
   currentUser: { uid: string; displayName?: string; email?: string } | null,
 ): string {
   const metadata = asAuditRecord(event.metadata);
-  const storedName = firstText(metadata ?? {}, ['actorDisplayName', 'actor_display_name', 'actorName', 'actor_name']);
+  const storedName = normalizeDisplayName(firstText(metadata ?? {}, ['actorDisplayName', 'actor_display_name', 'actorName', 'actor_name']));
   if (storedName) return storedName;
   if (currentUser && event.actorUid === currentUser.uid) {
-    return currentUser.displayName?.trim() || currentUser.email?.trim() || 'Usuario actual';
+    return currentUser.displayName?.trim() || 'Usuario actual';
   }
   return event.actorUid ?? event.ownerUid ?? '—';
 }

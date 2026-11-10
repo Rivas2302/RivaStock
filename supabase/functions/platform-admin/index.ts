@@ -124,8 +124,14 @@ function createBackend(req: Request): PlatformAdminBackend {
 
     async inviteBusinessOwner({ email, businessName }) {
       const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        data: { business_name: businessName, signup_kind: 'business_owner' },
-        redirectTo: `${APP_URL}/bienvenida`,
+        data: {
+          business_name: businessName,
+          signup_kind: 'business_owner',
+          password_set: false,
+          must_change_password: true,
+          display_name: '',
+        },
+        redirectTo: `${APP_URL}/auth/confirm?type=invite`,
       });
       if (error) {
         if (/already|registered|exists/i.test(error.message)) throw new Error('platform-business-email-exists');
@@ -213,8 +219,14 @@ function createBackend(req: Request): PlatformAdminBackend {
       if (data.user.email_confirmed_at || data.user.last_sign_in_at) throw new Error('platform-invite-already-accepted');
       const metadata = data.user.user_metadata ?? {};
       const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(data.user.email, {
-        data: { ...metadata, signup_kind: 'business_owner' },
-        redirectTo: `${APP_URL}/bienvenida`,
+        data: {
+          ...metadata,
+          signup_kind: 'business_owner',
+          password_set: false,
+          must_change_password: true,
+          display_name: '',
+        },
+        redirectTo: `${APP_URL}/auth/confirm?type=invite`,
       });
       if (inviteError) throw inviteError;
     },
@@ -223,7 +235,7 @@ function createBackend(req: Request): PlatformAdminBackend {
       const account = await getManageableBusiness(ownerUid);
       if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
       const { error } = await userClient.auth.resetPasswordForEmail(account.email, {
-        redirectTo: `${APP_URL}/reset-password`,
+        redirectTo: `${APP_URL}/auth/confirm?type=recovery`,
       });
       if (error) throw new Error('platform-recovery-email-failed');
     },

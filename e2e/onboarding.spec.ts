@@ -8,7 +8,7 @@ const ownerUser = {
   email_confirmed_at: '2026-01-01T00:00:00Z',
   aud: 'authenticated',
   app_metadata: {},
-  user_metadata: {},
+  user_metadata: { display_name: 'Fixture Owner', full_name: 'Fixture Owner', password_set: true },
   created_at: '2026-01-01T00:00:00Z',
 };
 const catalogConfig = {
@@ -29,7 +29,7 @@ const catalogConfig = {
   font_style: 'Modern',
 };
 
-function session() {
+function session(user = ownerUser) {
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return {
@@ -38,7 +38,7 @@ function session() {
     expires_at: expiresAt,
     expires_in: 3600,
     token_type: 'bearer',
-    user: ownerUser,
+    user,
   };
 }
 
@@ -64,12 +64,21 @@ interface FixtureOptions {
   businessName?: string;
   authenticated?: boolean;
   platformAdmin?: boolean;
+  userMetadata?: Record<string, unknown>;
+  initialPassword?: string;
   orders?: Record<string, unknown>[];
   intercept?: (route: Route, url: URL) => Promise<boolean>;
 }
 
 async function mountFixture(page: Page, options: FixtureOptions = {}) {
+  const fixtureUser = {
+    ...ownerUser,
+    user_metadata: { ...ownerUser.user_metadata, ...(options.userMetadata ?? {}) },
+  };
+  let fixturePassword = options.initialPassword ?? '';
   const currentProfile = profile(options.businessName ?? 'Fixture Store');
+  currentProfile.display_name = typeof fixtureUser.user_metadata.display_name === 'string'
+    ? fixtureUser.user_metadata.display_name : '';
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   const requests: { method: string; pathname: string; body: unknown }[] = [];
@@ -95,9 +104,25 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
 
     let data: unknown = [];
     if (path === '/auth/v1/verify' && method === 'POST') {
-      data = { ...session(), user: ownerUser };
+      data = session(fixtureUser);
     } else if (path === '/auth/v1/user') {
-      data = ownerUser;
+      if (method === 'PATCH' || method === 'PUT') {
+        const metadata = (requestBody as { data?: Record<string, unknown> } | null)?.data;
+        if (metadata) fixtureUser.user_metadata = { ...fixtureUser.user_metadata, ...metadata };
+        const password = (requestBody as { password?: string } | null)?.password;
+        if (password) fixturePassword = password;
+      }
+      data = fixtureUser;
+    } else if (path === '/auth/v1/token' && method === 'POST') {
+      const credentials = requestBody as { email?: string; password?: string } | null;
+      if (credentials?.email === fixtureUser.email && credentials.password === fixturePassword && fixturePassword) {
+        data = session(fixtureUser);
+      } else {
+        await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ message: 'Invalid login credentials' }) });
+        return;
+      }
+    } else if (path === '/auth/v1/logout') {
+      data = {};
     } else if (path.endsWith('/rpc/get_owner_profile')) {
       data = [currentProfile];
     } else if (path.endsWith('/rpc/is_platform_admin')) {
@@ -171,17 +196,24 @@ async function mountFixture(page: Page, options: FixtureOptions = {}) {
   });
 
   if (options.authenticated !== false) {
-    await page.addInitScript((value) => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
+    await page.addInitScript((value) => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session(fixtureUser));
   }
 
-  return { consoleErrors, pageErrors, requests, profile: currentProfile, orders: fixtureOrders };
+  return { consoleErrors, pageErrors, requests, profile: currentProfile, orders: fixtureOrders, user: fixtureUser };
 }
 
-test('invite link verifies through /auth/confirm and enters without signing out', async ({ page }) => {
+test('invitation requires a name and password, then supports logout and password login', async ({ page }) => {
   const verifyCalls: unknown[] = [];
   const fixture = await mountFixture(page, {
     authenticated: false,
-    businessName: '',
+    businessName: 'Electro Pasión Fixture',
+    userMetadata: {
+      business_name: 'Electro Pasión Fixture',
+      display_name: '',
+      password_set: false,
+      must_change_password: true,
+      signup_kind: 'business_owner',
+    },
     intercept: async (route, url) => {
       if (url.pathname === '/auth/v1/verify') {
         verifyCalls.push(route.request().postDataJSON());
@@ -194,24 +226,70 @@ test('invite link verifies through /auth/confirm and enters without signing out'
   await page.goto('/auth/confirm?token_hash=invite-token-hash&type=invite');
   await expect(page).toHaveURL(/\/reset-password\?type=invite$/);
   await expect(page.getByRole('heading', { name: 'Creá tu contraseña' })).toBeVisible();
+  await expect(page.getByLabel('¿Cómo te llamás?')).toBeVisible();
 
-  const password = page.getByLabel('Nueva Contraseña');
-  const confirmation = page.getByLabel('Confirmar Contraseña');
-  await expect(password).toHaveAttribute('minlength', '6');
-  await expect(password).toHaveAttribute('placeholder', 'Mínimo 6 caracteres');
-  await password.fill('correct horse battery');
-  await confirmation.fill('different password');
-  await page.getByRole('button', { name: 'Entrar a RivaStock', exact: true }).click();
+  const password = page.getByLabel('Contraseña nueva');
+  const confirmation = page.getByLabel('Repetila');
+  await page.getByLabel('¿Cómo te llamás?').fill('María López');
+  await password.fill('Correct-Horse-123');
+  await confirmation.fill('Different-Horse-456');
+  await page.getByRole('button', { name: 'Crear contraseña y entrar' }).click();
   await expect(page.getByRole('alert')).toContainText('Las contraseñas no coinciden');
 
-  await confirmation.fill('correct horse battery');
+  await confirmation.fill('Correct-Horse-123');
+  await page.getByRole('button', { name: 'Crear contraseña y entrar' }).click();
+  await expect(page.getByText('Tu nombre y contraseña quedaron guardados.')).toBeVisible();
+  expect(fixture.user.user_metadata).toMatchObject({ display_name: 'María López', password_set: true, must_change_password: false });
+
   await page.getByRole('button', { name: 'Entrar a RivaStock', exact: true }).click();
-  await expect(page.getByText('Tu contraseña quedó guardada.')).toBeVisible();
-  await page.getByRole('button', { name: 'Entrar a RivaStock', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Completá los datos de tu negocio' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Panel de Control', exact: true })).toBeVisible();
+  await expect(page.locator('body')).toContainText('María López');
+  await expect(page.locator('body')).not.toContainText('owner@example.test');
+
+  await page.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('Email').fill('owner@example.test');
+  await page.getByRole('textbox', { name: 'Contraseña' }).fill('Correct-Horse-123');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page.getByRole('heading', { name: 'Panel de Control', exact: true })).toBeVisible();
+  await expect(page.locator('body')).toContainText('María López');
   await expect(page).not.toHaveURL(/\/login$/);
   expect(verifyCalls[0]).toMatchObject({ token_hash: 'invite-token-hash', type: 'invite' });
   expect(fixture.pageErrors).toEqual([]);
+});
+
+test('recovery link opens the new-password form and requires login after saving', async ({ page }) => {
+  const fixture = await mountFixture(page, {
+    authenticated: false,
+    userMetadata: { display_name: 'Fixture Owner', password_set: true },
+    initialPassword: 'Old-password-123',
+  });
+
+  await page.goto('/auth/confirm?token_hash=recovery-token-hash&type=recovery');
+  await expect(page).toHaveURL(/\/reset-password\?type=recovery$/);
+  await expect(page.getByRole('heading', { name: 'Elegí tu contraseña nueva' })).toBeVisible();
+  await expect(page).toHaveURL(/\/reset-password/);
+  await page.getByRole('textbox', { name: 'Contraseña nueva' }).fill('Recovered-password-456');
+  await page.getByLabel('Repetila').fill('Recovered-password-456');
+  await page.getByRole('button', { name: 'Guardar contraseña' }).click();
+  await expect(page.getByText('Contraseña actualizada. Te vamos a llevar al ingreso.')).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('Email').fill('owner@example.test');
+  await page.getByRole('textbox', { name: 'Contraseña' }).fill('Recovered-password-456');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page.getByRole('heading', { name: 'Panel de Control', exact: true })).toBeVisible();
+  expect(fixture.user.user_metadata.password_set).toBe(true);
+  expect(fixture.pageErrors).toEqual([]);
+});
+
+test('an authenticated account without password_set cannot open the application', async ({ page }) => {
+  await mountFixture(page, {
+    userMetadata: { display_name: '', password_set: false, signup_kind: null },
+  });
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/reset-password\?type=first-login$/);
+  await expect(page.getByRole('heading', { name: 'Creá tu contraseña' })).toBeVisible();
+  await expect(page.getByLabel('¿Cómo te llamás?')).toBeVisible();
 });
 
 test('first-owner setup blocks dismissal, validates a unique name, and saves business details and catalog link', async ({ page }) => {

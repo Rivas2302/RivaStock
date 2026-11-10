@@ -80,7 +80,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}${location.hash}` }} replace />;
-  if (authUser?.forcePass) return <Navigate to="/reset-password?type=temporary" replace />;
+  if (authUser?.forcePass) {
+    const type = authUser.signupKind === 'business_owner' || authUser.signupKind === 'collaborator'
+      ? 'invite'
+      : authUser.needsProfileSetup ? 'first-login' : 'temporary';
+    return <Navigate to={`/reset-password?type=${type}`} replace />;
+  }
   return <>{children}</>;
 }
 

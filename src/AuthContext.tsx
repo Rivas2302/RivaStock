@@ -6,6 +6,17 @@ import { retryRead, withDeadline } from './lib/readRecovery';
 import type { Session } from '@supabase/supabase-js';
 import { resolveInventoryAccessState } from './lib/inventoryAccess';
 import { resolveAccountActor } from './lib/accountActor';
+import { normalizeDisplayName } from './lib/accountProfile';
+
+export interface AuthenticatedActor {
+  uid: string;
+  email: string;
+  displayName: string;
+  passwordSet: boolean;
+  forcePass: boolean;
+  needsProfileSetup: boolean;
+  signupKind: string | null;
+}
 
 interface LoadedAuth {
   profile: UserProfile;
@@ -22,7 +33,7 @@ interface LoadedAuth {
 
 interface AuthContextType {
   user: UserProfile | null;
-  authUser: { uid: string; email: string; forcePass: boolean } | null;
+  authUser: AuthenticatedActor | null;
   ownerUid: string | null;
   isOwner: boolean;
   isPlatformAdmin: boolean;
@@ -42,6 +53,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (user: UserProfile) => void;
   sendResetEmail: (email: string) => Promise<void>;
+  refreshAuthProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,10 +61,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 async function loadProfile(session: Session, signal: AbortSignal): Promise<LoadedAuth> {
   try {
     // Both endpoints authorize from the session; neither depends on the other's result.
-    const [collaboratorResult, profileResult] = await Promise.all([
+    const [collaboratorResult, profileResult, actorProfileResult] = await Promise.all([
       supabase.from('collaborators').select('id, owner_uid, permissions')
         .eq('user_uid', session.user.id).is('revoked_at', null).abortSignal(signal).maybeSingle(),
       supabase.rpc('get_owner_profile').abortSignal(signal),
+      supabase.from('profiles').select('display_name')
+        .eq('id', session.user.id).abortSignal(signal).maybeSingle(),
     ]);
     if (collaboratorResult.error) throw collaboratorResult.error;
     const accountActor = resolveAccountActor({
@@ -71,6 +85,13 @@ async function loadProfile(session: Session, signal: AbortSignal): Promise<Loade
     if (!profileResult.data?.length) throw new Error('No se pudo verificar el perfil de la cuenta.');
     const profile = fromDb<UserProfile>(profileResult.data[0], true);
     profile.uid = ownerUid;
+    const metadata = session.user.user_metadata ?? {};
+    const actorDisplayName = normalizeDisplayName(metadata.display_name)
+      || normalizeDisplayName(metadata.full_name)
+      || normalizeDisplayName(actorProfileResult.data?.display_name);
+    // The profile presented in the app belongs to the signed-in person, while
+    // business fields and ownership continue to come from the owner profile.
+    profile.displayName = actorDisplayName;
 
     // A genuinely missing rollout schema may use the legacy model. Network,
     // lock and permission errors must never silently broaden inventory scope.
@@ -141,7 +162,7 @@ async function loadProfile(session: Session, signal: AbortSignal): Promise<Loade
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth]                 = useState<LoadedAuth | null>(null);
-  const [authUser, setAuthUser]         = useState<{ uid: string; email: string; forcePass: boolean } | null>(null);
+  const [authUser, setAuthUser]         = useState<AuthenticatedActor | null>(null);
   const [platformAdmin, setPlatformAdmin] = useState<{ uid: string; isAdmin: boolean } | null>(null);
   const [loading, setLoading]           = useState(true);
   const [authError, setAuthError]       = useState<string | null>(null);
@@ -192,10 +213,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuth(null);
       setLoading(true);
     }
+    const metadata = session.user.user_metadata ?? {};
+    const displayName = normalizeDisplayName(metadata.display_name) || normalizeDisplayName(metadata.full_name);
+    const passwordSet = metadata.password_set === true;
+    const needsProfileSetup = !passwordSet || !displayName;
     setAuthUser({
       uid: session.user.id,
       email: session.user.email ?? '',
-      forcePass: session.user.user_metadata?.must_change_password === true,
+      displayName,
+      passwordSet,
+      forcePass: metadata.must_change_password === true || needsProfileSetup,
+      needsProfileSetup,
+      signupKind: typeof metadata.signup_kind === 'string' ? metadata.signup_kind : null,
     });
   }, []);
 
@@ -256,6 +285,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (!isCurrent()) return false;
         authRef.current = loaded;
+        const metadata = session.user.user_metadata ?? {};
+        const displayName = loaded.profile.displayName;
+        const passwordSet = metadata.password_set === true;
+        const needsProfileSetup = !passwordSet || !displayName;
+        setAuthUser({
+          uid: session.user.id,
+          email: session.user.email ?? '',
+          displayName,
+          passwordSet,
+          forcePass: metadata.must_change_password === true || needsProfileSetup,
+          needsProfileSetup,
+          signupKind: typeof metadata.signup_kind === 'string' ? metadata.signup_kind : null,
+        });
         setDatabaseActor(session.user.id);
         void syncOfflineMutations();
         setAuth(loaded);
@@ -365,9 +407,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          if (currentUserIdRef.current === session.user.id && authRef.current) return;
-        }
+        if (event === 'TOKEN_REFRESHED'
+          && currentUserIdRef.current === session.user.id && authRef.current) return;
         if (event === 'INITIAL_SESSION' && currentUserIdRef.current === session.user.id
           && (authRef.current || profileJobRef.current)) return;
         activateSession(session);
@@ -416,9 +457,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const sendResetEmail = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/auth/confirm?type=recovery`,
     });
     if (error) throw new Error('Error al enviar el email de recuperación.');
+  };
+
+  const refreshAuthProfile = async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) throw new Error('No se pudo actualizar tu perfil. Volvé a iniciar sesión.');
+    await requestProfile(session, true);
   };
 
   const updateUser = (updatedUser: UserProfile) => {
@@ -454,6 +501,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         updateUser,
         sendResetEmail,
+        refreshAuthProfile,
       }}
     >
       {children}

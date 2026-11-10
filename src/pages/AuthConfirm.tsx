@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -13,36 +13,78 @@ export default function AuthConfirm() {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const started = useRef(false);
 
   useEffect(() => {
-    const token_hash = searchParams.get('token_hash');
-    const typeParam  = searchParams.get('type');
+    if (started.current) return;
+    started.current = true;
 
-    if (!token_hash || !typeParam || !VALID_TYPES.includes(typeParam as OtpType)) {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const tokenHash = searchParams.get('token_hash');
+    const typeParam = searchParams.get('type') ?? hashParams.get('type');
+    const code = searchParams.get('code');
+    const errorCode = searchParams.get('error_code') ?? hashParams.get('error_code');
+    const errorDescription = searchParams.get('error_description') ?? hashParams.get('error_description');
+
+    if (errorCode) {
+      setError(errorCode === 'otp_expired' || errorCode === 'access_denied'
+        ? 'El link expiró o ya fue usado. Solicitá uno nuevo desde la app.'
+        : errorDescription?.replace(/\+/g, ' ') || 'No se pudo validar el link.');
+      return;
+    }
+    if (typeParam && !VALID_TYPES.includes(typeParam as OtpType)) {
       setError('Link inválido o incompleto.');
       return;
     }
 
-    // verifyOtp is a POST request, so email-client prefetchers (Gmail's link
-    // scanner, corporate firewalls, etc.) do not consume the token by simply
-    // GETting the URL. The token is only consumed when this page runs.
-    supabase.auth.verifyOtp({
-      token_hash,
-      type: typeParam as OtpType,
-    }).then(({ error: verifyErr }) => {
-      if (verifyErr) {
-        const msg = verifyErr.message || '';
-        if (msg.toLowerCase().includes('expired')) {
-          setError('El link expiró. Solicitá uno nuevo desde la app.');
+    void (async () => {
+      try {
+        if (code) {
+          // PKCE callback; the app currently uses implicit links, but accepting
+          // the authorization code keeps invitation/recovery links compatible.
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw exchangeError;
+        } else if (tokenHash && typeParam) {
+          // POST prevents email scanners from consuming the one-time token.
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: typeParam as OtpType,
+          });
+          if (verifyError) throw verifyError;
         } else {
-          setError(msg || 'No se pudo validar el link.');
+          // Implicit-flow links are consumed by supabase-js from the URL hash.
+          const { data, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError) throw sessionError;
+          if (!data.session) throw new Error('Link inválido o incompleto.');
         }
-        return;
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!session) throw new Error('El link expiró o ya fue usado. Solicitá uno nuevo.');
+
+        if (typeParam === 'invite') {
+          navigate('/reset-password?type=invite', { replace: true });
+          return;
+        }
+        if (typeParam === 'recovery') {
+          navigate('/reset-password?type=recovery', { replace: true });
+          return;
+        }
+        const metadata = session.user.user_metadata ?? {};
+        if (metadata.must_change_password === true) {
+          navigate('/reset-password?type=temporary', { replace: true });
+        } else if (metadata.password_set !== true || !(metadata.display_name || metadata.full_name)) {
+          navigate('/reset-password?type=first-login', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : '';
+        setError(message.toLowerCase().includes('expired') || message.toLowerCase().includes('otp')
+          ? 'El link expiró o ya fue usado. Solicitá uno nuevo desde la app.'
+          : 'No se pudo validar el link. Solicitá uno nuevo desde la app.');
       }
-      // Session established. Both invite and recovery flows continue at
-      // /reset-password to set/update the password.
-      navigate(typeParam === 'invite' ? '/reset-password?type=invite' : '/reset-password', { replace: true });
-    });
+    })();
   }, [searchParams, navigate]);
 
   return <AuthPageShell><motion.section initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} className="text-center" aria-live="polite">

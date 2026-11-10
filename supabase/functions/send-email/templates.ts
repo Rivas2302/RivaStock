@@ -1,4 +1,4 @@
-import { buildInviteConfirmationUrl, type HookPayload } from './handler.ts';
+import { buildAuthConfirmationUrl, type HookPayload } from './handler.ts';
 
 export interface EmailTemplate {
   subject: string;
@@ -14,7 +14,9 @@ function escapeHtml(value: string): string {
 
 function getConfirmationUrl(payload: HookPayload, supabaseUrl: string): string {
   const { token_hash, email_action_type, redirect_to } = payload.email_data;
-  if (email_action_type === 'invite') return buildInviteConfirmationUrl(payload);
+  if (email_action_type === 'invite' || email_action_type === 'recovery') {
+    return buildAuthConfirmationUrl(payload);
+  }
   const url = new URL('/auth/v1/verify', supabaseUrl);
   url.search = new URLSearchParams({ token: token_hash, type: email_action_type, redirect_to }).toString();
   return url.toString();

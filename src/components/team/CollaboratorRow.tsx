@@ -4,6 +4,7 @@ import { ROLE_PRESET_LABELS } from '../../lib/rolePresets';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../lib/toast';
 import { cn } from '../../lib/utils';
+import { normalizeDisplayName } from '../../lib/accountProfile';
 import { Pencil, Trash2, Mail } from 'lucide-react';
 
 interface Props {
@@ -35,6 +36,7 @@ export default function CollaboratorRow({ collaborator, onEdit, onRevoke, onRese
 
   const status = getStatus(collaborator);
   const roleLabel = ROLE_PRESET_LABELS[collaborator.rolePreset ?? 'custom'];
+  const collaboratorName = !isInvitation(collaborator) ? normalizeDisplayName(collaborator.displayName) : '';
 
   const handleRevoke = async () => {
     if (!confirm('¿Eliminar este colaborador?')) return;
@@ -92,7 +94,8 @@ export default function CollaboratorRow({ collaborator, onEdit, onRevoke, onRese
           <Mail size={18} className="text-indigo-600 dark:text-indigo-400" />
         </div>
         <div className="min-w-0">
-          <p className="font-bold text-slate-900 dark:text-white truncate">{collaborator.email}</p>
+          <p className="font-bold text-slate-900 dark:text-white truncate">{collaboratorName || collaborator.email}</p>
+          {collaboratorName && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{collaborator.email}</p>}
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{roleLabel}</span>
             <span className={cn("text-[10px] font-black uppercase px-2 py-0.5 rounded-full", STATUS_STYLES[status])}>

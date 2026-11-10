@@ -12,6 +12,7 @@ import { getRivaTechWhatsAppUrl } from '../lib/platformSupport';
 import { useUnreadCatalogOrders } from '../hooks/useUnreadCatalogOrders';
 import { Link } from 'react-router-dom';
 import { DISABLED_BUSINESS_MODULES } from '../lib/businessModules';
+import { normalizeDisplayName } from '../lib/accountProfile';
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -27,9 +28,9 @@ export default function Layout() {
   const includedModules = !planLoading && !planError && plan
     ? plan.limits.modules
     : DISABLED_BUSINESS_MODULES;
-  const displayName = isOwner
-    ? (user?.displayName || authUser?.email || '')
-    : (authUser?.email || '');
+  const displayName = normalizeDisplayName(authUser?.displayName)
+    || normalizeDisplayName(user?.displayName)
+    || 'Mi perfil';
   const displayInitial = displayName.charAt(0).toUpperCase() || '?';
 
   useEffect(() => {

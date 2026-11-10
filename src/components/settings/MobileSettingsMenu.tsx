@@ -1,7 +1,7 @@
-import { ChevronRight, ContactRound, Globe, Moon, Palette, Tags, Users, Wrench, DollarSign, AlertTriangle } from 'lucide-react';
+import { ChevronRight, ContactRound, Globe, Moon, Palette, Tags, Users, Wrench, DollarSign, AlertTriangle, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export type MobileSettingsScreen = 'business' | 'categories' | 'prices' | 'catalog' | 'owners' | 'team' | 'maintenance' | 'appearance' | 'danger';
+export type MobileSettingsScreen = 'business' | 'profile' | 'categories' | 'prices' | 'catalog' | 'owners' | 'team' | 'maintenance' | 'appearance' | 'danger';
 type SettingsTab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo';
 
 interface MobileSettingsMenuProps {
@@ -29,6 +29,7 @@ export default function MobileSettingsMenu({ businessName, planName, darkMode, o
     </MenuSection>
 
     <MenuSection title="Equipo y datos">
+      <MenuRow label="Mi perfil" icon={<UserRound size={18} />} onClick={() => onOpen('general', 'profile')} />
       <MenuRow label="Titulares del inventario" icon={<ContactRound size={18} />} onClick={() => onOpen('owners', 'owners')} />
       {isOwner && <MenuRow label="Equipo" icon={<Users size={18} />} onClick={() => onOpen('equipo', 'team')} />}
       <MenuRow label="Mantenimiento" icon={<Wrench size={18} />} onClick={() => onOpen('maintenance', 'maintenance')} />

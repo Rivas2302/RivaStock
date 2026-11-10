@@ -27,6 +27,15 @@
 
 No hay acciones pendientes de sesión de Codex, extensión 0.5.25, Bridge ni Claude.
 
+## I51 — URL de Auth y prueba con usuario real
+
+1. En Supabase → Authentication → URL Configuration, verificá que **Redirect URLs** incluya `https://rivastock.vercel.app/auth/confirm`; si falta, agregala y guardá. Conservá las rutas existentes. No pude leer esta configuración por Management API desde esta sesión.
+2. La prueba completa de invitación y recuperación pasó con Playwright usando un usuario fixture autenticado y llamadas a Auth interceptadas. Para certificar el recorrido contra Supabase Auth real sin tocar Electro Pasión, hace falta una cuenta descartable y un email de prueba al que se pueda enviar la invitación y la recuperación. No usar la cuenta de la clienta ni cambiar su contraseña.
+
+## Verificación de producción — Vercel
+
+Durante el smoke, `vercel curl` creó un bypass automático y una salida técnica mostró su identificador. El bypass quedó revocado por API; la consulta posterior confirmó que no quedan bypass activos y la protección de Vercel Auth sigue habilitada. No hace falta ninguna acción del dueño; el valor no se conserva aquí.
+
 ## Incidente temporal de seguridad — 09/11/2026
 
 Durante una verificación de Vercel se creó un secreto de Protection Bypass para automatización. Una salida técnica mostró un identificador sensible; no se copió a archivos ni se reutilizó para acceder al sitio. El secreto se revocó y la comprobación posterior confirmó que no quedan bypass activos. No requiere acción del dueño.

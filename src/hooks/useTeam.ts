@@ -12,7 +12,7 @@ export function useTeam() {
     setLoading(true);
     try {
       const [{ data: collabs, error: e1 }, { data: invs, error: e2 }] = await Promise.all([
-        supabase.rpc('list_collaborators'),
+        supabase.rpc('list_collaborators_with_names'),
         supabase.rpc('list_invitations'),
       ]);
       if (e1) throw e1;

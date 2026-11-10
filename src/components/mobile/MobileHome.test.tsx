@@ -141,6 +141,13 @@ describe('mobile home', () => {
     expect(actionNav && attentionSection && Boolean(actionNav.compareDocumentPosition(attentionSection) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
+  it('shows only the greeting when no safe display name is available', async () => {
+    await render({ ...baseProps, user: { ...baseProps.user!, displayName: 'maria@example.test' } });
+    expect(host.querySelector('h1')?.textContent).toBe('Buenas tardes');
+    expect(host.textContent).not.toContain('maria@example.test');
+    expect(host.querySelector('h1')?.textContent).not.toContain('Negocio de Riva');
+  });
+
   it('shows an independent retry when a data source fails', async () => {
     const onRetrySource = vi.fn();
     await render({

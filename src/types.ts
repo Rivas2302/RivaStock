@@ -521,6 +521,7 @@ export interface Collaborator {
   ownerUid: string;
   userUid: string;
   email: string;
+  displayName?: string;
   permissions: PermissionMatrix;
   rolePreset: StaffRole | null;
   invitationId: string | null;
