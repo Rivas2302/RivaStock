@@ -2092,4 +2092,10 @@ Sin toque en src/, supabase/ ni extensions/.
 - Al abrir se bloquea el scroll de fondo guardando la posición; al cerrar se restaura para Tienda y Revendedores. Escape, atrás, X, fondo y gesto descendente desde el tirador cierran la hoja.
 - Pruebas con fixtures, sin escribir en datos reales: Chromium escritorio/móvil 2/2; Android Pixel 7 emulado a 375 px 2/2; WebKit iPhone 11/13/15, Tienda y Revendedores 6/6. Incluye navegación atrás, enlace directo, producto relacionado, fondo oscuro, acciones inferiores y gesto de cierre.
 - `npm run lint`, `npm test` (238 archivos / 1.368 pruebas) y `npm run build` aprobados. No hubo migración.
-- Commit/deploy de este punto pendientes.
+- Commit `b23c2fd` enviado a `main`; deployment `dpl_FrRtcko1ZE3cq393BfYy3y1bKEVg` quedó Ready y mantiene el alias Current `rivastock.vercel.app`.
+
+## 2026-11-10 — Assets inexistentes deben responder 404
+
+- El rewrite de la SPA ahora excluye `/assets/`; las rutas de app siguen usando `index.html`, mientras los objetos no encontrados en `/assets/*` pueden resolver al 404 nativo de Vercel. Los archivos estáticos existentes conservan prioridad de filesystem y el caché actual.
+- Test de configuración confirma la exclusión de `/assets/*` y que las rutas de catálogo siguen entrando al fallback SPA: `deployment.security.test.ts`, 3/3.
+- Sin cambios a datos ni migraciones. Deploy Current pendiente.

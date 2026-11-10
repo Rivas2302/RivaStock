@@ -12,7 +12,7 @@
       "has": [{ "type": "header", "key": "user-agent", "value": { "re": "(?i)(whatsapp|facebookexternalhit|meta-externalagent|instagram|twitterbot|linkedinbot)" } }],
       "destination": "/api/catalog-preview?slug=:slug"
     },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],
   "routes": [
     {

@@ -21,4 +21,12 @@ describe('deployment security and cache configuration', () => {
     expect(csp).toContain("object-src 'none'");
     expect(csp.split(';').find((directive:string) => directive.trim().startsWith('frame-src'))).toBe(" frame-src 'self' blob: https://formularios.viacargo.com.ar https://nkfqhuqrgrpfufdymkcr.supabase.co");
   });
+  it('keeps missing asset requests out of the SPA HTML fallback', () => {
+    const fallback = config.rewrites.at(-1);
+    expect(fallback.destination).toBe('/index.html');
+    expect(fallback.source).toBe('/((?!assets/).*)');
+    const fallbackMatcher = new RegExp(`^${fallback.source}$`);
+    expect(fallbackMatcher.test('/assets/missing-file.js')).toBe(false);
+    expect(fallbackMatcher.test('/catalogo/qa-catalog')).toBe(true);
+  });
 });
