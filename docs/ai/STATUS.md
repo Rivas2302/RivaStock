@@ -2062,3 +2062,10 @@ Sin toque en src/, supabase/ ni extensions/.
 - Pruebas: `useBusinessPlan` confirma que blur/focus conserva plan y loading, una consulta se comparte entre consumidores, los errores de red conservan el plan y un módulo quitado se aplica al refrescar. E2E con fixture autenticado en Chrome escritorio y Android: formulario e input siguen conectados durante blur/focus y `visibilitychange`, se elige/sube foto y se guarda el producto; otro E2E confirma que Stock queda bloqueado cuando el nuevo plan desactiva el módulo al volver a la pestaña. No se usaron cuentas ni datos reales.
 - Verificación: lint aprobado; suite completa **238 archivos / 1.364 pruebas**, incluidos dos tests de sesión y primer ingreso durante el refresco; build aprobado; Playwright focal **8 pasadas** (escritorio y Android; cuatro casos se omiten por estar limitados a otra plataforma). Una primera ejecución unitaria encontró un bloqueo de Vite al resolver `pdf.worker.mjs` desde el `node_modules` compartido; la suite completa volvió a pasar con el directorio del worktree explícitamente autorizado.
 - Sin migración ni cambios de datos. Commit `707f098` desplegado por Vercel en Production/Current; el alias `rivastock.vercel.app` aparece en el deployment READY para ese SHA. Smoke de solo lectura: HTTP 200 y el bundle público contiene los marcadores del refresco de plan y perfil. La URL directa del deployment conserva la protección de Vercel.
+
+## 2026-11-10 — Catálogo Revendedores sin categorías
+
+- Confirmado antes del cambio: el catálogo de Revendedores mostraba la fila de categorías y el buscador ya estaba arriba del listado de productos.
+- En modo Revendedores se oculta únicamente la fila de categorías; el buscador queda disponible antes del listado y conserva el filtrado. El modo Tienda y el mapeo/categorización no se modifican.
+- Playwright con fixture de catálogo y acceso de revendedor: verifica fila oculta, buscador visible sobre productos, filtrado y detalle. `npm run lint` aprobado; E2E focal 1/1 aprobado.
+- Sin migración y sin cambios a datos reales. Deploy Current pendiente del push de esta tarea.

@@ -241,18 +241,23 @@ test('reseller direct product details require the reseller session and show only
   }
 });
 
-test('reseller catalog categories filter imported products and open their detail modal', async ({ page }) => {
+test('reseller catalog hides categories and keeps search above imported products', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockCatalogApi(page, 'normal', undefined, 'group', { categoryId: '', category: 'Electrónica y accesorios', stock: 0 }, false, false, false, '5491100000000', false, undefined, undefined, { all: 'https://assets.test/todos.webp' });
   await page.goto('/catalogo/qa-catalog');
   await page.getByRole('button', { name: 'Revendedores' }).click();
   await page.getByPlaceholder('Código de acceso').fill('CODIGO-GRUPO-QA');
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.locator('section[aria-label="Categorías"] [data-testid="catalog-category-avatar"]').first().locator('img')).toHaveAttribute('src', 'https://assets.test/todos.webp');
-  const category = page.getByRole('button', { name: /Electrónica y accesorios/ });
-  await expect(category).toContainText('1');
-  await category.click();
-  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' })).toBeVisible();
+  await expect(page.locator('section[aria-label="Categorías"]')).toHaveCount(0);
+  const search = page.getByPlaceholder('Busca en nuestra colección...');
+  await expect(search).toBeVisible();
+  await search.fill('Cable USB-C');
+  const addProduct = page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' });
+  await expect(addProduct).toBeVisible();
+  expect((await search.boundingBox())!.y).toBeLessThan((await addProduct.boundingBox())!.y);
+  await search.fill('no existe');
+  await expect(page.getByRole('heading', { name: 'Sin resultados' })).toBeVisible();
+  await search.fill('');
   await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
   const modal = page.getByTestId('catalog-product-detail-modal');
   await expect(modal).toBeVisible();

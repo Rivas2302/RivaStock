@@ -1274,7 +1274,7 @@ if (loading) {
           {featuredProducts.length > 0 && <a href="#catalog-section-all" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--brand-soft)] p-5 text-[var(--brand-strong)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Selección de temporada</span><span className="mt-1 text-lg font-black">Elegidos para vos</span><span className="mt-1 text-sm">Descubrí los productos destacados.</span></a>}
           {offerProducts.length > 0 && <a href="#catalog-section-offers" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--action-bg)] p-5 text-[var(--action-ink)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Por tiempo limitado</span><span className="mt-1 text-lg font-black">Ofertas relámpago</span><span className="mt-1 text-sm">Hasta {maxOfferDiscount}% de descuento.</span></a>}
         </section>}
-        {visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
+        {channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="relative">
             {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}
@@ -1292,7 +1292,6 @@ if (loading) {
                     {photos.length === 1 ? <img src={photos[0]} alt="" loading="lazy" className="absolute inset-0 size-full scale-[1.06] object-cover object-center"/> : photos.length > 1 ? <span className="absolute inset-0 z-10 grid grid-cols-2 grid-rows-2">{photos.map((url, photoIndex)=><img key={`${url}-${photoIndex}`} src={url} alt="" loading="lazy" className="size-full scale-[1.04] object-cover object-center"/>)}</span> : <span className="relative z-0 text-3xl font-black sm:text-4xl">{category.name.slice(0, 1).toLocaleUpperCase('es-AR')}</span>}
                   </span>
                   <span className="line-clamp-2 min-h-[2.25rem] max-w-[84px] whitespace-normal break-words text-[13px] leading-tight sm:max-w-[108px] sm:text-sm">{category.name}</span>
-                  {channel === 'reseller' && <span data-testid="reseller-category-count" className="-mt-1 text-[11px] font-medium text-[var(--ink-muted)]">{category.count}</span>}
                 </button>;
               })}
             </div>
