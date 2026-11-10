@@ -7,6 +7,7 @@ export default defineConfig({
   reporter: 'list',
   use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
   projects: [
+    { name: 'android-pixel-7-chromium', use: { ...devices['Pixel 7'], viewport: { width: 375, height: 812 } } },
     { name: 'iphone-11-webkit', use: { ...devices['iPhone 11'] } },
     { name: 'iphone-13-webkit', use: { ...devices['iPhone 13'] } },
     { name: 'iphone-15-webkit', use: { ...devices['iPhone 15'] } },

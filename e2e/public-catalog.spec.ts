@@ -176,12 +176,15 @@ test('old catalog and product links redirect to the current slug without losing 
   await expect(page.getByTestId('catalog-product-detail-modal').getByRole('heading', { name: 'Cable USB-C' })).toBeVisible();
 });
 
-test('product detail is a catalog modal with browser history, scroll, direct links, and related products', async ({ page }) => {
+test('product detail is a catalog modal with browser history, scroll, direct links, and related products', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => localStorage.setItem('catalog-dark-mode', 'false'));
   await mockCatalogApi(page, 'christmas', undefined, false, {}, false, true);
 
-  for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
+  const viewports = /android-pixel|iphone-\d+-webkit/.test(testInfo.project.name)
+    ? [{ width: 375, height: 812 }]
+    : [{ width: 375, height: 812 }, { width: 1440, height: 900 }];
+  for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.goto('/catalogo/qa-catalog');
     const cableCategory = page.getByRole('button', { name: 'Cables', exact: true });
@@ -197,6 +200,14 @@ test('product detail is a catalog modal with browser history, scroll, direct lin
     await expect(page.getByTestId('public-catalog-hero')).toBeAttached();
     const detailModal = page.getByTestId('catalog-product-detail-modal');
     await expect(detailModal).toHaveAttribute('data-catalog-theme', 'christmas');
+    if (viewport.width < 500) {
+      await page.waitForTimeout(260);
+      const modalBox = await detailModal.boundingBox();
+      expect(Math.abs((modalBox?.height ?? 0) - viewport.height * 0.9)).toBeLessThan(3);
+      await expect(page.getByTestId('product-sheet-handle')).toBeVisible();
+      const footerBox = await detailModal.locator('footer').boundingBox();
+      expect(Math.abs((modalBox?.y ?? 0) + (modalBox?.height ?? 0) - ((footerBox?.y ?? 0) + (footerBox?.height ?? 0)))).toBeLessThan(3);
+    }
     await expect(detailModal.locator('img[alt="Cable USB-C"]')).toBeVisible();
     await expect(detailModal.getByRole('button', { name: 'WhatsApp' }).first()).toBeVisible();
     expect(await detailModal.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(252, 250, 245)');
@@ -285,6 +296,32 @@ test('reseller catalog hides categories and keeps search above imported products
   await expect(modal).toBeVisible();
   await expect(modal).toContainText('6.800');
   await expect(modal).not.toContainText(/proveedor|costo|código/i);
+});
+
+test('reseller product detail is a themed 90 percent bottom sheet and closes with a downward swipe', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript(() => localStorage.setItem('catalog-dark-mode', 'true'));
+  await mockCatalogApi(page, 'normal', undefined, 'group', { stock: 0, availability: 'on_order' }, false, false, false, '5491100000000');
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Revendedores' }).click();
+  await page.getByPlaceholder('Código de acceso').fill('CODIGO-GRUPO-QA');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+
+  const modal = page.getByTestId('catalog-product-detail-modal');
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute('data-catalog-theme', 'normal');
+  expect(await modal.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(17, 17, 17)');
+  const modalBox = await modal.boundingBox();
+  expect(Math.abs((modalBox?.height ?? 0) - 812 * 0.9)).toBeLessThan(3);
+  await expect(modal.getByRole('button', { name: /Agregar al carrito/ }).last()).toBeVisible();
+  await expect(modal.getByRole('button', { name: 'WhatsApp' }).last()).toBeVisible();
+
+  const handle = page.getByTestId('product-sheet-handle');
+  await handle.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientY: 20, button: 0, isPrimary: true });
+  await handle.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientY: 140, button: 0, isPrimary: true });
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
 });
 
 test('retail checkout saves a fixture order code and prepares the exact WhatsApp message', async ({ page }) => {

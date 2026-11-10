@@ -2084,4 +2084,12 @@ Sin toque en src/, supabase/ ni extensions/.
 - La cinta salió del efecto de temporada y ahora ocupa su lugar en el flujo, debajo de un espacio que reserva el encabezado fijo. El encabezado incluye `safe-area-inset-top`, el documento permite `viewport-fit=cover`, y los efectos decorativos empiezan después de encabezado y cinta.
 - Los botones flotantes de WhatsApp y carrito ya respetaban el safe area inferior/lateral; se comprobaron junto con los elementos superiores para evitar que tapen contenido.
 - Prueba fixture de solo lectura: cinta en flujo y portada debajo; Chromium 1/1 y WebKit iPhone 11, 13 y 15: 3/3. `npm run lint` aprobado. Sin cambios a datos ni migraciones.
-- Deploy Current pendiente del commit de esta tarea.
+- Commit `10b1d14` enviado a `main`; deployment `dpl_M7PaZHmsZYPVHQG5QWGFExNC85wR` quedó Ready y `vercel inspect` confirmó el alias Current `rivastock.vercel.app`.
+
+## 2026-11-10 — Ficha de producto como hoja inferior en celular
+
+- En pantallas angostas, la ficha se presenta como hoja inferior de 90 % de alto, con esquinas superiores redondeadas, tirador, fondo del catálogo oscurecido, scroll interno y acciones fijas. Conserva el tema del catálogo, la URL/historial, entrada por link y cambio de producto relacionado; escritorio conserva el modal centrado.
+- Al abrir se bloquea el scroll de fondo guardando la posición; al cerrar se restaura para Tienda y Revendedores. Escape, atrás, X, fondo y gesto descendente desde el tirador cierran la hoja.
+- Pruebas con fixtures, sin escribir en datos reales: Chromium escritorio/móvil 2/2; Android Pixel 7 emulado a 375 px 2/2; WebKit iPhone 11/13/15, Tienda y Revendedores 6/6. Incluye navegación atrás, enlace directo, producto relacionado, fondo oscuro, acciones inferiores y gesto de cierre.
+- `npm run lint`, `npm test` (238 archivos / 1.368 pruebas) y `npm run build` aprobados. No hubo migración.
+- Commit/deploy de este punto pendientes.

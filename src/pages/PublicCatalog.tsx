@@ -147,6 +147,7 @@ export default function PublicCatalog() {
     () => localStorage.getItem('catalog-dark-mode') === 'true',
   );
   const categoryStripRef = useRef<HTMLDivElement>(null);
+  const productSheetDragStartY = useRef<number | null>(null);
   const catalogScrollPosition = useRef(0);
   const directProductSetupRef = useRef<string | null>(null);
   const [categoryCanScrollLeft, setCategoryCanScrollLeft] = useState(false);
@@ -170,6 +171,19 @@ export default function PublicCatalog() {
     if (productId && background) navigate(-1);
     else if (productId) navigate(`/catalogo/${encodeURIComponent(slug)}`, { replace: true });
   }, [location.state, navigate, productId, slug]);
+  const closeProductRef = useRef(closeProduct);
+  closeProductRef.current = closeProduct;
+
+  const handleProductSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    productSheetDragStartY.current = event.clientY;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Synthetic pointer events may not support capture. */ }
+  };
+
+  const handleProductSheetPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const startY = productSheetDragStartY.current;
+    productSheetDragStartY.current = null;
+    if (startY !== null && event.clientY - startY >= 72) closeProduct();
+  };
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
     const url = getCatalogShareUrl(window.location.origin, slug ?? '', product.id);
@@ -506,15 +520,34 @@ useEffect(() => {
   }, [catalogProducts, config, loading, location.hash, location.pathname, location.search, location.state, navigate, productId, slug]);
   useEffect(() => {
     if (!selectedProductForLightbox) return;
-    const previousOverflow = document.body.style.overflow;
+    const lockedScrollY = window.scrollY;
+    const previousBodyStyles = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow,
+    };
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${lockedScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProduct(); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProductRef.current(); };
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.left = previousBodyStyles.left;
+      document.body.style.right = previousBodyStyles.right;
+      document.body.style.width = previousBodyStyles.width;
+      document.body.style.overflow = previousBodyStyles.overflow;
+      window.scrollTo(0, catalogScrollPosition.current);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [closeProduct, selectedProductForLightbox]);
+  }, [Boolean(selectedProductForLightbox)]);
   const filteredProducts = useMemo(() => {
     const searchValue = deferredSearch.toLowerCase();
 
@@ -1965,9 +1998,10 @@ if (loading) {
           const price = getDisplayedPrice(product);
           const close = closeProduct;
           const addSelected = () => { for (let index = 0; index < detailQuantity; index += 1) addToCart(product, price); close(); };
-          return <div data-testid="catalog-product-detail-overlay" className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
-            <button type="button" aria-label="Cerrar ficha del producto" onClick={close} className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
-            <section data-testid="catalog-product-detail-modal" data-catalog-theme={activeTheme} className={cn('relative z-10 flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-[var(--line)] md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-[#fcfaf5] text-[#1d2026]')} style={{ '--line': darkMode ? 'rgb(255 255 255 / .12)' : '#ddd8ce', '--ink-muted': darkMode ? '#a8abb3' : '#72757d', '--surface-muted': darkMode ? '#292c33' : '#f0ede6', '--surface-raised': darkMode ? '#24272d' : '#fffdf9' } as React.CSSProperties}>
+          return <motion.div data-testid="catalog-product-detail-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
+            <motion.button type="button" aria-label="Cerrar ficha del producto" onClick={close} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
+            <motion.section data-testid="catalog-product-detail-modal" data-catalog-theme={activeTheme} initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className={cn('relative z-10 flex h-[90dvh] max-h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-[var(--line)] md:h-auto md:max-h-[94dvh] md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-[#fcfaf5] text-[#1d2026]')} style={{ '--line': darkMode ? 'rgb(255 255 255 / .12)' : '#ddd8ce', '--ink-muted': darkMode ? '#a8abb3' : '#72757d', '--surface-muted': darkMode ? '#292c33' : '#f0ede6', '--surface-raised': darkMode ? '#24272d' : '#fffdf9' } as React.CSSProperties}>
+              <div data-testid="product-sheet-handle" aria-hidden="true" onPointerDown={handleProductSheetPointerDown} onPointerUp={handleProductSheetPointerUp} onPointerCancel={() => { productSheetDragStartY.current = null; }} className="flex h-6 shrink-0 touch-none select-none items-center justify-center md:hidden"><span className={cn('h-1.5 w-12 rounded-full', darkMode ? 'bg-white/35' : 'bg-slate-400/60')}/></div>
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
               <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
                 <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
@@ -1977,8 +2011,8 @@ if (loading) {
                 <button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button>
                 <div className="grid grid-cols-2 gap-2"><button type="button" aria-label="Copiar link" onClick={() => void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={() => void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div>
               </footer>
-            </section>
-          </div>;
+              </motion.section>
+          </motion.div>;
         })()}
       </AnimatePresence>
       {/* Success Modal */}
