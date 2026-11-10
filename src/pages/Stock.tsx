@@ -34,6 +34,8 @@ import { createPriceListPdf } from '../lib/priceListPdf';
 import { getHoldingRestockRecommendations, getRestockRecommendations } from '../lib/stockIntelligence';
 import { getRecentRestockSales } from '../lib/recentSales';
 import { showToast } from '../lib/toast';
+import { clearMobileProductDraft, saveMobileProductDraft } from '../lib/mobileProductDraft';
+import type { MobileProductDraft } from '../lib/mobileProductDraft';
 import { Product, Category, PriceRange, Sale, InventoryHolding, InventoryHoldingDraft } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
@@ -76,6 +78,25 @@ import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { ScanLine } from 'lucide-react';
 import { motion } from 'motion/react';
+import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
+
+function persistableSupplierContext(context: SupplierProductCreationContext | null): MobileProductDraft['supplierProductCreationContext'] {
+  if (!context) return null;
+  const draft = context.initialDraft;
+  return {
+    priceListId: context.priceListId,
+    supplierId: context.supplierId,
+    productIds: context.productIds,
+    initialDraft: draft ? {
+      name: draft.name,
+      supplierCost: draft.supplierCost,
+      category: draft.category,
+      marginPercent: draft.marginPercent,
+      roundingStep: draft.roundingStep,
+      listBasePrice: draft.listBasePrice,
+    } : undefined,
+  };
+}
 
 export default function Stock() {
   const {
@@ -163,6 +184,23 @@ export default function Stock() {
     setReturnToResellerList, productIntentRef, productSubmitInFlightRef,
     openProductEditor, handleSave, closeProductEditor,
   } = productEditor;
+  useEffect(() => {
+    if (!isMobile || !isModalOpen || !user) return;
+    saveMobileProductDraft({
+      ownerUid: user.uid,
+      pathname: location.pathname,
+      formData,
+      holdingDrafts,
+      editingProduct,
+      creatingProductForReseller,
+      supplierProductCreationContext: persistableSupplierContext(supplierProductCreationContext),
+      promotingCatalogProduct,
+      returnToResellerList,
+    });
+  }, [
+    creatingProductForReseller, editingProduct, formData, holdingDrafts, isModalOpen, isMobile,
+    location.pathname, promotingCatalogProduct, returnToResellerList, supplierProductCreationContext, user,
+  ]);
   useEffect(() => {
     if (!isMobile || !isModalOpen) return;
     const params = new URLSearchParams(location.search);
@@ -332,6 +370,7 @@ export default function Stock() {
 
   const discardProductEditor = () => {
     if (productSubmitInFlightRef.current) return;
+    if (user?.uid) clearMobileProductDraft(user.uid);
     productIntentRef.current = null;
     setIsModalOpen(false);
     setEditingProduct(null);
@@ -340,6 +379,29 @@ export default function Stock() {
     setSupplierProductCreationContext(null);
     if (returnToResellerList) setResellerPriceListOpen(true);
     setReturnToResellerList(false);
+  };
+
+  const prepareMobileProductDraftForCamera = () => {
+    if (!user) {
+      showToast('No pudimos guardar el borrador antes de abrir la cámara.', 'error');
+      return false;
+    }
+    const saved = saveMobileProductDraft({
+      ownerUid: user.uid,
+      pathname: location.pathname,
+      formData,
+      holdingDrafts,
+      editingProduct,
+      creatingProductForReseller,
+      supplierProductCreationContext: persistableSupplierContext(supplierProductCreationContext),
+      promotingCatalogProduct,
+      returnToResellerList,
+    });
+    if (!saved) {
+      showToast('No pudimos guardar el borrador antes de abrir la cámara.', 'error');
+      return false;
+    }
+    return true;
   };
 
   const adjustStockFromProductEditor = () => {
@@ -715,6 +777,7 @@ export default function Stock() {
           onToggleQaPublishAllowed={(allowed) => { void setProductQaPublishAllowed(allowed); }}
           onImageUploadStart={() => setIsUploadingImage(true)}
           onImageUploadEnd={() => setIsUploadingImage(false)}
+          onBeforeCameraOpen={prepareMobileProductDraftForCamera}
         />
       </Suspense>}
       {!isResellersRoute && <>
@@ -1421,6 +1484,7 @@ export default function Stock() {
                 <MoneyInput
                   required
                   min="0"
+                  aria-label="Precio de venta"
                   value={formData.salePrice}
                   onChange={(e) => setFormData(prev => ({ ...prev, salePrice: Number(e.target.value) }))}
                   className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"

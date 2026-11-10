@@ -17,6 +17,8 @@ export type ProductPhotoUploadReason =
   | 'photo_too_large'
   | 'read_failed'
   | 'compression_failed'
+  | 'processing_timeout'
+  | 'product_id_missing'
   | 'server_error';
 
 export interface ProductPhotoUploadDiagnostic {
@@ -36,6 +38,8 @@ const PHOTO_UPLOAD_MESSAGES: Record<ProductPhotoUploadReason, string> = {
   photo_too_large: 'La foto sigue siendo demasiado pesada después de comprimirla. Probá con otra imagen.',
   read_failed: 'No se pudo leer la foto. Elegí el archivo otra vez o probá con una copia JPG.',
   compression_failed: 'No se pudo comprimir la foto. Probá con una imagen más liviana.',
+  processing_timeout: 'El teléfono tardó más de 20 segundos en preparar la foto. Probá con otra imagen.',
+  product_id_missing: 'No se pudo identificar el producto para guardar la foto. Cerrá y volvé a abrir el formulario.',
   server_error: 'No pudimos guardar la foto. Intentá de nuevo; si sigue pasando, avisá a RivaTech.',
 };
 
@@ -66,6 +70,8 @@ export function productPhotoUploadError(
   } else if (code === 'unsupported_format') reason = 'unsupported_format';
   else if (code === 'read_failed') reason = 'read_failed';
   else if (code === 'compression_failed') reason = 'compression_failed';
+  else if (code === 'processing_timeout') reason = 'processing_timeout';
+  else if (code === 'product_id_missing') reason = 'product_id_missing';
   else if (code === 'photo_too_large') reason = 'photo_too_large';
   else if (/project_storage_full|storage.*full|quota.*exceed|sin espacio/.test(normalized)) reason = 'no_space';
   else if (/suspendid/.test(normalized)) reason = 'suspended';

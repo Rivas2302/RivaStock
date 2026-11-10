@@ -147,50 +147,102 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
 
   await page.addInitScript((session) => localStorage.setItem('rivastock-auth', JSON.stringify(session)), fixtureSession());
   await page.goto('/stock');
-  await expect(page.getByRole('region', { name: 'Stock móvil' })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await expect(page.getByRole('region', { name: 'Stock móvil' })).toBeVisible();
+  } else {
+    await expect(page.getByRole('button', { name: 'Agregar Producto' })).toBeVisible();
+  }
   return { rows, uploads, pageErrors };
 }
 
-test('a new authenticated Android business uploads from gallery and camera, then shows photos in Stock and catalog', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'android-mobile-ai', 'This flow emulates Android Chrome only.');
+test('a new authenticated business uploads a photo from a new product form in Android Chrome and desktop, then shows it in Stock and catalog', async ({ page }, testInfo) => {
+  const isAndroid = testInfo.project.name === 'android-mobile-ai';
+  test.skip(!isAndroid && testInfo.project.name !== 'chromium', 'Run on Android emulation and desktop Chrome.');
   const fixture = await mountNewBusinessStock(page);
 
-  await page.getByRole('button', { name: 'Agregar producto', exact: true }).first().click();
-  const form = page.getByTestId('mobile-product-form');
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = isAndroid ? page.getByTestId('mobile-product-form') : page.getByRole('dialog', { name: 'Agregar Nuevo Producto' });
   await expect(form).toBeVisible();
-  const galleryFile = await photoFile(page, 'gallery-photo.jpg');
-  const galleryChooser = page.waitForEvent('filechooser');
-  await form.getByRole('button', { name: 'Galería' }).click();
-  await (await galleryChooser).setFiles(galleryFile);
+  const firstPhoto = await photoFile(page, isAndroid ? 'gallery-photo.jpg' : 'desktop-photo.jpg');
+  const firstChooser = page.waitForEvent('filechooser');
+  if (isAndroid) await form.getByRole('button', { name: 'Galería' }).click();
+  else await form.getByText(/Agregar\s*imagen/i).click();
+  await (await firstChooser).setFiles(firstPhoto);
   await expect(form.getByRole('img', { name: 'Imagen 1' })).toBeVisible();
 
-  const cameraFile = await photoFile(page, 'camera-photo.jpg');
-  const cameraChooser = page.waitForEvent('filechooser');
-  await form.getByRole('button', { name: 'Sacar foto' }).click();
-  await (await cameraChooser).setFiles(cameraFile);
-  await expect(form.getByRole('img', { name: 'Imagen 2' })).toBeVisible();
-  await expect.poll(() => fixture.uploads.length).toBe(4);
+  if (isAndroid) {
+    const cameraFile = await photoFile(page, 'camera-photo.jpg');
+    const cameraChooser = page.waitForEvent('filechooser');
+    await form.getByRole('button', { name: 'Sacar foto' }).click();
+    await (await cameraChooser).setFiles(cameraFile);
+    await expect(form.getByRole('img', { name: 'Imagen 2' })).toBeVisible();
+  }
+
+  const expectedUploads = isAndroid ? 4 : 2;
+  await expect.poll(() => fixture.uploads.length).toBe(expectedUploads);
   expect(fixture.uploads.every((upload) => upload.imageType === 'image/webp'), JSON.stringify(fixture.uploads)).toBe(true);
   expect(fixture.uploads.every((upload) => upload.path.endsWith('.webp'))).toBe(true);
+  const productPaths = fixture.uploads.map((upload) => upload.path.replace(/^thumbs\//, ''));
+  expect(productPaths.every((path) => path.startsWith(`${OWNER_ID}/products/`) && !path.includes('//'))).toBe(true);
+  const temporaryProductId = productPaths[0].split('/')[2];
+  expect(temporaryProductId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 
-  await form.getByLabel('Nombre').fill('[QA] Foto Motorola');
+  const productName = isAndroid ? '[QA] Foto Motorola' : '[QA] Foto escritorio';
+  await form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto').fill(productName);
   await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
-  await form.getByLabel('Precio de venta').fill('1500');
-  await form.getByRole('button', { name: 'Guardar producto' }).click();
-  await expect(form).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Ficha de [QA] Foto Motorola' })).toBeVisible();
-  await expect(page.getByRole('img', { name: '[QA] Foto Motorola, foto 1' })).toBeVisible();
-  await page.getByRole('button', { name: 'Volver al stock' }).click();
-  await expect(page.getByRole('button', { name: 'Abrir ficha de [QA] Foto Motorola' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Abrir ficha de [QA] Foto Motorola' }).getByRole('img', { name: '[QA] Foto Motorola' })).toBeVisible();
+  if (isAndroid) await form.getByLabel('Precio de venta').fill('1500');
+  else await form.getByRole('textbox', { name: 'Precio de venta' }).fill('1500');
+  await form.getByRole('button', { name: isAndroid ? 'Guardar producto' : 'Crear Producto' }).click();
+  if (isAndroid) {
+    await expect(form).toHaveCount(0);
+    await expect(page.getByRole('region', { name: `Ficha de ${productName}` })).toBeVisible();
+    await expect(page.getByRole('img', { name: `${productName}, foto 1` })).toBeVisible();
+    await page.getByRole('button', { name: 'Volver al stock' }).click();
+    await expect(page.getByRole('button', { name: `Abrir ficha de ${productName}` })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Abrir ficha de ${productName}` }).getByRole('img', { name: productName })).toBeVisible();
+  } else {
+    await expect(form).toHaveCount(0);
+    const productRow = page.getByRole('table').getByRole('row').filter({ hasText: productName });
+    await expect(productRow.getByRole('img', { name: productName })).toBeVisible();
+  }
   expect(fixture.rows).toHaveLength(1);
-  expect(fixture.rows[0].images).toHaveLength(2);
+  expect(fixture.rows[0].id).toBe(temporaryProductId);
+  expect(fixture.rows[0].images).toHaveLength(isAndroid ? 2 : 1);
   expect(fixture.rows[0].show_in_catalog).toBe(true);
 
   await page.goto('/catalogo/photo-upload-qa');
-  const catalogCard = page.locator('.catalog-theme-card').filter({ hasText: '[QA] Foto Motorola' });
-  await expect(catalogCard.getByRole('img', { name: '[QA] Foto Motorola' })).toBeVisible();
+  const catalogCard = page.locator('.catalog-theme-card').filter({ hasText: productName });
+  await expect(catalogCard.getByRole('img', { name: productName })).toBeVisible();
   expect(fixture.pageErrors).toEqual([]);
+});
+
+test('Android restores a new product draft after the camera returns through a tab reload', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'This flow emulates Android Chrome only.');
+  await mountNewBusinessStock(page);
+  page.on('dialog', (dialog) => { void dialog.accept(); });
+  await page.getByRole('button', { name: 'Agregar producto', exact: true }).first().click();
+  let form = page.getByTestId('mobile-product-form');
+  await form.getByLabel('Nombre').fill('[QA] Borrador recuperado');
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  await form.getByLabel('Precio de venta').fill('2450');
+  const cameraChooser = page.waitForEvent('filechooser');
+  await form.getByRole('button', { name: 'Sacar foto' }).click();
+  await cameraChooser;
+
+  const savedDraft = await page.evaluate((ownerId) => {
+    const key = `rivastock:mobile-product-draft:v1:${ownerId}`;
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) as { formData: { id?: string; name?: string }; holdingDrafts: unknown[] } : null;
+  }, OWNER_ID);
+  expect(savedDraft?.formData.id).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(savedDraft?.formData.name).toBe('[QA] Borrador recuperado');
+
+  await page.reload();
+  form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await expect(page.getByText('Recuperamos tu producto.')).toBeVisible();
+  await expect(form.getByLabel('Nombre')).toHaveValue('[QA] Borrador recuperado');
+  await expect(form.getByLabel('Precio de venta')).toHaveValue('2450');
 });
 
 test('Android reports an unsupported HEIC clearly and records only a safe diagnostic', async ({ page }, testInfo) => {

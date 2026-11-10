@@ -67,6 +67,7 @@ describe('MobileProductForm', () => {
     onToggleQaPublishAllowed: vi.fn(),
     onImageUploadStart: vi.fn(),
     onImageUploadEnd: vi.fn(),
+    onBeforeCameraOpen: vi.fn(),
     ...overrides,
   });
 

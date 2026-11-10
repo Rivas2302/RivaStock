@@ -2042,3 +2042,13 @@ Sin toque en src/, supabase/ ni extensions/.
 - No se creó un usuario Auth en producción: es el único proyecto conectado y la petición prohíbe modificar cuentas/datos reales. Tampoco hay Docker para levantar Supabase local. Por eso el test literal con un usuario nuevo `authenticated` queda pendiente; se verificó en modo lectura el permiso Stock y la política aplicable, y el E2E usa tenant aislado con preflight/RLS mockeados.
 - Commit `67d340e` quedó en `main`. Vercel Current sirvió con HTTP 200 el asset con hash `imageOptimization-DuLBPd0E.js`, que contiene los nuevos mensajes de diagnóstico. `product-upload-diagnostics` está ACTIVE v1 con `verify_jwt=true`; no requiere migración ni almacena filas.
 - No se verificó con la cámara física de un Motorola: el proyecto e2e emula Android y simula el archivo elegido por cámara/galería. Tampoco se creó un usuario Auth recién registrado, porque no hay staging y la producción debe quedar sin cuentas ni datos de prueba.
+
+## 2026-11-10 — Seguimiento de la subida de fotos en Android
+
+- Se consultaron los logs de Supabase del 10/11 entre 14:00 y 14:30 UTC por `reportProductPhotoUploadFailure` y `product_photo_upload_failure`: no hay registros; por eso no existe una etapa ni un motivo remoto que atribuir a esta prueba.
+- El editor ya asignaba un UUID temporal al abrir un producto nuevo. La ruta de Storage ahora también rechaza un ID vacío antes de construir la ruta, para impedir rutas con `//`.
+- La causa local reproducida fue una segunda apertura del editor móvil al entrar en `?nuevo=1`: podía reemplazar el estado/ID inicial y descartaba el borrador recuperado después de que Android recargara la pestaña. Se evita reabrir el editor ya activo.
+- El borrador móvil se guarda en `sessionStorage`, separado por UID y ruta, antes de abrir la cámara; se restaura al volver y muestra “Recuperamos tu producto”. Si el almacenamiento del borrador falla, no se abre la cámara y se informa el motivo.
+- El indicador “Preparando y subiendo la foto…” aparece al recibir el archivo. La compresión original y la miniatura cortan la espera a los 20 segundos y muestran un error localizado.
+- Verificación: suite completa **237 archivos / 1.359 pruebas**, lint y build aprobados. Playwright de alta nueva con foto en Android Chrome emulado y escritorio: **2/2**; recuperación después de recarga, error HEIC y permiso denegado en Android: **3/3**. Sin altas ni cambios de datos reales.
+- Pendiente de cierre: desplegar el frontend y ampliar en `product-upload-diagnostics` los motivos aceptados para UUID faltante y timeout; verificar que Vercel Current sirva el bundle nuevo.

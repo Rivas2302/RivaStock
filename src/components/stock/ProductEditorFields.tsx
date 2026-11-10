@@ -166,6 +166,7 @@ interface ImageFieldProps {
   onChange: (urls: string[]) => void;
   onUploadStart: () => void;
   onUploadEnd: () => void;
+  onBeforeCameraOpen?: () => boolean | void;
   mobileControls?: boolean;
   allowReorder?: boolean;
   label?: string;
@@ -180,6 +181,7 @@ export function ProductEditorImageField({
   onChange,
   onUploadStart,
   onUploadEnd,
+  onBeforeCameraOpen,
   mobileControls = false,
   allowReorder = false,
   label,
@@ -196,6 +198,7 @@ export function ProductEditorImageField({
         onChange={onChange}
         onUploadStart={onUploadStart}
         onUploadEnd={onUploadEnd}
+        onBeforeCameraOpen={onBeforeCameraOpen}
         mobileControls={mobileControls}
         allowReorder={allowReorder}
       />

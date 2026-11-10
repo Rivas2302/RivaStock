@@ -10,7 +10,7 @@ const stages = new Set([
 ]);
 const reasons = new Set([
   'no_permission', 'no_space', 'suspended', 'unsupported_format', 'no_connection', 'photo_too_large',
-  'read_failed', 'compression_failed', 'server_error',
+  'read_failed', 'compression_failed', 'processing_timeout', 'product_id_missing', 'server_error',
 ]);
 const imageTypes = new Set(['jpeg', 'png', 'webp', 'heic', 'avif', 'other']);
 

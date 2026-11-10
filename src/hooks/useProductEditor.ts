@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import type { Location, NavigateFunction } from 'react-router-dom';
 import type { InventoryHolding, InventoryHoldingDraft, InventoryOwner, Product, UserProfile } from '../types';
 import type { SupplierProductCreationContext } from '../components/ResellerPriceListModal';
@@ -14,6 +14,7 @@ import { normalizeBarcode } from '../lib/barcode';
 import { uploadSupplierListProductPhoto } from '../lib/supplierListPhotos';
 import { getProductThumbnailUrl } from '../lib/productPhotos';
 import { showToast } from '../lib/toast';
+import { clearMobileProductDraft, restoreMobileProductDraft } from '../lib/mobileProductDraft';
 import {
   addProductToResellerPriceList,
   promoteResellerCatalogProduct,
@@ -69,6 +70,26 @@ export default function useProductEditor({
   const [returnToResellerList, setReturnToResellerList] = useState(false);
   const productIntentRef = useRef<IdempotencyIntent | null>(null);
   const productSubmitInFlightRef = useRef(false);
+  const draftRestoreAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!isMobile || !user?.uid || draftRestoreAttemptedRef.current || (!params.has('nuevo') && !params.has('editar'))) return;
+    draftRestoreAttemptedRef.current = true;
+    const draft = restoreMobileProductDraft(user.uid, location.pathname, location.search);
+    if (!draft) return;
+
+    setFormData(draft.formData);
+    setHoldingDrafts(draft.holdingDrafts);
+    setEditingProduct(draft.editingProduct);
+    setCreatingProductForReseller(draft.creatingProductForReseller);
+    setSupplierProductCreationContext(draft.supplierProductCreationContext);
+    setPromotingCatalogProduct(draft.promotingCatalogProduct);
+    setReturnToResellerList(draft.returnToResellerList);
+    setIsUploadingImage(false);
+    setIsModalOpen(true);
+    showToast('Recuperamos tu producto.', 'success');
+  }, [isMobile, location.pathname, location.search, user?.uid]);
 
   const openProductEditor = (
     product?: Product,
@@ -81,6 +102,12 @@ export default function useProductEditor({
       initialDraft?: SupplierProductCreationContext['initialDraft'];
     },
   ) => {
+    const params = new URLSearchParams(location.search);
+    if (isMobile && isModalOpen && (
+      (!product && !editingProduct && params.has('nuevo') && formData.id)
+      || (product && editingProduct?.id === product.id)
+    )) return;
+    if (user?.uid) clearMobileProductDraft(user.uid);
     const promoteToStock = Boolean(product?.catalogOnly && options?.promoteToStock);
     const forReseller = Boolean(options?.forReseller || (product?.catalogOnly && !promoteToStock));
     const next = product ? {
@@ -316,6 +343,7 @@ export default function useProductEditor({
       }
       if (returnToResellerList) setResellerPriceListOpen(true);
       setReturnToResellerList(false);
+      if (user.uid) clearMobileProductDraft(user.uid);
     } catch (error) {
       if (pendingSupplierPhotoUrl) {
         await Promise.allSettled([pendingSupplierPhotoUrl, getProductThumbnailUrl(pendingSupplierPhotoUrl)].map(deleteFromStorage));
@@ -330,6 +358,7 @@ export default function useProductEditor({
 
   const closeProductEditor = () => {
     if (productSubmitInFlightRef.current) return;
+    if (user?.uid) clearMobileProductDraft(user.uid);
     productIntentRef.current = null;
     setIsModalOpen(false);
     setCreatingProductForReseller(false);

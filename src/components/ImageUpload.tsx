@@ -10,6 +10,17 @@ import { showToast } from '../lib/toast';
 const MAX_IMAGES = 4;
 const MAX_SOURCE_IMAGE_BYTES = 40 * 1024 * 1024;
 const MAX_STORED_IMAGE_BYTES = 2 * 1024 * 1024;
+const IMAGE_PROCESSING_TIMEOUT_MS = 20_000;
+
+function withImageProcessingTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject({ code: 'processing_timeout' }), IMAGE_PROCESSING_TIMEOUT_MS);
+  });
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
 
 function isPhotoFile(file: File): boolean {
   if (file.type.toLowerCase() === 'image/svg+xml' || /\.svg$/i.test(file.name)) return false;
@@ -23,6 +34,7 @@ interface ImageUploadProps {
   onChange: (urls: string[]) => void;
   onUploadStart?: () => void;
   onUploadEnd?: () => void;
+  onBeforeCameraOpen?: () => boolean | void;
   mobileControls?: boolean;
   allowReorder?: boolean;
 }
@@ -34,6 +46,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   onChange,
   onUploadStart,
   onUploadEnd,
+  onBeforeCameraOpen,
   mobileControls = false,
   allowReorder = false,
 }) => {
@@ -69,20 +82,33 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     if (remaining <= 0) return;
 
     const toProcess = Array.from(files).slice(0, remaining);
-    for (const f of toProcess) {
-      if (!isPhotoFile(f)) {
-        showUploadFailure('validate', f, { code: 'unsupported_format' });
-        return;
-      }
-      if (f.size > MAX_SOURCE_IMAGE_BYTES) {
-        showUploadFailure('validate', f, { code: 'photo_too_large' });
-        return;
-      }
-    }
+    if (toProcess.length === 0) return;
 
     setError(null);
     setProcessing(true);
     onUploadStart?.();
+
+    if (!ownerUid.trim() || !productId.trim()) {
+      setProcessing(false);
+      onUploadEnd?.();
+      showUploadFailure('validate', toProcess[0], { code: 'product_id_missing' });
+      return;
+    }
+
+    for (const f of toProcess) {
+      if (!isPhotoFile(f)) {
+        setProcessing(false);
+        onUploadEnd?.();
+        showUploadFailure('validate', f, { code: 'unsupported_format' });
+        return;
+      }
+      if (f.size > MAX_SOURCE_IMAGE_BYTES) {
+        setProcessing(false);
+        onUploadEnd?.();
+        showUploadFailure('validate', f, { code: 'photo_too_large' });
+        return;
+      }
+    }
 
     const uploadedUrls: string[] = [];
     let stage: ProductPhotoUploadStage = 'compress_original';
@@ -92,13 +118,17 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       for (const [index, file] of toProcess.entries()) {
         currentFile = file;
         stage = 'compress_original';
-        const original = await optimizeUploadImage(file, 1600, { forceWebP: true, maxBytes: MAX_STORED_IMAGE_BYTES });
+        const original = await withImageProcessingTimeout(
+          optimizeUploadImage(file, 1600, { forceWebP: true, maxBytes: MAX_STORED_IMAGE_BYTES }),
+        );
         if (original.type !== 'image/webp') {
           throw { code: 'unsupported_format' };
         }
         if (original.size > MAX_STORED_IMAGE_BYTES) throw { code: 'photo_too_large' };
         stage = 'compress_thumbnail';
-        const thumbnail = await optimizeUploadImage(original, 480, { forceWebP: true, maxBytes: 300_000 });
+        const thumbnail = await withImageProcessingTimeout(
+          optimizeUploadImage(original, 480, { forceWebP: true, maxBytes: 300_000 }),
+        );
         if (thumbnail.type !== 'image/webp') {
           throw { code: 'compression_failed' };
         }
@@ -153,7 +183,10 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           <button
             type="button"
             disabled={processing}
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={() => {
+              if (onBeforeCameraOpen?.() === false) return;
+              cameraInputRef.current?.click();
+            }}
             className="flex min-h-12 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"
           >
             Sacar foto

@@ -120,6 +120,7 @@ interface Props {
   onToggleQaPublishAllowed: (allowed: boolean) => void;
   onImageUploadStart: () => void;
   onImageUploadEnd: () => void;
+  onBeforeCameraOpen: () => boolean | void;
 }
 
 function money(value: number): string {
@@ -155,6 +156,7 @@ export default function MobileProductForm({
   onToggleQaPublishAllowed,
   onImageUploadStart,
   onImageUploadEnd,
+  onBeforeCameraOpen,
 }: Props) {
   useMobileAppChrome({ hideHeader: true, hideBottomNav: true });
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
@@ -322,6 +324,7 @@ export default function MobileProductForm({
               onChange={(urls) => updateForm('images', urls)}
               onUploadStart={onImageUploadStart}
               onUploadEnd={onImageUploadEnd}
+              onBeforeCameraOpen={onBeforeCameraOpen}
               mobileControls
               allowReorder
             />

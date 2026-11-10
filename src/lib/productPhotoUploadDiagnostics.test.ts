@@ -10,6 +10,11 @@ describe('product photo upload diagnostics', () => {
     expect(productPhotoUploadError({ code: 'unsupported_format' }, { online: true }).message).toContain('Formato no soportado');
   });
 
+  it('classifies an empty product id and an image processing timeout', () => {
+    expect(productPhotoUploadError({ code: 'product_id_missing' }, { online: true }).reason).toBe('product_id_missing');
+    expect(productPhotoUploadError({ code: 'processing_timeout' }, { online: true }).reason).toBe('processing_timeout');
+  });
+
   it('records only coarse file metadata without file name, URL, product ID, or account ID', () => {
     const diagnostic = makeProductPhotoUploadDiagnostic('compress_original', 'read_failed', {
       name: 'maria-private-photo.heic', type: 'image/heic', size: 12_000_000,

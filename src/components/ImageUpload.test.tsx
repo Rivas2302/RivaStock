@@ -52,6 +52,7 @@ describe('ImageUpload storage guard', () => {
   afterEach(async () => {
     await act(async () => { root.unmount(); });
     host.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
@@ -140,6 +141,67 @@ describe('ImageUpload storage guard', () => {
     expect(optimizeUploadImage).toHaveBeenCalledWith(largePhoto, 1600, { forceWebP: true, maxBytes: 2 * 1024 * 1024 });
     expect(rpc).toHaveBeenCalledWith('storage_upload_check', { p_bucket: 'assets', p_bytes: 4 });
     expect(host.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('does not open the camera when the product draft cannot be persisted', async () => {
+    const onBeforeCameraOpen = vi.fn(() => false);
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="new-product" onChange={vi.fn()} mobileControls onBeforeCameraOpen={onBeforeCameraOpen} />);
+    });
+    const cameraButton = [...host.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.includes('Sacar foto'));
+    const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click');
+    await act(async () => { cameraButton?.click(); });
+
+    expect(onBeforeCameraOpen).toHaveBeenCalledOnce();
+    expect(inputClick).not.toHaveBeenCalled();
+    inputClick.mockRestore();
+  });
+  it('shows the preparing state immediately and stops image processing after 20 seconds', async () => {
+    vi.useFakeTimers();
+    optimizeUploadImage.mockImplementationOnce(() => new Promise<File>(() => undefined));
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="new-product" onChange={vi.fn()} mobileControls />);
+    });
+
+    const gallery = host.querySelector<HTMLInputElement>('input[multiple]')!;
+    Object.defineProperty(gallery, 'files', {
+      configurable: true,
+      value: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })],
+    });
+    await act(async () => {
+      gallery.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Preparando y subiendo la foto…');
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+
+    expect(host.querySelector('[role="alert"]')?.textContent)
+      .toBe('El teléfono tardó más de 20 segundos en preparar la foto. Probá con otra imagen.');
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'compress_original', reason: 'processing_timeout',
+    }));
+    expect(host.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('refuses an empty product id instead of sending an ambiguous Storage path', async () => {
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="" onChange={vi.fn()} mobileControls />);
+    });
+    const gallery = host.querySelector<HTMLInputElement>('input[multiple]')!;
+    Object.defineProperty(gallery, 'files', {
+      configurable: true,
+      value: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })],
+    });
+    await act(async () => {
+      gallery.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(uploadToStorage).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="alert"]')?.textContent)
+      .toBe('No se pudo identificar el producto para guardar la foto. Cerrá y volvé a abrir el formulario.');
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({ reason: 'product_id_missing' }));
   });
 
   it('shows and records an unsupported HEIC decode instead of failing silently', async () => {
