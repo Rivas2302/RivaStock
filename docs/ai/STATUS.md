@@ -2068,4 +2068,12 @@ Sin toque en src/, supabase/ ni extensions/.
 - Confirmado antes del cambio: el catálogo de Revendedores mostraba la fila de categorías y el buscador ya estaba arriba del listado de productos.
 - En modo Revendedores se oculta únicamente la fila de categorías; el buscador queda disponible antes del listado y conserva el filtrado. El modo Tienda y el mapeo/categorización no se modifican.
 - Playwright con fixture de catálogo y acceso de revendedor: verifica fila oculta, buscador visible sobre productos, filtrado y detalle. `npm run lint` aprobado; E2E focal 1/1 aprobado.
-- Sin migración y sin cambios a datos reales. Deploy Current pendiente del push de esta tarea.
+- Sin migración y sin cambios a datos reales. Commit `1bf2a3c` enviado a `main`; Vercel marcó el deploy como Ready y `vercel inspect` confirmó el alias `rivastock.vercel.app`.
+
+## 2026-11-10 — Metadatos Open Graph del catálogo
+
+- En los enlaces de catálogo y de producto, la portada tiene prioridad; si falta, se usa el logo del negocio. Si tampoco hay imagen, se usa una portada neutral de RivaStock. Los productos usan su foto y recurren a la portada/logo si la foto no está disponible.
+- Las imágenes se limitan a objetos HTTPS del bucket público `assets` o a la portada estática exacta de RivaStock. El Edge Function lee un prefijo acotado para comprobar tipo y dimensiones reales (PNG, JPEG, WebP y GIF); no descarga datos de imagen sin límite.
+- Open Graph incluye URL absoluta, tipo, dimensiones y texto alternativo; Twitter usa `summary_large_image` cuando hay imagen. Los enlaces `/catalogo` usan el proxy de Vercel; `/p` mantiene el rewrite externo a la función `share`.
+- Pruebas locales de metadatos y proxy: 21/21; parser dimensional y solicitudes públicas con y sin encabezado de Authorization fixture cubiertos; lint y build aprobados. Sin migración ni cambios a datos reales.
+- Pendiente de terminar: publicar el asset neutral en Vercel, volver a desplegar `share` y verificar las cuatro combinaciones de URL/User-Agent con `curl`.

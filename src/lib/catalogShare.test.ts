@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createShareHandler } from '../../supabase/functions/share/handler';
 import { getCatalogSharePath, getCatalogShareUrl } from './catalogShare';
-import { formatPrice, getPublicAssetUrl, renderShareHtml } from '../../supabase/functions/share/metadata';
+import { DEFAULT_SHARE_IMAGE_URL, formatPrice, getPublicAssetUrl, readImageDimensions, renderShareHtml } from '../../supabase/functions/share/metadata';
 
 const SUPABASE_URL = 'https://nkfqhuqrgrpfufdymkcr.supabase.co';
 const PROJECT_HOST = new URL(SUPABASE_URL).hostname;
@@ -53,6 +53,22 @@ describe('share metadata', () => {
     expect(formatPrice(null, '$')).toBeNull();
     expect(formatPrice(Number.NaN, '$')).toBeNull();
   });
+
+  it('reads dimensions from PNG, JPEG, WebP, and GIF headers', () => {
+    const png = new Uint8Array(24);
+    png.set([0x89, 0x50, 0x4e, 0x47], 0);
+    new DataView(png.buffer).setUint32(16, 1200);
+    new DataView(png.buffer).setUint32(20, 630);
+    expect(readImageDimensions(png)).toEqual({ width: 1200, height: 630 });
+
+    expect(readImageDimensions(Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x01, 0x2c, 0x02, 0x58, 0x01, 0x01, 0x11, 0x00, 0xff, 0xd9])))
+      .toEqual({ width: 600, height: 300 });
+    expect(readImageDimensions(Uint8Array.from([0x52,0x49,0x46,0x46,0x16,0,0,0,0x57,0x45,0x42,0x50,0x56,0x50,0x38,0x58,10,0,0,0,0,0,0,0,0xaf,0,0,0x3f,0,0,0])))
+      .toEqual({ width: 176, height: 64 });
+    expect(readImageDimensions(Uint8Array.from([0x47,0x49,0x46,0x38,0x39,0x61,0x80,0x02,0x58,0x01])))
+      .toEqual({ width: 640, height: 344 });
+    expect(readImageDimensions(new Uint8Array([1, 2, 3]))).toBeNull();
+  });
 });
 
 describe('public catalog share handler', () => {
@@ -86,8 +102,19 @@ describe('public catalog share handler', () => {
       if (url.pathname.endsWith('/public_profiles')) {
         return Response.json([{ currency_symbol: '$' }]);
       }
+      if (url.pathname === '/og-default.png') {
+        const png = new Uint8Array(24);
+        png.set([0x89, 0x50, 0x4e, 0x47], 0);
+        new DataView(png.buffer).setUint32(16, 1200);
+        new DataView(png.buffer).setUint32(20, 630);
+        return new Response(png, { status: 206, headers: { 'Content-Type': 'image/png' } });
+      }
       if (url.pathname.includes('/storage/v1/object/public/assets/')) {
-        return new Response(null, { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+        const png = new Uint8Array(24);
+        png.set([0x89, 0x50, 0x4e, 0x47], 0);
+        new DataView(png.buffer).setUint32(16, 1200);
+        new DataView(png.buffer).setUint32(20, 630);
+        return new Response(png, { status: 206, headers: { 'Content-Type': 'image/png' } });
       }
       throw new Error(`Unexpected URL: ${url.pathname}`);
     }) as typeof fetch;
@@ -105,6 +132,10 @@ describe('public catalog share handler', () => {
     expect(html).toContain('RivaTech · $ 1.234 · Carga rápida');
     expect(html).toContain(`og:url" content="https://rivastock.vercel.app/p/rivatech-2/${PRODUCT_ID}`);
     expect(html).toContain(`og:image" content="${SUPABASE_URL}/storage/v1/object/public/assets/item.webp`);
+    expect(html).toContain('property="og:image:width" content="1200"');
+    expect(html).toContain('property="og:image:height" content="630"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
+    expect(fetcher).toHaveBeenCalledWith(`${SUPABASE_URL}/storage/v1/object/public/assets/item.webp`, expect.objectContaining({ headers: { Range: 'bytes=0-524287' } }));
     expect(html).toContain(`url=https://rivastock.vercel.app/catalogo/rivatech-2/${PRODUCT_ID}`);
   });
 
@@ -117,8 +148,45 @@ describe('public catalog share handler', () => {
     expect(response.status).toBe(200);
     expect(html).toContain('Catálogo de RivaTech');
     expect(html).toContain('Tecnología para todos');
+    expect(html).toContain(`og:image" content="${DEFAULT_SHARE_IMAGE_URL}"`);
+    expect(html).toContain('property="og:image:width" content="1200"');
+    expect(html).toContain('property="og:image:height" content="630"');
     expect(html).toContain('url=https://rivastock.vercel.app/catalogo/rivatech-2');
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the cover image before the logo and falls back to the logo when no cover exists', async () => {
+    const cover = `${SUPABASE_URL}/storage/v1/object/public/assets/catalog/cover.webp`;
+    const logo = `${SUPABASE_URL}/storage/v1/object/public/assets/catalog/logo.webp`;
+    const handler = createShareHandler({
+      supabaseUrl: SUPABASE_URL,
+      publishableKey: 'sb_publishable_test',
+      fetcher: makeFetch({ configRows: [{ ...configRow, banner_url: cover, logo_url: logo }] }),
+    });
+    const coverResponse = await handler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2', { headers: forwardedHost }));
+    expect(await coverResponse.text()).toContain(`og:image" content="${cover}`);
+
+    const logoOnlyHandler = createShareHandler({
+      supabaseUrl: SUPABASE_URL,
+      publishableKey: 'sb_publishable_test',
+      fetcher: makeFetch({ configRows: [{ ...configRow, banner_url: null, logo_url: logo }] }),
+    });
+    const logoResponse = await logoOnlyHandler(new Request('https://project.supabase.co/functions/v1/share?slug=rivatech-2', { headers: forwardedHost }));
+    expect(await logoResponse.text()).toContain(`og:image" content="${logo}`);
+  });
+
+  it.each([
+    ['anon', undefined],
+    ['authenticated caller', 'Bearer authenticated-fixture-token'],
+  ])('renders read-only public metadata for a %s request', async (_role, authorization) => {
+    const handler = createShareHandler({ supabaseUrl: SUPABASE_URL, publishableKey: 'sb_publishable_test', fetcher: makeFetch({ product: { ...product, imageUrl: null, images: [] } }) });
+    const response = await handler(new Request(`https://project.supabase.co/functions/v1/share?slug=rivatech-2&productId=${PRODUCT_ID}`, {
+      headers: { ...forwardedHost, ...(authorization ? { authorization } : {}) },
+    }));
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('property="og:image:width"');
+    expect(html).toContain('name="twitter:card" content="summary_large_image"');
   });
 
   it('redirects a historical catalog slug to the canonical link and preserves a product id', async () => {

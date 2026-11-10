@@ -22,6 +22,10 @@ vi.mock('../AuthContext', () => ({
 }));
 vi.mock('../hooks/usePermission', () => ({ usePermission: () => true }));
 vi.mock('../hooks/useSuppliers', () => ({ useSuppliers: () => ({ suppliers: [] }) }));
+vi.mock('../lib/supplierOrderPdfCompression', () => ({
+  compressSupplierOrderPdf: vi.fn(async (file: File) => file),
+  SUPPLIER_ORDER_PDF_COMPRESSION_THRESHOLD: 10_000_000,
+}));
 vi.mock('react-router-dom', () => ({ useLocation: () => ({ pathname: '/proveedores/pedidos' }), useNavigate: () => vi.fn() }));
 vi.mock('../components/Modal', () => ({
   default: ({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) =>

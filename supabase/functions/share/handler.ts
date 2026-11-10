@@ -1,8 +1,12 @@
 import {
   formatPrice,
+  DEFAULT_SHARE_IMAGE_URL,
+  getPublicAssetUrl,
+  getPublicShareImageUrl,
   isValidCatalogSlug,
   isValidProductId,
   renderShareHtml,
+  readImageDimensions,
   selectProductImage,
   type ShareCatalogConfig,
   type ShareProduct,
@@ -65,6 +69,33 @@ async function readJson<T>(response: Response): Promise<T | null> {
   }
 }
 
+async function readImagePrefix(response: Response, maxBytes = 512 * 1024): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      const remaining = maxBytes - total;
+      const chunk = value.subarray(0, remaining);
+      chunks.push(chunk);
+      total += chunk.byteLength;
+      if (chunk.byteLength < value.byteLength) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 export function createShareHandler(options: ShareHandlerOptions): (request: Request) => Promise<Response> {
   const supabaseUrl = options.supabaseUrl.replace(/\/$/, '');
   const projectHost = new URL(supabaseUrl).hostname;
@@ -115,8 +146,13 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
 
       let title = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let description = config.tagline?.trim() || config.welcome_message?.trim() || `Mirá los productos de ${config.business_name || 'este negocio'}.`;
-      let imageUrl = config.logo_url ?? config.banner_url ?? null;
+      const catalogImageUrl = getPublicAssetUrl(config.banner_url, projectHost)
+        || getPublicAssetUrl(config.logo_url, projectHost)
+        || DEFAULT_SHARE_IMAGE_URL;
+      let imageUrl = catalogImageUrl;
       let imageContentType: string | null = null;
+      let imageWidth: number | null = null;
+      let imageHeight: number | null = null;
       let imageAlt = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let catalogPath = `/catalogo/${encodeURIComponent(slug)}`;
 
@@ -139,24 +175,31 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         }
         if (product.description?.trim()) parts.push(product.description.trim());
         description = parts.join(' · ');
-        imageUrl = selectProductImage(product, projectHost);
+        imageUrl = selectProductImage(product, projectHost) ?? catalogImageUrl;
         imageAlt = product.name;
         catalogPath += `/${encodeURIComponent(productId)}`;
       }
 
-      let allowedImageUrl = imageUrl ? selectProductImage({ id: '', name: title, imageUrl }, projectHost) : null;
-      if (allowedImageUrl) {
+      let allowedImageUrl: string | null = null;
+      for (const candidate of [...new Set([imageUrl, catalogImageUrl])]) {
+        const safeCandidate = getPublicShareImageUrl(candidate, projectHost);
+        if (!safeCandidate) continue;
         try {
-          const imageResponse = await fetcher(allowedImageUrl, { method: 'HEAD', signal: request.signal });
+          const imageResponse = await fetcher(safeCandidate, {
+            headers: { Range: 'bytes=0-524287' },
+            signal: request.signal,
+          });
           const contentType = imageResponse.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-          if (imageResponse.ok && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(contentType)) {
-            imageContentType = contentType;
-          } else {
-            allowedImageUrl = null;
-          }
+          if (!imageResponse.ok || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(contentType)) continue;
+          const dimensions = readImageDimensions(await readImagePrefix(imageResponse));
+          if (!dimensions) continue;
+          allowedImageUrl = safeCandidate;
+          imageContentType = contentType;
+          imageWidth = dimensions.width;
+          imageHeight = dimensions.height;
+          break;
         } catch {
-          imageContentType = null;
-          allowedImageUrl = null;
+          continue;
         }
       }
 
@@ -169,6 +212,8 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         description,
         imageUrl: allowedImageUrl,
         imageContentType,
+        imageWidth,
+        imageHeight,
         imageAlt,
         allowedImageHost: projectHost,
       });
