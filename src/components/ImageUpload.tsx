@@ -4,8 +4,17 @@ import { uploadToStorage, deleteFromStorage } from '../lib/db';
 import { imageFileExtension, optimizeUploadImage } from '../lib/imageOptimization';
 import { getProductThumbnailPath, getProductThumbnailUrl, PRODUCT_PHOTO_CACHE_CONTROL } from '../lib/productPhotos';
 import { assertStorageUploadAllowed, storageUploadDenialMessage } from '../lib/platformStorage';
+import { makeProductPhotoUploadDiagnostic, productPhotoUploadError, reportProductPhotoUploadFailure, type ProductPhotoUploadStage } from '../lib/productPhotoUploadDiagnostics';
+import { showToast } from '../lib/toast';
 
 const MAX_IMAGES = 4;
+const MAX_SOURCE_IMAGE_BYTES = 40 * 1024 * 1024;
+const MAX_STORED_IMAGE_BYTES = 2 * 1024 * 1024;
+
+function isPhotoFile(file: File): boolean {
+  if (file.type.toLowerCase() === 'image/svg+xml' || /\.svg$/i.test(file.name)) return false;
+  return file.type.toLowerCase().startsWith('image/') || /\.(?:jpe?g|png|webp|heic|heif|avif)$/i.test(file.name);
+}
 
 interface ImageUploadProps {
   ownerUid: string;
@@ -35,6 +44,16 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
+  const showUploadFailure = (stage: ProductPhotoUploadStage, file: File, reason: unknown) => {
+    const online = typeof navigator === 'undefined' || navigator.onLine;
+    const denialMessage = storageUploadDenialMessage(reason);
+    const failure = productPhotoUploadError(reason, { online, denialMessage });
+    const diagnostic = makeProductPhotoUploadDiagnostic(stage, failure.reason, file, online);
+    setError(failure.message);
+    showToast(failure.message, 'error');
+    reportProductPhotoUploadFailure(diagnostic);
+  };
+
   // Re-sync when the parent swaps the product being edited.
   const lastKey = useRef<string>(productId);
   useEffect(() => {
@@ -50,14 +69,13 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     if (remaining <= 0) return;
 
     const toProcess = Array.from(files).slice(0, remaining);
-    const MAX_BYTES = 5 * 1024 * 1024;
     for (const f of toProcess) {
-      if (!f.type.startsWith('image/')) {
-        setError('Solo se permiten imágenes (jpg, png, webp).');
+      if (!isPhotoFile(f)) {
+        showUploadFailure('validate', f, { code: 'unsupported_format' });
         return;
       }
-      if (f.size > MAX_BYTES) {
-        setError(`Cada imagen debe pesar menos de ${MAX_BYTES / 1024 / 1024}MB.`);
+      if (f.size > MAX_SOURCE_IMAGE_BYTES) {
+        showUploadFailure('validate', f, { code: 'photo_too_large' });
         return;
       }
     }
@@ -67,21 +85,31 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     onUploadStart?.();
 
     const uploadedUrls: string[] = [];
+    let stage: ProductPhotoUploadStage = 'compress_original';
+    let currentFile = toProcess[0];
     try {
       // Decode sequentially to bound peak memory on mobile devices.
       for (const [index, file] of toProcess.entries()) {
-        const original = await optimizeUploadImage(file, 1600, { forceWebP: true });
+        currentFile = file;
+        stage = 'compress_original';
+        const original = await optimizeUploadImage(file, 1600, { forceWebP: true, maxBytes: MAX_STORED_IMAGE_BYTES });
         if (original.type !== 'image/webp') {
-          throw new Error('Este navegador no pudo preparar la foto en formato WebP.');
+          throw { code: 'unsupported_format' };
         }
-        const thumbnail = await optimizeUploadImage(original, 480, { forceWebP: true });
+        if (original.size > MAX_STORED_IMAGE_BYTES) throw { code: 'photo_too_large' };
+        stage = 'compress_thumbnail';
+        const thumbnail = await optimizeUploadImage(original, 480, { forceWebP: true, maxBytes: 300_000 });
         if (thumbnail.type !== 'image/webp') {
-          throw new Error('Este navegador no pudo preparar la miniatura WebP.');
+          throw { code: 'compression_failed' };
         }
+        if (thumbnail.size > MAX_STORED_IMAGE_BYTES) throw { code: 'photo_too_large' };
+        stage = 'check_storage';
         await assertStorageUploadAllowed('assets', original.size + thumbnail.size);
         const path = `${ownerUid}/products/${productId}/${Date.now()}_${crypto.randomUUID()}_${index}.${imageFileExtension(original)}`;
+        stage = 'upload_original';
         const originalUrl = await uploadToStorage(path, original, original.type, PRODUCT_PHOTO_CACHE_CONTROL);
         uploadedUrls.push(originalUrl);
+        stage = 'upload_thumbnail';
         await uploadToStorage(getProductThumbnailPath(path), thumbnail, thumbnail.type, PRODUCT_PHOTO_CACHE_CONTROL);
       }
       const updated = [...images, ...uploadedUrls];
@@ -89,8 +117,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       onChange(updated);
     } catch (err: unknown) {
       await Promise.allSettled(uploadedUrls.flatMap((url) => [url, getProductThumbnailUrl(url)]).map(deleteFromStorage));
-      const denialMessage = storageUploadDenialMessage(err);
-      setError(denialMessage ?? `Error al subir imagen: ${err instanceof Error ? err.message : 'desconocido'}`);
+      showUploadFailure(stage, currentFile, err);
     } finally {
       setProcessing(false);
       onUploadEnd?.();
@@ -204,15 +231,19 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
       </div>
 
       <p className="text-xs text-slate-400">{images.length}/{MAX_IMAGES} imágenes · Arrastrá o hacé clic para subir</p>
-      {error && <p className="text-rose-500 text-sm font-medium">{error}</p>}
+      {processing && <p role="status" aria-live="polite" className="text-sm text-[var(--ink-subtle)]">Preparando y subiendo la foto…</p>}
+      {error && <p role="alert" aria-live="assertive" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-rose-800 text-sm font-semibold dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
 
       <input
         type="file"
         ref={fileInputRef}
         className="hidden"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*,.heic,.heif,.avif"
         multiple
-        onChange={(e) => e.target.files && handleFiles(e.target.files)}
+        onChange={(e) => {
+          if (e.target.files) void handleFiles(e.target.files);
+          e.target.value = '';
+        }}
       />
       {mobileControls && (
         <>
@@ -220,7 +251,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             type="file"
             ref={cameraInputRef}
             className="hidden"
-            accept="image/*"
+            accept="image/*,.heic,.heif,.avif"
             capture="environment"
             onChange={(event) => {
               if (event.target.files) void handleFiles(event.target.files);
@@ -231,7 +262,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             type="file"
             ref={galleryInputRef}
             className="hidden"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/*,.heic,.heif,.avif"
             multiple
             onChange={(event) => {
               if (event.target.files) void handleFiles(event.target.files);

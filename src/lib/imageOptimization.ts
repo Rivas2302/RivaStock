@@ -2,6 +2,91 @@
 const RASTER_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 const CONVERTIBLE_TYPES = new Set([...RASTER_TYPES, 'image/webp']);
 
+export type ImageProcessingFailureCode = 'unsupported_format' | 'read_failed' | 'compression_failed' | 'photo_too_large';
+
+export class ImageProcessingError extends Error {
+  constructor(readonly code: ImageProcessingFailureCode) {
+    const messages: Record<ImageProcessingFailureCode, string> = {
+      unsupported_format: 'El teléfono no puede abrir este formato de imagen.',
+      read_failed: 'No se pudo leer la foto seleccionada.',
+      compression_failed: 'No se pudo comprimir la foto seleccionada.',
+      photo_too_large: 'La foto sigue siendo demasiado pesada después de comprimirla.',
+    };
+    super(messages[code]);
+    this.name = 'ImageProcessingError';
+  }
+}
+
+function isHeifFile(file: File): boolean {
+  return /\.(?:heic|heif)$/i.test(file.name) || /^image\/hei[cf]/i.test(file.type);
+}
+
+function isSupportedUploadImage(file: File): boolean {
+  if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) return false;
+  return /^(?:image\/(?:jpe?g|png|webp|heic|heif|avif))$/i.test(file.type)
+    || /\.(?:jpe?g|png|webp|heic|heif|avif)$/i.test(file.name);
+}
+
+async function optimizeUploadImageAsWebP(file: File, maxEdge: number, maxBytes?: number): Promise<File> {
+  if (!isSupportedUploadImage(file) || file.size === 0) {
+    throw new ImageProcessingError(file.size === 0 ? 'read_failed' : 'unsupported_format');
+  }
+  if (typeof createImageBitmap !== 'function') throw new ImageProcessingError('unsupported_format');
+
+  if (file.type === 'image/png' && hasPngAnimation(await file.arrayBuffer())) {
+    throw new ImageProcessingError('unsupported_format');
+  }
+
+  let bitmap: ImageBitmap | undefined;
+  let canvas: HTMLCanvasElement | undefined;
+  try {
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch (error) {
+      if (isHeifFile(file) || (error instanceof DOMException && error.name === 'NotSupportedError')) {
+        throw new ImageProcessingError('unsupported_format');
+      }
+      throw new ImageProcessingError('read_failed');
+    }
+
+    const dimensions = fitImageDimensions(bitmap.width, bitmap.height, maxEdge);
+    canvas = document.createElement('canvas');
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new ImageProcessingError('compression_failed');
+    context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
+
+    const qualities = maxBytes === undefined ? [0.85] : [0.85, 0.75, 0.65, 0.55, 0.45];
+    let smallest: Blob | null = null;
+    for (const quality of qualities) {
+      const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+      if (!blob || blob.type !== 'image/webp' || blob.size === 0) {
+        throw new ImageProcessingError('compression_failed');
+      }
+      if (!smallest || blob.size < smallest.size) smallest = blob;
+      if (maxBytes === undefined || blob.size <= maxBytes) {
+        return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, {
+          type: blob.type, lastModified: file.lastModified,
+        });
+      }
+    }
+
+    if (smallest && maxBytes !== undefined && smallest.size <= maxBytes) {
+      return new File([smallest], `${file.name.replace(/\.[^.]+$/, '')}.webp`, {
+        type: smallest.type, lastModified: file.lastModified,
+      });
+    }
+    throw new ImageProcessingError('photo_too_large');
+  } catch (error) {
+    if (error instanceof ImageProcessingError) throw error;
+    throw new ImageProcessingError('compression_failed');
+  } finally {
+    bitmap?.close();
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+  }
+}
+
 export function hasPngAnimation(buffer: ArrayBuffer): boolean {
   const bytes = new Uint8Array(buffer);
   if (bytes.length < 8 || bytes[0] !== 137 || bytes[1] !== 80 || bytes[2] !== 78 || bytes[3] !== 71) return false;
@@ -27,10 +112,12 @@ export function fitImageDimensions(width: number, height: number, maxEdge = 1600
 export async function optimizeUploadImage(
   file: File,
   maxEdge = 1600,
-  options: { forceWebP?: boolean } = {},
+  options: { forceWebP?: boolean; maxBytes?: number } = {},
 ): Promise<File> {
-  const { forceWebP = false } = options;
-  if (!(forceWebP ? CONVERTIBLE_TYPES : RASTER_TYPES).has(file.type)
+  const { forceWebP = false, maxBytes } = options;
+  if (forceWebP) return optimizeUploadImageAsWebP(file, maxEdge, maxBytes);
+
+  if (!RASTER_TYPES.has(file.type)
     || typeof createImageBitmap !== 'function') return file;
   let bitmap: ImageBitmap | undefined;
   let canvas: HTMLCanvasElement | undefined;
@@ -45,7 +132,7 @@ export async function optimizeUploadImage(
     if (!context) return file;
     context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
     const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', 0.85));
-    if (!blob || blob.type !== 'image/webp' || (!forceWebP && blob.size >= file.size)) return file;
+    if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return file;
     return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, {
       type: blob.type, lastModified: file.lastModified,
     });

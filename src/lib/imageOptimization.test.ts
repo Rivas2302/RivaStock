@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fitImageDimensions, hasPngAnimation, imageFileExtension, optimizeCatalogCover, optimizeSupplierCatalogPhoto, optimizeUploadImage } from './imageOptimization';
+import { fitImageDimensions, hasPngAnimation, imageFileExtension, ImageProcessingError, optimizeCatalogCover, optimizeSupplierCatalogPhoto, optimizeUploadImage } from './imageOptimization';
 
 afterEach(() => vi.unstubAllGlobals());
 describe('image upload optimization', () => {
@@ -44,6 +44,48 @@ describe('image upload optimization', () => {
     expect(thumbnail.type).toBe('image/webp');
     expect(thumbnail.name).toBe('photo.webp');
     expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 480, 240);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it('uses native image decoding for HEIC when the browser supports it and resizes to 1600 px', async () => {
+    const file = new File(['heic'], 'camera.heic', { type: 'image/heic' });
+    const close = vi.fn();
+    const drawImage = vi.fn();
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }), toBlob: (fn: (blob: Blob) => void) => fn(new Blob(['webp'], { type: 'image/webp' })) };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4000, height: 3000, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+
+    const optimized = await optimizeUploadImage(file, 1600, { forceWebP: true, maxBytes: 2 * 1024 * 1024 });
+
+    expect(optimized.type).toBe('image/webp');
+    expect(optimized.name).toBe('camera.webp');
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1600, 1200);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it('reports unsupported HEIC when the browser cannot decode it', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new DOMException('Unsupported image', 'NotSupportedError')));
+    await expect(optimizeUploadImage(
+      new File(['heic'], 'camera.heic', { type: 'image/heic' }), 1600, { forceWebP: true },
+    )).rejects.toMatchObject({ code: 'unsupported_format' });
+  });
+  it('retries WebP encoding at lower quality to fit the bucket file limit', async () => {
+    const file = new File([new Uint8Array(6 * 1024 * 1024)], 'large.jpg', { type: 'image/jpeg' });
+    const close = vi.fn();
+    const qualities: number[] = [];
+    const canvas = {
+      width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }),
+      toBlob: (fn: (blob: Blob) => void, _type: string, quality: number) => {
+        qualities.push(quality);
+        fn(new Blob([new Uint8Array(quality <= 0.65 ? 1_900_000 : 2_200_000)], { type: 'image/webp' }));
+      },
+    };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4200, height: 2800, close }));
+    vi.stubGlobal('document', { createElement: () => canvas });
+
+    const optimized = await optimizeUploadImage(file, 1600, { forceWebP: true, maxBytes: 2 * 1024 * 1024 });
+
+    expect(file.size).toBeGreaterThan(5 * 1024 * 1024);
+    expect(optimized.size).toBe(1_900_000);
+    expect(qualities).toEqual([0.85, 0.75, 0.65]);
     expect(close).toHaveBeenCalledOnce();
   });
   it.each(['image/png', 'image/webp'])('accepts only smaller genuine WebP blobs (%s)', async type => {

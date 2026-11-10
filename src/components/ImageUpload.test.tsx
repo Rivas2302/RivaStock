@@ -4,10 +4,12 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImageUpload } from './ImageUpload';
 
-const { rpc, uploadToStorage, optimizeUploadImage } = vi.hoisted(() => ({
+const { rpc, uploadToStorage, optimizeUploadImage, showToast, reportProductPhotoUploadFailure } = vi.hoisted(() => ({
   rpc: vi.fn(),
   uploadToStorage: vi.fn(),
   optimizeUploadImage: vi.fn(),
+  showToast: vi.fn(),
+  reportProductPhotoUploadFailure: vi.fn(),
 }));
 
 vi.mock('../lib/supabase', () => ({ supabase: { rpc } }));
@@ -15,6 +17,11 @@ vi.mock('../lib/db', () => ({ uploadToStorage, deleteFromStorage: vi.fn() }));
 vi.mock('../lib/imageOptimization', () => ({
   imageFileExtension: () => 'webp',
   optimizeUploadImage,
+}));
+vi.mock('../lib/toast', () => ({ showToast }));
+vi.mock('../lib/productPhotoUploadDiagnostics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/productPhotoUploadDiagnostics')>(),
+  reportProductPhotoUploadFailure,
 }));
 vi.mock('../lib/productPhotos', () => ({
   PRODUCT_PHOTO_CACHE_CONTROL: '31536000',
@@ -36,6 +43,8 @@ describe('ImageUpload storage guard', () => {
       error: null,
     });
     uploadToStorage.mockReset();
+    showToast.mockReset();
+    reportProductPhotoUploadFailure.mockReset();
     optimizeUploadImage.mockReset().mockImplementation(async () =>
       new File([new Uint8Array([1, 2])], 'optimized.webp', { type: 'image/webp' }));
   });
@@ -66,8 +75,10 @@ describe('ImageUpload storage guard', () => {
       p_bytes: 4,
     });
     expect(uploadToStorage).not.toHaveBeenCalled();
-    expect(host.querySelector('p.text-rose-500')?.textContent)
-      .toBe('No hay espacio en la nube de RivaStock. Avisá a RivaTech.');
+    expect(host.querySelector('[role="alert"]')?.textContent)
+      .toBe('Sin espacio en la nube de RivaStock. Avisá a RivaTech.');
+    expect(showToast).toHaveBeenCalledWith('Sin espacio en la nube de RivaStock. Avisá a RivaTech.', 'error');
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no_space' }));
   });
 
   it('uploads a WebP original and its derived thumbnail while exposing only the original URL', async () => {
@@ -108,6 +119,96 @@ describe('ImageUpload storage guard', () => {
     expect(onChange).toHaveBeenCalledWith([`https://cdn.test/${originalPath}`]);
   });
 
+  it('compresses a camera photo larger than 5 MB before applying the storage limit', async () => {
+    rpc.mockResolvedValue({ data: { allowed: true, reason: null }, error: null });
+    uploadToStorage.mockImplementation(async (path: string) => `https://cdn.test/${path}`);
+    vi.stubGlobal('crypto', { randomUUID: () => 'large-photo-test-id' });
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="new-product" onChange={vi.fn()} mobileControls />);
+    });
+
+    const camera = host.querySelector<HTMLInputElement>('input[capture="environment"]')!;
+    const largePhoto = new File([new Uint8Array(6 * 1024 * 1024)], 'motorola-camera.jpg', { type: 'image/jpeg' });
+    expect(largePhoto.size).toBeGreaterThan(5 * 1024 * 1024);
+    Object.defineProperty(camera, 'files', { configurable: true, value: [largePhoto] });
+    await act(async () => {
+      camera.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await vi.waitFor(() => expect(uploadToStorage).toHaveBeenCalledTimes(2));
+    expect(optimizeUploadImage).toHaveBeenCalledWith(largePhoto, 1600, { forceWebP: true, maxBytes: 2 * 1024 * 1024 });
+    expect(rpc).toHaveBeenCalledWith('storage_upload_check', { p_bucket: 'assets', p_bytes: 4 });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('shows and records an unsupported HEIC decode instead of failing silently', async () => {
+    optimizeUploadImage.mockRejectedValue({ code: 'unsupported_format' });
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="product" onChange={vi.fn()} mobileControls />);
+    });
+
+    const gallery = host.querySelector<HTMLInputElement>('input[multiple]')!;
+    const heic = new File(['heic bytes'], 'photo.heic', { type: 'image/heic' });
+    Object.defineProperty(gallery, 'files', { configurable: true, value: [heic] });
+    await act(async () => {
+      gallery.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Formato no soportado. Guardá la foto como JPG o PNG y volvé a probar.');
+    expect(showToast).toHaveBeenCalledOnce();
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'compress_original', reason: 'unsupported_format', imageType: 'heic',
+    }));
+    expect(uploadToStorage).not.toHaveBeenCalled();
+  });
+
+  it('turns a browser network error into an actionable Spanish message', async () => {
+    optimizeUploadImage.mockRejectedValue(new TypeError('Failed to fetch'));
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="product" onChange={vi.fn()} />);
+    });
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })],
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Sin conexión. Revisá Internet e intentá subir la foto de nuevo.');
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no_connection' }));
+  });
+
+  it('explains an authenticated upload permission rejection without exposing backend text', async () => {
+    rpc.mockResolvedValue({ data: { allowed: true, reason: null }, error: null });
+    uploadToStorage.mockRejectedValue(new Error('new row violates row-level security policy for path owner/private-product/photo.webp'));
+    await act(async () => {
+      root.render(<ImageUpload ownerUid="owner" productId="private-product" onChange={vi.fn()} />);
+    });
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })],
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Sin permiso: no se pudo guardar la foto en Stock. Revisá el acceso del negocio.');
+    expect(host.textContent).not.toContain('private-product');
+    expect(host.textContent).not.toContain('row-level security');
+    expect(reportProductPhotoUploadFailure).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'upload_original', reason: 'no_permission',
+    }));
+  });
+
   it('offers camera and gallery inputs on mobile and reorders images without uploading them again', async () => {
     const onChange = vi.fn();
     await act(async () => {
@@ -121,8 +222,9 @@ describe('ImageUpload storage guard', () => {
       />);
     });
 
-    expect(host.querySelector<HTMLInputElement>('input[capture="environment"]')?.accept).toBe('image/*');
-    expect(host.querySelector<HTMLInputElement>('input[multiple]')?.accept).toBe('image/jpeg,image/png,image/webp');
+    expect(host.querySelector<HTMLInputElement>('input[capture="environment"]')?.accept).toContain('image/*');
+    expect(host.querySelector<HTMLInputElement>('input[capture="environment"]')?.accept).toContain('.heic');
+    expect(host.querySelector<HTMLInputElement>('input[multiple]')?.accept).toContain('.heif');
     const moveLeft = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.getAttribute('aria-label') === 'Mover imagen 2 a la izquierda');
     if (!moveLeft) throw new Error('No se encontró el control para reordenar la foto.');

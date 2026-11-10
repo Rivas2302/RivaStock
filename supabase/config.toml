@@ -3,6 +3,9 @@ project_id = "nkfqhuqrgrpfufdymkcr"
 [functions.share]
 verify_jwt = false
 
+[functions.product-upload-diagnostics]
+verify_jwt = true
+
 [functions.send-order-notification]
 verify_jwt = false
 
