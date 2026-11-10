@@ -2010,4 +2010,4 @@ Sin toque en src/, supabase/ ni extensions/.
 - En Catálogo Público → Qué se muestra, “Todos” aparece primero y ofrece foto automática (mosaico), selección de foto de producto, subida y restauración de la opción automática. La vista previa refleja el cambio antes de guardar.
 - Se reutiliza `category_photo_overrides` y la función compartida del catálogo, sin migración. Funciona en Tienda y Revendedores; el interruptor global de fotos de categoría sigue respetándose.
 - Verificación: pruebas específicas **13/13**, E2E en Tienda y Revendedores **2/2**, suite completa **1.330/1.330**, lint y build aprobados. Sin cambios a datos reales.
-- Publicación pendiente hasta completar el commit de esta entrega.
+- Commit `fbbb76e` enviado a `main`; Vercel lo marcó **Ready** y asignó `https://rivastock.vercel.app`. `vercel inspect` confirma el alias Current y el dominio responde HTTP 200.
