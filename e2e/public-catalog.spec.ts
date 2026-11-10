@@ -13,7 +13,7 @@ const product = {
   availability: 'in_stock', createdAt: '2026-11-05T12:00:00.000Z',
 };
 
-function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00', showOutOfStock = false, emptyCatalog = false) {
+function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-year', offerEndsAt = '2099-01-01T00:00', showOutOfStock = false, emptyCatalog = false, announcementText = 'Envíos en General Pico') {
   const titles = { normal: 'Encontrá lo que buscás', christmas: 'Regalos para compartir', 'children-day': 'Un regalo para cada aventura', 'new-year': 'Empezá el año con algo nuevo' };
   const heroColors = { normal: '#172033', christmas: '#164632', 'children-day': '#F1D98B', 'new-year': '#202226' };
   const accentColors = { normal: '#3156A6', christmas: '#B23A48', 'children-day': '#6B55A1', 'new-year': '#9B7A35' };
@@ -28,13 +28,13 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
       heroImageUrl: null, heroColor: heroColors[theme], accentColor: accentColors[theme],
       sections: [{ id: 'featured', visible: false }, { id: 'offers', visible: true }, { id: 'categories', visible: true }, { id: 'new', visible: false }, { id: 'all', visible: true }],
       featuredProductIds: [], featuredCategoryId: null, offerProductIds: [PRODUCT_ID], offerDiscountPercentByProduct: { [PRODUCT_ID]: 20 }, offerEndsAt,
-      ambience: { intensity: 'normal', animatedEffects: true, headerDecoration: true, productDecoration: true, countdown: true, announcementText: 'Envíos en General Pico', themedFont: true, welcomeCard: true },
+      ambience: { intensity: 'normal', animatedEffects: true, headerDecoration: true, productDecoration: true, countdown: true, announcementText, themedFont: true, welcomeCard: true },
       showWhatsAppButton: true, showProductsWithoutPhoto: true, whatsappMessageTemplate: 'Hola, quiero {producto} por {precio}, cantidad {cantidad}. {link}',
     },
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}, announcementText = 'Envíos en General Pico') {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
   const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
@@ -44,7 +44,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
     if (pathname.endsWith('/catalog_config')) {
       const requestedSlug = url.searchParams.get('slug')?.replace(/^eq\./, '');
       if (legacyCatalogSlug && requestedSlug === legacyCatalogSlug) return route.fulfill({ json: [] });
-      return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp, category_photo_overrides: categoryPhotoOverrides }] });
+      return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog, announcementText), whatsapp_number: businessWhatsApp, category_photo_overrides: categoryPhotoOverrides }] });
     }
     if (legacyCatalogSlug && pathname.endsWith('/rpc/resolve_public_catalog_slug')) return route.fulfill({ json: 'qa-catalog' });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: categoryOverrides ?? [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
@@ -133,6 +133,28 @@ test('category circles use visible product photos and product navigation returns
   await page.goBack();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
+});
+
+test('catalog announcement stays in flow below the safe-area header and the hero starts after it', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+
+  const header = page.locator('body > #root header').first();
+  const ribbon = page.getByRole('note', { name: 'Anuncio del catálogo' });
+  const hero = page.getByTestId('public-catalog-hero');
+  await expect(ribbon).toBeVisible();
+  expect(await ribbon.evaluate(element => getComputedStyle(element).position)).toBe('relative');
+  const withRibbon = await page.evaluate(() => {
+    const headerBox = document.querySelector('body > #root header')!.getBoundingClientRect();
+    const spacerBox = document.querySelector('[data-testid="catalog-header-spacer"]')!.getBoundingClientRect();
+    const ribbonBox = document.querySelector('.catalog-announcement')!.getBoundingClientRect();
+    const heroBox = document.querySelector('[data-testid="public-catalog-hero"]')!.getBoundingClientRect();
+    return { headerBottom: headerBox.bottom, spacerBottom: spacerBox.bottom, ribbonTop: ribbonBox.top, ribbonBottom: ribbonBox.bottom, heroTop: heroBox.top };
+  });
+  expect(withRibbon.spacerBottom).toBeGreaterThanOrEqual(withRibbon.headerBottom);
+  expect(withRibbon.ribbonTop).toBeGreaterThanOrEqual(withRibbon.spacerBottom);
+  expect(withRibbon.heroTop).toBeGreaterThanOrEqual(withRibbon.ribbonBottom);
 });
 
 test('the configurable Todos photo is visible in the retail catalog', async ({ page }) => {

@@ -1,27 +1,7 @@
-.catalog-announcement {
-  position: absolute;
-  top: 5rem;
-  z-index: 48;
-  display: flex;
-  min-height: 2rem;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  padding: .25rem 1rem;
-  background: var(--catalog-announcement-background, var(--brand));
-  color: var(--catalog-announcement-ink, var(--action-ink));
-  font-size: .75rem;
-  font-weight: 700;
-  text-align: center;
-}
-.catalog-announcement__track { display: flex; width: max-content; min-width: 100%; justify-content: space-around; gap: 6rem; animation: catalog-announcement-scroll 28s linear infinite; }
-.catalog-announcement__track span { flex: 0 0 auto; }
-
 .catalog-theme-effects {
   position: fixed;
   z-index: 25;
-  inset: 5rem 0 0;
+  inset: calc(5rem + env(safe-area-inset-top) + var(--catalog-announcement-height, 0rem)) 0 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -96,14 +76,12 @@
 @keyframes catalog-whatsapp-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 
 @keyframes catalog-seasonal-fall { to { transform: translate3d(2rem, 105vh, 0) rotate(360deg); } }
-@keyframes catalog-announcement-scroll { to { transform: translateX(-50%); } }
 @keyframes catalog-light-twinkle { from { opacity: .45; } to { opacity: 1; } }
 @keyframes catalog-firework-burst { 0%, 18% { opacity: 0; transform: scale(.35); } 35% { opacity: 1; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.2); } }
 @keyframes catalog-bunting-sway { from { transform: rotate(-1deg); } to { transform: rotate(1deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   .catalog-theme-effects *, .catalog-theme-effects *::before, .catalog-theme-effects *::after { animation: none !important; transition: none !important; }
-  .catalog-announcement__track { animation: none !important; }
   .catalog-floating-whatsapp { animation: none !important; }
 }
 

@@ -2076,4 +2076,12 @@ Sin toque en src/, supabase/ ni extensions/.
 - Las imágenes se limitan a objetos HTTPS del bucket público `assets` o a la portada estática exacta de RivaStock. El Edge Function lee un prefijo acotado para comprobar tipo y dimensiones reales (PNG, JPEG, WebP y GIF); no descarga datos de imagen sin límite.
 - Open Graph incluye URL absoluta, tipo, dimensiones y texto alternativo; Twitter usa `summary_large_image` cuando hay imagen. Los enlaces `/catalogo` usan el proxy de Vercel; `/p` mantiene el rewrite externo a la función `share`.
 - Pruebas locales de metadatos y proxy: 21/21; parser dimensional y solicitudes públicas con y sin encabezado de Authorization fixture cubiertos; lint y build aprobados. Sin migración ni cambios a datos reales.
-- Pendiente de terminar: publicar el asset neutral en Vercel, volver a desplegar `share` y verificar las cuatro combinaciones de URL/User-Agent con `curl`.
+- Commit `b2815a9` está en `main`; Vercel `dpl_9HihYkusDMfJY1FUJ3X2dTjpbgjF` quedó Ready y el alias `rivastock.vercel.app` resuelve a ese deployment. `share` está ACTIVE v9 con `verify_jwt=false`; no hubo migración.
+- Verificación de producción con pedidos GET de solo lectura y nonce para evitar caché: `/catalogo/rivatech-2` y `/p/rivatech-2`, cada uno con `WhatsApp` y `facebookexternalhit`, devolvieron 200, `og:image` absoluto, dimensiones y `summary_large_image`. Para un producto visible, se leyó su id desde el catálogo público (sin imprimirlo); ambos agentes recibieron la foto real con 1200×1600. El catálogo de RivaTech no tenía portada ni logo configurados, por eso se vio la portada neutral de RivaStock.
+
+## 2026-11-10 — Cinta de anuncios bajo el encabezado en iPhone
+
+- La cinta salió del efecto de temporada y ahora ocupa su lugar en el flujo, debajo de un espacio que reserva el encabezado fijo. El encabezado incluye `safe-area-inset-top`, el documento permite `viewport-fit=cover`, y los efectos decorativos empiezan después de encabezado y cinta.
+- Los botones flotantes de WhatsApp y carrito ya respetaban el safe area inferior/lateral; se comprobaron junto con los elementos superiores para evitar que tapen contenido.
+- Prueba fixture de solo lectura: cinta en flujo y portada debajo; Chromium 1/1 y WebKit iPhone 11, 13 y 15: 3/3. `npm run lint` aprobado. Sin cambios a datos ni migraciones.
+- Deploy Current pendiente del commit de esta tarea.

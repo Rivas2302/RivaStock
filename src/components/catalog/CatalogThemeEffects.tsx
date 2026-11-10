@@ -5,22 +5,16 @@ import './catalogThemeEffects.css';
 interface CatalogThemeEffectsProps {
   theme: CatalogThemeId;
   ambience: CatalogAmbience;
-  announcementBackgroundColor: string;
-  announcementTextColor: string;
 }
 
 const PARTICLES = Array.from({ length: 14 }, (_, index) => index);
 
-export default function CatalogThemeEffects({ theme, ambience, announcementBackgroundColor, announcementTextColor }: CatalogThemeEffectsProps) {
+export default function CatalogThemeEffects({ theme, ambience }: CatalogThemeEffectsProps) {
   const hasSeasonalDecoration = theme !== 'normal' && theme !== 'custom';
   const showAnimated = hasSeasonalDecoration && ambience.animatedEffects;
   const showHeaderDecoration = hasSeasonalDecoration && ambience.headerDecoration;
 
   return <>
-    {ambience.announcementText.trim() && <div className="catalog-announcement" role="note" aria-label="Anuncio del catálogo" style={{ '--catalog-announcement-background': announcementBackgroundColor, '--catalog-announcement-ink': announcementTextColor } as CSSProperties}>
-      <span className="sr-only">{ambience.announcementText.trim()}</span>
-      <span className="catalog-announcement__track" aria-hidden="true"><span>{ambience.announcementText.trim()}</span><span>{ambience.announcementText.trim()}</span></span>
-    </div>}
     {hasSeasonalDecoration && <div
       aria-hidden="true"
       className={`catalog-theme-effects catalog-theme-effects--${theme} catalog-theme-effects--${ambience.intensity}`}

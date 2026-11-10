@@ -1,0 +1,25 @@
+.catalog-announcement {
+  position: relative;
+  z-index: 48;
+  display: flex;
+  min-height: 2rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: .25rem 1rem;
+  background: var(--catalog-announcement-background, var(--brand));
+  color: var(--catalog-announcement-ink, var(--action-ink));
+  font-size: .75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.catalog-announcement__track { display: flex; width: max-content; min-width: 100%; justify-content: space-around; gap: 6rem; animation: catalog-announcement-scroll 28s linear infinite; }
+.catalog-announcement__track span { flex: 0 0 auto; }
+
+@keyframes catalog-announcement-scroll { to { transform: translateX(-50%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-announcement__track { animation: none !important; }
+}

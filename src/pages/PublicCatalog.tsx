@@ -10,6 +10,7 @@ import { getCatalogShareUrl } from '../lib/catalogShare';
 import { buildRetailOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
+import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
 
 const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
 import {
@@ -902,8 +903,8 @@ if (loading) {
       presentation.ambience.themedFont && activeTheme === 'children-day' && 'catalog-theme-font--children-day',
       presentation.ambience.themedFont && activeTheme === 'new-year' && 'catalog-theme-font--new-year',
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
-    )}>
-      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience} announcementBackgroundColor={announcementBackgroundColor} announcementTextColor={announcementTextColor}/></Suspense>
+    )} style={{ '--catalog-announcement-height': presentation.ambience.announcementText.trim() ? '2rem' : '0rem' } as React.CSSProperties}>
+      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience}/></Suspense>
       <AnimatePresence>
         {message && (
           <motion.div
@@ -977,7 +978,7 @@ if (loading) {
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b",
         darkMode ? "bg-[#080808]/80 border-white/5" : "bg-white/80 border-slate-100",
         "backdrop-blur-xl"
-      )}>
+      )} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <div className="max-w-7xl mx-auto px-3 sm:px-6 h-20 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {config.logoUrl ? (
@@ -1056,8 +1057,11 @@ if (loading) {
         </div>
       </header>
 
+      <div aria-hidden="true" data-testid="catalog-header-spacer" className="h-[calc(5rem+env(safe-area-inset-top))]" />
+      <CatalogAnnouncement text={presentation.ambience.announcementText} backgroundColor={announcementBackgroundColor} textColor={announcementTextColor}/>
+
       {/* Hero Section / Banner */}
-      <div className="relative pt-20" data-testid="public-catalog-hero">
+      <div className="relative" data-testid="public-catalog-hero">
         <div className="relative h-[60vh] min-h-[400px] w-full overflow-hidden">
           {heroSlide.image ? (
             <img 
