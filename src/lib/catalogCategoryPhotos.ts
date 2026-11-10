@@ -1,4 +1,6 @@
-import type { PublicCatalogProduct } from '../types';
+import type { Product, PublicCatalogProduct } from '../types';
+
+type CategoryPhotoProduct = Pick<Product, 'categoryId' | 'images' | 'imageUrl'>;
 
 function firstPhoto(product: Pick<PublicCatalogProduct, 'images' | 'imageUrl'>): string | undefined {
   return product.images?.find(Boolean) ?? product.imageUrl ?? undefined;
@@ -6,7 +8,7 @@ function firstPhoto(product: Pick<PublicCatalogProduct, 'images' | 'imageUrl'>):
 
 export function getCategoryPhotoUrls(
   categoryId: string,
-  products: PublicCatalogProduct[],
+  products: Array<Pick<PublicCatalogProduct, 'categoryId' | 'images' | 'imageUrl'>>,
   overrideUrl?: string | null,
   enabled = true,
 ): string[] {
@@ -17,7 +19,14 @@ export function getCategoryPhotoUrls(
   return url ? [url] : [];
 }
 
-export function getAllCategoryPhotoUrls(products: PublicCatalogProduct[], limit = 4): string[] {
+export function getAllCategoryPhotoUrls(
+  products: CategoryPhotoProduct[],
+  limit = 4,
+  overrideUrl?: string | null,
+  enabled = true,
+): string[] {
+  if (!enabled) return [];
+  if (overrideUrl) return [overrideUrl];
   const photos: string[] = [];
   for (const product of products) {
     const url = firstPhoto(product);

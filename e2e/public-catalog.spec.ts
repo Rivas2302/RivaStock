@@ -34,7 +34,7 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string) {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
   const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
@@ -44,7 +44,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
     if (pathname.endsWith('/catalog_config')) {
       const requestedSlug = url.searchParams.get('slug')?.replace(/^eq\./, '');
       if (legacyCatalogSlug && requestedSlug === legacyCatalogSlug) return route.fulfill({ json: [] });
-      return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp }] });
+      return route.fulfill({ json: [{ ...fixtureConfig(theme, offerEndsAt, showOutOfStock, emptyCatalog), whatsapp_number: businessWhatsApp, category_photo_overrides: categoryPhotoOverrides }] });
     }
     if (legacyCatalogSlug && pathname.endsWith('/rpc/resolve_public_catalog_slug')) return route.fulfill({ json: 'qa-catalog' });
     if (pathname.endsWith('/categories')) return route.fulfill({ json: categoryOverrides ?? [{ id: CATEGORY_ID, name: 'Cables', user_id: OWNER_ID }] });
@@ -133,6 +133,14 @@ test('category circles use visible product photos and product navigation returns
   await page.goBack();
   await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
   await expect(page.getByRole('button', { name: 'Cable USB-C', exact: true })).toBeVisible();
+});
+
+test('the configurable Todos photo is visible in the retail catalog', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, { all: 'https://assets.test/todos.webp' });
+  await page.goto('/catalogo/qa-catalog');
+  const todos = page.locator('section[aria-label="Categorías"] [data-testid="catalog-category-avatar"]').first();
+  await expect(todos.locator('img')).toHaveAttribute('src', 'https://assets.test/todos.webp');
 });
 
 test('old catalog and product links redirect to the current slug without losing the product', async ({ page }) => {
@@ -235,11 +243,12 @@ test('reseller direct product details require the reseller session and show only
 
 test('reseller catalog categories filter imported products and open their detail modal', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await mockCatalogApi(page, 'normal', undefined, 'group', { categoryId: '', category: 'Electrónica y accesorios', stock: 0 }, false, false);
+  await mockCatalogApi(page, 'normal', undefined, 'group', { categoryId: '', category: 'Electrónica y accesorios', stock: 0 }, false, false, false, '5491100000000', false, undefined, undefined, { all: 'https://assets.test/todos.webp' });
   await page.goto('/catalogo/qa-catalog');
   await page.getByRole('button', { name: 'Revendedores' }).click();
   await page.getByPlaceholder('Código de acceso').fill('CODIGO-GRUPO-QA');
   await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page.locator('section[aria-label="Categorías"] [data-testid="catalog-category-avatar"]').first().locator('img')).toHaveAttribute('src', 'https://assets.test/todos.webp');
   const category = page.getByRole('button', { name: /Electrónica y accesorios/ });
   await expect(category).toContainText('1');
   await category.click();

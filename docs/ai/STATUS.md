@@ -2003,4 +2003,11 @@ Sin toque en src/, supabase/ ni extensions/.
 - Aplicadas las migraciones aditivas `20261109234354_catalog_slug_key_authenticated_execute` y `20261109235404_catalog_slug_rpc_anon_permissions`.
 - Prueba en producción con `SET ROLE authenticated` y el UID real del negocio de prueba, dentro de `BEGIN … ROLLBACK`: lectura de normalizador/availability/suggestion/plan, actualización de un campo (`announcement_color`) y de `slug`. Pasó sin error; el rollback dejó intacto el slug. Con `SET ROLE anon`, la resolución pública de link pasó. Verificación ACL: `authenticated` puede usar el normalizador, availability y suggestion; `anon` solo puede resolver links públicos. No se dejó ningún cambio de negocio.
 - Verificación local: migración PGlite con roles `authenticated` y `anon` **2/2**, suite completa **1.327/1.327**, lint y build aprobados. Se usaron valores ficticios de Supabase solo dentro del proceso de tests.
-- Push del commit y verificación de Vercel Current pendientes.
+- Commit `c70f6d4` enviado a `main`. Vercel quedó **Ready** y asignó `https://rivastock.vercel.app`; `vercel inspect` y HTTP 200 confirmaron el deployment Current.
+
+## 2026-11-09 — Foto configurable para “Todos” en el catálogo
+
+- En Catálogo Público → Qué se muestra, “Todos” aparece primero y ofrece foto automática (mosaico), selección de foto de producto, subida y restauración de la opción automática. La vista previa refleja el cambio antes de guardar.
+- Se reutiliza `category_photo_overrides` y la función compartida del catálogo, sin migración. Funciona en Tienda y Revendedores; el interruptor global de fotos de categoría sigue respetándose.
+- Verificación: pruebas específicas **13/13**, E2E en Tienda y Revendedores **2/2**, suite completa **1.330/1.330**, lint y build aprobados. Sin cambios a datos reales.
+- Publicación pendiente hasta completar el commit de esta entrega.

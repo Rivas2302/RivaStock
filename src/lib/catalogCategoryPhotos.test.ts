@@ -19,4 +19,10 @@ describe('catalog category photos', () => {
     expect(getCategoryPhotoUrls('cables', products, null, false)).toEqual([]);
     expect(getAllCategoryPhotoUrls(products)).toEqual(['https://assets.test/cable.webp', 'https://assets.test/audio.webp']);
   });
+
+  it('uses a configured photo for Todos and returns to the automatic mosaic when cleared', () => {
+    expect(getAllCategoryPhotoUrls(products, 4, 'https://assets.test/all.webp')).toEqual(['https://assets.test/all.webp']);
+    expect(getAllCategoryPhotoUrls(products, 4, null)).toEqual(['https://assets.test/cable.webp', 'https://assets.test/audio.webp']);
+    expect(getAllCategoryPhotoUrls(products, 4, 'https://assets.test/all.webp', false)).toEqual([]);
+  });
 });

@@ -167,6 +167,50 @@ describe('CatalogCustomizer', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryPhotoOverrides: { 'category-1': 'https://assets.test/cable.webp' } }));
   });
 
+  it('configures the Todos photo first, previews it, and saves the override', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const productWithPhoto = { ...product, images: ['https://assets.test/cable.webp'] };
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[category]} products={[productWithPhoto]} canEdit onSave={onSave} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
+    const openDisplay = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Qué se muestra'));
+    await act(async () => openDisplay?.click());
+
+    const allPhotoSelector = host.querySelector<HTMLSelectElement>('select[aria-label="Foto para Todos"]');
+    expect(allPhotoSelector?.options[0].textContent).toBe('Automática');
+    expect(allPhotoSelector?.querySelector('option[value="https://assets.test/cable.webp"]')?.textContent).toBe('Cable USB-C');
+    await act(async () => {
+      if (!allPhotoSelector) return;
+      allPhotoSelector.value = 'https://assets.test/cable.webp';
+      allPhotoSelector.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(host.querySelector('[data-testid="catalog-all-category-photo-preview"] img')?.getAttribute('src')).toBe('https://assets.test/cable.webp');
+    const save = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Guardar cambios'));
+    await act(async () => save?.click());
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryPhotoOverrides: { all: 'https://assets.test/cable.webp' } }));
+  });
+
+  it('uploads and restores the automatic Todos photo', async () => {
+    const onUploadCategoryPhoto = vi.fn().mockResolvedValue('https://assets.test/custom-all.webp');
+    await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[{ ...product, images: ['https://assets.test/cable.webp'] }]} canEdit onSave={vi.fn()} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={onUploadCategoryPhoto}/>));
+    const openDisplay = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Qué se muestra'));
+    await act(async () => openDisplay?.click());
+
+    const fileInput = host.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(['image'], 'todos.webp', { type: 'image/webp' });
+    await act(async () => {
+      if (!fileInput) return;
+      Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] });
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onUploadCategoryPhoto).toHaveBeenCalledWith(file);
+    expect(host.querySelector('[data-testid="catalog-all-category-photo-preview"] img')?.getAttribute('src')).toBe('https://assets.test/custom-all.webp');
+
+    const restore = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Volver a automática'));
+    await act(async () => restore?.click());
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Foto para Todos"]')?.value).toBe('');
+    expect(host.querySelector('[data-testid="catalog-all-category-photo-preview"] img')?.getAttribute('src')).toBe('https://assets.test/cable.webp');
+  });
+
   it('shows the live catalog preview while editing the cover', async () => {
     await act(async () => root.render(<CatalogCustomizer config={config} categories={[]} products={[product]} canEdit onSave={vi.fn()} onUploadCover={vi.fn()} onUploadLogo={vi.fn()} onUploadCategoryPhoto={vi.fn()}/>));
     const openCover = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Portada'));

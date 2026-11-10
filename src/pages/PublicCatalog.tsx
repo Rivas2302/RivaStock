@@ -1284,7 +1284,7 @@ if (loading) {
                 ...categoryOptions,
               ].map((category, index) => {
                 const photos = category.id === 'all'
-                  ? (config.categoryPhotosEnabled === false ? [] : getAllCategoryPhotoUrls(catalogProducts, 4))
+                  ? getAllCategoryPhotoUrls(catalogProducts, 4, config.categoryPhotoOverrides?.all, config.categoryPhotosEnabled !== false)
                   : category.photoUrl ? [category.photoUrl] : [];
                 const selectedId = category.id;
                 return <button key={category.id} type="button" aria-pressed={activeCategory === selectedId} onClick={() => setActiveCategory(selectedId)} style={{ WebkitTapHighlightColor: 'transparent' }} className={cn('group flex w-[88px] shrink-0 flex-col items-center gap-2 px-1 py-1 text-center font-semibold transition-colors focus-visible:outline-none sm:w-[112px]', activeCategory === selectedId ? (darkMode ? 'text-white' : 'text-slate-900') : darkMode ? 'text-white/80' : 'text-slate-800')}>
