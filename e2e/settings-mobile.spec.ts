@@ -15,6 +15,7 @@ async function mockSettings(page: Parameters<typeof mockSales>[0]) {
 test('mobile settings menu opens current settings screens and requires a typed business name for deletion', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Mobile settings are verified on Android and iPhone projects.');
   await mockSettings(page);
+  await page.addInitScript(() => localStorage.setItem('pwa-ios-install-hint-dismissed-at', String(Date.now())));
   await page.setViewportSize({ width: 360, height: 740 });
   const writes: string[] = [];
   page.on('request', request => {
@@ -26,6 +27,9 @@ test('mobile settings menu opens current settings screens and requires a typed b
   const menu = page.getByTestId('mobile-settings-menu');
   await expect(menu).toBeVisible();
   await expect(menu.getByText('Negocio QA')).toBeVisible();
+  await menu.getByRole('button', { name: 'Instalar app' }).click();
+  await expect(page.getByRole('dialog', { name: 'Instalar app' })).toBeVisible();
+  await page.getByRole('button', { name: 'Listo' }).click();
   await menu.getByRole('button').first().click();
   await expect(page.getByRole('heading', { name: 'Datos del negocio' })).toBeVisible();
   await expect(page.getByText('Nombre del Negocio', { exact: true })).toBeVisible();
@@ -68,5 +72,8 @@ test('desktop settings remain in their existing tab layout', async ({ page }, te
   await expect(page.getByTestId('mobile-settings-menu')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'General' })).toBeVisible();
   await expect(page.getByText('Configuración', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Instalar app' }).click();
+  await expect(page.getByRole('dialog', { name: 'Instalar app' })).toBeVisible();
+  await page.getByRole('button', { name: 'Listo' }).click();
   await page.screenshot({ path: 'test-results/settings-desktop-1280.png', fullPage: true });
 });

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 interface NewOrderNotice {
   orderCode: string | null;
+  channel: 'retail' | 'reseller';
 }
 
 interface OrderRealtimeRow {
@@ -29,7 +30,6 @@ export function useUnreadCatalogOrders(ownerUid: string | undefined) {
       const result = await supabase.from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', ownerUid)
-        .eq('channel', 'retail')
         .eq('is_read', false);
       if (active && !result.error) setUnreadCount(result.count ?? 0);
     };
@@ -43,8 +43,8 @@ export function useUnreadCatalogOrders(ownerUid: string | undefined) {
         filter: `user_id=eq.${ownerUid}`,
       }, payload => {
         const row = payload.new as OrderRealtimeRow;
-        if (payload.eventType === 'INSERT' && row.channel === 'retail' && row.is_read === false) {
-          setNotice({ orderCode: row.order_code ?? null });
+        if (payload.eventType === 'INSERT' && (row.channel === 'retail' || row.channel === 'reseller') && row.is_read === false) {
+          setNotice({ orderCode: row.order_code ?? null, channel: row.channel });
         }
         void refreshCount();
       })

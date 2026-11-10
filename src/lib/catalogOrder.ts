@@ -12,6 +12,15 @@ export interface RetailOrderMessageInput {
   address?: string;
 }
 
+export interface CatalogOrderMessageInput {
+  businessName: string;
+  orderCode: string;
+  channel: 'retail' | 'reseller';
+  items: Array<{ quantity: number; name: string; price: number; onOrder?: boolean }>;
+  total: number;
+  customerName: string;
+}
+
 export function formatRetailOrderCode(value: number): string {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error('Order number must be a positive integer.');
   return `P-${String(value).padStart(4, '0')}`;
@@ -19,6 +28,22 @@ export function formatRetailOrderCode(value: number): string {
 
 function formatOrderAmount(value: number): string {
   return formatCurrency(value).replace(/\u00a0/g, ' ');
+}
+
+export function buildCatalogOrderWhatsAppMessage(input: CatalogOrderMessageInput): string {
+  const lines = input.items.map(item =>
+    `${item.quantity} × ${item.name}${item.onOrder ? ' (por pedido)' : ''} · ${formatOrderAmount(item.price)}`,
+  );
+  const customer = input.channel === 'reseller'
+    ? `Soy ${input.customerName.trim()}, revendedor.`
+    : `Soy ${input.customerName.trim()}.`;
+  return [
+    `Hola ${input.businessName.trim()}! ${customer} Te hice un pedido por el catálogo.`,
+    `Pedido ${input.orderCode}`,
+    ...lines,
+    `Total: ${formatOrderAmount(input.total)}`,
+    `Ver pedido: https://rivastock.vercel.app/pedidos/${encodeURIComponent(input.orderCode)}`,
+  ].join('\n');
 }
 
 export function buildRetailOrderWhatsAppMessage(input: RetailOrderMessageInput): string {

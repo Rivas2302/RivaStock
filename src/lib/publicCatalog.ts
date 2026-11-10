@@ -109,7 +109,13 @@ export async function createPublicResellerSupplierRoundOrder(input: {
   roundId: string;
   customer: PublicOrderInput['customer'];
   items: PublicOrderInput['items'];
-}): Promise<{ id: string; total: number; closesAt: string }> {
+}): Promise<{
+  id: string;
+  orderCode: string;
+  total: number;
+  closesAt: string;
+  items: Array<{ productName: string; quantity: number; price: number; availability?: string | null }>;
+}> {
   const { data, error } = await supabase.rpc('create_public_reseller_supplier_round_order', {
     p_slug: input.slug,
     p_access_code: input.accessCode,
@@ -118,8 +124,19 @@ export async function createPublicResellerSupplierRoundOrder(input: {
     p_items: input.items,
   });
   if (error) throw new Error(error.message);
-  const result = data as { id: string; total: number; closesAt: string };
-  return { ...result, total: Number(result.total) };
+  const result = data as {
+    id: string; orderCode: string; total: number; closesAt: string;
+    items: Array<{ productName: string; quantity: number; price: number; availability?: string | null }>;
+  };
+  return {
+    ...result,
+    total: Number(result.total),
+    items: (result.items ?? []).map(item => ({
+      ...item,
+      quantity: Number(item.quantity),
+      price: Number(item.price),
+    })),
+  };
 }
 
 interface PublicOrderInput {
@@ -142,7 +159,7 @@ export async function createPublicCatalogOrder(input: PublicOrderInput): Promise
   orderCode: string;
   total: number;
   channel: CatalogChannel;
-  items: Array<{ productName: string; quantity: number; price: number }>;
+  items: Array<{ productName: string; quantity: number; price: number; availability?: string | null }>;
 }> {
   const { data, error } = await supabase.rpc('create_public_catalog_order', {
     p_slug: input.slug,
@@ -154,7 +171,7 @@ export async function createPublicCatalogOrder(input: PublicOrderInput): Promise
   if (error) throw new Error(error.message);
   const result = data as {
     id: string; orderCode: string; total: number; channel: CatalogChannel;
-    items: Array<{ productName: string; quantity: number; price: number }>;
+    items: Array<{ productName: string; quantity: number; price: number; availability?: string | null }>;
   };
   return {
     ...result,

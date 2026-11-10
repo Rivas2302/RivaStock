@@ -15,7 +15,7 @@ function fixtureSession() {
     expires_at: expiresAt,
     expires_in: 3600,
     token_type: 'bearer',
-    user: { id: OWNER_ID, email: 'mobile-sales@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: now },
+    user: { id: OWNER_ID, email: 'mobile-sales@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: { display_name: 'Dueño QA', password_set: true }, created_at: now },
   };
 }
 

@@ -72,6 +72,18 @@ describe('Orders convert-to-sale action', () => {
     expect(updateOrder).toHaveBeenCalledWith('orders', 'order-1', { isRead: true });
   });
 
+  it('marks reseller catalog orders clearly in the owner list', async () => {
+    list.mockResolvedValueOnce([{
+      id: 'order-reseller', orderCode: 'P-0043', date: '2026-11-10', customerName: 'Revendedora QA', customerPhone: '5552000',
+      customerEmail: '', customerAddress: '', items: [{ productId: 'product-1', productName: 'Producto QA', quantity: 1, price: 4200 }],
+      total: 4200, status: 'Nuevo', isRead: false, ownerUid: 'owner-1', channel: 'reseller',
+    }]);
+    await act(async () => { root.render(<Orders />); await Promise.resolve(); });
+    expect(host.textContent).toContain('P-0043');
+    expect(host.textContent).toContain('Revendedora QA');
+    expect(host.querySelector('.bg-amber-100')?.textContent).toBe('Revendedor');
+  });
+
   it('searches catalog orders by code, customer name, or WhatsApp number', async () => {
     list.mockResolvedValueOnce([
       { id: 'order-1', orderCode: 'P-0042', date: '2026-11-07', customerName: 'Cliente QA', customerPhone: '5550000', customerEmail: '', customerAddress: '', items: [], total: 0, status: 'Nuevo', isRead: false, ownerUid: 'owner-1' },

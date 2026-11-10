@@ -2032,7 +2032,8 @@ Sin toque en src/, supabase/ ni extensions/.
 - Backup previo a la migración: `%USERPROFILE%\\rivastock-backups\\20261110T040002Z`; 104 tablas / 23.961 filas y 893 objetos / 149.941.487 bytes en cinco buckets. PostgreSQL y Storage: `verification: passed`.
 - Migración correctiva aplicada como `20261110042550_platform_account_actions_without_subscription`; solo reemplaza funciones y permisos. `platform-admin` quedó ACTIVE v12 con JWT requerido. PostgreSQL confirma EXECUTE para `authenticated` y lo niega para `anon` en las RPC de baja.
 - Verificación local: lint aprobado; suite focal **39/39**; suite completa **1.344/1.344**; E2E Playwright de Plataforma **6/6** con sesión/roles `authenticated` de prueba, incluyendo cuenta sin nombre, cuenta con nombre, colaboradora y protección de cuenta propia. No se ejecutó ninguna baja real irreversible.
-- Pendiente: el deploy de Vercel Current y el smoke de solo lectura con la sesión real se harán después del push. La ejecución de bajas positivas en producción requiere cuentas QA descartables designadas; no usar cuentas de clientes ni asumir que las cuentas reportadas son desechables.
+- Commit `098c600` se pusheó a `main`. Vercel CLI publicó el deployment de producción y lo dejó `READY`, con alias `https://rivastock.vercel.app`; la raíz respondió HTTP 200 y el chunk descargado de Plataforma contiene el rótulo de nombre vacío, la razón de protección y la confirmación por email.
+- Playwright con el perfil persistente llegó a `/login` al abrir `/plataforma`; la sesión de administración no estaba activa. No se intentó iniciar sesión ni ejecutar acciones. El E2E autenticado de esta entrega usa un fixture con rol `authenticated`; una baja positiva en producción requiere cuentas QA descartables designadas, sin usar clientes ni asumir que las cuentas reportadas son desechables.
 # 2026-11-10 — Subida de fotos en Android
 
 - Diagnóstico de solo lectura para el negocio afectado: inició sesión, tiene el módulo Stock habilitado y permiso `stock.write`; no alcanza el límite global de almacenamiento adicional. Las políticas de `assets` autorizan al dueño a leer públicamente y a insertar/actualizar únicamente bajo su carpeta de propietario.
@@ -2108,4 +2109,20 @@ Sin toque en src/, supabase/ ni extensions/.
 - Durante la revisión se corrigió un falso aviso de “cambios sin guardar” al volver de una sección después de guardar correctamente la configuración. Agregada prueba de regresión del editor.
 - No se encontró texto de RivaTech, central, Facebook ni texto técnico en inglés en Inicio/prioridades de primer ingreso. Los cuatro pasos son concretos: datos del negocio, primer producto, catálogo e invitar empleados (opcional). No quedó otro texto simple/confuso que corregir en este recorrido.
 - Verificación local: Playwright del recorrido completo **1/1**, suite de `CatalogCustomizer` **11/11**, suite completa **238 archivos / 1.370 pruebas**, lint y build aprobados. Playwright aisló los requests del tenant y no escribió contra Supabase; los valores de configuración de la suite fueron ficticios.
-- Sin migraciones. Pendiente: commit, push y despliegue Current de este cierre antes de completar el smoke público.
+- Sin migraciones. Este recorrido quedó cubierto con fixtures en el cierre de cuenta nueva; no se escribió en producción.
+
+## 2026-11-10 — Instalación de RivaStock en iPhone y Android
+
+- En iPhone no instalado, la app ofrece una sola vez los tres pasos para agregar RivaStock a la pantalla de inicio; «Ahora no» guarda la pausa por 30 días. En Android se conserva el aviso nativo y el botón «Instalar app» también está en Configuración.
+- El manifest usa íconos locales de 192 y 512 px, y `apple-touch-icon` de 180 px; se quitó la dependencia de imágenes de marcador externo.
+- Pruebas de instalación: utilidades **3/3**; Playwright **9 aprobadas / 6 omitidas por plataforma** en Chromium, iPhone 11/13/15 y Android. Suite completa tras integrar el `main` actualizado: **239 archivos / 1.377 pruebas**. Lint y build aprobados.
+
+## 2026-11-10 — Pedidos de catálogo con código y WhatsApp en ambos modos
+
+- Causa: el checkout de Revendedores sin ronda no mostraba recibo; con ronda, la función no devolvía código ni líneas. El formulario pedía dirección incluso para retiro y el email no era opcional en todos los caminos.
+- Tienda y Revendedores ahora muestran «¡Pedido recibido!», código `P-0001` por negocio, total y resumen. Con un número del negocio se prepara y abre WhatsApp en el mismo toque y queda el botón para reintentar; sin número, se muestra el código y «El negocio te va a contactar». Los productos por pedido quedan marcados en el mensaje y el resumen.
+- Nombre y WhatsApp son obligatorios; email es opcional. Retiro no pide dirección; Envío sí. Se conserva el consentimiento para artículos por pedido. Las órdenes guardan el canal correspondiente; el aviso en vivo distingue «Nuevo pedido de revendedor» y Orders mantiene el canal Revendedores.
+- Backup verificado antes de la migración: `%USERPROFILE%\rivastock-backups\20261110T185355Z`; Postgres **104 tablas / 24.266 filas**, Storage **2.716 objetos / 171.090.601 bytes en cinco buckets**. PostgreSQL y Storage: `verification: passed`.
+- Migración aditiva `20261110185939_reseller_catalog_order_whatsapp_receipts` aplicada. Solo reemplaza las dos RPC; producción confirma que ambas devuelven código y entrega, no dependen del WhatsApp del negocio y tienen EXECUTE para `anon` y `authenticated`. No borra ni modifica filas existentes.
+- Pruebas locales: unitarias/migración/Realtime/Orders/PWA **18/18**; Playwright de checkout **20/20** con fixtures a 375 px en Chromium, iPhone 11/13/15 y Android; suite completa **1.377/1.377**; lint y build aprobados. El test PGlite ejecuta el pedido público como rol `anon`; Playwright intercepta las RPC. No se creó ningún pedido en catálogos de producción.
+- La migración está en producción; el deploy Current del frontend y el smoke GET de solo lectura quedan pendientes hasta publicar el commit.

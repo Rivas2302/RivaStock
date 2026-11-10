@@ -9,7 +9,7 @@ vi.mock('../lib/supabase', () => ({ supabase: mocks }));
 
 function Probe({ ownerUid }: { ownerUid: string }) {
   const { unreadCount, notice, clearNotice } = useUnreadCatalogOrders(ownerUid);
-  return <div><span data-testid="count">{unreadCount}</span>{notice && <span data-testid="notice">{notice.orderCode ?? 'sin código'}</span>}<button onClick={clearNotice}>Cerrar</button></div>;
+  return <div><span data-testid="count">{unreadCount}</span>{notice && <span data-testid="notice">{notice.orderCode ?? 'sin código'} · {notice.channel}</span>}<button onClick={clearNotice}>Cerrar</button></div>;
 }
 
 describe('useUnreadCatalogOrders', () => {
@@ -33,14 +33,14 @@ describe('useUnreadCatalogOrders', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
-  it('scopes the count and realtime channel to the current owner and announces unread retail orders', async () => {
+  it('scopes the unread count and realtime channel to the current owner and announces retail and reseller orders', async () => {
     await act(async () => { root.render(<Probe ownerUid="owner-1"/>); await Promise.resolve(); });
     expect(host.querySelector('[data-testid="count"]')?.textContent).toBe('2');
     expect(mocks.channel).toHaveBeenCalledWith('catalog-order-notices:owner-1');
     expect(channel.on.mock.calls[0]?.[1]).toMatchObject({ filter: 'user_id=eq.owner-1', table: 'orders' });
     await act(async () => onChange?.({ eventType: 'INSERT', new: { user_id: 'owner-1', channel: 'retail', is_read: false, order_code: 'P-0042' } }));
-    expect(host.querySelector('[data-testid="notice"]')?.textContent).toBe('P-0042');
+    expect(host.querySelector('[data-testid="notice"]')?.textContent).toBe('P-0042 · retail');
     await act(async () => onChange?.({ eventType: 'INSERT', new: { user_id: 'owner-1', channel: 'reseller', is_read: false, order_code: 'R-1' } }));
-    expect(host.querySelector('[data-testid="notice"]')?.textContent).toBe('P-0042');
+    expect(host.querySelector('[data-testid="notice"]')?.textContent).toBe('R-1 · reseller');
   });
 });

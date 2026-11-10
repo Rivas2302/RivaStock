@@ -34,10 +34,12 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}, announcementText = 'Envíos en General Pico') {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' | 'no-round' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}, announcementText = 'Envíos en General Pico') {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
   const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
+  const resellerOrderProduct = { ...catalogProduct, salePrice: 6800, availability: 'in_stock' };
+  const resellerOnOrderProduct = { ...catalogProduct, id: 'product-on-order', name: 'Producto por pedido', salePrice: 2500, stock: 0, availability: 'on_order' };
   await page.route('**/rest/v1/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
@@ -59,11 +61,14 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
       }
       return route.fulfill({ json: {
       enabled: true, priceListId: '109d526d-eb86-4367-99ea-e24fc35eea41', minimumRule: 'none', minimumOrderAmount: 0,
-      minimumOrderQuantity: 0, products: [{ ...catalogProduct, availability: 'on_order' }],
+      minimumOrderQuantity: 0, products: resellerRounds === 'no-round'
+        ? [resellerOrderProduct, resellerOnOrderProduct]
+        : [{ ...catalogProduct, availability: 'on_order', salePrice: 6800 }],
       } });
     }
     if (resellerRounds && pathname.endsWith('/rpc/get_public_reseller_supplier_rounds')) {
       const accessCode = (route.request().postDataJSON() as { p_access_code?: string }).p_access_code;
+      if (resellerRounds === 'no-round') return route.fulfill({ json: [] });
       if (resellerRounds === 'group' && accessCode !== 'CODIGO-GRUPO-QA') return route.fulfill({ json: [] });
       return route.fulfill({ json: [{
       id: roundId, supplierListId: '1f3e5fb4-c82d-4a75-b867-c4e571dfb64b', supplierName: 'Proveedor de prueba',
@@ -74,13 +79,23 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
     }
     if (resellerRounds && pathname.endsWith('/rpc/get_public_reseller_buying_policy')) return route.fulfill({ json: 'Pago coordinado por WhatsApp.' });
     if (resellerRounds && pathname.endsWith('/rpc/create_public_reseller_supplier_round_order')) return route.fulfill({ json: {
-      id: '9c2a6eab-e43d-40cc-9a58-5533d3c3ec6d', total: 6800, closesAt: '2099-12-01T21:00:00.000Z',
+      id: '9c2a6eab-e43d-40cc-9a58-5533d3c3ec6d', orderCode: 'P-0042', total: 6800, closesAt: '2099-12-01T21:00:00.000Z',
+      items: [{ productId: PRODUCT_ID, productName: 'Cable USB-C', quantity: 1, price: 6800, availability: 'on_order' }],
     } });
     if (pathname.endsWith('/rpc/create_public_catalog_order')) {
       if (!allowPublicOrder) throw new Error('The catalog preview must never create an order.');
+      const orderRequest = route.request().postDataJSON() as { p_channel?: string; p_items?: Array<{ productId: string; quantity: number }> };
+      const isReseller = orderRequest.p_channel === 'reseller';
+      const orderLines = (orderRequest.p_items ?? []).map(item => ({
+        productId: item.productId,
+        productName: item.productId === 'product-on-order' ? resellerOnOrderProduct.name : resellerOrderProduct.name,
+        quantity: item.quantity,
+        price: item.productId === 'product-on-order' ? resellerOnOrderProduct.salePrice : resellerOrderProduct.salePrice,
+        ...(isReseller ? { availability: item.productId === 'product-on-order' ? 'on_order' : 'in_stock' } : {}),
+      }));
       return route.fulfill({ json: {
-        id: 'c0000000-0000-4000-8000-000000000001', orderCode: 'P-0042', total: 6800, channel: 'retail',
-        items: [{ productId: PRODUCT_ID, productName: 'Cable USB-C', quantity: 1, price: 6800 }],
+        id: 'c0000000-0000-4000-8000-000000000001', orderCode: 'P-0042', total: orderLines.reduce((sum, item) => sum + item.price * item.quantity, 0), channel: orderRequest.p_channel ?? 'retail',
+        items: orderLines,
       } });
     }
     return route.fulfill({ status: 200, json: [] });
@@ -209,6 +224,13 @@ test('product detail is a catalog modal with browser history, scroll, direct lin
       expect(Math.abs((modalBox?.y ?? 0) + (modalBox?.height ?? 0) - ((footerBox?.y ?? 0) + (footerBox?.height ?? 0)))).toBeLessThan(3);
     }
     await expect(detailModal.locator('img[alt="Cable USB-C"]')).toBeVisible();
+    if (viewport.width < 640) {
+      const sheetBox = await detailModal.boundingBox();
+      expect(sheetBox && sheetBox.y > 0 && Math.abs(sheetBox.height - viewport.height * 0.9) < 3, JSON.stringify({ sheetBox, viewport })).toBe(true);
+      await expect(page.getByTestId('catalog-product-sheet-handle')).toBeVisible();
+      await expect(detailModal.locator('button').filter({ hasText: 'Agregar al carrito' }).first()).toBeHidden();
+      await expect(detailModal.locator('footer').getByRole('button', { name: /Agregar al carrito/ })).toBeVisible();
+    }
     await expect(detailModal.getByRole('button', { name: 'WhatsApp' }).first()).toBeVisible();
     expect(await detailModal.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(252, 250, 245)');
     expect(await detailModal.getByRole('button', { name: /Agregar al carrito/ }).last()
@@ -250,6 +272,53 @@ test('product detail is a catalog modal with browser history, scroll, direct lin
     await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
     await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
   }
+});
+
+test('catalog announcement stays in the safe-area header flow and the hero starts below it', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, 'Promo de prueba');
+  await page.goto('/catalogo/qa-catalog');
+  const header = page.locator('.public-catalog > header').first();
+  const announcement = page.getByRole('note', { name: 'Anuncio del catálogo' });
+  const hero = page.getByTestId('public-catalog-hero');
+  await expect(announcement).toBeVisible();
+  const layout = await page.evaluate(() => {
+    const headerElement = document.querySelector('.public-catalog > header')!;
+    const announcementElement = document.querySelector('.catalog-announcement')!;
+    const heroElement = document.querySelector('[data-testid="public-catalog-hero"]')!;
+    return {
+      headerBottom: headerElement.getBoundingClientRect().bottom,
+      announcementBottom: announcementElement.getBoundingClientRect().bottom,
+      announcementPosition: getComputedStyle(announcementElement).position,
+      heroTop: heroElement.getBoundingClientRect().top,
+    };
+  });
+  expect(layout.announcementPosition).toBe('static');
+  expect(Math.abs(layout.headerBottom - layout.announcementBottom)).toBeLessThanOrEqual(1);
+  expect(layout.heroTop).toBeGreaterThanOrEqual(layout.headerBottom);
+  await page.getByRole('button', { name: 'Activar modo oscuro' }).click();
+  await expect(announcement).toBeVisible();
+  expect(await announcement.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  await expect(hero).toBeVisible();
+});
+
+test('mobile product sheet closes with a downward swipe on its handle', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Cable USB-C', exact: true }).click();
+  const handle = page.getByTestId('catalog-product-sheet-handle');
+  await expect(handle).toBeVisible();
+  await handle.evaluate(element => {
+    const start = new Event('touchstart', { bubbles: true });
+    Object.defineProperty(start, 'touches', { value: [{ clientY: 100 }] });
+    element.dispatchEvent(start);
+    const end = new Event('touchend', { bubbles: true });
+    Object.defineProperty(end, 'changedTouches', { value: [{ clientY: 180 }] });
+    element.dispatchEvent(end);
+  });
+  await expect(page).toHaveURL(/\/catalogo\/qa-catalog$/);
+  await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
 });
 
 test('reseller direct product details require the reseller session and show only reseller-facing data', async ({ page }) => {
@@ -324,9 +393,10 @@ test('reseller product detail is a themed 90 percent bottom sheet and closes wit
   await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
 });
 
-test('retail checkout saves a fixture order code and prepares the exact WhatsApp message', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test('retail checkout saves a fixture order code and opens the WhatsApp order message', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
   await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, true);
+  await page.context().route('https://wa.me/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: 'WhatsApp fixture' }));
   let submittedPayload: Record<string, unknown> | null = null;
   page.on('request', request => {
     if (request.url().endsWith('/rpc/create_public_catalog_order')) submittedPayload = request.postDataJSON() as Record<string, unknown>;
@@ -338,20 +408,24 @@ test('retail checkout saves a fixture order code and prepares the exact WhatsApp
   await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
   await page.getByPlaceholder('Nombre completo').fill('Compradora de prueba');
   await page.getByPlaceholder('WhatsApp').fill('2302000000');
-  await expect(page.getByPlaceholder('Email')).not.toHaveAttribute('required', '');
+  await expect(page.getByPlaceholder('Email (opcional)')).not.toHaveAttribute('required', '');
   await expect(page.getByPlaceholder('Dirección de entrega')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retiro' })).toHaveAttribute('aria-pressed', 'true');
+  const whatsappPopupPromise = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  const whatsappPopup = await whatsappPopupPromise;
 
   await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
   await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
+  await expect.poll(() => whatsappPopup.url()).toContain('https://wa.me/5491100000000?text=');
+  const autoWhatsAppUrl = new URL(whatsappPopup.url());
+  expect(autoWhatsAppUrl.searchParams.get('text')).toContain('Hola Tienda de prueba! Soy Compradora de prueba. Te hice un pedido por el catálogo.');
   const whatsappLink = page.getByRole('link', { name: 'Enviar pedido por WhatsApp' });
   const whatsappUrl = new URL(await whatsappLink.getAttribute('href') ?? '');
   expect(whatsappUrl.hostname).toBe('wa.me');
   expect(whatsappUrl.searchParams.get('text')).toContain('Pedido P-0042');
   expect(whatsappUrl.searchParams.get('text')).toContain('1 × Cable USB-C · $ 6.800');
   expect(whatsappUrl.searchParams.get('text')).toContain('Total: $ 6.800');
-  expect(whatsappUrl.searchParams.get('text')).toContain('Entrega: Retiro');
   expect(whatsappUrl.searchParams.get('text')).toContain('Ver pedido: https://rivastock.vercel.app/pedidos/P-0042');
   expect(submittedPayload?.p_customer).toMatchObject({ name: 'Compradora de prueba', phone: '2302000000', email: '', address: '', deliveryMethod: 'pickup' });
 
@@ -359,6 +433,53 @@ test('retail checkout saves a fixture order code and prepares the exact WhatsApp
   await page.getByRole('button', { name: /Abrir carrito/ }).click();
   await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
   await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toBeVisible();
+});
+
+test('anonymous reseller checkout without an active round saves a code and opens a complete WhatsApp message', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'normal', undefined, 'no-round', {}, false, false, true);
+  await page.context().route('https://wa.me/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: 'WhatsApp fixture' }));
+  let submittedPayload: Record<string, unknown> | null = null;
+  page.on('request', request => {
+    if (request.url().endsWith('/rpc/create_public_catalog_order')) submittedPayload = request.postDataJSON() as Record<string, unknown>;
+  });
+
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Revendedores' }).click();
+  await page.getByPlaceholder('Código de acceso').fill('CODIGO-RESSELLER-QA');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agregar Producto por pedido al carrito' })).toBeVisible();
+  await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).click();
+  await page.getByRole('button', { name: 'Agregar Producto por pedido al carrito' }).click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByPlaceholder('Nombre completo').fill('Revendedora de prueba');
+  await page.getByPlaceholder('WhatsApp').fill('2302000000');
+  await expect(page.getByPlaceholder('Email (opcional)')).not.toHaveAttribute('required', '');
+  await expect(page.getByPlaceholder('Dirección de entrega')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retiro' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('checkbox', { name: /Entiendo las condiciones/ }).check();
+
+  const whatsappPopupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  const whatsappPopup = await whatsappPopupPromise;
+  await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
+  await expect(page.getByTestId('reseller-order-code')).toHaveText('P-0042');
+  const orderSummary = page.getByRole('region', { name: 'Resumen del pedido' });
+  await expect(orderSummary).toContainText('1 × Cable USB-C');
+  await expect(orderSummary).toContainText('1 × Producto por pedido (por pedido)');
+  await expect.poll(() => whatsappPopup.url()).toContain('https://wa.me/5491100000000?text=');
+  const whatsappUrl = new URL(whatsappPopup.url());
+  const message = whatsappUrl.searchParams.get('text') ?? '';
+  expect(message).toContain('Hola Tienda de prueba! Soy Revendedora de prueba, revendedor. Te hice un pedido por el catálogo.');
+  expect(message).toContain('Pedido P-0042');
+  expect(message).toContain('1 × Cable USB-C · $ 6.800');
+  expect(message).toContain('1 × Producto por pedido (por pedido) · $ 2.500');
+  expect(message).toContain('Total: $ 9.300');
+  expect(message).toContain('Ver pedido: https://rivastock.vercel.app/pedidos/P-0042');
+  expect(submittedPayload?.p_channel).toBe('reseller');
+  expect(submittedPayload?.p_customer).toMatchObject({ name: 'Revendedora de prueba', phone: '2302000000', email: '', address: '', deliveryMethod: 'pickup' });
 });
 
 test('retail shipping requires an address and enables address autocomplete', async ({ page }) => {
@@ -384,8 +505,8 @@ test('an empty catalog uses neutral defaults and keeps the business separate fro
   await expect(page.getByRole('button', { name: 'Abrir carrito' })).toBeVisible();
 });
 
-test('a retail order without a configured WhatsApp number still saves and shows its code', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test('an order without a configured WhatsApp number still shows its code and contact note', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
   await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, true, null);
   await page.goto('/catalogo/qa-catalog');
   await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
@@ -396,6 +517,8 @@ test('a retail order without a configured WhatsApp number still saves and shows 
   await page.getByRole('button', { name: 'Enviar Pedido' }).click();
   await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
   await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toHaveCount(0);
+  await expect(page.getByText('El negocio te va a contactar.')).toBeVisible();
+  await expect(page.getByText(/Nos pondremos en contacto contigo muy pronto/)).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Ver pedido' })).toBeVisible();
 });
 
@@ -472,6 +595,7 @@ test('public product detail hides stock and leaves space after related products'
 test('reseller order round uses only its supplier products and directs payment to WhatsApp', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page, 'normal', undefined, 'group');
+  await page.context().route('https://wa.me/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: 'WhatsApp fixture' }));
   const submittedRounds: string[] = [];
   page.on('request', request => {
     if (request.url().includes('/rpc/create_public_reseller_supplier_round_order')) submittedRounds.push(request.postData() ?? '');
@@ -490,9 +614,14 @@ test('reseller order round uses only its supplier products and directs payment t
   await page.getByPlaceholder('Nombre completo').fill('Revendedor de prueba');
   await page.getByPlaceholder('WhatsApp').fill('2302000000');
   await page.getByRole('checkbox', { name: /Entiendo las condiciones/ }).check();
+  const whatsappPopupPromise = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  const whatsappPopup = await whatsappPopupPromise;
   await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Coordinar el pago por WhatsApp' })).toHaveAttribute('href', /wa\.me/);
+  await expect(page.getByTestId('reseller-order-code')).toHaveText('P-0042');
+  await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toHaveAttribute('href', /wa\.me/);
+  await expect.poll(() => whatsappPopup.url()).toContain('https://wa.me/5491100000000?text=');
+  expect(new URL(whatsappPopup.url()).searchParams.get('text')).toContain('Soy Revendedor de prueba, revendedor.');
   await expect(page.getByText(/alias|CBU|comprobante/i)).toHaveCount(0);
   expect(submittedRounds).toHaveLength(1);
   const payload = JSON.parse(submittedRounds[0]) as { p_round_id: string; p_access_code: string; p_items: Array<{ productId: string; quantity: number }> };

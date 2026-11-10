@@ -20,13 +20,14 @@ import {
 import { formatCurrency, cn } from '../lib/utils';
 import { normalizeCatalogSlug } from '../lib/catalogSlug';
 import { saveAccountProfile, validateDisplayName } from '../lib/accountProfile';
-import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound, Smartphone } from 'lucide-react';
 import Modal from '../components/Modal';
 const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileSettingsMenu, { type MobileSettingsScreen } from '../components/settings/MobileSettingsMenu';
+import { usePWAInstall } from '../components/PWAInstallProvider';
 
 type Tab = 'general' | 'categories' | 'owners' | 'prices' | 'catalog' | 'maintenance' | 'equipo' | 'facebook';
 
@@ -61,6 +62,7 @@ export default function Settings() {
   const { plan: businessPlan, loading: businessPlanLoading, error: businessPlanError } = useBusinessPlan();
   const canWriteBusiness = !businessPlanLoading && !businessPlanError && businessPlan !== null && businessPlan.status !== 'suspended';
   const { theme, toggleTheme } = useTheme();
+  const { openInstall } = usePWAInstall();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -432,6 +434,7 @@ export default function Settings() {
         darkMode={theme === 'dark'}
         onToggleDarkMode={handleToggleDarkMode}
         onOpen={openMobileSettingsScreen}
+        onInstallApp={() => void openInstall()}
         isOwner={isOwner}
       /> : <>
       {isMobile && mobileSubscreen && <div className="mx-auto w-full max-w-xl px-4 pt-3">
@@ -446,6 +449,7 @@ export default function Settings() {
             <p className="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">Plan actual: {businessPlan.planName}</p>
           )}
         </div>
+        <button type="button" onClick={() => void openInstall()} className="inline-flex min-h-11 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Smartphone size={18}/>Instalar app</button>
       </div>}
 
       <div className="flex flex-col lg:flex-row gap-8">

@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import RequirePermission from './components/RequirePermission';
 import RequireBusinessModule from './components/RequireBusinessModule';
 import ToastContainer from './components/ToastContainer';
+import PWAInstallProvider from './components/PWAInstallProvider';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { getOfflineQueueSize, subscribeToOfflineQueue, syncOfflineMutations } from './lib/db';
@@ -137,11 +138,6 @@ function AppRoutes() {
   );
 }
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
-
 const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/presupuesto/', '/login', '/forgot-password', '/reset-password', '/auth/'];
 
 function isPublicPath(pathname: string): boolean {
@@ -154,8 +150,6 @@ function AppShell() {
   const publicRoute = isPublicPath(location.pathname);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(getOfflineQueueSize);
 
   useEffect(() => {
@@ -177,29 +171,6 @@ function AppShell() {
     return () => { unsubscribe(); window.removeEventListener('online', refresh); };
   }, []);
 
-  useEffect(() => {
-    if (publicRoute) {
-      setDeferredPrompt(null);
-      setShowInstallBanner(false);
-      return;
-    }
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setShowInstallBanner(true);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, [publicRoute]);
-
-  const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    await deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === 'accepted') setShowInstallBanner(false);
-    setDeferredPrompt(null);
-  };
-
   return (
     <>
       {!isOnline && !publicRoute && (
@@ -208,21 +179,9 @@ function AppShell() {
         </div>
       )}
       <div className={`fixed ${isOnline ? 'top-[max(1rem,env(safe-area-inset-top))]' : 'top-[max(5rem,calc(env(safe-area-inset-top)_+_5rem))]'} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] sm:left-auto sm:w-[min(30rem,calc(100vw_-_2rem))] z-[100] flex flex-col gap-2 pointer-events-none`}>
-        {showInstallBanner && !publicRoute && (
-          <div className="pointer-events-auto bg-[#1a1a1a] text-white p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[#2a2a2a]">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold shrink-0">RS</div>
-              <p className="text-sm font-bold leading-snug">Instalá RivaStock en tu dispositivo</p>
-            </div>
-            <div className="flex items-center justify-end gap-3 self-stretch sm:self-auto shrink-0">
-              <button onClick={() => setShowInstallBanner(false)} className="text-xs font-bold text-slate-400">Ahora no</button>
-              <button onClick={handleInstall} className="bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-lg">Instalar</button>
-            </div>
-          </div>
-        )}
         <ToastContainer />
       </div>
-      <AppRoutes />
+      <PWAInstallProvider allowInstallPrompt={!location.pathname.startsWith('/catalogo/')}><AppRoutes /></PWAInstallProvider>
     </>
   );
 }

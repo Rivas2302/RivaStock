@@ -7,7 +7,7 @@ import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerBuyingPolicy, getPublicResellerSupplierRounds, getResellerCatalogStatus, resolvePublicCatalogSlug, unlockResellerCatalog } from '../lib/publicCatalog';
 import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
-import { buildRetailOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
+import { buildCatalogOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
@@ -54,6 +54,17 @@ import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 
 const ON_ORDER_EXPLANATION = 'Estos productos no tienen stock inmediato: se encargan especialmente y requieren un plazo adicional. Antes de confirmar la compra te informaremos la disponibilidad y la demora estimada.';
+
+interface CatalogOrderReceipt {
+  orderCode: string;
+  total: number;
+  customerName: string;
+  channel: CatalogChannel;
+  deliveryMethod: DeliveryMethod;
+  address: string;
+  items: Array<{ name: string; quantity: number; price: number; onOrder: boolean }>;
+  roundClosesAt?: string;
+}
 
 function toRoundProducts(round: PublicResellerSupplierRound): PublicCatalogProduct[] {
   return round.products.map(product => ({
@@ -112,21 +123,20 @@ export default function PublicCatalog() {
   const [resellerBuyingPolicy, setResellerBuyingPolicy] = useState('');
   const [supplierRounds, setSupplierRounds] = useState<PublicResellerSupplierRound[]>([]);
   const [selectedSupplierRoundId, setSelectedSupplierRoundId] = useState<string | null>(null);
-  const [roundOrderReceipt, setRoundOrderReceipt] = useState<{ id: string; total: number; closesAt: string; itemsSummary: string[] } | null>(null);
-  const [retailOrderReceipt, setRetailOrderReceipt] = useState<{
-    orderCode: string;
-    total: number;
-    customerName: string;
-    deliveryMethod: DeliveryMethod;
-    address: string;
-    items: Array<{ name: string; quantity: number; price: number }>;
-  } | null>(() => {
+  const [catalogOrderReceipt, setCatalogOrderReceipt] = useState<CatalogOrderReceipt | null>(() => {
     try {
-      const stored = sessionStorage.getItem(`catalog-last-retail-order:${slug ?? ''}`);
-      return stored ? JSON.parse(stored) as {
-        orderCode: string; total: number; customerName: string; deliveryMethod: DeliveryMethod;
-        address: string; items: Array<{ name: string; quantity: number; price: number }>;
-      } : null;
+      const stored = sessionStorage.getItem(`catalog-last-order:${slug ?? ''}`)
+        ?? sessionStorage.getItem(`catalog-last-retail-order:${slug ?? ''}`);
+      if (!stored) return null;
+      const receipt = JSON.parse(stored) as Partial<CatalogOrderReceipt>;
+      if (!receipt.orderCode || !Array.isArray(receipt.items)) return null;
+      return {
+        ...receipt,
+        channel: receipt.channel ?? 'retail',
+        deliveryMethod: receipt.deliveryMethod ?? 'pickup',
+        address: receipt.address ?? '',
+        items: receipt.items.map(item => ({ ...item, onOrder: item.onOrder ?? false })),
+      } as CatalogOrderReceipt;
     } catch { return null; }
   });
   const [resellerAccessCode, setResellerAccessCode] = useState('');
@@ -140,6 +150,7 @@ export default function PublicCatalog() {
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [lastSubmitAt, setLastSubmitAt] = useState<number>(0);
   const deferredSearch = useDeferredValue(search);
@@ -154,6 +165,7 @@ export default function PublicCatalog() {
   const [categoryCanScrollRight, setCategoryCanScrollRight] = useState(false);
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const detailSwipeStartY = useRef<number | null>(null);
   const openProduct = (product: PublicCatalogProduct, replaceCurrent = Boolean(productId)) => {
     if (!slug) return;
     if (!productId) catalogScrollPosition.current = window.scrollY;
@@ -664,7 +676,7 @@ useEffect(() => {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!config) return;
+    if (!config || isSubmittingOrder) return;
     const RATE_LIMIT_MS = 30_000;
     if (Date.now() - lastSubmitAt < RATE_LIMIT_MS) {
       setMessage(`Esperá ${Math.ceil((RATE_LIMIT_MS - (Date.now() - lastSubmitAt)) / 1000)}s antes de enviar otro pedido.`);
@@ -680,11 +692,9 @@ useEffect(() => {
     const phone = formData.phone.trim();
     const email = formData.email.trim();
     const address = formData.address.trim();
-    const requiresAddress = activeSupplierRound
-      ? false
-      : channel === 'retail' ? deliveryMethod === 'shipping' : true;
+    const requiresAddress = deliveryMethod === 'shipping';
     if (name.length < 2 || phone.length < 5 || (requiresAddress && address.length < 3)) {
-      setMessage(activeSupplierRound || (channel === 'retail' && deliveryMethod === 'pickup')
+      setMessage(!requiresAddress
         ? 'Completá tu nombre y WhatsApp.'
         : 'Completá nombre, WhatsApp y dirección de envío.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
@@ -701,42 +711,80 @@ useEffect(() => {
       return;
     }
 
+    setIsSubmittingOrder(true);
+    const whatsappWindow = config.whatsappNumber ? window.open('about:blank', '_blank') : null;
     try {
       const customer = {
         name,
         phone,
         email,
-        address: activeSupplierRound && !address ? 'A coordinar por WhatsApp' : address,
+        address: deliveryMethod === 'shipping' ? address : '',
         message: formData.message.trim(),
-        deliveryMethod: channel === 'retail' ? deliveryMethod : 'pickup',
+        deliveryMethod,
       };
       const items = cart.map(item => ({ productId: item.product.id, quantity: item.quantity }));
       const activeRound = supplierRounds.find(round => round.id === selectedSupplierRoundId);
       let createdOrderId: string;
+      let orderCode: string;
+      let total: number;
+      let orderLines: CatalogOrderReceipt['items'];
+      let roundClosesAt: string | undefined;
       if (channel === 'reseller' && activeRound) {
         const result = await createPublicResellerSupplierRoundOrder({
           slug: slug ?? '', accessCode: resellerAccessCode, roundId: activeRound.id, customer, items,
         });
         createdOrderId = result.id;
-        setRoundOrderReceipt({ ...result, itemsSummary: cart.map(item => `${item.quantity} × ${item.product.name}`) });
+        orderCode = result.orderCode;
+        total = result.total;
+        orderLines = result.items.map(item => ({
+          name: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          onOrder: item.availability === 'on_order',
+        }));
+        roundClosesAt = result.closesAt;
       } else {
         const result = await createPublicCatalogOrder({ slug: slug ?? '', channel, accessCode: channel === 'reseller' ? resellerAccessCode : '', customer, items });
         createdOrderId = result.id;
-        setRoundOrderReceipt(null);
-        if (channel === 'retail') {
-          const receipt = {
-            orderCode: result.orderCode,
-            total: result.total,
-            customerName: name,
-            deliveryMethod,
-            address: deliveryMethod === 'shipping' ? address : '',
-            items: result.items.map(item => ({ name: item.productName, quantity: item.quantity, price: item.price })),
-          };
-          setRetailOrderReceipt(receipt);
-          sessionStorage.setItem(`catalog-last-retail-order:${slug ?? ''}`, JSON.stringify(receipt));
-        } else {
-          setRetailOrderReceipt(null);
+        orderCode = result.orderCode;
+        total = result.total;
+        orderLines = result.items.map(item => ({
+          name: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          onOrder: item.availability === 'on_order' || cart.some(cartItem =>
+            cartItem.product.name === item.productName && cartItem.product.stock <= 0,
+          ),
+        }));
+      }
+      const receipt: CatalogOrderReceipt = {
+        orderCode,
+        total,
+        customerName: name,
+        channel,
+        deliveryMethod,
+        address: deliveryMethod === 'shipping' ? address : '',
+        items: orderLines,
+        ...(roundClosesAt ? { roundClosesAt } : {}),
+      };
+      setCatalogOrderReceipt(receipt);
+      sessionStorage.setItem(`catalog-last-order:${slug ?? ''}`, JSON.stringify(receipt));
+      if (config.whatsappNumber) {
+        const text = buildCatalogOrderWhatsAppMessage({
+          businessName: config.businessName || 'el negocio',
+          orderCode,
+          channel,
+          items: receipt.items,
+          total,
+          customerName: name,
+        });
+        const whatsappUrl = `https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
+        if (whatsappWindow) {
+          whatsappWindow.opener = null;
+          whatsappWindow.location.replace(whatsappUrl);
         }
+      } else {
+        whatsappWindow?.close();
       }
       try {
         await notifyPublicOrderOwner(createdOrderId);
@@ -751,9 +799,12 @@ useEffect(() => {
       setFormData({ name: '', phone: '', email: '', address: '', message: '' });
       setDeliveryMethod('pickup');
     } catch (err) {
+      whatsappWindow?.close();
       console.error('[checkout] insert failed:', err);
       setMessage(err instanceof Error ? err.message : 'Error al procesar el pedido. Intentá nuevamente.');
       setTimeout(() => setMessage(null), TOAST_DURATION_MS);
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -894,19 +945,18 @@ if (loading) {
       ? presentation.offerDiscountPercentByProduct?.[product.id] ?? 0 : 0;
     return getCatalogOfferPrice(product.salePrice, discount) ?? roundPrice(product.salePrice);
   };
-  const retailWhatsAppMessage = retailOrderReceipt && config
-    ? buildRetailOrderWhatsAppMessage({
+  const catalogOrderWhatsAppMessage = catalogOrderReceipt && config
+    ? buildCatalogOrderWhatsAppMessage({
         businessName: config.businessName || 'el negocio',
-        orderCode: retailOrderReceipt.orderCode,
-        items: retailOrderReceipt.items,
-        total: retailOrderReceipt.total,
-        customerName: retailOrderReceipt.customerName,
-        deliveryMethod: retailOrderReceipt.deliveryMethod,
-        address: retailOrderReceipt.address,
+        orderCode: catalogOrderReceipt.orderCode,
+        channel: catalogOrderReceipt.channel,
+        items: catalogOrderReceipt.items,
+        total: catalogOrderReceipt.total,
+        customerName: catalogOrderReceipt.customerName,
       })
     : '';
-  const retailWhatsAppUrl = retailOrderReceipt && config?.whatsappNumber
-    ? `https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(retailWhatsAppMessage)}`
+  const catalogOrderWhatsAppUrl = catalogOrderReceipt && config?.whatsappNumber
+    ? `https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(catalogOrderWhatsAppMessage)}`
     : null;
   const newProducts = catalogProducts.filter(product => {
     const createdAt = Date.parse(product.createdAt);
@@ -1008,7 +1058,7 @@ if (loading) {
 
       {/* Header */}
       <header className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b",
+        "sticky top-0 left-0 right-0 z-50 transition-all duration-300 border-b pt-[env(safe-area-inset-top)]",
         darkMode ? "bg-[#080808]/80 border-white/5" : "bg-white/80 border-slate-100",
         "backdrop-blur-xl"
       )} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -1088,6 +1138,10 @@ if (loading) {
             </button>
           </div>
         </div>
+        {presentation.ambience.announcementText.trim() && <div className="catalog-announcement" role="note" aria-label="Anuncio del catálogo" style={{ '--catalog-announcement-background': announcementBackgroundColor, '--catalog-announcement-ink': announcementTextColor } as React.CSSProperties}>
+          <span className="sr-only">{presentation.ambience.announcementText.trim()}</span>
+          <span className="catalog-announcement__track" aria-hidden="true"><span>{presentation.ambience.announcementText.trim()}</span><span>{presentation.ambience.announcementText.trim()}</span></span>
+        </div>}
       </header>
 
       <div aria-hidden="true" data-testid="catalog-header-spacer" className="h-[calc(5rem+env(safe-area-inset-top))]" />
@@ -1701,11 +1755,11 @@ if (loading) {
                 ))}
                 
                 {cart.length === 0 && (
-                  retailOrderReceipt && channel === 'retail' ? (
+                  catalogOrderReceipt ? (
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center gap-4 py-12 text-center">
                       <CheckCircle2 size={38} className="text-[var(--success-ink)]" aria-hidden="true" />
-                      <div><p className="text-sm text-[var(--ink-muted)]">Tu último pedido</p><p className="mt-1 text-2xl font-bold" data-testid="retail-order-code">{retailOrderReceipt.orderCode}</p><p className="mt-1 text-sm">{formatCurrency(retailOrderReceipt.total)}</p></div>
-                      {retailWhatsAppUrl && <a href={retailWhatsAppUrl} target="_blank" rel="noreferrer" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white"><MessageCircle size={18}/>Enviar pedido por WhatsApp</a>}
+                      <div><p className="text-sm text-[var(--ink-muted)]">Tu último pedido</p><p className="mt-1 text-2xl font-bold" data-testid="catalog-order-code"><span data-testid={catalogOrderReceipt.channel === 'retail' ? 'retail-order-code' : 'reseller-order-code'}>{catalogOrderReceipt.orderCode}</span></p><p className="mt-1 text-sm">{formatCurrency(catalogOrderReceipt.total)}</p></div>
+                      {catalogOrderWhatsAppUrl ? <a href={catalogOrderWhatsAppUrl} target="_blank" rel="noreferrer" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white"><MessageCircle size={18}/>Enviar pedido por WhatsApp</a> : <p className="text-sm text-[var(--ink-muted)]">El negocio te va a contactar.</p>}
                       <button type="button" onClick={() => setIsCartOpen(false)} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold">Seguir mirando</button>
                     </div>
                   ) : (
@@ -1831,7 +1885,7 @@ if (loading) {
                   <p className={cn(
                     "font-medium",
                     darkMode ? "text-white/40" : "text-slate-500"
-                  )}>{activeSupplierRound ? 'Completá tu nombre y WhatsApp para recibir el número del pedido y coordinar el pago.' : channel === 'retail' ? 'Dejanos un nombre y WhatsApp para coordinar tu pedido.' : 'Completa tus datos para que podamos contactarte y entregar tu pedido.'}</p>
+                  )}>{activeSupplierRound ? 'Dejanos tu nombre y WhatsApp para recibir el código y coordinar el pedido.' : 'Dejanos tu nombre y WhatsApp para recibir el código de tu pedido.'} El email es opcional.</p>
                 </div>
 
                 <form onSubmit={handleCheckout} className="space-y-6">
@@ -1897,11 +1951,10 @@ if (loading) {
                           darkMode ? "text-white/20 group-focus-within:text-white" : "text-slate-400 group-focus-within:text-indigo-600"
                         )} size={20} />
                         <input 
-                          required={channel === 'reseller' && !activeSupplierRound}
                           type="email"
                           autoComplete="email"
                           inputMode="email"
-                          placeholder="Email"
+                          placeholder="Email (opcional)"
                           value={formData.email}
                           onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                           className={cn(
@@ -1913,13 +1966,13 @@ if (loading) {
                         />
                       </div>
                     </div>
-                    {channel === 'retail' && !activeSupplierRound && <fieldset className="space-y-2">
+                    <fieldset className="space-y-2">
                       <legend className={cn('text-sm font-bold', darkMode ? 'text-white/70' : 'text-slate-600')}>¿Cómo querés recibirlo?</legend>
                       <div className="grid grid-cols-2 gap-2">
                         {([['pickup', 'Retiro'], ['shipping', 'Envío']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={deliveryMethod === value} onClick={() => setDeliveryMethod(value)} className={cn('min-h-12 rounded-xl border px-3 text-sm font-bold transition-colors', deliveryMethod === value ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]' : darkMode ? 'border-white/10 text-white/70' : 'border-slate-200 text-slate-600')}>{label}</button>)}
                       </div>
-                    </fieldset>}
-                    {!activeSupplierRound && (channel !== 'retail' || deliveryMethod === 'shipping') && <div className="relative group">
+                    </fieldset>
+                    {deliveryMethod === 'shipping' && <div className="relative group">
                       <MapPin className={cn(
                         "absolute left-5 top-1/2 -translate-y-1/2 transition-colors",
                         darkMode ? "text-white/20 group-focus-within:text-white" : "text-slate-400 group-focus-within:text-indigo-600"
@@ -1973,10 +2026,11 @@ if (loading) {
                     </button>
                     <button 
                       type="submit"
-                      className="flex-[2] text-white py-5 rounded-full font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
+                      disabled={isSubmittingOrder}
+                      className="flex-[2] text-white py-5 rounded-full font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:cursor-wait disabled:opacity-70"
                       style={{ backgroundColor: accentColor, boxShadow: `0 20px 40px -5px ${accentColor}60` }}
                     >
-                      Enviar Pedido
+                      {isSubmittingOrder ? 'Enviando pedido…' : 'Enviar Pedido'}
                       <Send size={20} />
                     </button>
                   </div>
@@ -2005,7 +2059,7 @@ if (loading) {
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
               <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
                 <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
-                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="grid grid-cols-2 gap-2"><button type="button" aria-label="Copiar link" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
+                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="hidden grid-cols-2 gap-2 md:grid"><button type="button" aria-label="Copiar link" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="hidden min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50 md:block" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
               </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4 pb-8"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>openProduct(row,true)} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
               <footer className="grid shrink-0 gap-2 border-t border-[var(--line)] bg-[var(--surface-raised)] p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:hidden">
                 <button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button>
@@ -2017,7 +2071,7 @@ if (loading) {
       </AnimatePresence>
       {/* Success Modal */}
       <AnimatePresence>
-        {isSuccess && (
+        {isSuccess && catalogOrderReceipt && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
@@ -2025,53 +2079,43 @@ if (loading) {
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className={cn(
-                "w-full max-w-sm rounded-[3rem] shadow-2xl p-10 text-center space-y-8 relative z-10 border",
+                "flex max-h-[min(90dvh,48rem)] w-full max-w-md flex-col overflow-hidden rounded-[2rem] shadow-2xl relative z-10 border",
                 darkMode ? "bg-[#111111] border-white/5" : "bg-white border-slate-100"
               )}
             >
-              <div 
-                className="w-24 h-24 rounded-full flex items-center justify-center mx-auto text-white shadow-xl"
-                style={{ backgroundColor: '#10b981', boxShadow: '0 20px 40px -5px rgba(16, 185, 129, 0.4)' }}
-              >
-                <CheckCircle2 size={56} />
+              <div className="flex-1 space-y-5 overflow-y-auto p-6 text-center sm:p-8">
+                <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg">
+                  <CheckCircle2 size={38} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className={cn("text-2xl font-black tracking-tight", darkMode ? "text-white" : "text-slate-900")}>¡Pedido recibido!</h3>
+                  <p className={cn("text-sm font-semibold", darkMode ? "text-white/70" : "text-slate-600")}>Código del pedido</p>
+                  <p className="text-3xl font-black" data-testid="catalog-order-code"><span data-testid={catalogOrderReceipt.channel === 'retail' ? 'retail-order-code' : 'reseller-order-code'}>{catalogOrderReceipt.orderCode}</span></p>
+                  <p className="text-lg font-bold">Total: {formatCurrency(catalogOrderReceipt.total)}</p>
+                </div>
+                <section className={cn("rounded-2xl p-4 text-left", darkMode ? "bg-white/5" : "bg-slate-50")} aria-label="Resumen del pedido">
+                  <h4 className="mb-2 text-sm font-bold">Resumen</h4>
+                  <ul className="space-y-2 text-sm">{catalogOrderReceipt.items.map((item, index) => <li key={`${item.name}-${index}`}>{item.quantity} × {item.name}{item.onOrder ? ' (por pedido)' : ''} · {formatCurrency(item.price)}</li>)}</ul>
+                  <p className="mt-3 border-t border-current/10 pt-3 text-xs font-semibold text-[var(--ink-muted)]">{catalogOrderReceipt.deliveryMethod === 'pickup' ? 'Retiro' : `Envío · ${catalogOrderReceipt.address}`}</p>
+                </section>
+                {catalogOrderReceipt.roundClosesAt && <p className="text-sm text-[var(--ink-muted)]">La ronda cierra el {new Date(catalogOrderReceipt.roundClosesAt).toLocaleString('es-AR')}.</p>}
+                {catalogOrderWhatsAppUrl
+                  ? <a href={catalogOrderWhatsAppUrl} target="_blank" rel="noreferrer" data-testid="send-order-whatsapp" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-base font-bold text-white"><MessageCircle size={20}/>Enviar pedido por WhatsApp</a>
+                  : <p className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 text-sm font-semibold">El negocio te va a contactar.</p>}
+                <a href={`/pedidos/${encodeURIComponent(catalogOrderReceipt.orderCode)}`} data-testid="view-catalog-order" className="block text-center text-sm font-semibold text-[var(--brand-strong)]">Ver pedido</a>
               </div>
-              <div className="space-y-3">
-                <h3 className={cn(
-                  "text-3xl font-black tracking-tight",
-                  darkMode ? "text-white" : "text-slate-900"
-                )}>{roundOrderReceipt || retailOrderReceipt ? '¡Pedido recibido!' : '¡Pedido enviado!'}</h3>
-                <p className={cn(
-                  "font-medium leading-relaxed",
-                  darkMode ? "text-white/40" : "text-slate-500"
-                )}>{retailOrderReceipt
-                  ? <><span data-testid="retail-order-code">{retailOrderReceipt.orderCode}</span> · {formatCurrency(retailOrderReceipt.total)}</>
-                  : roundOrderReceipt
-                  ? `Pedido #${roundOrderReceipt.id.slice(0, 8)} por ${formatCurrency(roundOrderReceipt.total)}. Coordiná el pago por WhatsApp antes del cierre.`
-                  : 'Hemos recibido tu pedido correctamente. Nos pondremos en contacto contigo muy pronto.'}</p>
-                {retailOrderReceipt && <div className="space-y-4 text-left">
-                  <ul className="space-y-1 text-sm">{retailOrderReceipt.items.map((item, index) => <li key={`${item.name}-${index}`}>{item.quantity} × {item.name} · {formatCurrency(item.price)}</li>)}</ul>
-                  <p className="text-sm font-semibold">Nombre: {retailOrderReceipt.customerName} · Entrega: {retailOrderReceipt.deliveryMethod === 'pickup' ? 'Retiro' : `Envío · ${retailOrderReceipt.address}`}</p>
-                  {retailWhatsAppUrl && <a href={retailWhatsAppUrl} target="_blank" rel="noreferrer" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white"><MessageCircle size={18}/>Enviar pedido por WhatsApp</a>}
-                  <a href={`/pedidos/${encodeURIComponent(retailOrderReceipt.orderCode)}`} className="block text-center text-sm font-semibold text-[var(--brand-strong)]">Ver pedido</a>
-                </div>}
-                {roundOrderReceipt && <div className="space-y-3 text-left">
-                  <ul className="space-y-1 text-sm">{roundOrderReceipt.itemsSummary.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-                  <ol aria-label="Estado del pedido" className="space-y-1 text-xs font-semibold text-[var(--ink-muted)]"><li>1. Pedido recibido</li><li>2. Pago coordinado por WhatsApp</li><li>3. Pedido enviado al proveedor</li><li>4. Listo para retirar</li></ol>
-                  {config.whatsappNumber && <a href={`https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, quiero coordinar el pago del pedido #${roundOrderReceipt.id.slice(0, 8)}.\n${roundOrderReceipt.itemsSummary.join('\n')}\nTotal: ${formatCurrency(roundOrderReceipt.total)}`)}`} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 font-bold text-white"><MessageCircle size={18}/>Coordinar el pago por WhatsApp</a>}
-                </div>}
-              </div>
-              <button 
-                onClick={() => { setIsSuccess(false); setRoundOrderReceipt(null); }}
+              <button
+                onClick={() => setIsSuccess(false)}
                 className={cn(
-                  "w-full py-5 rounded-2xl font-black text-lg transition-all shadow-xl",
+                  "mx-6 mb-6 min-h-12 rounded-2xl font-bold transition-all shadow-xl sm:mx-8 sm:mb-8",
                   darkMode ? "bg-white text-slate-900 hover:bg-white/90" : "bg-slate-900 text-white hover:bg-slate-800"
                 )}
               >
-                {roundOrderReceipt || retailOrderReceipt ? 'Cerrar' : 'Entendido'}
+                Cerrar
               </button>
             </motion.div>
           </div>

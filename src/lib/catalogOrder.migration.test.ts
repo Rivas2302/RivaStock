@@ -66,6 +66,7 @@ describe('I50 order code migration', () => {
   it('applies a live catalog offer on the server and returns the saved order lines', async () => {
     const baseSql = await readFile('supabase/migrations/20261109160708_i50_catalog_order_codes_and_delivery.sql', 'utf8');
     const correctionSql = await readFile('supabase/migrations/20261109163806_i50_catalog_order_price_consistency.sql', 'utf8');
+    const receiptMigration = await readFile('supabase/migrations/20261110185939_reseller_catalog_order_whatsapp_receipts.sql', 'utf8');
     const db = new PGlite();
     try {
       await db.exec(`
@@ -109,6 +110,9 @@ describe('I50 order code migration', () => {
       const triggerMigration = baseSql.split('CREATE OR REPLACE FUNCTION public.create_public_catalog_order')[0];
       await db.exec(triggerMigration);
       await db.exec(correctionSql);
+      const orderFunction = receiptMigration.match(/CREATE OR REPLACE FUNCTION public\.create_public_catalog_order\([\s\S]*?\n\$\$;/)?.[0];
+      expect(orderFunction).toBeTruthy();
+      await db.exec(orderFunction!);
 
       const response = await db.query<{ result: { orderCode: string; total: number; items: Array<{ productName: string; quantity: number; price: number }> } }>(`
         SELECT public.create_public_catalog_order(
@@ -121,8 +125,42 @@ describe('I50 order code migration', () => {
         orderCode: 'P-0001', total: 6800,
         items: [{ productName: 'Cable USB-C', quantity: 1, price: 6800 }],
       });
+
+      await db.exec(`
+        INSERT INTO public.price_lists (id, user_id, kind, public_enabled, access_code_hash, minimum_rule, minimum_order_amount, minimum_order_quantity, default_discount_percent)
+        VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', '${OWNER_A}', 'reseller', true, '', 'none', 0, 0, 0);
+        INSERT INTO public.price_list_items (id, price_list_id, product_id, availability, pricing_mode, fixed_price, discount_percent)
+        VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', 'in_stock', 'fixed', 4200, 0);
+      `);
+      await db.exec('SET ROLE anon');
+      const resellerResponse = await db.query<{ result: { orderCode: string; total: number; channel: string; items: Array<{ productName: string; quantity: number; price: number; availability: string }> } }>(`
+        SELECT public.create_public_catalog_order(
+          'qa-catalog', 'reseller', 'CODIGO-QA',
+          '{"name":"Revendedora de prueba","phone":"2302000001","email":"","address":"","deliveryMethod":"pickup"}'::jsonb,
+          '[{"productId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1","quantity":1}]'::jsonb
+        ) AS result
+      `);
+      await db.exec('RESET ROLE');
+      expect(resellerResponse.rows[0]?.result).toMatchObject({
+        orderCode: 'P-0002', total: 4200, channel: 'reseller',
+        items: [{ productName: 'Cable USB-C', quantity: 1, price: 4200, availability: 'in_stock' }],
+      });
     } finally {
       await db.close();
     }
   }, 30_000);
+
+  it('keeps reseller round orders WhatsApp-ready and permits pickup without an address', async () => {
+    const migration = await readFile('supabase/migrations/20261110185939_reseller_catalog_order_whatsapp_receipts.sql', 'utf8');
+    const roundFunction = migration.match(/CREATE OR REPLACE FUNCTION public\.create_public_reseller_supplier_round_order\([\s\S]*?\n\$\$;/)?.[0];
+    expect(roundFunction).toBeTruthy();
+    expect(roundFunction).toContain("'orderCode', v_order_code");
+    expect(roundFunction).toContain("'items', v_order_items");
+    expect(roundFunction).toContain("'reseller', v_list.id, v_delivery_method");
+    expect(roundFunction).toContain("OR (v_delivery_method = 'shipping' AND char_length(v_address) < 3)");
+    expect(roundFunction).not.toContain("char_length(v_address) < 3 THEN");
+    expect(roundFunction).not.toContain("whatsapp_number), '') IS NOT NULL");
+    expect(migration).not.toMatch(/\b(?:DROP|TRUNCATE|DELETE)\b/i);
+    expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.create_public_reseller_supplier_round_order(text, text, uuid, jsonb, jsonb) TO anon, authenticated');
+  });
 });

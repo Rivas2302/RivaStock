@@ -1,4 +1,4 @@
-import { ChevronRight, ContactRound, Globe, Moon, Palette, Tags, Users, Wrench, DollarSign, AlertTriangle, UserRound } from 'lucide-react';
+import { ChevronRight, ContactRound, Globe, Moon, Palette, Tags, Users, Wrench, DollarSign, AlertTriangle, UserRound, Smartphone } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export type MobileSettingsScreen = 'business' | 'profile' | 'categories' | 'prices' | 'catalog' | 'owners' | 'team' | 'maintenance' | 'appearance' | 'danger';
@@ -10,10 +10,11 @@ interface MobileSettingsMenuProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onOpen: (tab: SettingsTab, screen: MobileSettingsScreen) => void;
+  onInstallApp?: () => void;
   isOwner: boolean;
 }
 
-export default function MobileSettingsMenu({ businessName, planName, darkMode, onToggleDarkMode, onOpen, isOwner }: MobileSettingsMenuProps) {
+export default function MobileSettingsMenu({ businessName, planName, darkMode, onToggleDarkMode, onOpen, onInstallApp, isOwner }: MobileSettingsMenuProps) {
   const initials = businessName.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toLocaleUpperCase()).join('') || 'RS';
   return <main data-testid="mobile-settings-menu" className="business-page mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pb-8 pt-3 text-slate-900 dark:text-white">
     <header><h1 className="text-2xl font-bold tracking-tight">Configuración</h1><p className="text-sm text-slate-500 dark:text-slate-400">Tu negocio y la app</p></header>
@@ -36,6 +37,7 @@ export default function MobileSettingsMenu({ businessName, planName, darkMode, o
     </MenuSection>
 
     <MenuSection title="Apariencia">
+      <MenuRow label="Instalar app" icon={<Smartphone size={18} />} onClick={() => onInstallApp?.()} />
       <button type="button" onClick={() => onOpen('general', 'appearance')} className="flex min-h-16 w-full items-center gap-3 px-3 text-left">
         <span className="flex size-9 items-center justify-center rounded-xl bg-slate-100 text-indigo-700 dark:bg-slate-800 dark:text-indigo-300"><Palette size={18} /></span><span className="min-w-0 flex-1"><strong className="block text-sm">Apariencia</strong><span className="text-xs text-slate-500 dark:text-slate-400">Preferencias de la aplicación</span></span><ChevronRight size={18} className="text-slate-500" />
       </button>

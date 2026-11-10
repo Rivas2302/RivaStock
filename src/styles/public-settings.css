@@ -101,7 +101,6 @@
 .public-catalog:not([class~="bg-[#080808]"]) { background: #f4f1ea !important; color: #1d2026 !important; }
 .public-catalog:not([class~="bg-[#080808]"]) header { background: rgb(252 250 245 / .9) !important; border-color: #ddd8ce !important; }
 .public-catalog header .max-w-7xl { height: 4.5rem; }
-.public-catalog .relative.pt-20 { padding-top: 4.5rem; }
 .public-catalog .h-\[60vh\] { min-height: 340px; height: min(54vh, 520px); }
 .public-catalog h2 { letter-spacing: -.065em !important; }
 .public-catalog .-mt-12 > div { border-color: #ddd8ce !important; border-radius: .75rem !important; box-shadow: 0 16px 36px rgb(29 32 38 / .12) !important; }

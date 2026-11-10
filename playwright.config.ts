@@ -23,6 +23,10 @@ export default defineConfig({
       testMatch: /(ai|stock|sales(?:-adjustment)?|number-fields|cashflow|quick-price|reports|quotes|customers|suppliers|intake|settings|navigation)-mobile\.spec\.ts/,
       use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } },
     },
+    { name: 'catalog-iphone-11', testMatch: /(public-catalog|pwa-install)\.spec\.ts/, use: { ...devices['iPhone 11'] } },
+    { name: 'catalog-iphone-13', testMatch: /(public-catalog|pwa-install)\.spec\.ts/, use: { ...devices['iPhone 13'] } },
+    { name: 'catalog-iphone-15', testMatch: /(public-catalog|pwa-install)\.spec\.ts/, use: { ...devices['iPhone 15'] } },
+    { name: 'catalog-android', testMatch: /(public-catalog|pwa-install)\.spec\.ts/, use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
     command: 'npm.cmd run build -- --mode e2e && npm.cmd run preview -- --host 127.0.0.1 --port 4173 --strictPort',
