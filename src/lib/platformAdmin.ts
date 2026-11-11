@@ -26,6 +26,8 @@ export interface PlatformBusiness {
   limit_overrides: Record<string, unknown>;
   notes: string;
   can_manage_account: boolean;
+  activation_invite_pending?: boolean;
+  business_whatsapp_number?: string | null;
   account_action_disabled_reason: string | null;
   has_business_subscription: boolean;
   business_action_disabled_reason: string | null;

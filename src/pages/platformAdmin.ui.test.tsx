@@ -45,6 +45,8 @@ function makeBusiness(planCode: 'base' | 'pro'): PlatformBusiness {
     limit_overrides: {},
     notes: '',
     can_manage_account: true,
+    activation_invite_pending: true,
+    business_whatsapp_number: '5492302381814',
     account_action_disabled_reason: null,
     has_business_subscription: true,
     business_action_disabled_reason: null,
@@ -268,6 +270,76 @@ describe('PlatformAdmin quota controls', () => {
     const hidePassword = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Ocultar y borrar'));
     await act(async () => { hidePassword?.click(); });
     expect(host.textContent).not.toContain('TempPass-123');
+  });
+
+  it('confirms before generating an activation link and keeps the link only until the panel is closed', async () => {
+    const url = 'https://rivastock.vercel.app/auth/confirm?token_hash=fixture-activation-token&type=invite';
+    mocks.request.mockImplementation((request: { action: string }) => Promise.resolve(
+      request.action === 'list' ? makeDashboard(business)
+        : request.action === 'invite_link' ? { url, expires_at: '2026-11-11T15:00:00.000Z' }
+          : {},
+    ));
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    const card = host.querySelector('article');
+    const open = [...(card?.querySelectorAll('button') ?? [])].find(button => button.textContent?.includes('Copiar enlace de activación'));
+    expect(open).toBeDefined();
+    await act(async () => { open?.click(); });
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Este enlace permite entrar a la cuenta. Mandalo solo al cliente.');
+    expect(mocks.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'invite_link' }));
+
+    const generate = [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent?.includes('Generar enlace'));
+    await act(async () => { generate?.click(); });
+    expect(mocks.request).toHaveBeenCalledWith({ action: 'invite_link', owner_uid: 'owner-base' });
+    expect(host.querySelector('[aria-label="Enlace de activación"]')?.textContent).toContain(url);
+    expect(host.querySelector('[aria-label="Enlace de activación"]')?.textContent).toContain('Si generás otro, este deja de servir.');
+
+    const whatsapp = host.querySelector<HTMLAnchorElement>('[aria-label="Enlace de activación"] a');
+    expect(whatsapp?.href).toContain('https://wa.me/5492302381814?text=');
+    expect(decodeURIComponent(whatsapp?.href.split('?text=')[1] ?? '')).toContain(`Hola! Te paso el enlace para activar tu cuenta de RivaStock. Abrilo, elegí tu contraseña y listo: ${url}.`);
+
+    const close = host.querySelector<HTMLButtonElement>('[aria-label="Cerrar enlace de activación"]');
+    await act(async () => { close?.click(); });
+    expect(host.querySelector('[aria-label="Enlace de activación"]')).toBeNull();
+    expect(host.textContent).not.toContain('fixture-activation-token');
+  });
+
+  it('explains that a recovery fallback does not invalidate the prior invitation', async () => {
+    const url = 'https://rivastock.vercel.app/auth/confirm?token_hash=fixture-recovery-token&type=recovery';
+    mocks.request.mockImplementation((request: { action: string }) => Promise.resolve(
+      request.action === 'list' ? makeDashboard(business)
+        : request.action === 'invite_link' ? { url, expires_at: '2026-11-11T15:00:00.000Z' }
+          : {},
+    ));
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Copiar enlace de activación'))?.click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent?.includes('Generar enlace'))?.click(); });
+    expect(host.querySelector('[aria-label="Enlace de activación"]')?.textContent).toContain('La invitación anterior podría seguir vigente hasta que se use o venza.');
+    const whatsapp = host.querySelector<HTMLAnchorElement>('[aria-label="Enlace de activación"] a');
+    expect(decodeURIComponent(whatsapp?.href.split('?text=')[1] ?? '')).toContain('después ingresá con tu email y esa contraseña');
+  });
+
+  it('opens WhatsApp without a preset recipient when the business has no phone', async () => {
+    business = { ...makeBusiness('base'), business_whatsapp_number: null };
+    mocks.request.mockImplementation((request: { action: string }) => Promise.resolve(
+      request.action === 'list' ? makeDashboard(business)
+        : request.action === 'invite_link' ? {
+          url: 'https://rivastock.vercel.app/auth/confirm?token_hash=fixture-no-phone&type=invite',
+          expires_at: '2026-11-11T15:00:00.000Z',
+        }
+          : {},
+    ));
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Copiar enlace de activación'))?.click(); });
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent?.includes('Generar enlace'))?.click(); });
+    const whatsapp = host.querySelector<HTMLAnchorElement>('[aria-label="Enlace de activación"] a');
+    expect(whatsapp?.href).toContain('https://wa.me/?text=');
+  });
+
+  it('does not show activation actions after the invitation is accepted', async () => {
+    business = { ...makeBusiness('base'), activation_invite_pending: false };
+    await act(async () => { root.render(<PlatformAdmin/>); });
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.includes('Copiar enlace de activación'))).toBe(false);
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.includes('Reenviar invitación'))).toBe(false);
   });
 
   it('makes backup optional, checks the business name or email, and disables protected-account actions with a reason', async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Building2, Loader2, Mail, RefreshCw, Save } from 'lucide-react';
+import { Building2, Check, Copy, Loader2, Mail, RefreshCw, Save, X } from 'lucide-react';
 import { platformAdminRequest, platformBusinessDisplayName, type PlatformBusiness, type PlatformDashboardData } from '../lib/platformAdmin';
 import { getBusinessPlanDisplayName } from '../lib/businessPlan';
 import { BUSINESS_MODULE_KEYS, normalizeBusinessModules } from '../lib/businessModules';
@@ -15,6 +15,7 @@ type EditableBusiness = {
   limit_overrides: Record<string, unknown>;
 };
 type StorageUnit = 'MB' | 'GB';
+type ActivationLink = { url: string; expires_at: string };
 const STORAGE_UNIT_BYTES: Record<StorageUnit, number> = { MB: 1_048_576, GB: 1_073_741_824 };
 const GIGABYTE = STORAGE_UNIT_BYTES.GB;
 const MEGABYTE = STORAGE_UNIT_BYTES.MB;
@@ -253,6 +254,7 @@ export default function PlatformAdmin() {
             onEdit={(edit) => setEdits((current) => ({ ...current, [business.owner_uid]: edit }))}
             onSave={() => void saveBusiness(business)}
             onResend={() => void resendInvite(business)}
+            onGenerateInviteLink={() => platformAdminRequest<ActivationLink>({ action: 'invite_link', owner_uid: business.owner_uid })}
             onAccountChange={() => void load()}
           />
         ))}
@@ -262,7 +264,7 @@ export default function PlatformAdmin() {
 }
 
 function BusinessCard({
-  business, plans, edit, saving, resending, onEdit, onSave, onResend, onAccountChange,
+  business, plans, edit, saving, resending, onEdit, onSave, onResend, onGenerateInviteLink, onAccountChange,
 }: {
   business: PlatformBusiness;
   plans: PlatformDashboardData['plans'];
@@ -272,6 +274,7 @@ function BusinessCard({
   onEdit: (edit: EditableBusiness) => void;
   onSave: () => void;
   onResend: () => void;
+  onGenerateInviteLink: () => Promise<ActivationLink>;
   onAccountChange: () => void;
 }) {
   const centralTime = business.central_last_seen_at ? Date.parse(business.central_last_seen_at) : 0;
@@ -294,7 +297,58 @@ function BusinessCard({
   const localQuota = Number(edit.limit_overrides.local_knowledge_bytes ?? planLimits.local_knowledge_bytes ?? 0);
   const [cloudUnit, setCloudUnit] = useState<StorageUnit>(() => initialStorageUnit(cloudQuota));
   const [localUnit, setLocalUnit] = useState<StorageUnit>(() => initialStorageUnit(localQuota));
+  const [showActivationConfirmation, setShowActivationConfirmation] = useState(false);
+  const [activationLink, setActivationLink] = useState<ActivationLink | null>(null);
+  const [activationLinkError, setActivationLinkError] = useState('');
+  const [activationLinkBusy, setActivationLinkBusy] = useState(false);
+  const [activationLinkCopied, setActivationLinkCopied] = useState(false);
   const deletionPending = Boolean(business.deletion_scheduled_for);
+  const invitePending = business.activation_invite_pending === true;
+  const generatedLinkType = activationLink ? new URL(activationLink.url).searchParams.get('type') : null;
+  const expiration = activationLink ? new Date(activationLink.expires_at).toLocaleString('es-AR', {
+    dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires',
+  }) : '';
+
+  useEffect(() => {
+    if (!invitePending) {
+      setActivationLink(null);
+      setShowActivationConfirmation(false);
+    }
+  }, [invitePending]);
+
+  const generateActivationLink = async () => {
+    setActivationLinkBusy(true);
+    setActivationLinkError('');
+    setActivationLinkCopied(false);
+    setActivationLink(null);
+    setShowActivationConfirmation(false);
+    try {
+      const result = await onGenerateInviteLink();
+      setActivationLink(result);
+    } catch (cause) {
+      setActivationLinkError(cause instanceof Error ? cause.message : 'No se pudo generar el enlace de activación.');
+    } finally {
+      setActivationLinkBusy(false);
+    }
+  };
+
+  const copyActivationLink = async () => {
+    if (!activationLink) return;
+    try {
+      await navigator.clipboard.writeText(activationLink.url);
+      setActivationLinkCopied(true);
+    } catch {
+      setActivationLinkError('No se pudo copiar. Seleccioná el enlace y copialo.');
+    }
+  };
+
+  const whatsappPhone = business.business_whatsapp_number?.replace(/\D/g, '') ?? '';
+  const whatsappMessage = activationLink
+    ? generatedLinkType === 'recovery'
+      ? `Hola! Te paso el enlace para activar tu cuenta de RivaStock. Abrilo, elegí tu contraseña y después ingresá con tu email y esa contraseña: ${activationLink.url}. Vence el ${expiration}. La invitación anterior podría seguir vigente hasta que se use o venza.`
+      : `Hola! Te paso el enlace para activar tu cuenta de RivaStock. Abrilo, elegí tu contraseña y listo: ${activationLink.url}. Vence el ${expiration}.`
+    : '';
+  const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(whatsappMessage)}`;
 
   const resetModuleOverride = () => {
     const { modules: _modules, collaborators: _collaborators, trace_retention_days: _retention, ...otherOverrides } = edit.limit_overrides;
@@ -360,10 +414,36 @@ function BusinessCard({
 
       <label className="mt-3 block text-xs font-semibold text-slate-600 dark:text-slate-300">Notas internas<textarea rows={2} maxLength={1000} value={edit.notes} onChange={(event) => onEdit({ ...edit, notes: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onResend} disabled={resending || !business.can_manage_account || Boolean(business.deletion_scheduled_for)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15} />{resending ? 'Reenviando…' : 'Reenviar invitación'}</button>
+        {invitePending && <>
+          <button type="button" onClick={() => { setActivationLink(null); setActivationLinkError(''); setShowActivationConfirmation(true); }} disabled={activationLinkBusy || resending || !business.can_manage_account || deletionPending} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Copy size={15} />Copiar enlace de activación</button>
+          <button type="button" onClick={() => { setActivationLink(null); setActivationLinkError(''); onResend(); }} disabled={resending || activationLinkBusy || !business.can_manage_account || deletionPending} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-700"><Mail size={15} />{resending ? 'Reenviando…' : 'Reenviar invitación'}</button>
+        </>}
         <button type="button" onClick={onSave} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save size={15} />{saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
+      {activationLinkError && <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-300">{activationLinkError}</p>}
+      {activationLink && <section aria-label="Enlace de activación" className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/40">
+        <div className="flex items-start justify-between gap-3">
+          <h5 className="font-semibold text-slate-900 dark:text-white">Enlace de activación</h5>
+          <button type="button" aria-label="Cerrar enlace de activación" onClick={() => { setActivationLink(null); setActivationLinkCopied(false); setActivationLinkError(''); }} className="rounded-lg p-1 text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-800"><X size={18}/></button>
+        </div>
+        <p className="mt-2 select-all truncate rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" title={activationLink.url}>{activationLink.url}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void copyActivationLink()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold dark:border-slate-700 dark:bg-slate-900">{activationLinkCopied ? <Check size={15}/> : <Copy size={15}/>} {activationLinkCopied ? 'Copiado' : 'Copiar'}</button>
+          <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Enviar por WhatsApp</a>
+        </div>
+        <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">Vence el {expiration}.{generatedLinkType === 'recovery' ? ' La invitación anterior podría seguir vigente hasta que se use o venza. Después de elegir la contraseña, deberá iniciar sesión con su email.' : ' Si generás otro, este deja de servir.'}</p>
+      </section>}
       </fieldset>
+      {showActivationConfirmation && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation">
+        <section role="dialog" aria-modal="true" aria-labelledby={`activation-confirm-title-${business.owner_uid}`} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <h5 id={`activation-confirm-title-${business.owner_uid}`} className="text-lg font-bold text-slate-900 dark:text-white">Copiar enlace de activación</h5>
+          <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">Este enlace permite entrar a la cuenta. Mandalo solo al cliente.</p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" onClick={() => setShowActivationConfirmation(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancelar</button>
+            <button type="button" onClick={() => void generateActivationLink()} disabled={activationLinkBusy} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{activationLinkBusy ? 'Generando…' : 'Generar enlace'}</button>
+          </div>
+        </section>
+      </div>}
       {business.deletion_scheduled_for && <p role="note" className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">La invitación no se puede reenviar mientras la baja esté programada.</p>}
       <BusinessAccountActions business={business} onChange={onAccountChange} />
     </article>

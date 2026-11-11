@@ -11,9 +11,13 @@ import { effectiveBusinessStatus, type BusinessLimitOverrides, type BusinessPlan
 import { createProductionSupabaseS3Storage } from '../_shared/supabaseS3Storage.ts';
 import { buildSuspensionEmail } from '../_shared/suspensionEmail.ts';
 import { platformAccountProtectionMessage, platformAccountProtectionReason } from '../_shared/platformAccountProtection.ts';
+import { buildAuthConfirmationUrl } from '../send-email/handler.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://rivastock.vercel.app';
+// Read from the production Auth config's mailer_otp_exp on 2026-11-11.
+// Supabase Auth uses this setting for invite and recovery one-time tokens.
+const AUTH_EMAIL_LINK_EXPIRY_SECONDS = 3600;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const RESEND_FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL')?.trim() ?? '';
 const RIVATECH_WHATSAPP_NUMBER = Deno.env.get('RIVATECH_WHATSAPP_NUMBER')?.replace(/\D/g, '') ?? '';
@@ -22,6 +26,16 @@ const STORAGE_PAGE_SIZE = 500;
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
   Deno.env.get('SUPABASE_SECRET_KEYS'),
 );
+
+function businessOwnerInvitationMetadata(metadata: Record<string, unknown>) {
+  return {
+    ...metadata,
+    signup_kind: 'business_owner',
+    password_set: false,
+    must_change_password: true,
+    display_name: '',
+  };
+}
 
 function createBackend(req: Request): PlatformAdminBackend {
   const authorization = req.headers.get('Authorization') ?? '';
@@ -72,6 +86,21 @@ function createBackend(req: Request): PlatformAdminBackend {
       const platformAdmins = new Set((adminsResult.data ?? []).map((admin) => String(admin.user_id)));
       const ownBusinessCollaborators = new Set((ownCollaboratorsResult.data ?? []).map((collaborator) => String(collaborator.user_uid)));
       const businesses = Array.isArray(overview.businesses) ? overview.businesses : [];
+      const ownerUids = businesses.map((value) => String((value as Record<string, unknown>).owner_uid));
+      const catalogResult = ownerUids.length
+        ? await adminClient.from('catalog_config').select('user_id, whatsapp_number').in('user_id', ownerUids)
+        : { data: [], error: null };
+      const whatsappByOwner = new Map((catalogResult.data ?? []).map((row) => [String(row.user_id), row.whatsapp_number ?? null]));
+      const invitePendingByOwner = new Map<string, boolean>();
+      for (let offset = 0; offset < ownerUids.length; offset += 10) {
+        const chunk = ownerUids.slice(offset, offset + 10);
+        const statuses = await Promise.all(chunk.map(async (ownerUid) => {
+          const { data, error } = await adminClient.auth.admin.getUserById(ownerUid);
+          const user = error ? null : data.user;
+          return [ownerUid, Boolean(user && !user.email_confirmed_at && !user.last_sign_in_at)] as const;
+        }));
+        for (const [ownerUid, pending] of statuses) invitePendingByOwner.set(ownerUid, pending);
+      }
       return {
         budgets: overview.budgets,
         live: overview.live,
@@ -110,7 +139,9 @@ function createBackend(req: Request): PlatformAdminBackend {
             can_manage_account: protectionReason === null,
             account_action_disabled_reason: protectionMessage,
             has_business_subscription: Boolean(subscription),
-          business_action_disabled_reason: protectionMessage ?? (!subscription
+            activation_invite_pending: invitePendingByOwner.get(String(business.owner_uid)) ?? false,
+            business_whatsapp_number: whatsappByOwner.get(String(business.owner_uid)) ?? null,
+            business_action_disabled_reason: protectionMessage ?? (!subscription
               ? 'Esta cuenta no tiene un negocio asociado para programar una suspensión.'
               : null),
             deletion_requested_at: deletions.get(String(business.owner_uid))?.requested_at ?? null,
@@ -240,18 +271,81 @@ function createBackend(req: Request): PlatformAdminBackend {
       const { data, error } = await adminClient.auth.admin.getUserById(ownerUid);
       if (error || !data.user?.email) throw new Error('platform-business-not-found');
       if (data.user.email_confirmed_at || data.user.last_sign_in_at) throw new Error('platform-invite-already-accepted');
-      const metadata = data.user.user_metadata ?? {};
       const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(data.user.email, {
-        data: {
-          ...metadata,
-          signup_kind: 'business_owner',
-          password_set: false,
-          must_change_password: true,
-          display_name: '',
-        },
+        data: businessOwnerInvitationMetadata(data.user.user_metadata ?? {}),
         redirectTo: `${APP_URL}/auth/confirm?type=invite`,
       });
       if (inviteError) throw inviteError;
+    },
+
+    async generateInviteLink(ownerUid) {
+      const account = await getManageableBusiness(ownerUid);
+      if (account.deletionPending) throw new Error('platform-business-deletion-already-pending');
+      const { data: authData, error: authError } = await adminClient.auth.admin.getUserById(ownerUid);
+      const user = authData?.user;
+      if (authError || !user?.email) throw new Error('platform-business-not-found');
+      if (user.email_confirmed_at || user.last_sign_in_at) throw new Error('platform-invite-already-accepted');
+
+      const metadata = businessOwnerInvitationMetadata(account.metadata);
+      let linkType: 'invite' | 'recovery' = 'invite';
+      let generatedAt = Date.now();
+      let generated = await adminClient.auth.admin.generateLink({
+        type: 'invite',
+        email: user.email,
+        options: {
+          data: metadata,
+          redirectTo: `${APP_URL}/auth/confirm?type=invite`,
+        },
+      });
+
+      if (generated.error && isExistingUserLinkError(generated.error)) {
+        const { data: latestData, error: latestError } = await adminClient.auth.admin.getUserById(ownerUid);
+        if (latestError || !latestData?.user?.email) throw new Error('platform-business-not-found');
+        if (latestData.user.email_confirmed_at || latestData.user.last_sign_in_at) {
+          throw new Error('platform-invite-already-accepted');
+        }
+
+        const { error: metadataError } = await adminClient.auth.admin.updateUserById(ownerUid, { user_metadata: metadata });
+        if (metadataError) throw new Error('platform-invite-link-failed');
+        linkType = 'recovery';
+        generatedAt = Date.now();
+        generated = await adminClient.auth.admin.generateLink({
+          type: 'recovery',
+          email: latestData.user.email,
+          options: {
+            redirectTo: `${APP_URL}/auth/confirm?type=recovery`,
+          },
+        });
+      }
+
+      const hashedToken = generated.data?.properties?.hashed_token;
+      if (generated.error || !hashedToken) throw new Error('platform-invite-link-failed');
+
+      const redirectTo = `${APP_URL}/auth/confirm?type=${linkType}`;
+      const url = buildAuthConfirmationUrl({
+        email_data: {
+          token: '',
+          token_hash: hashedToken,
+          redirect_to: redirectTo,
+          email_action_type: linkType,
+          site_url: APP_URL,
+        },
+      });
+
+      const { error: auditError } = await adminClient.from('audit_events').insert({
+        user_id: ownerUid,
+        actor_uid: authenticatedAdminUid,
+        action: 'generate',
+        entity_type: 'platform_invitation',
+        entity_id: ownerUid,
+        metadata: { description: 'Se generó un enlace de activación' },
+      });
+      if (auditError) throw new Error('platform-invite-link-failed');
+
+      return {
+        url,
+        expiresAt: new Date(generatedAt + AUTH_EMAIL_LINK_EXPIRY_SECONDS * 1000).toISOString(),
+      };
     },
 
     async sendPasswordRecovery(ownerUid) {
@@ -396,6 +490,13 @@ function createBackend(req: Request): PlatformAdminBackend {
       return Array.isArray(data) ? data : [];
     },
   };
+
+  function isExistingUserLinkError(error: { code?: string; message?: string }): boolean {
+    const code = String(error.code ?? '').toLowerCase();
+    const message = String(error.message ?? '').toLowerCase();
+    return ['email_exists', 'user_already_exists'].includes(code)
+      || /already registered|already exists/.test(message);
+  }
 
   async function getManageableBusiness(ownerUid: string) {
     const [{ data: accountResult, error: accountError }, { data: profile, error: profileError }, { data: subscription, error: subscriptionError }, { data: platformAdmin, error: adminError }, { data: ownBusinessMembership, error: collaboratorError }, { data: deletion, error: deletionError }] = await Promise.all([

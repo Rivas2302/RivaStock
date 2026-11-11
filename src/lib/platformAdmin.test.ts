@@ -16,6 +16,7 @@ function createBackend(overrides: Partial<PlatformAdminBackend> = {}): PlatformA
     sendBusinessSuspensionNotice: vi.fn().mockResolvedValue(true),
     savePlanTemplate: vi.fn().mockResolvedValue('plantilla_demo'),
     resendInvite: vi.fn().mockResolvedValue(undefined),
+    generateInviteLink: vi.fn().mockResolvedValue({ url: 'https://rivastock.vercel.app/auth/confirm?token_hash=fixture-token&type=invite', expiresAt: '2026-11-11T15:00:00.000Z' }),
     sendPasswordRecovery: vi.fn().mockResolvedValue(undefined),
     setTemporaryPassword: vi.fn().mockResolvedValue(undefined),
     requestBusinessDeletion: vi.fn().mockResolvedValue('2026-12-03T00:00:00.000Z'),
@@ -86,6 +87,44 @@ describe('platform admin function', () => {
     const forbidden = await createPlatformAdminHandler(() => nonAdmin)(request({ action: 'list' }));
     expect(forbidden.status).toBe(403);
     expect(nonAdmin.listDashboard).not.toHaveBeenCalled();
+
+    const inviteLinkBackend = createBackend({ authenticate: vi.fn().mockResolvedValue({ userId: 'some-user', isPlatformAdmin: false }) });
+    const inviteLinkForbidden = await createPlatformAdminHandler(() => inviteLinkBackend)(request({
+      action: 'invite_link', owner_uid: '10000000-0000-4000-8000-000000000002',
+    }));
+    expect(inviteLinkForbidden.status).toBe(403);
+    expect(inviteLinkBackend.generateInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('returns an uncached activation link only for an administrator and never logs it', async () => {
+    const activationUrl = 'https://rivastock.vercel.app/auth/confirm?token_hash=fixture-one-time-token&type=invite';
+    const backend = createBackend({
+      generateInviteLink: vi.fn().mockResolvedValue({ url: activationUrl, expiresAt: '2026-11-11T15:00:00.000Z' }),
+    });
+    const consoleSpies = ['debug', 'info', 'log', 'warn', 'error'].map((method) =>
+      vi.spyOn(console, method as 'debug').mockImplementation(() => undefined),
+    );
+    const response = await createPlatformAdminHandler(() => backend)(request({
+      action: 'invite_link', owner_uid: '10000000-0000-4000-8000-000000000002',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({ url: activationUrl, expires_at: '2026-11-11T15:00:00.000Z' });
+    expect(backend.generateInviteLink).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000002');
+    expect(consoleSpies.flatMap((spy) => spy.mock.calls).flat().join(' ')).not.toContain(activationUrl);
+    consoleSpies.forEach((spy) => spy.mockRestore());
+  });
+
+  it('returns the existing accepted-invitation error instead of generating a link', async () => {
+    const backend = createBackend({
+      generateInviteLink: vi.fn().mockRejectedValue(new Error('platform-invite-already-accepted')),
+    });
+    const response = await createPlatformAdminHandler(() => backend)(request({
+      action: 'invite_link', owner_uid: '10000000-0000-4000-8000-000000000002',
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'La invitación ya fue aceptada; no hace falta reenviarla.' });
   });
 
   it('normalizes and validates business email and name', () => {

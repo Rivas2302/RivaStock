@@ -33,6 +33,7 @@ export interface PlatformAdminBackend {
   sendBusinessSuspensionNotice(ownerUid: string): Promise<boolean>;
   savePlanTemplate(input: { code: string | null; name: string; limits: BusinessLimitOverrides; isActive: boolean }): Promise<string>;
   resendInvite(ownerUid: string): Promise<void>;
+  generateInviteLink(ownerUid: string): Promise<{ url: string; expiresAt: string }>;
   sendPasswordRecovery(ownerUid: string): Promise<void>;
   setTemporaryPassword(ownerUid: string, password: string): Promise<void>;
   requestBusinessDeletion(ownerUid: string, confirmedBusinessName: string): Promise<string>;
@@ -197,6 +198,12 @@ export function createPlatformAdminHandler(
         return json({ ok: true });
       }
 
+      if (body.action === 'invite_link') {
+        if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
+        const link = await backend.generateInviteLink(body.owner_uid);
+        return json({ url: link.url, expires_at: link.expiresAt });
+      }
+
       if (body.action === 'send_password_recovery') {
         if (!isUuid(body.owner_uid)) return json({ error: 'Negocio inválido.' }, 400);
         await backend.sendPasswordRecovery(body.owner_uid);
@@ -259,6 +266,7 @@ export function createPlatformAdminHandler(
       if (message === 'platform-business-name-exists') return json({ error: 'Ese nombre de negocio ya está en uso.' }, 409);
       if (message === 'platform-business-not-found') return json({ error: 'No se encontró el negocio.' }, 404);
       if (message === 'platform-invite-already-accepted') return json({ error: 'La invitación ya fue aceptada; no hace falta reenviarla.' }, 409);
+      if (message === 'platform-invite-link-failed') return json({ error: 'No se pudo generar el enlace de activación.' }, 500);
       if (message === 'platform-business-protected') return json({ error: 'Esta cuenta está protegida por pertenecer a la administración o al equipo de tu negocio.' }, 403);
       if (message === 'platform-business-no-subscription') return json({ error: 'Esta cuenta no tiene un negocio asociado para administrar la suspensión.' }, 409);
       if (message === 'platform-business-no-subscription') return json({ error: 'Esta cuenta no tiene un negocio asociado para administrar la suspensión.' }, 409);

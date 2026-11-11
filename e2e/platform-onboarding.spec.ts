@@ -90,6 +90,8 @@ async function mountMock(page: Page, {
       plan_code: 'base',
       status: 'active',
       can_manage_account: true,
+      activation_invite_pending: true,
+      business_whatsapp_number: '5492302381814',
       account_action_disabled_reason: null,
       has_business_subscription: true,
       business_action_disabled_reason: null,
@@ -135,7 +137,13 @@ async function mountMock(page: Page, {
     else if (path === '/functions/v1/platform-admin') {
       const body = method === 'POST' ? route.request().postDataJSON() as Record<string, unknown> | undefined : undefined;
       if (body) platformRequests.push(body);
-      data = body?.action === 'list' || !body ? platformDashboard : { ok: true };
+      if (body?.action === 'invite_link') {
+        const referer = route.request().headers()['referer'] ?? 'http://127.0.0.1:4173/';
+        data = {
+          url: `${new URL(referer).origin}/auth/confirm?token_hash=fixture-one-time-invite&type=invite`,
+          expires_at: '2026-11-11T15:00:00.000Z',
+        };
+      } else data = body?.action === 'list' || !body ? platformDashboard : { ok: true };
     }
     else if (path === '/rest/v1/ai_bridge_devices') data = [];
     else if (path === '/rest/v1/profiles') {
@@ -177,6 +185,118 @@ test('platform route waits for the admin check before deciding access', async ({
   await mountMock(page, { adminCheckDelayMs: 400 });
   await page.goto('/plataforma');
   await expect(page.getByRole('heading', { name: 'Plataforma RivaStock' })).toBeVisible();
+});
+
+test('activation link opens first password setup in a private context and rejects a second use', async ({ page, browser }) => {
+  const inviteeId = '10000000-0000-4000-8000-000000000204';
+  const inviteeEmail = 'activation-test@example.test';
+  await mountMock(page, { businessRecord: { owner_uid: inviteeId, email: inviteeEmail, business_name: 'Activation Test Business' } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/plataforma');
+  const businessCard = page.getByRole('article').filter({ hasText: 'Activation Test Business' });
+  await businessCard.getByRole('button', { name: 'Copiar enlace de activación' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Este enlace permite entrar a la cuenta. Mandalo solo al cliente.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Generar enlace' }).click();
+  const activationPanel = page.getByRole('region', { name: 'Enlace de activación' });
+  await expect(activationPanel).toBeVisible();
+  await expect(activationPanel.getByRole('link', { name: 'Enviar por WhatsApp' })).toHaveAttribute('href', /https:\/\/wa\.me\/5492302381814\?text=/);
+  const activationUrl = await activationPanel.locator('p[title]').getAttribute('title');
+  expect(activationUrl).toContain('/auth/confirm?token_hash=fixture-one-time-invite&type=invite');
+
+  let verificationAttempts = 0;
+  let invitee = {
+    id: inviteeId,
+    email: inviteeEmail,
+    email_confirmed_at: null as string | null,
+    aud: 'authenticated',
+    app_metadata: { provider: 'email', providers: ['email'] },
+    user_metadata: { signup_kind: 'business_owner', password_set: false, must_change_password: true, display_name: '' },
+    created_at: '2026-11-11T12:00:00Z',
+  };
+  const invitedBusiness = {
+    id: inviteeId,
+    email: inviteeEmail,
+    display_name: '',
+    role: 'owner',
+    business_name: 'Activation Test Business',
+    business_name_lower: 'activation test business',
+    currency_symbol: '$',
+    dark_mode: false,
+    phone: null,
+    email_contact: null,
+    catalog_slug: 'activation-test-business',
+    onboarding_completed_at: '2026-11-11T12:00:00Z',
+    created_at: '2026-11-11T12:00:00Z',
+  };
+  const privateContext = await browser.newContext({ baseURL: 'http://127.0.0.1:4173' });
+  await privateContext.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1') return route.continue();
+    if (url.hostname !== 'rivastock-test.invalid') return route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+    let status = 200;
+    let data: unknown = [];
+    if (url.pathname === '/auth/v1/verify') {
+      verificationAttempts += 1;
+      if (verificationAttempts === 1) {
+        invitee = { ...invitee, email_confirmed_at: '2026-11-11T12:05:00Z' };
+        data = {
+          access_token: 'fixture-invite-access-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          refresh_token: 'fixture-invite-refresh-token',
+          user: invitee,
+        };
+      } else {
+        status = 400;
+        data = { code: 400, error_code: 'otp_expired', msg: 'Email link is invalid or has expired' };
+      }
+    } else if (url.pathname === '/auth/v1/user') {
+      if (route.request().method() === 'PUT') {
+        const body = route.request().postDataJSON() as { data?: Record<string, unknown> };
+        invitee = { ...invitee, user_metadata: { ...invitee.user_metadata, ...body.data } };
+      }
+      data = invitee;
+    } else if (url.pathname.endsWith('/rpc/get_owner_profile')) data = [invitedBusiness];
+    else if (url.pathname.endsWith('/rpc/my_business_plan')) data = { plan_code: 'base', plan_name: 'RivaStock', status: 'active', limits: { modules: { ai: false, knowledge: false, automation: false } } };
+    else if (url.pathname.endsWith('/rpc/is_platform_admin')) data = false;
+    await route.fulfill({ status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  });
+
+  try {
+    const privatePage = await privateContext.newPage();
+    await privatePage.goto(activationUrl!);
+    await expect(privatePage.getByRole('heading', { name: 'Creá tu contraseña' })).toBeVisible();
+    await expect(privatePage.getByLabel('Email')).toHaveValue(inviteeEmail);
+    await privatePage.getByLabel('¿Cómo te llamás?').fill('Cliente de prueba');
+    await privatePage.getByLabel('Contraseña nueva').fill('Prueba-1234');
+    await privatePage.getByLabel('Repetila').fill('Prueba-1234');
+    await privatePage.getByRole('button', { name: 'Crear contraseña y entrar' }).click();
+    await expect(privatePage.getByText('Tu nombre y contraseña quedaron guardados.')).toBeVisible();
+    await privatePage.getByRole('button', { name: 'Entrar a RivaStock' }).click();
+    await expect(privatePage.getByText('Activation Test Business')).toBeVisible();
+
+    const secondUseContext = await browser.newContext({ baseURL: 'http://127.0.0.1:4173' });
+    await secondUseContext.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.hostname === '127.0.0.1') return route.continue();
+      if (url.hostname !== 'rivastock-test.invalid') return route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+      await route.fulfill({
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 400, error_code: 'otp_expired', msg: 'Email link is invalid or has expired' }),
+      });
+    });
+    try {
+      const replayPage = await secondUseContext.newPage();
+      await replayPage.goto(activationUrl!);
+      await expect(replayPage.getByRole('heading', { name: 'Link inválido' })).toBeVisible();
+      await expect(replayPage.getByText(/expiró o ya fue usado/)).toBeVisible();
+    } finally {
+      await secondUseContext.close();
+    }
+  } finally {
+    await privateContext.close();
+  }
 });
 
 test('unnamed account deletion confirms with its email under an authenticated admin fixture', async ({ page }) => {
