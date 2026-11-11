@@ -111,6 +111,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
   const loadOwnerState = async () => {
     setOwnerStateLoading(true);
     setOwnerStateError(null);
+    setError(null);
     try {
       applyOwnerState(await getOwnerSuperOfferState());
     } catch (err) {
@@ -128,6 +129,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
     let cancelled = false;
     setOwnerStateLoading(true);
     setOwnerStateError(null);
+    setError(null);
     void getOwnerSuperOfferState().then(state => {
       if (cancelled) return;
       applyOwnerState(state);

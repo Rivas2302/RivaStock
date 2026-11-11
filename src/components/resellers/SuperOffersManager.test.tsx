@@ -85,6 +85,7 @@ describe('SuperOffersManager owner-state handling', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(apiMocks.getOwnerSuperOfferState).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Abrir tanda');
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('shows the server module denial as the only recovery state', async () => {
