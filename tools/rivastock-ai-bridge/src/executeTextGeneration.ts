@@ -95,7 +95,12 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
     });
   }
   input.log(`Tarea ${input.job.id}: ${sources.length} fuentes de Conocimientos.`);
-  const result = await input.provider.execute(input.job.input, input.signal,
+  const stream = input.providerOptions.stream;
+  if (stream) stream.setActivity({ kind: 'thinking', label: 'Pensando…' });
+  const generationSignal = stream
+    ? AbortSignal.any([input.signal, stream.cancelled])
+    : input.signal;
+  const result = await input.provider.execute(input.job.input, generationSignal,
     createCombinedContext(input.workspaceFiles, input.projectFiles, businessFiles,
       [chatHistoryContext, memoryContext, buildKnowledgeContext(sources)].filter(Boolean).join('\n\n')),
     { ...input.providerOptions, ...(memoryResponseGuidance ? { memory_response_guidance: memoryResponseGuidance } : {}) });
@@ -103,6 +108,14 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
     throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');
   }
   if (input.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+  if (stream) {
+    stream.setText(result.output.trim());
+    stream.setActivity({ kind: 'writing', label: 'Respuesta lista' });
+    await stream.flush();
+    if (stream.cancelled.aborted && !result.output.includes('_(Respuesta detenida)_')) {
+      throw new Error('Cancelado por el usuario');
+    }
+  }
   await input.complete(result.output.trim(), result.session_id);
   if (memoryTurn && input.onMemoryTurn) {
     memoryTurn.output = result.output.trim();

@@ -2,6 +2,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AIJobStream } from '../lib/aiBridge';
 
 const mocks = vi.hoisted(() => ({
   canWrite: true,
@@ -9,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   getAIChat: vi.fn(),
   getAIChats: vi.fn(),
   sendAIChatMessage: vi.fn(),
+  stopAIChatJob: vi.fn(),
+  subscribeJobStream: vi.fn(),
   listJobSources: vi.fn(),
   listAIMemoryJobActivity: vi.fn(),
   undoAIMemoryEvent: vi.fn(),
@@ -23,6 +26,8 @@ vi.mock('../lib/aiBridge', () => ({
   getAIChat: mocks.getAIChat,
   getAIChats: mocks.getAIChats,
   sendAIChatMessage: mocks.sendAIChatMessage,
+  stopAIChatJob: mocks.stopAIChatJob,
+  subscribeJobStream: mocks.subscribeJobStream,
 }));
 vi.mock('../lib/knowledge/api', () => ({ listJobSources: mocks.listJobSources }));
 vi.mock('../lib/aiMemory', () => ({
@@ -52,6 +57,8 @@ describe('AIChats memory activity', () => {
 
   beforeEach(() => {
     mocks.canWrite = true;
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
@@ -140,5 +147,57 @@ describe('AIChats memory activity', () => {
     expect(host.textContent).toContain('Memoria actualizada: «Los envíos salen los martes.»');
     expect(host.textContent).toContain('Recordé: M1 «Los envíos salen los martes.»');
     vi.useRealTimers();
+  });
+
+  it('shows live chat activity, stops the active job, and restores its text from chat_get', async () => {
+    let publishStream: ((stream: AIJobStream | null) => void) | null = null;
+    mocks.stopAIChatJob.mockResolvedValue(true);
+    mocks.subscribeJobStream.mockImplementation((_jobId, onChange, onStatus) => {
+      publishStream = onChange;
+      onStatus(true);
+      return () => undefined;
+    });
+    mocks.getAIChat.mockResolvedValue({
+      chat: { id: CHAT_ID, provider: 'mock', title: 'Chat en vivo', model_id: null, reasoning_effort: 'medium', created_at: '2026-11-11T10:00:00Z', updated_at: '2026-11-11T10:00:00Z', last_message_at: '2026-11-11T10:00:00Z' },
+      messages: [{ id: 'message-user', job_id: JOB_ID, role: 'user', content: 'Resumí mis ventas', created_at: '2026-11-11T10:00:00Z' }],
+      jobs: [{ id: JOB_ID, status: 'processing', error: null, created_at: '2026-11-11T10:00:00Z' }],
+      stream: null,
+    });
+
+    await render(<AIChats initialChatId={CHAT_ID} onOpenMemory={vi.fn()}/>);
+    expect(host.textContent).toContain('Preparando la respuesta…');
+    expect(mocks.subscribeJobStream).toHaveBeenCalledOnce();
+    await act(async () => {
+      publishStream?.({
+        job_id: JOB_ID,
+        seq: 1,
+        text: 'El resumen de prueba está listo.',
+        activity: { kind: 'writing', label: 'Escribiendo la respuesta…' },
+        updated_at: '2026-11-11T10:00:01Z',
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+    expect(host.textContent).toContain('Escribiendo la respuesta…');
+
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    mocks.getAIChat.mockResolvedValueOnce({
+      chat: { id: CHAT_ID, provider: 'mock', title: 'Chat en vivo', model_id: null, reasoning_effort: 'medium', created_at: '2026-11-11T10:00:00Z', updated_at: '2026-11-11T10:00:00Z', last_message_at: '2026-11-11T10:00:00Z' },
+      messages: [{ id: 'message-user', job_id: JOB_ID, role: 'user', content: 'Resumí mis ventas', created_at: '2026-11-11T10:00:00Z' }],
+      jobs: [{ id: JOB_ID, status: 'processing', error: null, created_at: '2026-11-11T10:00:00Z' }],
+      stream: {
+        job_id: JOB_ID,
+        seq: 1,
+        text: 'El resumen de prueba está listo.',
+        activity: { kind: 'writing', label: 'Escribiendo la respuesta…' },
+        updated_at: '2026-11-11T10:00:01Z',
+      },
+    });
+    await render(<AIChats initialChatId={CHAT_ID} onOpenMemory={vi.fn()}/>);
+    expect(host.textContent).toContain('El resumen de prueba está listo.');
+
+    await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Detener')) as HTMLButtonElement);
+    expect(mocks.stopAIChatJob).toHaveBeenCalledWith(JOB_ID);
+    expect(mocks.getAIChat.mock.calls.length).toBeGreaterThan(0);
   });
 });

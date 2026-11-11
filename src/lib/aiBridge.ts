@@ -94,10 +94,19 @@ export interface AIChatJob {
   chat_history_count?: number;
 }
 
+export interface AIJobStream {
+  job_id: string;
+  seq: number;
+  text: string;
+  activity: { kind: 'thinking' | 'searching_web' | 'tool' | 'writing'; label: string; tool?: string };
+  updated_at: string;
+}
+
 export interface AIChatDetail {
   chat: AIChat;
   messages: AIChatMessage[];
   jobs: AIChatJob[];
+  stream?: AIJobStream | null;
 }
 
 export interface AIJobPageCursor {
@@ -216,6 +225,39 @@ export async function getAIChats(): Promise<AIChat[]> {
 
 export async function getAIChat(chatId: string): Promise<AIChatDetail> {
   return invoke({ action: 'chat_get', chat_id: chatId });
+}
+
+export async function stopAIChatJob(jobId: string): Promise<boolean> {
+  const result = await invoke<{ stopped: boolean }>({ action: 'chat_stop', job_id: jobId });
+  return result.stopped;
+}
+
+export function subscribeJobStream(
+  jobId: string,
+  onChange: (stream: AIJobStream | null) => void,
+  onStatus: (connected: boolean) => void,
+): () => void {
+  const channel = supabase.channel(`ai-job-stream:${jobId}`)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'ai_job_stream', filter: `job_id=eq.${jobId}`,
+    }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        onChange(null);
+        return;
+      }
+      const row = payload.new as Partial<AIJobStream>;
+      if (typeof row.job_id === 'string' && Number.isInteger(row.seq)
+        && typeof row.text === 'string' && row.activity && typeof row.activity === 'object'
+        && typeof row.updated_at === 'string'
+        && ['thinking', 'searching_web', 'tool', 'writing'].includes(row.activity.kind)
+        && typeof row.activity.label === 'string'
+        && row.activity.label.length <= 300
+        && (row.activity.tool === undefined || (typeof row.activity.tool === 'string' && row.activity.tool.length <= 80))) {
+        onChange(row as AIJobStream);
+      }
+    })
+    .subscribe((status) => onStatus(status === 'SUBSCRIBED'));
+  return () => { void supabase.removeChannel(channel); };
 }
 
 export async function deleteAIChat(chatId: string): Promise<void> {

@@ -52,7 +52,7 @@ Columnas comprobadas en las migraciones del repositorio. El dueño de las 15 tab
 - `npm run lint`: pasó.
 - `npm run build`: pasó; generó los artefactos locales habituales de build, sin cambios de producto versionados.
 - `tools/rivastock-ai-bridge`: `npm run typecheck` pasó y `npm test` pasó (125/125).
-- Suite raíz `npm test`: no quedó verde en este worktree. Resultado: 13 archivos de prueba fallidos y 229 pasaron; 3 pruebas fallidas y 1,363 pasaron. Diez suites no pudieron inicializarse porque el entorno de prueba no tiene `VITE_SUPABASE_URL` ni `VITE_SUPABASE_PUBLISHABLE_KEY`; tres pruebas de migración agotaron el timeout al iniciar PGlite. No se añadieron credenciales ni se cambiaron pruebas o código para ocultar los fallos.
+- Suite raíz `npm test` en el worktree inicial de Etapa 0: fallaron 13 archivos (10 por variables Vite ausentes y 3 por timeout de PGlite). Se comprobó después en un worktree limpio de `origin/main` (`85eeef8`), instalando dependencias raíz y del Bridge y definiendo valores ficticios solo en el proceso, sin guardarlos en el repo. Resultado: **242 archivos aprobados, 1.411 tests aprobados**, incluidas las pruebas de migraciones; sin timeouts. Esto indica que los fallos iniciales no se reprodujeron en `main` limpio con el entorno completo. No se aumentaron timeouts porque no hizo falta.
 - No se desplegó: Etapa 0 no produce cambios de producto y su instrucción explícita es frenar y reportar.
 
 ## Alcance y siguiente paso

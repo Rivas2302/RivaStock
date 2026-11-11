@@ -22,11 +22,14 @@ describe('MobileAIChatConversation', () => {
       { id: 'message-assistant', job_id: JOB_ID, role: 'assistant', content: '**Llega el martes.**\n\n- Pedido confirmado', created_at: '2026-11-04T09:15:00Z' },
     ],
     jobs: [{ id: JOB_ID, status: 'completed', error: null, created_at: '2026-11-04T09:14:00Z', include_business_context: true, chat_history_count: 2 }],
+    stream: null,
     jobSources: { [JOB_ID]: [{ job_id: JOB_ID, rank: 1, label: 'K1', document_id: '60000000-0000-4000-8000-000000000001', version_number: 1, title: 'Guía de pedidos', section_path: 'Despachos', page_from: 1, page_to: 1, score: 0.9, deleted: false }] },
     jobMemoryActivity: { [JOB_ID]: { used: [], changes: [{ id: '80000000-0000-4000-8000-000000000001', memoryId: MEMORY_ID, action: 'updated', content: 'Entrega los martes.', canUndo: true }] } },
     loading: false,
     sending: false,
     hasPendingJob: false,
+    onStop: vi.fn(),
+    onRegenerate: vi.fn(),
     canWrite: true,
     error: '',
     draft: '',
@@ -76,16 +79,16 @@ describe('MobileAIChatConversation', () => {
     await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('fuente')) as HTMLButtonElement);
     expect(host.textContent).toContain('Guía de pedidos');
     await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
-    expect(host.querySelector('.mobile-ai-markdown strong')?.textContent).toBe('Llega el martes.');
+    expect(host.querySelector('.chat-markdown strong')?.textContent).toBe('Llega el martes.');
   });
 
-  it('opens accessible settings and disables sending while the PC is disconnected', async () => {
+  it('opens accessible settings and queues messages while the PC is disconnected', async () => {
     const value = props();
     value.bridgeState = 'offline';
     value.draft = 'Hola';
     await render(<MobileAIChatConversation {...value}/>);
-    expect(host.textContent).toContain('Tu PC está desconectada');
-    expect((host.querySelector('button[aria-label="Enviar mensaje"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(host.textContent).toContain('Tu PC no está conectada');
+    expect((host.querySelector('button[aria-label="Enviar mensaje"]') as HTMLButtonElement).disabled).toBe(false);
     await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Datos del negocio')) as HTMLButtonElement);
     const dialog = host.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain('Ajustes de este chat');
@@ -110,5 +113,31 @@ describe('MobileAIChatConversation', () => {
     await act(async () => { inputs[1].click(); });
     expect(onBusinessContextChange).toHaveBeenCalledWith(false);
     expect(onProjectContextChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the live activity, lets the owner stop a response, and keeps offline messages queued', async () => {
+    const value = props();
+    value.hasPendingJob = true;
+    value.stream = {
+      job_id: JOB_ID,
+      seq: 1,
+      text: 'La respuesta está en curso.',
+      activity: { kind: 'writing', label: 'Escribiendo la respuesta…' },
+      updated_at: '2026-11-11T10:00:01Z',
+    };
+    const onStop = vi.fn();
+    value.onStop = onStop;
+    await render(<MobileAIChatConversation {...value}/>);
+    expect(host.textContent).toContain('La respuesta está en curso.');
+    expect(host.textContent).toContain('Escribiendo la respuesta…');
+    await click(host.querySelector('button[aria-label="Detener respuesta"]'));
+    expect(onStop).toHaveBeenCalledOnce();
+
+    const offline = props();
+    offline.bridgeState = 'offline';
+    offline.draft = 'Pregunta en cola';
+    await render(<MobileAIChatConversation {...offline}/>);
+    expect(host.textContent).toContain('el mensaje queda en cola');
+    expect((host.querySelector('button[aria-label="Enviar mensaje"]') as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent } from 'react';
-import { ArrowLeft, ArrowUp, Check, ChevronDown, Copy, Database, Loader2, MoreHorizontal, Settings2, Trash2, WifiOff } from 'lucide-react';
-import type { AIChat, AIChatJob, AIChatMessage, AIBridgeState, AIProviderId, CodexModelId, CodexReasoningEffort } from '../../lib/aiBridge';
+import { ArrowLeft, ArrowUp, Check, ChevronDown, Copy, Database, Loader2, MoreHorizontal, RefreshCw, Settings2, StopCircle, Trash2, WifiOff } from 'lucide-react';
+import type { AIChat, AIChatJob, AIChatMessage, AIBridgeState, AIJobStream, AIProviderId, CodexModelId, CodexReasoningEffort } from '../../lib/aiBridge';
 import type { KnowledgeJobSource } from '../../lib/knowledge/api';
 import type { AIMemoryJobActivity } from '../../lib/aiMemory';
 import { modelLabel, reasoningLabel } from '../../lib/aiOptions';
-import { renderMarkdownSafe } from '../../lib/knowledge/markdown';
 import KnowledgeSources from './KnowledgeSources';
 import MobileAIChatSettings from './MobileAIChatSettings';
+import StreamingAssistantMessage from './StreamingAssistantMessage';
 
 type ChatSheet = 'menu' | 'settings' | 'rename' | 'delete' | null;
 
@@ -16,11 +16,14 @@ export interface MobileAIChatConversationProps {
   bridgeState: AIBridgeState | null;
   messages: AIChatMessage[];
   jobs: AIChatJob[];
+  stream: AIJobStream | null;
   jobSources: Record<string, KnowledgeJobSource[]>;
   jobMemoryActivity: Record<string, AIMemoryJobActivity>;
   loading: boolean;
   sending: boolean;
   hasPendingJob: boolean;
+  onStop: () => void;
+  onRegenerate: () => void;
   canWrite: boolean;
   error: string;
   draft: string;
@@ -59,22 +62,6 @@ function providerLabel(provider: AIProviderId): string {
   if (provider === 'claude') return 'Claude Code en tu PC';
   if (provider === 'mock') return 'Modo de prueba';
   return 'Codex en tu PC';
-}
-
-function AssistantMarkdown({ content }: { content: string }) {
-  const [html, setHtml] = useState('');
-  useEffect(() => {
-    let active = true;
-    void renderMarkdownSafe(content).then((next) => { if (active) setHtml(next); })
-      .catch(() => { if (active) setHtml(''); });
-    return () => { active = false; };
-  }, [content]);
-
-  if (!html) return <p className="whitespace-pre-wrap break-words">{content}</p>;
-  return <div
-    className="mobile-ai-markdown break-words text-sm leading-6 [&_a]:font-semibold [&_a]:text-[var(--brand)] [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--line-strong)] [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-[var(--surface-muted)] [&_code]:px-1 [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-[var(--surface-muted)] [&_pre]:p-3 [&_strong]:font-bold [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
-    dangerouslySetInnerHTML={{ __html: html }}
-  />;
 }
 
 function connectionPresentation(state: AIBridgeState | null) {
@@ -227,11 +214,13 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
   const [copyError, setCopyError] = useState('');
   const [viewport, setViewport] = useState({ height: window.innerHeight, top: 0 });
   const [draftHeight, setDraftHeight] = useState(0);
+  const [showNewText, setShowNewText] = useState(false);
+  const nearBottomRef = useRef(true);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const status = connectionPresentation(props.bridgeState);
-  const canSend = props.canWrite && props.bridgeState !== 'offline' && Boolean(props.draft.trim()) && !props.sending && !props.hasPendingJob;
+  const canSend = props.canWrite && Boolean(props.draft.trim()) && !props.sending && !props.hasPendingJob;
   const title = props.chat?.title ?? 'Nuevo chat';
   const nameModel = modelLabel(props.modelId).split(' — ')[0];
   const groupedMessages = props.messages.reduce<Array<{ label: string; messages: AIChatMessage[] }>>((groups, message) => {
@@ -241,6 +230,7 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
     else groups.push({ label, messages: [message] });
     return groups;
   }, []);
+  const lastAssistantId = [...props.messages].reverse().find((message) => message.role === 'assistant')?.id ?? null;
 
   useEffect(() => {
     const visualViewport = window.visualViewport;
@@ -260,10 +250,15 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
+    if (!nearBottomRef.current) {
+      setShowNewText(true);
+      return;
+    }
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     if (typeof scroller.scrollTo === 'function') scroller.scrollTo({ top: scroller.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' });
     else scroller.scrollTop = scroller.scrollHeight;
-  }, [props.messages.length, props.sending, props.hasPendingJob, viewport.height]);
+    setShowNewText(false);
+  }, [props.messages.length, props.sending, props.hasPendingJob, props.stream?.seq, props.stream?.text, viewport.height]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -276,7 +271,7 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
     textarea.style.height = 'auto';
     const styles = window.getComputedStyle(textarea);
     const lineHeight = Number.parseFloat(styles.lineHeight) || 24;
-    const maxHeight = lineHeight * 5 + 24;
+    const maxHeight = lineHeight * 8 + 24;
     const height = Math.min(textarea.scrollHeight, maxHeight);
     textarea.style.height = `${height}px`;
     setDraftHeight(height);
@@ -307,7 +302,7 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
   const toggleSources = (jobId: string) => setExpandedSources((current) => current.includes(jobId)
     ? current.filter((value) => value !== jobId) : [...current, jobId]);
 
-  const draftRows = Math.max(1, Math.min(5, Math.ceil((draftHeight || 24) / 24)));
+  const draftRows = Math.max(1, Math.min(8, Math.ceil((draftHeight || 24) / 24)));
   const headerProvider = providerLabel(props.provider);
 
   return <section
@@ -322,9 +317,13 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
     </header>
 
     {props.error && <p role="alert" className="border-b border-[var(--danger-line)] bg-[var(--danger-surface)] px-4 py-2 text-sm text-[var(--danger-ink)]">{props.error}</p>}
-    {props.bridgeState === 'offline' && <p role="status" className="border-b border-[var(--line)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--ink-muted)]"><WifiOff size={15} className="mr-2 inline"/>Tu PC está desconectada. El mensaje se habilita al reconectar.</p>}
+    {props.bridgeState === 'offline' && <p role="status" className="border-b border-[var(--line)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--ink-muted)]"><WifiOff size={15} className="mr-2 inline"/>Tu PC no está conectada. La respuesta empieza cuando se conecte; el mensaje queda en cola.</p>}
 
-    <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 pt-3" aria-live="polite">
+    <div ref={scrollerRef} onScroll={(event) => {
+      const element = event.currentTarget;
+      nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+      if (nearBottomRef.current) setShowNewText(false);
+    }} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 pt-3" aria-live="polite">
       {props.loading && !props.messages.length && <p role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin"/>Cargando conversación…</p>}
       {!props.messages.length && !props.loading && <div className="flex min-h-52 flex-col items-center justify-center text-center"><p className="text-sm font-semibold">Empezá una conversación</p><p className="mt-1 max-w-xs text-sm text-[var(--ink-muted)]">Escribí tu mensaje y tu PC te responde acá.</p></div>}
       {groupedMessages.map((group) => <section key={group.label} aria-label={group.label}>
@@ -337,12 +336,13 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
             const isExpanded = expandedSources.includes(message.job_id);
             if (message.role === 'user') return <article key={message.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-[var(--action-bg)] px-4 py-3 text-sm leading-6 text-[var(--action-ink)]"><p className="whitespace-pre-wrap break-words">{message.content}</p><p className="mt-1 text-right text-[11px] opacity-75">{timeLabel(message.created_at)}</p></article>;
             return <article key={message.id} className="w-full text-[var(--ink)]">
-              <AssistantMarkdown content={message.content}/>
+              <StreamingAssistantMessage content={message.content}/>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {sources.length > 0 && <button type="button" onClick={() => toggleSources(message.job_id)} aria-expanded={isExpanded} className="min-h-8 rounded-full border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface-muted)]">{sources.length} {sources.length === 1 ? 'fuente' : 'fuentes'}</button>}
                 {job?.include_business_context && <span className="inline-flex min-h-8 items-center gap-1 rounded-full border border-[var(--line)] px-3 text-xs text-[var(--ink-muted)]"><Database size={13}/>Tu stock</span>}
                 {Boolean(job?.chat_history_count) && (job?.chat_history_count ?? 0) > 0 && <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--line)] px-3 text-xs text-[var(--ink-muted)]">Usé {job?.chat_history_count} {job?.chat_history_count === 1 ? 'chat anterior' : 'chats anteriores'}</span>}
                 <button type="button" onClick={() => void copyMessage(message)} aria-label={copiedMessageId === message.id ? 'Respuesta copiada' : 'Copiar respuesta'} className="inline-flex size-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]">{copiedMessageId === message.id ? <Check size={15}/> : <Copy size={15}/>}</button>
+                {message.id === lastAssistantId && <button type="button" onClick={props.onRegenerate} disabled={!props.canWrite || props.sending || props.hasPendingJob} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50"><RefreshCw size={13}/>Regenerar</button>}
               </div>
               {isExpanded && <KnowledgeSources sources={sources}/>}
               {activity?.changes.map((change) => <div key={change.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand-ring)] bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="min-w-0 flex-1">Memoria actualizada</span>{change.canUndo && <button type="button" onClick={() => props.onUndoMemory(change.id)} className="min-h-8 rounded-lg border border-[var(--line)] px-2 font-semibold">Deshacer</button>}<button type="button" onClick={() => props.onOpenMemory(change.memoryId)} className="min-h-8 px-2 font-semibold underline underline-offset-2">Ver</button></div>)}
@@ -350,7 +350,13 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
           })}
         </div>
       </section>)}
-      {props.hasPendingJob && <p role="status" className="mt-5 flex items-center gap-2 text-sm text-[var(--ink-muted)]"><Loader2 size={16} className="animate-spin text-[var(--brand)]"/>Escribiendo…</p>}
+      {props.hasPendingJob && <div className="mt-5 rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3"><StreamingAssistantMessage content={props.stream?.text ?? ''} streaming activity={props.stream?.activity.label ?? 'Preparando la respuesta…'}/></div>}
+      {showNewText && <button type="button" onClick={() => {
+        nearBottomRef.current = true;
+        const scroller = scrollerRef.current;
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        setShowNewText(false);
+      }} className="sticky bottom-2 left-1/2 z-10 mx-auto block rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] shadow">↓ Nuevo texto</button>}
     </div>
 
     {copyError && <p role="alert" className="px-4 py-1 text-xs text-[var(--danger-ink)]">{copyError}</p>}
@@ -370,15 +376,17 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
             if (typeof scroller.scrollTo === 'function') scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
             else scroller.scrollTop = scroller.scrollHeight;
           }, 100); }}
-          disabled={!props.canWrite || props.bridgeState === 'offline'}
+          disabled={!props.canWrite}
           maxLength={8000}
           rows={draftRows}
           placeholder="Escribí tu mensaje…"
           className="min-h-11 min-w-0 flex-1 resize-none rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 py-2.5 text-base leading-6 text-[var(--ink)] placeholder:text-[var(--ink-muted)] outline-none focus:border-[var(--brand)] disabled:opacity-60"
-          style={{ maxHeight: '144px' }}
+          style={{ maxHeight: '216px' }}
           aria-label="Mensaje para la IA"
         />
-        <button type="submit" disabled={!canSend} aria-label="Enviar mensaje" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[var(--action-bg)] text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]">{props.sending || props.hasPendingJob ? <Loader2 size={18} className="animate-spin"/> : <ArrowUp size={18}/>}</button>
+        {props.hasPendingJob
+          ? <button type="button" onClick={props.onStop} disabled={!props.canWrite} aria-label="Detener respuesta" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-[var(--danger-line)] bg-[var(--danger-surface)] text-[var(--danger-ink)] disabled:opacity-50"><StopCircle size={18}/></button>
+          : <button type="submit" disabled={!canSend} aria-label="Enviar mensaje" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[var(--action-bg)] text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]">{props.sending ? <Loader2 size={18} className="animate-spin"/> : <ArrowUp size={18}/>}</button>}
       </div>
       {props.draft.length >= 7000 && <p className="text-right text-xs text-[var(--ink-muted)]">{props.draft.length}/8000</p>}
     </form>

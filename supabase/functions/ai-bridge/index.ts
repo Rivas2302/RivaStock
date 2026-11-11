@@ -183,6 +183,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   }
 
   if (action === 'worker_heartbeat' || action === 'worker_claim'
+    || action === 'worker_claim_text_generation' || action === 'worker_stream'
     || action === 'worker_complete' || action === 'worker_fail'
     || action === 'worker_workspace' || action === 'worker_context'
     || action === 'worker_update_prepare' || action === 'worker_start'
@@ -257,6 +258,15 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         providerSessionId = chat?.provider_session_id ?? null;
       }
 
+      let business = null;
+      if (job.chat_id) {
+        const { data: businessCard, error: businessError } = await serviceClient.rpc('ai_business_card', {
+          p_owner: ownerUid,
+        });
+        if (businessError) return safeDbError(businessError, 400, origin);
+        business = businessCard ?? null;
+      }
+
       let products: Array<Record<string, unknown>> = [];
       let totalProducts = 0;
       if (job.include_business_context) {
@@ -277,6 +287,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         reasoning_effort: job.reasoning_effort ?? 'low',
         chat_id: job.chat_id,
         provider_session_id: providerSessionId,
+        business,
         products,
         total_products: totalProducts,
       }, 200, origin);
@@ -296,6 +307,47 @@ serve(withSupabaseAdminKeyMode(async (req) => {
       case 'worker_claim':
         rpcAction = 'claim';
         break;
+      case 'worker_claim_text_generation':
+        if (Object.keys(body).some((key) => !['action', 'worker_id'].includes(key))) {
+          return jsonResponse({ error: 'Solicitud de reclamo inválida.' }, 400, origin);
+        }
+        {
+          const { data, error } = await serviceClient.rpc('ai_bridge_claim_chat_text_job', {
+            p_owner: ownerUid,
+            p_worker_id: body.worker_id,
+          });
+          if (error) return safeDbError(error, 400, origin);
+          return jsonResponse({ data: data ?? null }, 200, origin);
+        }
+      case 'worker_stream': {
+        const activity = body.activity;
+        const allowedKeys = new Set(['action', 'worker_id', 'job_id', 'seq', 'text', 'activity']);
+        const activityKeys = activity && typeof activity === 'object' && !Array.isArray(activity)
+          ? Object.keys(activity as Record<string, unknown>) : [];
+        if (!isUuid(body.job_id) || !Number.isInteger(body.seq) || Number(body.seq) < 1
+          || typeof body.text !== 'string' || body.text.length > 20_000
+          || Object.keys(body).some((key) => !allowedKeys.has(key))
+          || !activity || typeof activity !== 'object' || Array.isArray(activity)) {
+          return jsonResponse({ error: 'Actualización de conversación inválida.' }, 400, origin);
+        }
+        const record = activity as Record<string, unknown>;
+        if (!['thinking', 'searching_web', 'tool', 'writing'].includes(String(record.kind))
+          || typeof record.label !== 'string' || new TextEncoder().encode(record.label).byteLength > 300
+          || activityKeys.some((key) => !['kind', 'label', 'tool'].includes(key))
+          || (record.tool !== undefined && (typeof record.tool !== 'string' || record.tool.length > 80))) {
+          return jsonResponse({ error: 'Actividad de conversación inválida.' }, 400, origin);
+        }
+        const { data, error } = await serviceClient.rpc('ai_job_stream_upsert', {
+          p_owner: ownerUid,
+          p_worker_id: body.worker_id,
+          p_job_id: body.job_id,
+          p_seq: body.seq,
+          p_text: body.text,
+          p_activity: activity,
+        });
+        if (error) return safeDbError(error, 400, origin);
+        return jsonResponse({ cancel: data === true }, 200, origin);
+      }
       case 'worker_update_prepare':
         rpcAction = 'prepare_update';
         break;
@@ -326,6 +378,25 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         payload = { error: body.error };
     }
 
+    if ((action === 'worker_complete' || action === 'worker_fail') && jobId) {
+      const { data: chatJob, error: chatJobError } = await serviceClient.from('ai_jobs')
+        .select('chat_id').eq('id', jobId).eq('user_id', ownerUid).maybeSingle();
+      if (chatJobError) return safeDbError(chatJobError, 400, origin);
+      if (chatJob?.chat_id) {
+        const { data: chatResult, error: chatFinishError } = await serviceClient.rpc('ai_bridge_finish_chat_job', {
+          p_owner: ownerUid,
+          p_worker_id: body.worker_id,
+          p_job_id: jobId,
+          p_success: action === 'worker_complete',
+          p_output: action === 'worker_complete' ? payload?.output ?? null : null,
+          p_error: action === 'worker_fail' ? payload?.error ?? null : null,
+          p_session_id: action === 'worker_complete' ? payload?.session_id ?? null : null,
+        });
+        if (chatFinishError) return safeDbError(chatFinishError, 400, origin);
+        return jsonResponse({ data: chatResult }, 200, origin);
+      }
+    }
+
     const { data, error } = await serviceClient.rpc('ai_bridge_worker', {
       p_action: rpcAction,
       p_owner_uid: ownerUid,
@@ -343,6 +414,13 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     const security = action === 'worker_heartbeat'
       ? await codexSecurityForOwner(serviceClient, ownerUid)
       : undefined;
+    if (action === 'worker_claim' && data && typeof data === 'object' && 'id' in data
+      && isUuid((data as Record<string, unknown>).id)) {
+      const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
+        .select('chat_id').eq('id', (data as Record<string, unknown>).id).eq('user_id', ownerUid).maybeSingle();
+      if (jobError) return safeDbError(jobError, 400, origin);
+      if (job?.chat_id) (data as Record<string, unknown>).chat_id = job.chat_id;
+    }
     return jsonResponse({ data, ...(security ? { security } : {}) }, 200, origin);
   }
 
@@ -507,11 +585,28 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     ]);
     if (messagesError) return safeDbError(messagesError, 400, origin);
     if (jobsError) return safeDbError(jobsError, 400, origin);
+    const activeJob = [...(jobs ?? [])].reverse().find((job) => job.status === 'pending' || job.status === 'processing');
+    let stream = null;
+    if (activeJob) {
+      const { data: streamRow, error: streamError } = await userClient.from('ai_job_stream')
+        .select('job_id, seq, text, activity, updated_at')
+        .eq('job_id', activeJob.id).maybeSingle();
+      if (streamError) return safeDbError(streamError, 400, origin);
+      stream = streamRow ?? null;
+    }
     return jsonResponse({
       chat,
       messages: (descendingMessages ?? []).reverse(),
       jobs: (jobs ?? []).reverse(),
+      stream,
     }, 200, origin);
+  }
+
+  if (action === 'chat_stop') {
+    if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
+    const { data, error } = await userClient.rpc('ai_cancel_job', { p_job_id: body.job_id });
+    if (error) return safeDbError(error, 400, origin);
+    return jsonResponse({ stopped: data === true }, 200, origin);
   }
 
   if (action === 'chat_rename') {

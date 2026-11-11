@@ -1,4 +1,5 @@
 import { DEFAULT_CODEX_SECURITY, type AIJob, type AIJobContext, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
+import type { StreamPayload } from './streamReporter.ts';
 import { parsePendingWork, type PendingWork } from './workMonitor.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -24,6 +25,15 @@ export class BridgeClient {
       supports_update_signal: true,
     });
     return { job: response.data, shouldStop: response.should_stop === true };
+  }
+
+  async claimAdditionalTextGeneration(workerId: string): Promise<AIJob | null> {
+    const response = await this.post<{ data: AIJob | null }>('worker_claim_text_generation', { worker_id: workerId });
+    return response.data;
+  }
+
+  async stream(workerId: string, jobId: string, payload: StreamPayload): Promise<{ cancel: boolean }> {
+    return this.post('worker_stream', { worker_id: workerId, job_id: jobId, ...payload });
   }
 
   async pendingWork(workerId: string): Promise<PendingWork> {

@@ -1,6 +1,6 @@
 # I53 — IA integrada a RivaStock: chat en vivo, herramientas y agentes
 
-Especificación para ejecutar por etapas. Base verificada: `main` en `92c174f` (11/11/2026), AI Bridge `1.25.0`, `@openai/codex-sdk` `0.163.0`.
+Especificación para ejecutar por etapas. Base verificada para I53: `origin/main` en `85eeef8` (11/11/2026), AI Bridge `1.25.0`, `@openai/codex-sdk` `0.163.0`.
 
 Guardá este archivo como `docs/ai/AI_PLAN_I53.md` y agregá I53 a `docs/ai/ACTION_PLAN.md`.
 
@@ -85,7 +85,7 @@ Objetivo: confirmar tres supuestos antes de construir. Entregable: `docs/ai/AI_P
 2. **MCP desde el SDK.** Confirmar que `new Codex({ config: { mcp_servers: { rivastock: { command, args, env } } } })` registra un servidor MCP stdio y que:
    - una herramienta de prueba (`ping`) aparece como `mcp_tool_call` en los eventos;
    - funciona en modo `read-only` con `networkAccessEnabled: false` (el servidor MCP corre fuera del sandbox de comandos);
-   - `approvalPolicy: 'never'` no bloquea la llamada.
+   - con `default_tools_approval_mode: 'auto'` y una herramienta anotada como lectura, `approvalPolicy: 'never'` no bloquea la llamada.
    Si la clave de configuración se llama distinto en 0.163.0, anotá el nombre real.
 3. **Mapa de datos.** Tabla con columnas reales (leídas de las migraciones, no supuestas) de: `products`, `categories`, `sales`, `sale_items`, `orders`, `customers`, `stock_movements`, `catalog_config`, `price_lists`, `price_list_items`, `reseller_supplier_lists`, `reseller_supplier_list_items`, `supplier_orders`, `cash_flow`, `facebook_publications`. Para cada una: columna de dueño, columnas de fecha, estado y monto, y si ya existe una RPC que la escriba (por ejemplo las de `inventory_product_commands` / `inventory_stock_commands`).
 
@@ -97,9 +97,27 @@ Decisión según el punto 1:
 
 ## Desvíos
 
-- **Etapa 0, MCP:** `approvalPolicy: 'never'` no alcanza por sí sola para que Codex ejecute una herramienta MCP. La llamada de prueba pasó al configurar `default_tools_approval_mode: 'auto'` en el servidor y declarar `ping` como lectura (`readOnlyHint: true`, no destructiva e idempotente). La implementación futura debe conservar estas restricciones y probarlas con el SDK fijado.
+- **Etapa 0, MCP:** `approvalPolicy: 'never'` por sí sola bloqueó la llamada. La prueba pasó al configurar `default_tools_approval_mode: 'auto'` y declarar `ping` como lectura (`readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`). La implementación debe conservar y probar ambas condiciones con el SDK fijado.
 - **Etapa 0, despliegue:** no se hizo deploy. Esta etapa no cambia el producto; desplegar código de prueba no aportaría una verificación válida y contradiría el alcance solicitado.
-- **Etapa 0, suite general:** `npm test` no quedó completamente verde en este worktree: 10 suites no cargaron porque faltan `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` de prueba, y 3 pruebas de migración agotaron su timeout al iniciar PGlite. No se añadieron credenciales ni se alteró configuración del producto para ocultar esos resultados.
+- **Etapa 0, suite general:** una primera ejecución del worktree de trabajo falló por variables de prueba ausentes y timeouts de PGlite. La comprobación posterior en un worktree limpio de `origin/main` (commit `85eeef8`), instalando las dependencias raíz y del Bridge y usando valores ficticios solo en el proceso, pasó completa: 242 archivos y 1.411 tests, incluidos los tests de migraciones, sin timeout. No se aumentaron los timeouts porque no hizo falta.
+
+## Ajustes tras la Etapa 0
+
+1. **Etapas 1.3/1.4 — entrega de texto:** el SDK probado no emite texto parcial. El worker transmite la actividad y cada `agent_message` completo apenas llega; la web revela el mensaje con efecto de escritura. Aceptación de Etapa 1: la actividad aparece en menos de 3 s desde el envío.
+2. **Etapa 3.4 — aprobación MCP:** registrar `rivastock` con `default_tools_approval_mode: 'auto'`. Cada herramienta de lectura declara exactamente `readOnlyHint: true`, `destructiveHint: false` e `idempotentHint: true`. La prueba automática debe completar una herramienta de lectura con `read-only` y sin red.
+3. **Etapa 4 — herramienta de propuesta:** antes de implementar acciones de escritura, probar una herramienta de propuesta con anotaciones honestas (`readOnlyHint: false`, `destructiveHint: false`). Si Codex la bloquea en modo `read-only`, detenerse y reportar opciones; no marcarla como lectura para evitar el bloqueo.
+4. **Etapa 4.2 — estado del pedido:** no se identificó una RPC de cambio de estado en el relevamiento. Antes de implementar `order.set_status`, revisar cómo lo cambia la app, qué tabla modifica y qué efectos produce sobre stock, caja y avisos. Si esos efectos ocurren en el navegador, dejar esa acción fuera de la Etapa 4 y reportarlo.
+5. **Etapa 4.2 — escrituras permitidas:** `product.update` y `product.create` deben usar `save_product_with_holdings`; `stock.adjust`, las RPC existentes de inventario. Nunca escribir directamente en `products` ni en `stock_movements`.
+
+## Estado de las Etapas 1 y 2
+
+- Código de Etapas 1 y 2 implementado en `codex/i53-ai`; las migraciones `20261111200604_ai_job_stream` y `20261111200917_ai_business_card` se aplicaron en producción después de dos backups verificados. Las pruebas específicas PGlite ejecutaron ambas migraciones después de alinear sus nombres locales con los identificadores registrados por Supabase.
+- Etapa 1: el worker transmite actividad y mensajes completos del SDK; el chat web y móvil reciben Realtime con sondeo de respaldo, revelan texto con escritura gradual y permiten detener, regenerar y copiar. El turno de Codex tiene límite de 600 s; pueden correr dos chats distintos a la vez.
+- Etapa 2: el prompt de chat incorpora identidad de RivaStock y ficha del negocio; la búsqueda web se habilita solo en chats, sin habilitar red para comandos del sandbox. El volcado de productos continúa presente hasta Etapa 3, según el plan.
+- Verificación local: la suite raíz pasó (**246 archivos / 1.427 pruebas**) con valores Vite ficticios solo en el proceso; `npm run lint`, `npm run build`, `npm run typecheck` del Bridge y sus **136 pruebas** pasaron. Tras el último ajuste de nombres de migración, las pruebas PGlite enfocadas pasaron **8/8**. No se aumentó el timeout de PGlite.
+- Backups previos, ambos con `verification: "passed"` para PostgreSQL y Storage: `%USERPROFILE%\rivastock-backups\20261111T195846Z` (106 tablas, 27.041 filas, 2.909 objetos / 177.599.239 bytes) y `%USERPROFILE%\rivastock-backups\20261111T200645Z` (107 tablas, 27.041 filas, el mismo inventario de Storage). Permanecen fuera del repositorio.
+- Pendiente para cerrar la aceptación manual: actualizar el Bridge conectado a **1.26.0** y probar con Codex las preguntas de la sección 2.4 y la actividad/detención de la sección 1.5. No se creó un chat QA en la cuenta real ni se inició la Etapa 3.
+- La revisión de advisors encontró la advertencia esperada de `ai_cancel_job` como `SECURITY DEFINER` ejecutable por `authenticated`; la función valida `auth.uid()` y el test PGlite confirma que otro dueño no puede cancelar. Los avisos de índices cubren las claves foráneas de `ai_job_stream`, una tabla efímera con filas activas que se eliminan al terminar; no se añadió otra migración para ese aviso informativo.
 
 ---
 
@@ -197,7 +215,7 @@ export interface StreamReporter {
 - Unitarias: `StreamReporter` (límite de 400 ms, `seq` creciente, cancelación), mapeo de eventos a actividad, texto parcial al cancelar.
 - Contrato: `worker_stream` rechaza job de otro worker o de otro dueño; `chat_stop` no afecta jobs ajenos.
 - E2E con `MockProvider`: enviar → ver actividad → ver texto → recargar a mitad → se retoma.
-- Aceptación manual (PC conectada, Codex): la actividad aparece en menos de 2 s; Detener corta en menos de 3 s; una respuesta de más de 120 s ya no falla.
+- Aceptación manual (PC conectada, Codex): la actividad aparece en menos de 3 s; Detener corta en menos de 3 s; una respuesta de más de 120 s ya no falla.
 
 ---
 
@@ -327,6 +345,7 @@ Dependencia nueva: `@modelcontextprotocol/sdk` (versión exacta).
 
 `src/mcp/server.ts` (lo lanza Codex):
 - Servidor MCP stdio llamado `rivastock`.
+- Registrar el servidor con `default_tools_approval_mode: 'auto'`. Cada herramienta de lectura debe declarar `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`; una prueba automática debe completarla en modo `read-only`, con `networkAccessEnabled: false`.
 - Lee `RIVASTOCK_TOOL_PIPE` y `RIVASTOCK_TOOL_NONCE` de su entorno. No recibe token, endpoint ni identificadores.
 - Publica las herramientas con nombre, descripción en español y esquema JSON. La lista se genera desde un único archivo `src/mcp/toolDefinitions.ts`, que también usa `ai-tools` para validar (copiar el mismo archivo a `supabase/functions/_shared/aiToolDefinitions.ts` con una prueba que falle si difieren).
 - Cada llamada envía `{ nonce, tool, args }` por el canal y devuelve el JSON como texto.
@@ -390,6 +409,8 @@ Las escrituras usan las rutas de escritura que ya usa la app (RPC o comandos de 
 | `catalog.announcement` | `catalogo_proponer_cinta` | `texto` (≤120), `activa` | Texto antes / después | Sí |
 | `knowledge.create_document` | `conocimiento_proponer_documento` | `titulo`, `contenido_markdown` | Título y primeras líneas | No (se borra a mano) |
 | `facebook.publish_product` | `facebook_proponer_publicacion` | los del esquema existente | La vista previa existente | — |
+
+Restricciones de ejecución: `product.update` y `product.create` usan `save_product_with_holdings`; `stock.adjust` usa las RPC existentes de inventario. No escribir directamente en `products` ni `stock_movements`. No existe hoy una RPC de cambio de estado para pedidos: antes de implementar `order.set_status`, relevar el camino actual, la tabla que actualiza y los efectos sobre stock, caja y avisos. Si esos efectos están en el navegador, excluir esa acción de la Etapa 4 e informarlo. Para una herramienta de propuesta, las anotaciones deben ser `readOnlyHint: false` y `destructiveHint: false`; si el SDK la bloquea en `read-only`, detenerse y reportar opciones, sin falsear las anotaciones.
 
 Límites: `price.bulk_update` hasta 200 productos; variación máxima ±60 % (más que eso → error que pide hacerlo en dos pasos); precio final mayor a 0. Nunca: borrar en masa, tocar usuarios, colaboradores, planes, suscripciones, listas importadas de revendedores ni credenciales.
 

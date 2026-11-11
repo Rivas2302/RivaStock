@@ -109,6 +109,47 @@ export function createBusinessContext(context: AIJobContext): AIProjectContext[]
   return [{ path: 'business/catalog-inventory.jsonl', content: lines.join('\n'), updated_at: '' }];
 }
 
+export function buildBusinessCardContext(business: NonNullable<AIJobContext['business']>): string {
+  const lines: string[] = [];
+  if (business.business_name) lines.push(`Negocio: ${business.business_name}`);
+  if (business.owner_display_name) lines.push(`Titular: ${business.owner_display_name}`);
+  if (business.plan) lines.push(`Plan: ${business.plan}`);
+  if (business.modules?.length) lines.push(`Módulos activos: ${business.modules.join(', ')}`);
+  const countLabels: Record<string, string> = {
+    products: 'productos',
+    products_without_photo: 'productos sin foto',
+    products_without_price: 'productos sin precio',
+    low_stock: 'productos con stock bajo',
+    pending_orders: 'pedidos pendientes',
+    customers: 'clientes',
+  };
+  const counts = Object.entries(business.counts ?? {})
+    .filter((entry): entry is [string, number] => Number.isFinite(entry[1]) && entry[1] >= 0)
+    .map(([key, value]) => `${countLabels[key] ?? key}: ${value}`);
+  if (counts.length) lines.push(`Resumen: ${counts.join('; ')}`);
+  if (business.catalog?.public_url) lines.push(`Catálogo: ${business.catalog.public_url}`);
+  if (business.catalog?.has_reseller_mode !== undefined) {
+    lines.push(`Modo revendedor: ${business.catalog.has_reseller_mode ? 'activo' : 'inactivo'}`);
+  }
+  if (business.currency_symbol) lines.push(`Símbolo monetario: ${business.currency_symbol}`);
+  if (business.now_local) {
+    const localTimestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(business.now_local)
+      ? business.now_local
+      : `${business.now_local}-03:00`;
+    const date = new Date(localTimestamp);
+    if (Number.isFinite(date.getTime())) {
+      const timezone = business.timezone || 'America/Argentina/Buenos_Aires';
+      const formatted = new Intl.DateTimeFormat('es-AR', {
+        timeZone: timezone,
+        weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).format(date);
+      lines.push(`Fecha y hora local: ${formatted}`);
+    }
+  }
+  return lines.join('\n').slice(0, 1_500);
+}
+
 export function createCombinedContext(
   workspaceFiles: AIWorkspaceFile[],
   projectFiles: AIProjectContext[],

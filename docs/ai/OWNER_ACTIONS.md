@@ -43,3 +43,7 @@ Durante una verificación de Vercel se creó un secreto de Protection Bypass par
 ## Plataforma — E2E destructivo de baja pendiente
 
 Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de administrador `authenticated` de prueba. No se eliminó ninguna cuenta de producción. Para completar un recorrido de borrado real, designá por la app una cuenta de negocio QA descartable para baja programada y otra para eliminación inmediata; no usar cuentas de clientes ni las dos cuentas reportadas hasta confirmar que son descartables.
+
+## I53 — aceptación manual del AI Bridge 1.26.0
+
+Actualizá el AI Bridge con el actualizador habitual hasta que muestre **1.26.0** y **Conectado**. Después, desde Chats, verificá que la actividad aparezca en menos de 3 segundos, que **Detener** interrumpa en menos de 3 segundos, y probá las preguntas de I53 §2.4 sobre negocio, fecha y Conocimientos. Confirmá también una respuesta que tarde más de 120 segundos. No uses datos de negocio en un chat de prueba; borrá el chat QA desde la app al terminar.

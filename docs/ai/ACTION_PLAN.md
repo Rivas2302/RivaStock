@@ -1380,4 +1380,4 @@ Para capturas por extensión, la miniatura de la revisión y la copia al agregar
 
 ### [ ] I53 — IA integrada a RivaStock
 
-Especificación: `docs/ai/AI_PLAN_I53.md`. Etapa 0 informada en `docs/ai/AI_PLAN_I53_SPIKE.md`; esperar el OK del dueño antes de iniciar la Etapa 1.
+Especificación: `docs/ai/AI_PLAN_I53.md`. Etapa 0 informada y aprobada. Etapas 1 y 2 están en curso en `codex/i53-ai`; no iniciar Etapa 3 hasta recibir el OK del dueño.

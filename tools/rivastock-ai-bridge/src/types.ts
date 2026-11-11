@@ -1,5 +1,6 @@
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { StreamReporter } from './streamReporter.ts';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
 export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
@@ -23,6 +24,9 @@ export interface AIProviderOptions {
   safe_text_only?: boolean;
   codex_security?: CodexSecuritySettings;
   memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'update-auto' | 'update-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
+  stream?: StreamReporter;
+  plain_text?: boolean;
+  assistant?: { business_card: string; agent_instructions?: string };
 }
 
 export interface AIWorkspaceFile {
@@ -44,6 +48,17 @@ export interface AIJobContext {
   reasoning_effort: CodexReasoningEffort | null;
   chat_id?: string | null;
   provider_session_id?: string | null;
+  business?: {
+    business_name?: string;
+    owner_display_name?: string;
+    plan?: string;
+    modules?: string[];
+    counts?: Record<string, number>;
+    catalog?: { public_url?: string; has_reseller_mode?: boolean };
+    currency_symbol?: string;
+    timezone?: string;
+    now_local?: string;
+  } | null;
   products: Array<{
     name: string;
     category: string;
@@ -63,6 +78,7 @@ export interface AIJob {
   input: string;
   model_id?: CodexModelId | null;
   reasoning_effort?: CodexReasoningEffort | null;
+  chat_id?: string | null;
   attempt_count: number;
   created_at: string;
 }

@@ -23,10 +23,13 @@ import { runFacebookSupervisorLoop } from './automation/supervisor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { PendingWorkMonitor, type PendingWorkKey } from './workMonitor.ts';
-import { DEFAULT_CODEX_SECURITY, loadConfig, type AIProviderId, type CodexSecuritySettings } from './types.ts';
+import { DEFAULT_CODEX_SECURITY, loadConfig, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
+import { createStreamReporter, type StreamReporter } from './streamReporter.ts';
+import { buildBusinessCardContext } from './workspace.ts';
 
 const POLL_INTERVAL_MS = 3000;
 const EXECUTION_TIMEOUT_MS = 120_000;
+const CHAT_EXECUTION_TIMEOUT_MS = 600_000;
 const HEARTBEAT_INTERVAL_MS = 2 * 60_000;
 const WORKSPACE_SYNC_INTERVAL_MS = 5 * 60_000;
 const config = loadConfig();
@@ -38,7 +41,9 @@ let stopping = false;
 let activeController: AbortController | null = null;
 let supervisorController: AbortController | null = null;
 let activeJobId: string | null = null;
+const activeChatControllers = new Map<string, AbortController>();
 let lastWorkspaceSyncAt = 0;
+let workspaceSyncPromise: Promise<AIWorkspaceFile[]> | null = null;
 let workMonitor: PendingWorkMonitor | null = null;
 const memoryQueue = new MemoryTurnQueue(20, 6);
 let codexSecurity: CodexSecuritySettings = DEFAULT_CODEX_SECURITY;
@@ -55,9 +60,25 @@ async function heartbeat(state: 'idle' | 'busy', jobId: string | null = null): P
   }
 }
 
+async function syncWorkspaceSnapshot(): Promise<AIWorkspaceFile[]> {
+  if (workspaceSyncPromise) return workspaceSyncPromise;
+  workspaceSyncPromise = (async () => {
+    const files = await client.workspaceFiles(workerId);
+    await syncWorkspaceFiles(config.workspaceDirectory, files);
+    lastWorkspaceSyncAt = Date.now();
+    return files;
+  })();
+  try {
+    return await workspaceSyncPromise;
+  } finally {
+    workspaceSyncPromise = null;
+  }
+}
+
 function stopBridge(): void {
   stopping = true;
   activeController?.abort();
+  for (const controller of activeChatControllers.values()) controller.abort();
   supervisorController?.abort();
   workMonitor?.stop();
 }
@@ -65,13 +86,27 @@ function stopBridge(): void {
 process.on('SIGINT', stopBridge);
 process.on('SIGTERM', stopBridge);
 
-async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string }): Promise<void> {
+async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string; chat_id?: string | null }): Promise<void> {
   const taskSecurity = { ...codexSecurity };
+  const isChatTextJob = job.task_type === 'text_generation' && Boolean(job.chat_id);
   const controller = new AbortController();
-  activeController = controller;
-  activeJobId = job.id;
-  const timeout = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
+  if (isChatTextJob) activeChatControllers.set(job.id, controller);
+  else {
+    activeController = controller;
+    activeJobId = job.id;
+  }
+  const timeout = setTimeout(() => controller.abort(), isChatTextJob ? CHAT_EXECUTION_TIMEOUT_MS : EXECUTION_TIMEOUT_MS);
+  const streamReporter: StreamReporter | null = isChatTextJob
+    ? createStreamReporter({
+      send: (payload) => client.stream(workerId, job.id, payload),
+      onError: (error) => process.stderr.write(`[AI Bridge] No se pudo actualizar el chat ${job.id}: ${reportError(error instanceof Error ? error.message : 'Error de conexión.')}\n`),
+    })
+    : null;
   try {
+    if (streamReporter) {
+      streamReporter.setActivity({ kind: 'thinking', label: 'Preparando la respuesta…' });
+      await streamReporter.flush();
+    }
     if (job.task_type === 'knowledge_organize') {
       const jobContext = await client.jobContext(workerId, job.id);
       if (job.provider === 'mock') {
@@ -170,9 +205,7 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     }
     if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');
 
-    const workspaceFiles = await client.workspaceFiles(workerId);
-    await syncWorkspaceFiles(config.workspaceDirectory, workspaceFiles);
-    lastWorkspaceSyncAt = Date.now();
+    const workspaceFiles = await syncWorkspaceSnapshot();
     const jobContext = await client.jobContext(workerId, job.id);
     const projectFiles = jobContext.include_project_context && taskSecurity.allow_project_root
       ? await collectProjectContext(config.projectRootDirectory) : [];
@@ -200,6 +233,10 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
         chat_id: jobContext.chat_id,
         session_id: jobContext.provider_session_id,
         codex_security: taskSecurity,
+        ...(streamReporter ? { stream: streamReporter } : {}),
+        ...(jobContext.chat_id && jobContext.business ? {
+          assistant: { business_card: buildBusinessCardContext(jobContext.business) },
+        } : {}),
       },
       complete: (output, sessionId) => client.complete(workerId, job.id, output, sessionId),
       log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
@@ -213,9 +250,16 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
     process.stderr.write(`[AI Bridge] Tarea ${job.id} falló: ${safeMessage}\n`);
   } finally {
     clearTimeout(timeout);
-    activeController = null;
-    activeJobId = null;
-    await heartbeat('idle').catch(() => undefined);
+    streamReporter?.dispose();
+    if (isChatTextJob) {
+      activeChatControllers.delete(job.id);
+      workMonitor?.wake();
+    } else {
+      activeController = null;
+      activeJobId = null;
+    }
+    const nextActiveJob = activeJobId ?? activeChatControllers.keys().next().value ?? null;
+    await heartbeat(nextActiveJob ? 'busy' : 'idle', nextActiveJob).catch(() => undefined);
   }
 }
 
@@ -242,7 +286,8 @@ async function run(): Promise<void> {
   const monitor = workMonitor;
   if (!monitor) throw new Error('El sondeo combinado de trabajo no está iniciado.');
   const heartbeatTimer = setInterval(() => {
-    void heartbeat(activeJobId ? 'busy' : 'idle', activeJobId).catch(() => {
+    const nextActiveJob = activeJobId ?? activeChatControllers.keys().next().value ?? null;
+    void heartbeat(activeController || activeChatControllers.size ? 'busy' : 'idle', nextActiveJob).catch(() => {
       process.stderr.write('[AI Bridge] No se pudo actualizar el estado de conexión.\n');
     });
   }, HEARTBEAT_INTERVAL_MS);
@@ -251,9 +296,7 @@ async function run(): Promise<void> {
     while (!stopping) {
       try {
         if (Date.now() - lastWorkspaceSyncAt >= WORKSPACE_SYNC_INTERVAL_MS || monitor.hasWork('workspace_files')) {
-          const files = await client.workspaceFiles(workerId);
-          await syncWorkspaceFiles(config.workspaceDirectory, files);
-          lastWorkspaceSyncAt = Date.now();
+          await syncWorkspaceSnapshot();
           monitor.markDrained('workspace_files');
         }
         if (monitor.hasWork('chat_tombstones')) {
@@ -262,12 +305,27 @@ async function run(): Promise<void> {
         }
 
         if (monitor.hasWork('ai_jobs')) {
+          if (activeChatControllers.size > 0) {
+            if (activeChatControllers.size === 1) {
+              const additional = await client.claimAdditionalTextGeneration(workerId);
+              if (additional) {
+                void executeJob(additional);
+                continue;
+              }
+            }
+            await delay(POLL_INTERVAL_MS);
+            continue;
+          }
           const claim = await client.claim(workerId);
           if (claim.shouldStop) {
             stopBridge();
             continue;
           }
           if (claim.job) {
+            if (claim.job.task_type === 'text_generation' && claim.job.chat_id) {
+              void executeJob(claim.job);
+              continue;
+            }
             await executeJob(claim.job);
             continue;
           }

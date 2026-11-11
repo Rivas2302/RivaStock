@@ -2157,3 +2157,13 @@ Sin toque en src/, supabase/ ni extensions/.
 - Verificación local: lint aprobado; Vitest **239 archivos / 1.378 pruebas**; build aprobado; Playwright **155/155** en escritorio, iPhone 11/13/15 (WebKit) y Android a 375 px. La matriz móvil de Android se limita a los recorridos móviles solicitados; los escenarios de escritorio siguen en Chromium.
 - Sin migraciones. Falta el push y confirmar Vercel Current con `curl` usando WhatsApp y `facebookexternalhit`; no cerrar producción hasta verificarlo.
 - I52: retomada como siguiente bloque. La sección vigente está en `C:\Users\USER\Desktop\IA\RivaStock\docs\ai\ACTION_PLAN.md`; aún falta incorporarla a la copia del plan en main. La sesión autenticada de `mayori.store` sigue siendo necesaria para el smoke real de ElectroBH; no se importarán productos.
+
+## 2026-11-11 — I53 Etapas 1 y 2
+
+- El trabajo queda aislado en `codex/i53-ai`, basado en `origin/main` `85eeef8`. El commit de Etapa 0 `91d3ed4` tiene el mismo padre y el mismo árbol que el commit de Etapa 0 de esta rama; no se duplicó el cambio. No se incorporaron cambios de Súper ofertas.
+- Etapa 1 implementa actividad y mensajes completos en vivo para chats, efecto de escritura, detener, regenerar, copiar, recuperación al recargar y hasta dos chats distintos en paralelo. Etapa 2 agrega identidad y ficha del negocio al prompt, búsqueda web de Codex para chats en modos seguros y mantiene la red del sandbox desactivada.
+- Migraciones aditivas aplicadas por el flujo MCP, no `db push`: `20261111200604_ai_job_stream` y `20261111200917_ai_business_card`. Antes de cada una se verificó backup completo en `%USERPROFILE%\rivastock-backups\20261111T195846Z` y `%USERPROFILE%\rivastock-backups\20261111T200645Z`, respectivamente; PostgreSQL y Storage dieron `verification: passed` en ambos.
+- PGlite: **8/8** pruebas de migración enfocadas pasaron después de alinear los nombres de archivo con los identificadores aplicados. Suite raíz con variables Vite ficticias solo en el proceso: **246 archivos / 1.427 pruebas**; lint, build, typecheck del Bridge y **136 pruebas del Bridge** pasaron. PGlite pasó sin ampliar su timeout.
+- Paquete del AI Bridge **1.26.0** generado en `public/downloads/rivastock-ai-bridge-1.26.0.tgz`; falta actualizar la PC conectada y hacer la aceptación manual de actividad menor a 3 s, detener menor a 3 s, preguntas de negocio/fecha y respuestas de más de 120 s. No se creó un chat QA en la cuenta real.
+- No se comenzó la Etapa 3. Despliegue de la Edge Function `ai-bridge` y publicación Vercel pendientes de este cierre.
+- **Siguiente:** desplegar únicamente `ai-bridge` y la rama I53 a Current; pedir al dueño actualizar el Bridge 1.26.0 y completar la aceptación manual antes de considerar cerradas las Etapas 1 y 2.
