@@ -154,7 +154,7 @@ export default function PublicProductPage() {
 
   return (
     <div className="public-product-page min-h-[100dvh] bg-white text-slate-900">
-      <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/95">
         <div className="max-w-5xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex items-center justify-between gap-2">
           <Link
             to={`/catalogo/${slug}`}
@@ -208,7 +208,7 @@ export default function PublicProductPage() {
                         onClick={() =>
                           setImageIndex(i => (i - 1 + imgs.length) % imgs.length)
                         }
-                        className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 text-white backdrop-blur-md"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/65 text-white"
                       >
                         <ChevronLeft size={20} />
                       </button>
@@ -216,7 +216,7 @@ export default function PublicProductPage() {
                         onClick={() =>
                           setImageIndex(i => (i + 1) % imgs.length)
                         }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 text-white backdrop-blur-md"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/65 text-white"
                       >
                         <ChevronRight size={20} />
                       </button>
@@ -328,7 +328,7 @@ export default function PublicProductPage() {
           <button type="button" aria-label="Agregar una unidad" onClick={() => setQuantity(value => Math.min(9999, value + 1))} className="grid size-11 place-items-center rounded-xl border border-slate-200"><span aria-hidden="true">+</span></button>
         </div>
       </main>
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-8px_30px_rgba(15,23,42,.12)] backdrop-blur md:sticky md:bottom-0">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-8px_30px_rgba(15,23,42,.12)] md:sticky md:bottom-0">
         <div className="mx-auto flex max-w-5xl gap-2"><button type="button" onClick={handleWhatsApp} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button><button type="button" onClick={handleAddToCart} className="min-h-12 flex-[1.4] rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white"><ShoppingBag size={18} className="mr-2 inline"/>Agregar al carrito</button></div>
       </div>
     </div>

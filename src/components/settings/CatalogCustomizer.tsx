@@ -210,7 +210,7 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
   const announcementTextColor = getCatalogAnnouncementTextColor(announcementBackgroundColor);
 
   return <section aria-label="Configuración del catálogo" className="relative min-h-[calc(100dvh-8rem)] pb-28 text-[var(--ink)]">
-    <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)]/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+    <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)]/95 px-4 py-3 sm:-mx-6 sm:px-6">
       {section && <button type="button" aria-label="Volver a configuración del catálogo" onClick={back} className="grid size-11 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface-raised)]"><ArrowLeft size={19}/></button>}
       <div className="min-w-0 flex-1"><h2 className="truncate text-xl font-bold">{section ? sectionTitle : 'Tu catálogo'}</h2><p className="text-sm text-[var(--ink-muted)]">{section ? 'Configurá esta parte del catálogo' : 'Lo que ven tus clientes'}</p></div>
       {!section && <button type="button" role="switch" aria-label="Catálogo activo" aria-checked={draftConfig.enabled} onClick={() => updateConfig({ enabled: !draftConfig.enabled })} disabled={!canEdit} className={`h-8 w-14 rounded-full p-1 ${draftConfig.enabled ? 'bg-[var(--brand)]' : 'bg-[var(--line-strong)]'}`}><span className={`block size-6 rounded-full bg-white transition-transform ${draftConfig.enabled ? 'translate-x-6' : ''}`}/></button>}
@@ -239,6 +239,6 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
     </div>}
     {error&&<p role="alert" className="fixed bottom-24 left-4 right-4 z-40 rounded-xl bg-rose-950 px-4 py-3 text-sm font-semibold text-white sm:left-auto sm:right-6 sm:max-w-lg">{error}</p>}
     {saved&&<p role="status" className="fixed bottom-24 left-4 right-4 z-40 flex min-h-12 items-center gap-2 rounded-xl bg-emerald-950 px-4 py-3 text-sm font-semibold text-emerald-100 sm:left-auto sm:right-6 sm:max-w-lg"><Check size={18}/>Cambios guardados</p>}
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:sticky sm:mt-6 sm:rounded-xl sm:border sm:px-6"><button type="button" onClick={()=>void save()} disabled={!dirty||saving||!canEdit} className="min-h-[54px] w-full rounded-2xl bg-[var(--action-bg)] px-5 text-base font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-45">{saving?'Guardando…':'Guardar cambios'}</button></div>
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:sticky sm:mt-6 sm:rounded-xl sm:border sm:px-6"><button type="button" onClick={()=>void save()} disabled={!dirty||saving||!canEdit} className="min-h-[54px] w-full rounded-2xl bg-[var(--action-bg)] px-5 text-base font-bold text-[var(--action-ink)] disabled:cursor-not-allowed disabled:opacity-45">{saving?'Guardando…':'Guardar cambios'}</button></div>
   </section>;
 }

@@ -842,7 +842,7 @@ export default function ProductPhotos() {
       {selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-5">
           <section role="dialog" aria-modal="true" aria-label={`Producto ${selectedProduct.name}`} className="max-h-[95dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:rounded-3xl">
-            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/95">
               <h3 className="pr-4 text-lg font-bold text-slate-900 dark:text-white">{selectedProduct.name}</h3>
               <button type="button" aria-label="Cerrar producto" onClick={closeSelectedProduct} className="rounded-full p-2 text-slate-500"><ProductPhotoIcon name="x" size={22}  /></button>
             </header>

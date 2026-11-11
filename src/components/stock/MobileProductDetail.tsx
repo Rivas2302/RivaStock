@@ -181,7 +181,7 @@ export default function MobileProductDetail({
   const nextPhoto = () => setActivePhoto((index) => (index + 1) % photos.length);
 
   return <section className="mx-auto mobile-stock-detail-min-height max-w-2xl space-y-4 pb-8 text-[var(--ink)] lg:hidden" aria-label={`Ficha de ${product.name}`}>
-    <header className="sticky top-0 z-20 -mx-4 flex h-14 items-center justify-between border-b border-[var(--line)] mobile-stock-surface-95 px-3 backdrop-blur">
+    <header className="sticky top-0 z-20 -mx-4 flex h-14 items-center justify-between border-b border-[var(--line)] mobile-stock-surface-95 px-3">
       <button type="button" aria-label="Volver al stock" onClick={onBack} className="inline-flex size-11 items-center justify-center rounded-xl text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"><ChevronLeft size={25} aria-hidden="true" /></button>
       <span className="min-w-0 flex-1 truncate px-2 text-center text-sm font-semibold">{product.name}</span>
       <button type="button" aria-label="Más acciones del producto" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} className="inline-flex size-11 items-center justify-center rounded-xl text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]"><MoreHorizontal size={23} aria-hidden="true" /></button>
