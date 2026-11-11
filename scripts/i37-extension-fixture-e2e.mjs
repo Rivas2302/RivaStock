@@ -48,6 +48,7 @@ try {
     'https://*.example.test/*',
     'https://brajamayorista.com/*',
     'https://*.brajamayorista.com/*',
+    'https://res.cloudinary.com/*',
   ];
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   const extensionId = extensionIdFromManifestKey(manifest.key);
@@ -55,6 +56,18 @@ try {
   const infiniteFixture = await readFile(join(fixtures, 'infinite-scroll.html'), 'utf8');
   const wooFixture = await readFile(join(fixtures, 'woocommerce-dom.html'), 'utf8');
   const brajaFixture = await readFile(join(fixtures, 'braja-cross-subdomain-webp.html'), 'utf8');
+  const genericProduct = index => `<article class="prod" data-sku="RDO-${String(index).padStart(4, '0')}"><span class="ceja">Iluminación</span><p class="nombre">Lámpara de demostración ${index}</p><div class="meta">Cód. RDO-${String(index).padStart(4, '0')} · Bulto x30</div><div class="precio"><span class="usd">USD 7,90 c/u</span><span class="ars">ARG $ 12.443 c/u</span></div><div class="bulto-precio">ARG $ 373.290 por bulto</div><div class="foto"><img width="320" height="240" src="https://res.cloudinary.com/demo/image/upload/f_auto,w_640/lamp-${index}.webp"><img class="mark" width="22" height="22" src="https://res.cloudinary.com/demo/image/upload/mark.png"></div></article>`;
+  const genericProductTemplate = JSON.stringify(genericProduct(0));
+  const genericCatalogHtml = `<!doctype html><html lang="es"><meta charset="utf-8"><body><nav class="rubros"><button type="button" data-category="all">Todos 450</button><button type="button" data-category="lighting">Iluminación</button><button type="button" data-category="audio">Audio</button></nav><main id="products">${Array.from({length:27},(_,index)=>genericProduct(index+1)).join('')}</main><button id="mas" type="button" style="display:none">Ver más productos</button><script>
+    const template=${genericProductTemplate};
+    const makeProduct=index=>template.replaceAll('RDO-0000','RDO-'+String(index).padStart(4,'0')).replaceAll('lamp-0','lamp-'+index).replaceAll('demostración 0','demostración '+index);
+    const products=Array.from({length:450},(_,index)=>({index:index+1,html:makeProduct(index+1),category:index%2?'audio':'lighting'}));
+    let shown=27,activeCategory='all';window.fixtureClicks={filters:0,loadMore:0,add:0,detail:0,carousel:0};
+    const render=()=>{const visible=products.slice(0,shown).filter(item=>activeCategory==='all'||item.category===activeCategory);document.querySelector('#products').innerHTML=visible.map(item=>item.html.replaceAll('RDO-0000','RDO-'+String(item.index).padStart(4,'0')).replaceAll('lamp-0','lamp-'+item.index).replaceAll('demostración 0','demostración '+item.index)).join('');document.querySelector('#mas').style.display=activeCategory==='all'&&shown<450?'block':'none'};
+    document.querySelectorAll('[data-category]').forEach(button=>button.addEventListener('click',()=>{window.fixtureClicks.filters++;activeCategory=button.dataset.category;render()}));
+    document.querySelector('#mas').addEventListener('click',()=>{window.fixtureClicks.loadMore++;shown=Math.min(450,shown+60);render()});
+    document.addEventListener('click',event=>{if(event.target.closest('form'))window.fixtureClicks.add++});
+    </script></body></html>`;
   let allowLiveBrajaRequests = false;
 
   context = await chromium.launchPersistentContext(profilePath, {
@@ -99,6 +112,9 @@ try {
     if (requestUrl.pathname === '/braja/category-31') {
       return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: brajaFixture });
     }
+    if (requestUrl.pathname === '/generic-hidden-load-more') {
+      return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: genericCatalogHtml });
+    }
     if (requestUrl.pathname === '/mayori/electrobh/index.php') {
       const productCard = (pageNumber, itemNumber) => {
         const code = `EHB-${String(pageNumber).padStart(2,'0')}-${String(itemNumber).padStart(3,'0')}`;
@@ -136,7 +152,7 @@ try {
   await extensionPage.setViewportSize({ width: 390, height: 760 });
   await extensionPage.goto(`chrome-extension://${extensionId}/connect.html`);
   await extensionPage.locator('#supplier-start').waitFor({ state: 'visible' });
-  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent === 'Versión 0.6.3');
+  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent?.startsWith('Versión 0.6.5 · actualizada automáticamente'));
   if (!(await extensionPage.locator('.brand p').innerText()).includes('Importar listas de proveedores')) {
     throw new Error('The supplier import popup title is missing.');
   }
@@ -147,6 +163,7 @@ try {
   const cases = [
     { name: 'spa-json', path: '/spa-json', expected: 44, source: 'network-json' },
     { name: 'infinite-scroll', path: '/infinite-scroll', expected: 4, source: 'dom-cards' },
+    { name: 'generic-hidden-load-more', path: '/generic-hidden-load-more', expected: 450, source: 'dom-cards' },
     { name: 'woocommerce-dom', path: '/woocommerce-dom', expected: 3, source: 'dom-cards' },
     { name: 'braja-cross-subdomain-webp', path: '/braja/category-31', expected: 5, source: 'dom-cards' },
     { name: 'braja-live-category-31', origin: 'https://brajamayorista.com', path: '/tienda/centro/productos?categoria=31', expected: 5, source: 'dom-cards' },
@@ -164,6 +181,11 @@ try {
     allowLiveBrajaRequests = testCase.name === 'braja-live-category-31';
     const pageUrl = `${testOrigin}${testCase.path}`;
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
+    if (testCase.name === 'generic-hidden-load-more') {
+      await page.addScriptTag({ content: await readFile(join(root, 'extensions', 'shared', 'product-extract.js'), 'utf8') });
+      const parsedPage = await page.evaluate(() => ({ result: globalThis.RivaStockProductExtract.readPage(document), direct: globalThis.RivaStockProductExtract.extractSupplierProducts({ pageText: Array.from(document.querySelectorAll('button')).map(button => button.textContent).join(' ') }).reportedTotal, texts: Array.from(document.querySelectorAll('button')).map(button => button.textContent) }));
+      if (parsedPage.result.reportedTotal !== 450) throw new Error(`generic-hidden-load-more: extractor reported total ${parsedPage.result.reportedTotal}; direct=${parsedPage.direct}; texts=${JSON.stringify(parsedPage.texts)}.`);
+    }
     const tabId = await worker.evaluate(async targetUrl => (await chrome.tabs.query({})).find(tab => tab.url === targetUrl)?.id ?? null, pageUrl);
     if (!Number.isSafeInteger(tabId)) throw new Error(`${testCase.name}: supplier tab not found.`);
     await page.bringToFront();
@@ -188,9 +210,20 @@ try {
       })).catch(() => null);
       throw new Error(`${testCase.name}: capture did not complete (status=${state?.status ?? 'none'}, products=${state?.items?.length ?? 0}, pages=${state?.pagesVisited?.length ?? 0}, scroll=${JSON.stringify(scrollState)}, pageErrors=${JSON.stringify(pageErrors)}).`);
     }
-    if (state.items.length !== testCase.expected) throw new Error(`${testCase.name}: expected ${testCase.expected} items, received ${state.items.length}.`);
+    if (state.items.length !== testCase.expected) {
+      const fixtureState = testCase.name === 'generic-hidden-load-more'
+        ? await page.evaluate(() => ({ clicks: window.fixtureClicks, visibleCards: document.querySelectorAll('[data-sku]').length, moreDisplay: getComputedStyle(document.querySelector('#mas')).display, controls: Array.from(document.querySelectorAll('button')).map(button=>button.textContent) }))
+        : testCase.name === 'mayori-electrobh-14-pages'
+          ? await page.evaluate(() => ({ clicks: window.fixtureClicks, hash: location.hash, visibleCards: document.querySelectorAll('.item.open_detail[data-id]').length, sample: [...document.querySelectorAll('.item.open_detail[data-id] .header')].slice(0, 3).map(node => node.textContent) })) : null;
+      throw new Error(`${testCase.name}: expected ${testCase.expected} items, received ${state.items.length}; total=${state.reportedTotal}; clicks=${state.clicksUsed}; pages=${JSON.stringify(state.pagesVisited)}; last=${state.lastPageUrl}; sample=${JSON.stringify(state.items.slice(0, 3).map(item => ({ code: item.code, name: item.name, key: item.key })))}; warnings=${JSON.stringify(state.warnings)}; fixture=${JSON.stringify(fixtureState)}.`);
+    }
     if (!state.source.includes(testCase.source)) throw new Error(`${testCase.name}: expected source ${testCase.source}.`);
     if (!state.items.every(item => item.name && item.imageUrl && item.code)) throw new Error(`${testCase.name}: incomplete fixture item.`);
+    if (testCase.name === 'generic-hidden-load-more' && (!state.items.every(item => item.currency === 'ARS' && item.price === 12443
+      && item.imageUrl.startsWith('https://res.cloudinary.com/') && !item.imageUrl.includes('mark.png') && item.packSize === 30 && item.packPrice === 373290)
+      || state.reportedTotal !== 450)) {
+      throw new Error(`${testCase.name}: price, photo, category, pack, or reported total was misread.`);
+    }
     if (testCase.name === 'braja-live-category-31' && !state.items.every(item => item.imageUrl.startsWith('https://api.brajamayorista.com/uploads/derivados/') && item.imageUrl.endsWith('.webp'))) {
       throw new Error(`${testCase.name}: captured images do not point to the HTTPS WebP subdomain.`);
     }
@@ -200,10 +233,13 @@ try {
     }
     const pageSafety = testCase.name === 'infinite-scroll'
       ? await page.evaluate(() => window.fixtureClicks)
+      : testCase.name === 'generic-hidden-load-more'
+        ? await page.evaluate(() => window.fixtureClicks)
       : testCase.name === 'mayori-electrobh-14-pages'
         ? await page.evaluate(() => window.fixtureClicks)
       : { loadMore: 0, add: 0, carousel: 0 };
     if (pageSafety.add !== 0 || (pageSafety.carousel ?? 0) !== 0 || (pageSafety.detail ?? 0) !== 0
+      || (testCase.name === 'generic-hidden-load-more' && (pageSafety.loadMore < 7 || pageSafety.filters < 2))
       || (testCase.name === 'mayori-electrobh-14-pages' && pageSafety.pagination !== 13)) {
       throw new Error(`${testCase.name}: a prohibited control was clicked or safe pagination did not advance.`);
     }

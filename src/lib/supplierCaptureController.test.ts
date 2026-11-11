@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSupplierCaptureController } from '../../extensions/facebook/supplier-capture.js';
+import { createSupplierCaptureController, supplierCaptureImagePermissions } from '../../extensions/facebook/supplier-capture.js';
+import { getKnownSupplierImagePermission } from '../../extensions/facebook/supplier-site-domain.js';
 
 function memoryArea() {
   const values: Record<string, unknown> = {};
@@ -79,6 +80,16 @@ describe('supplier capture controller', () => {
     ] });
   });
 
+  it('accepts HTTPS photos from the allowlisted CDNs and rejects lookalike hosts', () => {
+    expect(supplierCaptureImagePermissions.isAllowedCaptureImage('https://catalogue.example.test', 'https://res.cloudinary.com/demo/photo.webp?auto=format')).toBe(true);
+    expect(supplierCaptureImagePermissions.isAllowedCaptureImage('https://catalogue.example.test', 'https://images.demo.imgix.net/photo.webp')).toBe(true);
+    expect(supplierCaptureImagePermissions.isAllowedCaptureImage('https://catalogue.example.test', 'https://res.cloudinary.com.evil.test/photo.webp')).toBe(false);
+    expect(supplierCaptureImagePermissions.isAllowedCaptureImage('https://catalogue.example.test', 'http://res.cloudinary.com/demo/photo.webp')).toBe(false);
+    expect(getKnownSupplierImagePermission('https://res.cloudinary.com/demo/photo.webp')).toBe('https://res.cloudinary.com/*');
+    expect(getKnownSupplierImagePermission('https://shop.imgix.net/photo.webp')).toBe('https://*.imgix.net/*');
+    expect(getKnownSupplierImagePermission('https://images.unlisted.test/photo.webp')).toBeNull();
+  });
+
   it('refuses insecure, private, protected, and tab-mismatched origins', async () => {
     const { api } = mockExtension();
     const controller = createSupplierCaptureController(api as never);
@@ -138,6 +149,16 @@ describe('supplier capture controller', () => {
     }, { tab: { id: 7 }, url: 'https://supplier.example.test/products' } as never);
 
     expect(api.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'supplier-capture-click-next', label: 'Pagina 2' });
+  });
+
+  it('keeps the page reported total alongside merged, deduplicated evidence', async () => {
+    const { api } = mockExtension();
+    const controller = createSupplierCaptureController(api as never);
+    await controller.start(7, 'https://supplier.example.test');
+    await controller.handleEvidence({ url: 'https://supplier.example.test/products', reportedTotal: 450,
+      items: [{ name: 'Producto 1', code: 'SKU-1', price: 12443, currency: 'ARS', category: 'Iluminación' }],
+      source: ['dom-cards'], warnings: [] }, { tab: { id: 7 }, url: 'https://supplier.example.test/products' } as never);
+    expect(await controller.readLive()).toMatchObject({ reportedTotal: 450, items: [{ code: 'SKU-1', category: 'Iluminación' }] });
   });
 
   it('advances only the next numbered mayori hash page through the page-script allowlist', async () => {
@@ -201,6 +222,7 @@ describe('supplier capture controller', () => {
       .resolves.toEqual({ mimeType: 'image/webp', base64: 'AQID', size: 3 });
     expect(fetchMock).toHaveBeenCalledWith('https://supplier.example.test/photo.webp', expect.objectContaining({
       credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+      headers: { Accept: 'image/webp,image/jpeg,image/png,*/*;q=0.8' },
     }));
     await expect(controller.readCaptureImage('a1b2c3d4-e5f6-4789-a012-123456789abc', 'https://supplier.example.test/other.webp'))
       .rejects.toThrow('no pertenece a un producto');

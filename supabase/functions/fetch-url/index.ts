@@ -7,7 +7,7 @@ import {
   validateSupplierPageUrl,
 } from '../_shared/supplierUrlProxy.ts';
 import { fetchSupplierCatalogImage, readLimitedSupplierImage, readSupplierCatalog } from '../_shared/supplierCatalog.ts';
-import { isSameSupplierSiteDomain } from '../_shared/supplierSiteDomain.ts';
+import { isAllowedSupplierImageUrl } from '../_shared/supplierSiteDomain.ts';
 
 const ALLOWED_ORIGINS = new Set(['https://rivastock.vercel.app', 'http://localhost:5173']);
 const RATE_WINDOW_MS = 60_000;
@@ -111,7 +111,7 @@ Deno.serve(async request => {
         throw new Error('invalid source origin');
       }
       sourceOrigin = sourceUrl.origin;
-      if (!isSameSupplierSiteDomain(sourceOrigin, imageUrl.href)) throw new Error('site domain mismatch');
+      if (!isAllowedSupplierImageUrl(sourceOrigin, imageUrl.href)) throw new Error('site domain mismatch');
     } catch {
       return jsonResponse({ error: 'La foto debe pertenecer al mismo sitio del proveedor.' }, 422, origin);
     }
@@ -122,7 +122,7 @@ Deno.serve(async request => {
         fetch,
         sourceOrigin,
       );
-      if (!isSameSupplierSiteDomain(sourceOrigin, finalUrl.href) || !response.ok) {
+      if (!isAllowedSupplierImageUrl(sourceOrigin, finalUrl.href) || !response.ok) {
         await response.body?.cancel();
         return jsonResponse({ error: 'No pudimos descargar la foto del proveedor.' }, 422, origin);
       }

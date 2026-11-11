@@ -5,7 +5,7 @@ import {
   validateSupplierPageUrl,
   type DnsResolver,
 } from './supplierUrlProxy.ts';
-import { isSameSupplierSiteDomain } from './supplierSiteDomain.ts';
+import { isAllowedSupplierImageUrl, isSameSupplierSiteDomain } from './supplierSiteDomain.ts';
 
 export type SupplierCatalogSource = 'woocommerce' | 'shopify' | 'jsonld' | 'text';
 
@@ -238,10 +238,13 @@ async function fetchValidated(
   resolveDns: DnsResolver,
   fetcher: typeof fetch,
   expectedSiteUrl?: string,
+  imageMode = false,
 ): Promise<{ response: Response; url: URL }> {
   let url = validateSupplierPageUrl(rawUrl);
   for (let redirectCount = 0; ; redirectCount++) {
-    if (expectedSiteUrl && !isSameSupplierSiteDomain(expectedSiteUrl, url.href)) throw new UnsafeSupplierRedirectError();
+    if (expectedSiteUrl && !(imageMode
+      ? isAllowedSupplierImageUrl(expectedSiteUrl, url.href)
+      : isSameSupplierSiteDomain(expectedSiteUrl, url.href))) throw new UnsafeSupplierRedirectError();
     await assertPublicDns(url.hostname, resolveDns);
     const response = await fetcher(url, {
       method: 'GET',
@@ -249,7 +252,7 @@ async function fetchValidated(
       cache: 'no-store',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
-        Accept: 'application/json,text/html,text/plain,text/csv;q=0.9',
+        Accept: imageMode ? 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' : 'application/json,text/html,text/plain,text/csv;q=0.9',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       },
     });
@@ -260,7 +263,9 @@ async function fetchValidated(
     if (!location) throw new Error('El sitio devolvió una redirección sin destino.');
     try {
       url = validateSupplierPageUrl(new URL(location, url).href);
-      if (expectedSiteUrl && !isSameSupplierSiteDomain(expectedSiteUrl, url.href)) throw new UnsafeSupplierRedirectError();
+      if (expectedSiteUrl && !(imageMode
+        ? isAllowedSupplierImageUrl(expectedSiteUrl, url.href)
+        : isSameSupplierSiteDomain(expectedSiteUrl, url.href))) throw new UnsafeSupplierRedirectError();
     }
     catch { throw new UnsafeSupplierRedirectError(); }
   }
@@ -273,8 +278,8 @@ export async function fetchSupplierCatalogImage(
   expectedSiteUrl = rawUrl,
 ): Promise<{ response: Response; url: URL }> {
   validateSupplierPageUrl(expectedSiteUrl);
-  if (!isSameSupplierSiteDomain(expectedSiteUrl, rawUrl)) throw new UnsafeSupplierRedirectError();
-  return fetchValidated(rawUrl, resolveDns, fetcher, expectedSiteUrl);
+  if (!isAllowedSupplierImageUrl(expectedSiteUrl, rawUrl)) throw new UnsafeSupplierRedirectError();
+  return fetchValidated(rawUrl, resolveDns, fetcher, expectedSiteUrl, true);
 }
 
 export async function readLimitedSupplierImage(response: Response, maxBytes = 5 * 1024 * 1024): Promise<Uint8Array> {

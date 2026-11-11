@@ -25,6 +25,9 @@ describe('supplier catalog photos', () => {
     expect(getSupplierCatalogImageUrl('https://cdn.supplier.example/photo.jpg', supplierUrl))
       .toBe('https://cdn.supplier.example/photo.jpg');
     expect(getSupplierCatalogImageUrl('https://supplier-other.example/photo.jpg', supplierUrl)).toBeNull();
+    expect(getSupplierCatalogImageUrl('https://res.cloudinary.com/demo/photo.webp?auto=format', supplierUrl))
+      .toBe('https://res.cloudinary.com/demo/photo.webp?auto=format');
+    expect(getSupplierCatalogImageUrl('https://res.cloudinary.com.evil.example/photo.webp', supplierUrl)).toBeNull();
     expect(getSupplierCatalogImageUrl('data:image/png;base64,abc', supplierUrl)).toBeNull();
   });
 
@@ -38,6 +41,7 @@ describe('supplier catalog photos', () => {
     expect(shouldReplaceWithSupplierPhoto(product({ imageUrl: 'https://assets.example/manual.webp' }), supplierUrl)).toBe(false);
     expect(shouldReplaceWithSupplierPhoto(product({ imageUrl: 'https://supplier.example/old.jpg' }), supplierUrl)).toBe(true);
     expect(isLegacySupplierPhotoUrl('https://supplier.example/old.jpg', supplierUrl)).toBe(true);
+    expect(isLegacySupplierPhotoUrl('https://res.cloudinary.com/demo/old.webp', supplierUrl)).toBe(true);
   });
 
   it('recognizes supplier-managed Storage photos and refreshes only those', () => {

@@ -33,6 +33,8 @@ export interface SupplierExtensionItem {
   altCode?: string | null;
   price: number | null;
   currency: string;
+  packPrice?: number | null;
+  packCurrency?: string | null;
   category?: string | null;
   imageUrl?: string | null;
   images?: string[];
@@ -88,6 +90,8 @@ function isCaptureItem(value: unknown): value is SupplierExtensionItem {
     && (item.altCode === null || item.altCode === undefined || (typeof item.altCode === 'string' && item.altCode.length <= 100))
     && (item.brand === null || item.brand === undefined || (typeof item.brand === 'string' && item.brand.length <= 100))
     && (item.price === null || item.price === undefined || (Number.isFinite(item.price) && item.price > 0))
+    && (item.packPrice === null || item.packPrice === undefined || (Number.isFinite(item.packPrice) && item.packPrice > 0))
+    && (item.packCurrency === null || item.packCurrency === undefined || ['ARS', 'USD', 'EUR', 'GBP'].includes(String(item.packCurrency)))
     && ['ARS', 'USD', 'EUR', 'GBP'].includes(String(item.currency))
     && (item.category === null || item.category === undefined || (typeof item.category === 'string' && item.category.length <= 120))
     && (item.imageUrl === null || item.imageUrl === undefined || safeHttps(item.imageUrl) !== null)
@@ -121,6 +125,8 @@ export function supplierExtensionItemsToRows(items: SupplierExtensionItem[]): Su
     sourceCurrency: item.currency,
     name: item.name.trim().replace(/\s+/g, ' ').slice(0, 200),
     supplierCost: item.price && item.price > 0 ? item.price : null,
+    supplierPackCost: item.packPrice && item.packPrice > 0 ? item.packPrice : null,
+    supplierPackCurrency: item.packCurrency ?? null,
     category: typeof item.category === 'string' ? item.category.trim().slice(0, 120) : '',
     imageUrl: safeHttps(item.imageUrl) ?? item.images?.map(safeHttps).find(Boolean) ?? null,
     error: !item.price || item.price <= 0 ? 'Sin precio, revisar.'

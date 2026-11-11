@@ -8,6 +8,8 @@ export interface SupplierListDraftRow {
   brand?: string | null;
   sourceCurrency?: string | null;
   supplierCost: number | null;
+  supplierPackCost?: number | null;
+  supplierPackCurrency?: string | null;
   category: string;
   targetCategoryId?: string;
   marginPercent?: number;

@@ -46,7 +46,7 @@ it('packages exactly the allowlisted extension source bytes and release checksum
   const manifest = JSON.parse(readFileSync('extensions/facebook/manifest.json', 'utf8'));
   expect(manifest.name).toBe('RivaStock');
   expect(manifest.description).toBe('Publica en Facebook e importa listas de proveedores');
-  expect(manifest.version).toBe('0.6.4');
+  expect(manifest.version).toBe('0.6.5');
   expect(manifest.permissions).toEqual(['storage', 'alarms', 'scripting', 'activeTab']);
   expect(manifest.optional_host_permissions).toContain('<all_urls>');
   expect(manifest.optional_host_permissions).not.toContain('https://api.brajamayorista.com/*');
@@ -61,7 +61,7 @@ it('packages exactly the allowlisted extension source bytes and release checksum
 
   const release = extensionReleaseManifest(process.cwd(), archive);
   expect(release).toMatchObject({
-    version: '0.6.4',
+    version: '0.6.5',
     url: 'https://rivastock.vercel.app/downloads/rivastock-facebook.zip',
     files: extensionFiles,
     sha256: createHash('sha256').update(archive).digest('hex'),

@@ -9,6 +9,7 @@ const MULTI_LABEL_SUFFIXES = new Set([
   'blogspot.com', 'wordpress.com', 'wixsite.com', 'squarespace.com', 'cloudfront.net', 'azurewebsites.net', 'firebaseapp.com',
 ]);
 const COMMON_COUNTRY_SECOND_LEVELS = new Set(['ac', 'co', 'com', 'edu', 'gov', 'mil', 'net', 'org', 'nom']);
+const EXACT_IMAGE_CDN_HOSTS = new Set(['res.cloudinary.com', 'cdn.shopify.com', 'images.ctfassets.net', 'firebasestorage.googleapis.com', 'lh3.googleusercontent.com']);
 
 export function getSupplierSiteDomain(value) {
   try {
@@ -27,4 +28,32 @@ export function getSupplierSiteDomain(value) {
 export function isSameSupplierSiteDomain(sourceUrl, candidateUrl) {
   const sourceDomain = getSupplierSiteDomain(sourceUrl);
   return Boolean(sourceDomain && sourceDomain === getSupplierSiteDomain(candidateUrl));
+}
+
+export function isKnownSupplierImageCdn(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    return url.protocol === 'https:' && !url.username && !url.password
+      && (EXACT_IMAGE_CDN_HOSTS.has(host) || (host.endsWith('.imgix.net') && host.length > '.imgix.net'.length));
+  } catch { return false; }
+}
+
+export function getKnownSupplierImagePermission(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    if (!isKnownSupplierImageCdn(url.href)) return null;
+    return host.endsWith('.imgix.net') ? 'https://*.imgix.net/*' : `https://${host}/*`;
+  } catch { return null; }
+}
+
+export function isAllowedSupplierImageUrl(sourceUrl, candidateUrl) {
+  try {
+    const source = new URL(sourceUrl);
+    const candidate = new URL(candidateUrl);
+    return source.protocol === 'https:' && !source.username && !source.password && !source.port
+      && candidate.protocol === 'https:' && !candidate.username && !candidate.password && !candidate.port
+      && (isSameSupplierSiteDomain(source.href, candidate.href) || isKnownSupplierImageCdn(candidate.href));
+  } catch { return false; }
 }

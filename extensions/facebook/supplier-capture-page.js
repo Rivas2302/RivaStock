@@ -5,13 +5,18 @@
   const MAX_PAGES = 150;
   const MAX_PRODUCTS = 5_000;
   const BLOCKED = /^(?:agregar|a[nñ]adir|comprar|ver\s+pedido|carrito|pedido|enviar|whats?app|consultar)$/i;
-  const PAGINATION = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
+  const PAGINATION = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|next|cargar\s+m[aá]s|ver\s+m[aá]s|mostrar\s+m[aá]s|(?:cargar|ver|mostrar)\s+m[aá]s\s+productos?(?:\s*\(\d+\))?|load\s+more)$/i;
+  const ALL_CATEGORIES = /^(?:todos?|all)(?:\s*[([]?\s*\d+\s*[)\]]?)?$/i;
+  const MAX_LOCAL_ACTIONS = 180;
+  const MAX_LOCAL_READ_MS = 160_000;
   const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
-  const CARDS = '.caja_producto,div.item.open_detail[data-id],[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
+  const CARDS = '.caja_producto,div[data-id],article[data-sku],[data-sku],[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
   let timer = null;
   let crawlStarted = false;
   let pageFinished = false;
   let active = true;
+  let actionsUsed = 0;
+  const seenProductKeys = new Set();
 
   function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
   function isExcluded(node) {
@@ -39,21 +44,26 @@
     return Number.isSafeInteger(currentNumber) && currentNumber > 0 && candidateNumber === currentNumber + 1;
   }
   function currentHashPage() {
-    return Number(location.hash.match(/^#productos_page-(\d+)$/i)?.[1] || 0);
+    return Number(location.hash.match(/(?:^|[-_])(?:page|pagina)[-_]?(\d+)(?:$|[-_])/i)?.[1] || 0);
   }
-  function findSafeMayoriHashPage() {
+  function currentHashPageFromUrl(value) {
+    try { return Number(new URL(value).hash.match(/(?:^|[-_])(?:page|pagina)[-_]?(\d+)(?:$|[-_])/i)?.[1] || 0); }
+    catch { return 0; }
+  }
+  function findSafeHashPage() {
     const current = currentHashPage();
     if (!current) return null;
     const targetPage = current + 1;
-    const target = [...document.querySelectorAll('.ui.pagination.menu a.item[rel]')].find(anchor => {
-      if (isExcluded(anchor) || anchor.closest(CARDS) || anchor.rel !== String(targetPage)) return false;
-      return anchor.getAttribute('href') === `#productos_page-${targetPage}`;
+    const target = [...document.querySelectorAll('a[rel],a[href^="#"]')].find(anchor => {
+      if (isExcluded(anchor) || anchor.closest(CARDS) || !anchor.closest('nav,[class*="pagination"],[aria-label*="pagin" i]')) return false;
+      if (anchor.rel && /^\d+$/.test(anchor.rel) && anchor.rel !== String(targetPage)) return false;
+      return currentHashPageFromUrl(new URL(anchor.href, location.href).href) === targetPage;
     });
     return target ? { kind: 'hash-page', page: targetPage, label: `Página ${targetPage}` } : null;
   }
   function productListSignature() {
     const cards = [...document.querySelectorAll(CARDS)];
-    return `${cards.length}:${cards.map(card => card.getAttribute('data-id') || '').join('|')}`;
+    return `${cards.length}:${cards.map(card => card.getAttribute('data-sku') || card.getAttribute('data-id') || card.getAttribute('data-product-id') || card.querySelector('[itemprop="sku"]')?.textContent || '').join('|')}`;
   }
   function waitForProductListChange(previous, timeoutMs = 15_000) {
     return new Promise(resolve => {
@@ -74,20 +84,31 @@
     });
   }
   function findSafeNext() {
-    const hashPage = findSafeMayoriHashPage();
+    const hashPage = findSafeHashPage();
     if (hashPage) return hashPage;
-    for (const element of document.querySelectorAll('a[rel~="next"],.pagination a,nav[aria-label*="pagin" i] a,a,button[type="button"]')) {
+    for (const element of document.querySelectorAll('a[rel~="next"],.pagination a,nav[aria-label*="pagin" i] a,a,button:not([type="submit"]),[role="button"],[role="tab"]')) {
       if (isExcluded(element) || element.disabled || element.getAttribute('aria-disabled') === 'true') continue;
+      if (!controlVisible(element)) continue;
       const label = candidateLabel(element);
       if (BLOCKED.test(label)) continue;
       const url = element.tagName === 'A' ? safePageUrl(element.href) : null;
       const numericPage = isNextNumberedPage(element);
-      if (element.rel?.toLowerCase().split(/\s+/).includes('next') || PAGINATION.test(label) || numericPage) {
+      const paginationArrow = /^(?:›|»)$/.test(label) && Boolean(element.closest('.pagination,[class*="pagination"],nav[aria-label*="pagin" i]'));
+      if (element.rel?.toLowerCase().split(/\s+/).includes('next') || PAGINATION.test(label) || numericPage || paginationArrow) {
         if (element.tagName === 'A' && url && url !== location.href) return { kind: 'url', url, label };
-        if (element.tagName === 'BUTTON' && (PAGINATION.test(label) || numericPage)) return { kind: 'button', label };
+        if (['BUTTON', 'A'].includes(element.tagName) && (PAGINATION.test(label) || numericPage || paginationArrow)) return { kind: 'button', label };
       }
     }
     return null;
+  }
+  function findSafePaginationControl(label) {
+    return [...document.querySelectorAll('button:not([type="submit"]),a,[role="button"],[role="tab"]')].find(control => {
+      if (isExcluded(control) || !controlVisible(control) || control.disabled || control.getAttribute('aria-disabled') === 'true') return false;
+      const currentLabel = candidateLabel(control);
+      if (currentLabel !== label || BLOCKED.test(currentLabel)) return false;
+      if (/^(?:›|»)$/.test(currentLabel) && !control.closest('.pagination,[class*="pagination"],nav[aria-label*="pagin" i]')) return false;
+      return PAGINATION.test(currentLabel) || isNextNumberedPage(control);
+    }) ?? null;
   }
   function collectCategoryUrls() {
     const current = new URL(location.href);
@@ -114,6 +135,8 @@
       name: String(item.name || '').slice(0, 200), price: Number.isFinite(item.price) && item.price > 0 ? item.price : null,
       listPrice: Number.isFinite(item.listPrice) && item.listPrice > 0 ? item.listPrice : null,
       currency: item.currency === 'USD' || item.currency === 'EUR' || item.currency === 'GBP' ? item.currency : 'ARS',
+      packPrice: Number.isFinite(item.packPrice) && item.packPrice > 0 ? item.packPrice : null,
+      packCurrency: ['ARS', 'USD', 'EUR', 'GBP'].includes(item.packCurrency) ? item.packCurrency : null,
       category: typeof item.category === 'string' ? item.category.slice(0, 120) : null,
       brand: typeof item.brand === 'string' ? item.brand.slice(0, 100) : null,
       imageUrl: safeImageUrl(item.imageUrl), images: [...new Set((Array.isArray(item.images) ? item.images : []).map(safeImageUrl).filter(Boolean))].slice(0, 5),
@@ -138,10 +161,11 @@
     try {
       const result = extractor.readPage(document, jsonResponses);
       const items = result.items.slice(0, MAX_PRODUCTS).map(sanitizeItem).filter(item => item.name);
+      for (const item of items) seenProductKeys.add(item.key);
       await chrome.runtime.sendMessage({
         type: 'supplier-capture-evidence', url: location.href, items,
         source: result.source.slice(0, 3), warnings: result.warnings.slice(0, 6),
-        categoryUrls: collectCategoryUrls(), productCount: items.length,
+        categoryUrls: collectCategoryUrls(), productCount: items.length, reportedTotal: result.reportedTotal,
       });
     } catch { /* An unsupported page must not disturb the supplier site. */ }
   }
@@ -161,20 +185,113 @@
     crawlStarted = true;
     void autoReadPage();
   }
-  async function autoReadPage() {
+  function controlVisible(node) {
+    if (!node || node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+    const style = document.defaultView?.getComputedStyle?.(node);
+    return style?.display !== 'none' && style?.visibility !== 'hidden' && style?.opacity !== '0';
+  }
+  function getCategoryGroup() {
+    const controls = [...document.querySelectorAll('button:not([type="submit"]),[role="button"],[role="tab"]')]
+      .filter(control => !isExcluded(control) && !control.disabled && controlVisible(control) && !BLOCKED.test(candidateLabel(control)));
+    for (const all of controls.filter(control => ALL_CATEGORIES.test(candidateLabel(control)))) {
+      for (let parent = all.parentElement, depth = 0; parent && depth < 3; parent = parent.parentElement, depth += 1) {
+        const members = controls.filter(control => parent.contains(control));
+        const options = members.filter(control => !ALL_CATEGORIES.test(candidateLabel(control)) && candidateLabel(control).length <= 60 && !PAGINATION.test(candidateLabel(control)));
+        if (options.length && members.length >= 2) return { all, options: options.slice(0, 80) };
+      }
+    }
+    return null;
+  }
+  async function claimAction() {
+    if (actionsUsed >= MAX_LOCAL_ACTIONS || Date.now() - readerStartedAt >= MAX_LOCAL_READ_MS) return false;
+    const response = await chrome.runtime.sendMessage({ type: 'supplier-capture-action' }).catch(() => null);
+    if (response?.allowed !== true) return false;
+    actionsUsed += 1;
+    return true;
+  }
+  async function clickCategory(control) {
+    if (!control || isExcluded(control) || !controlVisible(control) || BLOCKED.test(candidateLabel(control)) || !await claimAction()) return false;
+    const before = productListSignature();
+    control.click();
+    await waitForProductListChange(before, 8_000);
+    await delay(450);
+    await sendEvidence();
+    return true;
+  }
+  async function scrollAndReadVisibleProducts() {
     let unchangedAtBottom = 0;
-    for (let step = 0; step < 180 && active; step += 1) {
-      window.scrollBy({ top: Math.max(360, Math.floor(window.innerHeight * 0.8)), left: 0, behavior: 'instant' });
-      await delay(350);
+    for (let step = 0; step < 300 && active && Date.now() - readerStartedAt < MAX_LOCAL_READ_MS; step += 1) {
+      window.scrollBy({ top: Math.max(720, Math.floor(window.innerHeight * 2)), left: 0, behavior: 'instant' });
+      await delay(180);
       const afterHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
       const atBottom = window.scrollY + window.innerHeight >= afterHeight - 4;
       if (atBottom) unchangedAtBottom += 1;
       else unchangedAtBottom = 0;
       if (!atBottom) continue;
       const next = findSafeNext();
-      if (next) { finishPage({ next }); return; }
+      if (next?.kind === 'button') {
+        const target = findSafePaginationControl(next.label);
+        if (!target || !await claimAction()) return null;
+        const before = productListSignature();
+        target.click();
+        const changed = await waitForProductListChange(before, 12_000);
+        await delay(500);
+        await sendEvidence();
+        if (changed) {
+          unchangedAtBottom = 0;
+          step = -1;
+          continue;
+        }
+        return null;
+      }
+      if (next) return next;
       if (unchangedAtBottom >= 3) break;
-      await delay(350);
+      await delay(250);
+    }
+    await sendEvidence();
+    return null;
+  }
+  const readerStartedAt = Date.now();
+  async function autoReadPage() {
+    let categoryWakeAttempted = false;
+    let categoriesTraversed = false;
+    while (active && Date.now() - readerStartedAt < MAX_LOCAL_READ_MS) {
+      const next = await scrollAndReadVisibleProducts();
+      if (next) { await sendEvidence(); finishPage({ next, actionsUsed }); return; }
+      const current = extractor.readPage(document);
+      const total = Number.isSafeInteger(current.reportedTotal) ? current.reportedTotal : null;
+      const missing = total !== null && seenProductKeys.size < total;
+      const group = missing ? getCategoryGroup() : null;
+      if (group && !categoryWakeAttempted) {
+        categoryWakeAttempted = true;
+        const firstCategory = group.options[0];
+        if (await clickCategory(firstCategory)) {
+          const refreshed = getCategoryGroup();
+          if (refreshed) await clickCategory(refreshed.all);
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          continue;
+        }
+      }
+      if (group && categoryWakeAttempted && !categoriesTraversed && seenProductKeys.size < total) {
+        categoriesTraversed = true;
+        const labels = group.options.map(candidateLabel);
+        for (const label of labels) {
+          if (Date.now() - readerStartedAt >= MAX_LOCAL_READ_MS || seenProductKeys.size >= total) break;
+          const currentGroup = getCategoryGroup();
+          const option = currentGroup?.options.find(control => candidateLabel(control) === label);
+          if (option && await clickCategory(option)) {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+            const categoryNext = await scrollAndReadVisibleProducts();
+            if (categoryNext && categoryNext.kind !== 'button') { finishPage({ next: categoryNext }); return; }
+            await sendEvidence();
+          }
+        }
+        const currentGroup = getCategoryGroup();
+        if (currentGroup) await clickCategory(currentGroup.all);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        continue;
+      }
+      break;
     }
     await sendEvidence();
     finishPage({ categoryUrls: collectCategoryUrls() });
@@ -216,18 +333,21 @@
       const current = currentHashPage();
       const expected = current + 1;
       const target = Number.isSafeInteger(page) && page === expected
-        ? [...document.querySelectorAll('.ui.pagination.menu a.item[rel]')].find(anchor =>
-          !isExcluded(anchor) && !anchor.closest(CARDS) && anchor.rel === String(expected)
-          && anchor.getAttribute('href') === `#productos_page-${expected}`)
+        ? [...document.querySelectorAll('a[rel],a[href^="#"]')].find(anchor => {
+          if (isExcluded(anchor) || anchor.closest(CARDS) || !anchor.closest('nav,[class*="pagination"],[aria-label*="pagin" i]')) return false;
+          if (anchor.rel && /^\d+$/.test(anchor.rel) && anchor.rel !== String(expected)) return false;
+          return currentHashPageFromUrl(new URL(anchor.href, location.href).href) === expected;
+        })
         : null;
       if (!target) { reply({ done: false }); return; }
       const before = productListSignature();
       const changed = waitForProductListChange(before);
       target.click();
-      void changed.then(done => {
+      void changed.then(async done => {
         reply({ done });
         if (done && active) {
           pageFinished = false;
+          await sendEvidence();
           void autoReadPage();
         }
       });

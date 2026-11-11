@@ -1,12 +1,12 @@
 import type { Product } from '../types';
-import { isSameSupplierSiteDomain } from './supplierSiteDomain';
+import { isAllowedSupplierImageUrl } from './supplierSiteDomain';
 
 export function getSupplierCatalogImageUrl(rawImageUrl: string | null | undefined, supplierUrl: string): string | null {
   if (!rawImageUrl) return null;
   try {
     const imageUrl = new URL(rawImageUrl);
     const sourceUrl = new URL(supplierUrl);
-    if (imageUrl.protocol !== 'https:' || !isSameSupplierSiteDomain(sourceUrl.href, imageUrl.href) || imageUrl.username || imageUrl.password) return null;
+    if (imageUrl.protocol !== 'https:' || !isAllowedSupplierImageUrl(sourceUrl.href, imageUrl.href) || imageUrl.username || imageUrl.password) return null;
     return imageUrl.href;
   } catch {
     return null;
@@ -32,7 +32,7 @@ export function isLegacySupplierPhotoUrl(rawUrl: string | null | undefined, supp
   try {
     const url = new URL(rawUrl);
     const source = new URL(supplierUrl);
-    return url.protocol === 'https:' && isSameSupplierSiteDomain(source.href, url.href);
+    return url.protocol === 'https:' && isAllowedSupplierImageUrl(source.href, url.href);
   } catch {
     return false;
   }

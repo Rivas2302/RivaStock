@@ -137,6 +137,12 @@ describe('supplier list source extraction', () => {
     expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: { url: 'https://supplier.com/catalog', mode: 'catalog' } });
   });
 
+  it('directs JavaScript-rendered catalogs to the browser extension instead of implying server-side scraping', async () => {
+    invokeMock.mockResolvedValue({ data: { source: 'text', currency: null, items: [], text: 'Catálogo cargado con JavaScript' }, error: null });
+    await expect(extractSupplierListCatalog('https://supplier.com/catalog'))
+      .rejects.toThrow('Este proveedor carga productos con JavaScript: usá la extensión para traer todo');
+  });
+
   it('reads a RivaStock catalog directly and preserves its stable product ID without using fetch-url', async () => {
     rivaCatalogSourceMock.mockResolvedValue({
       slug: 'cuenta-b', businessName: 'Cuenta B', showPrices: true,
@@ -159,7 +165,16 @@ describe('supplier list source extraction', () => {
       url: 'https://api.supplier.com/images/one.jpg', sourceOrigin: 'https://supplier.com', mode: 'image',
     } });
     await expect(fetchSupplierCatalogImage('https://other-store.com/image.jpg', 'https://supplier.com/catalog'))
-      .rejects.toThrow('mismo sitio');
+      .rejects.toThrow('sitio del proveedor');
+  });
+
+  it('downloads WebP photos from an allowlisted image CDN while keeping the source origin bound', async () => {
+    invokeMock.mockResolvedValue({ data: { mimeType: 'image/webp', base64: 'AQID' }, error: null });
+    const image = await fetchSupplierCatalogImage('https://res.cloudinary.com/demo/image/upload/f_auto/photo.webp?auto=format', 'https://supplier.com/catalog');
+    expect(image.type).toBe('image/webp');
+    expect(invokeMock).toHaveBeenCalledWith('fetch-url', { body: {
+      url: 'https://res.cloudinary.com/demo/image/upload/f_auto/photo.webp?auto=format', sourceOrigin: 'https://supplier.com', mode: 'image',
+    } });
   });
 
   it('rejects image responses with formats outside the photo allowlist', async () => {

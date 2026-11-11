@@ -10,7 +10,7 @@ type ExtractedItem = {
   images: string[]; url: string | null; packSize: number | null; notes: string[];
   needsPriceReview: boolean; raw: string | null; priceOptions?: Array<{ label: string; price: number }> | null;
 };
-type ExtractResult = { items: ExtractedItem[]; source: string[]; warnings: string[] };
+type ExtractResult = { items: ExtractedItem[]; source: string[]; warnings: string[]; reportedTotal: number | null };
 type ProductExtractApi = {
   collectDomEvidence: (document: Document) => Array<Record<string, unknown>>;
   extractSupplierProducts: (evidence: Record<string, unknown>) => ExtractResult;
@@ -181,6 +181,58 @@ describe('universal supplier product extraction', () => {
     expect(result.items[1]).toMatchObject({ name: 'SILLA plegable X 10U', code: '5702', altCode: 'BS', brand: 'Marca Ficticia', category: 'Muebles', price: 12500 });
     expect(result.items[1].packSize).toBeNull();
     expect(result.items.every(item => !item.raw?.includes('Texto fijo de demostración'))).toBe(true);
+  });
+
+  it('reads generic data-sku cards, prioritizes ARS unit prices, separates pack prices, and ignores small overlays', () => {
+    const document = new JSDOM(`
+      <main>
+        <button type="button">Todos 450</button><button type="button">Hogar</button>
+        <article class="prod" data-sku="12277">
+          <span class="ceja">Iluminación</span><p class="nombre">Lámpara de demostración</p>
+          <div class="meta">Cód. 12277 · Bulto x30</div>
+          <div class="precio"><span class="usd">USD 7,90 c/u</span><span class="ars">ARG $ 12.443 c/u</span></div>
+          <div class="bulto-precio">ARG $ 373.290 por bulto</div>
+          <div class="foto"><img width="320" height="240" src="https://res.cloudinary.com/demo/image/upload/f_auto,w_640/lamp.webp"><img class="badge" width="22" height="22" src="https://res.cloudinary.com/demo/image/upload/mark.png"></div>
+        </article>
+      </main>
+    `, { url: 'https://catalogue.example.test/products' }).window.document;
+
+    const result = extract.readPage(document);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      code: '12277', name: 'Lámpara de demostración', price: 12443, currency: 'ARS',
+      category: 'Iluminación', packSize: 30, packPrice: 373290, packCurrency: 'ARS',
+      imageUrl: 'https://res.cloudinary.com/demo/image/upload/f_auto,w_640/lamp.webp',
+    });
+    expect(result.reportedTotal).toBe(450);
+    expect(result.items[0].images).toHaveLength(1);
+    expect(result.items[0].imageUrl).not.toContain('mark.png');
+  });
+
+  it('prefers a rendered product photo over a larger natural-size hidden overlay', () => {
+    const document = new JSDOM(`
+      <article data-sku="PHOTO-1">
+        <p class="nombre">Producto con foto</p>
+        <div class="precio">ARG $ 1.200 c/u</div>
+        <div class="foto">
+          <img src="https://res.cloudinary.com/demo/product.webp">
+          <img src="https://supplier.example.test/assets/brand-image.png">
+        </div>
+      </article>
+    `, { url: 'https://supplier.example.test/products' }).window.document;
+    const [productImage, overlayImage] = [...document.querySelectorAll('img')];
+    Object.defineProperties(productImage, {
+      naturalWidth: { value: 600 }, naturalHeight: { value: 450 },
+      getBoundingClientRect: { value: () => ({ width: 233, height: 155 }) },
+    });
+    Object.defineProperties(overlayImage, {
+      naturalWidth: { value: 625 }, naturalHeight: { value: 667 },
+      getBoundingClientRect: { value: () => ({ width: 0, height: 0 }) },
+    });
+
+    const result = extract.readPage(document);
+    expect(result.items[0].imageUrl).toBe('https://res.cloudinary.com/demo/product.webp');
+    expect(result.items[0].images).toEqual(['https://res.cloudinary.com/demo/product.webp']);
   });
 
   it('keeps sale and labeled wholesale/retail prices with a review warning', () => {

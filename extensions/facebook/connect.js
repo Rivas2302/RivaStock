@@ -1,13 +1,12 @@
 // Connection approval and permission request stay inside the extension page.
-import { supplierBabajiFullCatalogHint, supplierCaptureStatus } from './supplier-capture-ui.js';
-import { getSupplierSiteDomain } from './supplier-site-domain.js';
+import { supplierCaptureStatus } from './supplier-capture-ui.js';
+import { getKnownSupplierImagePermission, getSupplierSiteDomain } from './supplier-site-domain.js';
 
 
 const form=document.querySelector('#connect');
 document.querySelector('#version').textContent=`Versión ${chrome.runtime.getManifest().version} · actualizada automáticamente`;
 const supplierStart=document.querySelector('#supplier-start');
 const supplierStatus=document.querySelector('#supplier-status');
-const supplierFullCatalog=document.querySelector('#supplier-full-catalog');
 const supplierProgress=document.querySelector('#supplier-progress');
 const supplierCount=document.querySelector('#supplier-count');
 const supplierBadge=document.querySelector('#supplier-badge');
@@ -37,16 +36,13 @@ async function renderSupplierCapture(){
   if(!state){supplierStart.hidden=false;supplierStart.disabled=!supportedSupplierOrigin(tab.url);supplierProgress.hidden=true;supplierBadge.textContent='Listo';return;}
   supplierStart.hidden=true;supplierProgress.hidden=false;
   const count=state.items?.length??0;
-  supplierCount.textContent=state.status==='complete'?`Lectura lista: ${count} productos`:`Leyendo… ${count} productos`;
+  supplierCount.textContent=state.reportedTotal?`Leídos ${count} de ${state.reportedTotal}`:state.status==='complete'?`Lectura lista: ${count} productos`:`Leyendo… ${count} productos`;
   supplierBadge.textContent=state.status==='complete'?'Lista':state.status==='categories-available'?'Categorías':'Leyendo';
   supplierBadge.className=`badge ${state.status==='complete'?'active':'working'}`;
   supplierFinish.disabled=count===0;
   supplierAllCategories.hidden=state.status!=='categories-available';
   supplierAllCategories.textContent=`Leer todas las categorías (${Math.max(0,(state.categoryUrls?.length??0)-(state.pagesVisited?.length??0))})`;
-  const catalogHint=supplierBabajiFullCatalogHint(state);
-  supplierStatus.textContent=catalogHint?`Esta página muestra ${catalogHint.count} productos. ¿Querés ir a la lista completa?`:supplierCaptureStatus(state);
-  supplierFullCatalog.hidden=!catalogHint;
-  if(catalogHint)supplierFullCatalog.href=catalogHint.url;
+  supplierStatus.textContent=supplierCaptureStatus(state);
 }
 supplierStart.addEventListener('click',async()=>{
   supplierStart.disabled=true;
@@ -54,10 +50,15 @@ supplierStart.addEventListener('click',async()=>{
     const tab=activeSupplierTab??await refreshActiveSupplierTab();
     const origin=supportedSupplierOrigin(tab?.url);
     if(!origin||tab?.id===undefined)throw new Error('Abrí una página de productos de un proveedor en Chrome.');
-    // Request only the current supplier and HTTPS subdomains for its public images.
+    // Request the supplier and allowlisted image CDN hosts referenced on the current page.
     const supplierDomain=getSupplierSiteDomain(origin);
     const extraImageOrigins=supplierDomain?[`https://*.${supplierDomain}/*`]:[];
-    const granted=await chrome.permissions.request({origins:[`${origin}/*`,...extraImageOrigins]});
+    const imageResults=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>Array.from(document.images).flatMap(image=>[image.currentSrc,image.src,image.srcset].filter(Boolean))}).catch(()=>[]);
+    const referencedImages=(imageResults??[]).flatMap(item=>Array.isArray(item.result)?item.result:[]);
+    const cdnPermissions=[...new Set(referencedImages.flatMap(value=>String(value).split(',').flatMap(part=>{
+      try{return [getKnownSupplierImagePermission(new URL(part.trim().split(/\s+/)[0],origin).href)].filter(Boolean);}catch{return [];}
+    })))];
+    const granted=await chrome.permissions.request({origins:[`${origin}/*`,...extraImageOrigins,...cdnPermissions]});
     if(!granted)throw new Error('No se dio permiso para leer esta tienda. Podés volver a intentarlo cuando quieras.');
     const [current]=await chrome.tabs.query({active:true,currentWindow:true});
     if(current?.id!==tab.id||supportedSupplierOrigin(current?.url)!==origin)throw new Error('La pestaña activa cambió. Volvé a la tienda e intentá de nuevo.');

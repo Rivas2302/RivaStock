@@ -1,7 +1,7 @@
 import { parseSupplierListRows, type SupplierListDraftRow } from './supplierListImport';
 import { supabase } from './supabase';
 import { fetchRivaCatalogImage, loadRivaCatalogSupplierSource } from './rivaCatalogSupplierImport';
-import { isSameSupplierSiteDomain } from './supplierSiteDomain';
+import { isAllowedSupplierImageUrl } from './supplierSiteDomain';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
@@ -260,6 +260,9 @@ export async function extractSupplierListCatalog(rawUrl: string): Promise<Suppli
   if (!data || !['woocommerce', 'shopify', 'jsonld', 'text'].includes(data.source)) {
     throw new Error('No encontramos productos en ese catálogo.');
   }
+  if (data.source === 'text' && data.items.length < 3) {
+    throw new Error('Este proveedor carga productos con JavaScript: usá la extensión para traer todo');
+  }
   return data;
 }
 
@@ -268,7 +271,7 @@ export { fetchRivaCatalogImage };
 export async function fetchSupplierCatalogImage(rawImageUrl: string, rawSupplierUrl: string): Promise<File> {
   const imageUrl = validateSupplierPageUrl(rawImageUrl);
   const supplierUrl = validateSupplierPageUrl(rawSupplierUrl);
-  if (imageUrl.protocol !== 'https:' || !isSameSupplierSiteDomain(supplierUrl.href, imageUrl.href)) {
+  if (imageUrl.protocol !== 'https:' || !isAllowedSupplierImageUrl(supplierUrl.href, imageUrl.href)) {
     throw new Error('La foto debe pertenecer al mismo sitio del proveedor.');
   }
   let data: { base64?: unknown; mimeType?: unknown; error?: unknown } | null;

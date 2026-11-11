@@ -1,16 +1,18 @@
-import { getSupplierSiteDomain, isSameSupplierSiteDomain } from './supplier-site-domain.js';
+import { getSupplierSiteDomain, isAllowedSupplierImageUrl } from './supplier-site-domain.js';
 
 const LIVE_KEY = 'supplierCaptureLive';
 const CAPTURES_KEY = 'supplierProductCaptures';
 const APP_URL = 'https://rivastock.vercel.app/revendedores';
 const MAX_PRODUCTS = 5_000;
 const PAGE_LIMIT = 150;
+const MAX_CRAWL_MS = 180_000;
+const MAX_CRAWL_CLICKS = 180;
 const CAPTURE_TTL = 24 * 60 * 60 * 1000;
 const CHUNK_SIZE = 500;
 const MAIN_SCRIPT_ID = 'rivastock-supplier-main';
 const PAGE_SCRIPT_ID = 'rivastock-supplier-page';
 const PRODUCT_CARD_PATHS = new Set(['rub', 'cat', 'categoria', 'page', 'pagina']);
-const SAFE_PAGINATION_LABEL = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|p[aá]gina\s+\d{1,4}|next|›|»|cargar\s+m[aá]s|ver\s+m[aá]s|load\s+more)$/i;
+const SAFE_PAGINATION_LABEL = /^(?:siguiente(?:\s+p[aá]gina)?|p[aá]gina\s+siguiente|p[aá]gina\s+\d{1,4}|next|›|»|(?:cargar|ver|mostrar)\s+m[aá]s(?:\s+productos?)?(?:\s*\(\d+\))?|load\s+more)$/i;
 const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
 
 function isUnsafePublicHost(hostname) {
@@ -60,12 +62,7 @@ function imageOriginsForSupplier(origin) {
 }
 
 function isAllowedCaptureImage(origin, imageUrl) {
-  try {
-    const sourceUrl = new URL(origin);
-    const candidate = new URL(imageUrl);
-    return candidate.protocol === 'https:' && !candidate.username && !candidate.password
-      && isSameSupplierSiteDomain(sourceUrl.href, candidate.href);
-  } catch { return false; }
+  return isAllowedSupplierImageUrl(origin, imageUrl);
 }
 
 function normalizeItem(value) {
@@ -83,6 +80,8 @@ function normalizeItem(value) {
     key, code, altCode: typeof value.altCode === 'string' ? value.altCode.slice(0, 100) : null,
     name, price, listPrice: Number.isFinite(value.listPrice) && value.listPrice > 0 ? value.listPrice : null,
     currency, category, imageUrl, images,
+    packPrice: Number.isFinite(value.packPrice) && value.packPrice > 0 ? Math.round(value.packPrice * 100) / 100 : null,
+    packCurrency: ['ARS', 'USD', 'EUR', 'GBP'].includes(value.packCurrency) ? value.packCurrency : null,
     brand: typeof value.brand === 'string' ? value.brand.trim().replace(/\s+/g, ' ').slice(0, 100) || null : null,
     packSize: Number.isFinite(value.packSize) && value.packSize > 0 ? Math.floor(value.packSize) : null,
     notes: Array.isArray(value.notes) ? value.notes.map(note => String(note).slice(0, 80)).slice(0, 3) : [],
@@ -174,6 +173,7 @@ export function createSupplierCaptureController(api = chrome) {
     await registerScripts(origin);
     const state = {
       tabId, origin, startedAt: Date.now(), status: 'reading', items: [], source: [], warnings: [],
+      reportedTotal: null, clicksUsed: 0,
       pageStartingProductCount: 0, stagnantPages: 0,
       pagesVisited: [], categoryUrls: [], readAllCategories: false, lastPageUrl: tab.url,
     };
@@ -198,6 +198,13 @@ export function createSupplierCaptureController(api = chrome) {
     return { readingAllCategories: true };
   }
   async function navigateNext(state, pagination) {
+    if (Date.now() - state.startedAt >= MAX_CRAWL_MS || state.clicksUsed >= MAX_CRAWL_CLICKS) {
+      state.status = 'complete';
+      state.warnings = [...new Set([...state.warnings, 'La lectura llegó al límite seguro de tiempo o acciones.'])];
+      await writeLive(state);
+      await stopScripts(state.tabId);
+      return;
+    }
     if (state.pagesVisited.length >= PAGE_LIMIT) {
       state.status = 'complete';
       await writeLive(state);
@@ -222,6 +229,7 @@ export function createSupplierCaptureController(api = chrome) {
         currentPage = Number(current.hash.match(/^#productos_page-(\d+)$/i)?.[1] || 0);
       } catch { /* Non-hash pages use the existing pagination paths. */ }
       if (currentPage > 0 && pagination.page === currentPage + 1 && pagination.page <= PAGE_LIMIT) {
+        state.clicksUsed += 1;
         state.pageStartingProductCount = state.items.length;
         await writeLive(state);
         const result = await api.tabs.sendMessage(state.tabId, {
@@ -231,6 +239,7 @@ export function createSupplierCaptureController(api = chrome) {
       }
     }
     if (pagination?.kind === 'button' && typeof pagination.label === 'string' && pagination.label.length <= 80 && SAFE_PAGINATION_LABEL.test(pagination.label)) {
+      state.clicksUsed += 1;
       state.pageStartingProductCount = state.items.length;
       await writeLive(state);
       const result = await api.tabs.sendMessage(state.tabId, { type: 'supplier-capture-click-next', label: pagination.label }).catch(() => null);
@@ -263,6 +272,9 @@ export function createSupplierCaptureController(api = chrome) {
     if (url.origin !== state.origin) return;
     state.lastPageUrl = url.href;
     state.items = mergeItems(state.items, message.items);
+    if (Number.isSafeInteger(message.reportedTotal) && message.reportedTotal > 0 && message.reportedTotal <= MAX_PRODUCTS) {
+      state.reportedTotal = Math.max(state.reportedTotal ?? 0, message.reportedTotal);
+    }
     state.source = [...new Set([...state.source, ...(Array.isArray(message.source) ? message.source.filter(item => ['network-json', 'structured-data', 'dom-cards'].includes(item)) : [])])].slice(0, 3);
     const safeWarnings = [
       'No encontramos productos en esta página. Si requiere clave o JavaScript, iniciá sesión en el proveedor y volvé a leer desde su página.',
@@ -288,6 +300,13 @@ export function createSupplierCaptureController(api = chrome) {
     if (url.origin !== state.origin) return;
     state.lastPageUrl = url.href;
     if (!state.pagesVisited.includes(url.href)) state.pagesVisited.push(url.href);
+    if (Date.now() - state.startedAt >= MAX_CRAWL_MS || state.clicksUsed >= MAX_CRAWL_CLICKS) {
+      state.status = 'complete';
+      state.warnings = [...new Set([...state.warnings, 'La lectura llegó al límite seguro de tiempo o acciones.'])];
+      await writeLive(state);
+      await stopScripts(state.tabId);
+      return;
+    }
     state.stagnantPages = state.items.length <= state.pageStartingProductCount ? state.stagnantPages + 1 : 0;
     state.pageStartingProductCount = state.items.length;
     await writeLive(state);
@@ -342,7 +361,8 @@ export function createSupplierCaptureController(api = chrome) {
     const timer = setTimeout(() => controller.abort(), 10_000);
     try {
       const response = await fetch(imageUrl, {
-        credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal: controller.signal,
+        credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
+        headers: { Accept: 'image/webp,image/jpeg,image/png,*/*;q=0.8' }, signal: controller.signal,
       });
       if (!response.ok) throw new Error('La foto no está disponible sin sesión.');
       const mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
@@ -402,6 +422,22 @@ export function createSupplierCaptureController(api = chrome) {
         void handleEvidence(message, sender).then(() => reply({ accepted: true })).catch(() => reply({ accepted: false }));
         return true;
       }
+      if (sender.id === api.runtime.id && sender.tab?.id !== undefined && message?.type === 'supplier-capture-action') {
+        void readLive().then(async state => {
+          if (!state || state.status !== 'reading' || sender.tab?.id !== state.tabId) return { allowed: false };
+          if (Date.now() - state.startedAt >= MAX_CRAWL_MS || state.clicksUsed >= MAX_CRAWL_CLICKS) {
+            state.status = 'complete';
+            state.warnings = [...new Set([...state.warnings, 'La lectura llegó al límite seguro de tiempo o acciones.'])];
+            await writeLive(state);
+            await stopScripts(state.tabId);
+            return { allowed: false };
+          }
+          state.clicksUsed += 1;
+          await writeLive(state);
+          return { allowed: true };
+        }).then(reply).catch(() => reply({ allowed: false }));
+        return true;
+      }
       if (sender.id === api.runtime.id && sender.tab?.id !== undefined && message?.type === 'supplier-capture-page-finished') {
         void handlePageFinished(message, sender).then(() => reply({ accepted: true })).catch(() => reply({ accepted: false }));
         return true;
@@ -412,5 +448,5 @@ export function createSupplierCaptureController(api = chrome) {
   return { acknowledgeCapture, beginAllCategories, cancel, finish, handleEvidence, handlePageFinished, readCapture, readCaptureImage, readLive, registerInternalMessages, start };
 }
 
-export const supplierCaptureLimits = { CHUNK_SIZE, CAPTURE_TTL, MAX_PRODUCTS, PAGE_LIMIT };
+export const supplierCaptureLimits = { CHUNK_SIZE, CAPTURE_TTL, MAX_CRAWL_CLICKS, MAX_CRAWL_MS, MAX_PRODUCTS, PAGE_LIMIT };
 export const supplierCaptureImagePermissions = { imageOriginsForSupplier, isAllowedCaptureImage };

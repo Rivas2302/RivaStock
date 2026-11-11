@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { supplierBabajiFullCatalogHint, supplierCaptureStatus } from './supplier-capture-ui.js';
+import { supplierCaptureStatus } from './supplier-capture-ui.js';
 
 describe('supplier capture popup status', () => {
   it('does not show an early empty-page warning after products arrive', () => {
@@ -24,18 +24,8 @@ describe('supplier capture popup status', () => {
       .toContain('recorrerlas sin usar flechas de carrusel');
   });
 
-  it('offers Babaji full catalog only for a small, filtered Babaji page', () => {
-    expect(supplierBabajiFullCatalogHint({
-      status: 'complete', items: Array.from({ length: 8 }, () => ({})),
-      lastPageUrl: 'https://babaji.com.ar/catalogo2022x3.php?rub=345',
-    })).toEqual({ count: 8, url: 'https://babaji.com.ar/catalogo2022x3.php?rub=99999' });
-    expect(supplierBabajiFullCatalogHint({
-      status: 'complete', items: Array.from({ length: 8 }, () => ({})),
-      lastPageUrl: 'https://babaji.com.ar/catalogo2022x3.php?rub=99999',
-    })).toBeNull();
-    expect(supplierBabajiFullCatalogHint({
-      status: 'complete', items: Array.from({ length: 8 }, () => ({})),
-      lastPageUrl: 'https://other.example.test/catalogo2022x3.php?rub=345',
-    })).toBeNull();
+  it('reports generic incomplete-catalog progress when the page exposes a total', () => {
+    expect(supplierCaptureStatus({ status: 'complete', items: Array.from({ length: 27 }, () => ({})), reportedTotal: 450, warnings: [] }))
+      .toContain('La página informa 450 productos y se leyeron 27');
   });
 });

@@ -196,6 +196,8 @@
       brand: brandRaw ? safeText(brandRaw) : null,
       imageUrl: images[0] ?? null, images, url: normalizeImage(lookup(object, ['permalink', 'url', 'link', 'product_url']), pageUrl),
       packSize: parsePackSize(firstNonEmpty([lookup(object, ['pack_size', 'packSize', 'quantity_per_pack', 'units_per_pack', 'minimum_quantity', 'min_quantity'])])),
+      packPrice: parsePrice(firstNonEmpty([lookup(object, ['pack_price', 'packPrice', 'case_price', 'bulk_price'])]), { currency: currencyRaw, minorUnit: Number(minorUnit), pageUrl }).price,
+      packCurrency: normalizeCurrency(firstNonEmpty([lookup(object, ['pack_currency', 'packCurrency', 'case_currency', 'bulk_currency'])]) ?? currencyRaw, pageUrl),
       notes: normalizedName.notes, needsPriceReview: parsedPrice.needsReview, raw: null,
     };
     row.key = buildKey(row);
@@ -205,8 +207,19 @@
 
   function parsePackSize(value) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
-    const match = String(value ?? '').match(/\d+/);
-    return match ? Number(match[0]) : null;
+    const text = String(value ?? '');
+    const packMatch = text.match(/(?:bulto|pack|caja|por\s+bulto)\s*(?:de\s*)?(?:x|×|:)?\s*(\d{1,5})|(?:x|×)\s*(\d{1,5})\s*(?:unidades?|u\b)?/i);
+    const match = packMatch ?? text.match(/\d+/);
+    return match ? Number(match[1] ?? match[0]) : null;
+  }
+
+  function extractReportedTotal(value) {
+    const text = String(value ?? '').replace(/\s+/g, ' ').slice(0, 50_000);
+    const range = text.match(/(?:mostrando\s*)?\d{1,5}\s*(?:-|–|a)\s*\d{1,5}\s*(?:de|of)\s*(\d{1,6})\s*(?:productos?|items?)?/i)
+      ?? text.match(/\b(?:productos?|items?)\s*\d{1,5}\s*(?:de|of)\s*(\d{1,6})\b/i);
+    const category = text.match(/\b(?:todos?|all)\s*[([]?\s*(\d{1,6})\s*[)\]]?/i);
+    const total = Number(range?.[1] ?? range?.[2] ?? category?.[1]);
+    return Number.isSafeInteger(total) && total > 0 && total <= MAX_PRODUCTS ? total : null;
   }
 
   function buildKey(row) {
@@ -231,7 +244,7 @@
   function collectDomEvidence(document) {
     const candidates = new Set();
     const selectors = [
-      '.caja_producto', 'div.item.open_detail[data-id]', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
+      '.caja_producto', 'div[data-id]', 'article[data-sku]', '[data-sku]', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
       'article.product', 'article.product-card', 'li.product', '.product-card', '.product-item', '.wd-product', '.product-grid-item',
       '.js-item-product', '.item-product', '.grid-item.product', '[class*="product-card"]',
     ];
@@ -240,10 +253,16 @@
     const cards = [];
     for (const node of all) {
       if (!visible(node)) continue;
-      const title = node.querySelector('.descrip h1, .header, h1, h2, h3, [itemprop="name"], .product-title, .woocommerce-loop-product__title, .js-item-name, [class*="title"]');
-      const priceNode = node.querySelector('.ui.basic.right.pointing.label, p.datos strong, strong.caja_precio_noimptk, [itemprop="price"], .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="precio"]')
-        ?? [...node.querySelectorAll('[class*="price"]')].find(candidate => !candidate.matches('del,[class*="original"],[class*="regular"],[data-list-price]'));
-      const imageNodes = [...node.querySelectorAll('.carousel-inner .item img, img')].filter(image => !image.closest(UNSAFE_DOM));
+      if (node.matches('img,svg,button,input,select,textarea')) continue;
+      const title = node.querySelector('.descrip h1, .header, h1, h2, h3, [itemprop="name"], .product-title, .woocommerce-loop-product__title, .js-item-name, [class*="title"], [class*="nombre"], [class*="name"]');
+      const priceNodes = [...node.querySelectorAll('[itemprop="price"], p.datos strong, strong.caja_precio_noimptk, .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="price"], [class*="precio"], [class*="ars"], [class*="usd"]')]
+        .filter(candidate => !candidate.matches('del,[class*="original"],[class*="regular"],[data-list-price],[class*="bulto"],[class*="pack"]'));
+      const genericPriceLeaves = [...node.querySelectorAll('*')].filter(candidate => candidate.children.length === 0
+        && /(?:\bARS\b|\bUSD\b|U\$S|US\$|ARG\s*\$|AR\$|\$)\s*\d/i.test(safeText(candidate.textContent)));
+      const priceNode = chooseUnitPriceNode([...priceNodes, ...genericPriceLeaves]);
+      const imageNodes = [...node.querySelectorAll('.carousel-inner .item img, img')]
+        .filter(image => !image.closest(UNSAFE_DOM) && isLikelyProductImage(image))
+        .sort((left, right) => imageArea(right) - imageArea(left));
       if (!title || !priceNode || imageNodes.length === 0) continue;
       const safeTexts = collectSafeText(node);
       const titleText = safeText(title.textContent);
@@ -265,7 +284,8 @@
       const classProductId = String(node.className || '').match(/(?:^|\s)post-(\d+)(?:\s|$)/)?.[1];
       let permalinkCode = null;
       try { if (productAnchor?.href) permalinkCode = new URL(productAnchor.href, document.location?.href).pathname.replace(/\/$/, '').slice(0, 100) || null; } catch { /* Ignore invalid product links. */ }
-      const fallbackCode = imageNodes.find(image => image.getAttribute('data-codigo'))?.getAttribute('data-codigo')
+      const fallbackCode = node.getAttribute('data-sku')
+        ?? imageNodes.find(image => image.getAttribute('data-codigo'))?.getAttribute('data-codigo')
         ?? node.querySelector('a[name]')?.getAttribute('name')
         ?? node.getAttribute('data-product-id')
         ?? node.getAttribute('data-id')
@@ -273,7 +293,7 @@
         ?? classProductId
         ?? permalinkCode
         ?? node.getAttribute('data-product');
-      const categoryNode = node.querySelector('.meta .category, p.rubro_centrado, [itemprop="category"], [class*="category"], [class*="categoria"], [class*="rubro"]');
+      const categoryNode = node.querySelector('.meta .category, p.rubro_centrado, [itemprop="category"], [data-category], [class*="category"], [class*="categoria"], [class*="rubro"], [class*="ceja"], [class*="eyebrow"]');
       const brandNode = node.querySelector('.meta .brand, [itemprop="brand"], [class*="brand"], [class*="marca"]');
       const priceText = safeText(priceNode.textContent);
       const imageUrls = imageNodes.flatMap(image => [
@@ -284,17 +304,59 @@
       ]).filter(Boolean);
       const allText = safeTexts.join(' ');
       const listPriceNode = node.querySelector('del,.price-original,[class*="original"],[class*="regular"],[data-list-price]');
+      const packPriceNode = node.querySelector('[class*="bulto-precio"],[class*="pack-price"],[class*="bulk-price"],[class*="case-price"]');
       cards.push({
         title: titleText, text: allText.slice(0, MAX_TEXT_LENGTH), priceText,
         code: codeMatch?.[1] ?? fallbackCode ?? null,
         category: categoryNode ? safeText(categoryNode.textContent) : safeTexts.find(text => /^rubro\s*:/i.test(text))?.replace(/^rubro\s*:\s*/i, '') ?? null,
         brand: brandNode ? safeText(brandNode.textContent) : null,
         imageUrls: imageUrls.slice(0, 5), url: productAnchor?.href ?? document.location?.href ?? null,
-        packText: safeTexts.find(text => /(?:p\/bulto|por\s+bulto|x\s*bulto|m[ií]nimo)/i.test(text)) ?? null,
+        packText: safeTexts.find(text => /(?:p\/bulto|por\s+bulto|bulto\s*(?:x|×)|(?:x|×)\s*bulto|pack\s*(?:x|×)|m[ií]nimo)/i.test(text)) ?? null,
+        packPriceText: packPriceNode ? safeText(packPriceNode.textContent) : null,
         listPriceText: listPriceNode ? safeText(listPriceNode.textContent) : safeTexts.find(text => /(?:antes|lista|minorista|regular)/i.test(text)) ?? null,
       });
     }
     return cards;
+  }
+
+  function chooseUnitPriceNode(nodes) {
+    const currencyKind = value => {
+      const text = safeText(value);
+      const hasUsd = /\bUSD\b|U\$S|US\$/i.test(text);
+      const hasArs = /\bARS\b|ARG\s*\$|AR\$/i.test(text) || (text.includes('$') && !hasUsd);
+      if (hasArs && hasUsd) return 'mixed';
+      if (hasArs) return 'ARS';
+      if (hasUsd) return 'USD';
+      return null;
+    };
+    const depth = node => { let value = 0; for (let parent = node; parent; parent = parent.parentElement) value += 1; return value; };
+    const sorted = nodes.filter(node => node && !node.closest('[class*="bulto"],[class*="pack"],[class*="bulk"],[class*="case"],[class*="original"],[class*="regular"],[data-list-price]'))
+      .sort((left, right) => depth(right) - depth(left));
+    return sorted.find(node => currencyKind(node.textContent) === 'ARS')
+      ?? sorted.find(node => currencyKind(node.textContent) === 'USD')
+      ?? sorted.find(node => currencyKind(node.textContent) !== 'mixed')
+      ?? null;
+  }
+
+  function imageArea(image) {
+    const rect = image.getBoundingClientRect?.();
+    const width = Math.max(Number(image.naturalWidth) || 0, Number(rect?.width) || 0, Number(image.getAttribute('width')) || 0);
+    const height = Math.max(Number(image.naturalHeight) || 0, Number(rect?.height) || 0, Number(image.getAttribute('height')) || 0);
+    return width * height;
+  }
+
+  function isLikelyProductImage(image) {
+    const identity = `${image.className ?? ''} ${image.id ?? ''} ${image.alt ?? ''} ${image.getAttribute('title') ?? ''}`;
+    if (/\b(?:logo|icon|badge|watermark|brand[-_ ]?mark|avatar)\b/i.test(identity)) return false;
+    const rect = image.getBoundingClientRect?.();
+    const renderedWidth = Number(rect?.width) || Number(image.getAttribute('width')) || 0;
+    const renderedHeight = Number(rect?.height) || Number(image.getAttribute('height')) || 0;
+    const naturalWidth = Number(image.naturalWidth) || 0;
+    const naturalHeight = Number(image.naturalHeight) || 0;
+    if (naturalWidth > 0 && naturalHeight > 0 && renderedWidth === 0 && renderedHeight === 0) return false;
+    if (renderedWidth > 0 && renderedHeight > 0 && renderedWidth <= 48 && renderedHeight <= 48) return false;
+    if (naturalWidth > 0 && naturalHeight > 0 && naturalWidth <= 48 && naturalHeight <= 48) return false;
+    return true;
   }
 
   function visible(node) {
@@ -354,7 +416,10 @@
         brand: card.brand ? safeText(card.brand) : null,
         imageUrl: (card.imageUrls ?? []).map(image => normalizeImage(image, card.url)).find(Boolean) ?? null,
         images: [...new Set((card.imageUrls ?? []).map(image => normalizeImage(image, card.url)).filter(Boolean))].slice(0, 5),
-        url: normalizeImage(card.url, card.url), packSize: parsePackSize(card.packText), notes: normalized.notes,
+        url: normalizeImage(card.url, card.url), packSize: parsePackSize(card.packText),
+        packPrice: card.packPriceText ? parsePrice(card.packPriceText, { pageUrl: card.url }).price : null,
+        packCurrency: card.packPriceText ? parsePrice(card.packPriceText, { pageUrl: card.url }).currency : null,
+        notes: normalized.notes,
         priceOptions: labeledPrices?.options ?? null,
         needsPriceReview: parsed.needsReview, raw: safeText([card.title, card.priceText, card.code, card.category].filter(Boolean).join(' | ')),
       };
@@ -420,7 +485,7 @@
     if (items.some(item => item.price === null)) warnings.push('Hay productos sin precio; quedaron marcados para revisar y no se importan como costo cero.');
     if (items.some(item => item.needsPriceReview && item.price !== null)) warnings.push('Hay precios superiores a $5.000.000 o que necesitan revisión.');
     if (/mayorista/i.test(evidence.pageText ?? '') && /minorista/i.test(evidence.pageText ?? '')) warnings.push('La página muestra precios mayoristas y minoristas; revisá cuál corresponde antes de continuar.');
-    return { items, source: [...new Set(sources)], warnings };
+    return { items, source: [...new Set(sources)], warnings, reportedTotal: extractReportedTotal(evidence.pageText ?? '') };
   }
 
   function parseJson(value) { try { return JSON.parse(value); } catch { return null; } }
@@ -428,7 +493,11 @@
   function readPage(document, jsonResponses = []) {
     const cards = collectDomEvidence(document);
     const structuredData = extractStructured(document);
-    return extractSupplierProducts({ url: document.location?.href ?? '', cards, structuredData, jsonResponses, pageText: document.body ? collectSafeText(document.body).join(' ') : '' });
+    const pageText = document.body ? collectSafeText(document.body).join(' ') : '';
+    // Totals are sometimes rendered in controls that the supplier initially hides or reveals late.
+    // Their short labels are safe evidence even when the control itself is not currently actionable.
+    const controlText = [...document.querySelectorAll('button,[role="button"],[role="tab"]')].map(control => safeText(control.textContent)).join(' ');
+    return extractSupplierProducts({ url: document.location?.href ?? '', cards, structuredData, jsonResponses, pageText: `${pageText} ${controlText}` });
   }
 
   const api = { MAX_PRODUCTS, collectDomEvidence, decodeHtmlEntities, extractSupplierProducts, normalizeName, normalizeImage, normalizeCategory, normalizeCurrency, parseLabeledPrices, parsePrice, readPage };

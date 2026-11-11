@@ -13,6 +13,8 @@ const item = (index: number, currency = 'ARS') => ({
   imageUrl: 'https://images.example.test/item.webp',
   images: ['https://images.example.test/item.webp'],
   url: `https://supplier.example.test/product/${index}`,
+  packPrice: 100 * (index + 1),
+  packCurrency: currency,
 });
 
 function chunk(offset: number, items: ReturnType<typeof item>[], total: number) {
@@ -45,6 +47,8 @@ describe('supplier extension capture transfer', () => {
     expect(result.rows[500].sourceCode).toBe('SKU-500');
     expect(result.rows[0].brand).toBe('Marca de prueba');
     expect(result.rows[0].supplierCost).toBe(1);
+    expect(result.rows[0].supplierPackCost).toBe(100);
+    expect(result.rows[0].supplierPackCurrency).toBe('ARS');
   });
 
   it('rejects a wrong capture ID, offset, or incomplete chunk', async () => {

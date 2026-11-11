@@ -1894,10 +1894,11 @@ export default function ResellerPriceListModal({
       if (displayMode === 'page') setSupplierImportStep(2);
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : 'No pudimos leer esa página.';
-      const needsExtensionHelp = supplierImportSourceType === 'link' && /no encontramos productos|no encontramos texto|tienda carga/i.test(message);
+      const needsExtensionHelp = supplierImportSourceType === 'link' && /no encontramos productos|no encontramos texto|tienda carga|proveedor carga productos con javascript/i.test(message);
       setSupplierExtensionHelpVisible(needsExtensionHelp);
       setError(needsExtensionHelp
-        ? 'Esta tienda carga los productos con JavaScript. Abrila en Chrome en tu PC y tocá el ícono de RivaStock → Importar productos de esta página.'
+        ? message.startsWith('Este proveedor carga productos con JavaScript') ? message
+          : 'Esta tienda carga los productos con JavaScript. Abrila en Chrome en tu PC y tocá el ícono de RivaStock → Importar productos de esta página.'
         : message);
     } finally {
       setSupplierImportReading(false);
@@ -2885,6 +2886,7 @@ export default function ResellerPriceListModal({
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-semibold text-[var(--ink)]">{row.name}</p>
                                     <p className="mt-1 text-xs text-[var(--ink-muted)]">{row.sourceCode || 'Sin código'}{row.brand ? ` · ${row.brand}` : ''} · {entry.supplierCostLocal === null ? 'Sin costo válido' : formatCurrency(entry.supplierCostLocal)} → {entry.suggestedSalePrice === null ? 'Sin precio sugerido' : formatCurrency(entry.suggestedSalePrice)}</p>
+                                  {row.supplierPackCost && <p className="mt-1 text-xs text-[var(--ink-muted)]">Precio por bulto: {row.supplierPackCurrency === 'USD' ? 'USD ' : ''}{row.supplierPackCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>}
                                   </div>
                                   <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold', rowStatusClass)}>{rowStatus}</span>
                                 </summary>
