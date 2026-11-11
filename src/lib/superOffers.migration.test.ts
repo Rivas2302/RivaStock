@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
+import { BUSINESS_MODULE_KEYS, DEFAULT_BUSINESS_MODULES } from './businessModules';
 
 const OWNER = '11111111-1111-4111-8111-111111111111';
 const LIST = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
@@ -60,7 +61,12 @@ async function createFixtureDatabase() {
     $$;
     CREATE FUNCTION public.has_permission(uuid, text, text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
     CREATE FUNCTION public.business_status(uuid) RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'active'::text $$;
-    CREATE FUNCTION public.business_limits(uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT '{"modules":{"resellers":true}}'::jsonb $$;
+    CREATE TABLE public.business_limit_fixtures (user_id uuid PRIMARY KEY, limits jsonb NOT NULL);
+    INSERT INTO public.business_limit_fixtures(user_id, limits) VALUES
+      ('${OWNER}', '{"modules":{"resellers":true}}'::jsonb);
+    CREATE FUNCTION public.business_limits(p_owner uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$
+      SELECT COALESCE((SELECT limits FROM public.business_limit_fixtures WHERE user_id = p_owner), '{"modules":{"resellers":true}}'::jsonb)
+    $$;
     INSERT INTO public.profiles(id) VALUES ('${OWNER}');
     INSERT INTO public.catalog_config(id, user_id, slug, enabled, allow_orders)
       VALUES ('${CONFIG}', '${OWNER}', 'qa-super-offers', true, true);
@@ -81,10 +87,122 @@ async function createFixtureDatabase() {
   `);
   const migration = await readFile('supabase/migrations/20261111120000_super_offers.sql', 'utf8');
   await db.exec(migration);
+  const moduleGuardMigration = await readFile('supabase/migrations/20261103190000_platform_module_server_guards.sql', 'utf8');
+  const businessRequireModule = moduleGuardMigration.match(/CREATE OR REPLACE FUNCTION public\.business_require_module[\s\S]*?\$\$;/)?.[0];
+  if (!businessRequireModule) throw new Error('business_require_module definition is missing from its source migration');
+  await db.exec(businessRequireModule);
+  await db.exec(await readFile('supabase/migrations/20261111160800_super_offer_business_module_defaults.sql', 'utf8'));
   return db;
 }
 
 describe('Súper ofertas migration', () => {
+  it('uses the same defaults as DEFAULT_BUSINESS_MODULES when the plan omits module keys', async () => {
+    const db = await createFixtureDatabase();
+    try {
+      await db.query(`UPDATE public.business_limit_fixtures SET limits = '{"modules":{"unknown-module":true}}'::jsonb WHERE user_id = $1`, [OWNER]);
+      const actual: Record<string, boolean> = {};
+      for (const module of BUSINESS_MODULE_KEYS) {
+        const result = await db.query<{ enabled: boolean }>(
+          'SELECT public.business_module_enabled($1, $2) AS enabled', [OWNER, module],
+        );
+        actual[module] = result.rows[0].enabled;
+      }
+      expect(actual).toEqual(DEFAULT_BUSINESS_MODULES);
+
+      const unknown = await db.query<{ enabled: boolean }>(
+        'SELECT public.business_module_enabled($1, $2) AS enabled', [OWNER, 'unknown-module'],
+      );
+      expect(unknown.rows[0].enabled).toBe(false);
+      const grants = await db.query<{ anon: boolean; authenticated: boolean }>(`
+        SELECT
+          has_function_privilege('anon', 'public.business_module_enabled(uuid,text)', 'EXECUTE') AS anon,
+          has_function_privilege('authenticated', 'public.business_module_enabled(uuid,text)', 'EXECUTE') AS authenticated
+      `);
+      expect(grants.rows[0]).toEqual({ anon: false, authenticated: false });
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
+  it('keeps business_require_module aligned with the shared defaults for AI, Knowledge, and Automation', async () => {
+    const db = await createFixtureDatabase();
+    try {
+      const moduleKeys = ['ai', 'knowledge', 'automation'] as const;
+      for (const module of moduleKeys) {
+        for (const value of [null, true, false] as const) {
+          const modules = value === null ? {} : { [module]: value };
+          await db.query('UPDATE public.business_limit_fixtures SET limits = $1::jsonb WHERE user_id = $2', [
+            JSON.stringify({ modules }), OWNER,
+          ]);
+          const result = await db.query<{ enabled: boolean }>(
+            'SELECT public.business_module_enabled($1, $2) AS enabled', [OWNER, module],
+          );
+          const expected = value ?? DEFAULT_BUSINESS_MODULES[module];
+          expect(result.rows[0].enabled).toBe(expected);
+
+          let requireModuleAllows = true;
+          try {
+            await db.query('SELECT public.business_require_module($1, $2)', [OWNER, module]);
+          } catch {
+            requireModuleAllows = false;
+          }
+          expect(requireModuleAllows).toBe(result.rows[0].enabled);
+        }
+      }
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
+  it('opens and serves a batch when the plan omits resellers, following the application default', async () => {
+    const db = await createFixtureDatabase();
+    try {
+      await db.query(`UPDATE public.business_limit_fixtures SET limits = '{"modules":{}}'::jsonb WHERE user_id = $1`, [OWNER]);
+      await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [OWNER]);
+      await db.exec('SET ROLE authenticated');
+      const state = await db.query<{ payload: { catalogEnabled: boolean; resellerEnabled: boolean } }>(
+        'SELECT public.get_owner_super_offer_state() AS payload',
+      );
+      expect(state.rows[0].payload).toMatchObject({ catalogEnabled: true, resellerEnabled: true });
+      const saved = await db.query<{ result: { id: string; status: string } }>(`
+        SELECT public.save_super_offer_batch(
+          NULL, 'all', 20, 'fixed', 5000, now() + interval '2 days', 'red',
+          ARRAY[]::uuid[], ARRAY[]::uuid[], true
+        ) AS result
+      `);
+      expect(saved.rows[0].result.status).toBe('open');
+      await db.exec('RESET ROLE');
+      await db.exec('SET ROLE anon');
+      const publicState = await db.query<{ payload: { active: boolean } }>(
+        `SELECT public.get_public_super_offer('qa-super-offers') AS payload`,
+      );
+      expect(publicState.rows[0].payload.active).toBe(true);
+      const order = await db.query<{ result: { orderCode: string; orderOrigin: string } }>(`
+        SELECT public.create_public_super_offer_order(
+          'qa-super-offers', $1::uuid,
+          '{"name":"Cliente QA","phone":"2302000002","email":"","address":"","deliveryMethod":"pickup"}'::jsonb,
+          '[{"productId":"${PRODUCT_A}","quantity":1}]'::jsonb
+        ) AS result
+      `, [saved.rows[0].result.id]);
+      expect(order.rows[0].result).toMatchObject({ orderCode: 'P-0001', orderOrigin: 'super_offer' });
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
+  it('blocks offer administration with the module message when resellers is explicitly false', async () => {
+    const db = await createFixtureDatabase();
+    try {
+      await db.query(`UPDATE public.business_limit_fixtures SET limits = '{"modules":{"resellers":false}}'::jsonb WHERE user_id = $1`, [OWNER]);
+      await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [OWNER]);
+      await db.exec('SET ROLE authenticated');
+      await expect(db.query('SELECT public.get_owner_super_offer_state()'))
+        .rejects.toThrow('El módulo Revendedores no está incluido en tu plan');
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
   it('keeps public payload private, checks branded photos, prices orders on the server, and charges shipping once', async () => {
     const db = await createFixtureDatabase();
     try {
@@ -200,7 +318,7 @@ describe('Súper ofertas migration', () => {
   it('does not expose public offers when the reseller module is disabled', async () => {
     const db = await createFixtureDatabase();
     try {
-      await db.exec(`CREATE OR REPLACE FUNCTION public.business_limits(uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT '{"modules":{"resellers":false}}'::jsonb $$`);
+      await db.query(`UPDATE public.business_limit_fixtures SET limits = '{"modules":{"resellers":false}}'::jsonb WHERE user_id = $1`, [OWNER]);
       await db.exec('SET ROLE anon');
       const result = await db.query<{ payload: { active: boolean } }>(
         `SELECT public.get_public_super_offer('qa-super-offers') AS payload`,

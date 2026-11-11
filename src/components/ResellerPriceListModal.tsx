@@ -109,6 +109,9 @@ function ResellerPortal({ children }: { children: React.ReactNode }) {
   return createPortal(<div className="reseller-module-page contents">{children}</div>, document.body);
 }
 
+type ResellerPageTab = 'summary' | 'prices' | 'providers' | 'orders' | 'super-offers' | 'settings';
+const RESELLER_PAGE_TABS: readonly ResellerPageTab[] = ['summary', 'prices', 'providers', 'orders', 'super-offers', 'settings'];
+
 interface ResellerPriceListModalProps {
   isOpen: boolean;
   displayMode?: 'modal' | 'page';
@@ -338,7 +341,10 @@ export default function ResellerPriceListModal({
   onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'super-offers' | 'settings'>('summary');
+  const [pageTab, setPageTab] = useState<ResellerPageTab>(() => {
+    const requestedTab = searchParams.get('tab');
+    return RESELLER_PAGE_TABS.includes(requestedTab as ResellerPageTab) ? requestedTab as ResellerPageTab : 'summary';
+  });
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);

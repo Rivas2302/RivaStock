@@ -32,6 +32,8 @@ function localDateTime(value: string): string {
 
 export default function SuperOffersManager({ list, products, items, canWrite }: SuperOffersManagerProps) {
   const [ownerState, setOwnerState] = useState<OwnerSuperOfferState | null>(null);
+  const [ownerStateLoading, setOwnerStateLoading] = useState(true);
+  const [ownerStateError, setOwnerStateError] = useState<string | null>(null);
   const [batch, setBatch] = useState<OwnerSuperOfferBatch | null>(null);
   const [selectionMode, setSelectionMode] = useState<'all' | 'selected'>('all');
   const [extraPercent, setExtraPercent] = useState(20);
@@ -84,8 +86,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
   }) : null;
   const activeLink = ownerState?.slug ? `${window.location.origin}/ofertas/${encodeURIComponent(ownerState.slug)}` : '';
 
-  const loadOwnerState = async () => {
-    const state = await getOwnerSuperOfferState();
+  const applyOwnerState = (state: OwnerSuperOfferState) => {
     setOwnerState(state);
     const saved = state.batch;
     setBatch(saved);
@@ -107,31 +108,35 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
     }
   };
 
+  const loadOwnerState = async () => {
+    setOwnerStateLoading(true);
+    setOwnerStateError(null);
+    try {
+      applyOwnerState(await getOwnerSuperOfferState());
+    } catch (err) {
+      setOwnerState(null);
+      setOwnerStateError(err instanceof Error ? err.message : 'No se pudo cargar Súper ofertas.');
+      throw err;
+    } finally {
+      setOwnerStateLoading(false);
+    }
+  };
+
+  const retryOwnerStateLoad = () => { void loadOwnerState().catch(() => undefined); };
+
   useEffect(() => {
     let cancelled = false;
+    setOwnerStateLoading(true);
+    setOwnerStateError(null);
     void getOwnerSuperOfferState().then(state => {
       if (cancelled) return;
-      setOwnerState(state);
-      const saved = state.batch;
-      setBatch(saved);
-      if (saved) {
-        setEditing(saved.status !== 'open');
-        setSelectionMode(saved.selectionMode);
-        setExtraPercent(saved.extraPercent);
-        setShippingMode(saved.shippingMode);
-        setShippingValue(saved.shippingValue);
-        setNoticeColor(saved.noticeColor);
-        setCustomEndsAt(localDateTime(saved.endsAt));
-        setDurationChoice('custom');
-        setSelectedIds(new Set(saved.productIds));
-        setAllowBrandedIds(new Set(saved.brandedProductIds));
-      } else {
-        setEditing(true);
-        setExtraPercent(suggestedPercent);
-        setSelectedIds(new Set(eligibleProducts.map(row => row.product.id)));
-      }
+      applyOwnerState(state);
     }).catch(err => {
-      if (!cancelled) setError(err instanceof Error ? err.message : 'No se pudo cargar Súper ofertas.');
+      if (cancelled) return;
+      setOwnerState(null);
+      setOwnerStateError(err instanceof Error ? err.message : 'No se pudo cargar Súper ofertas.');
+    }).finally(() => {
+      if (!cancelled) setOwnerStateLoading(false);
     });
     return () => { cancelled = true; };
   // Load the saved batch once per list; product eligibility is kept current below.
@@ -228,6 +233,9 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
     : [Math.floor(remainingMs / 86_400_000) ? `${Math.floor(remainingMs / 86_400_000)} d` : '', Math.floor((remainingMs % 86_400_000) / 3_600_000) ? `${Math.floor((remainingMs % 86_400_000) / 3_600_000)} h` : '', Math.max(1, Math.floor((remainingMs % 3_600_000) / 60_000)) ? `${Math.max(1, Math.floor((remainingMs % 3_600_000) / 60_000))} min` : '']
       .filter(Boolean).join(' ');
 
+  if (ownerStateLoading) return <section aria-label="Súper ofertas" className="rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4 text-sm text-[var(--ink-muted)]"><p role="status">Cargando Súper ofertas…</p></section>;
+  if (ownerStateError) return <section aria-label="Súper ofertas" className="space-y-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/30"><p role="alert" className="text-sm text-rose-900 dark:text-rose-100">{ownerStateError}</p><button type="button" onClick={retryOwnerStateLoad} className="min-h-10 rounded-lg border border-rose-400 px-3 text-sm font-semibold text-rose-950 dark:border-rose-800 dark:text-rose-100">Reintentar</button></section>;
+
   return <section className="space-y-5" aria-label="Súper ofertas">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div><h2 className="text-xl font-semibold text-[var(--ink)]">Súper ofertas</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Abrí una tanda por pocos días y compartí el enlace con tus clientes.</p></div>
@@ -248,7 +256,11 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
       </div>
     </section>}
 
-    {(!ownerState || !ownerState.catalogEnabled || !ownerState.resellerEnabled) && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100">Para abrir una tanda, publicá el catálogo y la lista de Revendedores.</p>}
+    {ownerState && (!ownerState.catalogEnabled || !ownerState.resellerEnabled) && <div role="status" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100">
+      <p>Antes de abrir una tanda, publicá lo que falta:</p>
+      {!ownerState.catalogEnabled && <p>Catálogo público sin publicar · <a href="/config?tab=catalog" className="font-semibold underline underline-offset-2">Publicar catálogo</a></p>}
+      {!ownerState.resellerEnabled && <p>Lista de Revendedores sin publicar · <a href="/revendedores?tab=settings" className="font-semibold underline underline-offset-2">Publicar lista de Revendedores</a></p>}
+    </div>}
     {eligibleProducts.length === 0 && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100">Todavía no hay productos de Revendedores con precio y foto.</p>}
 
     {(batch?.status !== 'open' || editing) && <div className="grid gap-5 xl:grid-cols-[minmax(17rem,0.8fr)_minmax(0,1.4fr)]">
@@ -289,7 +301,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
 
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setPreviewOpen(value => !value)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]"><Eye size={17}/>Vista previa</button>
-          {batch?.status === 'open' && editing && <button type="button" onClick={() => void loadOwnerState()} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]">Descartar cambios</button>}
+          {batch?.status === 'open' && editing && <button type="button" onClick={retryOwnerStateLoad} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)]">Descartar cambios</button>}
           <button type="button" onClick={() => void persist(true)} disabled={!canWrite || busy || eligibleProducts.length === 0 || !ownerState?.catalogEnabled || !ownerState?.resellerEnabled} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-ink)] disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={17}/> : <Sparkles size={17} />}{batch?.status === 'open' ? 'Guardar cambios' : 'Abrir tanda'}</button>
         </div>
       </div>
