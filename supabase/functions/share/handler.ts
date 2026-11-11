@@ -49,7 +49,7 @@ function notFound(method: string): Response {
   return htmlResponse(404, '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>No encontramos este catálogo</title></head><body><h1>No encontramos este catálogo</h1></body></html>', method);
 }
 
-function redirectToCanonical(origin: string, slug: string, productId: string, route: 'p' | 'catalogo'): Response {
+function redirectToCanonical(origin: string, slug: string, productId: string, route: 'p' | 'catalogo' | 'ofertas'): Response {
   const path = `/${route}/${encodeURIComponent(slug)}${productId ? `/${encodeURIComponent(productId)}` : ''}`;
   return new Response(null, {
     status: 308,
@@ -184,7 +184,8 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         const canonicalSlug = await readJson<string>(resolveResponse);
         if (!canonicalSlug) return notFound(request.method);
         if (canonicalSlug !== slug) {
-          const canonicalRoute = requestUrl.searchParams.get('canonical') === 'catalogo' ? 'catalogo' : 'p';
+          const requestedRoute = requestUrl.searchParams.get('canonical');
+          const canonicalRoute = requestedRoute === 'catalogo' || requestedRoute === 'ofertas' ? requestedRoute : 'p';
           return redirectToCanonical(origin, canonicalSlug, productId, canonicalRoute);
         }
         return notFound(request.method);
@@ -205,7 +206,40 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
       let imageAlt = `Catálogo de ${config.business_name || 'RivaStock'}`;
       let catalogPath = `/catalogo/${encodeURIComponent(slug)}`;
 
-      if (productId) {
+      const canonicalRequested = requestUrl.searchParams.get('canonical');
+      const isSuperOffersRoute = canonicalRequested === 'ofertas';
+      if (isSuperOffersRoute) {
+        const offerResponse = await fetcher(`${supabaseUrl}/rest/v1/rpc/get_public_super_offer`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_slug: slug }),
+          signal: request.signal,
+        });
+        if (!offerResponse.ok) return htmlResponse(503, '<!doctype html><title>Vista previa no disponible</title>', request.method);
+        const offerPayload = await readJson<{
+          active?: boolean;
+          products?: Array<ShareProduct & { availability?: string | null }>;
+        }>(offerResponse);
+        const isOfferActive = offerPayload?.active === true;
+        catalogPath = `/ofertas/${encodeURIComponent(slug)}`;
+        title = `Súper ofertas · ${config.business_name || 'RivaStock'}`;
+        description = isOfferActive
+          ? `Mirá las Súper ofertas de ${config.business_name || 'este negocio'} por pocos días.`
+          : `Pronto habrá una nueva tanda de Súper ofertas en ${config.business_name || 'este negocio'}.`;
+        imageAlt = title;
+        if (productId && !isOfferActive) return redirectToCanonical(origin, slug, '', 'ofertas');
+        if (productId) {
+          const product = offerPayload?.products?.find(candidate => candidate.id?.toLowerCase() === productId.toLowerCase());
+          if (!product?.id) return notFound(request.method);
+          title = `Súper ofertas · ${product.name} · ${config.business_name || 'RivaStock'}`;
+          const offerPrice = formatPrice(product.salePrice, '$');
+          description = [product.name, offerPrice, config.business_name || 'RivaStock'].filter(Boolean).join(' · ');
+          const productImage = selectProductImage(product, projectHost);
+          imageCandidates = productImage ? [{ url: productImage }, ...catalogImages] : catalogImages;
+          imageAlt = product.name;
+          catalogPath += `/${encodeURIComponent(productId)}`;
+        }
+      } else if (productId) {
         const productResponse = await fetcher(`${supabaseUrl}/rest/v1/rpc/get_public_catalog_product`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
@@ -261,7 +295,8 @@ export function createShareHandler(options: ShareHandlerOptions): (request: Requ
         }
       }
 
-      const canonicalRoute = requestUrl.searchParams.get('canonical') === 'catalogo' ? 'catalogo' : 'p';
+      const requestedRoute = requestUrl.searchParams.get('canonical');
+      const canonicalRoute = requestedRoute === 'catalogo' || requestedRoute === 'ofertas' ? requestedRoute : 'p';
       const canonicalUrl = `${origin}/${canonicalRoute}/${encodeURIComponent(slug)}${productId ? `/${encodeURIComponent(productId)}` : ''}`;
       const html = renderShareHtml({
         canonicalUrl,

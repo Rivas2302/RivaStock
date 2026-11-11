@@ -96,6 +96,7 @@ import { getSupplierImportStoragePaths, previewSupplierImportRemoval, removeSupp
 import { applyResellerPriceListBulkMutations, getBulkActionProductIds, toPriceListBulkRow, type ResellerPriceListBulkMutation, type ResellerPriceListBulkProgress } from '../lib/resellerPriceListBulk';
 import { assertStorageUploadAllowed } from '../lib/platformStorage';
 import ProductThumbnail from './stock/ProductThumbnail';
+import SuperOffersManager from './resellers/SuperOffersManager';
 import NumberField from './NumberField';
 import MoneyInput from './MoneyInput';
 import Modal from './Modal';
@@ -337,7 +338,7 @@ export default function ResellerPriceListModal({
   onPendingImageCleanup,
 }: ResellerPriceListModalProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'settings'>('summary');
+  const [pageTab, setPageTab] = useState<'summary' | 'prices' | 'providers' | 'orders' | 'super-offers' | 'settings'>('summary');
   const [list, setList] = useState<PriceList | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [discount, setDiscount] = useState(20);
@@ -2449,6 +2450,7 @@ export default function ResellerPriceListModal({
             ['prices', 'Lista de precios'],
             ['providers', 'Proveedores'],
             ['orders', 'Encargos'],
+            ['super-offers', 'Súper ofertas'],
             ['settings', 'Ajustes'],
           ] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" aria-selected={pageTab === tab} onClick={() => setPageTab(tab)} className={cn('min-h-11 shrink-0 whitespace-nowrap rounded-t-lg border-b-2 px-3 text-sm font-semibold transition-colors', pageTab === tab ? 'border-[var(--accent)] text-[var(--accent-text)]' : 'border-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]')}>
             {label}
@@ -2556,6 +2558,7 @@ export default function ResellerPriceListModal({
               </section>;
             })}</div>}
           </section>}
+          {displayMode === 'page' && pageTab === 'super-offers' && list && <section role="tabpanel" aria-label="Súper ofertas"><SuperOffersManager list={list} products={products} items={items} canWrite={canWrite}/></section>}
           {displayMode === 'page' && pageTab === 'providers' && <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div><h2 className="text-xl font-semibold text-[var(--ink)]">Proveedores</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Cargá una lista y ofrecé sus productos por pedido, sin tener stock.</p></div>
             <Link to="/proveedores" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--line)] px-3 text-sm font-semibold text-[var(--ink)]">Nuevo proveedor</Link>

@@ -104,6 +104,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={withSuspense(<ResetPassword />)} />
       <Route path="/auth/confirm" element={withSuspense(<AuthConfirm />)} />
       <Route path="/catalogo/:slug/:productId?" element={withSuspense(<PublicCatalog />)} />
+      <Route path="/ofertas/:slug/:productId?" element={withSuspense(<PublicCatalog />)} />
       <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
 
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -138,7 +139,7 @@ function AppRoutes() {
   );
 }
 
-const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/presupuesto/', '/login', '/forgot-password', '/reset-password', '/auth/'];
+const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/ofertas/', '/presupuesto/', '/login', '/forgot-password', '/reset-password', '/auth/'];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return true;

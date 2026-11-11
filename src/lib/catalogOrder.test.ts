@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCatalogOrderWhatsAppMessage, buildRetailOrderWhatsAppMessage, formatRetailOrderCode } from './catalogOrder';
+import { buildCatalogOrderWhatsAppMessage, buildRetailOrderWhatsAppMessage, buildSuperOfferOrderWhatsAppMessage, formatRetailOrderCode } from './catalogOrder';
 
 describe('retail catalog order details', () => {
   it('formats a short, readable per-business order code', () => {
@@ -61,5 +61,18 @@ describe('catalog order WhatsApp confirmation', () => {
     expect(message).toContain('Hola Tienda de prueba! Soy Leo. Te hice un pedido por el catálogo.');
     expect(message).not.toContain('revendedor');
     expect(message).toContain('Pedido P-0001');
+  });
+
+  it('fills the editable super offer template with the order, product lines, subtotal, shipping, and total', () => {
+    expect(buildSuperOfferOrderWhatsAppMessage({
+      template: 'Hola {negocio}\nPedido {codigo}\n{productos}\nSubtotal {subtotal}\nEnvío {envio}\nTotal {total}\n{link}',
+      businessName: 'Tienda de prueba', orderCode: 'P-0042',
+      items: [{ quantity: 2, name: 'Auriculares', price: 1200 }],
+      subtotal: 2400, shippingAmount: 5000, total: 7400,
+    })).toBe([
+      'Hola Tienda de prueba', 'Pedido P-0042', '2 × Auriculares · $ 1.200',
+      'Subtotal $ 2.400', 'Envío $ 5.000', 'Total $ 7.400',
+      'https://rivastock.vercel.app/pedidos/P-0042',
+    ].join('\n'));
   });
 });

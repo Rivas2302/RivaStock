@@ -47,6 +47,7 @@ export interface CatalogPresentation {
   showProductsWithoutPhoto: boolean;
   whatsappMessageTemplate: string;
   whatsappCatalogMessageTemplate: string;
+  whatsappSuperOfferOrderMessageTemplate: string;
 }
 
 export const CATALOG_THEME_OPTIONS: Array<{ id: CatalogThemeId; label: string; heroColor: string; accentColor: string; title: string; description: string }> = [
@@ -98,6 +99,7 @@ export function defaultCatalogPresentation(legacy?: { welcomeMessage?: string; b
     showWhatsAppButton: true, showProductsWithoutPhoto: false,
     whatsappMessageTemplate: 'Hola! Quiero consultar por {producto} ({precio}).\n{link}',
     whatsappCatalogMessageTemplate: 'Hola {negocio}! Vi su catálogo y quería hacer una consulta.',
+    whatsappSuperOfferOrderMessageTemplate: 'Hola {negocio}! Te hice un pedido en Súper ofertas.\nPedido {codigo}\n{productos}\nSubtotal: {subtotal}\nEnvío: {envio}\nTotal: {total}\nVer pedido: {link}',
   };
 }
 

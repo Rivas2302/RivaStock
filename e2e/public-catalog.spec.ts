@@ -108,6 +108,80 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
   });
 }
 
+async function mockSuperOfferApi(page: Page, active = true) {
+  const offerProduct = {
+    ...product,
+    id: 'super-offer-product',
+    name: 'Auricular Súper oferta',
+    salePrice: 1200,
+    stock: 0,
+    availability: 'on_order',
+  };
+  const presentation = {
+    ...fixtureConfig('normal').presentation,
+    whatsappSuperOfferOrderMessageTemplate: 'Pedido {codigo} · {productos} · Subtotal {subtotal} · Envío {envio} · Total {total} · {link}',
+  };
+  const config = {
+    ...fixtureConfig('normal'),
+    slug: 'qa-catalog',
+    presentation,
+    whatsapp_number: '5491100000000',
+  };
+  const payload = active ? {
+    active: true,
+    batch: {
+      id: 'super-offer-batch-qa',
+      endsAt: '2099-12-01T21:00:00.000Z',
+      extraPercent: 20,
+      shippingMode: 'fixed',
+      shippingValue: 5000,
+      noticeColor: 'red',
+    },
+    products: [{
+      id: offerProduct.id,
+      name: offerProduct.name,
+      categoryId: CATEGORY_ID,
+      category: 'Accesorios',
+      salePrice: offerProduct.salePrice,
+      strikePrice: 1800,
+      discountPercent: 33,
+      imageUrl: productImage,
+      images: [productImage],
+      description: 'Auricular de prueba.',
+      availability: 'on_order',
+    }],
+  } : { active: false, batch: null, products: [] };
+  let createdOrder: Record<string, unknown> | null = null;
+  let publicReads = 0;
+  await page.route('**/rest/v1/**', async (route: Route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/catalog_config')) return route.fulfill({ json: [config] });
+    if (url.pathname.endsWith('/rpc/get_public_super_offer')) {
+      publicReads += 1;
+      return route.fulfill({ json: payload });
+    }
+    if (url.pathname.endsWith('/rpc/get_public_catalog_products')) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith('/categories')) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith('/rpc/create_public_super_offer_order')) {
+      createdOrder = route.request().postDataJSON() as Record<string, unknown>;
+      const items = (createdOrder.p_items as Array<{ productId: string; quantity: number }>).map(item => ({
+        productId: item.productId,
+        productName: offerProduct.name,
+        quantity: item.quantity,
+        price: offerProduct.salePrice,
+      }));
+      const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      return route.fulfill({ json: {
+        id: 'c0000000-0000-4000-8000-000000000042', orderCode: 'P-0042', subtotal,
+        shippingAmount: 5000, total: subtotal + 5000, orderOrigin: 'super_offer', channel: 'retail', items,
+      } });
+    }
+    if (url.pathname.endsWith('/rpc/notify_public_order_owner')) return route.fulfill({ json: true });
+    return route.fulfill({ status: 200, json: [] });
+  });
+  return { offerProduct, getCreatedOrder: () => createdOrder, getPublicReads: () => publicReads };
+}
+
 test('public catalog mobile flow reaches checkout without submitting an order', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await mockCatalogApi(page);
@@ -619,7 +693,7 @@ test('retail checkout saves a fixture order code and opens the WhatsApp order me
 
   await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
   await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
-  await expect.poll(() => whatsappPopup.url()).toContain('https://wa.me/5491100000000?text=');
+  await expect.poll(() => whatsappPopup.url()).toContain('https://api.whatsapp.com/send/');
   const autoWhatsAppUrl = new URL(whatsappPopup.url());
   expect(autoWhatsAppUrl.searchParams.get('text')).toContain('Hola Tienda de prueba! Soy Compradora de prueba. Te hice un pedido por el catálogo.');
   const whatsappLink = page.getByRole('link', { name: 'Enviar pedido por WhatsApp' });
@@ -671,7 +745,7 @@ test('anonymous reseller checkout without an active round saves a code and opens
   const orderSummary = page.getByRole('region', { name: 'Resumen del pedido' });
   await expect(orderSummary).toContainText('1 × Cable USB-C');
   await expect(orderSummary).toContainText('1 × Producto por pedido (por pedido)');
-  await expect.poll(() => whatsappPopup.url()).toContain('https://wa.me/5491100000000?text=');
+  await expect.poll(() => whatsappPopup.url()).toContain('https://api.whatsapp.com/send/');
   const whatsappUrl = new URL(whatsappPopup.url());
   const message = whatsappUrl.searchParams.get('text') ?? '';
   expect(message).toContain('Hola Tienda de prueba! Soy Revendedora de prueba, revendedor. Te hice un pedido por el catálogo.');
@@ -988,4 +1062,65 @@ test('desktop category strip shows arrows only when more categories can be scrol
   await expect(page.getByRole('button', { name: 'Desplazar categorías a la izquierda' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Desplazar categorías a la derecha' }).click();
   await expect(page.getByRole('button', { name: 'Desplazar categorías a la izquierda' })).toBeVisible();
+});
+
+test('super-offer catalog shows private-safe offer prices and completes a fixture order with shipping and WhatsApp', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const api = await mockSuperOfferApi(page);
+  await page.goto('/ofertas/qa-catalog');
+
+  await expect(page.getByTestId('super-offer-hero')).toBeVisible();
+  await expect(page.getByTestId('super-offer-shipping-notice')).toContainText(/5\.000 por pedido/);
+  await expect(page.getByRole('button', { name: 'Todos', exact: true })).toHaveCount(0);
+  await expect(page.getByText('SÚPER OFERTA', { exact: true })).toBeVisible();
+  await expect(page.getByText('Auricular Súper oferta', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/1\.200/).first()).toBeVisible();
+
+  const requestsBeforeDetail = api.getPublicReads();
+  await page.getByRole('button', { name: 'Auricular Súper oferta', exact: true }).click();
+  await expect(page.getByTestId('catalog-product-detail-modal')).toBeVisible();
+  await expect(page.getByTestId('catalog-product-detail-modal')).toContainText(/1\.200/);
+  await expect(page.getByText('Cargando catálogo…')).toHaveCount(0);
+  expect(api.getPublicReads()).toBe(requestsBeforeDetail);
+  await page.getByRole('button', { name: 'Volver al catálogo' }).click();
+
+  await page.getByRole('button', { name: 'Agregar Auricular Súper oferta al carrito' }).click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await expect(page.getByTestId('super-offer-cart-totals')).toContainText(/1\.200/);
+  await expect(page.getByTestId('super-offer-cart-totals')).toContainText(/5\.000/);
+  await expect(page.getByTestId('super-offer-total')).toContainText(/6\.200/);
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByPlaceholder('Nombre completo').fill('Cliente QA');
+  await page.getByPlaceholder('WhatsApp').fill('2302000000');
+  const whatsappPopupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  const whatsappPopup = await whatsappPopupPromise;
+  await expect(page.getByRole('heading', { name: '¡Pedido recibido!' })).toBeVisible();
+  await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
+  await expect(page.getByRole('region', { name: 'Resumen del pedido' })).toContainText('1 × Auricular Súper oferta (por pedido)');
+  await expect(page.getByText(/Subtotal:.*1\.200/)).toBeVisible();
+  await expect(page.getByText(/Envío \(por pedido\):.*5\.000/)).toBeVisible();
+  await expect.poll(() => whatsappPopup.url()).toContain('https://api.whatsapp.com/send/');
+  const whatsappMessage = new URL(whatsappPopup.url()).searchParams.get('text') ?? '';
+  expect(whatsappMessage).toContain('P-0042');
+  expect(whatsappMessage).toMatch(/Subtotal.*1\.200/);
+  expect(whatsappMessage).toMatch(/Envío.*5\.000/);
+  expect(whatsappMessage).toMatch(/Total.*6\.200/);
+  const orderPayload = api.getCreatedOrder();
+  expect(orderPayload).toMatchObject({ p_batch_id: 'super-offer-batch-qa' });
+  expect(orderPayload?.p_items).toEqual([{ productId: 'super-offer-product', quantity: 1 }]);
+});
+
+test('super-offer catalog is usable on desktop and a closed batch falls back to the regular catalog', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockSuperOfferApi(page);
+  await page.goto('/ofertas/qa-catalog');
+  await expect(page.getByTestId('super-offer-hero')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agregar Auricular Súper oferta al carrito' })).toBeVisible();
+
+  await page.evaluate(() => window.history.replaceState({}, '', '/ofertas/qa-catalog-closed'));
+  await mockSuperOfferApi(page, false);
+  await page.goto('/ofertas/qa-catalog-closed');
+  await expect(page.getByTestId('super-offer-closed')).toContainText('Próxima tanda pronto');
+  await expect(page.getByRole('link', { name: 'Ver catálogo normal' })).toHaveAttribute('href', '/catalogo/qa-catalog-closed');
 });

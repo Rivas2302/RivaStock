@@ -428,6 +428,9 @@ export interface Order {
   channel?: CatalogChannel;
   priceListId?: string | null;
   deliveryMethod?: 'pickup' | 'shipping';
+  orderOrigin?: 'catalog' | 'super_offer' | null;
+  shippingAmount?: number | null;
+  superOfferBatchId?: string | null;
 }
 
 export interface PublicCatalogProduct extends Product {

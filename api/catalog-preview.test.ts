@@ -65,6 +65,18 @@ describe('Vercel catalog preview proxy', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it('marks public super-offer links with their own canonical route', async () => {
+    const fetcher = vi.fn(async () => new Response('ok'));
+    const response = responseRecorder();
+    await createCatalogPreviewHandler(fetcher as typeof fetch)({
+      method: 'GET', headers: { 'user-agent': userAgent, host: 'rivastock.vercel.app' },
+      query: { slug: 'bazar-prueba', canonical: 'ofertas' },
+    }, response);
+
+    const upstreamUrl = new URL(String(fetcher.mock.calls[0][0]));
+    expect(upstreamUrl.searchParams.get('canonical')).toBe('ofertas');
+  });
+
   it('does not proxy malformed identifiers or ordinary browser requests', async () => {
     const fetcher = vi.fn(async () => new Response('ok'));
     const handler = createCatalogPreviewHandler(fetcher as typeof fetch);

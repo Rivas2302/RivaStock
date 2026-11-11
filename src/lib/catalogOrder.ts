@@ -46,6 +46,28 @@ export function buildCatalogOrderWhatsAppMessage(input: CatalogOrderMessageInput
   ].join('\n');
 }
 
+export function buildSuperOfferOrderWhatsAppMessage(input: {
+  template: string;
+  businessName: string;
+  orderCode: string;
+  items: Array<{ quantity: number; name: string; price: number }>;
+  subtotal: number;
+  shippingAmount: number;
+  total: number;
+}): string {
+  const productLines = input.items.map(item => `${item.quantity} × ${item.name} · ${formatOrderAmount(item.price)}`).join('\n');
+  const values: Record<string, string> = {
+    negocio: input.businessName.trim(),
+    codigo: input.orderCode,
+    productos: productLines,
+    subtotal: formatOrderAmount(input.subtotal),
+    envio: formatOrderAmount(input.shippingAmount),
+    total: formatOrderAmount(input.total),
+    link: `https://rivastock.vercel.app/pedidos/${encodeURIComponent(input.orderCode)}`,
+  };
+  return input.template.replace(/\{(negocio|codigo|productos|subtotal|envio|total|link)\}/g, (_, key: string) => values[key]);
+}
+
 export function buildRetailOrderWhatsAppMessage(input: RetailOrderMessageInput): string {
   const delivery = input.deliveryMethod === 'shipping'
     ? `Envío${input.address?.trim() ? ` · ${input.address.trim()}` : ''}`

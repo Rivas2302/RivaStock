@@ -5,13 +5,16 @@ import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import { notifyPublicOrderOwner, createPublicCatalogOrder, createPublicResellerSupplierRoundOrder, getPublicCatalogProducts, getPublicResellerBuyingPolicy, getPublicResellerSupplierRounds, getResellerCatalogStatus, resolvePublicCatalogSlug, unlockResellerCatalog } from '../lib/publicCatalog';
+import { createPublicSuperOfferOrder, getPublicSuperOffer, type PublicSuperOfferProduct, type PublicSuperOfferResponse } from '../lib/superOffersApi';
+import { calculateSuperOfferShipping, getSuperOfferCountdown } from '../lib/superOffers';
 import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
-import { buildCatalogOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
+import { buildCatalogOrderWhatsAppMessage, buildSuperOfferOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
 import '../components/catalog/catalogInteractions.css';
+import '../components/catalog/superOffers.css';
 
 const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
 import {
@@ -49,6 +52,9 @@ import {
   KeyRound,
   Store,
   Clock3,
+  Percent,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -63,6 +69,9 @@ interface CatalogOrderReceipt {
   address: string;
   items: Array<{ name: string; quantity: number; price: number; onOrder: boolean }>;
   roundClosesAt?: string;
+  orderOrigin?: 'super_offer';
+  subtotal?: number;
+  shippingAmount?: number;
 }
 
 function toRoundProducts(round: PublicResellerSupplierRound): PublicCatalogProduct[] {
@@ -80,19 +89,46 @@ function toRoundProducts(round: PublicResellerSupplierRound): PublicCatalogProdu
   }));
 }
 
+function toSuperOfferCatalogProduct(product: PublicSuperOfferProduct): PublicCatalogProduct {
+  return {
+    id: product.id,
+    name: product.name,
+    categoryId: product.categoryId,
+    category: product.category,
+    purchasePrice: 0,
+    salePrice: product.salePrice,
+    stock: 0,
+    minStock: 0,
+    imageUrl: product.imageUrl ?? undefined,
+    images: product.images,
+    showInCatalog: true,
+    description: product.description ?? undefined,
+    ownerUid: '',
+    createdAt: '',
+    updatedAt: '',
+    availability: product.availability,
+  };
+}
+
 export default function PublicCatalog() {
   const { slug, productId } = useParams<{ slug: string; productId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const isSuperOffersRoute = location.pathname.startsWith('/ofertas/');
+  const publicBasePath = isSuperOffersRoute ? '/ofertas' : '/catalogo';
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
   const routeLocationRef = useRef({ search: location.search, hash: location.hash });
   routeLocationRef.current = { search: location.search, hash: location.hash };
+  const productIdRef = useRef(productId);
+  productIdRef.current = productId;
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [products, setProducts] = useState<PublicCatalogProduct[]>([]);
+  const [superOffer, setSuperOffer] = useState<PublicSuperOfferResponse | null>(null);
+  const [superOfferClock, setSuperOfferClock] = useState(Date.now());
   const [retailProducts, setRetailProducts] = useState<PublicCatalogProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,6 +245,25 @@ export default function PublicCatalog() {
     return () => document.removeEventListener('visibilitychange', updateDocumentVisibility);
   }, []);
   useEffect(() => {
+    if (!isSuperOffersRoute || !superOffer?.active || !slug) return;
+    const timer = window.setInterval(() => {
+      setSuperOfferClock(Date.now());
+      if (document.hidden) return;
+      void getPublicSuperOffer(slug).then(next => {
+        setSuperOffer(next);
+        if (next.active) {
+          const nextProducts = next.products.map(toSuperOfferCatalogProduct);
+          setProducts(nextProducts);
+          setRetailProducts(nextProducts);
+        } else {
+          setProducts([]);
+          setRetailProducts([]);
+        }
+      }).catch(() => undefined);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [isSuperOffersRoute, slug, superOffer?.active, superOffer?.batch?.endsAt]);
+  useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration;
     window.history.scrollRestoration = 'manual';
     return () => { window.history.scrollRestoration = previousScrollRestoration; };
@@ -220,7 +275,7 @@ export default function PublicCatalog() {
     setSelectedProductForLightbox(product);
     setLightboxImageIndex(0);
     setDetailQuantity(1);
-    navigate(`/catalogo/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`, {
+    navigate(`${publicBasePath}/${encodeURIComponent(slug)}/${encodeURIComponent(product.id)}`, {
       replace: replaceCurrent,
       state: { catalogModalBackground: background },
     });
@@ -232,8 +287,8 @@ export default function PublicCatalog() {
     const background = routeState?.catalogModalBackground;
     setSelectedProductForLightbox(null);
     if (productId && background) navigate(-1);
-    else if (productId) navigate(`/catalogo/${encodeURIComponent(slug)}`, { replace: true });
-  }, [location.state, navigate, productId, slug]);
+    else if (productId) navigate(`${publicBasePath}/${encodeURIComponent(slug)}`, { replace: true });
+  }, [location.state, navigate, productId, publicBasePath, slug]);
   const closeProductRef = useRef(closeProduct);
   closeProductRef.current = closeProduct;
 
@@ -249,7 +304,9 @@ export default function PublicCatalog() {
   };
 
   const handleShareProduct = async (product: PublicCatalogProduct, action: 'copy' | 'whatsapp') => {
-    const url = getCatalogShareUrl(window.location.origin, slug ?? '', product.id);
+    const url = isSuperOffersRoute
+      ? `${window.location.origin}/ofertas/${encodeURIComponent(slug ?? '')}/${encodeURIComponent(product.id)}`
+      : getCatalogShareUrl(window.location.origin, slug ?? '', product.id);
     if (action === 'copy') {
       await navigator.clipboard.writeText(url);
       setShareCopied(true);
@@ -257,7 +314,7 @@ export default function PublicCatalog() {
     } else {
       const text = formatCatalogWhatsAppMessage(presentation.whatsappMessageTemplate, {
         product: product.name,
-        price: config?.showPrices ? formatCurrency(getDisplayedPrice(product)) : 'Consultar precio',
+      price: (config?.showPrices || (isSuperOffersRoute && superOfferActive)) ? formatCurrency(getDisplayedPrice(product)) : 'Consultar precio',
         link: url,
         quantity: detailQuantity,
         businessName: config?.businessName ?? '',
@@ -379,8 +436,10 @@ useEffect(() => {
             if (oldChannel && !sessionStorage.getItem(`catalog-channel:${canonicalSlug}`)) {
               sessionStorage.setItem(`catalog-channel:${canonicalSlug}`, oldChannel);
             }
-            const productSuffix = productId ? `/${encodeURIComponent(productId)}` : '';
-            navigateRef.current(`/catalogo/${encodeURIComponent(canonicalSlug)}${productSuffix}${routeLocationRef.current.search}${routeLocationRef.current.hash}`, { replace: true });
+            const requestedProductId = productIdRef.current;
+            const productSuffix = requestedProductId ? `/${encodeURIComponent(requestedProductId)}` : '';
+            const routePrefix = isSuperOffersRoute ? '/ofertas' : '/catalogo';
+            navigateRef.current(`${routePrefix}/${encodeURIComponent(canonicalSlug)}${productSuffix}${routeLocationRef.current.search}${routeLocationRef.current.hash}`, { replace: true });
             return;
           }
           setError('Catálogo no encontrado');
@@ -393,6 +452,26 @@ useEffect(() => {
         }
 
         setConfig(foundConfig);
+
+        if (isSuperOffersRoute) {
+          const offerData = await withTimeout(getPublicSuperOffer(slug), 'load super offer');
+          if (cancelled) return;
+          setSuperOffer(offerData);
+          setCategories([]);
+          setChannel('retail');
+          setResellerAvailable(false);
+          setResellerCatalog(null);
+          setResellerAccessCode('');
+          const offerProducts = offerData.active
+            ? offerData.products.map(toSuperOfferCatalogProduct)
+            : await withTimeout(getPublicCatalogProducts(slug), 'load fallback catalog for closed super offer');
+          if (cancelled) return;
+          setProducts(offerProducts);
+          setRetailProducts(offerProducts);
+          setLoading(false);
+          return;
+        }
+        setSuperOffer(null);
 
         // 2. Fetch products and categories concurrently via Supabase
         const [allProducts, cats, hasResellerCatalog] = await withTimeout(
@@ -446,10 +525,13 @@ useEffect(() => {
     init();
 
     return () => { cancelled = true; };
-  }, [slug]);
+  // Product detail routes share this mounted catalog. Do not reload config and products when only the URL changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperOffersRoute, slug]);
 
   const isProductOrderable = (product: PublicCatalogProduct): boolean => (
-    channel === 'reseller'
+    isSuperOffersRoute ? Boolean(superOffer?.active && superOffer.batch && Date.parse(superOffer.batch.endsAt) > Date.now())
+      : channel === 'reseller'
       ? product.availability === 'on_order' || product.stock > 0
       : true
   );
@@ -534,9 +616,14 @@ useEffect(() => {
     const cartTotal = cart.reduce((acc, item) => acc + (roundPrice(item.product.salePrice) * item.quantity), 0);
     return { cartItemCount, cartTotal };
   }, [cart]);
+  const superOfferActive = Boolean(isSuperOffersRoute && superOffer?.active && superOffer.batch && Date.parse(superOffer.batch.endsAt) > superOfferClock);
+  const superOfferShipping = superOfferActive && superOffer?.batch
+    ? calculateSuperOfferShipping(cartTotal, superOffer.batch.shippingMode, superOffer.batch.shippingValue)
+    : 0;
+  const orderTotal = cartTotal + superOfferShipping;
   const catalogProducts = useMemo(
-    () => products.filter(product => config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
-    [config?.showOutOfStock, products],
+    () => products.filter(product => isSuperOffersRoute || config?.showOutOfStock || product.stock > 0 || product.availability === 'on_order'),
+    [config?.showOutOfStock, isSuperOffersRoute, products],
   );
   const resellerCategoryOptions = useMemo(
     () => buildResellerCatalogCategories(catalogProducts, categories),
@@ -568,7 +655,7 @@ useEffect(() => {
     };
   }, [categoryOptions.length, refreshCategoryScrollState]);
   useEffect(() => {
-    const basePath = `/catalogo/${encodeURIComponent(slug ?? '')}`;
+    const basePath = `${publicBasePath}/${encodeURIComponent(slug ?? '')}`;
     if (!productId) {
       const pendingProductId = (location.state as { catalogPendingProductId?: string } | null)?.catalogPendingProductId;
       if (pendingProductId && directProductSetupRef.current === pendingProductId) {
@@ -605,7 +692,7 @@ useEffect(() => {
       directProductSetupRef.current = null;
       navigate(basePath, { replace: true });
     }
-  }, [catalogProducts, config, loading, location.hash, location.pathname, location.search, location.state, navigate, productId, slug]);
+  }, [catalogProducts, config, loading, location.hash, location.pathname, location.search, location.state, navigate, productId, publicBasePath, slug]);
   useEffect(() => {
     if (!selectedProductForLightbox) return;
     const lockedScrollY = window.scrollY;
@@ -634,6 +721,7 @@ useEffect(() => {
     };
   }, [Boolean(selectedProductForLightbox)]);
   const filteredProducts = useMemo(() => {
+    if (isSuperOffersRoute && !superOfferActive) return [];
     const searchValue = deferredSearch.toLowerCase();
 
     const filteredProducts = catalogProducts.filter((product) => {
@@ -652,7 +740,7 @@ useEffect(() => {
     });
 
     return filteredProducts;
-  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch]);
+  }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch, isSuperOffersRoute, superOfferActive]);
   const [loadedProductBatch, setLoadedProductBatch] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
   const visibleProductCount = loadedProductBatch?.items === filteredProducts ? loadedProductBatch.count : 48;
   const productRows = filteredProducts.slice(0, visibleProductCount);
@@ -804,7 +892,27 @@ useEffect(() => {
       let total: number;
       let orderLines: CatalogOrderReceipt['items'];
       let roundClosesAt: string | undefined;
-      if (channel === 'reseller' && activeRound) {
+      let orderOrigin: CatalogOrderReceipt['orderOrigin'];
+      let subtotal: number | undefined;
+      let shippingAmount: number | undefined;
+      if (isSuperOffersRoute) {
+        if (!superOfferActive || !superOffer?.batch) throw new Error('La tanda ya cerró. Próxima tanda pronto.');
+        const result = await createPublicSuperOfferOrder({
+          slug: slug ?? '', batchId: superOffer.batch.id, customer, items,
+        });
+        createdOrderId = result.id;
+        orderCode = result.orderCode;
+        total = result.total;
+        subtotal = result.subtotal;
+        shippingAmount = result.shippingAmount;
+        orderOrigin = 'super_offer';
+        orderLines = result.items.map(item => ({
+          name: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          onOrder: cart.find(cartItem => cartItem.product.id === item.productId)?.product.availability === 'on_order',
+        }));
+      } else if (channel === 'reseller' && activeRound) {
         const result = await createPublicResellerSupplierRoundOrder({
           slug: slug ?? '', accessCode: resellerAccessCode, roundId: activeRound.id, customer, items,
         });
@@ -841,18 +949,34 @@ useEffect(() => {
         address: deliveryMethod === 'shipping' ? address : '',
         items: orderLines,
         ...(roundClosesAt ? { roundClosesAt } : {}),
+        ...(orderOrigin ? { orderOrigin, subtotal, shippingAmount } : {}),
       };
       setCatalogOrderReceipt(receipt);
       sessionStorage.setItem(`catalog-last-order:${slug ?? ''}`, JSON.stringify(receipt));
       if (config.whatsappNumber) {
-        const text = buildCatalogOrderWhatsAppMessage({
-          businessName: config.businessName || 'el negocio',
-          orderCode,
-          channel,
-          items: receipt.items,
-          total,
-          customerName: name,
-        });
+        const text = orderOrigin === 'super_offer'
+          ? buildSuperOfferOrderWhatsAppMessage({
+              template: config.presentation?.whatsappSuperOfferOrderMessageTemplate
+                ?? defaultCatalogPresentation().whatsappSuperOfferOrderMessageTemplate,
+              businessName: config.businessName || 'el negocio',
+              orderCode,
+              items: receipt.items.map(item => ({
+                quantity: item.quantity,
+                name: item.onOrder ? `${item.name} (por pedido)` : item.name,
+                price: item.price,
+              })),
+              subtotal: receipt.subtotal ?? total,
+              shippingAmount: receipt.shippingAmount ?? 0,
+              total,
+            })
+          : buildCatalogOrderWhatsAppMessage({
+              businessName: config.businessName || 'el negocio',
+              orderCode,
+              channel,
+              items: receipt.items,
+              total,
+              customerName: name,
+            });
         const whatsappUrl = `https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
         if (whatsappWindow) {
           whatsappWindow.opener = null;
@@ -1014,14 +1138,42 @@ if (loading) {
     && presentation.offerProductIds?.includes(product.id)
     && getCatalogOfferPrice(product.salePrice, presentation.offerDiscountPercentByProduct?.[product.id] ?? 0) !== null);
   const maxOfferDiscount = offerProducts.reduce((maximum, product) => Math.max(maximum, presentation.offerDiscountPercentByProduct[product.id] ?? 0), 0);
+  const superOfferProductById = new Map((superOffer?.products ?? []).map(product => [product.id, product]));
+  const superOfferCountdown = superOfferActive && superOffer?.batch
+    ? getSuperOfferCountdown(superOffer.batch.endsAt, superOfferClock)
+    : null;
+  const superOfferMaxDiscount = superOfferActive
+    ? (superOffer?.products ?? []).reduce((maximum, product) => Math.max(maximum, product.discountPercent), 0)
+    : 0;
+  const superOfferBannerColor = {
+    red: '#b91c1c', orange: '#c2410c', violet: '#6d28d9', blue: '#1d4ed8',
+  }[superOffer?.batch?.noticeColor ?? 'red'];
+  const superOfferAnnouncement = superOfferActive && superOffer?.batch
+    ? `SÚPER OFERTAS POR POCOS DÍAS · CIERRA EL ${new Date(superOffer.batch.endsAt).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+    : 'PRÓXIMA TANDA PRONTO';
   const getDisplayedPrice = (product: PublicCatalogProduct) => {
-    if (channel === 'reseller') return roundPrice(product.salePrice);
+    if (isSuperOffersRoute || channel === 'reseller') return roundPrice(product.salePrice);
     const discount = offersAreActive && presentation.offerProductIds?.includes(product.id)
       ? presentation.offerDiscountPercentByProduct?.[product.id] ?? 0 : 0;
     return getCatalogOfferPrice(product.salePrice, discount) ?? roundPrice(product.salePrice);
   };
   const catalogOrderWhatsAppMessage = catalogOrderReceipt && config
-    ? buildCatalogOrderWhatsAppMessage({
+    ? catalogOrderReceipt.orderOrigin === 'super_offer'
+      ? buildSuperOfferOrderWhatsAppMessage({
+          template: config.presentation?.whatsappSuperOfferOrderMessageTemplate
+            ?? defaultCatalogPresentation().whatsappSuperOfferOrderMessageTemplate,
+          businessName: config.businessName || 'el negocio',
+          orderCode: catalogOrderReceipt.orderCode,
+          items: catalogOrderReceipt.items.map(item => ({
+            quantity: item.quantity,
+            name: item.onOrder ? `${item.name} (por pedido)` : item.name,
+            price: item.price,
+          })),
+          subtotal: catalogOrderReceipt.subtotal ?? catalogOrderReceipt.total,
+          shippingAmount: catalogOrderReceipt.shippingAmount ?? 0,
+          total: catalogOrderReceipt.total,
+        })
+      : buildCatalogOrderWhatsAppMessage({
         businessName: config.businessName || 'el negocio',
         orderCode: catalogOrderReceipt.orderCode,
         channel: catalogOrderReceipt.channel,
@@ -1231,10 +1383,47 @@ if (loading) {
             </button>
           </div>
         </div>
-        <CatalogAnnouncement text={presentation.ambience.announcementText} backgroundColor={announcementBackgroundColor} textColor={announcementTextColor}/>
+        <CatalogAnnouncement
+          text={isSuperOffersRoute ? superOfferAnnouncement : presentation.ambience.announcementText}
+          backgroundColor={isSuperOffersRoute ? superOfferBannerColor : announcementBackgroundColor}
+          textColor={isSuperOffersRoute ? '#ffffff' : announcementTextColor}
+        />
       </header>
 
       {/* Hero Section / Banner */}
+      {isSuperOffersRoute ? (
+        <>
+          {superOfferActive ? (
+            <section data-testid="super-offer-hero" aria-label="Tanda abierta de Súper ofertas" className="relative isolate mx-auto mt-4 w-[calc(100%-2rem)] max-w-7xl overflow-hidden rounded-3xl px-5 py-7 text-white shadow-xl sm:mt-6 sm:rounded-[2rem] sm:px-10 sm:py-10" style={{ background: `linear-gradient(135deg, ${superOfferBannerColor}, ${superOfferBannerColor}c9 60%, #111827)` }}>
+              <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                <span className="super-offer-float absolute right-[14%] top-8 grid size-12 place-items-center rounded-full bg-amber-300 text-lg font-black text-amber-950 shadow-lg">%</span>
+                <span className="super-offer-float super-offer-float--delay absolute right-[28%] top-24 grid size-9 place-items-center rounded-full bg-white text-sm font-black text-slate-900 shadow-lg">%</span>
+                <Zap className="super-offer-float absolute right-8 top-1/2 size-8 fill-amber-300 text-amber-300 sm:right-16" />
+                <Sparkles className="super-offer-spark absolute left-[8%] top-8 size-5 text-amber-100" />
+                <Sparkles className="super-offer-spark super-offer-spark--delay absolute bottom-10 left-[22%] size-4 text-white" />
+                <Sparkles className="super-offer-spark absolute bottom-8 right-[10%] size-6 text-amber-200" />
+              </div>
+              <div className="relative max-w-3xl">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/20 px-3 py-1.5 text-xs font-black tracking-wide text-emerald-100"><span className="super-offer-live-dot size-2.5 rounded-full bg-emerald-300"/>TANDA ABIERTA</span>
+                <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">SÚPER OFERTAS</h1>
+                <p className="mt-3 max-w-2xl text-base font-semibold text-white/90 sm:text-xl">Hasta {superOfferMaxDiscount} % menos. Pedí uno o dos productos antes de que cierre.</p>
+                {superOfferCountdown && <div data-testid="super-offer-countdown" aria-label={`${superOfferCountdown.days} días, ${superOfferCountdown.hours} horas y ${superOfferCountdown.minutes} minutos`} className="mt-5 inline-flex items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-amber-300 shadow-lg sm:px-6"><Clock3 size={20} aria-hidden="true"/><span className="text-lg font-black tabular-nums sm:text-2xl">{superOfferCountdown.days}d {String(superOfferCountdown.hours).padStart(2, '0')}h {String(superOfferCountdown.minutes).padStart(2, '0')}m</span></div>}
+              </div>
+            </section>
+          ) : (
+            <section data-testid="super-offer-closed" className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-7xl rounded-3xl px-5 py-8 text-white shadow-xl sm:mt-6 sm:rounded-[2rem] sm:px-10 sm:py-10" style={{ background: `linear-gradient(135deg, ${superOfferBannerColor}, #111827)` }}>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Súper ofertas</p>
+              <h1 className="mt-2 text-3xl font-black sm:text-5xl">Próxima tanda pronto</h1>
+              <p className="mt-3 max-w-2xl text-sm font-medium text-white/80 sm:text-base">La tanda actual ya terminó. Volvé a mirar dentro de poco o consultanos por WhatsApp.</p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <a href={`/catalogo/${encodeURIComponent(slug ?? '')}`} className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-5 text-sm font-bold text-slate-900">Ver catálogo normal</a>
+                {config.whatsappNumber && <a href={`https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(formatCatalogWhatsAppMessage(presentation.whatsappCatalogMessageTemplate, { product: '', price: '', businessName, link: `${window.location.origin}/catalogo/${encodeURIComponent(slug ?? '')}` }))}`} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</a>}
+              </div>
+            </section>
+          )}
+          {superOfferActive && superOffer?.batch && <p data-testid="super-offer-shipping-notice" className="mx-auto mt-3 w-[calc(100%-2rem)] max-w-7xl text-center text-sm font-semibold text-[var(--ink-muted)]">Envío {superOffer.batch.shippingMode === 'fixed' ? `${formatCurrency(superOffer.batch.shippingValue)} por pedido` : `${superOffer.batch.shippingValue}% del subtotal`}, lleves 1 o varios productos.</p>}
+        </>
+      ) : (
       <div className="relative" data-testid="public-catalog-hero">
         <div className="relative h-[60vh] min-h-[400px] w-full overflow-hidden">
           {heroSlide.image ? (
@@ -1293,9 +1482,10 @@ if (loading) {
           {heroSlides.length > 1 && <div className="absolute bottom-4 left-0 right-0 z-10 flex justify-center gap-2" role="group" aria-label="Portadas del catálogo">{heroSlides.map((slide, index) => <button key={slide.id} type="button" aria-label={`Mostrar portada ${index + 1}`} aria-pressed={index === heroSlideIndex % heroSlides.length} onClick={() => setHeroSlideIndex(index)} className="min-h-11 min-w-11 rounded-full p-4"><span className="block size-3 rounded-full border border-white" style={{ backgroundColor: index === heroSlideIndex % heroSlides.length ? accentColor : 'transparent' }}/></button>)}</div>}
         </div>
       </div>
+      )}
 
       {/* Search & Filters */}
-      <div className="relative z-30 -mt-12 px-6">
+      {(!isSuperOffersRoute || superOfferActive) && <div className={cn("relative z-30 px-6", isSuperOffersRoute ? 'mt-4' : '-mt-12')}>
         <div className={cn(
           "max-w-5xl mx-auto p-6 rounded-3xl shadow-2xl border transition-all duration-500",
           darkMode 
@@ -1308,9 +1498,9 @@ if (loading) {
                 "absolute left-5 top-1/2 -translate-y-1/2 transition-colors",
                 darkMode ? "text-white/20 group-focus-within:text-white" : "text-slate-400 group-focus-within:text-slate-900"
               )} size={20} />
-              <input 
+            <input
                 type="text"
-                placeholder="Busca en nuestra colección..."
+                placeholder={isSuperOffersRoute ? 'Buscar en Súper ofertas…' : 'Busca en nuestra colección...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={cn(
@@ -1322,7 +1512,7 @@ if (loading) {
               />
             </div>
             
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
+            {!isSuperOffersRoute && <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
               <button
                 onClick={selectRetailCatalog}
                 className={cn(
@@ -1353,8 +1543,8 @@ if (loading) {
                   <Store size={14} /> Revendedores
                 </button>
               )}
-            </div>
-            {channel === 'reseller' && (
+            </div>}
+            {!isSuperOffersRoute && channel === 'reseller' && (
               <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar por disponibilidad">
                 <span className={cn(
                   'mr-1 text-[10px] font-black uppercase tracking-[0.18em]',
@@ -1389,11 +1579,11 @@ if (loading) {
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Product Grid */}
       <main className="mx-auto flex w-full max-w-7xl flex-col px-4 py-12 sm:px-6 sm:py-24">
-        {channel === 'reseller' && (
+        {!isSuperOffersRoute && channel === 'reseller' && (
           <div className={cn(
             "mb-8 rounded-2xl border p-4 sm:mb-10 sm:rounded-[2rem] sm:p-6",
             darkMode ? "border-indigo-400/20 bg-indigo-500/10" : "border-indigo-100 bg-indigo-50",
@@ -1417,7 +1607,7 @@ if (loading) {
             </div>
           </div>
         )}
-        {channel === 'reseller' && getResellerBuyingPolicyLines(resellerBuyingPolicy).length > 0 && (
+        {!isSuperOffersRoute && channel === 'reseller' && getResellerBuyingPolicyLines(resellerBuyingPolicy).length > 0 && (
           <section aria-labelledby="reseller-buying-policy-title" data-testid="public-reseller-buying-policy" className={cn(
             'mb-8 rounded-2xl border p-4 sm:mb-10 sm:rounded-[2rem] sm:p-6',
             darkMode ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)]',
@@ -1433,7 +1623,7 @@ if (loading) {
             </ul>
           </section>
         )}
-        {channel === 'reseller' && supplierRounds.length > 0 && <section aria-label="Rondas de pedidos por encargo" className="mb-8 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:rounded-[2rem] sm:p-6">
+        {!isSuperOffersRoute && channel === 'reseller' && supplierRounds.length > 0 && <section aria-label="Rondas de pedidos por encargo" className="mb-8 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:rounded-[2rem] sm:p-6">
           <h2 className="text-lg font-black">Pedidos por encargo</h2>
           <p className="mt-1 text-sm text-[var(--ink-muted)]">Elegí la lista del proveedor. El pedido se recibe hasta la hora de cierre.</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1448,11 +1638,11 @@ if (loading) {
             </button>)}
           </div>
         </section>}
-        {(featuredProducts.length > 0 || offerProducts.length > 0) && <section aria-label="Promociones del catálogo" className="mb-10 grid gap-3 sm:grid-cols-2">
+        {!isSuperOffersRoute && (featuredProducts.length > 0 || offerProducts.length > 0) && <section aria-label="Promociones del catálogo" className="mb-10 grid gap-3 sm:grid-cols-2">
           {featuredProducts.length > 0 && <a href="#catalog-section-all" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--brand-soft)] p-5 text-[var(--brand-strong)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Selección de temporada</span><span className="mt-1 text-lg font-black">Elegidos para vos</span><span className="mt-1 text-sm">Descubrí los productos destacados.</span></a>}
           {offerProducts.length > 0 && <a href="#catalog-section-offers" className="flex min-h-24 flex-col justify-center rounded-2xl bg-[var(--action-bg)] p-5 text-[var(--action-ink)] transition-transform hover:-translate-y-0.5"><span className="text-xs font-bold uppercase tracking-wider">Por tiempo limitado</span><span className="mt-1 text-lg font-black">Ofertas relámpago</span><span className="mt-1 text-sm">Hasta {maxOfferDiscount}% de descuento.</span></a>}
         </section>}
-        {channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
+        {!isSuperOffersRoute && channel !== 'reseller' && visibleSections.find(section => section.id === 'categories')?.visible && <section aria-label={CATALOG_SECTION_LABELS.categories} style={{ order: sectionOrder('categories') }} className="mb-10">
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.categories}</h2>
           <div className="relative">
             {categoryCanScrollLeft && <button type="button" aria-label="Desplazar categorías a la izquierda" onClick={() => categoryStripRef.current?.scrollBy({ left: -Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute left-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">‹</button>}
@@ -1475,11 +1665,11 @@ if (loading) {
             </div>
             {categoryCanScrollRight && <button type="button" aria-label="Desplazar categorías a la derecha" onClick={() => categoryStripRef.current?.scrollBy({ left: Math.max(260, Math.floor((categoryStripRef.current?.clientWidth ?? 400) * 0.72)), behavior: 'smooth' })} className="absolute right-0 top-6 z-10 hidden size-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)]/95 text-2xl font-bold shadow-lg md:grid">›</button>}
           </div>        </section>}
-        {visibleSections.find(section => section.id === 'featured')?.visible && renderProductRail(CATALOG_SECTION_LABELS.featured, featuredProducts, 'featured')}
-        {visibleSections.find(section => section.id === 'offers')?.visible && renderProductRail(CATALOG_SECTION_LABELS.offers, offerProducts, 'offers')}
-        {visibleSections.find(section => section.id === 'new')?.visible && renderProductRail(CATALOG_SECTION_LABELS.new, newProducts, 'new')}
-        {visibleSections.find(section => section.id === 'all')?.visible && <section id="catalog-section-all" aria-label={CATALOG_SECTION_LABELS.all} style={{ order: sectionOrder('all') }} className="scroll-mt-24">
-        <h2 className="mb-5 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.all}</h2>
+        {!isSuperOffersRoute && visibleSections.find(section => section.id === 'featured')?.visible && renderProductRail(CATALOG_SECTION_LABELS.featured, featuredProducts, 'featured')}
+        {!isSuperOffersRoute && visibleSections.find(section => section.id === 'offers')?.visible && renderProductRail(CATALOG_SECTION_LABELS.offers, offerProducts, 'offers')}
+        {!isSuperOffersRoute && visibleSections.find(section => section.id === 'new')?.visible && renderProductRail(CATALOG_SECTION_LABELS.new, newProducts, 'new')}
+        {(isSuperOffersRoute || visibleSections.find(section => section.id === 'all')?.visible) && <section id="catalog-section-all" aria-label={isSuperOffersRoute ? 'Súper ofertas' : CATALOG_SECTION_LABELS.all} style={{ order: sectionOrder('all') }} className="scroll-mt-24">
+        <h2 className="mb-5 text-xl font-bold sm:text-2xl">{isSuperOffersRoute ? 'Súper ofertas' : CATALOG_SECTION_LABELS.all}</h2>
         <div className="catalog-product-grid grid grid-cols-2 gap-3 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4">
             {productRows.map((product) => (
               <div
@@ -1524,6 +1714,8 @@ if (loading) {
                   
                   {/* Badges */}
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
+                    {isSuperOffersRoute && superOfferActive && <span className="w-fit rounded-full bg-orange-600 px-3 py-1 text-[10px] font-black tracking-wide text-white shadow-lg">SÚPER OFERTA</span>}
+                    {isSuperOffersRoute && superOfferActive && (superOfferProductById.get(product.id)?.discountPercent ?? 0) >= 5 && <span className="super-offer-discount-badge w-fit rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-amber-950 shadow-lg">−{superOfferProductById.get(product.id)?.discountPercent}%</span>}
                     {offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
                     {Date.parse(product.createdAt) >= Date.now() - 30 * 24 * 60 * 60 * 1000 && <span className="w-fit rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">Nuevo</span>}
                     {channel === 'reseller' && product.availability === 'on_order' ? (
@@ -1545,7 +1737,7 @@ if (loading) {
                         "catalog-product-category inline-flex w-fit max-w-full items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]",
                         darkMode ? "bg-white/10 text-white/70" : "bg-slate-100 text-slate-500"
                       )} data-testid="catalog-product-category">
-                        {categories.find(c => c.id === product.categoryId)?.name || 'General'}
+                        {categories.find(c => c.id === product.categoryId)?.name || product.category || 'General'}
                       </span>
                     </div>
                     <button type="button" onClick={() => openProduct(product)} className={cn(
@@ -1575,16 +1767,17 @@ if (loading) {
 
                   <div className="mt-3 flex min-w-0 flex-col gap-2 sm:mt-6 sm:flex-row sm:items-end sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      {config.showPrices && (
+                      {(config.showPrices || (isSuperOffersRoute && superOfferActive)) && (
                         <p className={cn(
                           "text-base font-black tracking-tight sm:text-2xl",
                           darkMode ? "text-white" : "text-slate-900"
                         )}>
                           {(() => {
                             const offerPrice = getDisplayedPrice(product);
-                            return offerPrice !== null
-                              ? <>{offerPrice !== roundPrice(product.salePrice) && <span className="mr-2 text-sm font-medium text-slate-400 line-through">{formatCurrency(roundPrice(product.salePrice))}</span>}{formatCurrency(offerPrice)}</>
-                              : formatCurrency(roundPrice(product.salePrice));
+                            const superOfferStrike = isSuperOffersRoute ? superOfferProductById.get(product.id)?.strikePrice ?? null : null;
+                            const normalStrike = !isSuperOffersRoute && offerPrice !== roundPrice(product.salePrice) ? roundPrice(product.salePrice) : null;
+                            const strikePrice = superOfferStrike ?? normalStrike;
+                            return <>{strikePrice !== null && <span className="mr-2 text-sm font-medium text-slate-400 line-through">{formatCurrency(strikePrice)}</span>}{formatCurrency(offerPrice)}</>;
                           })()}
                         </p>
                       )}
@@ -1603,9 +1796,9 @@ if (loading) {
             ))}
         </div>
         <p role="status" data-testid="catalog-product-count" className="mt-6 text-center text-sm text-[var(--ink-muted)]">Mostrando {Math.min(visibleProductCount, filteredProducts.length)} de {filteredProducts.length}</p>
-        {visibleProductCount < filteredProducts.length && <button type="button" data-testid="catalog-load-more" onClick={() => setLoadedProductBatch(current => ({ items: filteredProducts, count: Math.min((current?.items === filteredProducts ? current.count : 48) + 48, filteredProducts.length) }))} className="mx-auto mt-3 flex min-h-12 w-full max-w-sm items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 text-sm font-bold text-[var(--ink)] shadow-sm">Ver más productos</button>}
+        {visibleProductCount < filteredProducts.length && <button type="button" data-testid="catalog-load-more" onClick={() => setLoadedProductBatch(current => ({ items: filteredProducts, count: Math.min((current?.items === filteredProducts ? current.count : 48) + 48, filteredProducts.length) }))} className="mx-auto mt-3 flex min-h-12 w-full max-w-sm items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 text-sm font-bold text-[var(--ink)] shadow-sm">{isSuperOffersRoute ? 'Ver más ofertas' : 'Ver más productos'}</button>}
 
-        {visibleSections.find(section => section.id === 'all')?.visible && filteredProducts.length === 0 && (
+        {(isSuperOffersRoute || visibleSections.find(section => section.id === 'all')?.visible) && filteredProducts.length === 0 && (
           <div className="text-center py-40 space-y-6">
             <div className={cn(
               "w-24 h-24 rounded-full flex items-center justify-center mx-auto transition-colors",
@@ -1618,14 +1811,14 @@ if (loading) {
                 "text-2xl font-bold tracking-tight",
                 darkMode ? "text-white" : "text-slate-900"
               )}>
-                {products.length === 0 ? 'Catálogo vacío' : 'Sin resultados'}
+                {isSuperOffersRoute && !superOfferActive ? 'Próxima tanda pronto' : products.length === 0 ? 'Catálogo vacío' : 'Sin resultados'}
               </h3>
               <p className={cn(
                 "font-medium",
                 darkMode ? "text-white/40" : "text-slate-500"
               )}>
                 {products.length === 0 
-                  ? 'Vuelve pronto para ver nuestras novedades.' 
+                  ? isSuperOffersRoute ? 'Volvé pronto para ver las próximas ofertas.' : 'Vuelve pronto para ver nuestras novedades.'
                   : 'Intenta con otros términos o categorías.'}
               </p>
             </div>
@@ -1886,22 +2079,22 @@ if (loading) {
                   "space-y-4 border-t p-4 sm:space-y-6 sm:p-8",
                   darkMode ? "bg-[#0a0a0a] border-white/5" : "bg-slate-50 border-slate-100"
                 )}>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <span className={cn(
-                        "font-bold uppercase text-[10px] tracking-[0.2em]",
-                        darkMode ? "text-white/30" : "text-slate-400"
-                      )}>Total a pagar</span>
-                      <div className={cn(
-                        "h-0.5 w-8 rounded-full",
-                        darkMode ? "bg-white/10" : "bg-slate-200"
-                      )} />
+                  {isSuperOffersRoute ? (
+                    <div className="space-y-2" data-testid="super-offer-cart-totals">
+                      <div className="flex items-center justify-between text-sm"><span className={darkMode ? 'text-white/60' : 'text-slate-600'}>Subtotal</span><span className="font-semibold">{formatCurrency(cartTotal)}</span></div>
+                      <div className="flex items-center justify-between text-sm"><span className={darkMode ? 'text-white/60' : 'text-slate-600'}>Envío (por pedido)</span><span className="font-semibold">{formatCurrency(superOfferShipping)}</span></div>
+                      <div className="flex items-center justify-between border-t border-current/10 pt-2"><span className="font-bold">Total a pagar</span><span className="text-3xl font-black tracking-tight" data-testid="super-offer-total">{formatCurrency(orderTotal)}</span></div>
                     </div>
-                    <span className={cn(
-                      "text-4xl font-black tracking-tighter",
-                      darkMode ? "text-white" : "text-slate-900"
-                    )}>{formatCurrency(cartTotal)}</span>
-                  </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <span className={cn("font-bold uppercase text-[10px] tracking-[0.2em]", darkMode ? "text-white/30" : "text-slate-400")}>Total a pagar</span>
+                        <div className={cn("h-0.5 w-8 rounded-full", darkMode ? "bg-white/10" : "bg-slate-200")} />
+                      </div>
+                      <span className={cn("text-4xl font-black tracking-tighter", darkMode ? "text-white" : "text-slate-900")}>{formatCurrency(cartTotal)}</span>
+                    </div>
+                  )}
+                  {isSuperOffersRoute && !superOfferActive && <p role="alert" className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950">La tanda ya cerró. Próxima tanda pronto.</p>}
                   {channel === 'reseller' && commercialRuleMessage && (
                     <div className={cn(
                       "rounded-2xl px-4 py-3 text-sm font-bold",
@@ -1931,7 +2124,7 @@ if (loading) {
                       setIsCartOpen(false);
                       setIsCheckoutOpen(true);
                     }}
-                    disabled={!commercialRuleSatisfied}
+                    disabled={!commercialRuleSatisfied || (isSuperOffersRoute && !superOfferActive)}
                     className="w-full text-white py-5 rounded-full font-black text-lg shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ backgroundColor: accentColor, boxShadow: `0 20px 40px -5px ${accentColor}60` }}
                   >
@@ -2148,7 +2341,7 @@ if (loading) {
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
               <div className="min-h-0 flex-1 overflow-y-auto"><div className="grid gap-5 p-4 md:grid-cols-2 md:p-6">
                 <div className="space-y-3"><div className="relative aspect-square overflow-hidden rounded-2xl bg-[var(--surface-muted)]">{images.length ? <img src={images[Math.min(lightboxImageIndex,images.length-1)]} alt={product.name} className="size-full object-contain"/> : <div className="grid size-full place-items-center"><ShoppingBag size={52}/></div>}{images.length>1&&<><button type="button" aria-label="Foto anterior" onClick={()=>setLightboxImageIndex(index=>(index-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronLeft/></button><button type="button" aria-label="Foto siguiente" onClick={()=>setLightboxImageIndex(index=>(index+1)%images.length)} className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white"><ChevronRight/></button></>}</div><div className="flex gap-2 overflow-x-auto">{images.map((image,index)=><button key={`${image}-${index}`} type="button" aria-label={`Ver foto ${index+1}`} aria-pressed={lightboxImageIndex===index} onClick={()=>setLightboxImageIndex(index)} className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 ${lightboxImageIndex===index?'border-[var(--brand)]':'border-transparent'}`}><img src={image} alt="" className="size-full object-cover"/></button>)}</div></div>
-                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{config.showPrices&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="hidden grid-cols-2 gap-2 md:grid"><button type="button" aria-label="Copiar link" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="hidden min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50 md:block" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
+                <div className="space-y-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{categories.find(category=>category.id===product.categoryId)?.name??product.category??'General'}</p><h2 className="text-2xl font-black leading-tight">{product.name}</h2>{(config.showPrices || (isSuperOffersRoute && superOfferActive))&&<p className="text-3xl font-black" style={{color:accentColor}}>{formatCurrency(price)}</p>}{product.description&&<div><h3 className="font-bold">Descripción</h3><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--ink-muted)]">{product.description}</p></div>}<div className="flex min-h-12 items-center gap-3"><span className="flex-1 text-sm font-semibold">Cantidad</span><button type="button" aria-label="Quitar una unidad" onClick={()=>setDetailQuantity(value=>Math.max(1,value-1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Minus size={17}/></button><span aria-live="polite" className="min-w-8 text-center font-bold">{detailQuantity}</span><button type="button" aria-label="Agregar una unidad" onClick={()=>setDetailQuantity(value=>Math.min(9999,value+1))} className="grid size-11 place-items-center rounded-xl border border-[var(--line)]"><Plus size={17}/></button></div><div className="hidden grid-cols-2 gap-2 md:grid"><button type="button" aria-label="Copiar link" onClick={()=>void handleShareProduct(product,'copy')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[var(--line)] text-sm font-semibold"><Copy size={17}/>{shareCopied?'Copiado':'Copiar link'}</button>{presentation.showWhatsAppButton&&<button type="button" onClick={()=>void handleShareProduct(product,'whatsapp')} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white"><MessageCircle size={18}/>WhatsApp</button>}</div><button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="hidden min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50 md:block" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button></div>
               </div>{related.length>0&&<section className="border-t border-[var(--line)] p-4 pb-8"><h3 className="mb-3 font-bold">Productos relacionados</h3><div className="flex gap-3 overflow-x-auto">{related.map(row=><button key={row.id} type="button" onClick={()=>openProduct(row,true)} className="w-28 shrink-0 text-left"><span className="block aspect-square overflow-hidden rounded-xl bg-[var(--surface-muted)]">{(row.images?.[0]??row.imageUrl)&&<img src={row.images?.[0]??row.imageUrl} alt="" loading="lazy" className="size-full object-cover"/>}</span><span className="mt-1 block truncate text-xs font-semibold">{row.name}</span></button>)}</div></section>}</div>
               <footer className="grid shrink-0 gap-2 border-t border-[var(--line)] bg-[var(--surface-raised)] p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:hidden">
                 <button type="button" onClick={addSelected} disabled={!isProductOrderable(product)} className="min-h-14 w-full rounded-2xl text-base font-bold text-white disabled:opacity-50" style={{backgroundColor:accentColor}}>Agregar al carrito · {formatCurrency(price*detailQuantity)}</button>
@@ -2198,7 +2391,13 @@ if (loading) {
                   <h3 className={cn("text-2xl font-black tracking-tight", darkMode ? "text-white" : "text-slate-900")}>¡Pedido recibido!</h3>
                   <p className={cn("text-sm font-semibold", darkMode ? "text-white/70" : "text-slate-600")}>Código del pedido</p>
                   <p className="text-3xl font-black" data-testid="catalog-order-code"><span data-testid={catalogOrderReceipt.channel === 'retail' ? 'retail-order-code' : 'reseller-order-code'}>{catalogOrderReceipt.orderCode}</span></p>
-                  <p className="text-lg font-bold">Total: {formatCurrency(catalogOrderReceipt.total)}</p>
+                  {catalogOrderReceipt.orderOrigin === 'super_offer' ? (
+                    <div className="space-y-1 text-sm">
+                      <p>Subtotal: {formatCurrency(catalogOrderReceipt.subtotal ?? catalogOrderReceipt.total)}</p>
+                      <p>Envío (por pedido): {formatCurrency(catalogOrderReceipt.shippingAmount ?? 0)}</p>
+                      <p className="pt-1 text-lg font-black">Total: {formatCurrency(catalogOrderReceipt.total)}</p>
+                    </div>
+                  ) : <p className="text-lg font-bold">Total: {formatCurrency(catalogOrderReceipt.total)}</p>}
                 </div>
                 <section className={cn("rounded-2xl p-4 text-left", darkMode ? "bg-white/5" : "bg-slate-50")} aria-label="Resumen del pedido">
                   <h4 className="mb-2 text-sm font-bold">Resumen</h4>

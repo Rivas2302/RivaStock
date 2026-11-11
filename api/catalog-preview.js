@@ -40,7 +40,10 @@ export function createCatalogPreviewHandler(fetcher = fetch) {
     const upstreamUrl = new URL(SHARE_FUNCTION_URL);
     upstreamUrl.searchParams.set('slug', slug);
     upstreamUrl.searchParams.set('siteHost', host);
-    upstreamUrl.searchParams.set('canonical', 'catalogo');
+    const canonical = typeof request.query?.canonical === 'string' && request.query.canonical === 'ofertas'
+      ? 'ofertas'
+      : 'catalogo';
+    upstreamUrl.searchParams.set('canonical', canonical);
     if (productId) upstreamUrl.searchParams.set('productId', productId);
 
     try {

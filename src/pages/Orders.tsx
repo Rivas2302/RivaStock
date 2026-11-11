@@ -199,6 +199,9 @@ export default function Orders() {
                     {order.channel === 'reseller' && (
                       <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded uppercase">Revendedor</span>
                     )}
+                    {order.orderOrigin === 'super_offer' && (
+                      <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded uppercase">Súper oferta</span>
+                    )}
                   </div>
                   <span className="text-xs text-slate-400 font-medium">{formatDate(order.date.split('T')[0])}</span>
                 </div>
@@ -238,6 +241,7 @@ export default function Orders() {
                     </div>
                   ))}
                 </div>
+                {order.orderOrigin === 'super_offer' && <div className="mt-4 flex items-center justify-between text-sm text-slate-600 dark:text-slate-300"><span>Envío (por pedido)</span><span>{formatCurrency(roundPrice(order.shippingAmount ?? 0))}</span></div>}
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
                   <span className="font-bold text-slate-900 dark:text-white">Total del Pedido:</span>
                   <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(roundPrice(order.total))}</span>
