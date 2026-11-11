@@ -16,7 +16,7 @@ describe('Vercel catalog preview proxy', () => {
   const userAgent = 'WhatsApp/2.24';
 
   it('proxies only a validated public slug and preserves upstream metadata headers', async () => {
-    const fetcher = vi.fn(async () => new Response('<title>Negocio</title><meta property="og:title">', {
+    const fetcher = vi.fn<typeof fetch>(async (_input, _init) => new Response('<title>Negocio</title><meta property="og:title">', {
       status: 200,
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, s-maxage=300' },
     }));
@@ -36,7 +36,7 @@ describe('Vercel catalog preview proxy', () => {
 
   it('preserves a canonical redirect for old catalog and product share links', async () => {
     const canonicalUrl = 'https://rivastock.vercel.app/catalogo/bazar-lucia/12345678-1234-4abc-8def-1234567890ab';
-    const fetcher = vi.fn(async () => new Response(null, {
+    const fetcher = vi.fn<typeof fetch>(async (_input, _init) => new Response(null, {
       status: 308,
       headers: { location: canonicalUrl, 'cache-control': 'public, max-age=0, s-maxage=300' },
     }));
@@ -52,7 +52,7 @@ describe('Vercel catalog preview proxy', () => {
   });
 
   it('passes an optional product UUID without accepting arbitrary hosts or methods', async () => {
-    const fetcher = vi.fn(async () => new Response('ok'));
+    const fetcher = vi.fn<typeof fetch>(async (_input, _init) => new Response('ok'));
     const handler = createCatalogPreviewHandler(fetcher as typeof fetch);
     const badHost = responseRecorder();
     await handler({ method: 'GET', headers: { 'user-agent': userAgent, host: 'evil.example' }, query: { slug: 'bazar' } }, badHost);
@@ -66,7 +66,7 @@ describe('Vercel catalog preview proxy', () => {
   });
 
   it('marks public super-offer links with their own canonical route', async () => {
-    const fetcher = vi.fn(async () => new Response('ok'));
+    const fetcher = vi.fn<typeof fetch>(async (_input, _init) => new Response('ok'));
     const response = responseRecorder();
     await createCatalogPreviewHandler(fetcher as typeof fetch)({
       method: 'GET', headers: { 'user-agent': userAgent, host: 'rivastock.vercel.app' },
