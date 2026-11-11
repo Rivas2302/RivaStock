@@ -1377,3 +1377,7 @@ Para capturas por extensión, la miniatura de la revisión y la copia al agregar
 - Prueba explícita: `grep` en `extensions/` no encuentra ningún dominio ni clase de proveedor.
 
 **Criterio de cierre:** ElectroBH completo (~650, todas las páginas), Braja con fotos visibles en la revisión, los 7 proveedores del corpus sin regresiones y las 3 tiendas desconocidas, todo con **la misma versión de la extensión**. Después de I52, agregar un proveedor nuevo no requiere tocar la extensión.
+
+### [ ] I53 — IA integrada a RivaStock
+
+Especificación: `docs/ai/AI_PLAN_I53.md`. Etapa 0 informada en `docs/ai/AI_PLAN_I53_SPIKE.md`; esperar el OK del dueño antes de iniciar la Etapa 1.
