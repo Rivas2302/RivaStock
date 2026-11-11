@@ -1139,6 +1139,7 @@ if (loading) {
     && getCatalogOfferPrice(product.salePrice, presentation.offerDiscountPercentByProduct?.[product.id] ?? 0) !== null);
   const maxOfferDiscount = offerProducts.reduce((maximum, product) => Math.max(maximum, presentation.offerDiscountPercentByProduct[product.id] ?? 0), 0);
   const superOfferProductById = new Map((superOffer?.products ?? []).map(product => [product.id, product]));
+  const showSuperOfferComparePrice = isSuperOffersRoute && superOfferActive && superOffer?.batch?.showComparePrice === true;
   const superOfferCountdown = superOfferActive && superOffer?.batch
     ? getSuperOfferCountdown(superOffer.batch.endsAt, superOfferClock)
     : null;
@@ -1406,7 +1407,7 @@ if (loading) {
               <div className="relative max-w-3xl">
                 <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/20 px-3 py-1.5 text-xs font-black tracking-wide text-emerald-100"><span className="super-offer-live-dot size-2.5 rounded-full bg-emerald-300"/>TANDA ABIERTA</span>
                 <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">SÚPER OFERTAS</h1>
-                <p className="mt-3 max-w-2xl text-base font-semibold text-white/90 sm:text-xl">Hasta {superOfferMaxDiscount} % menos. Pedí uno o dos productos antes de que cierre.</p>
+                <p className="mt-3 max-w-2xl text-base font-semibold text-white/90 sm:text-xl">{showSuperOfferComparePrice ? `Hasta ${superOfferMaxDiscount} % menos. Pedí uno o dos productos antes de que cierre.` : 'Precios especiales por pocos días. Pedí antes de que cierre.'}</p>
                 {superOfferCountdown && <div data-testid="super-offer-countdown" aria-label={`${superOfferCountdown.days} días, ${superOfferCountdown.hours} horas y ${superOfferCountdown.minutes} minutos`} className="mt-5 inline-flex items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-amber-300 shadow-lg sm:px-6"><Clock3 size={20} aria-hidden="true"/><span className="text-lg font-black tabular-nums sm:text-2xl">{superOfferCountdown.days}d {String(superOfferCountdown.hours).padStart(2, '0')}h {String(superOfferCountdown.minutes).padStart(2, '0')}m</span></div>}
               </div>
             </section>
@@ -1715,8 +1716,8 @@ if (loading) {
                   {/* Badges */}
                   <div className="absolute top-8 left-8 flex flex-col gap-2">
                     {isSuperOffersRoute && superOfferActive && <span className="w-fit rounded-full bg-orange-600 px-3 py-1 text-[10px] font-black tracking-wide text-white shadow-lg">SÚPER OFERTA</span>}
-                    {isSuperOffersRoute && superOfferActive && (superOfferProductById.get(product.id)?.discountPercent ?? 0) >= 5 && <span className="super-offer-discount-badge w-fit rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-amber-950 shadow-lg">−{superOfferProductById.get(product.id)?.discountPercent}%</span>}
-                    {offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
+                    {showSuperOfferComparePrice && (superOfferProductById.get(product.id)?.discountPercent ?? 0) >= 5 && <span className="super-offer-discount-badge w-fit rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black text-amber-950 shadow-lg">−{superOfferProductById.get(product.id)?.discountPercent}%</span>}
+                    {!isSuperOffersRoute && offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
                     {Date.parse(product.createdAt) >= Date.now() - 30 * 24 * 60 * 60 * 1000 && <span className="w-fit rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">Nuevo</span>}
                     {channel === 'reseller' && product.availability === 'on_order' ? (
                       <span className="rounded-full bg-amber-600 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl">
@@ -1774,7 +1775,7 @@ if (loading) {
                         )}>
                           {(() => {
                             const offerPrice = getDisplayedPrice(product);
-                            const superOfferStrike = isSuperOffersRoute ? superOfferProductById.get(product.id)?.strikePrice ?? null : null;
+                            const superOfferStrike = showSuperOfferComparePrice ? superOfferProductById.get(product.id)?.strikePrice ?? null : null;
                             const normalStrike = !isSuperOffersRoute && offerPrice !== roundPrice(product.salePrice) ? roundPrice(product.salePrice) : null;
                             const strikePrice = superOfferStrike ?? normalStrike;
                             return <>{strikePrice !== null && <span className="mr-2 text-sm font-medium text-slate-400 line-through">{formatCurrency(strikePrice)}</span>}{formatCurrency(offerPrice)}</>;

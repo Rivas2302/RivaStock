@@ -88,6 +88,29 @@ describe('super-offer share metadata', () => {
     expect(html).not.toContain('resellerPrice');
   });
 
+  it('keeps offer link metadata free of comparison percentages when the option is off', async () => {
+    const fetcher = createFetcher({
+      active: true,
+      batch: { id: 'batch-qa', showComparePrice: false },
+      products: [{
+        id: PRODUCT_ID,
+        name: 'Auricular QA',
+        salePrice: 1200,
+        imageUrl: IMAGE_URL,
+        images: [],
+      }],
+    });
+    const response = await createShareHandler({ supabaseUrl: PROJECT_URL, publishableKey: 'sb_publishable_test', fetcher })(request(PRODUCT_ID));
+    const html = await response.text();
+    const title = html.match(/<meta property="og:title" content="([^"]*)">/)?.[1] ?? '';
+    const description = html.match(/<meta property="og:description" content="([^"]*)">/)?.[1] ?? '';
+
+    expect(response.status).toBe(200);
+    expect(title).not.toContain('%');
+    expect(description).not.toContain('%');
+    expect(description).toContain('1.200');
+  });
+
   it('redirects closed product offers to the closed offer catalog', async () => {
     const fetcher = createFetcher({ active: false, batch: null, products: [] });
     const response = await createShareHandler({ supabaseUrl: PROJECT_URL, publishableKey: 'sb_publishable_test', fetcher })(request(PRODUCT_ID));

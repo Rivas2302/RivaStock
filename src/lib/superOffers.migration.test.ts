@@ -92,6 +92,7 @@ async function createFixtureDatabase() {
   if (!businessRequireModule) throw new Error('business_require_module definition is missing from its source migration');
   await db.exec(businessRequireModule);
   await db.exec(await readFile('supabase/migrations/20261111160800_super_offer_business_module_defaults.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261111203900_super_offer_compare_price_setting.sql', 'utf8'));
   return db;
 }
 
@@ -324,6 +325,69 @@ describe('Súper ofertas migration', () => {
         `SELECT public.get_public_super_offer('qa-super-offers') AS payload`,
       );
       expect(result.rows[0].payload.active).toBe(false);
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
+  it('omits comparison prices and percentages from public data unless the owner enables them', async () => {
+    const db = await createFixtureDatabase();
+    try {
+      await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [OWNER]);
+      await db.exec('SET ROLE authenticated');
+      const saved = await db.query<{ result: { id: string } }>(`
+        SELECT public.save_super_offer_batch_with_compare_price(
+          NULL, 'all', 20, 'fixed', 5000, now() + interval '2 days', 'red',
+          ARRAY[]::uuid[], ARRAY[]::uuid[], true, false
+        ) AS result
+      `);
+      const batchId = saved.rows[0].result.id;
+      const ownerState = await db.query<{ payload: { batch: { showComparePrice: boolean } } }>(
+        'SELECT public.get_owner_super_offer_state() AS payload',
+      );
+      expect(ownerState.rows[0].payload.batch.showComparePrice).toBe(false);
+
+      await db.exec('RESET ROLE');
+      await db.exec('SET ROLE anon');
+      const hidden = await db.query<{ payload: Record<string, unknown> }>(
+        `SELECT public.get_public_super_offer('qa-super-offers') AS payload`,
+      );
+      const hiddenPayload = hidden.rows[0].payload;
+      const hiddenBatch = hiddenPayload.batch as Record<string, unknown>;
+      const hiddenProducts = hiddenPayload.products as Array<Record<string, unknown>>;
+      expect(hiddenBatch.showComparePrice).toBe(false);
+      expect(hiddenBatch).not.toHaveProperty('extraPercent');
+      expect(hiddenProducts.length).toBeGreaterThan(0);
+      for (const product of hiddenProducts) {
+        expect(product).not.toHaveProperty('strikePrice');
+        expect(product).not.toHaveProperty('discountPercent');
+      }
+
+      await db.exec('RESET ROLE');
+      await db.exec('SET ROLE authenticated');
+      await db.query(`SELECT public.save_super_offer_batch_with_compare_price(
+        $1, 'all', 20, 'fixed', 5000, now() + interval '2 days', 'red',
+        ARRAY[]::uuid[], ARRAY[]::uuid[], true, true
+      )`, [batchId]);
+      await db.exec('RESET ROLE');
+      await db.exec('SET ROLE anon');
+      const shown = await db.query<{ payload: Record<string, unknown> }>(
+        `SELECT public.get_public_super_offer('qa-super-offers') AS payload`,
+      );
+      const shownPayload = shown.rows[0].payload;
+      const shownBatch = shownPayload.batch as Record<string, unknown>;
+      const shownProduct = (shownPayload.products as Array<Record<string, unknown>>)[0];
+      expect(shownBatch.showComparePrice).toBe(true);
+      expect(shownBatch).toHaveProperty('extraPercent', 20);
+      expect(shownProduct).toHaveProperty('strikePrice');
+      expect(shownProduct).toHaveProperty('discountPercent');
+
+      const privileges = await db.query<{ anon: boolean; authenticated: boolean }>(`
+        SELECT
+          has_function_privilege('anon', 'public.save_super_offer_batch_with_compare_price(uuid,text,numeric,text,numeric,timestamptz,text,uuid[],uuid[],boolean,boolean)', 'EXECUTE') AS anon,
+          has_function_privilege('authenticated', 'public.save_super_offer_batch_with_compare_price(uuid,text,numeric,text,numeric,timestamptz,text,uuid[],uuid[],boolean,boolean)', 'EXECUTE') AS authenticated
+      `);
+      expect(privileges.rows[0]).toEqual({ anon: false, authenticated: true });
     } finally {
       await db.close();
     }

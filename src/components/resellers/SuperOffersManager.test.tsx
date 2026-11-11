@@ -118,4 +118,39 @@ describe('SuperOffersManager owner-state handling', () => {
     expect(host.querySelector('a[href="/revendedores?tab=settings"]')?.textContent).toBe('Publicar lista de Revendedores');
     expect(host.textContent).not.toContain('Catálogo público sin publicar');
   });
+
+  it('defaults the previous price off and saves the owner choice with the batch', async () => {
+    apiMocks.getOwnerSuperOfferState.mockResolvedValue(state());
+    apiMocks.saveSuperOfferBatch.mockResolvedValue(undefined);
+    await render();
+
+    const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Mostrar precio anterior tachado"]');
+    expect(toggle?.checked).toBe(false);
+
+    await act(async () => { toggle?.click(); });
+    expect(toggle?.checked).toBe(true);
+
+    const openButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Abrir tanda'));
+    await act(async () => { openButton?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+
+    expect(apiMocks.saveSuperOfferBatch).toHaveBeenCalledWith(expect.objectContaining({
+      showComparePrice: true,
+      open: true,
+    }));
+  });
+
+  it('restores the comparison setting saved on the batch', async () => {
+    apiMocks.getOwnerSuperOfferState.mockResolvedValue(state({
+      batch: {
+        id: 'batch-qa', status: 'draft', selectionMode: 'all', extraPercent: 20,
+        showComparePrice: true, shippingMode: 'fixed', shippingValue: 5000,
+        endsAt: '2099-12-01T21:00:00.000Z', noticeColor: 'red',
+        productIds: [], brandedProductIds: [], ordersCount: 0,
+      },
+    }));
+    await render();
+
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Mostrar precio anterior tachado"]')?.checked).toBe(true);
+  });
 });

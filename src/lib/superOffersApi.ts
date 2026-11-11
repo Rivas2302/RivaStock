@@ -4,10 +4,10 @@ import type { SuperOfferNoticeColor, SuperOfferShippingMode } from './superOffer
 export interface PublicSuperOfferBatch {
   id: string;
   endsAt: string;
-  extraPercent: number;
   shippingMode: SuperOfferShippingMode;
   shippingValue: number;
   noticeColor: SuperOfferNoticeColor;
+  showComparePrice: boolean;
 }
 
 export interface PublicSuperOfferProduct {
@@ -35,6 +35,7 @@ export interface OwnerSuperOfferBatch {
   status: 'draft' | 'open' | 'closed';
   selectionMode: 'all' | 'selected';
   extraPercent: number;
+  showComparePrice: boolean;
   shippingMode: SuperOfferShippingMode;
   shippingValue: number;
   endsAt: string;
@@ -60,8 +61,8 @@ export async function getPublicSuperOffer(slug: string): Promise<PublicSuperOffe
     active: Boolean(payload.active && batch?.id),
     batch: batch ? {
       ...batch,
-      extraPercent: Number(batch.extraPercent ?? 0),
       shippingValue: Number(batch.shippingValue ?? 0),
+      showComparePrice: batch.showComparePrice === true,
     } : null,
     products: Array.isArray(payload.products) ? payload.products.map(product => ({
       ...product,
@@ -82,6 +83,7 @@ export async function getOwnerSuperOfferState(): Promise<OwnerSuperOfferState> {
     batch: batch ? {
       ...batch,
       extraPercent: Number(batch.extraPercent ?? 20),
+      showComparePrice: batch.showComparePrice === true,
       shippingValue: Number(batch.shippingValue ?? 5000),
       ordersCount: Number(batch.ordersCount ?? 0),
       productIds: Array.isArray(batch.productIds) ? batch.productIds : [],
@@ -97,6 +99,7 @@ export async function saveSuperOfferBatch(input: {
   batchId: string | null;
   selectionMode: 'all' | 'selected';
   extraPercent: number;
+  showComparePrice: boolean;
   shippingMode: SuperOfferShippingMode;
   shippingValue: number;
   endsAt: string;
@@ -105,7 +108,7 @@ export async function saveSuperOfferBatch(input: {
   allowBrandedProductIds: string[];
   open: boolean;
 }): Promise<void> {
-  const { error } = await supabase.rpc('save_super_offer_batch', {
+  const { error } = await supabase.rpc('save_super_offer_batch_with_compare_price', {
     p_batch_id: input.batchId,
     p_selection_mode: input.selectionMode,
     p_extra_percent: input.extraPercent,
@@ -116,6 +119,7 @@ export async function saveSuperOfferBatch(input: {
     p_product_ids: input.productIds,
     p_allow_branded_product_ids: input.allowBrandedProductIds,
     p_open: input.open,
+    p_show_compare_price: input.showComparePrice,
   });
   if (error) throw new Error(error.message);
 }

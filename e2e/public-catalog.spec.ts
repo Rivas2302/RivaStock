@@ -108,7 +108,7 @@ async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'child
   });
 }
 
-async function mockSuperOfferApi(page: Page, active = true) {
+async function mockSuperOfferApi(page: Page, active = true, showComparePrice = false) {
   const offerProduct = {
     ...product,
     id: 'super-offer-product',
@@ -132,10 +132,11 @@ async function mockSuperOfferApi(page: Page, active = true) {
     batch: {
       id: 'super-offer-batch-qa',
       endsAt: '2099-12-01T21:00:00.000Z',
-      extraPercent: 20,
       shippingMode: 'fixed',
       shippingValue: 5000,
       noticeColor: 'red',
+      showComparePrice,
+      ...(showComparePrice ? { extraPercent: 20 } : {}),
     },
     products: [{
       id: offerProduct.id,
@@ -143,8 +144,7 @@ async function mockSuperOfferApi(page: Page, active = true) {
       categoryId: CATEGORY_ID,
       category: 'Accesorios',
       salePrice: offerProduct.salePrice,
-      strikePrice: 1800,
-      discountPercent: 33,
+      ...(showComparePrice ? { strikePrice: 1800, discountPercent: 33 } : {}),
       imageUrl: productImage,
       images: [productImage],
       description: 'Auricular de prueba.',
@@ -1067,9 +1067,19 @@ test('desktop category strip shows arrows only when more categories can be scrol
 test('super-offer catalog shows private-safe offer prices and completes a fixture order with shipping and WhatsApp', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const api = await mockSuperOfferApi(page);
+  const responsePromise = page.waitForResponse(response => response.url().includes('/rpc/get_public_super_offer'));
   await page.goto('/ofertas/qa-catalog');
+  const publicResponse = await responsePromise;
+  const publicPayload = await publicResponse.json() as { batch: Record<string, unknown>; products: Array<Record<string, unknown>> };
 
   await expect(page.getByTestId('super-offer-hero')).toBeVisible();
+  expect(publicPayload.batch.showComparePrice).toBe(false);
+  expect(publicPayload.batch).not.toHaveProperty('extraPercent');
+  expect(publicPayload.products[0]).not.toHaveProperty('strikePrice');
+  expect(publicPayload.products[0]).not.toHaveProperty('discountPercent');
+  await expect(page.getByTestId('super-offer-hero')).toContainText('Precios especiales por pocos días. Pedí antes de que cierre.');
+  await expect(page.locator('.super-offer-discount-badge')).toHaveCount(0);
+  await expect(page.locator('.catalog-theme-card .line-through')).toHaveCount(0);
   await expect(page.getByTestId('super-offer-shipping-notice')).toContainText(/5\.000 por pedido/);
   await expect(page.getByRole('button', { name: 'Todos', exact: true })).toHaveCount(0);
   await expect(page.getByText('SÚPER OFERTA', { exact: true })).toBeVisible();
@@ -1087,6 +1097,7 @@ test('super-offer catalog shows private-safe offer prices and completes a fixtur
   await page.getByRole('button', { name: 'Agregar Auricular Súper oferta al carrito' }).click();
   await page.getByRole('button', { name: /Abrir carrito/ }).click();
   await expect(page.getByTestId('super-offer-cart-totals')).toContainText(/1\.200/);
+  await expect(page.getByRole('dialog', { name: 'Tu Carrito' }).locator('.line-through')).toHaveCount(0);
   await expect(page.getByTestId('super-offer-cart-totals')).toContainText(/5\.000/);
   await expect(page.getByTestId('super-offer-total')).toContainText(/6\.200/);
   await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
@@ -1109,6 +1120,21 @@ test('super-offer catalog shows private-safe offer prices and completes a fixtur
   const orderPayload = api.getCreatedOrder();
   expect(orderPayload).toMatchObject({ p_batch_id: 'super-offer-batch-qa' });
   expect(orderPayload?.p_items).toEqual([{ productId: 'super-offer-product', quantity: 1 }]);
+});
+
+test('super-offer comparison price is opt-in and restores the existing strike and discount', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const responsePromise = page.waitForResponse(response => response.url().includes('/rpc/get_public_super_offer'));
+  await mockSuperOfferApi(page, true, true);
+  await page.goto('/ofertas/qa-catalog');
+  const response = await responsePromise;
+  const payload = await response.json() as { batch: Record<string, unknown>; products: Array<Record<string, unknown>> };
+
+  expect(payload.batch.showComparePrice).toBe(true);
+  expect(payload.products[0]).toMatchObject({ strikePrice: 1800, discountPercent: 33 });
+  await expect(page.getByTestId('super-offer-hero')).toContainText('Hasta 33 % menos. Pedí uno o dos productos antes de que cierre.');
+  await expect(page.locator('.super-offer-discount-badge')).toContainText('−33%');
+  await expect(page.locator('.catalog-theme-card .line-through')).toContainText(/1\.800/);
 });
 
 test('super-offer catalog is usable on desktop and a closed batch falls back to the regular catalog', async ({ page }) => {

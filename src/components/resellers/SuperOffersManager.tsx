@@ -37,6 +37,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
   const [batch, setBatch] = useState<OwnerSuperOfferBatch | null>(null);
   const [selectionMode, setSelectionMode] = useState<'all' | 'selected'>('all');
   const [extraPercent, setExtraPercent] = useState(20);
+  const [showComparePrice, setShowComparePrice] = useState(false);
   const [shippingMode, setShippingMode] = useState<SuperOfferShippingMode>('fixed');
   const [shippingValue, setShippingValue] = useState(5000);
   const [durationChoice, setDurationChoice] = useState<DurationChoice>('2');
@@ -94,6 +95,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
       setEditing(saved.status !== 'open');
       setSelectionMode(saved.selectionMode);
       setExtraPercent(saved.extraPercent);
+      setShowComparePrice(saved.showComparePrice);
       setShippingMode(saved.shippingMode);
       setShippingValue(saved.shippingValue);
       setNoticeColor(saved.noticeColor);
@@ -174,6 +176,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
         batchId: batch?.id ?? null,
         selectionMode,
         extraPercent,
+        showComparePrice,
         shippingMode,
         shippingValue,
         endsAt: endsAt.toISOString(),
@@ -212,6 +215,7 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
     setEditing(true);
     setSelectionMode('all');
     setExtraPercent(suggestedPercent);
+    setShowComparePrice(false);
     setShippingMode('fixed');
     setShippingValue(5000);
     setDurationChoice('2');
@@ -279,7 +283,11 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
         <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
           <h3 className="font-semibold text-[var(--ink)]">2. Extra sobre el precio revendedor</h3>
           <div className="mt-3 flex items-center gap-2"><input aria-label="Porcentaje extra de Súper ofertas" type="number" min="0" max="500" step="1" value={extraPercent} disabled={!canWrite || busy} onChange={event => setExtraPercent(Math.min(500, Math.max(0, Number(event.target.value) || 0)))} className="min-h-11 w-28 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-right text-lg font-bold text-[var(--ink)]"/><span className="font-bold text-[var(--ink)]">%</span><button type="button" onClick={() => setExtraPercent(suggestedPercent)} disabled={!canWrite || busy} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink)]"><Sparkles size={15}/>Usar el sugerido · {suggestedPercent}%</button></div>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--ink-muted)]">{sampleProduct && samplePrice ? <>Con {sampleProduct.product.name}: cliente ahorra {formatCurrency(samplePrice.customerSavings)} frente al precio tachado; paga {formatCurrency(samplePrice.offerPrice)} en lugar de {formatCurrency(samplePrice.resellerPrice)}; ganás {formatCurrency(samplePrice.ownerGain)} por unidad sobre la reventa.</> : 'El sugerido se calcula con la mediana del margen habitual; si no hay historial, usamos 100%.'}</p>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--ink-muted)]">{sampleProduct && samplePrice ? <>Con {sampleProduct.product.name}: {showComparePrice ? <>cliente ahorra {formatCurrency(samplePrice.customerSavings)} frente al precio anterior y paga {formatCurrency(samplePrice.offerPrice)} en lugar de {formatCurrency(samplePrice.resellerPrice)};</> : <>cliente paga {formatCurrency(samplePrice.offerPrice)};</>} ganás {formatCurrency(samplePrice.ownerGain)} por unidad sobre la reventa.</> : 'El sugerido se calcula con la mediana del margen habitual; si no hay historial, usamos 100%.'}</p>
+          <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-semibold text-[var(--ink)]">
+            <input aria-label="Mostrar precio anterior tachado" type="checkbox" role="switch" checked={showComparePrice} onChange={event => setShowComparePrice(event.target.checked)} disabled={!canWrite || busy} className="size-4 accent-[var(--accent)]"/>
+            <span>Mostrar precio anterior tachado</span>
+          </label>
         </section>
 
         <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
@@ -326,6 +334,6 @@ export default function SuperOffersManager({ list, products, items, canWrite }: 
       </section>
     </div>}
 
-    {previewOpen && <section role="region" aria-label="Vista previa de Súper ofertas" className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-5 text-[var(--ink)]"><button type="button" aria-label="Cerrar vista previa" onClick={() => setPreviewOpen(false)} className="absolute right-3 top-3 grid size-9 place-items-center rounded-full border border-[var(--line)]"><X size={17}/></button><div className={`rounded-2xl p-5 text-white ${noticeColors.find(([value]) => value === noticeColor)?.[2]}`}><span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold"><span className="size-2 rounded-full bg-emerald-300"/>TANDA ABIERTA</span><Sparkles className="float-right"/><h3 className="mt-3 text-2xl font-black">SÚPER OFERTAS</h3><p className="mt-1">Hasta {Math.max(0, samplePrice?.discountPercent ?? 0)} % menos. Pedí uno o dos productos antes de que cierre.</p><p className="mt-4 rounded-xl bg-black px-4 py-3 text-center font-bold">Cierra {resolvedEndDate().toLocaleString('es-AR')}</p></div><p className="mt-3 text-sm">Envío {shippingMode === 'fixed' ? `${formatCurrency(shippingValue)} por pedido` : `${shippingValue}% del subtotal`}, lleves 1 o varios productos.</p></section>}
+    {previewOpen && <section role="region" aria-label="Vista previa de Súper ofertas" className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-5 text-[var(--ink)]"><button type="button" aria-label="Cerrar vista previa" onClick={() => setPreviewOpen(false)} className="absolute right-3 top-3 grid size-9 place-items-center rounded-full border border-[var(--line)]"><X size={17}/></button><div className={`rounded-2xl p-5 text-white ${noticeColors.find(([value]) => value === noticeColor)?.[2]}`}><span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-bold"><span className="size-2 rounded-full bg-emerald-300"/>TANDA ABIERTA</span><Sparkles className="float-right"/><h3 className="mt-3 text-2xl font-black">SÚPER OFERTAS</h3><p className="mt-1">{showComparePrice ? `Hasta ${Math.max(0, samplePrice?.discountPercent ?? 0)} % menos. Pedí uno o dos productos antes de que cierre.` : 'Precios especiales por pocos días. Pedí antes de que cierre.'}</p><p className="mt-4 rounded-xl bg-black px-4 py-3 text-center font-bold">Cierra {resolvedEndDate().toLocaleString('es-AR')}</p></div><p className="mt-3 text-sm">Envío {shippingMode === 'fixed' ? `${formatCurrency(shippingValue)} por pedido` : `${shippingValue}% del subtotal`}, lleves 1 o varios productos.</p></section>}
   </section>;
 }
