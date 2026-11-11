@@ -2160,11 +2160,15 @@ Sin toque en src/, supabase/ ni extensions/.
 
 ## 2026-11-11 — I53 Etapas 1 y 2
 
-- El trabajo queda aislado en `codex/i53-ai`, basado en `origin/main` `85eeef8`. El commit de Etapa 0 `91d3ed4` tiene el mismo padre y el mismo árbol que el commit de Etapa 0 de esta rama; no se duplicó el cambio. No se incorporaron cambios de Súper ofertas.
+- El trabajo se rebasó sobre el `origin/main` actual, que incluye Súper ofertas y el enlace de activación. Los cambios de I53 están listos para integrarse en `main`; no se desplegó producción desde una rama.
 - Etapa 1 implementa actividad y mensajes completos en vivo para chats, efecto de escritura, detener, regenerar, copiar, recuperación al recargar y hasta dos chats distintos en paralelo. Etapa 2 agrega identidad y ficha del negocio al prompt, búsqueda web de Codex para chats en modos seguros y mantiene la red del sandbox desactivada.
 - Migraciones aditivas aplicadas por el flujo MCP, no `db push`: `20261111200604_ai_job_stream` y `20261111200917_ai_business_card`. Antes de cada una se verificó backup completo en `%USERPROFILE%\rivastock-backups\20261111T195846Z` y `%USERPROFILE%\rivastock-backups\20261111T200645Z`, respectivamente; PostgreSQL y Storage dieron `verification: passed` en ambos.
 - PGlite: **8/8** pruebas de migración enfocadas pasaron después de alinear los nombres de archivo con los identificadores aplicados. Suite raíz con variables Vite ficticias solo en el proceso: **246 archivos / 1.427 pruebas**; lint, build, typecheck del Bridge y **136 pruebas del Bridge** pasaron. PGlite pasó sin ampliar su timeout.
 - Paquete del AI Bridge **1.26.0** generado en `public/downloads/rivastock-ai-bridge-1.26.0.tgz`; quedó disponible en el sitio (HTTP 200). La PC conectada todavía requiere la actualización y la aceptación manual de actividad menor a 3 s, detener menor a 3 s, preguntas de negocio/fecha y respuestas de más de 120 s. No se creó un chat QA en la cuenta real.
 - Despliegue: `ai-bridge` está ACTIVE v24; Vercel Production quedó READY en `dpl_Hw16Zhpws1JYuG9cJasiDCHb26QM` y apunta el alias `rivastock.vercel.app`. Smoke HTTP 200; el bundle servido incluye controles de detener/regenerar y el cliente de streaming. Se purgó solo la caché CDN para verificar la publicación.
-- Los logs de Vercel mostraron tres errores TypeScript preexistentes en `api/catalog-preview.test.ts` (TS2493); aun así el build terminó, el deployment quedó READY y la compilación raíz pasó. Queda anotado como desvío para corregir en una tarea separada.
-- No se comenzó la Etapa 3. **Siguiente:** el dueño actualiza el Bridge 1.26.0 y completa la aceptación manual antes de considerar cerradas las Etapas 1 y 2.
+- Se corrigieron los tres errores `TS2493` de `api/catalog-preview.test.ts`: el mock de `fetch` ahora conserva la firma tipada. Se verificó con `tsc` dirigido y sus cinco pruebas.
+- Antes de cerrar A se subirá la rama rebased y su avance a `main`; Vercel, Edge Functions, migraciones y descargas solo se desplegarán desde `main` ya pusheado. La aceptación manual de Etapas 1 y 2 sigue pendiente: el dueño debe actualizar AI Bridge 1.26.0 y probar actividad, detención, contexto del negocio y turnos largos.
+
+## Regla permanente de despliegue
+
+A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega desde `main` ya pusheado. Nunca desde ramas ni desde cambios locales. Si hace falta probar una rama, usá un deploy de Preview, nunca Production.

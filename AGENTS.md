@@ -11,6 +11,10 @@ Este archivo es el contexto compartido de los agentes de código que trabajan en
 - Nunca guardes claves, contraseñas, tokens o contenido de `.env` en archivos versionados, logs, capturas o mensajes.
 - Si una salida muestra un secreto, dejá de usarlo y registrá el incidente en `docs/ai/OWNER_ACTIONS.md` sin copiar el valor.
 
+## Despliegues a producción
+
+- A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega desde `main` ya pusheado. Nunca desde ramas ni desde cambios locales. Si hace falta probar una rama, usá un deploy de Preview, nunca Production.
+
 ## Producto y arquitectura
 
 RivaStock es una aplicación de gestión de negocios, construida con React, TypeScript y Vite. Supabase provee autenticación, Postgres y Edge Functions; la aplicación web se despliega en Vercel. El proyecto también contiene la extensión de Facebook y un AI Bridge local.
