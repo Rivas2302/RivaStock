@@ -51,8 +51,6 @@ import {
   Clock3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { usePagination } from '../hooks/usePagination';
-import Pagination from '../components/Pagination';
 
 const ON_ORDER_EXPLANATION = 'Estos productos no tienen stock inmediato: se encargan especialmente y requieren un plazo adicional. Antes de confirmar la compra te informaremos la disponibilidad y la demora estimada.';
 
@@ -105,6 +103,9 @@ export default function PublicCatalog() {
     typeof document === 'undefined'
       || document.visibilityState !== 'visible'
       || (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  ));
+  const [documentHidden, setDocumentHidden] = useState(() => (
+    typeof document !== 'undefined' && document.hidden
   ));
   const [heroInView, setHeroInView] = useState(true);
 
@@ -202,6 +203,16 @@ export default function PublicCatalog() {
       reducedMotion.removeEventListener('change', updateMotionState);
     };
   }, [heroInView, selectedProductForLightbox]);
+  useEffect(() => {
+    const updateDocumentVisibility = () => setDocumentHidden(document.hidden);
+    document.addEventListener('visibilitychange', updateDocumentVisibility);
+    return () => document.removeEventListener('visibilitychange', updateDocumentVisibility);
+  }, []);
+  useEffect(() => {
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => { window.history.scrollRestoration = previousScrollRestoration; };
+  }, []);
   const openProduct = (product: PublicCatalogProduct, replaceCurrent = Boolean(productId)) => {
     if (!slug) return;
     if (!productId) catalogScrollPosition.current = window.scrollY;
@@ -569,7 +580,7 @@ useEffect(() => {
       }
       directProductSetupRef.current = null;
       setSelectedProductForLightbox(null);
-      requestAnimationFrame(() => window.scrollTo(0, catalogScrollPosition.current));
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, catalogScrollPosition.current)));
       return;
     }
     const product = catalogProducts.find(item => item.id === productId);
@@ -590,7 +601,6 @@ useEffect(() => {
       setSelectedProductForLightbox(product);
       setLightboxImageIndex(0);
       setDetailQuantity(1);
-      catalogScrollPosition.current = window.scrollY || catalogScrollPosition.current;
     } else if (!loading && config) {
       directProductSetupRef.current = null;
       navigate(basePath, { replace: true });
@@ -643,18 +653,9 @@ useEffect(() => {
 
     return filteredProducts;
   }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch]);
-  const pagination = usePagination(filteredProducts, 48);
-  const [mobileCatalog, setMobileCatalog] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
-  const [mobileLoadMore, setMobileLoadMore] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 639px)');
-    const update = () => setMobileCatalog(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-  const mobileVisibleCount = mobileLoadMore?.items === filteredProducts ? mobileLoadMore.count : 48;
-  const productRows = mobileCatalog ? filteredProducts.slice(0, mobileVisibleCount) : pagination.rows;
+  const [loadedProductBatch, setLoadedProductBatch] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
+  const visibleProductCount = loadedProductBatch?.items === filteredProducts ? loadedProductBatch.count : 48;
+  const productRows = filteredProducts.slice(0, visibleProductCount);
 
   const availabilityCounts = useMemo(() => ({
     all: products.length,
@@ -1060,7 +1061,7 @@ if (loading) {
       presentation.ambience.themedFont && activeTheme === 'children-day' && 'catalog-theme-font--children-day',
       presentation.ambience.themedFont && activeTheme === 'new-year' && 'catalog-theme-font--new-year',
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
-    )} data-motion-paused={motionPaused} style={{ '--catalog-announcement-height': presentation.ambience.announcementText.trim() ? '2rem' : '0rem' } as React.CSSProperties}>
+    )} data-motion-paused={motionPaused} data-document-hidden={documentHidden} style={{ '--catalog-announcement-height': presentation.ambience.announcementText.trim() ? '2rem' : '0rem' } as React.CSSProperties}>
       <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience} motionPaused={motionPaused}/></Suspense>
       <AnimatePresence>
         {message && (
@@ -1601,9 +1602,8 @@ if (loading) {
               </div>
             ))}
         </div>
-        {mobileCatalog
-          ? mobileVisibleCount < filteredProducts.length && <button type="button" data-testid="catalog-load-more" onClick={() => setMobileLoadMore({ items: filteredProducts, count: Math.min(mobileVisibleCount + 48, filteredProducts.length) })} className="mx-auto mt-6 flex min-h-12 w-full max-w-sm items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 text-sm font-bold text-[var(--ink)] shadow-sm">Ver más productos</button>
-          : <Pagination {...pagination} />}
+        <p role="status" data-testid="catalog-product-count" className="mt-6 text-center text-sm text-[var(--ink-muted)]">Mostrando {Math.min(visibleProductCount, filteredProducts.length)} de {filteredProducts.length}</p>
+        {visibleProductCount < filteredProducts.length && <button type="button" data-testid="catalog-load-more" onClick={() => setLoadedProductBatch(current => ({ items: filteredProducts, count: Math.min((current?.items === filteredProducts ? current.count : 48) + 48, filteredProducts.length) }))} className="mx-auto mt-3 flex min-h-12 w-full max-w-sm items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 text-sm font-bold text-[var(--ink)] shadow-sm">Ver más productos</button>}
 
         {visibleSections.find(section => section.id === 'all')?.visible && filteredProducts.length === 0 && (
           <div className="text-center py-40 space-y-6">

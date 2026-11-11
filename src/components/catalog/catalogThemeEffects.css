@@ -75,8 +75,7 @@
 .catalog-theme-font--children-day h2, .catalog-theme-font--children-day h3 { font-family: 'Trebuchet MS', sans-serif; }
 .catalog-theme-font--new-year h2, .catalog-theme-font--new-year h3 { font-family: Georgia, serif; }
 .catalog-floating-whatsapp { animation: catalog-whatsapp-pulse 2.8s ease-in-out infinite; }
-.public-catalog[data-motion-paused="true"] .catalog-floating-whatsapp,
-.public-catalog[data-motion-paused="true"] .catalog-announcement__track { animation-play-state: paused !important; }
+.public-catalog[data-document-hidden="true"] .catalog-floating-whatsapp { animation-play-state: paused !important; }
 .public-catalog[data-motion-paused="true"] .catalog-theme-effects * { animation-play-state: paused !important; }
 .catalog-product-grid > .catalog-product-card { content-visibility: auto; contain-intrinsic-size: auto 22rem; }
 @media (min-width: 640px) {

@@ -335,31 +335,114 @@ test('opening a listed product is immediate and does not reload the anonymous ca
   await expect(page.getByText('Cargando catálogo…')).toHaveCount(0);
 });
 
-test('mobile reveals more products without replacing or overlapping pages; desktop replaces one page at a time', async ({ page }) => {
-  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, 'Envíos en General Pico', 100);
+test('catalog appends 48 products on desktop and mobile, resets filters, and preserves loaded products and scroll on return', async ({ page }, testInfo) => {
+  const viewports = testInfo.project.name.startsWith('catalog-iphone')
+    ? [{ width: 390, height: 844 }]
+    : [{ width: 1920, height: 1080 }, { width: 390, height: 844 }];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, 'Envíos en General Pico', 878);
+    const catalogRequestUrls: string[] = [];
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.endsWith('/rpc/get_public_catalog_products')) catalogRequestUrls.push(request.url());
+    });
+    await page.goto('/catalogo/qa-catalog');
+    const cards = page.locator('.catalog-product-card');
+    const count = page.getByTestId('catalog-product-count');
+    await expect(cards).toHaveCount(48);
+    await expect(count).toHaveText('Mostrando 48 de 878');
+    await page.waitForTimeout(100);
+    const initialCatalogRequestCount = catalogRequestUrls.length;
+    await expect(cards.first().locator('img')).toHaveAttribute('width', '640');
+    await expect(cards.first().locator('img')).toHaveAttribute('height', '640');
+    await expect(cards.first()).toHaveCSS('content-visibility', 'auto');
 
-  await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto('/catalogo/qa-catalog');
-  const cards = page.locator('.catalog-product-card');
-  await expect(cards).toHaveCount(48);
-  await expect(cards.first().locator('img')).toHaveAttribute('width', '640');
-  await expect(cards.first().locator('img')).toHaveAttribute('height', '640');
-  await expect(cards.first()).toHaveCSS('content-visibility', 'auto');
-  const loadMore = page.getByTestId('catalog-load-more');
-  await expect(loadMore).toHaveText('Ver más productos');
-  await loadMore.scrollIntoViewIfNeeded();
-  await loadMore.click();
-  await expect(cards).toHaveCount(96);
-  await loadMore.click();
-  await expect(cards).toHaveCount(100);
-  await expect(page.getByRole('navigation', { name: 'Paginación' })).toHaveCount(0);
+    const loadMore = page.getByTestId('catalog-load-more');
+    await expect(loadMore).toHaveText('Ver más productos');
+    await loadMore.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await loadMore.click();
+    await expect(cards).toHaveCount(96);
+    await expect(count).toHaveText('Mostrando 96 de 878');
+    await expect(page.getByRole('navigation', { name: 'Paginación' })).toHaveCount(0);
+    expect(catalogRequestUrls.length, JSON.stringify(catalogRequestUrls)).toBe(initialCatalogRequestCount);
 
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(cards).toHaveCount(48);
-  const pager = page.getByRole('navigation', { name: 'Paginación' });
-  await pager.getByRole('button', { name: 'Siguiente' }).click();
-  await expect(cards).toHaveCount(48);
-  await expect(page.getByRole('button', { name: 'Cable USB-C Fixture 49', exact: true })).toBeVisible();
+    await page.getByPlaceholder('Busca en nuestra colección...').fill('Fixture 878');
+    await expect(cards).toHaveCount(1);
+    await expect(count).toHaveText('Mostrando 1 de 1');
+    await page.getByPlaceholder('Busca en nuestra colección...').fill('');
+    await expect(cards).toHaveCount(48);
+    await expect(count).toHaveText('Mostrando 48 de 878');
+
+    await loadMore.scrollIntoViewIfNeeded();
+    await loadMore.click();
+    await expect(cards).toHaveCount(96);
+    await page.locator('section[aria-label="Categorías"]').getByRole('button', { name: /Cables/ }).click();
+    await expect(cards).toHaveCount(48);
+    await expect(count).toHaveText('Mostrando 48 de 878');
+    await page.locator('section[aria-label="Categorías"]').getByRole('button', { name: /Todos/ }).click();
+    await expect(cards).toHaveCount(48);
+    await loadMore.scrollIntoViewIfNeeded();
+    await loadMore.click();
+    await expect(cards).toHaveCount(96);
+    const targetProduct = page.getByRole('button', { name: 'Cable USB-C Fixture 60', exact: true });
+    await targetProduct.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await expect.poll(async () => {
+      const box = await targetProduct.boundingBox();
+      return box !== null && box.y >= 0 && box.y < viewport.height;
+    }).toBe(true);
+    const scrollBeforeOpen = await page.evaluate(() => window.scrollY);
+    await targetProduct.click();
+    await expect(page.getByTestId('catalog-product-detail-modal')).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId('catalog-product-detail-overlay')).toHaveCount(0);
+    await expect(cards).toHaveCount(96);
+    await expect.poll(async () => Math.abs((await page.evaluate(() => window.scrollY)) - scrollBeforeOpen)).toBeLessThanOrEqual(1);
+    expect(catalogRequestUrls.length, JSON.stringify(catalogRequestUrls)).toBe(initialCatalogRequestCount);
+  }
+});
+
+test('announcement and WhatsApp animations continue after scrolling while seasonal effects pause', async ({ page }, testInfo) => {
+  const viewports = testInfo.project.name.startsWith('catalog-iphone')
+    ? [{ width: 390, height: 844 }]
+    : [{ width: 1920, height: 1080 }, { width: 390, height: 844 }];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await mockCatalogApi(page, 'children-day', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, 'Promo de prueba');
+    await page.goto('/catalogo/qa-catalog');
+    const root = page.locator('.public-catalog');
+    const track = page.locator('.catalog-announcement__track');
+    const whatsapp = page.getByTestId('catalog-floating-whatsapp');
+    await expect(track).toBeVisible();
+    await expect(page.locator('.catalog-product-card').first()).toBeVisible();
+    const hero = page.getByTestId('public-catalog-hero');
+    await page.locator('#catalog-section-all').evaluate(element => element.scrollIntoView({ block: 'end' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect.poll(() => hero.evaluate(element => element.getBoundingClientRect().bottom)).toBeLessThan(0);
+    await expect(root).toHaveAttribute('data-motion-paused', 'true');
+    await expect(track).toHaveCSS('animation-play-state', 'running');
+    await expect(whatsapp).toHaveCSS('animation-play-state', 'running');
+    const trackTransformBefore = await track.evaluate(element => getComputedStyle(element).transform);
+    await page.waitForTimeout(500);
+    const trackTransformAfter = await track.evaluate(element => getComputedStyle(element).transform);
+    expect(trackTransformAfter).not.toBe(trackTransformBefore);
+    expect(await page.locator('.catalog-announcement').evaluate(element => getComputedStyle(element).contain)).toContain('paint');
+    expect(await track.evaluate(element => getComputedStyle(element).willChange)).toContain('transform');
+    await expect(page.locator('.catalog-theme-effects')).toHaveAttribute('data-animated', 'false');
+    await page.screenshot({ path: resolve('test-results/catalog-ribbon-scrolled-' + viewport.width + '.png') });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(root).toHaveAttribute('data-document-hidden', 'true');
+    await expect(track).toHaveCSS('animation-play-state', 'paused');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(root).toHaveAttribute('data-document-hidden', 'false');
+    await expect(track).toHaveCSS('animation-play-state', 'running');
+  }
 });
 
 test('the public store never offers Sin categoría as a category filter', async ({ page }) => {
