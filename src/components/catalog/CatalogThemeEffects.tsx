@@ -5,13 +5,14 @@ import './catalogThemeEffects.css';
 interface CatalogThemeEffectsProps {
   theme: CatalogThemeId;
   ambience: CatalogAmbience;
+  motionPaused?: boolean;
 }
 
 const PARTICLES = Array.from({ length: 14 }, (_, index) => index);
 
-export default function CatalogThemeEffects({ theme, ambience }: CatalogThemeEffectsProps) {
+export default function CatalogThemeEffects({ theme, ambience, motionPaused = false }: CatalogThemeEffectsProps) {
   const hasSeasonalDecoration = theme !== 'normal' && theme !== 'custom';
-  const showAnimated = hasSeasonalDecoration && ambience.animatedEffects;
+  const showAnimated = hasSeasonalDecoration && ambience.animatedEffects && !motionPaused;
   const showHeaderDecoration = hasSeasonalDecoration && ambience.headerDecoration;
 
   return <>

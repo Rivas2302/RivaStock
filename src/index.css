@@ -6,6 +6,24 @@
   --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
 }
 
+body.pwa-install-notice-visible .app-content {
+  padding-bottom: calc(9rem + env(safe-area-inset-bottom)) !important;
+}
+
+body.pwa-install-notice-visible .auth-v2-main {
+  padding-bottom: calc(10rem + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 767px) {
+  body.pwa-install-notice-visible .auth-v2-main {
+    min-height: calc(100dvh + 10rem + env(safe-area-inset-bottom));
+  }
+
+  body.pwa-install-notice-visible .auth-v2-content {
+    margin-top: 2.5rem !important;
+  }
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {

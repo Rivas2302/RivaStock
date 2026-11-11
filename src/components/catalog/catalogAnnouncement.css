@@ -16,6 +16,7 @@
 }
 
 .catalog-announcement__track { display: flex; width: max-content; min-width: 100%; justify-content: space-around; gap: 6rem; animation: catalog-announcement-scroll 28s linear infinite; }
+.public-catalog[data-motion-paused="true"] .catalog-announcement__track { animation-play-state: paused !important; }
 .catalog-announcement__track span { flex: 0 0 auto; }
 
 @keyframes catalog-announcement-scroll { to { transform: translateX(-50%); } }

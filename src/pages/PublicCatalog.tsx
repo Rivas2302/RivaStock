@@ -20,7 +20,7 @@ import {
 } from '../lib/publicCatalogAvailability';
 import { getCommercialRuleMessage, isCommercialRuleSatisfied } from '../lib/commercialRules';
 import { getAllCategoryPhotoUrls, getCategoryPhotoUrls } from '../lib/catalogCategoryPhotos';
-import { buildResellerCatalogCategories, getResellerProductCategoryKey } from '../lib/resellerCatalogCategories';
+import { buildResellerCatalogCategories, getResellerProductCategoryKey, isUncategorizedCategoryName } from '../lib/resellerCatalogCategories';
 import {
   ShoppingBag,
   Search,
@@ -101,13 +101,18 @@ export default function PublicCatalog() {
   const [error, setError] = useState<string | null>(null);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const [motionPaused, setMotionPaused] = useState(() => (
+    typeof document === 'undefined'
+      || document.visibilityState !== 'visible'
+      || (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  ));
+  const [heroInView, setHeroInView] = useState(true);
 
   useEffect(() => {
-    if (!config || config.presentation?.ambience?.animatedEffects === false
-      || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!config || motionPaused || config.presentation?.ambience?.animatedEffects === false) return;
     const timer = window.setInterval(() => setHeroSlideIndex(index => index + 1), 7000);
     return () => window.clearInterval(timer);
-  }, [config?.slug, config?.presentation?.ambience?.animatedEffects]);
+  }, [config?.slug, config?.presentation?.ambience?.animatedEffects, motionPaused]);
 
   useEffect(() => {
     if (!loading) {
@@ -116,6 +121,15 @@ export default function PublicCatalog() {
     }
     const t = setTimeout(() => setLoadingTooLong(true), 8000);
     return () => clearTimeout(t);
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const hero = document.querySelector('[data-testid="public-catalog-hero"]');
+    if (!hero || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setHeroInView(entry.isIntersecting), { threshold: 0.01 });
+    observer.observe(hero);
+    return () => observer.disconnect();
   }, [loading]);
 
   const [search, setSearch] = useState('');
@@ -175,6 +189,19 @@ export default function PublicCatalog() {
   const [shareProductId, setShareProductId] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const detailSwipeStartY = useRef<number | null>(null);
+  useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateMotionState = () => setMotionPaused(
+      document.visibilityState !== 'visible' || reducedMotion.matches || Boolean(selectedProductForLightbox) || !heroInView,
+    );
+    updateMotionState();
+    document.addEventListener('visibilitychange', updateMotionState);
+    reducedMotion.addEventListener('change', updateMotionState);
+    return () => {
+      document.removeEventListener('visibilitychange', updateMotionState);
+      reducedMotion.removeEventListener('change', updateMotionState);
+    };
+  }, [heroInView, selectedProductForLightbox]);
   const openProduct = (product: PublicCatalogProduct, replaceCurrent = Boolean(productId)) => {
     if (!slug) return;
     if (!productId) catalogScrollPosition.current = window.scrollY;
@@ -506,7 +533,7 @@ useEffect(() => {
   );
   const categoryOptions = useMemo(() => channel === 'reseller'
     ? resellerCategoryOptions
-    : categories.map(category => ({
+    : categories.filter(category => !isUncategorizedCategoryName(category.name)).map(category => ({
       id: category.id,
       name: category.name,
       count: catalogProducts.filter(product => product.categoryId === category.id).length,
@@ -586,8 +613,6 @@ useEffect(() => {
     document.body.style.right = '0';
     document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProductRef.current(); };
-    window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.position = previousBodyStyles.position;
       document.body.style.top = previousBodyStyles.top;
@@ -596,7 +621,6 @@ useEffect(() => {
       document.body.style.width = previousBodyStyles.width;
       document.body.style.overflow = previousBodyStyles.overflow;
       window.scrollTo(0, catalogScrollPosition.current);
-      window.removeEventListener('keydown', onKeyDown);
     };
   }, [Boolean(selectedProductForLightbox)]);
   const filteredProducts = useMemo(() => {
@@ -620,6 +644,17 @@ useEffect(() => {
     return filteredProducts;
   }, [activeCategory, availabilityFilter, catalogProducts, categories, channel, deferredSearch]);
   const pagination = usePagination(filteredProducts, 48);
+  const [mobileCatalog, setMobileCatalog] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
+  const [mobileLoadMore, setMobileLoadMore] = useState<{ items: PublicCatalogProduct[]; count: number } | null>(null);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 639px)');
+    const update = () => setMobileCatalog(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const mobileVisibleCount = mobileLoadMore?.items === filteredProducts ? mobileLoadMore.count : 48;
+  const productRows = mobileCatalog ? filteredProducts.slice(0, mobileVisibleCount) : pagination.rows;
 
   const availabilityCounts = useMemo(() => ({
     all: products.length,
@@ -851,7 +886,7 @@ useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (selectedProductForLightbox) {
-        setSelectedProductForLightbox(null);
+        closeProductRef.current();
       } else if (isAccessOpen) {
         setIsAccessOpen(false);
       } else if (isCheckoutOpen) {
@@ -1025,15 +1060,15 @@ if (loading) {
       presentation.ambience.themedFont && activeTheme === 'children-day' && 'catalog-theme-font--children-day',
       presentation.ambience.themedFont && activeTheme === 'new-year' && 'catalog-theme-font--new-year',
       darkMode ? "bg-[#080808] text-white" : "bg-white text-slate-900"
-    )} style={{ '--catalog-announcement-height': presentation.ambience.announcementText.trim() ? '2rem' : '0rem' } as React.CSSProperties}>
-      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience}/></Suspense>
+    )} data-motion-paused={motionPaused} style={{ '--catalog-announcement-height': presentation.ambience.announcementText.trim() ? '2rem' : '0rem' } as React.CSSProperties}>
+      <Suspense fallback={null}><CatalogThemeEffects theme={activeTheme} ambience={presentation.ambience} motionPaused={motionPaused}/></Suspense>
       <AnimatePresence>
         {message && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-[max(1rem,env(safe-area-inset-top))] left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 px-4 sm:px-6 py-3 bg-rose-500 text-white text-center rounded-2xl sm:rounded-full shadow-2xl z-[100] font-bold text-sm leading-snug backdrop-blur-md break-words"
+            className="fixed top-[max(1rem,env(safe-area-inset-top))] left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 px-4 sm:px-6 py-3 bg-rose-600 text-white text-center rounded-2xl sm:rounded-full shadow-2xl z-[100] font-bold text-sm leading-snug break-words"
           >
             {message}
           </motion.div>
@@ -1066,7 +1101,7 @@ if (loading) {
               aria-label="Cerrar acceso para revendedores"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsAccessOpen(false)}
-              className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/80"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -1116,8 +1151,7 @@ if (loading) {
       {/* Header */}
       <header className={cn(
         "sticky top-0 left-0 right-0 z-50 transition-all duration-300 border-b pt-[env(safe-area-inset-top)]",
-        darkMode ? "bg-[#080808]/80 border-white/5" : "bg-white/80 border-slate-100",
-        "backdrop-blur-xl"
+        darkMode ? "bg-[#080808]/95 border-white/5" : "bg-white/95 border-slate-100"
       )} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           <div className="max-w-7xl mx-auto px-3 sm:px-6 h-20 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
@@ -1251,7 +1285,7 @@ if (loading) {
                   {config.tagline}
                 </p>
               )}
-              {presentation.ambience.welcomeCard && <p className="mx-auto w-fit rounded-full border border-white/20 bg-black/20 px-4 py-2 text-sm font-semibold text-white backdrop-blur">Bienvenidos a {businessName}</p>}
+              {presentation.ambience.welcomeCard && <p className="mx-auto w-fit rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-semibold text-white">Bienvenidos a {businessName}</p>}
               {themeCountdown && <CatalogCountdown target={themeCountdown.target} label={themeCountdown.label}/>}
             </motion.div>
           </div>
@@ -1262,7 +1296,7 @@ if (loading) {
       {/* Search & Filters */}
       <div className="relative z-30 -mt-12 px-6">
         <div className={cn(
-          "max-w-5xl mx-auto p-6 rounded-3xl shadow-2xl border backdrop-blur-2xl transition-all duration-500",
+          "max-w-5xl mx-auto p-6 rounded-3xl shadow-2xl border transition-all duration-500",
           darkMode 
             ? "bg-[#111111]/90 border-white/5 shadow-black/50" 
             : "bg-white/90 border-slate-100 shadow-slate-200/50"
@@ -1445,18 +1479,12 @@ if (loading) {
         {visibleSections.find(section => section.id === 'new')?.visible && renderProductRail(CATALOG_SECTION_LABELS.new, newProducts, 'new')}
         {visibleSections.find(section => section.id === 'all')?.visible && <section id="catalog-section-all" aria-label={CATALOG_SECTION_LABELS.all} style={{ order: sectionOrder('all') }} className="scroll-mt-24">
         <h2 className="mb-5 text-xl font-bold sm:text-2xl">{CATALOG_SECTION_LABELS.all}</h2>
-        <div className="grid grid-cols-2 gap-3 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4">
-          <AnimatePresence mode="popLayout">
-            {pagination.rows.map((product) => (
-              <motion.div
+        <div className="catalog-product-grid grid grid-cols-2 gap-3 sm:gap-10 lg:grid-cols-3 xl:grid-cols-4">
+            {productRows.map((product) => (
+              <div
                 key={product.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.4 }}
                 className={cn(
-                  "catalog-theme-card group relative min-w-0 rounded-2xl border transition-all duration-300 flex flex-col overflow-hidden sm:rounded-[2rem]",
+                  "catalog-theme-card catalog-product-card group relative min-w-0 rounded-2xl border transition-all duration-300 flex flex-col overflow-hidden sm:rounded-[2rem]",
                   darkMode 
                     ? "bg-[#141414] border-white/5 hover:border-white/20 hover:bg-[#1a1a1a]" 
                     : "bg-white border-slate-100 hover:border-slate-200 hover:shadow-2xl hover:shadow-slate-200/50"
@@ -1474,13 +1502,15 @@ if (loading) {
                       >
                         <img
                           src={product.images?.[0] ?? product.imageUrl}
+                          width={640}
+                          height={640}
                           alt={product.name}
                           loading="lazy"
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
                           referrerPolicy="no-referrer"
                         />
                         {/* Magnifier Overlay */}
-                        <div className="absolute top-4 right-4 p-2 rounded-full bg-black/40 backdrop-blur-md text-white opacity-0 group-hover/img:opacity-100 transition-all duration-300 scale-90 group-hover/img:scale-100">
+                        <div className="absolute top-4 right-4 p-2 rounded-full bg-black/65 text-white opacity-0 group-hover/img:opacity-100 transition-all duration-300 scale-90 group-hover/img:scale-100">
                           <Search size={16} />
                         </div>
                       </div>
@@ -1496,11 +1526,11 @@ if (loading) {
                     {offersAreActive && (presentation.offerDiscountPercentByProduct[product.id] ?? 0) > 0 && <span className="w-fit rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">−{presentation.offerDiscountPercentByProduct[product.id]} %</span>}
                     {Date.parse(product.createdAt) >= Date.now() - 30 * 24 * 60 * 60 * 1000 && <span className="w-fit rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg">Nuevo</span>}
                     {channel === 'reseller' && product.availability === 'on_order' ? (
-                      <span className="rounded-full bg-amber-500/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl backdrop-blur-md">
+                      <span className="rounded-full bg-amber-600 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-xl">
                         Por pedido · sin stock inmediato
                       </span>
                     ) : product.stock <= 0 && config.showOutOfStock && product.availability !== 'on_order' && (
-                      <span className="bg-white/10 backdrop-blur-md text-white/90 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
+                      <span className="bg-black/60 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-xl">
                         AGOTADO
                       </span>
                     )}
@@ -1568,11 +1598,12 @@ if (loading) {
                   "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none",
                   darkMode ? "bg-gradient-to-br from-white/[0.03] to-transparent" : "bg-gradient-to-br from-indigo-500/[0.02] to-transparent"
                 )} />
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
         </div>
-        <Pagination {...pagination} />
+        {mobileCatalog
+          ? mobileVisibleCount < filteredProducts.length && <button type="button" data-testid="catalog-load-more" onClick={() => setMobileLoadMore({ items: filteredProducts, count: Math.min(mobileVisibleCount + 48, filteredProducts.length) })} className="mx-auto mt-6 flex min-h-12 w-full max-w-sm items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-4 text-sm font-bold text-[var(--ink)] shadow-sm">Ver más productos</button>
+          : <Pagination {...pagination} />}
 
         {visibleSections.find(section => section.id === 'all')?.visible && filteredProducts.length === 0 && (
           <div className="text-center py-40 space-y-6">
@@ -1679,7 +1710,7 @@ if (loading) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCartOpen(false)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-slate-900/75 z-50"
             />
             <motion.div 
               role="dialog"
@@ -1923,7 +1954,7 @@ if (loading) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCheckoutOpen(false)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-slate-900/75"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2101,7 +2132,7 @@ if (loading) {
 
       {/* Product details */}
       <AnimatePresence>
-        {selectedProductForLightbox && (() => {
+        {productId && selectedProductForLightbox && (() => {
           const product = selectedProductForLightbox;
           const images = product.images?.length ? product.images : product.imageUrl ? [product.imageUrl] : [];
           const related = products.filter(row => row.id !== product.id && (channel === 'reseller'
@@ -2111,7 +2142,7 @@ if (loading) {
           const close = closeProduct;
           const addSelected = () => { for (let index = 0; index < detailQuantity; index += 1) addToCart(product, price); close(); };
           return <motion.div data-testid="catalog-product-detail-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[100] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-label={product.name}>
-            <motion.button type="button" aria-label="Cerrar ficha del producto" onClick={close} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
+            <motion.button type="button" aria-label="Cerrar ficha del producto" onClick={close} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0 bg-black/80"/>
             <motion.section data-testid="catalog-product-detail-modal" data-catalog-theme={activeTheme} initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className={cn('relative z-10 flex h-[90dvh] max-h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-[var(--line)] md:h-auto md:max-h-[94dvh] md:rounded-3xl', darkMode ? 'bg-[#111] text-white' : 'bg-[#fcfaf5] text-[#1d2026]')} style={{ '--line': darkMode ? 'rgb(255 255 255 / .12)' : '#ddd8ce', '--ink-muted': darkMode ? '#a8abb3' : '#72757d', '--surface-muted': darkMode ? '#292c33' : '#f0ede6', '--surface-raised': darkMode ? '#24272d' : '#fffdf9' } as React.CSSProperties}>
               <div data-testid="product-sheet-handle" aria-hidden="true" onPointerDown={handleProductSheetPointerDown} onPointerUp={handleProductSheetPointerUp} onPointerCancel={() => { productSheetDragStartY.current = null; }} className="flex h-6 shrink-0 touch-none select-none items-center justify-center md:hidden"><span className={cn('h-1.5 w-12 rounded-full', darkMode ? 'bg-white/35' : 'bg-slate-400/60')}/></div>
               <header className="flex min-h-14 items-center gap-2 border-b border-[var(--line)] px-4"><button type="button" onClick={close} aria-label="Volver al catálogo" className="grid size-11 place-items-center rounded-full"><X size={21}/></button><span className="min-w-0 flex-1 truncate font-semibold">{product.name}</span><button type="button" onClick={() => void handleShareProduct(product,'copy')} aria-label="Compartir producto" className="grid size-11 place-items-center rounded-full"><Share2 size={18}/></button></header>
@@ -2130,7 +2161,7 @@ if (loading) {
       <AnimatePresence>
         {cartItemPendingRemoval && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="presentation">
-            <motion.button type="button" aria-label="Cancelar y cerrar confirmación" onClick={() => setCartItemPendingRemoval(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
+            <motion.button type="button" aria-label="Cancelar y cerrar confirmación" onClick={() => setCartItemPendingRemoval(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/75" />
             <motion.section role="alertdialog" aria-modal="true" aria-labelledby="remove-cart-item-title" initial={{ opacity: 0, scale: .96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .96 }} className={cn('relative z-10 w-full max-w-sm rounded-3xl border p-5 shadow-2xl', darkMode ? 'border-white/10 bg-[#171717] text-white' : 'border-slate-200 bg-white text-slate-900')}>
               <h2 id="remove-cart-item-title" className="text-lg font-bold">¿Seguro que querés quitar {cartItemPendingRemoval.name} del carrito?</h2>
               <div className="mt-5 flex gap-3">
@@ -2149,7 +2180,7 @@ if (loading) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-slate-900/75"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}

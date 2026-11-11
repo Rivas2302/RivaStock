@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   IOS_INSTALL_HINT_COOLDOWN_MS,
+  ANDROID_INSTALL_HINT_COOLDOWN_MS,
+  isInstallHintDismissed,
   isIOSDevice,
   isPWAStandalone,
   shouldShowIOSInstallHint,
@@ -27,5 +29,12 @@ describe('PWA installation helpers', () => {
     expect(shouldShowIOSInstallHint(now, now - IOS_INSTALL_HINT_COOLDOWN_MS, null)).toBe(true);
     expect(shouldShowIOSInstallHint(now, null, now - 1000)).toBe(false);
     expect(shouldShowIOSInstallHint(now, null, now - IOS_INSTALL_HINT_COOLDOWN_MS)).toBe(true);
+  });
+
+  it('keeps the Android install hint dismissed for 30 days', () => {
+    const now = 1_800_000_000_000;
+    expect(isInstallHintDismissed(now, null)).toBe(false);
+    expect(isInstallHintDismissed(now, now - 1000)).toBe(true);
+    expect(isInstallHintDismissed(now, now - ANDROID_INSTALL_HINT_COOLDOWN_MS)).toBe(false);
   });
 });

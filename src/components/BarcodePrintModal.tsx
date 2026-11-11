@@ -156,7 +156,7 @@ export default function BarcodePrintModal({ isOpen, onClose, product }: Props) {
     <AnimatePresence>
       {isOpen && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/80"
           role="dialog"
           aria-modal="true"
           aria-label="Vista previa de etiqueta"

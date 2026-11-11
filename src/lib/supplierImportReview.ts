@@ -1,4 +1,4 @@
-import type { Product } from '../types';
+import type { Category, Product } from '../types';
 import type { SupplierListDraftRow } from './supplierListImport';
 import { calculateSupplierSuggestedPrice, type SupplierPriceRounding } from './resellerSupplierRounds';
 import { isSupplierManagedPhotoUrl } from './supplierCatalogPhoto';
@@ -41,6 +41,20 @@ function normalizeSourceCode(value: string | null | undefined): string {
 function normalizeSourceCategory(value: string | null | undefined): string {
   return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('es-AR').replace(/\s+/g, ' ').trim();
+}
+
+export function resolveSupplierImportCategory(
+  sourceCategory: string,
+  targetCategoryId: string | undefined,
+  categories: Category[],
+): { categoryId: string; category: string } {
+  const target = categories.find(category => category.id === targetCategoryId);
+  const sourceKey = normalizeSourceCategory(sourceCategory);
+  const exactSourceMatch = sourceKey
+    ? categories.find(category => normalizeSourceCategory(category.name) === sourceKey)
+    : undefined;
+  const resolved = target ?? exactSourceMatch;
+  return { categoryId: resolved?.id ?? '', category: resolved?.name ?? 'Sin categoría' };
 }
 
 export function planSupplierImport(input: {

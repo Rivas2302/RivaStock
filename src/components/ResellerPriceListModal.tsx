@@ -42,7 +42,6 @@ import {
   saveResellerBuyingPolicy,
   saveResellerMarginRules,
   saveResellerSupplierList,
-  saveResellerSupplierImportCategories,
   saveResellerSupplierListPricingBatch,
   saveSupplierCatalogExchangeRate,
   toggleResellerSupplierList,
@@ -75,7 +74,7 @@ import { cn, formatCurrency } from '../lib/utils';
 import { createAIJob, getAIJob } from '../lib/aiBridge';
 import { buildSupplierListAiBatches, buildSupplierListAiPrompt, parseSupplierListAiOutput, parseSupplierListRows, type SupplierListDraftRow } from '../lib/supplierListImport';
 import { extractSupplierListCatalog, extractSupplierListFileText, fetchRivaCatalogImage, fetchSupplierCatalogImage, parseSupplierListText } from '../lib/supplierListImportSource';
-import { planSupplierImport, type SupplierImportReviewEntry } from '../lib/supplierImportReview';
+import { planSupplierImport, resolveSupplierImportCategory, type SupplierImportReviewEntry } from '../lib/supplierImportReview';
 import {
   clearSupplierProductNoPriceStatus,
   getSupplierImportMatchingProducts,
@@ -127,7 +126,6 @@ interface ResellerPriceListModalProps {
   onEditCatalogProduct: (product: Product) => void;
   onPromoteToStock: (product: Product) => void;
   onProductsImported: (products: Product[]) => void;
-  onCategoriesImported: (categories: Category[]) => void;
   onProductsRemoved?: (productIds: string[]) => void;
   onCategoriesRemoved?: (categoryIds: string[]) => void;
   onPendingImageCleanup?: (paths: string[]) => void;
@@ -334,7 +332,6 @@ export default function ResellerPriceListModal({
   onEditCatalogProduct,
   onPromoteToStock,
   onProductsImported,
-  onCategoriesImported,
   onProductsRemoved,
   onCategoriesRemoved,
   onPendingImageCleanup,
@@ -523,7 +520,7 @@ export default function ResellerPriceListModal({
           ? `La IA propuso categorías para ${Object.keys(suggestions).length} categorías del proveedor. Revisalas antes de importar.`
           : 'La IA no encontró una coincidencia clara. Elegí la categoría propia en cada fila.');
       } catch {
-        if (!cancelled) setSupplierImportAiStatus('No pudimos sugerir algunas categorías. Elegilas manualmente antes de importar.');
+        if (!cancelled) setSupplierImportAiStatus('No pudimos sugerir algunas categorías. Podés elegirlas manualmente o importar sin categoría.');
       }
     })();
     return () => { cancelled = true; };
@@ -2001,10 +1998,12 @@ export default function ResellerPriceListModal({
   const supplierImportPageCount = Math.max(1, Math.ceil(supplierImportFiltered.length / 50));
   const supplierImportPageRows = supplierImportFiltered.slice(supplierImportPage * 50, supplierImportPage * 50 + 50);
   const supplierImportFilteredReadyCount = supplierImportFiltered.filter(entry => ['new', 'updated', 'unchanged'].includes(entry.action)).length;
-  const supplierImportFilteredUnmappedCount = categories.length > 0
-    ? supplierImportFiltered.filter(entry => ['new', 'updated', 'unchanged'].includes(entry.action)
-      && !categories.some(category => category.id === entry.row.targetCategoryId)).length
-    : 0;
+  const supplierImportFilteredUncategorizedCount = supplierImportFiltered.filter(entry => {
+    if (!['new', 'updated', 'unchanged'].includes(entry.action)) return false;
+    const selectedCategory = categories.some(category => category.id === entry.row.targetCategoryId);
+    const sourceCategoryMatch = categories.some(category => normalizeSupplierCategoryKey(category.name) === normalizeSupplierCategoryKey(entry.row.category));
+    return !selectedCategory && !sourceCategoryMatch;
+  }).length;
   const supplierImportFilteredExistingNoPriceCount = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct).length;
   const supplierImportWithPhotoCount = supplierImportReview.filter(entry => Boolean(
     supplierImportPhotoFiles[entry.row.sourceRow]
@@ -2018,11 +2017,6 @@ export default function ResellerPriceListModal({
     if (!list || !editingSupplierId || !canWrite || supplierSaving || supplierImportIncludesTax === null) return;
     const ready = supplierImportFiltered.filter(entry => entry.action === 'new' || entry.action === 'updated' || entry.action === 'unchanged');
     const noPriceEntries = supplierImportFiltered.filter(entry => entry.action === 'no_price' && entry.existingProduct);
-    const missingCategoryMapping = categories.length > 0 && ready.some(entry => !categories.some(category => category.id === entry.row.targetCategoryId));
-    if (missingCategoryMapping) {
-      setError('Elegí una categoría de tu tienda para cada producto listo antes de importar.');
-      return;
-    }
     if (ready.length === 0 && noPriceEntries.length === 0) return;
     const filterText = supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : '';
     const photoTargets: Array<{ entry: typeof ready[number]; file?: File; sourceUrl?: string }> = ready.flatMap(entry => {
@@ -2050,20 +2044,6 @@ export default function ResellerPriceListModal({
         // Reserve the upper bound before any product or category is written.
         await assertStorageUploadAllowed('assets', photoTargets.length * 90_000);
       }
-      const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase('es-AR'), category]));
-      const newCategories: Category[] = [];
-      if (categories.length === 0) {
-        for (const entry of ready) {
-          const categoryName = entry.row.category.trim();
-          const key = categoryName.toLocaleLowerCase('es-AR');
-          if (!categoryName || categoryByName.has(key)) continue;
-          const created = await db.create<Category>('categories', { id: crypto.randomUUID(), name: categoryName, ownerUid });
-          categoryByName.set(key, created);
-          newCategories.push(created);
-        }
-      }
-      if (newCategories.length) onCategoriesImported(newCategories);
-
       const resolvedIds = new Map<number, string>();
       for (const entry of ready) {
         const id = entry.existingProduct?.id ?? supplierImportProductIdsByRow[entry.row.sourceRow] ?? crypto.randomUUID();
@@ -2091,10 +2071,8 @@ export default function ResellerPriceListModal({
         for (const entry of batch) {
           if (entry.action === 'unchanged') continue;
           const existing = entry.existingProduct;
-          const sourceCategory = entry.row.category.trim() || 'General';
-          const category = categories.find(item => item.id === entry.row.targetCategoryId)
-            ?? categoryByName.get(sourceCategory.toLocaleLowerCase('es-AR'));
-          const categoryName = category?.name ?? sourceCategory;
+          const sourceCategory = entry.row.category.trim();
+          const resolvedCategory = resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
           const now = new Date().toISOString();
           const photoBrandFields = supplierPhotoReviewFields(entry.row.photoBrandReview, Boolean(supplierImportPhotoFiles[entry.row.sourceRow]));
           const customFields = { ...(existing?.customFields ?? {}), ...(photoBrandFields ?? {}) };
@@ -2109,8 +2087,8 @@ export default function ResellerPriceListModal({
             ...(existing ?? {} as Product),
             id: resolvedIds.get(entry.row.sourceRow)!,
             name: entry.row.name.trim(),
-            categoryId: category?.id ?? existing?.categoryId ?? '',
-            category: categoryName,
+            categoryId: resolvedCategory.categoryId,
+            category: resolvedCategory.category,
             purchasePrice: existing?.purchasePrice ?? 0,
             salePrice: entry.suggestedSalePrice ?? 0,
             stock: existing?.stock ?? 0,
@@ -2226,9 +2204,6 @@ export default function ResellerPriceListModal({
       const allProductIds = getSupplierProductIdsAfterImport(supplierDraftProductIds, supplierImportFiltered, resolvedIds);
       const savedSupplierList = await saveResellerSupplierList({ priceListId: list.id, supplierId: editingSupplierId, productIds: allProductIds });
       setSupplierDraftProductIds(savedSupplierList.productIds);
-      if (newCategories.length) {
-        await saveResellerSupplierImportCategories(savedSupplierList.id, newCategories.map(category => category.id));
-      }
       const prices = ready.flatMap(entry => {
         const productId = resolvedIds.get(entry.row.sourceRow);
         return productId && entry.supplierCostLocal !== null ? [{
@@ -2242,12 +2217,11 @@ export default function ResellerPriceListModal({
       const mappingCandidates = new Map<string, { sourceCategory: string; targetCategoryIds: Set<string> }>();
       for (const entry of ready) {
         const sourceCategory = entry.row.category.trim();
-        const category = categories.find(item => item.id === entry.row.targetCategoryId)
-          ?? categoryByName.get(sourceCategory.toLocaleLowerCase('es-AR'));
-        if (!sourceCategory || !category) continue;
+        const resolvedCategory = resolveSupplierImportCategory(sourceCategory, entry.row.targetCategoryId, categories);
+        if (!sourceCategory || !resolvedCategory.categoryId) continue;
         const key = normalizeSupplierCategoryKey(sourceCategory);
         const candidate = mappingCandidates.get(key) ?? { sourceCategory, targetCategoryIds: new Set<string>() };
-        candidate.targetCategoryIds.add(category.id);
+        candidate.targetCategoryIds.add(resolvedCategory.categoryId);
         mappingCandidates.set(key, candidate);
       }
       const remembered = [...mappingCandidates.entries()].flatMap(([sourceCategoryKey, candidate]) => candidate.targetCategoryIds.size === 1 ? [{
@@ -2834,7 +2808,7 @@ export default function ResellerPriceListModal({
                             <p className="text-sm font-bold text-slate-900 dark:text-white">{supplierImportRows.length} productos · {supplierImportCounts.new + supplierImportCounts.updated + supplierImportCounts.unchanged} listos · {supplierImportCounts.review} para revisar</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportCounts.new} nuevos · {supplierImportCounts.updated} actualizados · {supplierImportCounts.unchanged} sin cambios</p>
                             {supplierImportAiStatus && <p role="status" className="rounded-lg border border-[var(--line)] bg-[var(--surface-1)] p-3 text-xs font-semibold text-[var(--ink)]">{supplierImportAiStatus}</p>}
-                            {supplierImportFilteredUnmappedCount > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">Elegí una categoría de tu tienda para {supplierImportFilteredUnmappedCount} producto{supplierImportFilteredUnmappedCount === 1 ? '' : 's'} antes de importar.</p>}
+                            {supplierImportFilteredUncategorizedCount > 0 && <p role="status" className="rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm font-semibold text-sky-950 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">{supplierImportFilteredUncategorizedCount} producto{supplierImportFilteredUncategorizedCount === 1 ? '' : 's'} se importarán como “Sin categoría”. La categoría del proveedor se guarda como dato de origen.</p>}
                             {supplierImportCounts.no_price > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{supplierImportCounts.no_price.toLocaleString('es-AR')} sin precio, no se importan.</p>}
                             <div className="flex flex-col gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--ink)] sm:flex-row sm:items-center sm:justify-between">
                               <p>{supplierImportWithPhotoCount} con foto · {supplierImportWithoutPhotoCount} sin foto</p>
@@ -2847,7 +2821,7 @@ export default function ResellerPriceListModal({
                               <input aria-label="Buscar productos importados" value={supplierImportSearch} onChange={event => { setSupplierImportSearch(event.target.value); setSupplierImportPage(0); }} placeholder="Buscar producto o código" className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"/>
                               <select aria-label="Filtrar por categoría importada" value={supplierImportCategoryFilter} onChange={event => { setSupplierImportCategoryFilter(event.target.value); setSupplierImportPage(0); }} className="min-h-10 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"><option value="">Todas las categorías</option>{[...new Set(supplierImportRows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(category => <option key={category} value={category}>{category}</option>)}</select>
                             </div>
-                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || supplierImportFilteredUnmappedCount > 0 || (supplierImportFilteredReadyCount === 0 && supplierImportFilteredExistingNoPriceCount === 0) || (supplierImportFilteredReadyCount > 0 && discount >= 100)} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : supplierImportFilteredReadyCount > 0 ? `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}` : `Quitar ${supplierImportFilteredExistingNoPriceCount} sin precio de la lista`}</button>
+                            <button type="button" data-testid="supplier-import-add-filtered" onClick={() => void handleAddSupplierImportBatch()} disabled={!canWrite || supplierSaving || supplierImportReading || supplierImportIncludesTax === null || (supplierImportFilteredReadyCount === 0 && supplierImportFilteredExistingNoPriceCount === 0) || (supplierImportFilteredReadyCount > 0 && discount >= 100)} className={cn('min-h-11 w-full rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white disabled:opacity-50', displayMode === 'page' && 'sticky bottom-2 z-20 shadow-sm')}>{supplierSaving ? `Agregando ${supplierImportBatchProgress?.done ?? 0} de ${supplierImportBatchProgress?.total ?? 0}…` : supplierImportFilteredReadyCount > 0 ? `Agregar los ${supplierImportFilteredReadyCount} listos${supplierImportOnlyPhotos ? ' con foto' : ''}${supplierImportFilterLabel ? ` de "${supplierImportFilterLabel}"` : ''}` : `Quitar ${supplierImportFilteredExistingNoPriceCount} sin precio de la lista`}</button>
                             {supplierImportBatchProgress && <div><progress aria-label="Progreso de importación" max={supplierImportBatchProgress.total || 1} value={supplierImportBatchProgress.done} className="h-2 w-full"/><p className="text-xs text-slate-600 dark:text-slate-300">{supplierImportBatchProgress.done} de {supplierImportBatchProgress.total}</p></div>}
                             {supplierImportPhotoProgress && <div><progress aria-label="Progreso de fotos" max={supplierImportPhotoProgress.total || 1} value={supplierImportPhotoProgress.done} className="h-2 w-full"/><p role="status" className="text-xs text-slate-600 dark:text-slate-300">Fotos {supplierImportPhotoProgress.done} de {supplierImportPhotoProgress.total}</p></div>}
                             {supplierImportPhotoFailures > 0 && <p role="status" className="text-xs font-semibold text-amber-800 dark:text-amber-200">{supplierImportPhotoFailures} foto{supplierImportPhotoFailures === 1 ? '' : 's'} {supplierImportPhotoFailures === 1 ? 'no se pudo copiar' : 'no se pudieron copiar'}. Podés reintentar la importación.</p>}

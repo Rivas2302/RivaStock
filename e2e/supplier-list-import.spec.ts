@@ -33,11 +33,11 @@ function session() {
   return {
     access_token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: owner, exp: expiresAt, role: 'authenticated' })}.fixture`,
     refresh_token: 'fixture-refresh-token', expires_at: expiresAt, expires_in: 3600, token_type: 'bearer',
-    user: { id: owner, email: 'owner@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: now },
+    user: { id: owner, email: 'owner@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: { display_name: 'QA Owner', password_set: true }, created_at: now },
   };
 }
 
-async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean; noPriceFixture?: boolean; brajaLiveFixture?: boolean; brajaExtensionFixture?: boolean; brajaItems?: Array<Record<string, unknown>> } = {}) {
+async function mockApp(page: Page, options: { failImageIndex?: number; removalFixture?: boolean; bulkFixture?: boolean; mobileListFixture?: boolean; mobileEditOutsideFixture?: boolean; marginFixture?: boolean; largeFixture?: boolean; ocrTexts?: string[]; nameCleanupFixture?: boolean; photoScanFixture?: boolean; inventoryVisibilityFixture?: boolean; useRealOcr?: boolean; emptyCatalog?: boolean; hangWorkerCreation?: boolean; hangFirstRecognition?: boolean; rivaCatalogFixture?: boolean; noPriceFixture?: boolean; brajaLiveFixture?: boolean; brajaExtensionFixture?: boolean; brajaItems?: Array<Record<string, unknown>>; uncategorizedFixture?: boolean } = {}) {
   await page.routeWebSocket('wss://rivastock-test.invalid/**', () => {});
   const priceList = structuredClone(priceListFixture);
   const supplierList = { ...supplierListFixture };
@@ -91,7 +91,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
   ] : [];
   const categories: Record<string, unknown>[] = [
     { id: 'category-general', user_id: owner, name: 'General' },
-    ...(options.marginFixture ? [{ id: 'category-perfumes', user_id: owner, name: 'Perfumes' }] : []),
+    ...(options.marginFixture || options.uncategorizedFixture ? [{ id: 'category-perfumes', user_id: owner, name: 'Perfumes' }] : []),
   ];
   let supplierProductIds: string[] = options.noPriceFixture ? ['mrtecno-existing-cable'] : options.inventoryVisibilityFixture ? ['supplier-inventory-qa'] : options.photoScanFixture ? ['supplier-photo-1'] : options.nameCleanupFixture ? ['supplier-name-1'] : options.removalFixture ? ['product-removal-1', 'product-removal-2'] : options.bulkFixture ? ['bulk-provider-included'] : [];
   const priceListItems: Record<string, unknown>[] = options.inventoryVisibilityFixture ? [
@@ -403,7 +403,7 @@ async function mockApp(page: Page, options: { failImageIndex?: number; removalFi
 
   await page.addInitScript(value => localStorage.setItem('rivastock-auth', JSON.stringify(value)), session());
   return {
-    products, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites, uploadedPhotoSizes, livePhotoDownloadSizes, livePhotoDownloadUrls,
+    products, categories, pricingCalls, sourceCosts, removalCalls, bulkCalls, priceListItems, productReadPages, settingsWrites, uploadedPhotoSizes, livePhotoDownloadSizes, livePhotoDownloadUrls,
     supplierProducts: () => [...supplierProductIds],
     changeCatalog: () => { changedCatalog = true; },
     failImagesAt: (index?: number) => { failedImageIndex = index; },
@@ -726,6 +726,29 @@ test('supplier catalog import reviews three fixture pages, bulk adds, then updat
   await expect.poll(() => pricingCalls.length).toBe(2);
   expect(pageErrors).toEqual([]);
   await expect(modal.getByText(/0 nuevos · 0 actualizados · 3 sin cambios/)).toBeVisible();
+});
+
+test('unmapped supplier categories stay optional and import as uncategorized while preserving the source label', async ({ page }) => {
+  const { products, categories } = await mockApp(page, { uncategorizedFixture: true });
+  const modal = await openMobileSupplierImportFromStock(page);
+  await modal.getByLabel('Enlace HTTPS del proveedor').fill('https://mrtecno.com.ar/productos/');
+  await modal.getByRole('button', { name: 'Leer enlace' }).click();
+  await modal.getByLabel('Cotización USD a pesos').fill('1600');
+  await modal.getByLabel('Los precios incluyen IVA').selectOption('false');
+  await continueSupplierImportToReview(page, modal);
+
+  await expect(modal.getByText('3 productos · 3 listos · 0 para revisar')).toBeVisible();
+  await expect(modal.getByRole('status').filter({ hasText: '3 productos se importarán como “Sin categoría”' })).toBeVisible();
+  const add = modal.getByTestId('supplier-import-add-filtered');
+  await expect(add).toBeEnabled();
+  await add.click();
+  await confirmSupplierProductImport(page);
+
+  await expect.poll(() => products.length).toBe(3);
+  expect(products.every(product => product.category_id === '' && product.category === 'Sin categoría')).toBe(true);
+  expect(products.map(product => (product.custom_fields as Record<string, unknown>).supplierImportSourceCategory).sort())
+    .toEqual(['Cargadores', 'Cargadores', 'Iluminación']);
+  expect(categories).toHaveLength(2);
 });
 
 test('Mr Tecno rows without a price stay out of imports and unlist already imported products', async ({ page }) => {

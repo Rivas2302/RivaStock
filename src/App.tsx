@@ -181,7 +181,7 @@ function AppShell() {
       <div className={`fixed ${isOnline ? 'top-[max(1rem,env(safe-area-inset-top))]' : 'top-[max(5rem,calc(env(safe-area-inset-top)_+_5rem))]'} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] sm:left-auto sm:w-[min(30rem,calc(100vw_-_2rem))] z-[100] flex flex-col gap-2 pointer-events-none`}>
         <ToastContainer />
       </div>
-      <PWAInstallProvider allowInstallPrompt={!location.pathname.startsWith('/catalogo/')}><AppRoutes /></PWAInstallProvider>
+      <PWAInstallProvider allowInstallPrompt={location.pathname !== '/catalogo' && !location.pathname.startsWith('/catalogo/') && !location.pathname.startsWith('/p/')}><AppRoutes /></PWAInstallProvider>
     </>
   );
 }

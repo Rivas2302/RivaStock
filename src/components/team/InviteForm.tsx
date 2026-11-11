@@ -102,7 +102,7 @@ export default function InviteForm({ isOpen, onClose, onSuccess, editTarget }: P
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/70" onClick={onClose} />
       <div className="invite-dialog relative w-full max-w-lg max-h-[calc(100dvh_-_2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[70] border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
           <h3 className="text-xl font-bold text-slate-900 dark:text-white">

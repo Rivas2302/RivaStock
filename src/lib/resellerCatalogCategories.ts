@@ -12,6 +12,10 @@ export function normalizeSupplierCategoryKey(value: string): string {
     .toLocaleLowerCase('es-AR').replace(/[^a-z\d]+/g, ' ').trim().replace(/\s+/g, ' ').slice(0, 120);
 }
 
+export function isUncategorizedCategoryName(value: string): boolean {
+  return normalizeSupplierCategoryKey(value) === 'sin categoria';
+}
+
 export function getResellerProductCategoryKey(product: PublicCatalogProduct, categories: Category[]): string {
   const ownerCategory = categories.find(category => category.id === product.categoryId);
   if (ownerCategory) return `owner:${ownerCategory.id}`;
@@ -26,6 +30,7 @@ export function buildResellerCatalogCategories(
   for (const product of products) {
     const ownerCategory = categories.find(category => category.id === product.categoryId);
     const name = ownerCategory?.name ?? product.category?.trim() ?? '';
+    if (isUncategorizedCategoryName(name)) continue;
     const normalizedName = name || 'General';
     const id = ownerCategory ? `owner:${ownerCategory.id}` : `source:${normalizeSupplierCategoryKey(normalizedName) || 'general'}`;
     const current = byId.get(id);

@@ -909,13 +909,6 @@ export default function Stock() {
               return Array.from(byId.values());
             });
           }}
-          onCategoriesImported={(importedCategories) => {
-            setCategories((current) => {
-              const byId = new Map(current.map((category) => [category.id, category]));
-              for (const category of importedCategories) byId.set(category.id, category);
-              return Array.from(byId.values());
-            });
-          }}
           onProductsRemoved={(productIds) => {
             const removed = new Set(productIds);
             setProducts((current) => current.filter((product) => !removed.has(product.id)));

@@ -44,7 +44,7 @@ export default function Modal({ isOpen, onClose, title, children, className, inl
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
+            className="fixed inset-0 bg-black/70 z-[60]"
           />
           <motion.div
             ref={dialogRef}

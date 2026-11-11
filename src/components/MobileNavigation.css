@@ -9,9 +9,8 @@
   padding: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 9999px;
-  background: color-mix(in srgb, var(--surface-raised) 95%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 97%, transparent);
   box-shadow: 0 10px 35px var(--shadow-color);
-  backdrop-filter: blur(12px);
 }
 
 .mobile-navigation-overlay {

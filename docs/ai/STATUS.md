@@ -1,3 +1,14 @@
+# 2026-11-10 — cierre seguro de I52 y estabilidad del catálogo
+
+- I52 quedó pausada en un punto seguro en la rama `codex/i46-module-overrides-fix`, commit local `1256096` (`chore(import): checkpoint I52 work in progress`). El checkpoint incluye la nota de pausa en `ACTION_PLAN.md`; no se publicó ni se desplegó esa rama.
+- Diagnóstico preliminar de compositor, en solo lectura con DevTools/CDP sobre `/catalogo/rivatech-2`: antes del arreglo se observaron 51 superficies con `backdrop-filter`, 3 elementos fijos, 1 sticky, 2 animaciones continuas y 4 capas de composición. Durante 120 s quieto el DOM y el layout permanecieron estables, no hubo errores de consola y no se reprodujo un cuadro negro. La presión de composición por blur en superficies fijas y animaciones es una hipótesis sustentada por esas capas, no una causa raíz visualmente confirmada.
+- Cambios locales para aliviar esa presión: fondos opacos semitransparentes en lugar de blur, pausa de animaciones del catálogo cuando se oculta la pestaña, el hero sale de pantalla, se abre un producto o se pide movimiento reducido; tarjetas sin transiciones de reordenamiento; reserva del espacio de fotos y `content-visibility` en tarjetas largas.
+- Importación: categoría propia opcional; se conserva la categoría de origen del proveedor y lo no mapeado se guarda como `Sin categoría`. El catálogo público omite esa categoría en sus filtros. No se crearon categorías automáticamente.
+- Catálogo: abrir el producto conserva la instancia montada, los datos cargados y el scroll; en móvil se usa «Ver más productos» sin superponer páginas, y en PC continúa la paginación de una página por vez.
+- Instalación: «Ahora no» y X descartan el aviso por 30 días; el aviso se oculta en modo instalado y en rutas públicas del catálogo. Configuración conserva «Instalar app».
+- Verificación local: `npm run lint`, `npm test` (**239 archivos / 1.385 pruebas**) y `npm run build` pasaron. Playwright anónimo: **61 pasaron / 11 omitidos** en Chromium PC, Android 375 px y WebKit iPhone 11/13/15; las pruebas focales de categoría opcional y Configuración también pasaron. No hubo migraciones ni escrituras en datos reales, por lo que no correspondía ejecutar backup.
+- Pendiente de esta tarea: desplegar estos cambios y medir otra vez el catálogo en Current con captura de Performance/paint/layers, 120 s sin interacción y scroll rápido; `/revendedores` requiere sesión y se cubrirá en el entorno E2E con fixture, no con datos de producción.
+
 # 2026-11-10 — cierre del catálogo e I52 retomada
 
 - Corregí la imagen Open Graph del catálogo cuando portada o logo están guardados como URI de datos: la función share entrega una imagen pública de solo lectura, validada por MIME y dimensiones, y el HTML incluye ancho, alto y tarjeta grande. No se escribieron datos del negocio.

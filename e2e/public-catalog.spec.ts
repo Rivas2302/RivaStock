@@ -34,10 +34,16 @@ function fixtureConfig(theme: 'normal' | 'christmas' | 'children-day' | 'new-yea
   };
 }
 
-async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' | 'no-round' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}, announcementText = 'Envíos en General Pico') {
+async function mockCatalogApi(page: Page, theme: 'normal' | 'christmas' | 'children-day' | 'new-year' = 'normal', offerEndsAt?: string, resellerRounds: false | 'all' | 'group' | 'no-round' = false, productOverrides: Partial<typeof product> = {}, showOutOfStock = false, includeRelatedProduct = false, allowPublicOrder = false, businessWhatsApp: string | null = '5491100000000', emptyCatalog = false, categoryOverrides?: Array<{ id: string; name: string; user_id: string }>, legacyCatalogSlug?: string, categoryPhotoOverrides: Record<string, string> = {}, announcementText = 'Envíos en General Pico', catalogProductCount = 1) {
   const roundId = '017e8786-e22a-4d48-8602-0bc5c818aac2';
   const catalogProduct = { ...product, ...productOverrides };
-  const catalogProducts = emptyCatalog ? [] : includeRelatedProduct ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }] : [catalogProduct];
+  const catalogProducts = emptyCatalog ? [] : includeRelatedProduct
+    ? [catalogProduct, { ...product, id: 'related-product', name: 'Cable Lightning' }]
+    : Array.from({ length: catalogProductCount }, (_, index) => index === 0 ? catalogProduct : {
+      ...catalogProduct,
+      id: 'catalog-fixture-' + (index + 1),
+      name: 'Cable USB-C Fixture ' + (index + 1),
+    });
   const resellerOrderProduct = { ...catalogProduct, salePrice: 6800, availability: 'in_stock' };
   const resellerOnOrderProduct = { ...catalogProduct, id: 'product-on-order', name: 'Producto por pedido', salePrice: 2500, stock: 0, availability: 'on_order' };
   await page.route('**/rest/v1/**', async (route: Route) => {
@@ -303,6 +309,10 @@ test('opening a listed product is immediate and does not reload the anonymous ca
   });
   await page.goto('/catalogo/qa-catalog');
   await expect(page.getByRole('heading', { name: 'Encontrá lo que buscás' })).toBeVisible();
+  await page.evaluate(() => {
+    (window as Window & { __catalogHeroBeforeOpen?: Element }).__catalogHeroBeforeOpen =
+      document.querySelector('[data-testid="public-catalog-hero"]')!;
+  });
   const requestsAfterInitialLoad = catalogRequests;
   const elapsed = await page.evaluate(() => new Promise<number>(resolve => {
     const target = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Cable USB-C');
@@ -320,7 +330,62 @@ test('opening a listed product is immediate and does not reload the anonymous ca
   await expect(page.getByTestId('catalog-product-detail-modal')).toBeVisible();
   expect(elapsed).toBeLessThan(300);
   expect(catalogRequests).toBe(requestsAfterInitialLoad);
+  expect(await page.evaluate(() => (window as Window & { __catalogHeroBeforeOpen?: Element }).__catalogHeroBeforeOpen
+    === document.querySelector('[data-testid="public-catalog-hero"]'))).toBe(true);
   await expect(page.getByText('Cargando catálogo…')).toHaveCount(0);
+});
+
+test('mobile reveals more products without replacing or overlapping pages; desktop replaces one page at a time', async ({ page }) => {
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, false, '5491100000000', false, undefined, undefined, {}, 'Envíos en General Pico', 100);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/catalogo/qa-catalog');
+  const cards = page.locator('.catalog-product-card');
+  await expect(cards).toHaveCount(48);
+  await expect(cards.first().locator('img')).toHaveAttribute('width', '640');
+  await expect(cards.first().locator('img')).toHaveAttribute('height', '640');
+  await expect(cards.first()).toHaveCSS('content-visibility', 'auto');
+  const loadMore = page.getByTestId('catalog-load-more');
+  await expect(loadMore).toHaveText('Ver más productos');
+  await loadMore.scrollIntoViewIfNeeded();
+  await loadMore.click();
+  await expect(cards).toHaveCount(96);
+  await loadMore.click();
+  await expect(cards).toHaveCount(100);
+  await expect(page.getByRole('navigation', { name: 'Paginación' })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(cards).toHaveCount(48);
+  const pager = page.getByRole('navigation', { name: 'Paginación' });
+  await pager.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(cards).toHaveCount(48);
+  await expect(page.getByRole('button', { name: 'Cable USB-C Fixture 49', exact: true })).toBeVisible();
+});
+
+test('the public store never offers Sin categoría as a category filter', async ({ page }) => {
+  await mockCatalogApi(page, 'normal', undefined, false, { categoryId: 'category-uncategorized', category: 'Sin categoría' }, false, false, false, '5491100000000', false, [
+    { id: 'category-uncategorized', name: 'Sin categoría', user_id: OWNER_ID },
+  ]);
+  await page.goto('/catalogo/qa-catalog');
+  const categoryButtons = page.locator('section[aria-label="Categorías"] button');
+  await expect(categoryButtons.first()).toContainText('Todos');
+  await expect(categoryButtons.filter({ hasText: 'Sin categoría' })).toHaveCount(0);
+});
+
+test('install hints stay hidden on every public catalog route', async ({ page }) => {
+  await mockCatalogApi(page);
+  await page.goto('/catalogo/qa-catalog');
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true }) as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: 'dismissed'; platform: string }>;
+    };
+    event.prompt = async () => undefined;
+    event.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'webapp' });
+    window.dispatchEvent(event);
+  });
+  await expect(page.getByRole('note', { name: /Instalar RivaStock/ })).toHaveCount(0);
+  expect(await page.locator('body').evaluate(element => element.classList.contains('pwa-install-notice-visible'))).toBe(false);
 });
 
 test('cart add feedback and removal confirmation work in Store and Reseller modes', async ({ page }) => {
@@ -703,9 +768,21 @@ test('seasonal effects stop when the visitor requests reduced motion', async ({ 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockCatalogApi(page, 'children-day');
   await page.goto('/catalogo/qa-catalog');
-  const particle = page.locator('.catalog-theme-particle').first();
-  await expect(particle).toBeAttached();
-  await expect.poll(() => particle.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+  const effects = page.locator('.catalog-theme-effects');
+  await expect(effects).toHaveAttribute('data-animated', 'false');
+  await expect(page.locator('.catalog-theme-particle')).toHaveCount(0);
+});
+
+test('seasonal background pauses when the hero is offscreen and resumes when visible', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockCatalogApi(page, 'children-day');
+  await page.goto('/catalogo/qa-catalog');
+  const effects = page.locator('.catalog-theme-effects');
+  await expect(effects).toHaveAttribute('data-animated', 'true');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(effects).toHaveAttribute('data-animated', 'false');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(effects).toHaveAttribute('data-animated', 'true');
 });
 
 test('expired offers do not appear with a false discount or countdown', async ({ page }) => {

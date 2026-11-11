@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Category, Product, PublicCatalogProduct } from '../types';
-import { buildResellerCatalogCategories, buildSupplierCategoryReviewGroups, buildSupplierCategorySuggestionPrompt, getResellerProductCategoryKey, normalizeSupplierCategoryKey, parseSupplierCategoryAiOutput, suggestSupplierCategoryId } from './resellerCatalogCategories';
+import { buildResellerCatalogCategories, buildSupplierCategoryReviewGroups, buildSupplierCategorySuggestionPrompt, getResellerProductCategoryKey, isUncategorizedCategoryName, normalizeSupplierCategoryKey, parseSupplierCategoryAiOutput, suggestSupplierCategoryId } from './resellerCatalogCategories';
 
 const categories: Category[] = [
   { id: 'cat-perfumes', name: 'Perfumes', ownerUid: 'owner' },
@@ -22,6 +22,15 @@ describe('reseller catalog categories', () => {
       { id: 'source:electronica y accesorios', name: 'Electrónica y accesorios', count: 1, photoUrl: 'https://img.test/joystick.webp' },
       { id: 'source:perfumes', name: 'Perfumes', count: 2, photoUrl: 'https://img.test/perfume.webp' },
     ]);
+  });
+
+  it('does not expose the uncategorized bucket as a public filter', () => {
+    expect(isUncategorizedCategoryName('Sin categoría')).toBe(true);
+    expect(isUncategorizedCategoryName('General')).toBe(false);
+    expect(buildResellerCatalogCategories([
+      product('uncategorized', '', 'Sin categoría'),
+      product('categorized', '', 'Perfumes'),
+    ], categories).map(category => category.name)).toEqual(['Perfumes']);
   });
 
   it('uses owner category IDs when imported products have been mapped', () => {

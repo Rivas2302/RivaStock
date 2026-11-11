@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Product } from '../types';
-import { calculateSupplierSuggestedPublicPrice, planSupplierImport } from './supplierImportReview';
+import { calculateSupplierSuggestedPublicPrice, planSupplierImport, resolveSupplierImportCategory } from './supplierImportReview';
 import { DEFAULT_RESELLER_MARGIN_RULES } from './resellerMarginRules';
 import { parseSupplierListRows } from './supplierListImport';
 import {
@@ -24,6 +24,25 @@ const row = (changes = {}) => ({
 });
 
 describe('supplier import review', () => {
+  it('keeps supplier origin while allowing an unmatched row to import without an owner category', () => {
+    const categories = [
+      { id: 'category-general', name: 'General', ownerUid: 'owner-1' },
+      { id: 'category-perfumes', name: 'Perfumes', ownerUid: 'owner-1' },
+    ];
+    expect(resolveSupplierImportCategory('Cargadores', undefined, categories)).toEqual({
+      categoryId: '',
+      category: 'Sin categoría',
+    });
+    expect(resolveSupplierImportCategory('Perfúmes', undefined, categories)).toEqual({
+      categoryId: 'category-perfumes',
+      category: 'Perfumes',
+    });
+    expect(resolveSupplierImportCategory('Cargadores', 'category-general', categories)).toEqual({
+      categoryId: 'category-general',
+      category: 'General',
+    });
+  });
+
   it('calculates the suggested public price from the reseller price and the general discount', () => {
     expect(calculateSupplierSuggestedPublicPrice(2660, 20)).toBe(3325);
     expect(calculateSupplierSuggestedPublicPrice(2660, 0)).toBe(2660);
