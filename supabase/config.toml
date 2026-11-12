@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.fetch-url]
 verify_jwt = true
+
+[functions.ai-tools]
+verify_jwt = false

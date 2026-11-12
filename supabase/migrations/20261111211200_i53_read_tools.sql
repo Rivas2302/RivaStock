@@ -53,12 +53,30 @@ CREATE OR REPLACE FUNCTION public.ai_tool_finish_call(
   p_owner uuid, p_id uuid, p_ok boolean, p_row_count integer, p_duration_ms integer, p_error text
  ) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_call public.ai_tool_calls%ROWTYPE;
 BEGIN
   UPDATE public.ai_tool_calls SET ok = COALESCE(p_ok, false),
-    row_count = CASE WHEN p_row_count IS NULL THEN NULL ELSE pg_catalog.greatest(0, p_row_count) END,
-    duration_ms = CASE WHEN p_duration_ms IS NULL THEN NULL ELSE pg_catalog.greatest(0, p_duration_ms) END,
+    row_count = CASE WHEN p_row_count IS NULL THEN NULL ELSE GREATEST(0, p_row_count) END,
+    duration_ms = CASE WHEN p_duration_ms IS NULL THEN NULL ELSE GREATEST(0, p_duration_ms) END,
     error = CASE WHEN p_error IS NULL THEN NULL ELSE pg_catalog.left(p_error, 500) END
-  WHERE id = p_id AND user_id = p_owner;
+  WHERE id = p_id AND user_id = p_owner
+  RETURNING * INTO v_call;
+
+  IF NOT FOUND THEN RETURN; END IF;
+
+  UPDATE public.ai_jobs AS job
+  SET timings = COALESCE(job.timings, '{}'::jsonb) || pg_catalog.jsonb_build_object(
+    'tool_calls', COALESCE(job.timings->'tool_calls', '[]'::jsonb) || pg_catalog.jsonb_build_array(
+      pg_catalog.jsonb_build_object(
+        'tool', v_call.tool,
+        'duration_ms', v_call.duration_ms,
+        'row_count', v_call.row_count,
+        'ok', v_call.ok
+      )
+    )
+  )
+  WHERE job.id = v_call.job_id AND job.user_id = p_owner;
 END;
 $$;
 

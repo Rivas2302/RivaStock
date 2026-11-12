@@ -31,7 +31,8 @@ beforeAll(async () => {
     $$;
     CREATE TABLE public.ai_jobs (
       id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id), chat_id uuid,
-      worker_id uuid, status text NOT NULL, provider text NOT NULL
+      worker_id uuid, status text NOT NULL, provider text NOT NULL,
+      timings jsonb NOT NULL DEFAULT '{}'::jsonb
     );
     CREATE TABLE public.products (
       id uuid PRIMARY KEY, user_id uuid NOT NULL, name text NOT NULL, category_id text NOT NULL DEFAULT '',
@@ -168,6 +169,26 @@ it('requires an owned processing chat job to reserve a call and enforces 40 call
     [owner, job, '30000000-0000-4000-8000-000000000001'],
   );
   expect(rows[0].id).toBeNull();
+});
+
+it('adds tool-call phases to the job timings without storing arguments or response content', async () => {
+  const measurementJob = '20000000-0000-4000-8000-000000000003';
+  await db.query(`INSERT INTO public.ai_jobs(id,user_id,chat_id,worker_id,status,provider)
+    VALUES ($1,$2,$3,$4,'processing','codex')`, [
+    measurementJob, owner, '30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001',
+  ]);
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT public.ai_tool_reserve_call($1,$2,$3,'productos_buscar','{"texto":"termómetro privado"}'::jsonb) AS id`,
+    [owner, measurementJob, '30000000-0000-4000-8000-000000000001'],
+  );
+  await db.query(`SELECT public.ai_tool_finish_call($1,$2,true,3,127,NULL)`, [owner, rows[0].id]);
+  const timing = await db.query<{ timings: Record<string, unknown> }>(
+    `SELECT timings FROM public.ai_jobs WHERE id = $1`, [measurementJob],
+  );
+  expect(timing.rows[0].timings.tool_calls).toEqual([
+    { tool: 'productos_buscar', duration_ms: 127, row_count: 3, ok: true },
+  ]);
+  expect(JSON.stringify(timing.rows[0].timings)).not.toContain('termómetro privado');
 });
 
 it('keeps call details tenant-private and limits authenticated access to reads', async () => {

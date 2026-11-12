@@ -5,7 +5,7 @@ import { createSupabaseApiKeyFetch, resolveSupabaseAdminKey, SUPABASE_PUBLISHABL
 import { findReadTool, validateReadToolArguments } from '../_shared/aiToolDefinitions.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const { key: SUPABASE_ADMIN_KEY } = resolveSupabaseAdminKey(Deno.env.get('SUPABASE_SECRET_KEYS'));
+const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(Deno.env.get('SUPABASE_SECRET_KEYS'));
 const LEGACY_TOKEN = Deno.env.get('AI_BRIDGE_TOKEN') ?? '';
 const LEGACY_OWNER_UID = Deno.env.get('AI_BRIDGE_OWNER_UID') ?? '';
 const MAX_BODY_BYTES = 16 * 1024;
@@ -168,4 +168,4 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   if (!ok) return response({ ok: false, error: errorMessage ?? 'No se pudo completar la consulta.' }, 200, origin);
   const bounded = truncateResult(result);
   return response({ ok: true, data: bounded.data, truncated: bounded.truncated }, 200, origin);
-}));
+}, SUPABASE_ADMIN_KEY_MODE));

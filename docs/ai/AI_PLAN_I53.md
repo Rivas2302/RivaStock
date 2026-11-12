@@ -105,7 +105,7 @@ Decisión según el punto 1:
 
 1. **Etapas 1.3/1.4 — entrega de texto:** el SDK probado no emite texto parcial. El worker transmite la actividad y cada `agent_message` completo apenas llega; la web revela el mensaje con efecto de escritura. Aceptación de Etapa 1: la actividad aparece en menos de 3 s desde el envío.
 2. **Etapa 3.4 — aprobación MCP:** registrar `rivastock` con `default_tools_approval_mode: 'auto'`. Cada herramienta de lectura declara exactamente `readOnlyHint: true`, `destructiveHint: false` e `idempotentHint: true`. La prueba automática debe completar una herramienta de lectura con `read-only` y sin red.
-3. **Etapa 4 — herramienta de propuesta:** antes de implementar acciones de escritura, probar una herramienta de propuesta con anotaciones honestas (`readOnlyHint: false`, `destructiveHint: false`). Si Codex la bloquea en modo `read-only`, detenerse y reportar opciones; no marcarla como lectura para evitar el bloqueo.
+3. **Etapa 4 — diseño actualizado del 12/11:** Codex permanece en `read-only` y nunca escribe. Usa únicamente `previsualizar_cambio`, una herramienta genuina de lectura que calcula una propuesta sin guardar. El worker convierte marcadores válidos del mismo turno en solicitudes pendientes después de que Codex termina, salvo cancelación. No se cambia `approvalPolicy` ni se agregan modos de aprobación.
 4. **Etapa 4.2 — estado del pedido:** no se identificó una RPC de cambio de estado en el relevamiento. Antes de implementar `order.set_status`, revisar cómo lo cambia la app, qué tabla modifica y qué efectos produce sobre stock, caja y avisos. Si esos efectos ocurren en el navegador, dejar esa acción fuera de la Etapa 4 y reportarlo.
 5. **Etapa 4.2 — escrituras permitidas:** `product.update` y `product.create` deben usar `save_product_with_holdings`; `stock.adjust`, las RPC existentes de inventario. Nunca escribir directamente en `products` ni en `stock_movements`.
 
@@ -392,24 +392,38 @@ En cada respuesta, línea plegable "Consultó: productos (12), ventas (1)" a par
 
 ### Estado de ejecución — Etapa 3
 
-- Implementación en `codex/i53-stage3`, basada en `main`: las 14 herramientas de lectura del plan usan RPC con ámbito del dueño, el worker las expone por MCP con canal local de un solo uso, y el chat muestra las consultas y sus resultados. El paquete del Bridge queda en **1.27.0**.
+- Implementación rebased sobre `main` `594c445`: las 14 herramientas de lectura del plan usan RPC con ámbito del dueño, el worker las expone por MCP con canal local de un solo uso, y el chat muestra las consultas y sus resultados. La entrega de esta etapa usa Bridge **1.28.0**; conserva `worker_wait`, el ciclo de memoria separado y los timings de latencia. Cada consulta añade a `ai_jobs.timings.tool_calls` su nombre, duración, filas y resultado, sin parámetros ni texto del negocio.
 - La prueba de proceso real MCP stdio completa el handshake y enumera las 14 herramientas con las anotaciones de lectura requeridas. La integración con Codex, en `read-only` y `networkAccessEnabled: false`, invocó una herramienta y recibió el resultado de prueba. El endpoint se sustituyó por uno ficticio: no se consultaron datos reales.
-- Verificación local: suite raíz **248 archivos / 1.443 pruebas**, lint, build, Bridge typecheck y Bridge **140 pruebas** aprobados; la prueba integrada real de Codex pasó **1/1**. La prueba del handshake real MCP pasó **4/4**.
-- La migración de Etapa 3 es nueva y aditiva; aún no se aplicó ni se desplegó. Se subirá la rama para revisión y se integrará solo junto con el cierre de Etapa 4 desde `main`.
-- **Etapa 4 detenida antes de implementar acciones:** el probe requerido con `producto_proponer_cambio`, anotaciones honestas `readOnlyHint: false` y `destructiveHint: false`, `default_tools_approval_mode: 'auto'`, `read-only` y sin red, produjo una llamada MCP fallida por aprobación; el servidor de prueba no llegó a ejecutarla. El probe era local, devolvía una propuesta ficticia y no tocó datos.
-- Por la regla de Ajustes tras la Etapa 0, no se implementaron confirmación, escritura ni `order.set_status`. Antes de reanudar Etapa 4 hay que resolver el modo de aprobación para propuestas no destructivas sin falsear su anotación.
+- Verificación local: suite raíz **252 archivos / 1.454 pruebas**, lint, build, Bridge typecheck y Bridge **149 aprobadas / 1 omitida** aprobados; Deno check de `ai-tools` y `ai-bridge` pasó. La prueba integrada MCP/Codex anterior pasó **1/1** y el handshake **4/4**.
+- La migración `20261111211200_i53_read_tools` es aditiva y pasa **6/6** pruebas PGlite, incluida la comprobación de que llamadas a herramientas se agregan a `timings` sin guardar argumentos. Sigue pendiente de aplicar hasta verificar un backup nuevo.
+- El preflight anterior de Etapa 4 con una herramienta honesta `readOnlyHint: false` fue bloqueado antes de llegar al servidor. El diseño del 12/11 lo reemplaza: `previsualizar_cambio` es una lectura real, no escribe y lleva anotaciones de lectura verdaderas; el worker solo convierte marcadores válidos del mismo turno en propuestas después de completarse la respuesta.
+- Relevamiento de `order.set_status`: `Orders.tsx` cambia `orders.status` e `isRead` directamente con `db.update`; no existe RPC. La conversión a venta es una acción distinta que llama `register_sale` y luego cambia el estado. Se excluye `order.set_status` de esta etapa para no simular un efecto de servidor que hoy no existe.
 
 ---
 
 ## ETAPA 4 — Herramientas de escritura con confirmación
 
-### 4.1 Base de datos (extender lo existente)
+### 4.1 Flujo de propuesta
+
+Codex sigue en `read-only` y nunca escribe ni ve una herramienta de escritura. No se cambia `approvalPolicy`, `default_tools_approval_mode` ni se agregan modos de aprobación.
+
+La única herramienta nueva visible para Codex es `previsualizar_cambio({ accion, parametros })`. `ai-tools` llama a `public.ai_action_preview(p_owner, p_action_key, p_params)`, una función `STABLE` que valida y calcula antes/después, cantidad y hasta 5 ejemplos, sin INSERT/UPDATE/DELETE en ninguna tabla. La respuesta contiene `{ ok, preview_id, resumen, antes, despues, cantidad, ejemplos }`; `preview_id` se genera al responder y no se persiste.
+
+La herramienta MCP declara `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`. Esta anotación es verdadera porque la previsualización no escribe.
+
+El canal local conserva en memoria, por turno, cada previsualización exitosa: `preview_id`, `accion` y `parametros`. El prompt indica que el modelo marca al final de la respuesta cada cambio propuesto con una línea `[[propuesta:<preview_id>]]`.
+
+Al concluir el turno, y solo si no fue cancelado, el worker busca esos marcadores y acepta únicamente IDs de previsualizaciones registradas en ese mismo turno. IDs inventados, de otro turno o repetidos se ignoran. Por cada coincidencia, hasta un máximo de 10, llama a `ai-tools` con la operación interna no publicada a Codex `proponer_desde_preview({ accion, parametros })`. El servidor recalcula mediante `ai_action_propose` y crea la solicitud pendiente. El worker quita los marcadores del texto guardado y adjunta los `request_id` correspondientes al mensaje. Un turno cancelado no crea propuestas.
+
+### 4.2 Base de datos (extender lo existente)
 
 `ai_actions_catalog`: agregar `module text`, `kind text NOT NULL DEFAULT 'write'`, `undoable boolean NOT NULL DEFAULT false`.
 
 `ai_action_requests`: agregar `chat_id uuid`, `job_id uuid`, `result jsonb`, `undo jsonb`, `expires_at timestamptz`, `executed_at timestamptz`, `error text`. Ampliar `status` a `pending | confirmed | cancelled | expired | failed | undone`. Reemplazar el CHECK de estados para que `confirmed` acepte `publication_id IS NOT NULL` **o** `result IS NOT NULL`. La acción `facebook.publish_product` y `confirm_ai_action` deben seguir funcionando igual (prueba de regresión obligatoria).
 
 RPC nuevas:
+
+- `ai_action_preview(p_owner, p_action_key, p_params) RETURNS jsonb` — `STABLE`, solo service role. Valida y calcula la vista previa sin escribir en ninguna tabla. Genera un `preview_id` no persistido y devuelve `{ ok, preview_id, resumen, antes, despues, cantidad, ejemplos }`.
 
 - `ai_action_propose(p_owner, p_job_id, p_chat_id, p_action_key, p_params) RETURNS jsonb` — solo service role (la llama `ai-tools`). Valida parámetros, calcula la vista previa y crea la solicitud `pending` con `expires_at = now() + interval '30 minutes'` y `draft_content = { summary, before, after, count, samples }`. **No modifica datos del negocio.** Máximo 10 propuestas pendientes por chat.
 - `ai_action_confirm(p_request_id) RETURNS jsonb` — para `authenticated`; exige `user_id = auth.uid()`, estado `pending` y no vencida. **Recalcula y revalida** contra los datos actuales (si el "antes" cambió, falla con "Los datos cambiaron, pedí la propuesta de nuevo"). Ejecuta dentro de una transacción, guarda `result` y `undo`, registra en `audit_events`.
@@ -418,38 +432,41 @@ RPC nuevas:
 
 Las escrituras usan las rutas de escritura que ya usa la app (RPC o comandos de inventario detectados en la etapa 0). No escribir directo en tablas si existe una RPC de negocio.
 
-### 4.2 Acciones
+### 4.3 Acciones
 
-| Clave | Herramienta MCP | Parámetros | Vista previa | Deshacer |
-|---|---|---|---|---|
-| `product.update` | `producto_proponer_cambio` | `product_id`, y uno o más de `nombre`, `descripcion`, `categoria`, `precio_venta` | Antes / después por campo | Sí |
-| `product.create` | `producto_proponer_alta` | `nombre`, `precio_venta`, `categoria?`, `descripcion?`, `stock_inicial?` | Ficha nueva | Sí (archivar) |
-| `stock.adjust` | `stock_proponer_ajuste` | `product_id`, `cantidad` (±), `motivo` | Stock antes / después | Sí |
-| `price.bulk_update` | `precios_proponer_cambio_masivo` | `filtro` (`categoria` o `product_ids`), `tipo` (`porcentaje`, `monto`), `valor`, `redondeo?` | Cantidad + 5 ejemplos | Sí |
-| `order.set_status` | `pedido_proponer_estado` | `order_id`, `estado` | Estado antes / después | Sí |
-| `catalog.announcement` | `catalogo_proponer_cinta` | `texto` (≤120), `activa` | Texto antes / después | Sí |
-| `knowledge.create_document` | `conocimiento_proponer_documento` | `titulo`, `contenido_markdown` | Título y primeras líneas | No (se borra a mano) |
-| `facebook.publish_product` | `facebook_proponer_publicacion` | los del esquema existente | La vista previa existente | — |
+| Acción | Parámetros | Vista previa | Deshacer |
+|---|---|---|---|
+| `product.update` | `product_id`, y uno o más de `nombre`, `descripcion`, `categoria`, `precio_venta` | Antes / después por campo | Sí |
+| `product.create` | `nombre`, `precio_venta`, `categoria?`, `descripcion?`, `stock_inicial?` | Ficha nueva | Sí (archivar) |
+| `stock.adjust` | `product_id`, `cantidad` (±), `motivo` | Stock antes / después | Sí |
+| `price.bulk_update` | `filtro` (`categoria` o `product_ids`), `tipo` (`porcentaje`, `monto`), `valor`, `redondeo?` | Cantidad + 5 ejemplos | Sí |
+| `catalog.announcement` | `texto` (≤120), `activa` | Texto antes / después | Sí |
+| `knowledge.create_document` | `titulo`, `contenido_markdown` | Título y primeras líneas | No (se borra a mano) |
+| `facebook.publish_product` | Los del esquema existente | La vista previa existente | — |
 
-Restricciones de ejecución: `product.update` y `product.create` usan `save_product_with_holdings`; `stock.adjust` usa las RPC existentes de inventario. No escribir directamente en `products` ni `stock_movements`. No existe hoy una RPC de cambio de estado para pedidos: antes de implementar `order.set_status`, relevar el camino actual, la tabla que actualiza y los efectos sobre stock, caja y avisos. Si esos efectos están en el navegador, excluir esa acción de la Etapa 4 e informarlo. Para una herramienta de propuesta, las anotaciones deben ser `readOnlyHint: false` y `destructiveHint: false`; si el SDK la bloquea en `read-only`, detenerse y reportar opciones, sin falsear las anotaciones.
+Todas las acciones anteriores se solicitan mediante la misma herramienta visible `previsualizar_cambio({ accion, parametros })`; `ai-tools` valida `accion` contra el catálogo del servidor. `order.set_status` se excluye si su ruta de cambio produce efectos desde el navegador; ver el relevamiento en el estado de ejecución.
+
+Restricciones de ejecución: `product.update` y `product.create` usan `save_product_with_holdings`; `stock.adjust` usa las RPC existentes de inventario. No escribir directamente en `products` ni `stock_movements`. El cambio de estado actual de pedidos se hace desde el navegador con `db.update` y no tiene una RPC equivalente; la conversión a venta llama separadamente a `register_sale`. Por eso `order.set_status` queda fuera de esta etapa. La herramienta visible `previsualizar_cambio` conserva anotaciones de lectura porque su función es `STABLE` y no escribe; la creación de solicitudes ocurre después del turno por el canal interno del worker.
 
 Límites: `price.bulk_update` hasta 200 productos; variación máxima ±60 % (más que eso → error que pide hacerlo en dos pasos); precio final mayor a 0. Nunca: borrar en masa, tocar usuarios, colaboradores, planes, suscripciones, listas importadas de revendedores ni credenciales.
 
-Las herramientas `*_proponer_*` devuelven `{ ok: true, data: { request_id, summary, expires_at, estado: "pendiente_de_confirmacion" } }`.
+La herramienta visible devuelve la vista previa no persistida. La operación interna `proponer_desde_preview` devuelve `{ ok: true, data: { request_id, summary, expires_at, estado: "pendiente_de_confirmacion" } }`.
 
-### 4.3 Web
+### 4.4 Web
 
 - En el chat, cada propuesta del job se muestra como tarjeta bajo la respuesta: resumen, antes/después (o cantidad + ejemplos), botones **Confirmar** y **Cancelar**, y "vence en X min". Confirmada → "Hecho" + **Deshacer** si aplica. Vencida → "Venció".
 - Las propuestas también aparecen en `AIActionInbox` (extender, no duplicar).
 - Tras confirmar, refrescar los datos de la pantalla afectada con el mecanismo que ya use la app.
 
-### 4.4 Pruebas y aceptación
+### 4.5 Pruebas y aceptación
 
-- Proponer no cambia datos (comparar antes y después).
+- `previsualizar_cambio` no modifica datos; comparar tablas relevantes antes y después.
+- Un marcador inventado, repetido o de otro turno no crea solicitudes.
+- Un turno cancelado no crea solicitudes.
 - Confirmar con datos cambiados falla sin escribir.
 - Un usuario no puede confirmar, cancelar ni deshacer propuestas de otro.
 - Regresión de `facebook.publish_product`.
-- Aceptación manual en negocio de prueba: "subí 10 % los precios de <categoría>" → tarjeta con cantidad y ejemplos → Confirmar → precios cambiados → Deshacer → precios originales.
+- Aceptación manual con Codex en el negocio QA: "subí 10 % los precios de <categoría>" → tarjeta con cantidad y ejemplos → Confirmar → precios cambiados → Deshacer → precios originales.
 
 **FRENÁ. Pasá el resumen de las etapas 3 y 4.**
 
