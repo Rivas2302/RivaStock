@@ -462,6 +462,7 @@ DECLARE
   v_doc public.knowledge_documents%ROWTYPE;
   v_product_id uuid;
   v_config public.catalog_config%ROWTYPE;
+  v_presentation jsonb;
   v_expected_stock integer;
   v_command_key text;
   v_can_mark_failed boolean := false;

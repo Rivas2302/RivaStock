@@ -18,7 +18,7 @@ let db: PGlite;
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
-    CREATE TABLE public.ai_actions_catalog(action_key text PRIMARY KEY, module text, kind text);
+    CREATE TABLE public.ai_actions_catalog(action_key text PRIMARY KEY, module text, kind text, requires_confirmation boolean DEFAULT true, undoable boolean DEFAULT false);
     CREATE TABLE public.products(
       id uuid PRIMARY KEY,user_id uuid NOT NULL,name text,category_id text,category text,purchase_price numeric,sale_price numeric,
       stock integer,min_stock integer,image_url text,images text[],show_in_catalog boolean,notes text,description text,barcode text,
@@ -45,9 +45,18 @@ beforeAll(async () => {
     CREATE SCHEMA auth;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT '${OWNER}'::uuid $$;
     CREATE TABLE public.ai_jobs(id uuid,user_id uuid,chat_id uuid,status text,provider text,cancel_requested_at timestamptz);
-    CREATE TABLE public.audit_events(id integer);
+    CREATE TABLE public.audit_events(id integer, user_id uuid, actor_uid uuid, action text, entity_type text, entity_id text, metadata jsonb);
+    CREATE TABLE public.knowledge_documents(id uuid PRIMARY KEY);
     CREATE FUNCTION public.business_module_enabled(uuid,text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
     CREATE FUNCTION public.business_require_active(uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
+    CREATE FUNCTION public.business_require_module(uuid,text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
+    CREATE FUNCTION public.lock_inventory_commands(uuid,text[]) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
+    CREATE FUNCTION public.lock_inventory_products(uuid,uuid[]) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
+    CREATE FUNCTION public.ai_action_product_payload(public.products) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$ SELECT to_jsonb($1) $$;
+    CREATE FUNCTION public.save_product_with_holdings(jsonb,jsonb,text) RETURNS TABLE(product jsonb,holdings jsonb) LANGUAGE sql AS $$ SELECT $1,$2 $$;
+    CREATE FUNCTION public.adjust_product_stock(uuid,uuid,text,integer,text,text) RETURNS TABLE(resulting_stock integer) LANGUAGE sql AS $$ SELECT 0 $$;
+    CREATE FUNCTION public.knowledge_create_document(text,text,text,text) RETURNS public.knowledge_documents LANGUAGE sql AS $$ SELECT NULL::public.knowledge_documents $$;
+    CREATE FUNCTION public.knowledge_save_draft(uuid,jsonb,integer) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
     INSERT INTO public.ai_actions_catalog VALUES
       ('product.update','stock','write'), ('product.create','stock','write');
     INSERT INTO public.products(id,user_id,name,category,sale_price,stock,catalog_only)
@@ -59,7 +68,7 @@ beforeAll(async () => {
   const requestsDdlEnd = MIGRATION.indexOf(';\n\nALTER TABLE public.ai_chat_messages', requestsDdlStart);
   if (requestsDdlStart < 0 || requestsDdlEnd < 0) throw new Error('Could not locate additive request schema migration');
   await db.exec(MIGRATION.slice(requestsDdlStart, requestsDdlEnd + 1));
-  for (const name of ['ai_action_validate_parameters', 'ai_action_preview', 'ai_action_propose', 'ai_action_cancel']) {
+  for (const name of ['ai_action_validate_parameters', 'ai_action_preview', 'ai_action_propose', 'ai_action_cancel', 'ai_action_confirm', 'ai_action_undo']) {
     try {
       await db.exec(functionSql(name, `REVOKE ALL ON FUNCTION public.${name}`));
     } catch (error) {
