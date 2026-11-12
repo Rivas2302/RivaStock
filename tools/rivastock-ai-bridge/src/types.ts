@@ -19,6 +19,8 @@ export interface AIProviderOptions {
   model_id?: string;
   reasoning_effort?: CodexReasoningEffort;
   chat_id?: string | null;
+  tool_worker_id?: string | null;
+  tool_job_id?: string | null;
   session_id?: string | null;
   images?: Array<{ id: string; path: string }>;
   safe_text_only?: boolean;

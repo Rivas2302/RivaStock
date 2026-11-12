@@ -75,7 +75,7 @@ test('Codex stream event mapping exposes activity but never publishes reasoning 
     kind: 'searching_web', label: 'Buscando en la web…',
   });
   assert.deepEqual(activityForCodexItem({ id: 'tool-1', type: 'mcp_tool_call', server: 'rivastock', tool: 'products', arguments: {} } as ThreadItem), {
-    kind: 'tool', label: 'Usando una herramienta de RivaStock…',
+    kind: 'tool', label: 'Consultando RivaStock…', tool: 'products',
   });
 });
 

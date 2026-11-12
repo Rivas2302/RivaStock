@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
 import { waitForPendingWork, type WorkerWaitListener } from './workerWait.ts';
+import { authorizeWorkerRequest } from '../_shared/aiBridgeWorkerAuth.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
@@ -321,31 +322,14 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     || action === 'worker_update_prepare' || action === 'worker_start'
     || action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
-    const authorization = req.headers.get('authorization') ?? '';
-    const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400, origin);
 
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
       global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
-    let ownerUid: string | null = null;
-    if (suppliedToken.length >= 32 && suppliedToken.length <= 256) {
-      const { data: authorizedUid, error: authorizationError } = await serviceClient.rpc('ai_bridge_authorize_device', {
-        p_device_id: body.worker_id,
-        p_token: suppliedToken,
-      });
-      if (!authorizationError && isUuid(authorizedUid)) ownerUid = authorizedUid;
-    }
-
-    // Keep the already-configured installation working until its owner pairs
-    // a device. A new pairing disables this legacy shared credential.
-    if (!ownerUid && AI_BRIDGE_TOKEN.length >= 32 && isUuid(AI_BRIDGE_OWNER_UID)
-      && constantTimeEqual(suppliedToken, AI_BRIDGE_TOKEN)) {
-      const { data: deviceHistory, error: deviceError } = await serviceClient.from('ai_bridge_devices')
-        .select('id').eq('user_id', AI_BRIDGE_OWNER_UID).limit(1).maybeSingle();
-      if (!deviceError && !deviceHistory) ownerUid = AI_BRIDGE_OWNER_UID;
-    }
+    const { ownerUid } = await authorizeWorkerRequest(serviceClient, body.worker_id,
+      req.headers.get('authorization'), { token: AI_BRIDGE_TOKEN, ownerUid: AI_BRIDGE_OWNER_UID });
     if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
 
     if (action === 'worker_timing') {
@@ -393,7 +377,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     if (action === 'worker_context') {
       if (!isUuid(body.job_id)) return jsonResponse({ error: 'Identificador de tarea inválido.' }, 400, origin);
       const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
-        .select('include_business_context, include_project_context, model_id, reasoning_effort, chat_id')
+        .select('include_business_context, include_project_context, model_id, reasoning_effort, chat_id, provider')
         .eq('id', body.job_id).eq('user_id', ownerUid)
         .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
       if (jobError) return safeDbError(jobError, 400, origin);
@@ -419,7 +403,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
 
       let products: Array<Record<string, unknown>> = [];
       let totalProducts = 0;
-      if (job.include_business_context) {
+      if (job.include_business_context && job.provider !== 'codex') {
         const { data, count, error } = await serviceClient.from('products')
           .select('name, category, description, purchase_price, sale_price, stock, min_stock', { count: 'exact' })
           .eq('user_id', ownerUid)
@@ -737,16 +721,27 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     if (chatError) return safeDbError(chatError, 400, origin);
     if (!chat) return jsonResponse({ error: 'No se encontró el chat.' }, 404, origin);
 
-    const [{ data: descendingMessages, error: messagesError }, { data: jobs, error: jobsError }] = await Promise.all([
+    const [{ data: descendingMessages, error: messagesError }, { data: jobs, error: jobsError }, { data: toolCalls, error: toolCallsError }] = await Promise.all([
       userClient.from('ai_chat_messages')
         .select('id, job_id, role, content, created_at')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
       userClient.from('ai_jobs')
         .select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).limit(100),
+      userClient.from('ai_tool_calls')
+        .select('job_id, tool, ok, row_count, error, created_at')
+        .eq('chat_id', body.chat_id).order('created_at', { ascending: true }).limit(4000),
     ]);
     if (messagesError) return safeDbError(messagesError, 400, origin);
     if (jobsError) return safeDbError(jobsError, 400, origin);
+    if (toolCallsError) return safeDbError(toolCallsError, 400, origin);
+    const toolCallsByJob = new Map<string, Array<Record<string, unknown>>>();
+    for (const call of toolCalls ?? []) {
+      const existing = toolCallsByJob.get(call.job_id) ?? [];
+      existing.push({ tool: call.tool, ok: call.ok, row_count: call.row_count, error: call.error, created_at: call.created_at });
+      toolCallsByJob.set(call.job_id, existing);
+    }
+    const jobsWithToolCalls = (jobs ?? []).map((job) => ({ ...job, tool_calls: toolCallsByJob.get(job.id) ?? [] }));
     const activeJob = [...(jobs ?? [])].reverse().find((job) => job.status === 'pending' || job.status === 'processing');
     let stream = null;
     if (activeJob) {
@@ -759,7 +754,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     return jsonResponse({
       chat,
       messages: (descendingMessages ?? []).reverse(),
-      jobs: (jobs ?? []).reverse(),
+      jobs: jobsWithToolCalls.reverse(),
       stream,
     }, 200, origin);
   }

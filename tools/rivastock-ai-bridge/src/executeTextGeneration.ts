@@ -5,11 +5,11 @@ import { hasExplicitMemoryCommand, isMemoryForgetCommand, isMemoryUpdateCommand,
 import type { MemoryQueueEntry } from './memory/queue.ts';
 import { embedQuery } from './knowledge/embed.ts';
 import { buildChatHistoryContext, referencesChatHistory } from './memory/chatHistory.ts';
-import type { AIJobContext, AIProjectContext, AIProvider, AIProviderOptions, AIWorkspaceFile } from './types.ts';
+import type { AIJobContext, AIProjectContext, AIProvider, AIProviderId, AIProviderOptions, AIWorkspaceFile } from './types.ts';
 import { createBusinessContext, createCombinedContext } from './workspace.ts';
 
 export interface ExecuteTextGenerationInput {
-  job: { id: string; input: string };
+  job: { id: string; input: string; provider?: AIProviderId };
   provider: AIProvider;
   signal: AbortSignal;
   jobContext: AIJobContext;
@@ -105,7 +105,10 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
   const result = await input.provider.execute(input.job.input, generationSignal,
     createCombinedContext(input.workspaceFiles, input.projectFiles, businessFiles,
       [chatHistoryContext, memoryContext, buildKnowledgeContext(sources)].filter(Boolean).join('\n\n')),
-    { ...input.providerOptions, ...(memoryResponseGuidance ? { memory_response_guidance: memoryResponseGuidance } : {}) });
+    { ...input.providerOptions,
+      ...(input.job.provider === 'codex' && input.jobContext.chat_id && input.workerId
+        ? { tool_worker_id: input.workerId, tool_job_id: input.job.id } : {}),
+      ...(memoryResponseGuidance ? { memory_response_guidance: memoryResponseGuidance } : {}) });
   if (typeof result.output !== 'string' || result.output.trim().length === 0 || result.output.length > 20_000) {
     throw new Error('El proveedor devolvió una respuesta vacía o demasiado extensa.');
   }

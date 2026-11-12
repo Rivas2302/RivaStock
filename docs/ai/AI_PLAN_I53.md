@@ -390,6 +390,15 @@ En cada respuesta, línea plegable "Consultó: productos (12), ventas (1)" a par
 - El entorno del servidor MCP no contiene `AI_BRIDGE_TOKEN` (prueba explícita).
 - Aceptación manual: "¿cuánto vendí esta semana?", "¿qué productos están sin foto?", "mostrame los pedidos pendientes" coinciden con las pantallas.
 
+### Estado de ejecución — Etapa 3
+
+- Implementación en `codex/i53-stage3`, basada en `main`: las 14 herramientas de lectura del plan usan RPC con ámbito del dueño, el worker las expone por MCP con canal local de un solo uso, y el chat muestra las consultas y sus resultados. El paquete del Bridge queda en **1.27.0**.
+- La prueba de proceso real MCP stdio completa el handshake y enumera las 14 herramientas con las anotaciones de lectura requeridas. La integración con Codex, en `read-only` y `networkAccessEnabled: false`, invocó una herramienta y recibió el resultado de prueba. El endpoint se sustituyó por uno ficticio: no se consultaron datos reales.
+- Verificación local: suite raíz **248 archivos / 1.443 pruebas**, lint, build, Bridge typecheck y Bridge **140 pruebas** aprobados; la prueba integrada real de Codex pasó **1/1**. La prueba del handshake real MCP pasó **4/4**.
+- La migración de Etapa 3 es nueva y aditiva; aún no se aplicó ni se desplegó. Se subirá la rama para revisión y se integrará solo junto con el cierre de Etapa 4 desde `main`.
+- **Etapa 4 detenida antes de implementar acciones:** el probe requerido con `producto_proponer_cambio`, anotaciones honestas `readOnlyHint: false` y `destructiveHint: false`, `default_tools_approval_mode: 'auto'`, `read-only` y sin red, produjo una llamada MCP fallida por aprobación; el servidor de prueba no llegó a ejecutarla. El probe era local, devolvía una propuesta ficticia y no tocó datos.
+- Por la regla de Ajustes tras la Etapa 0, no se implementaron confirmación, escritura ni `order.set_status`. Antes de reanudar Etapa 4 hay que resolver el modo de aprobación para propuestas no destructivas sin falsear su anotación.
+
 ---
 
 ## ETAPA 4 — Herramientas de escritura con confirmación
