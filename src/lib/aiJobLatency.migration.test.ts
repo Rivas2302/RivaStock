@@ -6,7 +6,7 @@ const OWNER = '10000000-0000-4000-8000-000000000001';
 const OTHER_OWNER = '10000000-0000-4000-8000-000000000002';
 const WORKER = '20000000-0000-4000-8000-000000000001';
 const JOB = '40000000-0000-4000-8000-000000000001';
-const MIGRATION = readFileSync('supabase/migrations/20261112011710_i53_chat_latency_wakeup.sql', 'utf8');
+const MIGRATION = readFileSync('supabase/migrations/20261112022125_i53_chat_latency_wakeup.sql', 'utf8');
 let db: PGlite;
 
 beforeAll(async () => {
