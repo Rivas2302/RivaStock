@@ -394,9 +394,10 @@ export class KnowledgeClient {
     embedding: number[],
     query: string,
     model: string,
+    includeSummaries = false,
   ): Promise<MemoryRetrievalResult> {
     const response = await this.post<MemoryRetrievalResult>('worker_memory_retrieve', {
-      worker_id: workerId, job_id: jobId, embedding, query, model,
+      worker_id: workerId, job_id: jobId, embedding, query, model, include_summaries: includeSummaries,
     });
     if (typeof response.enabled !== 'boolean' || !Array.isArray(response.memories)
       || !Number.isSafeInteger(response.user_turn_count) || !Number.isSafeInteger(response.message_count)

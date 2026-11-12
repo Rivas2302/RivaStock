@@ -35,6 +35,12 @@ describe('knowledge memory worker contract', () => {
       job_id: jobId, embedding, query: 'query', model: validRequest.model,
     })).toBeNull();
     expect(validateMemoryWorkerAction('worker_memory_retrieve', {
+      job_id: jobId, embedding, query: 'query', model: validRequest.model, include_summaries: true,
+    })).toBeNull();
+    expect(validateMemoryWorkerAction('worker_memory_retrieve', {
+      job_id: jobId, embedding, query: 'query', model: validRequest.model, include_summaries: 'true',
+    })).not.toBeNull();
+    expect(validateMemoryWorkerAction('worker_memory_retrieve', {
       job_id: jobId, embedding: embedding.slice(1), query: 'query', model: validRequest.model,
     })).toMatch(/inválida/);
     expect(validateMemoryWorkerAction('worker_memory_apply', {

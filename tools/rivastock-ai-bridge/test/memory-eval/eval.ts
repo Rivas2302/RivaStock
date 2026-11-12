@@ -41,8 +41,8 @@ interface CaseResult {
 
 const EVALUATION_DIR = dirname(fileURLToPath(import.meta.url));
 const MODEL = 'gpt-6-luna' as const;
-const TOP_K = 5;
-const SIMILARITY_THRESHOLD = 0.75;
+const TOP_K = 3;
+const SIMILARITY_THRESHOLD = 0.78;
 const THRESHOLDS = {
   importantRecall: 0.95,
   retrievalRecall: 0.85,
@@ -281,7 +281,7 @@ const forgetCorrect = forgetCases.filter((item) => caseResults.find((result) => 
 const forgetAccuracy = forgetCorrect / Math.max(1, forgetCases.length);
 const metrics = {
   importantRecall: { correct: importantCorrect, total: importantCount, value: importantRecall, target: THRESHOLDS.importantRecall },
-  retrievalRecallAt5: { correct: retrievalCorrect, total: retrievalCases.length, value: retrievalRecall, target: THRESHOLDS.retrievalRecall },
+  retrievalRecallAt3: { correct: retrievalCorrect, total: retrievalCases.length, value: retrievalRecall, target: THRESHOLDS.retrievalRecall },
   precision: { correct: correctlyAcceptedOperationCount, total: acceptedOperationCount, value: precision, target: THRESHOLDS.precision },
   updateAccuracy: { correct: updatesCorrect, total: updateCount, value: updateAccuracy, target: THRESHOLDS.updateAccuracy },
   sensitiveBlocked: { correct: sensitiveBlocked, total: sensitiveCount, value: sensitiveBlockedRate, target: THRESHOLDS.sensitiveBlocked },

@@ -5,6 +5,7 @@ import type { KnowledgeJobSource } from '../../lib/knowledge/api';
 import type { AIMemoryJobActivity } from '../../lib/aiMemory';
 import { modelLabel, reasoningLabel } from '../../lib/aiOptions';
 import KnowledgeSources from './KnowledgeSources';
+import { shouldShowAIChatKnowledgeSources } from '../../lib/aiChatSources';
 import MobileAIChatSettings from './MobileAIChatSettings';
 import StreamingAssistantMessage from './StreamingAssistantMessage';
 import AIChatToolCalls from './AIChatToolCalls';
@@ -305,9 +306,6 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
     }
   };
 
-  const toggleSources = (jobId: string) => setExpandedSources((current) => current.includes(jobId)
-    ? current.filter((value) => value !== jobId) : [...current, jobId]);
-
   const draftRows = Math.max(1, Math.min(8, Math.ceil((draftHeight || 24) / 24)));
   const headerProvider = providerLabel(props.provider);
 
@@ -340,24 +338,28 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
             const activity = message.role === 'assistant' ? props.jobMemoryActivity[message.job_id] : undefined;
             const sources = props.jobSources[message.job_id] ?? [];
             const isExpanded = expandedSources.includes(message.job_id);
+            const showSources = shouldShowAIChatKnowledgeSources(job?.provider, job?.tool_calls);
             if (message.role === 'user') return <article key={message.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-[var(--action-bg)] px-4 py-3 text-sm leading-6 text-[var(--action-ink)]"><p className="whitespace-pre-wrap break-words">{message.content}</p><p className="mt-1 text-right text-[11px] opacity-75">{timeLabel(message.created_at)}</p></article>;
             return <article key={message.id} className="w-full text-[var(--ink)]">
               <StreamingAssistantMessage content={message.content}/>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {sources.length > 0 && <button type="button" onClick={() => toggleSources(message.job_id)} aria-expanded={isExpanded} className="min-h-8 rounded-full border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface-muted)]">{sources.length} {sources.length === 1 ? 'fuente' : 'fuentes'}</button>}
                 {job?.include_business_context && <span className="inline-flex min-h-8 items-center gap-1 rounded-full border border-[var(--line)] px-3 text-xs text-[var(--ink-muted)]"><Database size={13}/>Tu stock</span>}
                 {Boolean(job?.chat_history_count) && (job?.chat_history_count ?? 0) > 0 && <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--line)] px-3 text-xs text-[var(--ink-muted)]">Usé {job?.chat_history_count} {job?.chat_history_count === 1 ? 'chat anterior' : 'chats anteriores'}</span>}
                 <button type="button" onClick={() => void copyMessage(message)} aria-label={copiedMessageId === message.id ? 'Respuesta copiada' : 'Copiar respuesta'} className="inline-flex size-9 items-center justify-center rounded-full border border-[var(--line)] text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand)]">{copiedMessageId === message.id ? <Check size={15}/> : <Copy size={15}/>}</button>
                 {message.id === lastAssistantId && <button type="button" onClick={props.onRegenerate} disabled={!props.canWrite || props.sending || props.hasPendingJob} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50"><RefreshCw size={13}/>Regenerar</button>}
               </div>
-              {isExpanded && <KnowledgeSources sources={sources}/>}
               {message.role === 'assistant' && <AIChatToolCalls calls={job?.tool_calls ?? []}/>}
               {message.role === 'assistant' && message.action_request_ids?.map((requestId) => <Suspense key={requestId} fallback={null}><AIChatActionProposalCard
                 request={props.actionRequests[requestId]}
                 requestId={requestId}
                 onChanged={props.onActionChange}
               /></Suspense>)}
+              {showSources && sources.length > 0 && <details open={isExpanded} onToggle={(event) => {
+                const open = event.currentTarget.open;
+                setExpandedSources((current) => open ? [...new Set([...current, message.job_id])] : current.filter((id) => id !== message.job_id));
+              }} className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--ink-muted)]"><summary className="cursor-pointer select-none font-semibold">Fuentes ({sources.length})</summary><KnowledgeSources sources={sources}/></details>}
               {activity?.changes.map((change) => <div key={change.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand-ring)] bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="min-w-0 flex-1">Memoria actualizada</span>{change.canUndo && <button type="button" onClick={() => props.onUndoMemory(change.id)} className="min-h-8 rounded-lg border border-[var(--line)] px-2 font-semibold">Deshacer</button>}<button type="button" onClick={() => props.onOpenMemory(change.memoryId)} className="min-h-8 px-2 font-semibold underline underline-offset-2">Ver</button></div>)}
+              {activity?.used.length ? <details className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><summary className="cursor-pointer select-none font-bold">Recordé {activity.used.length} {activity.used.length === 1 ? 'dato' : 'datos'}</summary><div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">{activity.used.map((memory, index) => <button key={memory.id} type="button" onClick={() => props.onOpenMemory(memory.id)} className="inline underline underline-offset-2">{`M${index + 1}`}{memory.content ? ` · ${memory.content}` : ''}</button>)}</div></details> : null}
             </article>;
           })}
         </div>

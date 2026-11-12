@@ -54,7 +54,8 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
   if (input.memoryClient && input.memoryWorkerId) {
     const memoryStarted = performance.now();
     const memories = await retrieveMemory(input.memoryClient, input.memoryWorkerId, input.job.id,
-      input.job.input, { log: input.log, ...input.memoryRetrievalDependencies, embed: embedQueryOnce });
+      input.job.input, { log: input.log, ...input.memoryRetrievalDependencies, embed: embedQueryOnce },
+      referencesChatHistory(input.job.input));
     measurements.memory_retrieval_including_embedding_ms = Math.round(performance.now() - memoryStarted);
     if (memories) {
       const chatId = input.jobContext.chat_id;
@@ -100,7 +101,9 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
     }
   }
   let sources: KnowledgeRetrievedSource[] = [];
-  if (input.knowledgeEnabled && input.workerId && input.knowledgeClient) {
+  const codexChatHasReadTools = input.job.provider === 'codex' && Boolean(input.jobContext.chat_id)
+    && Boolean(input.workerId) && !input.providerOptions.safe_text_only;
+  if (input.knowledgeEnabled && input.workerId && input.knowledgeClient && !codexChatHasReadTools) {
     const knowledgeStarted = performance.now();
     sources = await retrieveForJob(input.knowledgeClient, input.workerId, input.job, {
       log: input.log,

@@ -264,6 +264,36 @@ test('memory retrieval failures return null so the response path can continue', 
   assert.equal(logs.length, 1);
 });
 
+test('summary memories are requested only when the prompt refers to chat history', async () => {
+  const requested: boolean[] = [];
+  const client = { async memoryRetrieve(_worker: string, _job: string, _embedding: number[], _query: string, _model: string, includeSummaries = false) {
+    requested.push(includeSummaries);
+    return { enabled: true, memories: [], user_turn_count: 1, message_count: 1, mode: 'auto' as const,
+      top_k: 3, include_summaries: includeSummaries };
+  } };
+  await executeTextGeneration({
+    job: { id: jobId, input: '¿Cuáles fueron mis últimas preguntas?' },
+    provider: { async execute() { return { output: 'Una consulta anterior.' }; } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: chatId, provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [], knowledgeClient: null, workerId: null, knowledgeEnabled: false,
+    memoryClient: client, memoryWorkerId: 'worker', providerOptions: {}, complete: async () => undefined, log() {},
+    memoryRetrievalDependencies: { embed: async () => Array(384).fill(0) },
+  });
+  await executeTextGeneration({
+    job: { id: jobId, input: '¿Qué horario tiene el local?' },
+    provider: { async execute() { return { output: 'Abre a las nueve.' }; } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: chatId, provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [], knowledgeClient: null, workerId: null, knowledgeEnabled: false,
+    memoryClient: client, memoryWorkerId: 'worker', providerOptions: {}, complete: async () => undefined, log() {},
+    memoryRetrievalDependencies: { embed: async () => Array(384).fill(0) },
+  });
+  assert.deepEqual(requested, [true, false]);
+});
+
 test('mode off never queues extraction and memory failure does not break completion', async () => {
   let providerCalls = 0;
   let completionCalls = 0;

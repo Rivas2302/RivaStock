@@ -756,7 +756,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         .select('id, job_id, role, content, created_at, action_request_ids')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
       userClient.from('ai_jobs')
-        .select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count, timings')
+        .select('id, provider, status, error, created_at, include_business_context, include_project_context, chat_history_count, timings')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).limit(100),
       userClient.from('ai_tool_calls')
         .select('job_id, tool, ok, row_count, error, created_at')

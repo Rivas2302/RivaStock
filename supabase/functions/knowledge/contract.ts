@@ -113,6 +113,7 @@ export function validateMemoryWorkerAction(action: MemoryWorkerAction, body: Mem
     case 'worker_memory_retrieve':
       return isUuid(body.job_id) && isEmbedding(body.embedding) && isModel(body.model)
         && typeof body.query === 'string' && body.query.length <= 8000
+        && (body.include_summaries === undefined || typeof body.include_summaries === 'boolean')
         ? null : 'Solicitud de recuperación de memoria inválida.';
     case 'worker_memory_similar':
       return isUuid(body.job_id) && isEmbedding(body.embedding) ? null : 'Solicitud de similitud de memoria inválida.';

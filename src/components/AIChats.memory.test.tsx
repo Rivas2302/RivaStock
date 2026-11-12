@@ -88,8 +88,8 @@ describe('AIChats memory activity', () => {
     const onOpenMemory = vi.fn();
     await render(<AIChats initialChatId={CHAT_ID} onOpenMemory={onOpenMemory}/>);
     expect(host.textContent).toContain('Memoria actualizada: «Los envíos salen los martes.»');
-    expect(host.textContent).toContain('Recordé: M1 «Los envíos salen los martes.»');
-    expect(host.textContent).toContain('Tus Skills, la memoria y los fragmentos relevantes de Conocimientos se agregan automáticamente.');
+    expect(host.textContent).toContain('Recordé 1 dato');
+    expect(host.textContent).toContain('Codex consulta Conocimientos cuando hace falta');
 
     await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Ver')) as HTMLButtonElement);
     expect(onOpenMemory).toHaveBeenCalledWith(MEMORY_ID);
@@ -145,7 +145,7 @@ describe('AIChats memory activity', () => {
 
     expect(mocks.listAIMemoryJobActivity).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Memoria actualizada: «Los envíos salen los martes.»');
-    expect(host.textContent).toContain('Recordé: M1 «Los envíos salen los martes.»');
+    expect(host.textContent).toContain('Recordé 1 dato');
     vi.useRealTimers();
   });
 

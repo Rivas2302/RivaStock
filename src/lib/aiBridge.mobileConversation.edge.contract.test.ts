@@ -12,7 +12,7 @@ describe('AI mobile conversation Edge Function contract', () => {
   it('returns per-turn business, project, and same-user chat-index metadata with the chat history', () => {
     expect(detailStart).toBeGreaterThanOrEqual(0);
     expect(renameStart).toBeGreaterThan(detailStart);
-    expect(detailBranch).toContain(".select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count, timings')");
+    expect(detailBranch).toContain(".select('id, provider, status, error, created_at, include_business_context, include_project_context, chat_history_count, timings')");
     expect(detailBranch).toContain("userClient.from('ai_jobs')");
     expect(detailBranch).toContain(".eq('chat_id', body.chat_id)");
   });

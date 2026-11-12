@@ -39,12 +39,13 @@ export async function retrieveMemory(
   jobId: string,
   query: string,
   dependencies: Partial<MemoryRetrievalDependencies> = {},
+  includeSummaries = false,
 ): Promise<MemoryRetrieval | null> {
   const { embed, log } = { ...DEFAULT_DEPENDENCIES, ...dependencies };
   try {
     const limitedQuery = query.slice(0, 2000);
     const embedding = await embed(limitedQuery);
-    return await client.memoryRetrieve(workerId, jobId, embedding, limitedQuery, EMBEDDING_MODEL);
+    return await client.memoryRetrieve(workerId, jobId, embedding, limitedQuery, EMBEDDING_MODEL, includeSummaries);
   } catch {
     log(`No se pudo recuperar la memoria para la tarea ${jobId}; se continúa sin recuerdos.`);
     return null;

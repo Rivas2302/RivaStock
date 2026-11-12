@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorkerRequest } from '../_shared/aiBridgeWorkerAuth.ts';
+import { safeAiToolError } from '../_shared/aiToolErrors.ts';
 import { createSupabaseApiKeyFetch, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY, withSupabaseAdminKeyMode } from '../_shared/supabaseAdminKey.ts';
 import { CHANGE_PREVIEW_TOOL, findReadTool, validateReadToolArguments, validateToolArguments } from '../_shared/aiToolDefinitions.ts';
 
@@ -174,16 +175,20 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   try {
     const { data, error } = isPreview
       ? await serviceClient.rpc('ai_action_preview', { p_owner: ownerUid, p_action_key: args.accion, p_params: args.parametros })
-      : await serviceClient.rpc(`ai_tool_${tool!.name}`, { p_owner: ownerUid, p_args: fullArgs });
-    if (error) throw new Error(error.message);
+      : tool?.name === 'conocimiento_buscar'
+        ? await serviceClient.rpc('ai_tool_knowledge_search', {
+          p_owner: ownerUid, p_worker: body.worker_id, p_job_id: job.id, p_args: fullArgs,
+        })
+        : await serviceClient.rpc(`ai_tool_${tool!.name}`, { p_owner: ownerUid, p_args: fullArgs });
+    if (error) throw error;
     result = data;
     ok = true;
     rowCount = data && typeof data === 'object' && 'items' in data && Array.isArray((data as { items: unknown }).items)
       ? (data as { items: unknown[] }).items.length : data ? 1 : 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    errorMessage = message.includes('no está incluido') ? 'El módulo necesario no está incluido en el plan.'
-      : message.includes('No se encontró') ? message : 'No se pudo completar la consulta.';
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
+    errorMessage = safeAiToolError(code, message);
   }
   await serviceClient.rpc('ai_tool_finish_call', {
     p_owner: ownerUid, p_id: callId, p_ok: ok, p_row_count: rowCount, p_duration_ms: Date.now() - startedAt,

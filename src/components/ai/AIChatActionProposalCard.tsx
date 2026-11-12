@@ -14,17 +14,45 @@ const ACTION_LABELS: Record<string, string> = {
   'knowledge.create_document': 'Crear borrador en Conocimientos',
 };
 
-function printable(value: unknown): string {
+const FIELD_LABELS: Record<string, string> = {
+  nombre: 'Nombre', descripcion: 'Descripción', categoria: 'Categoría', precio_venta: 'Precio de venta',
+  stock: 'Stock', mostrar_en_catalogo: 'Mostrar en catálogo', cantidad: 'Cantidad', texto: 'Texto',
+  activa: 'Activa', titulo: 'Título', contenido: 'Contenido', tipo: 'Tipo', valor: 'Valor',
+};
+
+function printable(value: unknown, field = ''): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  if (field === 'precio_venta' && typeof value === 'number' && Number.isFinite(value)) {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value);
+  }
   if (typeof value === 'string' || typeof value === 'number') return String(value);
-  return JSON.stringify(value);
+  return '—';
 }
 
 function displayFields(value: unknown): Array<[string, unknown]> {
   if (value === null || value === undefined) return [];
   if (typeof value !== 'object' || Array.isArray(value)) return [['Detalle', value]];
   return Object.entries(value as Record<string, unknown>).filter(([key]) => key !== 'fingerprint');
+}
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key.replaceAll('_', ' ');
+}
+
+function SampleDetails({ sample, actionKey }: { sample: unknown; actionKey: string }) {
+  if (!sample || typeof sample !== 'object' || Array.isArray(sample)) return <p className="break-words rounded-lg border border-[var(--line)] px-2.5 py-2 text-xs">{printable(sample)}</p>;
+  const row = sample as Record<string, unknown>;
+  const title = typeof row.producto === 'string' ? row.producto : typeof row.nombre === 'string' ? row.nombre : '';
+  if ('antes' in row && 'despues' in row) {
+    const changedField = actionKey === 'stock.adjust' ? 'stock' : 'precio_venta';
+    return <p className="break-words rounded-lg border border-[var(--line)] px-2.5 py-2 text-xs">
+      {title && <strong>{title}: </strong>}{printable(row.antes, changedField)} → {printable(row.despues, changedField)}
+    </p>;
+  }
+  return <div className="rounded-lg border border-[var(--line)] px-2.5 py-2 text-xs">
+    {Object.entries(row).filter(([key]) => !['id', 'fingerprint'].includes(key)).map(([key, value]) => <p key={key} className="break-words"><span className="font-semibold">{fieldLabel(key)}:</span> {printable(value, key)}</p>)}
+  </div>;
 }
 
 function statusText(request: AIChatActionRequest): string {
@@ -131,10 +159,10 @@ export default function AIChatActionProposalCard({
     </header>
     {typeof request.draft_content.count === 'number' && <p className="mt-2 text-xs font-semibold">Alcanza {request.draft_content.count} {request.draft_content.count === 1 ? 'elemento' : 'elementos'}.</p>}
     {(before.length > 0 || after.length > 0) && <div className="mt-3 grid gap-3 sm:grid-cols-2">
-      {before.length > 0 && <div className="rounded-lg bg-[var(--surface-muted)] p-2.5"><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-muted)]">Antes</p>{before.map(([key, value]) => <p key={key} className="mt-1 break-words text-xs"><span className="font-semibold">{key.replaceAll('_', ' ')}:</span> {printable(value)}</p>)}</div>}
-      {after.length > 0 && <div className="rounded-lg bg-[var(--brand-soft)] p-2.5"><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-muted)]">Después</p>{after.map(([key, value]) => <p key={key} className="mt-1 break-words text-xs"><span className="font-semibold">{key.replaceAll('_', ' ')}:</span> {printable(value)}</p>)}</div>}
+      {before.length > 0 && <div className="rounded-lg bg-[var(--surface-muted)] p-2.5"><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-muted)]">Antes</p>{before.map(([key, value]) => <p key={key} className="mt-1 break-words text-xs"><span className="font-semibold">{fieldLabel(key)}:</span> {printable(value, key)}</p>)}</div>}
+      {after.length > 0 && <div className="rounded-lg bg-[var(--brand-soft)] p-2.5"><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-muted)]">Después</p>{after.map(([key, value]) => <p key={key} className="mt-1 break-words text-xs"><span className="font-semibold">{fieldLabel(key)}:</span> {printable(value, key)}</p>)}</div>}
     </div>}
-    {samples.length > 0 && <div className="mt-3 space-y-1.5"><p className="text-xs font-bold">Ejemplos</p>{samples.slice(0, 5).map((sample, index) => <p key={index} className="break-words rounded-lg border border-[var(--line)] px-2.5 py-2 text-xs">{printable(sample)}</p>)}</div>}
+    {samples.length > 0 && request.draft_content.count !== 1 && <div className="mt-3 space-y-1.5"><p className="text-xs font-bold">Ejemplos</p>{samples.slice(0, 5).map((sample, index) => <SampleDetails key={index} sample={sample} actionKey={request.action_key}/>)}</div>}
     {request.status === 'failed' && request.error && <p role="alert" className="mt-3 rounded-lg bg-[var(--danger-surface)] p-2.5 text-xs text-[var(--danger-ink)]">{request.error}</p>}
     {error && <p role="alert" className="mt-3 rounded-lg bg-[var(--danger-surface)] p-2.5 text-xs text-[var(--danger-ink)]">{error}</p>}
     {pending && <div className="mt-3 flex flex-wrap justify-end gap-2">

@@ -99,6 +99,23 @@ test('a retrieval error does not prevent the provider response and task completi
   assert.ok(log.some((message) => message.includes('se continúa sin esas fuentes')));
 });
 
+test('Codex chats use explicit Conocimientos tools instead of automatic retrieval', async () => {
+  let retrievalCalls = 0;
+  await executeTextGeneration({
+    job: { id: 'job-id', input: '¿Qué dice el reglamento?', provider: 'codex' },
+    provider: { async execute() { return { output: 'Voy a consultar el documento.' }; } },
+    signal: new AbortController().signal,
+    jobContext: { include_business_context: false, include_project_context: false, model_id: null,
+      reasoning_effort: null, chat_id: 'chat-id', provider_session_id: null, products: [], total_products: 0 },
+    workspaceFiles: [], projectFiles: [],
+    knowledgeClient: { async retrieve() { retrievalCalls += 1; return [source()]; } },
+    workerId: 'worker-id', knowledgeEnabled: true, providerOptions: {},
+    complete: async () => undefined, log() {},
+    retrievalDependencies: { embed: async () => Array(384).fill(0), log() {} },
+  });
+  assert.equal(retrievalCalls, 0);
+});
+
 test('KnowledgeClient sends the worker_retrieve contract and validates returned sources', async () => {
   const originalFetch = globalThis.fetch;
   let requestBody: Record<string, unknown> | null = null;

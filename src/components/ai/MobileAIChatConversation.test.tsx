@@ -53,9 +53,9 @@ describe('MobileAIChatConversation', () => {
   });
 
   const render = async (ui: ReactElement) => act(async () => { root.render(<MemoryRouter>{ui}</MemoryRouter>); });
-  const click = async (button: HTMLButtonElement | null) => {
-    if (!button) throw new Error('No se encontró el botón esperado.');
-    await act(async () => { button.click(); });
+  const click = async (element: HTMLElement | null) => {
+    if (!element) throw new Error('No se encontró el control esperado.');
+    await act(async () => { element.click(); });
   };
 
   beforeEach(() => {
@@ -78,7 +78,7 @@ describe('MobileAIChatConversation', () => {
     expect(host.textContent).toContain('Tu stock');
     expect(host.textContent).toContain('Usé 2 chats anteriores');
     expect(host.textContent).toContain('Memoria actualizada');
-    await click([...host.querySelectorAll('button')].find((button) => button.textContent?.includes('fuente')) as HTMLButtonElement);
+    await click([...host.querySelectorAll('summary')].find((summary) => summary.textContent?.includes('Fuentes')) as HTMLElement);
     expect(host.textContent).toContain('Guía de pedidos');
     await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 50)); });
     expect(host.querySelector('.chat-markdown strong')?.textContent).toBe('Llega el martes.');

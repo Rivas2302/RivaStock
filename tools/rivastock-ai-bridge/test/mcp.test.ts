@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { createToolChannel, connectToolChannel } from '../src/mcp/toolChannel.ts';
-import { CHANGE_PREVIEW_TOOL, READ_TOOLS, readToolMcpDefinitions } from '../src/mcp/toolDefinitions.ts';
+import { CHANGE_PREVIEW_TOOL, READ_TOOLS, readToolMcpDefinitions, validateToolArguments } from '../src/mcp/toolDefinitions.ts';
 import { codexMcpConfig } from '../src/providers.ts';
 
 test('all published read tools carry honest, idempotent read-only annotations', () => {
@@ -13,6 +13,24 @@ test('all published read tools carry honest, idempotent read-only annotations', 
   assert.ok(definitions.every((tool) => tool.annotations.readOnlyHint === true
     && tool.annotations.destructiveHint === false && tool.annotations.idempotentHint === true));
   assert.equal(READ_TOOLS.some((tool) => tool.name === 'pedido_ver'), true);
+});
+
+test('change proposals publish exact parameter lists and reject unlisted keys', () => {
+  assert.match(CHANGE_PREVIEW_TOOL.description, /no agregues parámetros que no estén en la lista/i);
+  assert.match(CHANGE_PREVIEW_TOOL.description, /Ejemplo:/);
+  assert.equal(validateToolArguments(CHANGE_PREVIEW_TOOL, {
+    accion: 'product.create', parametros: { nombre: 'Cable', precio_venta: 12500, mostrar_en_catalogo: true },
+  }), true);
+  assert.equal(validateToolArguments(CHANGE_PREVIEW_TOOL, {
+    accion: 'product.create', parametros: { nombre: 'Cable', precio_venta: 12500, costo_interno: 1000 },
+  }), false);
+  assert.equal(validateToolArguments(CHANGE_PREVIEW_TOOL, {
+    accion: 'product.update', parametros: { product_id: '00000000-0000-4000-8000-000000000000', mostrar_en_catalogo: false },
+  }), true);
+  const schema = CHANGE_PREVIEW_TOOL.inputSchema as { oneOf: Array<{ properties: Record<string, { const: string; }>; }>; };
+  assert.deepEqual(schema.oneOf.map((choice) => choice.properties.accion.const).sort(), [
+    'catalog.announcement', 'knowledge.create_document', 'price.bulk_update', 'product.create', 'product.update', 'stock.adjust',
+  ]);
 });
 
 test('MCP child receives only a one-turn pipe, nonce, and required system paths', () => {

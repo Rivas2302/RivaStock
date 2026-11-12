@@ -715,6 +715,18 @@ serve(withSupabaseAdminKeyMode(async (req: Request) => {
       return jsonResponse(data as Record<string, unknown>);
     }
 
+    if (action === 'worker_memory_retrieve') {
+      const { data, error } = await serviceClient.rpc('ai_memory_retrieve_relevant', {
+        p_owner: ownerUid,
+        p_worker: body.worker_id,
+        p_job_id: body.job_id,
+        p_payload: payloadFor(action, body),
+        p_include_summaries: body.include_summaries === true,
+      });
+      if (error) return rpcErrorResponse(error);
+      return jsonResponse(data as Record<string, unknown>);
+    }
+
     if (action.startsWith('worker_memory_')) {
       const { data, error } = await serviceClient.rpc('ai_memory_worker', {
         p_owner: ownerUid,

@@ -44,10 +44,10 @@ Durante una verificación de Vercel se creó un secreto de Protection Bypass par
 
 Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de administrador `authenticated` de prueba. No se eliminó ninguna cuenta de producción. Para completar un recorrido de borrado real, designá por la app una cuenta de negocio QA descartable para baja programada y otra para eliminación inmediata; no usar cuentas de clientes ni las dos cuentas reportadas hasta confirmar que son descartables.
 
-## I53 — sesión QA y Bridge 1.29.0 para cerrar Etapa 4
+## I53 — repetir la aceptación de Etapa 4
 
-El perfil persistente `%USERPROFILE%\\rivastock-qa-profile` existe, pero la app redirige a `/login`. La versión 1.29.0 ya está publicada; su instalación local no se pudo verificar.
+La primera aceptación ya la hizo Riva en su negocio el 12/11 con Bridge 1.29.0. No se necesita abrir el perfil QA ni vincular otra PC. Cuando el paquete 1.30.0 esté publicado:
 
-1. Iniciá sesión en ese perfil usando el negocio QA y dejalo abierto. No compartas contraseña ni uses una cuenta/negocio real.
-2. Confirmá que ese negocio QA tenga el AI Bridge vinculado y conectado en versión 1.29.0. No cambies el vínculo del Bridge de tu negocio principal.
-3. Avisame «Listo». Después ejecuto la propuesta real de lectura → tarjeta → Confirmar → Deshacer, las ocho muestras de timings y borro los chats de prueba desde la app.
+1. Actualizá el Bridge hasta que muestre **1.30.0 · Conectado**.
+2. En el mismo chat y con el producto de prueba que ya usaste, repetí las mismas cuatro pruebas del 12/11, incluidas la propuesta de alta oculta, Confirmar y Deshacer. No hace falta pegarme las preguntas ni compartir el contenido del chat.
+3. Avisame cuando termines. Voy a leer solo metadatos de tiempos y llamadas, sin abrir los mensajes; con eso completo la tabla «después».

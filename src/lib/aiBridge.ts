@@ -88,6 +88,7 @@ export interface AIChatMessage {
 
 export interface AIChatJob {
   id: string;
+  provider?: AIProviderId;
   status: AIJobStatus;
   error: string | null;
   created_at: string;
