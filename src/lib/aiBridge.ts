@@ -92,6 +92,15 @@ export interface AIChatJob {
   include_business_context?: boolean;
   include_project_context?: boolean;
   chat_history_count?: number;
+  tool_calls?: AIChatToolCall[];
+}
+
+export interface AIChatToolCall {
+  tool: string;
+  ok: boolean;
+  row_count: number | null;
+  error: string | null;
+  created_at: string;
 }
 
 export interface AIJobStream {

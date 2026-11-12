@@ -7,6 +7,7 @@ import { modelLabel, reasoningLabel } from '../../lib/aiOptions';
 import KnowledgeSources from './KnowledgeSources';
 import MobileAIChatSettings from './MobileAIChatSettings';
 import StreamingAssistantMessage from './StreamingAssistantMessage';
+import AIChatToolCalls from './AIChatToolCalls';
 
 type ChatSheet = 'menu' | 'settings' | 'rename' | 'delete' | null;
 
@@ -345,6 +346,7 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
                 {message.id === lastAssistantId && <button type="button" onClick={props.onRegenerate} disabled={!props.canWrite || props.sending || props.hasPendingJob} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--line)] px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50"><RefreshCw size={13}/>Regenerar</button>}
               </div>
               {isExpanded && <KnowledgeSources sources={sources}/>}
+              {message.role === 'assistant' && <AIChatToolCalls calls={job?.tool_calls ?? []}/>}
               {activity?.changes.map((change) => <div key={change.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand-ring)] bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="min-w-0 flex-1">Memoria actualizada</span>{change.canUndo && <button type="button" onClick={() => props.onUndoMemory(change.id)} className="min-h-8 rounded-lg border border-[var(--line)] px-2 font-semibold">Deshacer</button>}<button type="button" onClick={() => props.onOpenMemory(change.memoryId)} className="min-h-8 px-2 font-semibold underline underline-offset-2">Ver</button></div>)}
             </article>;
           })}

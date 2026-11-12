@@ -218,10 +218,10 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
       workspaceFiles,
       projectFiles,
       knowledgeClient,
-      workerId: config.workerId,
+      workerId,
       knowledgeEnabled: config.knowledgeEnabled,
       memoryClient: knowledgeClient,
-      memoryWorkerId: config.workerId,
+      memoryWorkerId: workerId,
       onMemoryTurn: (entry) => {
         if (!memoryQueue.enqueue(entry)) {
           process.stderr.write('[AI Bridge] La cola local de memoria está llena; se omitió este procesamiento posterior a la respuesta.\n');

@@ -2172,3 +2172,12 @@ Sin toque en src/, supabase/ ni extensions/.
 ## Regla permanente de despliegue
 
 A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega desde `main` ya pusheado. Nunca desde ramas ni desde cambios locales. Si hace falta probar una rama, usá un deploy de Preview, nunca Production.
+
+## 2026-11-12 — I53 Etapa 3 y preflight de Etapa 4
+
+- `codex/i53-stage3` contiene la Etapa 3 de herramientas de lectura y el Bridge **1.27.0**. La ruta de importación del servidor MCP quedó corregida para Windows con una URL `file://`; el handshake real de las 14 herramientas y una llamada de lectura de Codex pasaron en `read-only`, sin red de comandos y contra un endpoint ficticio.
+- Suite raíz: **248 archivos / 1.443 pruebas** aprobados; `npm run lint`, `npm run build`, Bridge `npm run typecheck` y Bridge `npm test` (**140 aprobadas, 1 omitida**) aprobados. La integración real opcional Codex/MCP pasó **1/1**.
+- La migración `20261111211200_i53_read_tools` es aditiva, está probada en PGlite, pero todavía no está aplicada ni desplegada. La rama se publicará para revisar la Etapa 3; no se hará deploy desde ella.
+- Preflight obligatorio de Etapa 4: Codex llamó `producto_proponer_cambio` con las anotaciones honestas `readOnlyHint: false` y `destructiveHint: false`, pero la llamada terminó fallida por aprobación antes de llegar al servidor. Se usó un servidor local que solo devolvía una propuesta ficticia; no se escribieron datos de negocio.
+- Por la regla de `AI_PLAN_I53.md`, la Etapa 4 queda detenida antes de su implementación. `order.set_status` tampoco se relevó ni se implementó. No se mergeó ni desplegó Etapa 3, pues el plan pide integrar Etapas 3 y 4 juntas desde `main`.
+- Para retomar, el dueño debe elegir entre mantener el modo read-only y rediseñar la propuesta para que no sea una llamada MCP con efecto de escritura, o definir un modo de aprobación explícito para herramientas de propuesta no destructivas y probarlo con confirmación del dueño. No convertir una propuesta en lectura para evitar el bloqueo.
