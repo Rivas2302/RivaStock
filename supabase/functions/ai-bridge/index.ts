@@ -318,7 +318,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     || action === 'worker_claim_text_generation' || action === 'worker_stream'
     || action === 'worker_complete' || action === 'worker_fail'
     || action === 'worker_workspace' || action === 'worker_context'
-    || action === 'worker_timing'
+    || action === 'worker_timing' || action === 'worker_metrics'
     || action === 'worker_update_prepare' || action === 'worker_start'
     || action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
@@ -345,6 +345,26 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         p_job_id: body.job_id,
         p_phase: body.phase,
         p_elapsed_ms: body.elapsed_ms,
+      });
+      if (error) return safeDbError(error, 400, origin);
+      return jsonResponse({ recorded: data === true }, 200, origin);
+    }
+
+    if (action === 'worker_metrics') {
+      const allowedMetrics = new Set([
+        'created_to_claim_ms', 'worker_context_ms', 'claim_to_context_ready_ms', 'business_card_ms',
+        'memory_retrieval_including_embedding_ms', 'query_embedding_ms', 'chat_history_index_ms',
+        'knowledge_retrieval_ms', 'codex_start_elapsed_ms', 'codex_first_event_elapsed_ms',
+        'codex_start_to_first_event_ms', 'codex_first_event_to_final_ms', 'response_save_ms', 'claimed_to_saved_ms', 'created_to_saved_ms', 'prompt_chars',
+        'response_chars', 'model_id', 'reasoning_effort', 'chat_session', 'tool_calls',
+      ]);
+      const measurements = body.measurements;
+      if (!isUuid(body.job_id) || !measurements || typeof measurements !== 'object' || Array.isArray(measurements)
+        || Object.keys(measurements as Record<string, unknown>).some((key) => !allowedMetrics.has(key))) {
+        return jsonResponse({ error: 'Mediciones inválidas.' }, 400, origin);
+      }
+      const { data, error } = await serviceClient.rpc('ai_job_record_measurements', {
+        p_owner: ownerUid, p_worker_id: body.worker_id, p_job_id: body.job_id, p_measurements: measurements,
       });
       if (error) return safeDbError(error, 400, origin);
       return jsonResponse({ recorded: data === true }, 200, origin);
@@ -393,11 +413,14 @@ serve(withSupabaseAdminKeyMode(async (req) => {
       }
 
       let business = null;
+      let businessCardMs = 0;
       if (job.chat_id) {
+        const businessCardStarted = performance.now();
         const { data: businessCard, error: businessError } = await serviceClient.rpc('ai_business_card', {
           p_owner: ownerUid,
         });
         if (businessError) return safeDbError(businessError, 400, origin);
+        businessCardMs = Math.round(performance.now() - businessCardStarted);
         business = businessCard ?? null;
       }
 
@@ -421,6 +444,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         reasoning_effort: job.reasoning_effort ?? 'low',
         chat_id: job.chat_id,
         provider_session_id: providerSessionId,
+        business_card_ms: businessCardMs,
         business,
         products,
         total_products: totalProducts,
@@ -504,10 +528,15 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(body.session_id))) {
           return jsonResponse({ error: 'Identificador de sesión inválido.' }, 400, origin);
         }
+        if (body.action_request_ids !== undefined
+          && (!Array.isArray(body.action_request_ids) || body.action_request_ids.length > 10 || !body.action_request_ids.every(isUuid))) {
+          return jsonResponse({ error: 'Referencias de propuestas inválidas.' }, 400, origin);
+        }
         rpcAction = 'complete';
         jobId = body.job_id;
         payload = {
           output: body.output,
+          ...(Array.isArray(body.action_request_ids) ? { action_request_ids: body.action_request_ids } : {}),
           ...(typeof body.session_id === 'string' ? { session_id: body.session_id } : {}),
         };
         break;
@@ -525,7 +554,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
         .select('chat_id').eq('id', jobId).eq('user_id', ownerUid).maybeSingle();
       if (chatJobError) return safeDbError(chatJobError, 400, origin);
       if (chatJob?.chat_id) {
-        const { data: chatResult, error: chatFinishError } = await serviceClient.rpc('ai_bridge_finish_chat_job', {
+        const { data: chatResult, error: chatFinishError } = await serviceClient.rpc('ai_bridge_finish_chat_job_with_actions', {
           p_owner: ownerUid,
           p_worker_id: body.worker_id,
           p_job_id: jobId,
@@ -533,6 +562,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
           p_output: action === 'worker_complete' ? payload?.output ?? null : null,
           p_error: action === 'worker_fail' ? payload?.error ?? null : null,
           p_session_id: action === 'worker_complete' ? payload?.session_id ?? null : null,
+          p_action_request_ids: action === 'worker_complete' ? payload?.action_request_ids ?? [] : [],
         });
         if (chatFinishError) return safeDbError(chatFinishError, 400, origin);
         return jsonResponse({ data: chatResult }, 200, origin);
@@ -723,10 +753,10 @@ serve(withSupabaseAdminKeyMode(async (req) => {
 
     const [{ data: descendingMessages, error: messagesError }, { data: jobs, error: jobsError }, { data: toolCalls, error: toolCallsError }] = await Promise.all([
       userClient.from('ai_chat_messages')
-        .select('id, job_id, role, content, created_at')
+        .select('id, job_id, role, content, created_at, action_request_ids')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
       userClient.from('ai_jobs')
-        .select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count')
+        .select('id, status, error, created_at, include_business_context, include_project_context, chat_history_count, timings')
         .eq('chat_id', body.chat_id).order('created_at', { ascending: false }).limit(100),
       userClient.from('ai_tool_calls')
         .select('job_id, tool, ok, row_count, error, created_at')
@@ -735,6 +765,16 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     if (messagesError) return safeDbError(messagesError, 400, origin);
     if (jobsError) return safeDbError(jobsError, 400, origin);
     if (toolCallsError) return safeDbError(toolCallsError, 400, origin);
+    const actionRequestIds = [...new Set((descendingMessages ?? []).flatMap((message) =>
+      Array.isArray(message.action_request_ids) ? message.action_request_ids.filter(isUuid) : []))].slice(0, 100);
+    let actionRequests: Array<Record<string, unknown>> = [];
+    if (actionRequestIds.length) {
+      const { data, error } = await userClient.from('ai_action_requests')
+        .select('id, action_key, source, params, draft_content, status:action_state, result, undo, expires_at, executed_at, error, created_at')
+        .in('id', actionRequestIds).neq('action_key', 'facebook.publish_product');
+      if (error) return safeDbError(error, 400, origin);
+      actionRequests = data ?? [];
+    }
     const toolCallsByJob = new Map<string, Array<Record<string, unknown>>>();
     for (const call of toolCalls ?? []) {
       const existing = toolCallsByJob.get(call.job_id) ?? [];
@@ -755,6 +795,7 @@ serve(withSupabaseAdminKeyMode(async (req) => {
       chat,
       messages: (descendingMessages ?? []).reverse(),
       jobs: jobsWithToolCalls.reverse(),
+      action_requests: actionRequests,
       stream,
     }, 200, origin);
   }

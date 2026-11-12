@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type TouchEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type TouchEvent } from 'react';
 import { ArrowLeft, ArrowUp, Check, ChevronDown, Copy, Database, Loader2, MoreHorizontal, RefreshCw, Settings2, StopCircle, Trash2, WifiOff } from 'lucide-react';
 import type { AIChat, AIChatJob, AIChatMessage, AIBridgeState, AIJobStream, AIProviderId, CodexModelId, CodexReasoningEffort } from '../../lib/aiBridge';
 import type { KnowledgeJobSource } from '../../lib/knowledge/api';
@@ -8,6 +8,9 @@ import KnowledgeSources from './KnowledgeSources';
 import MobileAIChatSettings from './MobileAIChatSettings';
 import StreamingAssistantMessage from './StreamingAssistantMessage';
 import AIChatToolCalls from './AIChatToolCalls';
+import type { AIChatActionRequest } from '../../lib/aiActions';
+
+const AIChatActionProposalCard = lazy(() => import('./AIChatActionProposalCard'));
 
 type ChatSheet = 'menu' | 'settings' | 'rename' | 'delete' | null;
 
@@ -20,6 +23,8 @@ export interface MobileAIChatConversationProps {
   stream: AIJobStream | null;
   jobSources: Record<string, KnowledgeJobSource[]>;
   jobMemoryActivity: Record<string, AIMemoryJobActivity>;
+  actionRequests: Record<string, AIChatActionRequest>;
+  onActionChange: () => void;
   loading: boolean;
   sending: boolean;
   hasPendingJob: boolean;
@@ -347,6 +352,11 @@ export default function MobileAIChatConversation(props: MobileAIChatConversation
               </div>
               {isExpanded && <KnowledgeSources sources={sources}/>}
               {message.role === 'assistant' && <AIChatToolCalls calls={job?.tool_calls ?? []}/>}
+              {message.role === 'assistant' && message.action_request_ids?.map((requestId) => <Suspense key={requestId} fallback={null}><AIChatActionProposalCard
+                request={props.actionRequests[requestId]}
+                requestId={requestId}
+                onChanged={props.onActionChange}
+              /></Suspense>)}
               {activity?.changes.map((change) => <div key={change.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand-ring)] bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="min-w-0 flex-1">Memoria actualizada</span>{change.canUndo && <button type="button" onClick={() => props.onUndoMemory(change.id)} className="min-h-8 rounded-lg border border-[var(--line)] px-2 font-semibold">Deshacer</button>}<button type="button" onClick={() => props.onOpenMemory(change.memoryId)} className="min-h-8 px-2 font-semibold underline underline-offset-2">Ver</button></div>)}
             </article>;
           })}

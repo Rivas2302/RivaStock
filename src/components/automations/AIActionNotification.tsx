@@ -13,11 +13,14 @@ export default function AIActionNotification() {
     if (!isOwner) return;
     let active = true;
     const refresh = async () => {
-      const { count: pending, error } = await supabase
-        .from('ai_action_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      if (active && !error) setCount(pending ?? 0);
+      const [facebook, chat] = await Promise.all([
+        supabase.from('ai_action_requests').select('id', { count: 'exact', head: true })
+          .eq('action_key', 'facebook.publish_product').eq('status', 'pending'),
+        supabase.from('ai_action_requests').select('id', { count: 'exact', head: true })
+          .neq('action_key', 'facebook.publish_product').eq('action_state', 'pending')
+          .gt('expires_at', new Date().toISOString()),
+      ]);
+      if (active && !facebook.error && !chat.error) setCount((facebook.count ?? 0) + (chat.count ?? 0));
     };
     void refresh();
     const stopPolling = startVisiblePolling(() => refresh(), 30_000);

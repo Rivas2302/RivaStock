@@ -219,7 +219,11 @@ async function executeJob(job: AIJob): Promise<void> {
     if (job.task_type !== 'text_generation') throw new Error('Tipo de tarea no permitido.');
 
     const workspaceFiles = await syncWorkspaceSnapshot();
+    const contextStartedAt = performance.now();
     const jobContext = await client.jobContext(workerId, job.id);
+    const workerContextMs = Math.round(performance.now() - contextStartedAt);
+    const createdAt = Date.parse(job.timings?.created_at ?? job.created_at);
+    const claimedAt = Date.parse(job.timings?.claimed_at ?? job.started_at ?? '');
     const projectFiles = jobContext.include_project_context && taskSecurity.allow_project_root
       ? await collectProjectContext(config.projectRootDirectory) : [];
     const provider = providerFor(job.provider, config);
@@ -233,6 +237,38 @@ async function executeJob(job: AIJob): Promise<void> {
       knowledgeClient,
       workerId,
       knowledgeEnabled: config.knowledgeEnabled,
+      initialTimings: {
+        worker_context_ms: workerContextMs,
+        claim_to_context_ready_ms: 0,
+        business_card_ms: Math.max(0, Math.round(jobContext.business_card_ms ?? 0)),
+        created_to_claim_ms: Number.isFinite(createdAt) && Number.isFinite(claimedAt) ? Math.max(0, claimedAt - createdAt) : 0,
+        memory_retrieval_including_embedding_ms: 0,
+        query_embedding_ms: 0,
+        chat_history_index_ms: 0,
+        knowledge_retrieval_ms: 0,
+        codex_start_elapsed_ms: 0,
+        codex_first_event_elapsed_ms: 0,
+        codex_start_to_first_event_ms: 0,
+        codex_first_event_to_final_ms: 0,
+        response_save_ms: 0,
+        claimed_to_saved_ms: 0,
+        created_to_saved_ms: 0,
+        prompt_chars: 0,
+        response_chars: 0,
+        model_id: jobContext.model_id ?? 'gpt-6-luna',
+        reasoning_effort: jobContext.reasoning_effort ?? 'low',
+        chat_session: jobContext.provider_session_id ? 'resumed' : 'new',
+      },
+      onMeasurements: async (measurements) => {
+        const responseElapsed = Math.round(performance.now() - timingStartedAt);
+        await client.recordMeasurements(workerId, job.id, {
+          ...measurements,
+          claim_to_context_ready_ms: contextReadyElapsedMs ?? 0,
+          claimed_to_saved_ms: responseElapsed,
+          created_to_saved_ms: (Number.isFinite(createdAt) && Number.isFinite(claimedAt) ? Math.max(0, claimedAt - createdAt) : 0) + responseElapsed,
+        });
+        process.stdout.write(`[AI Bridge] Chat timing ${JSON.stringify({ ...measurements, claim_to_context_ready_ms: contextReadyElapsedMs ?? 0, claimed_to_saved_ms: responseElapsed })}\n`);
+      },
       memoryClient: knowledgeClient,
       memoryWorkerId: workerId,
       onMemoryTurn: (entry) => {
@@ -264,9 +300,9 @@ async function executeJob(job: AIJob): Promise<void> {
           assistant: { business_card: buildBusinessCardContext(jobContext.business) },
         } : {}),
       },
-      complete: async (output, sessionId) => {
+      complete: async (output, sessionId, actionRequestIds = []) => {
         await timingWrites;
-        await client.complete(workerId, job.id, output, sessionId);
+        await client.complete(workerId, job.id, output, sessionId, actionRequestIds);
       },
       log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
     });

@@ -28,6 +28,8 @@ export interface AIProviderOptions {
   memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'update-auto' | 'update-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
   stream?: StreamReporter;
   onFirstProviderEvent?: () => void;
+  onCodexStart?: () => void;
+  onPromptBuilt?: (length: number) => void;
   plain_text?: boolean;
   assistant?: { business_card: string; agent_instructions?: string };
 }
@@ -51,6 +53,7 @@ export interface AIJobContext {
   reasoning_effort: CodexReasoningEffort | null;
   chat_id?: string | null;
   provider_session_id?: string | null;
+  business_card_ms?: number | null;
   business?: {
     business_name?: string;
     owner_display_name?: string;
@@ -92,6 +95,8 @@ export interface AIProvider {
   execute(input: string, signal: AbortSignal, workspaceContext?: string, options?: AIProviderOptions): Promise<{
     output: string;
     session_id?: string;
+    action_request_ids?: string[];
+    tool_timings?: Array<{ name: string; duration_ms: number; row_count: number | null; ok: boolean }>;
     imageInputUnavailable?: boolean;
   }>;
 }

@@ -67,15 +67,20 @@ export class BridgeClient {
     await this.post('worker_timing', { worker_id: workerId, job_id: jobId, phase, elapsed_ms: elapsedMs });
   }
 
+  async recordMeasurements(workerId: string, jobId: string, measurements: Record<string, unknown>): Promise<void> {
+    await this.post('worker_metrics', { worker_id: workerId, job_id: jobId, measurements });
+  }
+
   async start(workerId: string): Promise<void> {
     await this.post('worker_start', { worker_id: workerId });
   }
 
-  async complete(workerId: string, jobId: string, output: string, sessionId?: string): Promise<void> {
+  async complete(workerId: string, jobId: string, output: string, sessionId?: string, actionRequestIds: string[] = []): Promise<void> {
     await this.post('worker_complete', {
       worker_id: workerId,
       job_id: jobId,
       output,
+      action_request_ids: actionRequestIds,
       ...(sessionId ? { session_id: sessionId } : {}),
     });
   }

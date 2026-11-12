@@ -25,9 +25,11 @@ import { startVisiblePolling } from '../lib/visiblePolling';
 import KnowledgeSources from './ai/KnowledgeSources';
 import StreamingAssistantMessage from './ai/StreamingAssistantMessage';
 import AIChatToolCalls from './ai/AIChatToolCalls';
+import type { AIChatActionRequest } from '../lib/aiActions';
 
 const MobileAIChatList = lazy(() => import('./ai/MobileAIChatList'));
 const MobileAIChatConversation = lazy(() => import('./ai/MobileAIChatConversation'));
+const AIChatActionProposalCard = lazy(() => import('./ai/AIChatActionProposalCard'));
 const noop = () => undefined;
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [
@@ -90,6 +92,7 @@ export default function AIChats({
   const [showNewText, setShowNewText] = useState(false);
   const [jobSources, setJobSources] = useState<Record<string, KnowledgeJobSource[]>>({});
   const [jobMemoryActivity, setJobMemoryActivity] = useState<Record<string, AIMemoryJobActivity>>({});
+  const [actionRequests, setActionRequests] = useState<Record<string, AIChatActionRequest>>({});
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const [provider, setProvider] = useState<AIProviderId>('codex');
   const [modelId, setModelId] = useState<CodexModelId>('gpt-6-luna');
@@ -166,6 +169,7 @@ export default function AIChats({
       setStream(null);
       setJobSources({});
       setJobMemoryActivity({});
+      setActionRequests({});
       setLoadingMessages(false);
       return;
     }
@@ -202,6 +206,7 @@ export default function AIChats({
         if (!mounted) return;
         setJobSources(nextSources);
         setJobMemoryActivity(nextMemoryActivity);
+        setActionRequests(Object.fromEntries((detail.action_requests ?? []).map((request) => [request.id, request])));
         setError('');
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'No se pudo cargar este chat.');
@@ -491,6 +496,8 @@ export default function AIChats({
           stream={stream}
           jobSources={jobSources}
           jobMemoryActivity={jobMemoryActivity}
+          actionRequests={actionRequests}
+          onActionChange={() => void loadChatRef.current?.()}
           loading={loadingMessages}
           sending={sending}
           hasPendingJob={hasPendingJob}
@@ -564,6 +571,11 @@ export default function AIChats({
                 <div className="mt-3 flex items-center gap-2"><button type="button" onClick={() => void copyAssistantMessage(message)} aria-label={copiedMessageId === message.id ? 'Respuesta copiada' : 'Copiar respuesta'} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface)]">{copiedMessageId === message.id ? <Check size={13}/> : <Copy size={13}/>} {copiedMessageId === message.id ? 'Copiado' : 'Copiar'}</button>{index === lastAssistantIndex && <button type="button" onClick={() => void regenerateLastResponse()} disabled={!canWriteBusiness || sending || hasPendingJob} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[var(--line)] px-2 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--surface)] disabled:opacity-50"><RefreshCw size={13}/>Regenerar</button>}</div>
                 <KnowledgeSources sources={jobSources[message.job_id] ?? []}/>
                 {message.role === 'assistant' && <AIChatToolCalls calls={job?.tool_calls ?? []}/>}
+                {message.role === 'assistant' && message.action_request_ids?.map((requestId) => <Suspense key={requestId} fallback={null}><AIChatActionProposalCard
+                  request={actionRequests[requestId]}
+                  requestId={requestId}
+                  onChanged={() => void loadChatRef.current?.()}
+                /></Suspense>)}
                 {memoryActivity?.changes.map((change) => <div key={change.id} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100"><span className="min-w-0 flex-1">Memoria actualizada: «{change.content}»</span>{change.canUndo && <button type="button" onClick={() => void undoMemoryChange(change.id)} disabled={!canWriteBusiness || undoingMemoryEventId !== null} className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 font-semibold disabled:opacity-50"><Undo2 size={12}/>{undoingMemoryEventId === change.id ? 'Deshaciendo…' : 'Deshacer'}</button>}<button type="button" onClick={() => onOpenMemory(change.memoryId)} className="rounded-md px-2 py-1 font-semibold underline underline-offset-2">Ver</button></div>)}
               {memoryActivity?.used.length ? <div className="mt-3 rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-xs text-[var(--ink-subtle)]"><span className="font-bold">Recordé: </span>{memoryActivity.used.map((memory, index) => <button key={memory.id} type="button" onClick={() => onOpenMemory(memory.id)} className="mr-1 inline underline underline-offset-2">{`M${index + 1}`}{memory.content ? ` «${memory.content}»` : ''}</button>)}</div> : null}
               </>}</article>;

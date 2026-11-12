@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { connectToolChannel } from './toolChannel.ts';
-import { READ_TOOLS, type ReadToolDefinition } from './toolDefinitions.ts';
+import { CHANGE_PREVIEW_TOOL, READ_TOOLS, type ReadToolDefinition } from './toolDefinitions.ts';
 
 const pipe = process.env.RIVASTOCK_TOOL_PIPE;
 const nonce = process.env.RIVASTOCK_TOOL_NONCE;
@@ -41,8 +41,8 @@ export function zodSchemaForTool(tool: ReadToolDefinition): z.ZodType {
   return schema;
 }
 
-const server = new McpServer({ name: 'rivastock', version: '1.0.0' }, { capabilities: { tools: {} } });
-for (const tool of READ_TOOLS) {
+const server = new McpServer({ name: 'rivastock', version: '1.1.0' }, { capabilities: { tools: {} } });
+for (const tool of [...READ_TOOLS, CHANGE_PREVIEW_TOOL]) {
   server.registerTool(tool.name, {
     title: tool.name,
     description: tool.description,

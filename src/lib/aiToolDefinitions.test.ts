@@ -7,6 +7,8 @@ it('keeps the Edge and Bridge tool registries byte-identical', () => {
   const edge = readFileSync('supabase/functions/_shared/aiToolDefinitions.ts', 'utf8').replace(/\r\n/g, '\n');
   expect(edge).toBe(bridge);
   expect(READ_TOOLS).toHaveLength(14);
+  expect(bridge).toContain("name: 'previsualizar_cambio'");
+  expect(bridge).toContain('readOnlyHint: true, destructiveHint: false, idempotentHint: true');
 });
 
 it('validates input shapes and keeps read-only MCP annotations', async () => {

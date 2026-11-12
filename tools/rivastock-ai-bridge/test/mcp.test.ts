@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createServer } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { createToolChannel, connectToolChannel } from '../src/mcp/toolChannel.ts';
-import { READ_TOOLS, readToolMcpDefinitions } from '../src/mcp/toolDefinitions.ts';
+import { CHANGE_PREVIEW_TOOL, READ_TOOLS, readToolMcpDefinitions } from '../src/mcp/toolDefinitions.ts';
 import { codexMcpConfig } from '../src/providers.ts';
 
 test('all published read tools carry honest, idempotent read-only annotations', () => {
@@ -46,7 +47,7 @@ test('the real MCP stdio server completes initialize and exposes every read tool
   try {
     await client.connect(transport);
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((tool) => tool.name).sort(), READ_TOOLS.map((tool) => tool.name).sort());
+    assert.deepEqual(tools.map((tool) => tool.name).sort(), [...READ_TOOLS, CHANGE_PREVIEW_TOOL].map((tool) => tool.name).sort());
     assert.ok(tools.every((tool) => tool.annotations?.readOnlyHint === true
       && tool.annotations?.destructiveHint === false && tool.annotations?.idempotentHint === true));
   } catch (error) {
@@ -71,5 +72,62 @@ test('a bad local nonce closes the one-turn channel before any network request',
     }), /Canal cerrado/);
   } finally {
     await channel.close();
+  }
+});
+
+test('only same-turn successful previews create proposals; forged IDs are ignored and markers are removed', async () => {
+  const calls: Array<{ tool: string; args: Record<string, unknown> }> = [];
+  const api = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { tool: string; args: Record<string, unknown> };
+    calls.push(payload);
+    response.setHeader('Content-Type', 'application/json');
+    if (payload.tool === 'previsualizar_cambio') {
+      response.end(JSON.stringify({ ok: true, data: { preview_id: '30000000-0000-4000-8000-000000000001', resumen: 'Cambiar precio' } }));
+    } else {
+      response.end(JSON.stringify({ ok: true, data: { request_id: '40000000-0000-4000-8000-000000000001' } }));
+    }
+  });
+  await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+  const address = api.address();
+  assert.ok(address && typeof address === 'object');
+  const channel = await createToolChannel({
+    endpoint: `http://127.0.0.1:${address.port}/functions/v1/ai-bridge`, token: 'test-only',
+    workerId: '10000000-0000-4000-8000-000000000001', jobId: '20000000-0000-4000-8000-000000000001',
+  });
+  try {
+    const preview = await connectToolChannel(channel.pipe, {
+      nonce: channel.nonce, tool: 'previsualizar_cambio',
+      args: { accion: 'product.update', parametros: { product_id: '20000000-0000-4000-8000-000000000001', precio_venta: 17000 } },
+    }) as { ok: boolean };
+    assert.equal(preview.ok, true);
+    const finalized = await channel.proposeFromMarkers(
+      `Propuesta lista.\n[[propuesta:30000000-0000-4000-8000-000000000001]]\n[[propuesta:50000000-0000-4000-8000-000000000001]]`, false,
+    );
+    assert.deepEqual(finalized.requestIds, ['40000000-0000-4000-8000-000000000001']);
+    assert.equal(finalized.output, 'Propuesta lista.');
+    assert.deepEqual(calls.map((call) => call.tool), ['previsualizar_cambio', 'proponer_desde_preview']);
+    assert.deepEqual(calls[1].args, { accion: 'product.update', parametros: { product_id: '20000000-0000-4000-8000-000000000001', precio_venta: 17000 } });
+  } finally {
+    await channel.close();
+    await new Promise<void>((resolve, reject) => api.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test('a cancelled turn never creates proposals even if its output contains a valid marker', async () => {
+  const api = createServer((_request, response) => response.end(JSON.stringify({ ok: true, data: { request_id: '40000000-0000-4000-8000-000000000001' } })));
+  await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+  const address = api.address();
+  assert.ok(address && typeof address === 'object');
+  const channel = await createToolChannel({ endpoint: `http://127.0.0.1:${address.port}/functions/v1/ai-bridge`, token: 'test-only',
+    workerId: '10000000-0000-4000-8000-000000000001', jobId: '20000000-0000-4000-8000-000000000001' });
+  try {
+    const finalized = await channel.proposeFromMarkers('Respuesta parcial.\n[[propuesta:30000000-0000-4000-8000-000000000001]]', true);
+    assert.deepEqual(finalized.requestIds, []);
+    assert.equal(finalized.output, 'Respuesta parcial.');
+  } finally {
+    await channel.close();
+    await new Promise<void>((resolve, reject) => api.close((error) => error ? reject(error) : resolve()));
   }
 });

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { AIChatActionRequest } from './aiActions';
 
 export type AIProviderId = 'mock' | 'codex' | 'claude';
 export type CodexModelId = 'gpt-6-luna' | 'gpt-6.1-sol' | 'gpt-6-astra';
@@ -82,6 +83,7 @@ export interface AIChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  action_request_ids?: string[];
 }
 
 export interface AIChatJob {
@@ -93,6 +95,7 @@ export interface AIChatJob {
   include_project_context?: boolean;
   chat_history_count?: number;
   tool_calls?: AIChatToolCall[];
+  timings?: Record<string, unknown>;
 }
 
 export interface AIChatToolCall {
@@ -116,6 +119,7 @@ export interface AIChatDetail {
   messages: AIChatMessage[];
   jobs: AIChatJob[];
   stream?: AIJobStream | null;
+  action_requests?: AIChatActionRequest[];
 }
 
 export interface AIJobPageCursor {

@@ -123,12 +123,12 @@ Decisión según el punto 1:
 
 - Código de Etapas 1 y 2 implementado en `codex/i53-ai`; las migraciones `20261111200604_ai_job_stream` y `20261111200917_ai_business_card` se aplicaron en producción después de dos backups verificados. Las pruebas específicas PGlite ejecutaron ambas migraciones después de alinear sus nombres locales con los identificadores registrados por Supabase.
 - Etapa 1: el worker transmite actividad y mensajes completos del SDK; el chat web y móvil reciben Realtime con sondeo de respaldo, revelan texto con escritura gradual y permiten detener, regenerar y copiar. El turno de Codex tiene límite de 600 s; pueden correr dos chats distintos a la vez.
-- Etapa 2: el prompt de chat incorpora identidad de RivaStock y ficha del negocio; la búsqueda web se habilita solo en chats, sin habilitar red para comandos del sandbox. El volcado de productos continúa presente hasta Etapa 3, según el plan.
+- Etapa 2: el prompt de chat incorpora identidad de RivaStock y ficha del negocio; la búsqueda web se habilita solo en chats, sin habilitar red para comandos del sandbox. Etapa 3 sustituyó el volcado general de productos por herramientas de lectura acotadas.
 - Verificación local: la suite raíz pasó (**246 archivos / 1.427 pruebas**) con valores Vite ficticios solo en el proceso; `npm run lint`, `npm run build`, `npm run typecheck` del Bridge y sus **136 pruebas** pasaron. Tras el último ajuste de nombres de migración, las pruebas PGlite enfocadas pasaron **8/8**. No se aumentó el timeout de PGlite.
 - Backups previos, ambos con `verification: "passed"` para PostgreSQL y Storage: `%USERPROFILE%\rivastock-backups\20261111T195846Z` (106 tablas, 27.041 filas, 2.909 objetos / 177.599.239 bytes) y `%USERPROFILE%\rivastock-backups\20261111T200645Z` (107 tablas, 27.041 filas, el mismo inventario de Storage). Permanecen fuera del repositorio.
 - Despliegue histórico de Etapas 1–2: `ai-bridge` quedó ACTIVE v24 y Vercel Production READY en `dpl_Hw16Zhpws1JYuG9cJasiDCHb26QM`; el paquete 1.26.0 fue el publicado en ese corte.
-- Actualización de latencia: `ai-bridge` está ACTIVE v26 y el sitio Current sirve el código de `main` con `worker_wait`; el paquete actual es 1.27.0. Aún falta actualizar el worker conectado y hacer las pruebas QA de latencia.
-- La aceptación manual de Etapas 1–2 continúa pendiente: con Bridge 1.27.0, probar actividad/detención de la sección 1.5 y las preguntas de la sección 2.4, junto con la medición de latencia. No se creó un chat QA en un negocio real ni se integró la Etapa 3.
+- Actualización de latencia: se desplegó desde `main` con `worker_wait`, ciclo separado de memoria y captura de timings. La medición QA posterior y la confirmación del transporte usado quedan pendientes de las ocho muestras de esta reanudación.
+- La aceptación manual de actividad/detención de Etapa 1 y las preguntas de contexto de Etapa 2 sigue pendiente. La Etapa 3 ya está integrada y publicada.
 - La revisión de advisors encontró la advertencia esperada de `ai_cancel_job` como `SECURITY DEFINER` ejecutable por `authenticated`; la función valida `auth.uid()` y el test PGlite confirma que otro dueño no puede cancelar. Los avisos de índices cubren las claves foráneas de `ai_job_stream`, una tabla efímera con filas activas que se eliminan al terminar; no se añadió otra migración para ese aviso informativo.
 
 ---
@@ -392,12 +392,22 @@ En cada respuesta, línea plegable "Consultó: productos (12), ventas (1)" a par
 
 ### Estado de ejecución — Etapa 3
 
-- Implementación rebased sobre `main` `594c445`: las 14 herramientas de lectura del plan usan RPC con ámbito del dueño, el worker las expone por MCP con canal local de un solo uso, y el chat muestra las consultas y sus resultados. La entrega de esta etapa usa Bridge **1.28.0**; conserva `worker_wait`, el ciclo de memoria separado y los timings de latencia. Cada consulta añade a `ai_jobs.timings.tool_calls` su nombre, duración, filas y resultado, sin parámetros ni texto del negocio.
+- Implementación integrada en `main` (`0bdf86a`): las 14 herramientas de lectura del plan usan RPC con ámbito del dueño, el worker las expone por MCP con canal local de un solo uso, y el chat muestra las consultas y sus resultados. La entrega de esta etapa usa Bridge **1.28.0**; conserva `worker_wait`, el ciclo de memoria separado y los timings de latencia. Cada consulta añade a `ai_jobs.timings.tool_calls` su nombre, duración, filas y resultado, sin parámetros ni texto del negocio.
 - La prueba de proceso real MCP stdio completa el handshake y enumera las 14 herramientas con las anotaciones de lectura requeridas. La integración con Codex, en `read-only` y `networkAccessEnabled: false`, invocó una herramienta y recibió el resultado de prueba. El endpoint se sustituyó por uno ficticio: no se consultaron datos reales.
 - Verificación local: suite raíz **252 archivos / 1.454 pruebas**, lint, build, Bridge typecheck y Bridge **149 aprobadas / 1 omitida** aprobados; Deno check de `ai-tools` y `ai-bridge` pasó. La prueba integrada MCP/Codex anterior pasó **1/1** y el handshake **4/4**.
-- La migración `20261111211200_i53_read_tools` es aditiva y pasa **6/6** pruebas PGlite, incluida la comprobación de que llamadas a herramientas se agregan a `timings` sin guardar argumentos. Sigue pendiente de aplicar hasta verificar un backup nuevo.
+- La migración `20261111211200_i53_read_tools` es aditiva y pasa **6/6** pruebas PGlite, incluida la comprobación de que llamadas a herramientas se agregan a `timings` sin guardar argumentos. Fue aplicada por el flujo habitual después del backup verificado.
+- Producción: Vercel Current sirve `main`; `ai-tools` responde sin 404; `ai-bridge` conserva el flujo de latencia; el paquete `rivastock-ai-bridge-latest.tgz` contiene **1.28.0** y el bundle incluye «Consultó: …».
 - El preflight anterior de Etapa 4 con una herramienta honesta `readOnlyHint: false` fue bloqueado antes de llegar al servidor. El diseño del 12/11 lo reemplaza: `previsualizar_cambio` es una lectura real, no escribe y lleva anotaciones de lectura verdaderas; el worker solo convierte marcadores válidos del mismo turno en propuestas después de completarse la respuesta.
 - Relevamiento de `order.set_status`: `Orders.tsx` cambia `orders.status` e `isRead` directamente con `db.update`; no existe RPC. La conversión a venta es una acción distinta que llama `register_sale` y luego cambia el estado. Se excluye `order.set_status` de esta etapa para no simular un efecto de servidor que hoy no existe.
+
+### Estado de ejecución — Etapa 4 (reanudación 12/11)
+
+- En curso en `codex/i53-stage4`, basada en `main` con la Etapa 3. Codex conserva `read-only`; la única herramienta visible nueva es `previsualizar_cambio`, con anotaciones de lectura honestas. Las propuestas se crean internamente solo a partir de marcadores de previsualizaciones exitosas del mismo turno.
+- La migración local `20261112211000_i53_confirmed_actions_and_timings.sql` agrega las funciones de previsualización/propuesta/confirmación/deshacer y el guardado de tiempos. El ciclo de acciones usa `action_state` aditivo y conserva sin cambios los CHECK heredados de Facebook; PGlite focalizado pasa **7/7**.
+- Desvío: la tabla `products` y la app no tienen archivo lógico de productos. `product.create` queda sin botón Deshacer; no se implementa una eliminación como sustituto del archivo porque no sería reversible ni cumpliría el plan. Para cumplir el criterio original hace falta definir un archivo lógico que toda lectura de productos respete.
+- `order.set_status` sigue excluido por sus efectos en navegador. No se implementan ni ejecutan escrituras en datos reales.
+- Backup verificado el 12/11 en `%USERPROFILE%\rivastock-backups\20261112T210023Z`: Postgres **108 tablas / 27.318 filas** con conteos exactos, esquema 1.253.989 bytes y datos 59.829.237 bytes; Storage **2.933 objetos / 179.837.137 bytes en 5 buckets**. Ambas verificaciones reportaron `passed`.
+- Falta aplicar la migración, hacer el merge/deploy desde `main`, validar Bridge 1.29.0 y ejecutar la prueba real en el negocio QA con las 8 muestras de timings. La versión preparada es **1.29.0**; no iniciar Etapa 5.
 
 ---
 
@@ -419,7 +429,7 @@ Al concluir el turno, y solo si no fue cancelado, el worker busca esos marcadore
 
 `ai_actions_catalog`: agregar `module text`, `kind text NOT NULL DEFAULT 'write'`, `undoable boolean NOT NULL DEFAULT false`.
 
-`ai_action_requests`: agregar `chat_id uuid`, `job_id uuid`, `result jsonb`, `undo jsonb`, `expires_at timestamptz`, `executed_at timestamptz`, `error text`. Ampliar `status` a `pending | confirmed | cancelled | expired | failed | undone`. Reemplazar el CHECK de estados para que `confirmed` acepte `publication_id IS NOT NULL` **o** `result IS NOT NULL`. La acción `facebook.publish_product` y `confirm_ai_action` deben seguir funcionando igual (prueba de regresión obligatoria).
+`ai_action_requests`: agregar `chat_id uuid`, `job_id uuid`, `result jsonb`, `undo jsonb`, `expires_at timestamptz`, `executed_at timestamptz`, `error text` y `action_state text NOT NULL DEFAULT 'pending'` para el ciclo de vida de las nuevas acciones. El `status` y sus CHECK existentes quedan intactos para `facebook.publish_product`; las acciones del chat usan `action_state = pending | confirmed | cancelled | expired | failed | undone`. Esta separación conserva las restricciones de Facebook sin borrarlas ni debilitarlas. La acción `facebook.publish_product` y `confirm_ai_action` deben seguir funcionando igual (prueba de regresión obligatoria).
 
 RPC nuevas:
 

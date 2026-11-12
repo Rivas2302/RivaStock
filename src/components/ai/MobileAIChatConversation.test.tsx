@@ -23,6 +23,8 @@ describe('MobileAIChatConversation', () => {
     ],
     jobs: [{ id: JOB_ID, status: 'completed', error: null, created_at: '2026-11-04T09:14:00Z', include_business_context: true, chat_history_count: 2 }],
     stream: null,
+    actionRequests: {},
+    onActionChange: vi.fn(),
     jobSources: { [JOB_ID]: [{ job_id: JOB_ID, rank: 1, label: 'K1', document_id: '60000000-0000-4000-8000-000000000001', version_number: 1, title: 'Guía de pedidos', section_path: 'Despachos', page_from: 1, page_to: 1, score: 0.9, deleted: false }] },
     jobMemoryActivity: { [JOB_ID]: { used: [], changes: [{ id: '80000000-0000-4000-8000-000000000001', memoryId: MEMORY_ID, action: 'updated', content: 'Entrega los martes.', canUndo: true }] } },
     loading: false,

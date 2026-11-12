@@ -7,6 +7,21 @@ export interface ReadToolDefinition {
   inputSchema: Record<string, unknown>;
 }
 
+export const CHANGE_PREVIEW_TOOL: ReadToolDefinition = {
+  name: 'previsualizar_cambio',
+  description: 'Previsualiza un cambio posible en RivaStock. No guarda ni modifica datos. Solo propone un cambio si el usuario lo pidió claramente.',
+  module: null,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      accion: { type: 'string', enum: ['product.update', 'product.create', 'stock.adjust', 'price.bulk_update', 'catalog.announcement', 'knowledge.create_document'] },
+      parametros: { type: 'object' },
+    },
+    required: ['accion', 'parametros'],
+    additionalProperties: false,
+  },
+};
+
 const uuid = { type: 'string', format: 'uuid' };
 const date = { type: 'string', format: 'date' };
 
@@ -29,6 +44,18 @@ export const READ_TOOLS: ReadToolDefinition[] = [
 
 export function findReadTool(name: string): ReadToolDefinition | undefined {
   return READ_TOOLS.find((tool) => tool.name === name);
+}
+
+export function validateToolArguments(tool: ReadToolDefinition, value: unknown): value is Record<string, unknown> {
+  if (tool.name === CHANGE_PREVIEW_TOOL.name) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const args = value as Record<string, unknown>;
+    return Object.keys(args).every((key) => key === 'accion' || key === 'parametros')
+      && typeof args.accion === 'string'
+      && (CHANGE_PREVIEW_TOOL.inputSchema.properties as Record<string, { enum: string[] }>).accion.enum.includes(args.accion)
+      && Boolean(args.parametros) && typeof args.parametros === 'object' && !Array.isArray(args.parametros);
+  }
+  return validateReadToolArguments(tool, value);
 }
 
 export function validateReadToolArguments(tool: ReadToolDefinition, value: unknown): value is Record<string, unknown> {
@@ -69,4 +96,13 @@ export function readToolMcpDefinitions() {
     inputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   }));
+}
+
+export function changePreviewMcpDefinition() {
+  return {
+    name: CHANGE_PREVIEW_TOOL.name,
+    description: CHANGE_PREVIEW_TOOL.description,
+    inputSchema: CHANGE_PREVIEW_TOOL.inputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  };
 }

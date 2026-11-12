@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { authorizeWorkerRequest } from '../_shared/aiBridgeWorkerAuth.ts';
 import { createSupabaseApiKeyFetch, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY, withSupabaseAdminKeyMode } from '../_shared/supabaseAdminKey.ts';
-import { findReadTool, validateReadToolArguments } from '../_shared/aiToolDefinitions.ts';
+import { CHANGE_PREVIEW_TOOL, findReadTool, validateReadToolArguments, validateToolArguments } from '../_shared/aiToolDefinitions.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(Deno.env.get('SUPABASE_SECRET_KEYS'));
@@ -118,16 +118,28 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     return response({ ok: false, error: 'La tarea ya no está disponible para consultar datos.' }, 409, origin);
   }
 
-  const tool = findReadTool(body.tool);
-  if (!tool) return response({ ok: false, error: 'La herramienta no está disponible.' }, 400, origin);
   const fullArgs = body.args as Record<string, unknown>;
+  const isInternalProposal = body.tool === 'proponer_desde_preview';
+  const isPreview = body.tool === CHANGE_PREVIEW_TOOL.name;
+  const tool = isPreview ? CHANGE_PREVIEW_TOOL : findReadTool(body.tool);
+  if (!tool && !isInternalProposal) return response({ ok: false, error: 'La herramienta no está disponible.' }, 400, origin);
+  if (isPreview && !validateToolArguments(CHANGE_PREVIEW_TOOL, fullArgs)) {
+    return response({ ok: false, error: 'Los parámetros no coinciden con la herramienta.' }, 400, origin);
+  }
+  if (isInternalProposal && (Object.keys(fullArgs).some((key) => key !== 'accion' && key !== 'parametros')
+    || typeof fullArgs.accion !== 'string' || !fullArgs.parametros || typeof fullArgs.parametros !== 'object' || Array.isArray(fullArgs.parametros))) {
+    return response({ ok: false, error: 'La propuesta interna no es válida.' }, 400, origin);
+  }
   const args = { ...fullArgs };
   delete args.__embedding;
-  if (tool.module) {
+  if (tool?.module) {
     const { data: enabled, error } = await serviceClient.rpc('business_module_enabled', { p_owner: ownerUid, p_module: tool.module });
     if (error || enabled !== true) return response({ ok: false, error: 'El módulo necesario no está incluido en el plan.' }, 403, origin);
   }
-  if (!validateReadToolArguments(tool, args) || !validateInternalEmbedding(body.tool, fullArgs)) {
+  if (tool && !isPreview && !validateReadToolArguments(tool, args)) {
+    return response({ ok: false, error: 'Los parámetros no coinciden con la herramienta.' }, 400, origin);
+  }
+  if (!validateInternalEmbedding(body.tool, fullArgs)) {
     return response({ ok: false, error: 'Los parámetros no coinciden con la herramienta.' }, 400, origin);
   }
   if ('desde' in args && 'hasta' in args) {
@@ -139,8 +151,18 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   }
 
   const startedAt = Date.now();
+  if (isInternalProposal) {
+    const { data, error } = await serviceClient.rpc('ai_action_propose', {
+      p_owner: ownerUid, p_job_id: job.id, p_chat_id: job.chat_id,
+      p_action_key: fullArgs.accion, p_params: fullArgs.parametros,
+    });
+    if (error) return response({ ok: false, error: 'No se pudo preparar la propuesta.' }, 409, origin);
+    return response({ ok: true, data, truncated: false }, 200, origin);
+  }
+
   const { data: callId, error: reserveError } = await serviceClient.rpc('ai_tool_reserve_call', {
-    p_owner: ownerUid, p_job_id: job.id, p_chat_id: job.chat_id, p_tool: tool.name, p_args: args,
+    p_owner: ownerUid, p_job_id: job.id, p_chat_id: job.chat_id,
+    p_tool: tool!.name, p_args: isPreview ? { accion: args.accion } : args,
   });
   if (reserveError) return response({ ok: false, error: 'No se pudo registrar la consulta.' }, 409, origin);
   if (!callId) return response({ ok: false, error: 'Límite de consultas por respuesta alcanzado' }, 429, origin);
@@ -150,7 +172,9 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   let result: unknown;
   let errorMessage: string | null = null;
   try {
-    const { data, error } = await serviceClient.rpc(`ai_tool_${tool.name}`, { p_owner: ownerUid, p_args: fullArgs });
+    const { data, error } = isPreview
+      ? await serviceClient.rpc('ai_action_preview', { p_owner: ownerUid, p_action_key: args.accion, p_params: args.parametros })
+      : await serviceClient.rpc(`ai_tool_${tool!.name}`, { p_owner: ownerUid, p_args: fullArgs });
     if (error) throw new Error(error.message);
     result = data;
     ok = true;
