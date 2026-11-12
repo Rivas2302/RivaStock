@@ -1380,4 +1380,4 @@ Para capturas por extensión, la miniatura de la revisión y la copia al agregar
 
 ### [ ] I53 — IA integrada a RivaStock
 
-Especificación: `docs/ai/AI_PLAN_I53.md`. Etapa 0 aprobada. Etapas 1 y 2 están integradas en `main` y desplegadas. La Etapa 3 está implementada en `codex/i53-stage3` pero todavía no integrada; la corrección de latencia de chat debe desplegarse desde `main` antes de retomar la Etapa 4. La primera prueba obligatoria de propuesta de Etapa 4 quedó bloqueada con anotaciones honestas en modo `read-only`; no implementar escrituras hasta resolver ese bloqueo.
+Especificación: `docs/ai/AI_PLAN_I53.md`. Etapa 0 aprobada. Etapas 1 y 2 están integradas en `main` y desplegadas. La Etapa 3 está implementada en `codex/i53-stage3` pero todavía no integrada. La corrección de latencia está desplegada desde `main`; faltan seis mensajes de prueba QA con AI Bridge 1.27.0 para confirmar la medición posterior y el transporte PostgreSQL. La primera prueba obligatoria de propuesta de Etapa 4 quedó bloqueada con anotaciones honestas en modo `read-only`; no implementar escrituras hasta resolver ese bloqueo.

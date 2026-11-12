@@ -25,7 +25,7 @@
 
 12. **I46 — volver a guardar los módulos de `leokevinr23`:** la revisión de solo lectura confirmó que la primera operación no creó una personalización en la base. Después de que el arreglo del frontend figure en Current, abrí `/plataforma`, dejá la plantilla Base y volvé a desactivar Presupuestos, Pedidos, Proveedores, Revendedores, Compras a proveedores, Calculadora, IA, Conocimientos, Automatizaciones y Trazabilidad; después elegí **Guardar cambios** y confirmá el mensaje de éxito. No se cambió ningún dato de ese negocio durante el arreglo.
 
-No hay acciones pendientes de sesión de Codex, extensión 0.5.25, Bridge ni Claude.
+No hay acciones pendientes de sesión de Codex, extensión 0.5.25 ni Claude. La medición con AI Bridge 1.27.0 está detallada más abajo.
 
 ## I51 — URL de Auth y prueba con usuario real
 
@@ -44,6 +44,10 @@ Durante una verificación de Vercel se creó un secreto de Protection Bypass par
 
 Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de administrador `authenticated` de prueba. No se eliminó ninguna cuenta de producción. Para completar un recorrido de borrado real, designá por la app una cuenta de negocio QA descartable para baja programada y otra para eliminación inmediata; no usar cuentas de clientes ni las dos cuentas reportadas hasta confirmar que son descartables.
 
-## I53 — aceptación manual del AI Bridge 1.26.0
+## I53 — medición posterior de latencia en QA
 
-Actualizá el AI Bridge con el actualizador habitual hasta que muestre **1.26.0** y **Conectado**. Después, desde Chats, verificá que la actividad aparezca en menos de 3 segundos, que **Detener** interrumpa en menos de 3 segundos, y probá las preguntas de I53 §2.4 sobre negocio, fecha y Conocimientos. Confirmá también una respuesta que tarde más de 120 segundos. No uses datos de negocio en un chat de prueba; borrá el chat QA desde la app al terminar.
+Actualizá el AI Bridge con el actualizador habitual hasta que muestre **1.27.0** y **Conectado**. En el negocio de prueba de E9, tomá tres muestras independientes: antes de cada una, dejá el worker sin mensajes por más de 2 minutos y mandá un mensaje QA; después mandá otros tres mensajes seguidos. En la misma sesión, completá la aceptación manual de I53: actividad y **Detener** en menos de 3 segundos, una respuesta de más de 120 segundos, nombre/módulos del negocio, fecha local y una pregunta de Conocimientos. Compartime solo los seis tiempos de envío→reclamo y el resultado de esas comprobaciones; no incluyas el texto de los mensajes ni uses un negocio real. Después borrá el chat QA desde la app.
+
+## I53 — bloqueo de Etapa 4
+
+La prueba obligatoria de una propuesta MCP con `readOnlyHint: false` y `destructiveHint: false` ya fue bloqueada por Codex en modo `read-only`. El plan prohíbe cambiar las anotaciones para eludir el bloqueo y requiere detenerse. Antes de continuar Etapa 4, definí cómo querés resolver esta restricción de permisos; no se implementarán escrituras ni se probarán en datos reales.
