@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const PRODUCT = '20000000-0000-4000-8000-000000000001';
-const MIGRATION = readFileSync('supabase/migrations/20261112211000_i53_confirmed_actions_and_timings.sql', 'utf8');
+const MIGRATION = readFileSync('supabase/migrations/20261112211000_i53_confirmed_actions_and_timings.sql', 'utf8').replace(/\r\n/g, '\n');
 
 function functionSql(name: string, next: string): string {
   const start = MIGRATION.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
