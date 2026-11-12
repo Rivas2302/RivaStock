@@ -2214,7 +2214,13 @@ A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega
 - Tarjetas y orden: valores traducidos a etiquetas en español, ejemplos como filas legibles y precios enteros; una propuesta de una fila no repite ejemplos. Orden final: Consultó → propuestas → Fuentes → Recordé plegado.
 - PGlite valida el `AI001` para parámetros no permitidos y el recorrido de alta oculta con stock inicial → confirmación → deshacer. Hay un test que mantiene el default visible en la vista previa.
 - Pruebas locales después de los cambios: suite raíz 256 archivos / 1.470 pruebas aprobadas; lint aprobado; build aprobado y empaquetó AI Bridge 1.30.0; Bridge 154 aprobadas / 1 omitida y typecheck aprobado. `deno check` de `ai-tools` y `ai-bridge` pasó. `knowledge/index.ts` conserva 65 diagnósticos que también están en el `main` limpio; no se modificaron durante esta tarea.
-- Estado de entrega: falta confirmar que los archivos estén en `main` pusheado, tomar y verificar el backup completo previo, aplicar solo la nueva migración, desplegar las Edge Functions desde `main` y verificar Vercel/paquete/funciones. Después Riva debe actualizar el Bridge a 1.30.0 y repetir las mismas cuatro pruebas; hasta recibir ese resultado, Etapa 4 no se cierra y Etapa 5 no se inicia.
+- Implementación integrada y publicada desde `main`: `52b55f5` agrega la migración correctiva y `9624f20` integra el código, los tests y el paquete del Bridge. `origin/main` apunta a `9624f20`.
+- Backup completo previo a la migración correctiva: `%USERPROFILE%\rivastock-backups\20261112T231143Z`. PostgreSQL: **108 tablas / 27.401 filas**, esquema **1.303.971 bytes**, datos **59.918.893 bytes**. Storage: **2.933 objetos / 179.837.137 bytes en 5 buckets**. Ambas verificaciones terminaron `passed`.
+- La migración `20261112222454_i53_stage4_relevance_and_errors` se aplicó después del backup por el flujo MCP; Supabase la registra como `20261112231429 / i53_stage4_relevance_and_errors`. No se usó `db push`.
+- Edge Functions activas y verificadas: `ai-bridge` **v29**, `knowledge` **v16** y `ai-tools` **v3**; las tres conservan `verify_jwt=false`.
+- Vercel Production/Current está **READY** en `dpl_Cr81FP3bCi3AWRHdDYPCw84BKU8K`, alias `rivastock.vercel.app`, construido desde `main` en `9624f20`. El bundle servido devuelve HTTP 200: `AIHub-VpiT7lrV.js` contiene Detener, Regenerar y «Consultó»; `AIChatActionProposalCard-Ds0PNZaz.js` contiene Confirmar, Deshacer, Ejemplos y «Mostrar en catálogo».
+- `rivastock-ai-bridge-latest.tgz` respondió HTTP 200 y el `package.json` dentro del archivo declara **1.30.0**.
+- La Etapa 4 está implementada y desplegada, pero su aceptación final queda pendiente de Riva: actualizar el Bridge conectado a 1.30.0 y repetir las mismas cuatro pruebas en el mismo chat y con su producto de prueba, incluida el alta oculta, Confirmar y Deshacer. No se crearon chats ni se tocaron datos de ningún negocio durante esta continuación. La Etapa 5 sigue sin empezar.
 
 ### Medición inicial provista por el dueño (solo metadatos; milisegundos)
 
@@ -2225,4 +2231,4 @@ A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega
 | 3 | Luna / medio / retomado | 6300 / 92 | 1229 | 1485 | 961 | 657 | 6 | 1046 | 0 | 4244 | 4 | 1360 | 8558 | `ventas_resumen` / 2008 / 1 | 1461 | 16718 | 17947 |
 | 4 | Luna / medio / nuevo | 6583 / 89 | 689 | 1585 | 808 | 1020 | 6 | 1155 | 0 | 5405 | 4 | 1705 | 15288 | `productos_buscar` / 2123 / 1; `previsualizar_cambio` / 1793 / 1; `proponer_desde_preview` / 1148 / 1 | 572 | 23912 | 24601 |
 
-La segunda tabla queda pendiente de los cuatro turnos que ejecutará el dueño después de recibir Bridge 1.30.0. No crear mensajes para adelantarla.
+La tabla posterior queda pendiente de los cuatro turnos que ejecutará el dueño después de actualizar el Bridge a 1.30.0. No crear mensajes para adelantarla.

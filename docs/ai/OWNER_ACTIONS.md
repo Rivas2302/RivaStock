@@ -46,8 +46,8 @@ Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de admi
 
 ## I53 — repetir la aceptación de Etapa 4
 
-La primera aceptación ya la hizo Riva en su negocio el 12/11 con Bridge 1.29.0. No se necesita abrir el perfil QA ni vincular otra PC. Cuando el paquete 1.30.0 esté publicado:
+La primera aceptación ya la hizo Riva en su negocio el 12/11 con Bridge 1.29.0. No se necesita abrir el perfil QA ni vincular otra PC. El paquete **1.30.0 ya está publicado**:
 
-1. Actualizá el Bridge hasta que muestre **1.30.0 · Conectado**.
+1. Actualizá el Bridge conectado hasta que muestre **1.30.0 · Conectado**.
 2. En el mismo chat y con el producto de prueba que ya usaste, repetí las mismas cuatro pruebas del 12/11, incluidas la propuesta de alta oculta, Confirmar y Deshacer. No hace falta pegarme las preguntas ni compartir el contenido del chat.
-3. Avisame cuando termines. Voy a leer solo metadatos de tiempos y llamadas, sin abrir los mensajes; con eso completo la tabla «después».
+3. Avisame cuando termines. Voy a leer solo metadatos de tiempos y llamadas, sin abrir los mensajes; con eso completo la tabla «después». No se creó un chat ni se modificaron datos de negocio para adelantar la prueba.
