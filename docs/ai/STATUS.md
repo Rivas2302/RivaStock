@@ -2172,3 +2172,11 @@ Sin toque en src/, supabase/ ni extensions/.
 ## Regla permanente de despliegue
 
 A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega desde `main` ya pusheado. Nunca desde ramas ni desde cambios locales. Si hace falta probar una rama, usá un deploy de Preview, nunca Production.
+
+## 2026-11-11 — I53: reducir la espera inicial del chat (en curso)
+
+- Medición de referencia, consulta de solo lectura a producción: tres tareas completadas tras intervalos sin trabajo de más de 2 minutos tardaron `created_at → claimed_at` **26,752 ms**, **24,668 ms** y **30,207 ms**. El trabajo anterior había terminado **867 s**, **73.626 s** y **1.996 s** antes. No se encontró un grupo histórico de tres turnos seguidos; estos valores no prueban por sí solos que la PC estuviera inactiva.
+- Código local: se añadió `ai_jobs.timings`, marcas de creación, reclamo, contexto listo, primer evento de Codex y respuesta final; `worker_wait` con escucha PostgreSQL y respaldo RPC cada 750 ms; espera larga desde el Bridge con retorno al sondeo anterior si falla; ciclo de memoria de baja prioridad, único y cancelable; y texto de cola condicionado al último estado real de conexión. La migración aún no se aplicó y el código aún no se desplegó.
+- Backup previo verificado: `%USERPROFILE%\rivastock-backups\20261112T021059Z`. PostgreSQL: **107 tablas / 27.224 filas**, esquema **1.226.874 bytes**, datos **59.748.782 bytes**. Storage: **2.909 objetos / 177.599.239 bytes** en cinco buckets. `verification: passed` para PostgreSQL y Storage.
+- Verificación local: suite raíz **250 archivos / 1.446 tests**, lint, build y Deno check de `ai-bridge` aprobados; Bridge **145 tests** y typecheck aprobados. El paquete generado es AI Bridge **1.27.0**. No se crearon chats ni mensajes de producción para la prueba controlada.
+- Pendiente para cerrar esta tarea: rebase y push del commit en `main`, aplicar únicamente `20261112011710_i53_chat_latency_wakeup` por el flujo de migración, desplegar Edge y Vercel desde `main`, verificar el transporte activo y el paquete público, y medir 3 mensajes tras >2 minutos ocioso más 3 mensajes seguidos en un chat QA. Después retomar Etapa 4; su primera prueba de propuesta sigue bloqueada por la regla read-only documentada arriba.

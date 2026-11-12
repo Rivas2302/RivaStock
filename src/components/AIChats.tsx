@@ -19,6 +19,7 @@ import {
 } from '../lib/aiBridge';
 import { listJobSources, type KnowledgeJobSource } from '../lib/knowledge/api';
 import { listAIMemoryJobActivity, undoAIMemoryEvent, type AIMemoryJobActivity } from '../lib/aiMemory';
+import { pendingAIJobMessage } from '../lib/aiBridgeStatus';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import { startVisiblePolling } from '../lib/visiblePolling';
 import KnowledgeSources from './ai/KnowledgeSources';
@@ -48,9 +49,9 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function jobStatusText(job: AIChatJob | undefined): string | null {
+function jobStatusText(job: AIChatJob | undefined, bridgeState: AIBridgeState | null): string | null {
   if (!job) return null;
-  if (job.status === 'pending') return 'Esperando a que el AI Bridge se conecte.';
+  if (job.status === 'pending') return pendingAIJobMessage(bridgeState);
   if (job.status === 'processing') return 'El agente está preparando una respuesta…';
   if (job.status === 'failed') return job.error || 'No se pudo generar la respuesta.';
   return null;
@@ -555,7 +556,7 @@ export default function AIChats({
             {!messages.length && !loadingMessages && <div className="flex min-h-64 flex-col items-center justify-center text-center"><Sparkles size={27} className="text-[var(--brand)]"/><p className="mt-3 text-sm font-semibold">Empezá una conversación</p><p className="mt-1 max-w-sm text-xs text-[var(--ink-muted)]">El historial queda guardado en este negocio y el agente conserva su sesión en tu PC.</p></div>}
             {messages.map((message, index) => {
               const job = jobs.find((item) => item.id === message.job_id);
-              const status = message.role === 'user' ? jobStatusText(job) : null;
+              const status = message.role === 'user' ? jobStatusText(job, bridgeState) : null;
               const memoryActivity = message.role === 'assistant' ? jobMemoryActivity[message.job_id] : undefined;
               const lastAssistantIndex = messages.map((item) => item.role).lastIndexOf('assistant');
               return <article key={message.id} className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === 'user' ? 'ml-auto bg-[var(--action-bg)] text-[var(--action-ink)]' : 'mr-auto border border-[var(--line)] bg-[var(--surface-muted)] text-[var(--ink)]'}`}><p className="mb-1 text-[11px] font-bold opacity-70">{message.role === 'user' ? 'Vos' : 'Agente'} · {formatDate(message.created_at)}</p>{message.role === 'user' ? <p className="whitespace-pre-wrap break-words">{message.content}</p> : <StreamingAssistantMessage content={message.content}/ >}{status && <p role={job?.status === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${job?.status === 'failed' ? 'text-rose-700 dark:text-rose-300' : 'opacity-70'}`}>{job?.status === 'pending' || job?.status === 'processing' ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : null}{status}</p>}{message.role === 'assistant' && <>

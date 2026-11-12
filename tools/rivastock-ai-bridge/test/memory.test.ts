@@ -446,6 +446,36 @@ test('deduplication avoids the provider and only touches similar saved memories'
   assert.equal(finished, 1);
 });
 
+test('stopping memory work aborts its request and leaves the claim available for retry', async () => {
+  const controller = new AbortController();
+  let requestSignal: AbortSignal | undefined;
+  let requestStarted!: () => void;
+  const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+  let finished = 0;
+  const entry: MemoryQueueEntry = { jobId, chatId, input: 'El local cierra a las 19.', output: 'Anotado.',
+    shouldExtract: true, summaryDue: false, metric: null };
+  const processing = processMemoryBatch({
+    client: {
+      async memorySimilar(_worker, _job, _embedding, signal) {
+        requestSignal = signal;
+        requestStarted();
+        return new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+      },
+      async memoryChatSummary() { return null; }, async memoryApply() {}, async memoryMetric() {},
+      async memoryFinish() { finished += 1; }, async touchSimilarMemory() {},
+      async pendingMemoryEmbeddings() { return []; }, async storeMemoryEmbeddings() {},
+    },
+    workerId: 'worker', entries: [entry], codexProvider: { async execute() { return { output: '{"operations":[]}' }; } },
+    codexEnabled: true, localLlmUrl: null, localLlmModel: null, log() {},
+    embedQuery: async () => Array(384).fill(0), signal: controller.signal,
+  });
+  await started;
+  controller.abort();
+  await processing;
+  assert.equal(requestSignal, controller.signal);
+  assert.equal(finished, 0);
+});
+
 test('records and logs how many extractions the local prefilter avoided', async () => {
   let avoided = 0;
   let log = '';

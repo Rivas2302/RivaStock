@@ -18,12 +18,13 @@ import { buildFacebookPhotoReviewPrompt, parseFacebookPhotoReviewContext, parseF
 import { cleanChatSessionDirectory, providerFor } from './providers.ts';
 import { MemoryTurnQueue } from './memory/queue.ts';
 import { processMemoryBatch, processPendingMemoryEmbeddings } from './memory/processor.ts';
+import { createBackgroundWorkLoop } from './memory/backgroundLoop.ts';
 import { SupervisorClient } from './automation/client.ts';
 import { runFacebookSupervisorLoop } from './automation/supervisor.ts';
 import { reportError } from './safeError.ts';
 import { collectProjectContext, syncWorkspaceFiles } from './workspace.ts';
 import { PendingWorkMonitor, type PendingWorkKey } from './workMonitor.ts';
-import { DEFAULT_CODEX_SECURITY, loadConfig, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
+import { DEFAULT_CODEX_SECURITY, loadConfig, type AIJob, type AIProviderId, type AIWorkspaceFile, type CodexSecuritySettings } from './types.ts';
 import { createStreamReporter, type StreamReporter } from './streamReporter.ts';
 import { buildBusinessCardContext } from './workspace.ts';
 
@@ -45,9 +46,11 @@ const activeChatControllers = new Map<string, AbortController>();
 let lastWorkspaceSyncAt = 0;
 let workspaceSyncPromise: Promise<AIWorkspaceFile[]> | null = null;
 let workMonitor: PendingWorkMonitor | null = null;
+let backgroundMemoryLoop: ReturnType<typeof createBackgroundWorkLoop> | null = null;
 const memoryQueue = new MemoryTurnQueue(20, 6);
 let codexSecurity: CodexSecuritySettings = DEFAULT_CODEX_SECURITY;
 let heartbeatSequence = 0;
+let lastWorkerWaitAt = 0;
 
 async function heartbeat(state: 'idle' | 'busy', jobId: string | null = null): Promise<void> {
   const sequence = ++heartbeatSequence;
@@ -78,6 +81,7 @@ async function syncWorkspaceSnapshot(): Promise<AIWorkspaceFile[]> {
 function stopBridge(): void {
   stopping = true;
   activeController?.abort();
+  backgroundMemoryLoop?.stop();
   for (const controller of activeChatControllers.values()) controller.abort();
   supervisorController?.abort();
   workMonitor?.stop();
@@ -86,10 +90,19 @@ function stopBridge(): void {
 process.on('SIGINT', stopBridge);
 process.on('SIGTERM', stopBridge);
 
-async function executeJob(job: { id: string; provider: AIProviderId; task_type: string; input: string; chat_id?: string | null }): Promise<void> {
+async function executeJob(job: AIJob): Promise<void> {
   const taskSecurity = { ...codexSecurity };
   const isChatTextJob = job.task_type === 'text_generation' && Boolean(job.chat_id);
   const controller = new AbortController();
+  const timingStartedAt = performance.now();
+  let contextReadyElapsedMs: number | null = null;
+  let firstCodexEventElapsedMs: number | null = null;
+  let timingWrites = Promise.resolve();
+  const enqueueTiming = (phase: 'context_ready_at' | 'first_codex_event_at', elapsedMs: number): void => {
+    timingWrites = timingWrites.then(() => client.recordTiming(workerId, job.id, phase, elapsedMs)).catch(() => {
+      process.stderr.write('[AI Bridge] No se pudo guardar una marca de latencia del chat.\n');
+    });
+  };
   if (isChatTextJob) activeChatControllers.set(job.id, controller);
   else {
     activeController = controller;
@@ -225,7 +238,13 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
       onMemoryTurn: (entry) => {
         if (!memoryQueue.enqueue(entry)) {
           process.stderr.write('[AI Bridge] La cola local de memoria está llena; se omitió este procesamiento posterior a la respuesta.\n');
+        } else {
+          backgroundMemoryLoop?.wake();
         }
+      },
+      onContextReady: () => {
+        contextReadyElapsedMs = Math.round(performance.now() - timingStartedAt);
+        enqueueTiming('context_ready_at', contextReadyElapsedMs);
       },
       providerOptions: {
         model_id: jobContext.model_id ?? 'gpt-6-luna',
@@ -234,14 +253,40 @@ async function executeJob(job: { id: string; provider: AIProviderId; task_type: 
         session_id: jobContext.provider_session_id,
         codex_security: taskSecurity,
         ...(streamReporter ? { stream: streamReporter } : {}),
+        ...(streamReporter && job.provider === 'codex' ? {
+          onFirstProviderEvent: () => {
+            if (firstCodexEventElapsedMs !== null) return;
+            firstCodexEventElapsedMs = Math.round(performance.now() - timingStartedAt);
+            enqueueTiming('first_codex_event_at', firstCodexEventElapsedMs);
+          },
+        } : {}),
         ...(jobContext.chat_id && jobContext.business ? {
           assistant: { business_card: buildBusinessCardContext(jobContext.business) },
         } : {}),
       },
-      complete: (output, sessionId) => client.complete(workerId, job.id, output, sessionId),
+      complete: async (output, sessionId) => {
+        await timingWrites;
+        await client.complete(workerId, job.id, output, sessionId);
+      },
       log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
     });
     if (stopping || controller.signal.aborted) throw new Error('La tarea fue interrumpida antes de completarse.');
+    if (isChatTextJob) {
+      const createdAt = Date.parse(job.timings?.created_at ?? job.created_at);
+      const claimedAt = Date.parse(job.timings?.claimed_at ?? job.started_at ?? '');
+      const createdToClaimMs = Number.isFinite(createdAt) && Number.isFinite(claimedAt)
+        ? Math.max(0, claimedAt - createdAt) : null;
+      const contextToFirstMs = contextReadyElapsedMs !== null && firstCodexEventElapsedMs !== null
+        ? Math.max(0, firstCodexEventElapsedMs - contextReadyElapsedMs) : null;
+      const responseElapsedMs = Math.round(performance.now() - timingStartedAt);
+      const fields = [
+        createdToClaimMs === null ? null : `creada→reclamada=${createdToClaimMs}`,
+        contextReadyElapsedMs === null ? null : `reclamada→contexto=${contextReadyElapsedMs}`,
+        contextToFirstMs === null ? null : `contexto→primer_evento_Codex=${contextToFirstMs}`,
+        `reclamada→respuesta=${responseElapsedMs}`,
+      ].filter((value): value is string => value !== null);
+      process.stdout.write(`[AI Bridge] Latencia de chat: ${fields.join(' ms, ')} ms.\n`);
+    }
     process.stdout.write(`[AI Bridge] Tarea ${job.id} completada con ${job.provider}.\n`);
   } catch (error) {
     const safeMessage = reportError(error instanceof Error ? error.message : 'Error local del proveedor.');
@@ -281,11 +326,82 @@ async function syncDeletedChatSessions(): Promise<void> {
   if (cleanedChatIds.length) await client.acknowledgeChatTombstones(workerId, cleanedChatIds);
 }
 
+function createMemoryLoop(monitor: PendingWorkMonitor): ReturnType<typeof createBackgroundWorkLoop> {
+  return createBackgroundWorkLoop({
+    isStopping: () => stopping,
+    processNext: async (signal) => {
+      if (!knowledgeClient || !config.workerId) return false;
+      if (memoryQueue.length) {
+        await processMemoryBatch({
+          client: knowledgeClient,
+          workerId: config.workerId,
+          entries: memoryQueue.takeNextBatch(),
+          codexProvider: config.codexEnabled
+            ? providerFor('codex', config)
+            : { async execute() { throw new Error('Codex está deshabilitado.'); } },
+          codexEnabled: config.codexEnabled,
+          codexSecurity,
+          localLlmUrl: config.localLlmUrl,
+          localLlmModel: config.localLlmModel,
+          signal,
+          log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
+        });
+        return true;
+      }
+
+      if (monitor.hasWork('memory_embeddings')) {
+        try {
+          const count = await processPendingMemoryEmbeddings(knowledgeClient, config.workerId, undefined, signal);
+          if (count) process.stdout.write(`[AI Bridge] Se generaron embeddings para ${count} recuerdo(s).\n`);
+        } catch {
+          if (!signal.aborted) process.stderr.write('[AI Bridge] No se pudieron actualizar los embeddings pendientes de memoria.\n');
+        }
+        monitor.markDrained('memory_embeddings');
+        return true;
+      }
+
+      if (monitor.hasWork('idle_summary')) {
+        const candidates = await knowledgeClient.idleMemorySummaryCandidates(workerId, signal);
+        if (signal.aborted) return false;
+        for (const candidate of candidates) {
+          for (const exchange of candidate.exchanges) {
+            if (!memoryQueue.enqueue({
+              jobId: candidate.job_id,
+              chatId: candidate.chat_id,
+              input: exchange.input,
+              output: exchange.output,
+              shouldExtract: true,
+              summaryDue: true,
+              summaryOnly: true,
+              metric: null,
+            })) {
+              throw new Error('La cola local de memoria está llena; no se pudo programar un resumen inactivo.');
+            }
+          }
+          process.stdout.write('[AI Bridge] Se programó un resumen por inactividad.\n');
+        }
+        monitor.markDrained('idle_summary');
+        return true;
+      }
+      return false;
+    },
+    waitForWork: async (signal) => {
+      await monitor.waitForAny(['memory_embeddings', 'idle_summary'], () => stopping || signal.aborted, 30_000, signal);
+    },
+    onError: (error) => {
+      const safeMessage = reportError(error instanceof Error ? error.message : 'Error de memoria.');
+      process.stderr.write(`[AI Bridge] Ciclo de memoria diferida: ${safeMessage}\n`);
+    },
+    retryDelayMs: POLL_INTERVAL_MS,
+  });
+}
+
 async function run(): Promise<void> {
   process.stdout.write('[AI Bridge] Conectando a RivaStock por HTTPS.\n');
   const monitor = workMonitor;
   if (!monitor) throw new Error('El sondeo combinado de trabajo no está iniciado.');
   const heartbeatTimer = setInterval(() => {
+    if (Date.now() - lastWorkerWaitAt < HEARTBEAT_INTERVAL_MS) return;
     const nextActiveJob = activeJobId ?? activeChatControllers.keys().next().value ?? null;
     void heartbeat(activeController || activeChatControllers.size ? 'busy' : 'idle', nextActiveJob).catch(() => {
       process.stderr.write('[AI Bridge] No se pudo actualizar el estado de conexión.\n');
@@ -332,71 +448,8 @@ async function run(): Promise<void> {
           monitor.markDrained('ai_jobs');
         }
 
-        if (memoryQueue.length && knowledgeClient && config.workerId) {
-          const memoryController = new AbortController();
-          activeController = memoryController;
-          try {
-            await processMemoryBatch({
-              client: knowledgeClient,
-              workerId: config.workerId,
-              entries: memoryQueue.takeNextBatch(),
-              codexProvider: config.codexEnabled
-                ? providerFor('codex', config)
-                : { async execute() { throw new Error('Codex está deshabilitado.'); } },
-              codexEnabled: config.codexEnabled,
-              codexSecurity,
-              localLlmUrl: config.localLlmUrl,
-              localLlmModel: config.localLlmModel,
-              signal: memoryController.signal,
-              log: (message) => process.stderr.write(`[AI Bridge] ${message}\n`),
-            });
-          } finally {
-            activeController = null;
-          }
-          continue;
-        }
-
-        if (knowledgeClient && config.workerId && monitor.hasWork('memory_embeddings')) {
-          const memoryController = new AbortController();
-          activeController = memoryController;
-          try {
-            const count = await processPendingMemoryEmbeddings(knowledgeClient, config.workerId,
-              undefined, memoryController.signal);
-            if (count) process.stdout.write(`[AI Bridge] Se generaron embeddings para ${count} recuerdo(s).\n`);
-          } catch {
-            process.stderr.write('[AI Bridge] No se pudieron actualizar los embeddings pendientes de memoria.\n');
-          } finally {
-            activeController = null;
-          }
-          monitor.markDrained('memory_embeddings');
-          continue;
-        }
-
-        if (knowledgeClient && config.workerId && monitor.hasWork('idle_summary')) {
-          const candidates = await knowledgeClient.idleMemorySummaryCandidates(workerId);
-          for (const candidate of candidates) {
-            for (const exchange of candidate.exchanges) {
-              if (!memoryQueue.enqueue({
-                jobId: candidate.job_id,
-                chatId: candidate.chat_id,
-                input: exchange.input,
-                output: exchange.output,
-                shouldExtract: true,
-                summaryDue: true,
-                summaryOnly: true,
-                metric: null,
-              })) {
-                throw new Error('La cola local de memoria está llena; no se pudo programar un resumen inactivo.');
-              }
-            }
-            process.stdout.write(`[AI Bridge] Se programó un resumen por inactividad para el chat ${candidate.chat_id}.\n`);
-          }
-          monitor.markDrained('idle_summary');
-          continue;
-        }
-
         const mainWorkKeys: PendingWorkKey[] = [
-          'ai_jobs', 'memory_embeddings', 'idle_summary', 'chat_tombstones', 'workspace_files',
+          'ai_jobs', 'chat_tombstones', 'workspace_files',
         ];
         const workspaceDueIn = Math.max(0, lastWorkspaceSyncAt + WORKSPACE_SYNC_INTERVAL_MS - Date.now());
         await monitor.waitForAny(mainWorkKeys, () => stopping, Math.min(60_000, workspaceDueIn));
@@ -440,11 +493,19 @@ async function runWithInstanceLock(): Promise<void> {
     configureModelCache(config.modelsDirectory);
     workMonitor = new PendingWorkMonitor(
       () => client.pendingWork(workerId),
-      (error) => process.stderr.write(`[AI Bridge] No se pudo consultar la cola combinada: ${reportError(error instanceof Error ? error.message : 'Error de conexión.')}\n`),
+      (error) => process.stderr.write(`[AI Bridge] No se pudo esperar el trabajo: ${reportError(error instanceof Error ? error.message : 'Error de conexión.')}\n`),
+      (signal) => client.waitForWork(workerId, signal, (source) => {
+          process.stdout.write(`[AI Bridge] worker_wait despertó mediante ${source}.\n`);
+        }, (security) => {
+          lastWorkerWaitAt = Date.now();
+          heartbeatSequence += 1;
+          codexSecurity = security;
+        }),
     );
     workMonitor.start();
     const monitor = workMonitor;
-    const loops: Promise<void>[] = [run()];
+    backgroundMemoryLoop = createMemoryLoop(monitor);
+    const loops: Promise<void>[] = [run(), backgroundMemoryLoop.run()];
     if (!config.knowledgeEnabled) {
       process.stdout.write('[AI Bridge] Conocimientos deshabilitado por configuración.\n');
     } else if (!config.workerId) {

@@ -25,6 +25,7 @@ export interface AIProviderOptions {
   codex_security?: CodexSecuritySettings;
   memory_response_guidance?: 'remember-auto' | 'remember-confirm' | 'update-auto' | 'update-confirm' | 'forget-auto' | 'forget-confirm' | 'disabled';
   stream?: StreamReporter;
+  onFirstProviderEvent?: () => void;
   plain_text?: boolean;
   assistant?: { business_card: string; agent_instructions?: string };
 }
@@ -81,6 +82,8 @@ export interface AIJob {
   chat_id?: string | null;
   attempt_count: number;
   created_at: string;
+  started_at?: string | null;
+  timings?: Record<string, string>;
 }
 
 export interface AIProvider {

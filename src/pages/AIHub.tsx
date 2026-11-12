@@ -38,6 +38,7 @@ import type { MobileAIHubView } from '../components/ai/MobileAIHubNavigation';
 import type { PublicationContent } from '../lib/facebookPublications';
 import type { FacebookCopywritingProposal } from '../lib/facebookCopywriting';
 import { resolveFacebookCopywritingProduct } from '../lib/facebookCopywritingProduct';
+import { pendingAIJobMessage } from '../lib/aiBridgeStatus';
 import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { startVisiblePolling } from '../lib/visiblePolling';
 import type { Product } from '../types';
@@ -349,7 +350,7 @@ export default function AIHub() {
       }).catch(() => {
         if (mounted) {
           setBridgeStatus(null);
-          setBridgeState('offline');
+          setBridgeState(null);
         }
       });
       void getCentralStatus().then(setCentralStatus).catch(() => setCentralStatus(null));
@@ -834,7 +835,7 @@ export default function AIHub() {
             </div>
             {activeJob ? <div className="space-y-4 text-sm">
               <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--ink-subtle)]">{taskLabel(activeJob)}</p>
-              {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>La tarea espera a que el AI Bridge se conecte.</p>}
+              {activeJob.status === 'pending' && <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"><Clock3 size={16} className="mr-2 inline"/>{pendingAIJobMessage(bridgeState)}</p>}
               {activeJob.status === 'processing' && <p role="status" className="rounded-xl bg-[var(--brand-soft)] p-4 text-[var(--brand)]"><Loader2 size={16} className="mr-2 inline animate-spin"/>El agente está trabajando en la instrucción.</p>}
               {activeJob.output && <div className="whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 leading-6">{activeJob.output}</div>}
               {activeJob.status === 'completed' && <KnowledgeSources sources={activeJobSources}/>}

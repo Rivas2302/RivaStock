@@ -45,10 +45,14 @@ export class PendingWorkMonitor {
   private inFlight = false;
   private rerunRequested = false;
   private stopped = false;
+  private longPollFallback = false;
+  private retryLongPollAt = 0;
+  private waitController: AbortController | null = null;
 
   constructor(
     private readonly probe: () => Promise<unknown>,
     private readonly onError: (error: unknown) => void = () => undefined,
+    private readonly waitForWork?: (signal: AbortSignal) => Promise<unknown>,
   ) {}
 
   start(): void {
@@ -60,6 +64,7 @@ export class PendingWorkMonitor {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.waitController?.abort();
     this.notify();
   }
 
@@ -86,13 +91,14 @@ export class PendingWorkMonitor {
     keys: readonly PendingWorkKey[],
     isStopping: () => boolean,
     timeoutMs = Number.POSITIVE_INFINITY,
+    signal?: AbortSignal,
   ): Promise<boolean> {
     const deadline = Number.isFinite(timeoutMs) ? Date.now() + Math.max(0, timeoutMs) : Number.POSITIVE_INFINITY;
-    while (!this.stopped && !isStopping()) {
+    while (!this.stopped && !isStopping() && !signal?.aborted) {
       if (keys.some((key) => this.hasWork(key))) return true;
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
-      const changed = await this.waitForChange(remaining);
+      const changed = await this.waitForChange(remaining, signal);
       if (!changed) return false;
     }
     return false;
@@ -120,13 +126,34 @@ export class PendingWorkMonitor {
     if (this.stopped || this.inFlight) return;
     this.inFlight = true;
     this.rerunRequested = false;
+    if (this.longPollFallback && Date.now() >= this.retryLongPollAt) this.longPollFallback = false;
+    const useLongPoll = Boolean(this.waitForWork && !this.longPollFallback);
+    const waitController = useLongPoll ? new AbortController() : null;
+    this.waitController = waitController;
     try {
-      const next = parsePendingWork(await this.probe());
+      const next = parsePendingWork(await (useLongPoll && waitController && this.waitForWork
+        ? this.waitForWork(waitController.signal)
+        : this.probe()));
       this.setWork(next);
+      if (useLongPoll) this.longPollFallback = false;
     } catch (error) {
-      this.setWork(parsePendingWork(null));
-      this.onError(error);
+      if (this.stopped) return;
+      if (useLongPoll) {
+        this.longPollFallback = true;
+        this.retryLongPollAt = Date.now() + 60_000;
+        this.onError(error);
+        try {
+          this.setWork(parsePendingWork(await this.probe()));
+        } catch (probeError) {
+          this.setWork(parsePendingWork(null));
+          this.onError(probeError);
+        }
+      } else {
+        this.setWork(parsePendingWork(null));
+        this.onError(error);
+      }
     } finally {
+      if (this.waitController === waitController) this.waitController = null;
       this.inFlight = false;
     }
     if (this.stopped) return;
@@ -136,6 +163,10 @@ export class PendingWorkMonitor {
     }
     const hasWork = PENDING_WORK_KEYS.some((key) => this.hasWork(key));
     if (hasWork) this.idleStep = 0;
+    if (useLongPoll && !this.longPollFallback) {
+      this.schedule(hasWork ? ACTIVE_POLL_DELAY_MS : 0);
+      return;
+    }
     this.schedule(nextPendingWorkDelay(hasWork, this.idleStep));
     if (!hasWork) this.idleStep = Math.min(this.idleStep + 1, IDLE_POLL_DELAYS_MS.length - 1);
   }
@@ -146,7 +177,7 @@ export class PendingWorkMonitor {
     if (changed) this.notify();
   }
 
-  private waitForChange(timeoutMs: number): Promise<boolean> {
+  private waitForChange(timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false;
       let timer: NodeJS.Timeout | null = null;
@@ -155,11 +186,15 @@ export class PendingWorkMonitor {
         settled = true;
         if (timer) clearTimeout(timer);
         this.waiters.delete(onChange);
+        signal?.removeEventListener('abort', onAbort);
         resolve(changed);
       };
       const onChange = () => finish(true);
+      const onAbort = () => finish(true);
       this.waiters.add(onChange);
       if (Number.isFinite(timeoutMs)) timer = setTimeout(() => finish(false), timeoutMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) finish(true);
       if (this.stopped) finish(true);
     });
   }

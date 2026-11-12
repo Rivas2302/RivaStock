@@ -25,6 +25,7 @@ export interface ExecuteTextGenerationInput {
   memoryClient?: Pick<KnowledgeClient, 'memoryRetrieve'> & Partial<Pick<KnowledgeClient, 'memoryChatIndex'>> | null;
   memoryWorkerId?: string | null;
   onMemoryTurn?: (entry: MemoryQueueEntry) => void;
+  onContextReady?: () => void | Promise<void>;
   memoryRetrievalDependencies?: Partial<MemoryRetrievalDependencies>;
 }
 
@@ -95,6 +96,7 @@ export async function executeTextGeneration(input: ExecuteTextGenerationInput): 
     });
   }
   input.log(`Tarea ${input.job.id}: ${sources.length} fuentes de Conocimientos.`);
+  await input.onContextReady?.();
   const stream = input.providerOptions.stream;
   if (stream) stream.setActivity({ kind: 'thinking', label: 'Pensando…' });
   const generationSignal = stream

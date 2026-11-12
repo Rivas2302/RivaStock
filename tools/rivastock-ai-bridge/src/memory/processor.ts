@@ -31,9 +31,11 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
   const { entries } = options;
   const extractEntries = entries.filter((entry) => entry.shouldExtract);
   try {
+    if (options.signal?.aborted) return;
     const prefilteredEntries = entries.filter((item) => item.metric === 'skipped_prefilter');
     for (const entry of prefilteredEntries) {
-      await options.client.memoryMetric(options.workerId, entry.jobId, 'skipped_prefilter').catch(() => undefined);
+      if (options.signal?.aborted) return;
+      await options.client.memoryMetric(options.workerId, entry.jobId, 'skipped_prefilter', undefined, options.signal).catch(() => undefined);
     }
     if (prefilteredEntries.length) {
       options.log(`El prefiltro local evitó ${prefilteredEntries.length} extracción(es) de memoria.`);
@@ -45,10 +47,13 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
     const embed = options.embedQuery ?? embedQuery;
     const candidateQuery = memorySimilarityQuery(anchor.input);
     const similarQuery = await embed(candidateQuery || anchor.input.slice(0, 2000));
-    const candidateResult = await options.client.memorySimilar(options.workerId, anchor.jobId, similarQuery);
+    if (options.signal?.aborted) return;
+    const candidateResult = await options.client.memorySimilar(options.workerId, anchor.jobId, similarQuery, options.signal);
+    if (options.signal?.aborted) return;
     const similar = candidateQuery ? candidateResult : { ...candidateResult, memories: [] };
     const chatSummary = entries.some((entry) => entry.summaryDue)
-      ? await options.client.memoryChatSummary(options.workerId, anchor.jobId) : null;
+      ? await options.client.memoryChatSummary(options.workerId, anchor.jobId, options.signal) : null;
+    if (options.signal?.aborted) return;
     const extractionContext = chatSummary
       ? [chatSummary, ...similar.memories.filter((memory) => memory.id !== chatSummary.id).slice(0, 7)]
       : similar.memories;
@@ -62,9 +67,10 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
       const duplicateIds = similar.memories.filter((memory) => duplicated.some((exchange) =>
         isNearDuplicate(exchange.input, memory, normalizedEditDistance(exchange.input, memory.content))))
         .map((memory) => memory.id);
-      if (duplicateIds.length) await options.client.touchSimilarMemory(options.workerId, anchor.jobId, duplicateIds);
+      if (duplicateIds.length) await options.client.touchSimilarMemory(options.workerId, anchor.jobId, duplicateIds, options.signal);
       for (const entry of duplicated) {
-        await options.client.memoryMetric(options.workerId, entry.jobId, 'skipped_deduplication').catch(() => undefined);
+        if (options.signal?.aborted) return;
+        await options.client.memoryMetric(options.workerId, entry.jobId, 'skipped_deduplication', undefined, options.signal).catch(() => undefined);
       }
       if (!remaining.length && !summaryDue) {
         options.log(`Se evitó la extracción de memoria de ${duplicated.length} turno(s) duplicado(s).`);
@@ -97,14 +103,18 @@ export async function processMemoryBatch(options: MemoryProcessorOptions): Promi
       localModel: options.localLlmModel ?? undefined,
       dependencies: options.embedTexts ? { embed: options.embedTexts } : undefined,
     });
+    if (options.signal?.aborted) return;
     const applyPayload = makeApplyPayload(extracted);
-    if (applyPayload.operations.length) await options.client.memoryApply(options.workerId, anchor.jobId, applyPayload);
-    await options.client.memoryMetric(options.workerId, anchor.jobId, 'executed', extracted.provider);
+    if (applyPayload.operations.length) await options.client.memoryApply(options.workerId, anchor.jobId, applyPayload, options.signal);
+    if (options.signal?.aborted) return;
+    await options.client.memoryMetric(options.workerId, anchor.jobId, 'executed', extracted.provider, options.signal);
     options.log(`Extracción de memoria completada (${extracted.provider}, ${applyPayload.operations.length} operación(es)).`);
   } catch {
-    options.log(`Falló el procesamiento de memoria para el chat ${entries[0]?.chatId}; la respuesta de IA ya fue entregada.`);
+    if (!options.signal?.aborted) options.log(`Falló el procesamiento de memoria para el chat ${entries[0]?.chatId}; la respuesta de IA ya fue entregada.`);
   } finally {
-    for (const entry of entries) await options.client.memoryFinish(options.workerId, entry.jobId).catch(() => undefined);
+    if (!options.signal?.aborted) {
+      for (const entry of entries) await options.client.memoryFinish(options.workerId, entry.jobId).catch(() => undefined);
+    }
   }
 }
 
@@ -115,7 +125,7 @@ export async function processPendingMemoryEmbeddings(
   signal?: AbortSignal,
 ): Promise<number> {
   if (signal?.aborted) return 0;
-  const memories = await client.pendingMemoryEmbeddings(workerId);
+  const memories = await client.pendingMemoryEmbeddings(workerId, signal);
   if (!memories.length) return 0;
   const vectors = await embed(memories.map((memory) => `${PASSAGE_PREFIX}${memory.content}`));
   if (signal?.aborted) return 0;
@@ -125,6 +135,6 @@ export async function processPendingMemoryEmbeddings(
   await client.storeMemoryEmbeddings(workerId, memories.map((memory, index) => ({
     id: memory.id,
     embedding: vectors[index] ?? [],
-  })), EMBEDDING_MODEL);
+  })), EMBEDDING_MODEL, signal);
   return memories.length;
 }

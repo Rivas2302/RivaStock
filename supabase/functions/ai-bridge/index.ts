@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createSupabaseApiKeyFetch, withSupabaseAdminKeyMode, resolveSupabaseAdminKey, SUPABASE_PUBLISHABLE_KEY } from '../_shared/supabaseAdminKey.ts';
+import { waitForPendingWork, type WorkerWaitListener } from './workerWait.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const { key: SUPABASE_ADMIN_KEY, mode: SUPABASE_ADMIN_KEY_MODE } = resolveSupabaseAdminKey(
@@ -13,6 +14,7 @@ const ALLOWED_PROVIDERS = new Set(['mock', 'codex', 'claude']);
 const ALLOWED_CODEX_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra']);
 const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 const DEFAULT_ORIGINS = ['https://rivastock.vercel.app', 'http://localhost:5173'];
+let workerWaitFallbackLogged = false;
 
 function configuredOrigins(): Set<string> {
   const configured = Deno.env.get('AI_BRIDGE_ALLOWED_ORIGINS');
@@ -115,6 +117,62 @@ function validateWorkerConfiguration(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ADMIN_KEY);
 }
 
+async function openPostgresWakeListener(ownerUid: string): Promise<WorkerWaitListener> {
+  const databaseUrl = Deno.env.get('SUPABASE_DB_URL');
+  if (!databaseUrl) throw new Error('Postgres listener is unavailable.');
+  const { default: postgres } = await import('npm:postgres@3.4.9');
+  const sql = postgres(databaseUrl, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 5,
+  });
+  let notificationQueued = false;
+  let wakeWaiter: ((received: boolean) => void) | null = null;
+  try {
+    await sql.listen('bridge_wakeup', (payload) => {
+      if (payload !== ownerUid) return;
+      if (wakeWaiter) {
+        const resolve = wakeWaiter;
+        wakeWaiter = null;
+        resolve(true);
+      } else {
+        notificationQueued = true;
+      }
+    });
+  } catch {
+    await sql.end({ timeout: 1 }).catch(() => undefined);
+    throw new Error('Postgres listener setup failed.');
+  }
+  return {
+    waitForOwnerWake(timeoutMs, signal) {
+      if (notificationQueued) {
+        notificationQueued = false;
+        return Promise.resolve(true);
+      }
+      if (signal?.aborted) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (received: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+          if (wakeWaiter === finish) wakeWaiter = null;
+          resolve(received);
+        };
+        const onAbort = () => finish(false);
+        const timer = setTimeout(() => finish(false), Math.max(0, timeoutMs));
+        wakeWaiter = finish;
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+    },
+    async close() {
+      wakeWaiter?.(false);
+      await sql.end({ timeout: 1 });
+    },
+  };
+}
+
 function safeDbError(error: { message?: string } | null, status = 400, origin?: string | null): Response {
   const message = error?.message ?? '';
   if (message.includes('La cuenta del negocio está suspendida. Comunicate con RivaTech.')) {
@@ -157,35 +215,109 @@ serve(withSupabaseAdminKeyMode(async (req) => {
   if (!body) return jsonResponse({ error: 'Solicitud inválida o demasiado grande.' }, 413, origin);
   const action = body.action;
 
-  if (action === 'worker_pending_work') {
+  if (action === 'worker_pending_work' || action === 'worker_wait') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
     if (!isUuid(body.worker_id)) return jsonResponse({ error: 'Identificador de worker inválido.' }, 400, origin);
+    if (action === 'worker_wait'
+      && (typeof body.timeout_s !== 'number' || !Number.isInteger(body.timeout_s)
+        || body.timeout_s < 1 || body.timeout_s > 55
+        || Object.keys(body).some((key) => !['action', 'worker_id', 'timeout_s'].includes(key)))) {
+      return jsonResponse({ error: 'Duración de espera inválida.' }, 400, origin);
+    }
     const authorization = req.headers.get('authorization') ?? '';
     const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_ADMIN_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
       global: { fetch: createSupabaseApiKeyFetch(SUPABASE_ADMIN_KEY) },
     });
+    let ownerUid: string | null = null;
+    if (suppliedToken.length >= 32 && suppliedToken.length <= 256) {
+      const { data: authorizedUid, error: authorizationError } = await serviceClient.rpc('ai_bridge_authorize_device', {
+        p_device_id: body.worker_id,
+        p_token: suppliedToken,
+      });
+      if (!authorizationError && isUuid(authorizedUid)) ownerUid = authorizedUid;
+    }
     let legacyOwner: string | null = null;
-    if (AI_BRIDGE_TOKEN.length >= 32 && isUuid(AI_BRIDGE_OWNER_UID)
+    if (!ownerUid && AI_BRIDGE_TOKEN.length >= 32 && isUuid(AI_BRIDGE_OWNER_UID)
       && constantTimeEqual(suppliedToken, AI_BRIDGE_TOKEN)) {
       const { data: deviceHistory, error: deviceError } = await serviceClient.from('ai_bridge_devices')
         .select('id').eq('user_id', AI_BRIDGE_OWNER_UID).limit(1).maybeSingle();
       if (!deviceError && !deviceHistory) legacyOwner = AI_BRIDGE_OWNER_UID;
     }
-    const { data, error } = await serviceClient.rpc('bridge_pending_work', {
-      p_worker: body.worker_id,
-      p_token: suppliedToken,
-      p_legacy_owner: legacyOwner,
-    });
-    if (error) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
-    return jsonResponse({ work: data ?? {} }, 200, origin);
+    ownerUid ??= legacyOwner;
+    if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
+    let security: CodexSecuritySettings | undefined;
+    if (action === 'worker_wait') {
+      const { data: device, error: deviceError } = await serviceClient.from('ai_bridge_devices')
+        .select('state, current_job_id')
+        .eq('id', body.worker_id).eq('user_id', ownerUid).is('revoked_at', null).maybeSingle();
+      if (deviceError) return safeDbError(deviceError, 400, origin);
+      let workerState = device?.state === 'busy' ? 'busy' : 'idle';
+      let currentJobId = isUuid(device?.current_job_id) ? device.current_job_id : null;
+      if (!device && legacyOwner) {
+        const { data: legacyWorker, error: legacyWorkerError } = await serviceClient.from('ai_bridge_workers')
+          .select('state, current_job_id').eq('user_id', ownerUid).eq('worker_id', body.worker_id).maybeSingle();
+        if (legacyWorkerError) return safeDbError(legacyWorkerError, 400, origin);
+        workerState = legacyWorker?.state === 'busy' ? 'busy' : 'idle';
+        currentJobId = isUuid(legacyWorker?.current_job_id) ? legacyWorker.current_job_id : null;
+      }
+      const { error: heartbeatError } = await serviceClient.rpc('ai_bridge_worker', {
+        p_action: 'heartbeat',
+        p_owner_uid: ownerUid,
+        p_worker_id: body.worker_id,
+        p_job_id: currentJobId,
+        p_result: { state: workerState },
+      });
+      if (heartbeatError) return safeDbError(heartbeatError, 401, origin);
+      security = await codexSecurityForOwner(serviceClient, ownerUid);
+    }
+    const probe = async (): Promise<Record<string, unknown>> => {
+      const { data, error } = await serviceClient.rpc('bridge_pending_work', {
+        p_worker: body.worker_id,
+        p_token: suppliedToken,
+        p_legacy_owner: legacyOwner,
+      });
+      if (error) throw new Error('Conexión del AI Bridge inválida, vencida o desvinculada.');
+      return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
+    };
+    if (action === 'worker_pending_work') {
+      try {
+        return jsonResponse({ work: await probe() }, 200, origin);
+      } catch {
+        return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
+      }
+    }
+    try {
+      const result = await waitForPendingWork({
+        timeoutMs: Number(body.timeout_s) * 1_000,
+        probe,
+        openListener: () => openPostgresWakeListener(ownerUid),
+        signal: req.signal,
+        pollIntervalMs: 750,
+        onFallback: () => {
+          if (workerWaitFallbackLogged) return;
+          workerWaitFallbackLogged = true;
+          console.warn('[ai-bridge] worker_wait is using bounded RPC polling fallback.');
+        },
+      });
+      const response = jsonResponse({ work: result.work, ...(security ? { security } : {}) }, 200, origin);
+      response.headers.set('X-AI-Bridge-Wakeup', result.wakeup);
+      return response;
+    } catch (error) {
+      if (req.signal.aborted) return jsonResponse({ work: {} }, 200, origin);
+      if (error instanceof Error && error.message === 'Conexión del AI Bridge inválida, vencida o desvinculada.') {
+        return jsonResponse({ error: error.message }, 401, origin);
+      }
+      return jsonResponse({ error: 'No se pudo consultar la cola del AI Bridge.' }, 503, origin);
+    }
   }
 
   if (action === 'worker_heartbeat' || action === 'worker_claim'
     || action === 'worker_claim_text_generation' || action === 'worker_stream'
     || action === 'worker_complete' || action === 'worker_fail'
     || action === 'worker_workspace' || action === 'worker_context'
+    || action === 'worker_timing'
     || action === 'worker_update_prepare' || action === 'worker_start'
     || action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
     if (!validateWorkerConfiguration()) return jsonResponse({ error: 'El AI Bridge no está configurado en el servidor.' }, 503, origin);
@@ -215,6 +347,24 @@ serve(withSupabaseAdminKeyMode(async (req) => {
       if (!deviceError && !deviceHistory) ownerUid = AI_BRIDGE_OWNER_UID;
     }
     if (!ownerUid) return jsonResponse({ error: 'Conexión del AI Bridge inválida, vencida o desvinculada.' }, 401, origin);
+
+    if (action === 'worker_timing') {
+      if (!isUuid(body.job_id) || !['context_ready_at', 'first_codex_event_at'].includes(String(body.phase))
+        || typeof body.elapsed_ms !== 'number' || !Number.isInteger(body.elapsed_ms)
+        || body.elapsed_ms < 0 || body.elapsed_ms > 600_000
+        || Object.keys(body).some((key) => !['action', 'worker_id', 'job_id', 'phase', 'elapsed_ms'].includes(key))) {
+        return jsonResponse({ error: 'Marca de tiempo inválida.' }, 400, origin);
+      }
+      const { data, error } = await serviceClient.rpc('ai_job_record_timing', {
+        p_owner: ownerUid,
+        p_worker_id: body.worker_id,
+        p_job_id: body.job_id,
+        p_phase: body.phase,
+        p_elapsed_ms: body.elapsed_ms,
+      });
+      if (error) return safeDbError(error, 400, origin);
+      return jsonResponse({ recorded: data === true }, 200, origin);
+    }
 
     if (action === 'worker_chat_tombstones' || action === 'worker_chat_tombstones_ack') {
       const chatIds = body.chat_ids;
@@ -317,6 +467,14 @@ serve(withSupabaseAdminKeyMode(async (req) => {
             p_worker_id: body.worker_id,
           });
           if (error) return safeDbError(error, 400, origin);
+          if (data && typeof data === 'object' && 'id' in data && isUuid((data as Record<string, unknown>).id)) {
+            const { data: timings, error: timingError } = await serviceClient.from('ai_jobs')
+              .select('created_at, started_at, timings')
+              .eq('id', (data as Record<string, unknown>).id).eq('user_id', ownerUid)
+              .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
+            if (timingError) return safeDbError(timingError, 400, origin);
+            if (timings) Object.assign(data, timings);
+          }
           return jsonResponse({ data: data ?? null }, 200, origin);
         }
       case 'worker_stream': {
@@ -417,9 +575,11 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     if (action === 'worker_claim' && data && typeof data === 'object' && 'id' in data
       && isUuid((data as Record<string, unknown>).id)) {
       const { data: job, error: jobError } = await serviceClient.from('ai_jobs')
-        .select('chat_id').eq('id', (data as Record<string, unknown>).id).eq('user_id', ownerUid).maybeSingle();
+        .select('chat_id, created_at, started_at, timings')
+        .eq('id', (data as Record<string, unknown>).id).eq('user_id', ownerUid)
+        .eq('worker_id', body.worker_id).eq('status', 'processing').maybeSingle();
       if (jobError) return safeDbError(jobError, 400, origin);
-      if (job?.chat_id) (data as Record<string, unknown>).chat_id = job.chat_id;
+      if (job) Object.assign(data, job);
     }
     return jsonResponse({ data, ...(security ? { security } : {}) }, 200, origin);
   }
@@ -486,10 +646,12 @@ serve(withSupabaseAdminKeyMode(async (req) => {
     });
     const { error: retentionError } = await serviceClient.rpc('ai_apply_history_retention', { p_owner: user.id });
     if (retentionError) return safeDbError(retentionError, 400, origin);
-    const offset = body.offset === undefined ? 0 : body.offset;
-    if (!Number.isSafeInteger(offset) || Number(offset) < 0 || Number(offset) > 1_000_000) {
+    const requestedOffset = body.offset;
+    if (requestedOffset !== undefined && (typeof requestedOffset !== 'number'
+      || !Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > 1_000_000)) {
       return jsonResponse({ error: 'La página de chats solicitada no es válida.' }, 400, origin);
     }
+    const offset = requestedOffset ?? 0;
     const limit = Number.isSafeInteger(body.limit) && Number(body.limit) > 0
       ? Math.min(Number(body.limit), 50) : 50;
     const recentCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

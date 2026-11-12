@@ -407,10 +407,10 @@ export class KnowledgeClient {
     return { ...response, memories: response.memories.map(validateMemoryCandidate) };
   }
 
-  async memorySimilar(workerId: string, jobId: string, embedding: number[]): Promise<SimilarMemoryResult> {
+  async memorySimilar(workerId: string, jobId: string, embedding: number[], signal?: AbortSignal): Promise<SimilarMemoryResult> {
     const response = await this.post<SimilarMemoryResult>('worker_memory_similar', {
       worker_id: workerId, job_id: jobId, embedding,
-    });
+    }, signal);
     if (typeof response.enabled !== 'boolean' || !Array.isArray(response.memories) || response.memories.length > 8) {
       throw new Error('El backend devolvió recuerdos similares inválidos.');
     }
@@ -436,22 +436,22 @@ export class KnowledgeClient {
   async memoryApply(workerId: string, jobId: string, payload: {
     embedding_model: string;
     operations: Array<Record<string, unknown>>;
-  }): Promise<void> {
-    await this.post('worker_memory_apply', { worker_id: workerId, job_id: jobId, ...payload });
+  }, signal?: AbortSignal): Promise<void> {
+    await this.post('worker_memory_apply', { worker_id: workerId, job_id: jobId, ...payload }, signal);
   }
 
-  async memoryMetric(workerId: string, jobId: string, metric: 'executed' | 'skipped_prefilter' | 'skipped_deduplication', provider?: 'local' | 'codex'): Promise<void> {
-    await this.post('worker_memory_metric', { worker_id: workerId, job_id: jobId, metric, ...(provider ? { provider } : {}) });
+  async memoryMetric(workerId: string, jobId: string, metric: 'executed' | 'skipped_prefilter' | 'skipped_deduplication', provider?: 'local' | 'codex', signal?: AbortSignal): Promise<void> {
+    await this.post('worker_memory_metric', { worker_id: workerId, job_id: jobId, metric, ...(provider ? { provider } : {}) }, signal);
   }
 
   async memoryFinish(workerId: string, jobId: string): Promise<void> {
     await this.post('worker_memory_finish', { worker_id: workerId, job_id: jobId });
   }
 
-  async memoryChatSummary(workerId: string, jobId: string): Promise<MemoryCandidate | null> {
+  async memoryChatSummary(workerId: string, jobId: string, signal?: AbortSignal): Promise<MemoryCandidate | null> {
     const response = await this.post<{ summary: unknown }>('worker_memory_chat_summary', {
       worker_id: workerId, job_id: jobId,
-    });
+    }, signal);
     return response.summary === null ? null : validateMemoryCandidate(response.summary);
   }
 
@@ -479,10 +479,10 @@ export class KnowledgeClient {
     });
   }
 
-  async idleMemorySummaryCandidates(workerId: string): Promise<IdleMemorySummaryCandidate[]> {
+  async idleMemorySummaryCandidates(workerId: string, signal?: AbortSignal): Promise<IdleMemorySummaryCandidate[]> {
     const response = await this.post<{ candidates: unknown }>('worker_memory_idle_summary_candidates', {
       worker_id: workerId, limit: 1,
-    });
+    }, signal);
     if (!Array.isArray(response.candidates) || response.candidates.length > 1) {
       throw new Error('La lista de resúmenes pendientes es inválida.');
     }
@@ -503,8 +503,8 @@ export class KnowledgeClient {
     });
   }
 
-  async pendingMemoryEmbeddings(workerId: string): Promise<PendingMemoryEmbedding[]> {
-    const response = await this.post<{ memories: unknown }>('worker_memory_pending_embeddings', { worker_id: workerId });
+  async pendingMemoryEmbeddings(workerId: string, signal?: AbortSignal): Promise<PendingMemoryEmbedding[]> {
+    const response = await this.post<{ memories: unknown }>('worker_memory_pending_embeddings', { worker_id: workerId }, signal);
     if (!Array.isArray(response.memories) || response.memories.length > 16) throw new Error('La lista de embeddings pendientes es inválida.');
     return response.memories.map((memory) => {
       if (!memory || typeof memory !== 'object') throw new Error('Un embedding pendiente es inválido.');
@@ -518,12 +518,12 @@ export class KnowledgeClient {
     });
   }
 
-  async storeMemoryEmbeddings(workerId: string, embeddings: Array<{ id: string; embedding: number[] }>, model: string): Promise<void> {
-    await this.post('worker_memory_store_embeddings', { worker_id: workerId, embeddings, model });
+  async storeMemoryEmbeddings(workerId: string, embeddings: Array<{ id: string; embedding: number[] }>, model: string, signal?: AbortSignal): Promise<void> {
+    await this.post('worker_memory_store_embeddings', { worker_id: workerId, embeddings, model }, signal);
   }
 
-  async touchSimilarMemory(workerId: string, jobId: string, ids: string[]): Promise<void> {
-    await this.post('worker_memory_touch_similar', { worker_id: workerId, job_id: jobId, ids });
+  async touchSimilarMemory(workerId: string, jobId: string, ids: string[], signal?: AbortSignal): Promise<void> {
+    await this.post('worker_memory_touch_similar', { worker_id: workerId, job_id: jobId, ids }, signal);
   }
 
   async extractedText(workerId: string, jobId: string, text: string, pageCount: number | null): Promise<void> {
@@ -569,12 +569,13 @@ export class KnowledgeClient {
     await this.post('worker_search_fail', { worker_id: workerId, request_id: requestId, error });
   }
 
-  private async post<T = unknown>(action: string, fields: Record<string, unknown>): Promise<T> {
+  private async post<T = unknown>(action: string, fields: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...fields }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal,
     });
     const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
     if (!response.ok) {

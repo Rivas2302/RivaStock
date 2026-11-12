@@ -15,7 +15,8 @@ describe('AI chat list Edge Function contract', () => {
     expect(chatListBranch).toContain("userClient.from('ai_chats')");
     expect(chatListBranch).toContain(".select('id', { count: 'exact', head: true }).lt('last_message_at', recentCutoff)");
     expect(chatListBranch).toContain('Math.min(Number(body.limit), 50)');
-    expect(chatListBranch).toContain("Number(offset) > 1_000_000");
+    expect(chatListBranch).toContain("requestedOffset > 1_000_000");
+    expect(chatListBranch).toContain('const offset = requestedOffset ?? 0');
     expect(chatListBranch).toContain(".select('chat_id').eq('user_id', user.id)");
     expect(chatListBranch).not.toContain("serviceClient.from('ai_chats')");
   });

@@ -11,12 +11,13 @@ it('authenticates the combined queue probe in one service-only database call', (
   expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.bridge_pending_work(uuid, text, uuid) TO service_role');
   expect(migration).not.toContain('bridge_pending_work(p_owner uuid');
 
-  const probeRoute = edgeFunction.split("if (action === 'worker_pending_work') {")[1]?.split('\n  }')[0] ?? '';
-  expect(probeRoute).toContain("rpc('bridge_pending_work'");
-  expect(probeRoute).toContain('p_worker: body.worker_id');
-  expect(probeRoute).toContain('p_token: suppliedToken');
-  expect(probeRoute).toContain('p_legacy_owner: legacyOwner');
-  expect(probeRoute).not.toContain('ai_bridge_authorize_device');
+  const probe = edgeFunction.split('const probe = async (): Promise<Record<string, unknown>> => {')[1]
+    ?.split("if (action === 'worker_pending_work') {")[0] ?? '';
+  expect(probe).toContain("rpc('bridge_pending_work'");
+  expect(probe).toContain('p_worker: body.worker_id');
+  expect(probe).toContain('p_token: suppliedToken');
+  expect(probe).toContain('p_legacy_owner: legacyOwner');
+  expect(probe).not.toContain('ai_bridge_authorize_device');
 });
 
 it('sends only private wake events for known work queues and never breaks the write', () => {

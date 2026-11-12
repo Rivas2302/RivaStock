@@ -110,10 +110,15 @@ export class CodexLocalProvider implements AIProvider {
         : prompt;
       if (options.stream) {
         const completedMessages = new Map<string, string>();
+        let firstProviderEventReported = false;
         try {
           const streamed = await thread.runStreamed(turnInput, { signal: executionSignal });
           for await (const event of streamed.events) {
             if (options.stream.cancelled.aborted) break;
+            if (!firstProviderEventReported) {
+              firstProviderEventReported = true;
+              try { options.onFirstProviderEvent?.(); } catch { /* timing must not interrupt generation */ }
+            }
             if (event.type === 'turn.failed') throw new Error(event.error.message);
             if (event.type === 'error') throw new Error(event.message);
             if (event.type === 'item.started' || event.type === 'item.updated' || event.type === 'item.completed') {

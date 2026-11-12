@@ -3,6 +3,7 @@ import type { StreamPayload } from './streamReporter.ts';
 import { parsePendingWork, type PendingWork } from './workMonitor.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const WORKER_WAIT_TIMEOUT_MS = 65_000;
 const CHAT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface AIChatTombstone {
@@ -39,6 +40,31 @@ export class BridgeClient {
   async pendingWork(workerId: string): Promise<PendingWork> {
     const response = await this.post<{ work: unknown }>('worker_pending_work', { worker_id: workerId });
     return parsePendingWork(response.work);
+  }
+
+  async waitForWork(
+    workerId: string,
+    signal: AbortSignal,
+    onWake?: (source: string) => void,
+    onHeartbeat?: (security: CodexSecuritySettings) => void,
+  ): Promise<PendingWork> {
+    const { payload, headers } = await this.postWithHeaders<{ work: unknown }>(
+      'worker_wait', { worker_id: workerId, timeout_s: 55 }, WORKER_WAIT_TIMEOUT_MS, signal,
+    );
+    if ('security' in payload && payload.security) onHeartbeat?.(parseCodexSecurity(payload.security));
+    const wakeup = headers.get('X-AI-Bridge-Wakeup');
+    if (wakeup === 'notification') onWake?.('PostgreSQL notification');
+    else if (wakeup === 'poll') onWake?.('sondeo de respaldo');
+    return parsePendingWork(payload.work);
+  }
+
+  async recordTiming(
+    workerId: string,
+    jobId: string,
+    phase: 'context_ready_at' | 'first_codex_event_at',
+    elapsedMs: number,
+  ): Promise<void> {
+    await this.post('worker_timing', { worker_id: workerId, job_id: jobId, phase, elapsed_ms: elapsedMs });
   }
 
   async start(workerId: string): Promise<void> {
@@ -92,16 +118,28 @@ export class BridgeClient {
   }
 
   private async post<T = unknown>(action: string, fields: Record<string, unknown>): Promise<T> {
+    const { payload } = await this.postWithHeaders<T>(action, fields, REQUEST_TIMEOUT_MS);
+    return payload;
+  }
+
+  private async postWithHeaders<T = unknown>(
+    action: string,
+    fields: Record<string, unknown>,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<{ payload: T; headers: Headers }> {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const requestSignal = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal;
     const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...fields }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: requestSignal,
     });
     const payload = await response.json().catch(() => null) as { error?: string } | null;
     if (!response.ok) throw new Error(payload?.error ?? `El backend respondió ${response.status}.`);
     if (!payload || typeof payload !== 'object') throw new Error('El backend devolvió una respuesta inválida.');
-    return payload as T;
+    return { payload: payload as T, headers: response.headers };
   }
 }
 

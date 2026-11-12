@@ -42,6 +42,34 @@ test('BridgeClient reads all work flags from one authenticated probe', async () 
   }
 });
 
+test('BridgeClient uses the bounded worker_wait contract, consumes the wake source, and adopts server policy', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Record<string, unknown> | undefined;
+  let wakeSource = '';
+  let policy: unknown;
+  globalThis.fetch = async (_input, init) => {
+    request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ work: { ai_jobs: true }, security: {
+      codex_sandbox: 'workspace-write', allow_project_root: false,
+    } }), { status: 200, headers: { 'X-AI-Bridge-Wakeup': 'notification' } });
+  };
+
+  try {
+    const client = new BridgeClient('https://demo.supabase.co/functions/v1/ai-bridge', 'x'.repeat(40));
+    const work = await client.waitForWork('123e4567-e89b-42d3-a456-426614174000', new AbortController().signal,
+      (source) => { wakeSource = source; },
+      (security) => { policy = security; });
+    assert.deepEqual(request, {
+      action: 'worker_wait', worker_id: '123e4567-e89b-42d3-a456-426614174000', timeout_s: 55,
+    });
+    assert.equal(work.ai_jobs, true);
+    assert.equal(wakeSource, 'PostgreSQL notification');
+    assert.deepEqual(policy, { codex_sandbox: 'workspace-write', allow_project_root: false });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('BridgeClient clears the update pause when a worker starts', async () => {
   const originalFetch = globalThis.fetch;
   let request: { action: string; worker_id: string } | undefined;
