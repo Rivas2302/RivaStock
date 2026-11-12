@@ -44,10 +44,10 @@ Durante una verificación de Vercel se creó un secreto de Protection Bypass par
 
 Las pruebas de baja positiva pasaron con funciones SQL locales y sesión de administrador `authenticated` de prueba. No se eliminó ninguna cuenta de producción. Para completar un recorrido de borrado real, designá por la app una cuenta de negocio QA descartable para baja programada y otra para eliminación inmediata; no usar cuentas de clientes ni las dos cuentas reportadas hasta confirmar que son descartables.
 
-## I53 — medición posterior de latencia en QA
+## I53 — sesión QA y Bridge 1.29.0 para cerrar Etapa 4
 
-Actualizá el AI Bridge con el actualizador habitual hasta que muestre **1.27.0** y **Conectado**. En el negocio de prueba de E9, tomá tres muestras independientes: antes de cada una, dejá el worker sin mensajes por más de 2 minutos y mandá un mensaje QA; después mandá otros tres mensajes seguidos. En la misma sesión, completá la aceptación manual de I53: actividad y **Detener** en menos de 3 segundos, una respuesta de más de 120 segundos, nombre/módulos del negocio, fecha local y una pregunta de Conocimientos. Compartime solo los seis tiempos de envío→reclamo y el resultado de esas comprobaciones; no incluyas el texto de los mensajes ni uses un negocio real. Después borrá el chat QA desde la app.
+El perfil persistente `%USERPROFILE%\\rivastock-qa-profile` existe, pero la app redirige a `/login`. La versión 1.29.0 ya está publicada; su instalación local no se pudo verificar.
 
-## I53 — bloqueo de Etapa 4
-
-La prueba obligatoria de una propuesta MCP con `readOnlyHint: false` y `destructiveHint: false` ya fue bloqueada por Codex en modo `read-only`. El plan prohíbe cambiar las anotaciones para eludir el bloqueo y requiere detenerse. Antes de continuar Etapa 4, definí cómo querés resolver esta restricción de permisos; no se implementarán escrituras ni se probarán en datos reales.
+1. Iniciá sesión en ese perfil usando el negocio QA y dejalo abierto. No compartas contraseña ni uses una cuenta/negocio real.
+2. Confirmá que ese negocio QA tenga el AI Bridge vinculado y conectado en versión 1.29.0. No cambies el vínculo del Bridge de tu negocio principal.
+3. Avisame «Listo». Después ejecuto la propuesta real de lectura → tarjeta → Confirmar → Deshacer, las ocho muestras de timings y borro los chats de prueba desde la app.

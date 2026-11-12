@@ -571,3 +571,10 @@ Si el modelo no se puede descargar o falla: la herramienta devuelve un error cla
 3. Qué se probó (comandos y resultado) y qué quedó sin probar.
 4. Desvíos respecto de este documento y por qué.
 5. Qué tiene que hacer el dueño (por ejemplo, "Actualizar AI Bridge").
+
+### Estado actualizado — Etapa 4 desplegada (12/11/2026)
+
+- Implementación integrada y pusheada en `main` (`37a7f09`). La migración `20261112211000_i53_confirmed_actions_and_timings` figura aplicada como `20261112211901`; `ai-bridge` ACTIVE v28 y `ai-tools` ACTIVE v2.
+- Vercel Production READY (`dpl_7PYtk1eBnQrrRPErJoWqTkbvzYXs`) y aliasado a `rivastock.vercel.app`. Se verificaron los controles de streaming, la línea «Consultó: …» y la tarjeta con Confirmar, Cancelar y Deshacer. El paquete público latest contiene Bridge 1.29.0.
+- Verificación local: lint, build, suite raíz 253/253 archivos y 1.461/1.461 pruebas con variables ficticias solo en el proceso, Deno check, typecheck y Bridge 151 aprobadas / 1 omitida.
+- El perfil persistente de QA redirige a `/login`; no se hicieron pruebas con una cuenta real ni se crearon chats. Falta instalar/verificar Bridge 1.29.0 conectado al negocio QA, ejecutar la prueba real de propuesta y las ocho muestras del Paso C, borrar los chats de QA por la app y registrar sus timings. Etapa 4 todavía no está cerrada; frenar antes de Etapa 5.
