@@ -5,12 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const OWNER = '10000000-0000-4000-8000-000000000001';
 const PRODUCT = '20000000-0000-4000-8000-000000000001';
 const MIGRATION = readFileSync('supabase/migrations/20261112211000_i53_confirmed_actions_and_timings.sql', 'utf8').replace(/\r\n/g, '\n');
+const CLOSEOUT_MIGRATION = readFileSync('supabase/migrations/20261112222454_i53_stage4_relevance_and_errors.sql', 'utf8').replace(/\r\n/g, '\n');
 
-function functionSql(name: string, next: string): string {
-  const start = MIGRATION.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
-  const end = MIGRATION.indexOf(next, start);
+function functionSql(source: string, name: string, next: string): string {
+  const start = source.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  const end = source.indexOf(next, start);
   if (start < 0 || end < 0) throw new Error(`Could not find SQL function ${name}`);
-  return MIGRATION.slice(start, end);
+  return source.slice(start, end);
 }
 
 let db: PGlite;
@@ -52,7 +53,11 @@ beforeAll(async () => {
     CREATE FUNCTION public.business_require_module(uuid,text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
     CREATE FUNCTION public.lock_inventory_commands(uuid,text[]) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
     CREATE FUNCTION public.lock_inventory_products(uuid,uuid[]) RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;
-    CREATE FUNCTION public.ai_action_product_payload(public.products) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$ SELECT to_jsonb($1) $$;
+    CREATE FUNCTION public.ai_action_product_payload(public.products) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+      SELECT jsonb_build_object('id',$1.id,'ownerUid',$1.user_id,'name',$1.name,'category',$1.category,
+        'salePrice',$1.sale_price,'stock',$1.stock,'showInCatalog',$1.show_in_catalog,'description',$1.description,
+        'inventoryOwnerId',$1.inventory_owner_id,'catalogOnly',$1.catalog_only)
+    $$;
     CREATE FUNCTION public.save_product_with_holdings(jsonb,jsonb,text) RETURNS TABLE(product jsonb,holdings jsonb) LANGUAGE sql AS $$ SELECT $1,$2 $$;
     CREATE FUNCTION public.adjust_product_stock(uuid,uuid,text,integer,text,text) RETURNS TABLE(resulting_stock integer) LANGUAGE sql AS $$ SELECT 0 $$;
     CREATE FUNCTION public.knowledge_create_document(text,text,text,text) RETURNS public.knowledge_documents LANGUAGE sql AS $$ SELECT NULL::public.knowledge_documents $$;
@@ -61,6 +66,7 @@ beforeAll(async () => {
       ('product.update','stock','write'), ('product.create','stock','write');
     INSERT INTO public.products(id,user_id,name,category,sale_price,stock,catalog_only)
       VALUES ('${PRODUCT}','${OWNER}','Auricular demo','Audio',15000,4,false);
+    UPDATE public.products SET show_in_catalog=true WHERE id='${PRODUCT}';
     INSERT INTO public.inventory_owners(id,user_id,is_primary,archived_at,sort_order)
       VALUES ('30000000-0000-4000-8000-000000000001','${OWNER}',true,NULL,0);
   `);
@@ -70,11 +76,32 @@ beforeAll(async () => {
   await db.exec(MIGRATION.slice(requestsDdlStart, requestsDdlEnd + 1));
   for (const name of ['ai_action_validate_parameters', 'ai_action_preview', 'ai_action_propose', 'ai_action_cancel', 'ai_action_confirm', 'ai_action_undo']) {
     try {
-      await db.exec(functionSql(name, `REVOKE ALL ON FUNCTION public.${name}`));
+      await db.exec(functionSql(MIGRATION, name, `REVOKE ALL ON FUNCTION public.${name}`));
     } catch (error) {
       throw new Error(`Could not compile ${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  for (const name of ['ai_action_validate_parameters', 'ai_action_preview', 'ai_action_confirm', 'ai_action_undo']) {
+    try {
+      await db.exec(functionSql(CLOSEOUT_MIGRATION, name, `REVOKE ALL ON FUNCTION public.${name}`));
+    } catch (error) {
+      throw new Error(`Could not compile closeout ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  await db.exec(`
+    UPDATE public.ai_actions_catalog SET undoable=true WHERE action_key IN ('product.create','product.update');
+    CREATE OR REPLACE FUNCTION public.save_product_with_holdings(p_product jsonb,p_holdings jsonb,p_command text)
+    RETURNS TABLE(product jsonb,holdings jsonb) LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO public.products(id,user_id,name,category,sale_price,stock,show_in_catalog,description,catalog_only,inventory_owner_id)
+      VALUES ((p_product->>'id')::uuid,(p_product->>'ownerUid')::uuid,p_product->>'name',p_product->>'category',
+        (p_product->>'salePrice')::numeric,(p_product->>'stock')::integer,(p_product->>'showInCatalog')::boolean,
+        p_product->>'description',false,NULLIF(p_product->>'inventoryOwnerId','')::uuid)
+      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,category=EXCLUDED.category,sale_price=EXCLUDED.sale_price,
+        show_in_catalog=EXCLUDED.show_in_catalog,description=EXCLUDED.description;
+      RETURN QUERY SELECT p_product,p_holdings;
+    END $$;
+  `);
 });
 
 afterAll(async () => { await db.close(); });
@@ -99,7 +126,7 @@ describe('I53 change preview migration', () => {
 
   it('rejects action parameters outside the server allowlist', async () => {
     await expect(db.query(`SELECT public.ai_action_preview($1,'product.update',$2::jsonb)`,
-      [OWNER, JSON.stringify({ product_id: PRODUCT, precio_venta: 17000, owner_uid: OWNER })])).rejects.toThrow(/parámetro no permitido/i);
+      [OWNER, JSON.stringify({ product_id: PRODUCT, precio_venta: 17000, owner_uid: OWNER })])).rejects.toThrow(/owner_uid.*parámetros permitidos/i);
   });
 
   it('previews product creation without inserting a product or action request', async () => {
@@ -115,8 +142,51 @@ describe('I53 change preview migration', () => {
         (SELECT count(*) FROM public.ai_action_requests)::int AS actions,
         (SELECT count(*) FROM public.audit_events)::int AS audit`);
     expect(preview.rows[0].result).toMatchObject({ ok: true, cantidad: 1, antes: null,
-      despues: { nombre: 'Producto nuevo', precio_venta: 2500, stock: 2 } });
+      despues: { nombre: 'Producto nuevo', precio_venta: 2500, stock: 2, mostrar_en_catalogo: true } });
     expect(after.rows[0]).toEqual(before.rows[0]);
+    const hiddenPreview = await db.query<{ result: Record<string, unknown> }>(`
+      SELECT public.ai_action_preview($1,'product.create',$2::jsonb) AS result`,
+      [OWNER, JSON.stringify({ nombre: 'Producto oculto', precio_venta: 2500, mostrar_en_catalogo: false })]);
+    expect(hiddenPreview.rows[0].result.despues).toMatchObject({ mostrar_en_catalogo: false });
+  });
+
+  it('confirms and undoes catalog visibility updates using the previewed value', async () => {
+    const requestId = '60000000-0000-4000-8000-000000000002';
+    await db.query(`INSERT INTO public.ai_action_requests(id,user_id,action_key,source,params,draft_content,expires_at)
+      VALUES ($1,$2,'product.update','ai-chat',$3::jsonb,$4::jsonb,now()+interval '30 minutes')`, [requestId, OWNER,
+      JSON.stringify({ product_id: PRODUCT, mostrar_en_catalogo: false }),
+      JSON.stringify({ summary: 'Ocultar producto', before: { mostrar_en_catalogo: true }, after: { mostrar_en_catalogo: false }, count: 1 })]);
+    await db.query(`SELECT public.ai_action_confirm($1)`, [requestId]);
+    expect((await db.query<{ show_in_catalog: boolean }>(`SELECT show_in_catalog FROM public.products WHERE id=$1`, [PRODUCT])).rows[0].show_in_catalog).toBe(false);
+    await db.query(`SELECT public.ai_action_undo($1)`, [requestId]);
+    expect((await db.query<{ show_in_catalog: boolean }>(`SELECT show_in_catalog FROM public.products WHERE id=$1`, [PRODUCT])).rows[0].show_in_catalog).toBe(true);
+  });
+
+  it('returns a safe AI001 validation message with the unknown parameter and allowlist', async () => {
+    await expect(db.query(`SELECT public.ai_action_preview($1,'product.update',$2::jsonb)`,
+      [OWNER, JSON.stringify({ product_id: PRODUCT, sale_price: 17000 })]))
+      .rejects.toMatchObject({ code: 'AI001' });
+    await expect(db.query(`SELECT public.ai_action_preview($1,'product.update',$2::jsonb)`,
+      [OWNER, JSON.stringify({ product_id: PRODUCT, precio_venta: 17000, precio_mayorista: 19000 })]))
+      .rejects.toThrow(/precio_mayorista.*Parámetros permitidos/i);
+  });
+
+  it('confirms and safely undoes a hidden product proposal with initial stock', async () => {
+    const requestId = '60000000-0000-4000-8000-000000000001';
+    await db.query(`INSERT INTO public.ai_action_requests(id,user_id,action_key,source,params,draft_content,expires_at)
+      VALUES ($1,$2,'product.create','ai-chat',$3::jsonb,$4::jsonb,now()+interval '30 minutes')`, [requestId, OWNER,
+    JSON.stringify({ nombre: 'Producto QA oculto', precio_venta: 1000, stock_inicial: 5, mostrar_en_catalogo: false }),
+    JSON.stringify({ summary: 'Crear producto Producto QA', before: null, after: {
+        nombre: 'Producto QA oculto', categoria: '', precio_venta: 1000, stock: 5, descripcion: '', mostrar_en_catalogo: false,
+      }, count: 1 })]);
+    const result = await db.query<{ result: Record<string, unknown> }>(`SELECT public.ai_action_confirm($1) AS result`, [requestId]);
+    const product = await db.query<{ show_in_catalog: boolean; stock: number }>(
+      `SELECT show_in_catalog,stock FROM public.products WHERE user_id=$1 AND name='Producto QA oculto'`, [OWNER]);
+    expect(product.rows[0]).toEqual({ show_in_catalog: false, stock: 5 });
+    expect(result.rows[0].result).toMatchObject({ ok: true });
+    const undone = await db.query<{ result: Record<string, unknown> }>(`SELECT public.ai_action_undo($1) AS result`, [requestId]);
+    expect(undone.rows[0].result).toMatchObject({ ok: true, undone: true });
+    expect((await db.query(`SELECT id FROM public.products WHERE user_id=$1 AND name='Producto QA oculto'`, [OWNER])).rows).toHaveLength(0);
   });
 
   it('creates a pending request only for the active, non-cancelled Codex turn', async () => {
