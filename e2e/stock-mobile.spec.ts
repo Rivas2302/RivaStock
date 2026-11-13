@@ -13,7 +13,7 @@ function fixtureSession() {
     expires_at: expiresAt,
     expires_in: 3600,
     token_type: 'bearer',
-    user: { id: OWNER_ID, email: 'mobile-stock@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: now },
+    user: { id: OWNER_ID, email: 'mobile-stock@example.test', aud: 'authenticated', app_metadata: {}, user_metadata: { display_name: 'Dueño QA', password_set: true }, created_at: now },
   };
 }
 
@@ -55,9 +55,11 @@ interface StockFixtureOptions {
   automation?: boolean;
   planStatus?: 'active' | 'suspended';
   collaboratorReadOnly?: boolean;
+  holdingsEnabled?: boolean;
 }
 
 async function mockStock(page: Page, rows = productsFixture(), options: StockFixtureOptions = {}) {
+  const savedHoldingDrafts: Record<string, unknown>[][] = [];
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
@@ -78,6 +80,20 @@ async function mockStock(page: Page, rows = productsFixture(), options: StockFix
       created_at: now,
     }] });
     if (path.endsWith('/rpc/is_platform_admin')) return route.fulfill({ json: false });
+    if (path.endsWith('/rpc/save_product_with_holdings')) {
+      const input = route.request().postDataJSON() as { p_product: Record<string, unknown>; p_holdings: Record<string, unknown>[] };
+      savedHoldingDrafts.push(input.p_holdings);
+      return route.fulfill({ json: {
+        product: input.p_product,
+        holdings: input.p_holdings.map((holding) => ({
+          ...holding,
+          user_id: OWNER_ID,
+          product_id: input.p_product.id,
+          created_at: now,
+          updated_at: now,
+        })),
+      } });
+    }
     if (path.endsWith('/rpc/my_business_plan')) return route.fulfill({ json: {
       plan_code: options.automation === false ? 'base' : 'pro',
       plan_name: options.automation === false ? 'RivaStock' : 'RivaStock IA',
@@ -140,7 +156,19 @@ async function mockStock(page: Page, rows = productsFixture(), options: StockFix
         { id: 'category-camera', user_id: OWNER_ID, name: 'Cámaras' },
         { id: 'category-chargers', user_id: OWNER_ID, name: 'Cargadores' },
       ] });
-      if (table === 'inventory_operation_settings') return route.fulfill({ json: { holdings_enabled: false } });
+      if (table === 'inventory_operation_settings') return route.fulfill({ json: { holdings_enabled: options.holdingsEnabled ?? false } });
+      if (table === 'inventory_owners') return route.fulfill({ json: [
+        { id: 'owner-default', user_id: OWNER_ID, name: 'Depósito principal', is_primary: true, sort_order: 0 },
+        { id: 'owner-secondary', user_id: OWNER_ID, name: 'Segundo titular', is_primary: false, sort_order: 1 },
+      ] });
+      if (table === 'inventory_owner_memberships') return route.fulfill({ json: [
+        { id: 'membership-default', user_id: OWNER_ID, actor_uid: OWNER_ID, inventory_owner_id: 'owner-default', is_default: true, can_operate: true },
+        { id: 'membership-secondary', user_id: OWNER_ID, actor_uid: OWNER_ID, inventory_owner_id: 'owner-secondary', is_default: false, can_operate: true },
+      ] });
+      if (table === 'inventory_holdings') return route.fulfill({ json: rows.flatMap((row) => [
+        { id: `${row.id}-holding-default`, user_id: OWNER_ID, product_id: row.id, inventory_owner_id: 'owner-default', stock: 1, purchase_cost: 100, min_stock: 0, active: true, created_at: now, updated_at: now },
+        { id: `${row.id}-holding-secondary`, user_id: OWNER_ID, product_id: row.id, inventory_owner_id: 'owner-secondary', stock: Math.max(0, Number(row.stock) - 1), purchase_cost: 120, min_stock: 0, active: true, created_at: now, updated_at: now },
+      ]) });
       if (table === 'profiles') return route.fulfill({ json: [{ id: OWNER_ID, business_name: 'Negocio QA', onboarding_completed_at: now }] });
       if (table === 'collaborators') return route.fulfill({ json: options.collaboratorReadOnly ? [{
         id: 'collaborator-read-only', owner_uid: OWNER_ID,
@@ -157,6 +185,7 @@ async function mockStock(page: Page, rows = productsFixture(), options: StockFix
   });
 
   await page.addInitScript((session) => localStorage.setItem('rivastock-auth', JSON.stringify(session)), fixtureSession());
+  return { savedHoldingDrafts };
 }
 
 test('mobile stock: search, filters in URL, counts, sheet actions and 30-row pagination', async ({ page }, testInfo) => {
@@ -243,16 +272,13 @@ test('mobile stock hides write actions for a read-only collaborator', async ({ p
   await expect(page.getByRole('button', { name: 'Eliminar producto', exact: true })).toHaveCount(0);
 });
 
-test('mobile stock is read-only for a suspended business', async ({ page }, testInfo) => {
+test('mobile Stock is fully blocked for a suspended business', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'chromium', 'Stock permission checks run in Android and iPhone projects.');
   await mockStock(page, productsFixture(), { planStatus: 'suspended' });
   await page.goto('/stock');
-  await expect(page.getByRole('button', { name: 'Agregar producto', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Abrir ficha de [QA] Cámara WiFi 360' }).click();
-  await expect(page.getByRole('button', { name: 'Ajustar stock', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Editar', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Más acciones del producto' }).click();
-  await expect(page.getByRole('button', { name: 'Eliminar producto', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tu cuenta está suspendida' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Escribir por WhatsApp' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Abrir ficha de [QA] Cámara WiFi 360' })).toHaveCount(0);
 });
 
 test('mobile Stock hides Facebook publication without the automation module', async ({ page }, testInfo) => {
@@ -307,6 +333,21 @@ test('mobile product form edits the product and asks before discarding changes',
   await page.getByRole('alertdialog', { name: '¿Descartar los cambios?' }).getByRole('button', { name: 'Descartar' }).click();
   await expect(page).toHaveURL(/\/stock$/);
   await expect(page.getByTestId('mobile-product-form')).toHaveCount(0);
+});
+
+test('editing a product with multiple holders saves the product and every holder draft', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'Run the holder edit regression in Android emulation.');
+  const fixture = await mockStock(page, productsFixture(), { holdingsEnabled: true });
+  await page.goto('/stock?editar=cable');
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form.getByText('Existencias por titular')).toBeVisible();
+  await expect(form.getByText('Depósito principal')).toBeVisible();
+  await expect(form.getByText('Segundo titular')).toBeVisible();
+  await form.getByLabel('Nombre').fill('[QA] Cable con titulares');
+  await form.getByRole('button', { name: 'Guardar producto' }).click();
+  await expect(page).toHaveURL(/\/stock\?producto=cable$/);
+  expect(fixture.savedHoldingDrafts).toHaveLength(1);
+  expect(fixture.savedHoldingDrafts[0].map((holding) => holding.inventoryOwnerId)).toEqual(['owner-default', 'owner-secondary']);
 });
 
 test('mobile product form asks before browser back when it has unsaved changes', async ({ page }, testInfo) => {
@@ -379,7 +420,7 @@ test('mobile product detail routes to POS once and opens Buscar y enviar on the 
   await expect(page.getByRole('region', { name: 'Ficha de [QA] Cámara WiFi 360' })).toBeVisible();
   await page.getByRole('button', { name: 'Vender' }).click();
   await expect(page).toHaveURL(/\/pos$/);
-  await expect(page.getByText('[QA] Cámara WiFi 360', { exact: true })).toBeVisible();
+  await expect(page.getByText('[QA] Cámara WiFi 360 — Depósito principal', { exact: true })).toBeVisible();
   await expect(page.getByText('El carrito está vacío')).toHaveCount(0);
 
   await page.goto('/fotos?producto=camera');
@@ -398,11 +439,11 @@ test('mobile stock adjustment previews limits, records the reason, and returns t
   const sheet = page.getByRole('dialog', { name: 'Ajustar stock' });
   await expect(sheet).toContainText('Stock actual: 1 unidades');
   await sheet.getByRole('button', { name: 'Restar', exact: true }).click();
-  await sheet.getByRole('spinbutton', { name: 'Cantidad' }).fill('2');
+  await sheet.getByRole('textbox', { name: 'Cantidad' }).fill('2');
   await expect(sheet).toContainText('Va a quedar en -1 unidades');
   await expect(sheet.getByRole('button', { name: 'Guardar ajuste' })).toBeDisabled();
 
-  await sheet.getByRole('spinbutton', { name: 'Cantidad' }).fill('1');
+  await sheet.getByRole('textbox', { name: 'Cantidad' }).fill('1');
   await sheet.getByRole('textbox', { name: 'Escribí el motivo' }).fill('Rotura durante la prueba');
   await sheet.getByRole('button', { name: 'Guardar ajuste' }).click();
   await expect(page).toHaveURL(/\/stock\?producto=camera$/);

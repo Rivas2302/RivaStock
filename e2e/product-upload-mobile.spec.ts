@@ -50,7 +50,7 @@ async function photoFile(page: Page, name: string) {
   return { name, mimeType: 'image/jpeg', buffer: Buffer.from(bytes) };
 }
 
-async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; unsupportedHeic?: boolean; deferPlanRefresh?: boolean } = {}) {
+async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; failProductSave?: boolean; unsupportedHeic?: boolean; deferPlanRefresh?: boolean } = {}) {
   const rows: Record<string, unknown>[] = [];
   const uploads: Array<{ path: string; imageType: string; sizeBytes: number }> = [];
   const pageErrors: string[] = [];
@@ -133,6 +133,7 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
       if (table === 'products') {
         const method = route.request().method();
         if (method === 'POST') {
+          if (options.failProductSave) return route.fulfill({ status: 500, json: { message: 'No se pudo guardar el producto de prueba.' } });
           const row = { ...route.request().postDataJSON() as Record<string, unknown>, created_at: CREATED_AT, updated_at: CREATED_AT };
           rows.push(row);
           return route.fulfill({ status: 201, json: row });
@@ -174,6 +175,133 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
     setStockModuleEnabled: (enabled: boolean) => { stockModuleEnabled = enabled; },
   };
 }
+
+test('opening a blank new-product editor repeatedly does not restore its empty draft', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai' && testInfo.project.name !== 'chromium', 'Run at 390 px on Android and Chromium.');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mountNewBusinessStock(page);
+
+  const addButton = page.getByRole('button', { name: /Agregar producto/i }).first();
+  const form = page.getByTestId('mobile-product-form');
+  const initialHistoryIndex = await page.evaluate(() => Number(window.history.state?.idx ?? 0));
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await addButton.click();
+    await expect(form).toBeVisible();
+    await expect(page.getByText('Recuperamos tu producto.')).toHaveCount(0);
+    await expect(page).toHaveURL(/\?nuevo=1$/);
+    await form.getByRole('button', { name: 'Cerrar editor' }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page).toHaveURL(/\/stock$/);
+    await expect.poll(() => page.evaluate(() => Number(window.history.state?.idx ?? 0))).toBe(initialHistoryIndex);
+  }
+});
+
+test('the desktop product editor opens on the first click ten times', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium', 'Run in desktop Chromium at 1440 px.');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mountNewBusinessStock(page);
+  const addButton = page.getByRole('button', { name: 'Agregar Producto' });
+  const form = page.getByRole('dialog', { name: 'Agregar Nuevo Producto' });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await addButton.click();
+    await expect(form).toBeVisible();
+    await expect(page.getByText('Recuperamos tu producto.')).toHaveCount(0);
+    await form.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(form).toHaveCount(0);
+  }
+});
+
+test('a clean browser back closes one mobile editor entry without a second back', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai' && testInfo.project.name !== 'iphone-mobile-ai', 'Run in mobile browser projects.');
+  await mountNewBusinessStock(page);
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await page.goBack();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(/\/stock$/);
+  await expect(page.getByRole('button', { name: /Agregar producto/i }).first()).toBeVisible();
+});
+
+test('discarding a dirty product after browser back closes the editor in one confirmation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai' && testInfo.project.name !== 'iphone-mobile-ai', 'Run in mobile browser projects.');
+  await mountNewBusinessStock(page);
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await form.getByLabel('Nombre').fill('[QA] Descartar por atrás');
+  await page.goBack();
+  const confirmation = page.getByRole('alertdialog', { name: '¿Descartar los cambios?' });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Descartar' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(/\/stock$/);
+});
+
+test('the product editor opens from a scanner barcode without duplicate navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'The scanner route check uses Android emulation.');
+  await mountNewBusinessStock(page);
+  await page.evaluate(() => {
+    const current = window.history.state as Record<string, unknown>;
+    window.history.replaceState({ ...current, usr: { newBarcode: '7791234567890' } }, '', '/stock');
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+  });
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  await expect(page).toHaveURL(/\?nuevo=1$/);
+  await expect(form.getByLabel('Código de barras')).toHaveValue('7791234567890');
+  await form.getByRole('button', { name: 'Cerrar editor' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page).toHaveURL(/\/stock$/);
+});
+
+test('product validation is inline and save-and-add-another keeps the category on mobile and desktop', async ({ page }, testInfo) => {
+  const isAndroid = testInfo.project.name === 'android-mobile-ai';
+  const isDesktop = testInfo.project.name === 'chromium';
+  test.skip(!isAndroid && !isDesktop, 'Run at 390 px on Android and 1440 px on desktop Chrome.');
+  await page.setViewportSize(isDesktop ? { width: 1440, height: 900 } : { width: 390, height: 844 });
+  const fixture = await mountNewBusinessStock(page);
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = isAndroid ? page.getByTestId('mobile-product-form') : page.getByRole('dialog', { name: 'Agregar Nuevo Producto' });
+  await expect(form).toBeVisible();
+  const saveButton = isAndroid ? 'Guardar producto' : 'Crear Producto';
+  await form.getByRole('button', { name: saveButton }).click();
+  await expect(form.getByText('Ingresá el nombre del producto.')).toBeVisible();
+  await expect(form.getByText('Elegí una categoría.')).toBeVisible();
+  await expect(form.getByText('El precio de venta debe ser mayor que cero.')).toBeVisible();
+  expect((await form.locator('[aria-invalid="true"]').first().evaluate((element) => element.tagName)).toLowerCase()).toMatch(/input|select/);
+
+  await form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto').fill('[QA] Guardar y continuar');
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  if (isAndroid) await form.getByLabel('Precio de venta').fill('1250');
+  else await form.getByRole('textbox', { name: 'Precio de venta' }).fill('1250');
+  await form.getByRole('button', { name: 'Guardar y cargar otro' }).click();
+  await expect(form).toBeVisible();
+  await expect(page.getByText('Producto guardado.', { exact: true })).toBeVisible();
+  await expect(form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto')).toHaveValue('');
+  await expect(form.getByLabel('Categoría')).toHaveValue(CATEGORY_ID);
+  expect(fixture.rows).toHaveLength(1);
+  expect(fixture.rows[0].name).toBe('[QA] Guardar y continuar');
+});
+
+test('a failed product save keeps every field and shows the server reason', async ({ page }, testInfo) => {
+  const isAndroid = testInfo.project.name === 'android-mobile-ai';
+  const isDesktop = testInfo.project.name === 'chromium';
+  test.skip(!isAndroid && !isDesktop, 'Run on Android emulation and desktop Chrome.');
+  await page.setViewportSize(isDesktop ? { width: 1440, height: 900 } : { width: 390, height: 844 });
+  const fixture = await mountNewBusinessStock(page, { failProductSave: true });
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = isAndroid ? page.getByTestId('mobile-product-form') : page.getByRole('dialog', { name: 'Agregar Nuevo Producto' });
+  await form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto').fill('[QA] Guardado rechazado');
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  if (isAndroid) await form.getByLabel('Precio de venta').fill('1400');
+  else await form.getByRole('textbox', { name: 'Precio de venta' }).fill('1400');
+  await form.getByRole('button', { name: isAndroid ? 'Guardar producto' : 'Crear Producto' }).click();
+  await expect(page.getByText('No se pudo guardar el producto de prueba.')).toBeVisible();
+  await expect(form.getByLabel(isAndroid ? 'Nombre' : 'Nombre del Producto')).toHaveValue('[QA] Guardado rechazado');
+  await expect(form.getByLabel('Categoría')).toHaveValue(CATEGORY_ID);
+  expect(fixture.rows).toHaveLength(0);
+});
 
 test('a pending background plan refresh does not remount the new-product form or lose its photo on desktop and Android', async ({ page }, testInfo) => {
   const isAndroid = testInfo.project.name === 'android-mobile-ai';

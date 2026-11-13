@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { restoreMobileProductDraft, saveMobileProductDraft } from './mobileProductDraft';
+import type { Product } from '../types';
+import { hasMobileProductDraftContent, restoreMobileProductDraft, saveMobileProductDraft } from './mobileProductDraft';
 
 function createStorage() {
   const values = new Map<string, string>();
@@ -14,7 +15,7 @@ function draft(ownerUid = 'business-a') {
   return {
     ownerUid,
     pathname: '/stock',
-    formData: { id: 'temporary-product-id', name: 'Lámpara', images: [] },
+    formData: { id: 'temporary-product-id', name: '', images: [] },
     holdingDrafts: [],
     editingProduct: null,
     creatingProductForReseller: false,
@@ -25,9 +26,15 @@ function draft(ownerUid = 'business-a') {
 }
 
 describe('mobile product draft recovery', () => {
+  it('does not announce recovery for a blank editor but does for a draft with user input', () => {
+    const blank = { ...draft(), version: 1 as const, savedAt: 1000 };
+    expect(hasMobileProductDraftContent(blank)).toBe(false);
+    expect(hasMobileProductDraftContent({ ...blank, formData: { ...blank.formData, name: 'Producto' } })).toBe(true);
+  });
+
   it('restores a new product draft once when the Android tab returns to its editor route', () => {
     const storage = createStorage();
-    expect(saveMobileProductDraft(draft(), storage, 1000)).toBe(true);
+    expect(saveMobileProductDraft({ ...draft(), formData: { id: 'temporary-product-id', name: 'Lámpara', images: [] } }, storage, 1000)).toBe(true);
 
     const restored = restoreMobileProductDraft('business-a', '/stock', '?nuevo=1', storage, 2000);
 
@@ -43,5 +50,16 @@ describe('mobile product draft recovery', () => {
     expect(restoreMobileProductDraft('business-a', '/catalogo', '?nuevo=1', storage, 2000)).toBeNull();
     expect(restoreMobileProductDraft('business-a', '/stock', '?nuevo=1', storage, 7_201_001)).toBeNull();
     expect(restoreMobileProductDraft('business-a', '/stock', '?nuevo=1', storage, 7_201_002)).toBeNull();
+  });
+
+  it('does not restore a different product draft into a directly opened edit route', () => {
+    const storage = createStorage();
+    const editDraft = {
+      ...draft(),
+      editingProduct: { id: 'product-a', name: 'Producto A' } as Product,
+    };
+    saveMobileProductDraft(editDraft, storage, 1000);
+
+    expect(restoreMobileProductDraft('business-a', '/stock', '?editar=product-b', storage, 2000)).toBeNull();
   });
 });

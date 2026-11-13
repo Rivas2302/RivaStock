@@ -14,7 +14,9 @@ import { normalizeBarcode } from '../lib/barcode';
 import { uploadSupplierListProductPhoto } from '../lib/supplierListPhotos';
 import { getProductThumbnailUrl } from '../lib/productPhotos';
 import { showToast } from '../lib/toast';
-import { clearMobileProductDraft, restoreMobileProductDraft } from '../lib/mobileProductDraft';
+import { clearMobileProductDraft, hasMobileProductDraftContent, restoreMobileProductDraft } from '../lib/mobileProductDraft';
+import { getProductEditorRoute } from '../lib/productEditorRoute';
+import { firstProductEditorValidationError, validateProductEditorForm } from '../lib/productEditorValidation';
 import {
   addProductToResellerPriceList,
   promoteResellerCatalogProduct,
@@ -55,9 +57,17 @@ export default function useProductEditor({
   location,
   navigate,
 }: Options) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDesktopModalOpen, setIsDesktopModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ReturnType<typeof validateProductEditorForm>>({});
+  const initialEditorRouteRef = useRef({ pathname: location.pathname, search: location.search, route: getProductEditorRoute(location.search) });
+  const [initialMobileRouteReady, setInitialMobileRouteReady] = useState(() => (
+    !isMobile || !initialEditorRouteRef.current.route.isOpen
+  ));
+  const mobileEditorRoute = getProductEditorRoute(location.search);
+  const isModalOpen = isMobile ? mobileEditorRoute.isOpen : isDesktopModalOpen;
   const [formData, setFormData] = useState<Partial<Product>>({
+    ...(isMobile && mobileEditorRoute.mode === 'create' ? { id: crypto.randomUUID(), ownerUid: user?.uid ?? '' } : {}),
     name: '', categoryId: '', category: '', purchasePrice: 0, salePrice: 0, stock: 0,
     minStock: 2, showInCatalog: true, notes: '', images: [],
   });
@@ -73,23 +83,23 @@ export default function useProductEditor({
   const draftRestoreAttemptedRef = useRef(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (!isMobile || !user?.uid || draftRestoreAttemptedRef.current || (!params.has('nuevo') && !params.has('editar'))) return;
+    const initialRoute = initialEditorRouteRef.current;
+    if (!initialRoute.route.isOpen || !isMobile || !user?.uid || draftRestoreAttemptedRef.current) return;
     draftRestoreAttemptedRef.current = true;
-    const draft = restoreMobileProductDraft(user.uid, location.pathname, location.search);
-    if (!draft) return;
-
-    setFormData(draft.formData);
-    setHoldingDrafts(draft.holdingDrafts);
-    setEditingProduct(draft.editingProduct);
-    setCreatingProductForReseller(draft.creatingProductForReseller);
-    setSupplierProductCreationContext(draft.supplierProductCreationContext);
-    setPromotingCatalogProduct(draft.promotingCatalogProduct);
-    setReturnToResellerList(draft.returnToResellerList);
-    setIsUploadingImage(false);
-    setIsModalOpen(true);
-    showToast('Recuperamos tu producto.', 'success');
-  }, [isMobile, location.pathname, location.search, user?.uid]);
+    const draft = restoreMobileProductDraft(user.uid, initialRoute.pathname, initialRoute.search);
+    if (draft && hasMobileProductDraftContent(draft)) {
+      setFormData(draft.formData);
+      setHoldingDrafts(draft.holdingDrafts);
+      setEditingProduct(draft.editingProduct);
+      setCreatingProductForReseller(draft.creatingProductForReseller);
+      setSupplierProductCreationContext(draft.supplierProductCreationContext);
+      setPromotingCatalogProduct(draft.promotingCatalogProduct);
+      setReturnToResellerList(draft.returnToResellerList);
+      setIsUploadingImage(false);
+      showToast('Recuperamos tu producto.', 'success');
+    }
+    setInitialMobileRouteReady(true);
+  }, [isMobile, user?.uid]);
 
   const openProductEditor = (
     product?: Product,
@@ -100,6 +110,7 @@ export default function useProductEditor({
       returnToResellerList?: boolean;
       supplierContext?: SupplierProductCreationContext;
       initialDraft?: SupplierProductCreationContext['initialDraft'];
+      clearNavigationState?: boolean;
     },
   ) => {
     const params = new URLSearchParams(location.search);
@@ -108,6 +119,7 @@ export default function useProductEditor({
       || (product && editingProduct?.id === product.id)
     )) return;
     if (user?.uid) clearMobileProductDraft(user.uid);
+    setValidationErrors({});
     const promoteToStock = Boolean(product?.catalogOnly && options?.promoteToStock);
     const forReseller = Boolean(options?.forReseller || (product?.catalogOnly && !promoteToStock));
     const next = product ? {
@@ -143,7 +155,6 @@ export default function useProductEditor({
         : draft
     ));
     setHoldingDrafts(forReseller ? [] : nextHoldingDrafts);
-    setIsModalOpen(true);
     if (isMobile) {
       const params = new URLSearchParams(location.search);
       params.delete('producto');
@@ -158,17 +169,32 @@ export default function useProductEditor({
       const query = params.toString();
       const nextSearch = query ? `?${query}` : '';
       if (nextSearch !== location.search) {
-        navigate({ pathname: location.pathname, search: nextSearch }, { state: location.state });
+        navigate({ pathname: location.pathname, search: nextSearch }, {
+          state: { ...(options?.clearNavigationState ? {} : (location.state as Record<string, unknown> | null) ?? {}), productEditorEntry: true },
+        });
       }
+    } else {
+      setIsDesktopModalOpen(true);
     }
   };
 
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
     if (!user || inventoryAccessError || isUploadingImage) return;
+    const validationErrors = validateProductEditorForm({ formData, holdingDrafts, holdingsEnabled, creatingProductForReseller });
+    const validationMessage = firstProductEditorValidationError(validationErrors);
+    if (validationMessage) {
+      setValidationErrors(validationErrors);
+      showToast(validationMessage, 'error');
+      return;
+    }
+    setValidationErrors({});
     if (!beginSubmission(productSubmitInFlightRef)) return;
     setSaving(true);
     let pendingSupplierPhotoUrl: string | null = null;
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    const saveAndAddAnother = submitter?.getAttribute('data-save-another') === 'true'
+      && !editingProduct && !creatingProductForReseller && !promotingCatalogProduct;
 
     try {
       let savedProduct: Product | null = null;
@@ -271,7 +297,7 @@ export default function useProductEditor({
           && product.createdAt && product.createdAt > cutoff
         ));
         if (potentialDuplicate) {
-          alert('Se detectó un producto con el mismo nombre creado hace menos de 5 segundos. Operación cancelada para evitar duplicados.');
+          showToast('Ya existe un producto con ese nombre creado hace unos segundos. Esperá antes de volver a intentarlo.', 'error');
           return;
         }
         savedProduct = await db.create<Product>('products', {
@@ -324,7 +350,32 @@ export default function useProductEditor({
         showToast('Producto incorporado al stock y separado de la lista por pedido.', 'success');
       }
 
-      setIsModalOpen(false);
+      if (saveAndAddAnother && savedProduct) {
+        const nextCategoryId = formData.categoryId ?? '';
+        const nextCategory = formData.category ?? categories.find((category) => category.id === nextCategoryId)?.name ?? '';
+        const nextInventoryOwnerId = formData.inventoryOwnerId || primaryOwner?.id;
+        setEditingProduct(null);
+        setCreatingProductForReseller(false);
+        setPromotingCatalogProduct(false);
+        setSupplierProductCreationContext(null);
+        setReturnToResellerList(false);
+        productIntentRef.current = null;
+        setIsUploadingImage(false);
+        setFormData({
+          id: crypto.randomUUID(), name: '', categoryId: nextCategoryId, category: nextCategory,
+          purchasePrice: 0, salePrice: 0, stock: 0, minStock: 2, showInCatalog: true,
+          notes: '', images: [], inventoryOwnerId: nextInventoryOwnerId, ownerUid: user.uid,
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        });
+        setHoldingDrafts(buildHoldingDrafts(operableOwners, []));
+        setValidationErrors({});
+        if (user.uid) clearMobileProductDraft(user.uid);
+        showToast('Producto guardado.', 'success');
+        return;
+      }
+
+      setIsDesktopModalOpen(false);
+      setValidationErrors({});
       setCreatingProductForReseller(false);
       setPromotingCatalogProduct(false);
       setSupplierProductCreationContext(null);
@@ -360,7 +411,7 @@ export default function useProductEditor({
     if (productSubmitInFlightRef.current) return;
     if (user?.uid) clearMobileProductDraft(user.uid);
     productIntentRef.current = null;
-    setIsModalOpen(false);
+    setIsDesktopModalOpen(false);
     setCreatingProductForReseller(false);
     setPromotingCatalogProduct(false);
     setSupplierProductCreationContext(null);
@@ -371,13 +422,21 @@ export default function useProductEditor({
       params.delete('editar');
       params.delete('nuevo');
       const query = params.toString();
-      navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+      const locationState = location.state as { productEditorEntry?: boolean } | null;
+      if (isMobile && locationState?.productEditorEntry) {
+        navigate(-1);
+      } else {
+        navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+      }
     }
   };
 
   return {
     isModalOpen,
-    setIsModalOpen,
+    isInitialMobileRouteReady: initialMobileRouteReady,
+    setIsModalOpen: setIsDesktopModalOpen,
+    validationErrors,
+    setValidationErrors,
     editingProduct,
     setEditingProduct,
     formData,

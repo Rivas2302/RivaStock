@@ -29,6 +29,26 @@ export interface MobileProductDraft {
   returnToResellerList: boolean;
 }
 
+export function hasMobileProductDraftContent(draft: MobileProductDraft): boolean {
+  const form = draft.formData;
+  return Boolean(
+    form.name?.trim()
+    || form.categoryId
+    || form.barcode?.trim()
+    || form.description?.trim()
+    || form.notes?.trim()
+    || (form.images?.length ?? 0) > 0
+    || Number(form.salePrice ?? 0) > 0
+    || Number(form.purchasePrice ?? 0) > 0
+    || Number(form.catalogCost ?? 0) > 0
+    || Number(form.stock ?? 0) > 0
+    || (form.minStock !== undefined && Number(form.minStock) !== 2)
+    || draft.holdingDrafts.some((holding) => holding.stock > 0 || holding.purchaseCost > 0 || holding.minStock !== 2)
+    || Boolean(draft.supplierProductCreationContext)
+    || draft.promotingCatalogProduct,
+  );
+}
+
 function keyFor(ownerUid: string): string {
   return `rivastock:mobile-product-draft:v${DRAFT_VERSION}:${ownerUid}`;
 }
@@ -69,6 +89,7 @@ export function restoreMobileProductDraft(
   try {
     const candidate = JSON.parse(raw) as Partial<MobileProductDraft>;
     const hasProductId = typeof candidate.formData?.id === 'string' && candidate.formData.id.length > 0;
+    const requestedProductId = params.get('editar');
     const valid = candidate.version === DRAFT_VERSION
       && candidate.ownerUid === ownerUid
       && candidate.pathname === pathname
@@ -77,6 +98,8 @@ export function restoreMobileProductDraft(
       && now - candidate.savedAt <= DRAFT_TTL_MS
       && candidate.formData !== null
       && typeof candidate.formData === 'object'
+      && (!requestedProductId || candidate.editingProduct?.id === requestedProductId || candidate.formData.id === requestedProductId)
+      && (requestedProductId !== null || !candidate.editingProduct)
       && Array.isArray(candidate.formData.images)
       && candidate.formData.images.every((image) => typeof image === 'string')
       && Array.isArray(candidate.holdingDrafts)

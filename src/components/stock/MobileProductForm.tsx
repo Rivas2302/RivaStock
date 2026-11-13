@@ -5,6 +5,7 @@ import type { Category, InventoryHoldingDraft, InventoryOwner, PriceRange, Produ
 import { useMobileAppChrome } from '../../hooks/useMobileAppChrome';
 import { registerPopNavigationGuard } from '../../lib/mobileNavigationGuard';
 import { roundPrice } from '../../lib/utils';
+import { validateProductEditorForm } from '../../lib/productEditorValidation';
 import NumberField from '../NumberField';
 import MoneyInput from '../MoneyInput';
 import './mobileProductForm.css';
@@ -79,6 +80,7 @@ function useUnsavedProductNavigationBlocker(shouldBlock: boolean) {
   return {
     pending: pending !== null,
     reset: () => setPending(null),
+    allowNextPop: () => { allowPopRef.current = true; },
     proceed: () => {
       const destination = pending;
       setPending(null);
@@ -163,6 +165,7 @@ export default function MobileProductForm({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardAction, setDiscardAction] = useState<'close' | 'adjust'>('close');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLSelectElement>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
@@ -245,7 +248,10 @@ export default function MobileProductForm({
     }
     onDiscard();
     if (discardAction === 'adjust') onAdjustStock();
-    else onClose();
+    else {
+      navigationBlocker.allowNextPop();
+      onClose();
+    }
   };
 
   const continueEditing = () => {
@@ -255,23 +261,14 @@ export default function MobileProductForm({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextErrors: Record<string, string> = {};
-    if (!formData.name?.trim()) nextErrors.name = 'Ingresá el nombre del producto.';
-    if (!formData.categoryId) nextErrors.category = 'Elegí una categoría.';
-    if (Number(formData.salePrice ?? 0) < 0) nextErrors.salePrice = 'El precio no puede ser negativo.';
-    if (!holdingsEnabled && Number(formData.purchasePrice ?? 0) < 0) nextErrors.purchasePrice = 'El precio no puede ser negativo.';
-    if (!product && Number(formData.stock ?? 0) < 0) nextErrors.stock = 'El stock no puede ser negativo.';
-    if (Number(formData.minStock ?? 0) < 0) nextErrors.minStock = 'El mínimo no puede ser negativo.';
-    if (holdingDrafts.some((draft) => draft.stock < 0 || draft.purchaseCost < 0 || draft.minStock < 0)) {
-      nextErrors.holdings = 'El stock, el costo y el mínimo deben ser cero o mayores.';
-    }
-    if (creatingProductForReseller && Number(formData.catalogCost ?? 0) <= 0) nextErrors.catalogCost = 'Ingresá el costo del proveedor.';
+    const nextErrors = validateProductEditorForm({ formData, holdingDrafts, holdingsEnabled, creatingProductForReseller });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      const firstField = nextErrors.name ? nameRef.current
-        : nextErrors.category ? categoryRef.current
-          : nextErrors.salePrice ? saleRef.current : purchaseRef.current;
-      firstField?.focus();
+      requestAnimationFrame(() => {
+        const firstInvalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+        firstInvalid?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        firstInvalid?.focus();
+      });
       return;
     }
     void onSave(event);
@@ -303,7 +300,7 @@ export default function MobileProductForm({
         <h1 className="min-w-0 flex-1 truncate text-base font-bold">{title}</h1>
       </header>
 
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col" noValidate>
+      <form ref={formRef} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col" noValidate>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-6">
           {creatingProductForReseller && (
             <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-subtle)]">
@@ -450,15 +447,18 @@ export default function MobileProductForm({
                     <p className="col-span-2 font-medium">{owner?.name ?? 'Titular'}</p>
                     <label className="text-xs text-[var(--ink-subtle)]">
                       Stock
-                      <NumberField min="0" integer value={draft.stock} readOnly={Boolean(product)} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      <NumberField min="0" integer aria-invalid={Boolean(errors.stock)} value={draft.stock} readOnly={Boolean(product)} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, stock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      {errors.stock && <span className="mt-1 block text-xs text-[var(--danger-ink)]">{errors.stock}</span>}
                     </label>
                     <label className="text-xs text-[var(--ink-subtle)]">
                       Mínimo
-                      <NumberField min="0" integer value={draft.minStock} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, minStock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      <NumberField min="0" integer aria-invalid={Boolean(errors.minStock)} value={draft.minStock} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, minStock: Number(event.target.value) } : item))} className={`${inputClass} mt-1`} />
+                      {errors.minStock && <span className="mt-1 block text-xs text-[var(--danger-ink)]">{errors.minStock}</span>}
                     </label>
                     <label className="col-span-2 text-xs text-[var(--ink-subtle)]">
                       Costo de compra
-                      <MoneyInput min="0" value={draft.purchaseCost} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, purchaseCost: Number(event.target.value) } : item))} className={`${inputClass} mt-1 pl-9`} />
+                      <MoneyInput min="0" aria-invalid={Boolean(errors.purchasePrice)} value={draft.purchaseCost} onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, purchaseCost: Number(event.target.value) } : item))} className={`${inputClass} mt-1 pl-9`} />
+                      {errors.purchasePrice && <span className="mt-1 block text-xs text-[var(--danger-ink)]">{errors.purchasePrice}</span>}
                     </label>
                     {product && <button type="button" onClick={requestAdjustStock} className="col-span-2 min-h-11 rounded-xl border border-[var(--line)] font-semibold text-[var(--brand)]">Ajustar stock</button>}
                   </div>
@@ -580,9 +580,16 @@ export default function MobileProductForm({
         </div>
 
         <footer className="shrink-0 border-t border-[var(--line)] bg-[var(--surface)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button type="submit" disabled={isUploadingImage || saving} className="min-h-13 w-full rounded-xl bg-[var(--action-bg)] px-4 py-3 text-base font-bold text-[var(--action-ink)] disabled:opacity-60">
-            {isUploadingImage ? 'Subiendo imagen…' : saving ? 'Guardando…' : promotingCatalogProduct ? 'Agregar al stock' : product ? 'Guardar producto' : 'Guardar producto'}
-          </button>
+          <div className={product || creatingProductForReseller || promotingCatalogProduct ? '' : 'grid grid-cols-2 gap-2'}>
+            {!product && !creatingProductForReseller && !promotingCatalogProduct && (
+              <button type="submit" data-save-another="true" disabled={isUploadingImage || saving} className="min-h-13 rounded-xl border border-[var(--line)] px-2 py-3 text-sm font-semibold text-[var(--ink)] disabled:opacity-60">
+                Guardar y cargar otro
+              </button>
+            )}
+            <button type="submit" disabled={isUploadingImage || saving} className="min-h-13 w-full rounded-xl bg-[var(--action-bg)] px-4 py-3 text-base font-bold text-[var(--action-ink)] disabled:opacity-60">
+              {isUploadingImage ? 'Subiendo imagen…' : saving ? 'Guardando…' : promotingCatalogProduct ? 'Agregar al stock' : 'Guardar producto'}
+            </button>
+          </div>
         </footer>
       </form>
 

@@ -36,6 +36,8 @@ import { getRecentRestockSales } from '../lib/recentSales';
 import { showToast } from '../lib/toast';
 import { clearMobileProductDraft, saveMobileProductDraft } from '../lib/mobileProductDraft';
 import type { MobileProductDraft } from '../lib/mobileProductDraft';
+import { getProductEditorRoute } from '../lib/productEditorRoute';
+import { validateProductEditorForm } from '../lib/productEditorValidation';
 import { Product, Category, PriceRange, Sale, InventoryHolding, InventoryHoldingDraft } from '../types';
 import { formatCurrency, cn, roundPrice } from '../lib/utils';
 import {
@@ -176,17 +178,18 @@ export default function Stock() {
     navigate,
   });
   const {
-    isModalOpen, setIsModalOpen, editingProduct, setEditingProduct, formData, setFormData,
+    isModalOpen, isInitialMobileRouteReady, setIsModalOpen, editingProduct, setEditingProduct, formData, setFormData,
     holdingDrafts, setHoldingDrafts, isUploadingImage, setIsUploadingImage, saving,
     creatingProductForReseller, setCreatingProductForReseller,
     supplierProductCreationContext, setSupplierProductCreationContext,
     promotingCatalogProduct, setPromotingCatalogProduct, returnToResellerList,
     setReturnToResellerList, productIntentRef, productSubmitInFlightRef,
+    validationErrors, setValidationErrors,
     openProductEditor, handleSave, closeProductEditor,
   } = productEditor;
   useEffect(() => {
     if (!isMobile || !isModalOpen || !user) return;
-    saveMobileProductDraft({
+    const persistDraft = () => saveMobileProductDraft({
       ownerUid: user.uid,
       pathname: location.pathname,
       formData,
@@ -197,15 +200,36 @@ export default function Stock() {
       promotingCatalogProduct,
       returnToResellerList,
     });
+    const timeoutId = window.setTimeout(persistDraft, 400);
+    const persistOnPageHide = () => { persistDraft(); };
+    const persistWhenHidden = () => {
+      if (document.visibilityState === 'hidden') persistDraft();
+    };
+    window.addEventListener('pagehide', persistOnPageHide);
+    document.addEventListener('visibilitychange', persistWhenHidden);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('pagehide', persistOnPageHide);
+      document.removeEventListener('visibilitychange', persistWhenHidden);
+    };
   }, [
     creatingProductForReseller, editingProduct, formData, holdingDrafts, isModalOpen, isMobile,
     location.pathname, promotingCatalogProduct, returnToResellerList, supplierProductCreationContext, user,
   ]);
+  const requestedMobileEditId = getProductEditorRoute(location.search).productId;
   useEffect(() => {
-    if (!isMobile || !isModalOpen) return;
+    if (!isMobile || !requestedMobileEditId || !isInitialMobileRouteReady || loading || editingProduct?.id === requestedMobileEditId) return;
+    const requestedProduct = products.find((product) => product.id === requestedMobileEditId);
+    if (requestedProduct) {
+      openProductEditor(requestedProduct);
+      return;
+    }
     const params = new URLSearchParams(location.search);
-    if (!params.has('nuevo') && !params.has('editar')) setIsModalOpen(false);
-  }, [isMobile, isModalOpen, location.search, setIsModalOpen]);
+    params.delete('editar');
+    const query = params.toString();
+    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: location.state });
+    showToast('No encontramos ese producto.', 'error');
+  }, [editingProduct?.id, isInitialMobileRouteReady, isMobile, loading, location, navigate, openProductEditor, products, requestedMobileEditId]);
   const assignableOwners = useMemo(
     () => getAssignableInventoryOwners(inventoryOwners, editingProduct?.inventoryOwnerId),
     [editingProduct?.inventoryOwnerId, inventoryOwners],
@@ -302,13 +326,22 @@ export default function Stock() {
 
   useEffect(() => {
     const state = location.state as { newBarcode?: string } | null;
-    if (!state?.newBarcode || prefilledBarcodeRef.current) return;
+    if (!state?.newBarcode) {
+      prefilledBarcodeRef.current = null;
+      return;
+    }
+    if (prefilledBarcodeRef.current === state.newBarcode) return;
     prefilledBarcodeRef.current = state.newBarcode;
-    openProductEditor(undefined, state.newBarcode);
-    const params = new URLSearchParams(location.search);
-    if (isMobile) params.set('nuevo', '1');
-    const query = params.toString();
-    navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true, state: {} });
+    const historyState = window.history.state;
+    if (historyState && typeof historyState === 'object') {
+      const routerState = historyState as { usr?: unknown };
+      if (routerState.usr && typeof routerState.usr === 'object') {
+        const clearedUserState = { ...(routerState.usr as Record<string, unknown>) };
+        delete clearedUserState.newBarcode;
+        window.history.replaceState({ ...historyState, usr: clearedUserState }, '');
+      }
+    }
+    openProductEditor(undefined, state.newBarcode, { clearNavigationState: true });
   }, [isMobile, location, navigate, openProductEditor]);
 
   const priceListProducts = useMemo(() => {
@@ -379,6 +412,22 @@ export default function Stock() {
     setSupplierProductCreationContext(null);
     if (returnToResellerList) setResellerPriceListOpen(true);
     setReturnToResellerList(false);
+  };
+
+  const handleDesktopProductSave = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const errors = validateProductEditorForm({ formData, holdingDrafts, holdingsEnabled, creatingProductForReseller });
+    setValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      const form = event.currentTarget;
+      requestAnimationFrame(() => {
+        const firstInvalid = form.querySelector<HTMLElement>('[aria-invalid="true"]');
+        firstInvalid?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        firstInvalid?.focus();
+      });
+      return;
+    }
+    void handleSave(event);
   };
 
   const prepareMobileProductDraftForCamera = () => {
@@ -746,7 +795,7 @@ export default function Stock() {
           ]}
         />
       </Suspense>}
-      {isMobile && isModalOpen && user && <Suspense fallback={<div role="status" className="fixed inset-0 z-[80] animate-pulse bg-[var(--surface)]" />}>
+      {isMobile && isModalOpen && user && isInitialMobileRouteReady && (!requestedMobileEditId || editingProduct?.id === requestedMobileEditId) && <Suspense fallback={<div role="status" className="fixed inset-0 z-[80] animate-pulse bg-[var(--surface)]" />}>
         <MobileProductForm
           key={editingProduct?.id ?? formData.id ?? 'new-product'}
           product={editingProduct}
@@ -1302,7 +1351,7 @@ export default function Stock() {
               : 'Agregar producto para revendedores'
             : 'Agregar Nuevo Producto'}
       >
-        <form onSubmit={handleSave} className="operational-page space-y-6">
+        <form noValidate onSubmit={handleDesktopProductSave} className="operational-page space-y-6">
           {creatingProductForReseller && (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
               Este producto existirá solamente en el catálogo revendedor como <strong>Por pedido</strong>. No aparecerá en Stock ni en el catálogo minorista hasta que elijas “Agregar al stock”.
@@ -1317,21 +1366,27 @@ export default function Stock() {
             <ProductEditorTextField
               label="Nombre del Producto"
               value={formData.name ?? ''}
-              onChange={(value) => setFormData((previous) => ({ ...previous, name: value }))}
+              onChange={(value) => { setValidationErrors({}); setFormData((previous) => ({ ...previous, name: value })); }}
               required
+              ariaInvalid={Boolean(validationErrors.name)}
               wrapperClassName="md:col-span-2"
               labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
               inputClassName="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
-            />
+            >
+              {validationErrors.name && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.name}</span>}
+            </ProductEditorTextField>
             
             <ProductEditorSelectField
               label="Categoría"
               value={formData.categoryId ?? ''}
               onChange={(value) => {
+                setValidationErrors({});
                 const category = categories.find((item) => item.id === value);
                 setFormData((previous) => ({ ...previous, categoryId: value, category: category?.name ?? '' }));
               }}
               required
+              ariaInvalid={Boolean(validationErrors.category)}
+              helper={validationErrors.category && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.category}</span>}
               labelClassName="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
               selectClassName="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
             >
@@ -1369,9 +1424,11 @@ export default function Stock() {
                 min="0"
                 integer
                 value={formData.stock}
-                onChange={(e) => setFormData(prev => ({ ...prev, stock: Number(e.target.value) }))}
+                aria-invalid={Boolean(validationErrors.stock)}
+                onChange={(e) => { setValidationErrors({}); setFormData(prev => ({ ...prev, stock: Number(e.target.value) })); }}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
+              {validationErrors.stock && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.stock}</span>}
             </div>}
 
             {!holdingsEnabled && !creatingProductForReseller && <div>
@@ -1380,10 +1437,12 @@ export default function Stock() {
                 <MoneyInput
                   required
                   min="0"
+                  aria-invalid={Boolean(validationErrors.purchasePrice)}
                   value={formData.purchasePrice}
-                  onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: Number(e.target.value) }))}
+                  onChange={(e) => { setValidationErrors({}); setFormData(prev => ({ ...prev, purchasePrice: Number(e.target.value) })); }}
                   className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
+                {validationErrors.purchasePrice && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.purchasePrice}</span>}
               </div>
             </div>}
 
@@ -1396,13 +1455,15 @@ export default function Stock() {
                     min="0.01"
                     step="0.01"
                     aria-label="Costo del proveedor"
+                    aria-invalid={Boolean(validationErrors.catalogCost)}
                     value={formData.catalogCost ?? 0}
-                    onChange={(event) => setFormData((current) => ({
+                    onChange={(event) => { setValidationErrors({}); setFormData((current) => ({
                       ...current,
                       catalogCost: Number(event.target.value),
-                    }))}
+                    })); }}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pr-4 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
+                  {validationErrors.catalogCost && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.catalogCost}</span>}
                 </div>
               </div>
             )}
@@ -1429,15 +1490,21 @@ export default function Stock() {
                             min="0"
                             required
                             integer={field !== 'purchaseCost'}
+                            aria-invalid={Boolean(field === 'stock' ? validationErrors.stock : field === 'purchaseCost' ? validationErrors.purchasePrice : validationErrors.minStock)}
                             aria-label={`${field === 'stock' ? 'Stock' : field === 'purchaseCost' ? 'Costo' : 'Mínimo'} de ${owner?.name ?? 'titular'}`}
                             value={draft[field]}
-                            onChange={(event) => setHoldingDrafts((current) => current.map((item, itemIndex) => (
+                            onChange={(event) => { setValidationErrors({}); setHoldingDrafts((current) => current.map((item, itemIndex) => (
                               itemIndex === index ? { ...item, [field]: Number(event.target.value) } : item
-                            )))}
+                            ))); }}
                             className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#365fad] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                           />
                         </label>
                       ))}
+                      {(validationErrors.stock || validationErrors.purchasePrice || validationErrors.minStock) && (
+                        <p role="alert" className="md:col-span-4 text-sm text-rose-700 dark:text-rose-300">
+                          {validationErrors.stock ?? validationErrors.purchasePrice ?? validationErrors.minStock}
+                        </p>
+                      )}
                       {editingProduct && draft.stock > 0 && operableOwners.length > 1 && (
                         <button
                           type="button"
@@ -1478,10 +1545,12 @@ export default function Stock() {
                   required
                   min="0"
                   aria-label="Precio de venta"
+                  aria-invalid={Boolean(validationErrors.salePrice)}
                   value={formData.salePrice}
-                  onChange={(e) => setFormData(prev => ({ ...prev, salePrice: Number(e.target.value) }))}
+                  onChange={(e) => { setValidationErrors({}); setFormData(prev => ({ ...prev, salePrice: Number(e.target.value) })); }}
                   className="w-full pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
                 />
+                {validationErrors.salePrice && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.salePrice}</span>}
               </div>
             </div>
 
@@ -1491,10 +1560,12 @@ export default function Stock() {
                 required
                 min="0"
                 integer
+                aria-invalid={Boolean(validationErrors.minStock)}
                 value={formData.minStock}
-                onChange={(e) => setFormData(prev => ({ ...prev, minStock: Number(e.target.value) }))}
+                onChange={(e) => { setValidationErrors({}); setFormData(prev => ({ ...prev, minStock: Number(e.target.value) })); }}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#365fad] outline-none dark:text-white"
               />
+              {validationErrors.minStock && <span className="mt-1 block text-sm text-rose-700 dark:text-rose-300">{validationErrors.minStock}</span>}
             </div>}
 
             <div className="md:col-span-2">
@@ -1624,7 +1695,7 @@ export default function Stock() {
             )}
           </div>
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex flex-wrap gap-3 pt-4">
             <button 
               type="button"
               onClick={closeProductEditor}
@@ -1632,6 +1703,16 @@ export default function Stock() {
             >
               Cancelar
             </button>
+            {!editingProduct && !creatingProductForReseller && !promotingCatalogProduct && (
+              <button
+                type="submit"
+                data-save-another="true"
+                disabled={isUploadingImage || saving}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {saving ? 'Guardando…' : 'Guardar y cargar otro'}
+              </button>
+            )}
             <button
               type="submit"
               disabled={isUploadingImage || saving}
@@ -1643,7 +1724,7 @@ export default function Stock() {
               {isUploadingImage
                 ? 'Subiendo imagen...'
                 : saving
-                  ? 'Guardando...'
+                  ? 'Guardando…'
                   : promotingCatalogProduct
                     ? 'Agregar al stock'
                     : editingProduct

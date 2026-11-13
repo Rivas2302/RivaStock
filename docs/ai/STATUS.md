@@ -1,3 +1,12 @@
+# 2026-11-12 — estabilidad del editor de productos en Stock
+
+- PASO 0: el doble toque no se reprodujo en las pruebas de Playwright antes del cambio: 10 aperturas/cierres consecutivos a 390 px en Android y 10 aperturas/cierres en escritorio. Sí se confirmó en el código la carrera entre `isModalOpen` y el cambio asíncrono de URL: el efecto que cerraba el editor podía observar la ubicación anterior durante una transición de React Router.
+- El editor móvil ahora deriva su apertura de `?nuevo`/`?editar=…`; abrir desde botones prepara el borrador y navega una sola vez. La restauración corre únicamente al montar con una ruta de editor ya presente y muestra el aviso solo si recupera contenido. Los borradores se guardan tras 400 ms, al ocultarse/salir de la página y de inmediato antes de abrir la cámara.
+- Se eliminaron los cierres por estado/URL duplicado y se verificó el atrás con y sin cambios, sin una segunda pulsación. Se agregó validación junto al campo, foco/scroll al primer error, motivo visible al fallar el guardado, indicador «Guardando…» y «Guardar y cargar otro» para móvil y escritorio. Se mantuvo el guardado de titulares con `save_product_with_holdings`.
+- Verificación local: `npm run lint`, `npm run build` y suite completa (258 archivos, 1.477 pruebas) aprobados. Vitest se ejecutó con URL y clave pública ficticias requeridas por los tests, sin credenciales reales. Playwright focal: 34 pasaron y 24 se omitieron por las restricciones de proyecto; incluyó Android a 390 px, Chromium a 390/1.440 px, escáner, edición, atrás, múltiples titulares, guardado fallido, foto tras volver de cámara y validación. Los datos fueron fixtures aislados; no se escribieron datos de producción.
+- No se pudo confirmar una reproducción visual del reporte antes del arreglo. La carrera de orden de renders era posible aunque no ocurriera en los 10 intentos baseline; se corrigió estructuralmente usando la URL como única fuente de apertura móvil.
+- Pendiente: integrar este commit en `main` y verificar el despliegue `Current` desde `main`.
+
 # 2026-11-10 — cierre seguro de I52 y estabilidad del catálogo
 
 - I52 quedó pausada en un punto seguro en la rama `codex/i46-module-overrides-fix`, commit local `1256096` (`chore(import): checkpoint I52 work in progress`). El checkpoint incluye la nota de pausa en `ACTION_PLAN.md`; no se publicó ni se desplegó esa rama.
