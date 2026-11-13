@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Clock3, Loader2, RefreshCw, Send, X } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { usePermission } from '../../hooks/usePermission';
@@ -8,7 +9,7 @@ import type { Product } from '../../types';
 import { startVisiblePolling } from '../../lib/visiblePolling';
 import AIChatActionProposalCard from './AIChatActionProposalCard';
 
-const FacebookPublicationModal = lazy(() => import('../FacebookPublicationModal'));
+const FacebookPublicationModal = lazyWithRetry('src/components/FacebookPublicationModal.tsx', () => import('../FacebookPublicationModal'));
 
 interface ActiveReview {
   request: AIActionRequest;

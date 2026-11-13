@@ -1,9 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { InventoryHolding, InventoryOwner, Product } from '../../types';
-import MobileStockExperience from './MobileStockExperience';
+import MobileStockExperience, { preloadMobileStockCriticalModules } from './MobileStockExperience';
 import { dispatchMobileStockAction } from './dispatchMobileStockAction';
 import type { MobileStockActionHandlers } from './dispatchMobileStockAction';
 import type { AdjustProductStockInput } from '../../lib/stockAdjustments';
+
+export { preloadMobileStockCriticalModules };
 
 type Data = [
   products: Product[],
@@ -69,6 +71,9 @@ export default function MobileStockEntry({ data, handlers }: Props) {
     printBarcode, publishFacebook, deleteProduct, createProductFromScan, editProduct,
     retryImageCleanup,
   };
+  useEffect(() => {
+    void preloadMobileStockCriticalModules().catch(() => undefined);
+  }, []);
   const onAction = useCallback(
     (action: Parameters<typeof dispatchMobileStockAction>[0]) => dispatchMobileStockAction(action, actionHandlers),
     // `handlers` are callbacks over the current Stock state and are intentionally refreshed each render.

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { Category, InventoryHoldingDraft, InventoryOwner, PriceRange, Product } from '../../types';
 import { useMobileAppChrome } from '../../hooks/useMobileAppChrome';
 import { registerPopNavigationGuard } from '../../lib/mobileNavigationGuard';
+import { registerDirtyCheck } from '../../lib/buildRuntime';
 import { roundPrice } from '../../lib/utils';
 import { validateProductEditorForm } from '../../lib/productEditorValidation';
 import NumberField from '../NumberField';
@@ -189,6 +190,7 @@ export default function MobileProductForm({
 
   const currentSignature = JSON.stringify({ formData, holdingDrafts });
   const hasChanges = currentSignature !== initialSignature.current;
+  useEffect(() => registerDirtyCheck(`mobile-product:${ownerUid}`, () => hasChanges && !saving), [hasChanges, ownerUid, saving]);
   const navigationBlocker = useUnsavedProductNavigationBlocker(hasChanges && !saving);
   const title = product
     ? promotingCatalogProduct ? 'Agregar producto al stock' : 'Editar producto'

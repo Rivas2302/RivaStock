@@ -1,3 +1,4 @@
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -23,11 +24,12 @@ import { buildAttributedSaleCommandItems, previewAttributedCart } from '../lib/a
 import { resolveIdempotencyIntent, type IdempotencyIntent } from '../lib/idempotencyIntent';
 import { calculateTotalWithShipping } from '../lib/saleShipping';
 
-const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
+const LazySaleShippingControl = lazyWithRetry('src/components/SaleShippingControl.tsx', () => import('../components/SaleShippingControl'));
 
 export default function POS() {
   const navigate = useNavigate();
   const location = useLocation();
+  useEffect(() => { void LazySaleShippingControl.preload().catch(() => undefined); }, []);
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,

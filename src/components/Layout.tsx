@@ -1,10 +1,11 @@
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
 import type { BusinessModuleKey } from '../lib/businessPlan';
-const BusinessSetupModal = lazy(() => import('./BusinessSetupModal'));
-const AppNavigation = lazy(() => import('./AppNavigation'));
+const BusinessSetupModal = lazyWithRetry('src/components/BusinessSetupModal.tsx', () => import('./BusinessSetupModal'));
+const AppNavigation = lazyWithRetry('src/components/AppNavigation.tsx', () => import('./AppNavigation'));
 
 import { cn } from '../lib/utils';
 import type { PermissionMatrix } from '../types';

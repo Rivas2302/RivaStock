@@ -45,6 +45,8 @@
     }
   ],
   "headers": [
+    { "source": "/version.json", "headers": [{ "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" }] },
+    { "source": "/lazy-chunks.json", "headers": [{ "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" }] },
     { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
     { "source": "/p/:path*", "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "1" }] },
     {

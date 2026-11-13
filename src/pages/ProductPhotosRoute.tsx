@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { Suspense } from 'react';
 import RequirePermission from '../components/RequirePermission';
 
-const ProductPhotosPage = lazy(() => import('./ProductPhotos'));
+const ProductPhotosPage = lazyWithRetry('src/pages/ProductPhotos.tsx', () => import('./ProductPhotos'));
 
 export default function ProductPhotosRoute() {
   return (

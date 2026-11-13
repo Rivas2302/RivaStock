@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Bot, Brain, Cable, Check, ChevronRight, Clock3, ClipboardCheck, Copy, Database, Download, Library, Loader2, ListChecks, MessageSquare, Monitor, ShieldAlert, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
@@ -43,16 +44,16 @@ import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { startVisiblePolling } from '../lib/visiblePolling';
 import type { Product } from '../types';
 
-const AIMemory = lazy(() => import('../components/AIMemory'));
-const MobileAIHubNavigation = lazy(() => import('../components/ai/MobileAIHubNavigation'));
-const AIActionInbox = lazy(() => import('../components/ai/AIActionInbox'));
-const AIFunctionSettings = lazy(() => import('../components/ai/AIFunctionSettings'));
-const BridgeSecurityMode = lazy(() => import('../components/ai/BridgeSecurityMode'));
-const AIWorkspace = lazy(() => import('../components/AIWorkspace'));
-const MobileAITaskList = lazy(() => import('../components/ai/MobileAITaskList'));
-const MobileAITaskDetail = lazy(() => import('../components/ai/MobileAITaskDetail'));
-const MobileAITaskNewTask = lazy(() => import('../components/ai/MobileAITaskNewTask'));
-const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
+const AIMemory = lazyWithRetry('src/components/AIMemory.tsx', () => import('../components/AIMemory'));
+const MobileAIHubNavigation = lazyWithRetry('src/components/ai/MobileAIHubNavigation.tsx', () => import('../components/ai/MobileAIHubNavigation'));
+const AIActionInbox = lazyWithRetry('src/components/ai/AIActionInbox.tsx', () => import('../components/ai/AIActionInbox'));
+const AIFunctionSettings = lazyWithRetry('src/components/ai/AIFunctionSettings.tsx', () => import('../components/ai/AIFunctionSettings'));
+const BridgeSecurityMode = lazyWithRetry('src/components/ai/BridgeSecurityMode.tsx', () => import('../components/ai/BridgeSecurityMode'));
+const AIWorkspace = lazyWithRetry('src/components/AIWorkspace.tsx', () => import('../components/AIWorkspace'));
+const MobileAITaskList = lazyWithRetry('src/components/ai/MobileAITaskList.tsx', () => import('../components/ai/MobileAITaskList'));
+const MobileAITaskDetail = lazyWithRetry('src/components/ai/MobileAITaskDetail.tsx', () => import('../components/ai/MobileAITaskDetail'));
+const MobileAITaskNewTask = lazyWithRetry('src/components/ai/MobileAITaskNewTask.tsx', () => import('../components/ai/MobileAITaskNewTask'));
+const FacebookPublicationModal = lazyWithRetry('src/components/FacebookPublicationModal.tsx', () => import('../components/FacebookPublicationModal'));
 
 const EMPTY_TASK_COUNTS: AIJobPageCounts = { all: 0, inProgress: 0, failed: 0, knowledgeReview: 0 };
 

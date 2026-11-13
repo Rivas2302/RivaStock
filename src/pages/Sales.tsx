@@ -1,3 +1,4 @@
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
@@ -60,7 +61,7 @@ import { calculateSaleTotals } from '../lib/salesTotals';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileSalesList from '../components/sales/MobileSalesList';
 
-const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
+const LazySaleShippingControl = lazyWithRetry('src/components/SaleShippingControl.tsx', () => import('../components/SaleShippingControl'));
 const SALE_COLUMNS = 'id,user_id,date,created_at,product_id,product_name,unit_price,quantity,adjustment,shipping_amount,total,status,payment_method,client,items,source';
 const CUSTOMER_COLUMNS = 'id,user_id,name,name_lower,phone,email,notes,current_balance,created_at,updated_at';
 const CUSTOMER_TRANSACTION_COLUMNS = 'id,user_id,customer_id,type,amount,description,payment_method,related_sale_id,related_quote_id,account_payment,financial_command_id,date,created_at';
@@ -69,6 +70,7 @@ const SALE_ALLOCATION_PROJECTION_COLUMNS = 'id,sale_id_snapshot,sale_item_id,inv
 
 export default function Sales() {
   const isMobile = useIsMobile();
+  useEffect(() => { void LazySaleShippingControl.preload().catch(() => undefined); }, []);
   const {
     user, refetchToken, holdingsEnabled, inventoryAccessError, allowedInventoryOwnerIds,
     operableInventoryOwnerIds, defaultInventoryOwnerId,

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../AuthContext';
@@ -34,8 +35,8 @@ import type jsPDF from 'jspdf';
 import { loadPdfRuntime } from '../lib/pdfRuntime';
 import { showToast } from '../lib/toast';
 
-const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
-const MobileHome = lazy(() => import('../components/mobile/MobileHome'));
+const DashboardCharts = lazyWithRetry('src/components/DashboardCharts.tsx', () => import('../components/DashboardCharts'));
+const MobileHome = lazyWithRetry('src/components/mobile/MobileHome.tsx', () => import('../components/mobile/MobileHome'));
 
 const DASHBOARD_PRODUCT_COLUMNS = 'id,user_id,name,category,purchase_price,sale_price,stock,min_stock,inventory_owner_id,catalog_only';
 const DASHBOARD_SALE_COLUMNS = 'id,date,created_at,product_id,product_name,quantity,total,status,items';

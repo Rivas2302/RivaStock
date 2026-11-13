@@ -1,4 +1,5 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AlertCircle, Archive, ArrowLeft, Check, Download, Eye, FileClock, FileText, History, Loader2, RotateCcw, Save, Send, Upload, WandSparkles } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { JSONContent } from '@tiptap/core';
@@ -55,7 +56,7 @@ import type {
 
 type DetailTab = 'preview' | 'info' | 'versions' | 'history';
 
-const KnowledgeEditor = lazy(() => import('./editor/KnowledgeEditor'));
+const KnowledgeEditor = lazyWithRetry('src/components/knowledge/editor/KnowledgeEditor.tsx', () => import('./editor/KnowledgeEditor'));
 
 function folderLabel(folder: KnowledgeFolder, folders: KnowledgeFolder[]): string {
   const byId = new Map(folders.map((item) => [item.id, item]));

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../Modal';
 import BarcodeScannerOverlay from '../BarcodeScannerOverlay';
@@ -14,11 +15,15 @@ import type { MobileStockNotice } from './MobileStockList';
 import type { MobileStockSort, MobileStockStatusFilter } from '../../lib/mobileStockFilters';
 import type { AdjustProductStockInput } from '../../lib/stockAdjustments';
 
-const MobileStockList = lazy(() => import('./MobileStockList'));
-const MobileProductDetail = lazy(() => import('./MobileProductDetail'));
-const MobileStockAdjustmentSheet = lazy(() => import('./MobileStockAdjustmentSheet'));
-const MovementHistoryPanel = lazy(() => import('../inventory/MovementHistoryPanel'));
+const MobileStockList = lazyWithRetry('src/components/stock/MobileStockList.tsx', () => import('./MobileStockList'));
+const MobileProductDetail = lazyWithRetry('src/components/stock/MobileProductDetail.tsx', () => import('./MobileProductDetail'));
+const MobileStockAdjustmentSheet = lazyWithRetry('src/components/stock/MobileStockAdjustmentSheet.tsx', () => import('./MobileStockAdjustmentSheet'));
+const MovementHistoryPanel = lazyWithRetry('src/components/inventory/MovementHistoryPanel.tsx', () => import('../inventory/MovementHistoryPanel'));
 const PAGE_SIZE = 30;
+
+export function preloadMobileStockCriticalModules(): Promise<unknown[]> {
+  return Promise.all([MobileStockList.preload(), MobileProductDetail.preload(), MobileStockAdjustmentSheet.preload()]);
+}
 
 function readStatus(value: string | null): MobileStockStatusFilter {
   return value === 'disponible' || value === 'no-disponible' || value === 'bajo' || value === 'reponer' ? value : 'all';

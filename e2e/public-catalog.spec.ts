@@ -409,6 +409,39 @@ test('opening a listed product is immediate and does not reload the anonymous ca
   await expect(page.getByText('Cargando catálogo…')).toHaveCount(0);
 });
 
+test('a stale public catalog chunk reloads once after a deployment and resumes the same URL', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalogApi(page);
+  const documentRequests: string[] = [];
+  page.on('request', (request) => { if (request.resourceType() === 'document') documentRequests.push(request.url()); });
+  const staleChunkRequests: string[] = [];
+  page.on('request', (request) => {
+    if (/\/assets\/PublicCatalog-[^/]+\.js/.test(new URL(request.url()).pathname)) staleChunkRequests.push(request.url());
+  });
+  let versionRequestCount = 0;
+  await page.route('**/version.json*', (route) => {
+    versionRequestCount += 1;
+    if (versionRequestCount === 1) return route.fulfill({ status: 204, body: '', headers: { 'cache-control': 'no-store' } });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ buildId: 'fixture-deployed-build' }), headers: { 'cache-control': 'no-store' } });
+  });
+  await page.route('**/assets/PublicCatalog-*.js*', (route) => {
+    if (documentRequests.length < 2) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html></html>' });
+    return route.continue();
+  });
+
+  await page.goto('/catalogo/qa-catalog?fuente=prueba#productos');
+  await expect(page.getByRole('heading', { name: 'Encontrá lo que buscás' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Algo salió mal')).toHaveCount(0);
+  expect(documentRequests).toHaveLength(2);
+  expect(new URL(documentRequests[1]).pathname + new URL(documentRequests[1]).search + new URL(documentRequests[1]).hash)
+    .toBe('/catalogo/qa-catalog?fuente=prueba');
+  expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash)
+    .toBe('/catalogo/qa-catalog?fuente=prueba#productos');
+  expect(versionRequestCount).toBeGreaterThanOrEqual(2);
+  expect(staleChunkRequests.length).toBeGreaterThanOrEqual(2);
+  expect(staleChunkRequests.some((url) => new URL(url).searchParams.has('rs_retry'))).toBe(true);
+});
+
 test('catalog appends 48 products on desktop and mobile, resets filters, and preserves loaded products and scroll on return', async ({ page }, testInfo) => {
   const viewports = testInfo.project.name.startsWith('catalog-iphone')
     ? [{ width: 390, height: 844 }]
@@ -709,6 +742,33 @@ test('retail checkout saves a fixture order code and opens the WhatsApp order me
   await page.getByRole('button', { name: /Abrir carrito/ }).click();
   await expect(page.getByTestId('retail-order-code')).toHaveText('P-0042');
   await expect(page.getByRole('link', { name: 'Enviar pedido por WhatsApp' })).toBeVisible();
+});
+
+test('a public catalog checkout keeps its draft when a newer build is available', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalogApi(page, 'normal', undefined, false, {}, false, false, true);
+  await page.route('**/version.json*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'cache-control': 'no-store' },
+    body: JSON.stringify({ buildId: 'fixture-public-new-build' }),
+  }));
+  const documentRequests: string[] = [];
+  page.on('request', (request) => { if (request.resourceType() === 'document') documentRequests.push(request.url()); });
+
+  await page.goto('/catalogo/qa-catalog');
+  await page.getByRole('button', { name: 'Agregar Cable USB-C al carrito' }).last().click();
+  await page.getByRole('button', { name: /Abrir carrito/ }).click();
+  await page.getByRole('button', { name: 'Confirmar Pedido' }).click();
+  await page.getByPlaceholder('Nombre completo').fill('Compradora con borrador');
+  await page.getByPlaceholder('WhatsApp').fill('2302111222');
+  await expect(page.getByRole('button', { name: 'Actualizar' }).last()).toBeVisible();
+  await page.getByRole('button', { name: 'Actualizar' }).last().click();
+
+  await expect(page.getByText('Guardá o cerrá el formulario antes de actualizar.')).toBeVisible();
+  await expect(page.getByPlaceholder('Nombre completo')).toHaveValue('Compradora con borrador');
+  await expect(page.getByPlaceholder('WhatsApp')).toHaveValue('2302111222');
+  expect(documentRequests).toHaveLength(1);
 });
 
 test('anonymous reseller checkout without an active round saves a code and opens a complete WhatsApp message', async ({ page }) => {

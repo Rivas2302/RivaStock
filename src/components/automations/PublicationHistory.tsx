@@ -1,5 +1,6 @@
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
 import PublicationDecision from './PublicationDecision';
-import {lazy,Suspense,useState,useEffect} from 'react';
+import {Suspense,useState,useEffect} from 'react';
 import {Link} from 'react-router-dom';
 import {ExternalLink,AlertTriangle,CheckCircle2,Clock3,ChevronLeft,ArrowLeft} from 'lucide-react';
 import {useAuth} from '../../AuthContext';
@@ -10,7 +11,7 @@ import type {PublicationContent} from '../../lib/facebookPublications';
 import {formatCurrency} from '../../lib/utils';
 import ExecutionTraceViewer from './ExecutionTraceViewer';
 
-const FacebookGroupResults = lazy(() => import('./FacebookGroupResults'));
+const FacebookGroupResults = lazyWithRetry('src/components/automations/FacebookGroupResults.tsx', () => import('./FacebookGroupResults'));
 
 function DeliveryCard({delivery,content,onRefresh,compact=false}:{delivery:FacebookDelivery;content:PublicationContent;onRefresh:()=>Promise<void>;compact?:boolean}) {
   const {isOwner}=useAuth();

@@ -1,4 +1,5 @@
-import React, { Suspense, lazy } from 'react';
+import { lazyWithRetry } from './lib/lazyWithRetry';
+import React, { Suspense, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
@@ -9,35 +10,38 @@ import PWAInstallProvider from './components/PWAInstallProvider';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { getOfflineQueueSize, subscribeToOfflineQueue, syncOfflineMutations } from './lib/db';
+import { fetchBuildVersion, hasUnsavedAppChanges, reloadCurrentPage } from './lib/buildRuntime';
+import ChunkRecoveryNotice from './components/ChunkRecoveryNotice';
+import { reportReloadedChunkRecovery } from './lib/lazyWithRetry';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Stock = lazy(() => import('./pages/Stock'));
-const Sales = lazy(() => import('./pages/Sales'));
-const Intake = lazy(() => import('./pages/Intake'));
-const CashFlow = lazy(() => import('./pages/CashFlow'));
-const Orders = lazy(() => import('./pages/Orders'));
-const Calculator = lazy(() => import('./pages/Calculator'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Automations = lazy(() => import('./pages/Automations'));
-const PublicCatalog = lazy(() => import('./pages/PublicCatalog'));
-const Quotes = lazy(() => import('./pages/Quotes'));
-const QuotePublic = lazy(() => import('./pages/QuotePublic'));
-const Customers = lazy(() => import('./pages/Customers'));
-const Suppliers = lazy(() => import('./pages/Suppliers'));
-const SupplierOrders = lazy(() => import('./pages/SupplierOrders'));
-const Login = lazy(() => import('./pages/Login'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const AuthConfirm = lazy(() => import('./pages/AuthConfirm'));
-const POS = lazy(() => import('./pages/POS'));
-const Reports = lazy(() => import('./pages/Reports'));
-const AuditTrail = lazy(() => import('./pages/AuditTrail'));
-const QuickPrice = lazy(() => import('./pages/QuickPrice'));
-const ProductPhotos = lazy(() => import('./pages/ProductPhotosRoute'));
-const AIHub = lazy(() => import('./pages/AIHub'));
-const Knowledge = lazy(() => import('./pages/Knowledge'));
-const PlatformAdmin = lazy(() => import('./pages/PlatformAdmin'));
-const Welcome = lazy(() => import('./pages/Welcome'));
+const Dashboard = lazyWithRetry('src/pages/Dashboard.tsx', () => import('./pages/Dashboard'));
+const Stock = lazyWithRetry('src/pages/Stock.tsx', () => import('./pages/Stock'));
+const Sales = lazyWithRetry('src/pages/Sales.tsx', () => import('./pages/Sales'));
+const Intake = lazyWithRetry('src/pages/Intake.tsx', () => import('./pages/Intake'));
+const CashFlow = lazyWithRetry('src/pages/CashFlow.tsx', () => import('./pages/CashFlow'));
+const Orders = lazyWithRetry('src/pages/Orders.tsx', () => import('./pages/Orders'));
+const Calculator = lazyWithRetry('src/pages/Calculator.tsx', () => import('./pages/Calculator'));
+const Settings = lazyWithRetry('src/pages/Settings.tsx', () => import('./pages/Settings'));
+const Automations = lazyWithRetry('src/pages/Automations.tsx', () => import('./pages/Automations'));
+const PublicCatalog = lazyWithRetry('src/pages/PublicCatalog.tsx', () => import('./pages/PublicCatalog'));
+const Quotes = lazyWithRetry('src/pages/Quotes.tsx', () => import('./pages/Quotes'));
+const QuotePublic = lazyWithRetry('src/pages/QuotePublic.tsx', () => import('./pages/QuotePublic'));
+const Customers = lazyWithRetry('src/pages/Customers.tsx', () => import('./pages/Customers'));
+const Suppliers = lazyWithRetry('src/pages/Suppliers.tsx', () => import('./pages/Suppliers'));
+const SupplierOrders = lazyWithRetry('src/pages/SupplierOrders.tsx', () => import('./pages/SupplierOrders'));
+const Login = lazyWithRetry('src/pages/Login.tsx', () => import('./pages/Login'));
+const ForgotPassword = lazyWithRetry('src/pages/ForgotPassword.tsx', () => import('./pages/ForgotPassword'));
+const ResetPassword = lazyWithRetry('src/pages/ResetPassword.tsx', () => import('./pages/ResetPassword'));
+const AuthConfirm = lazyWithRetry('src/pages/AuthConfirm.tsx', () => import('./pages/AuthConfirm'));
+const POS = lazyWithRetry('src/pages/POS.tsx', () => import('./pages/POS'));
+const Reports = lazyWithRetry('src/pages/Reports.tsx', () => import('./pages/Reports'));
+const AuditTrail = lazyWithRetry('src/pages/AuditTrail.tsx', () => import('./pages/AuditTrail'));
+const QuickPrice = lazyWithRetry('src/pages/QuickPrice.tsx', () => import('./pages/QuickPrice'));
+const ProductPhotos = lazyWithRetry('src/pages/ProductPhotosRoute.tsx', () => import('./pages/ProductPhotosRoute'));
+const AIHub = lazyWithRetry('src/pages/AIHub.tsx', () => import('./pages/AIHub'));
+const Knowledge = lazyWithRetry('src/pages/Knowledge.tsx', () => import('./pages/Knowledge'));
+const PlatformAdmin = lazyWithRetry('src/pages/PlatformAdmin.tsx', () => import('./pages/PlatformAdmin'));
+const Welcome = lazyWithRetry('src/pages/Welcome.tsx', () => import('./pages/Welcome'));
 
 function OwnerRoute({ children }: { children: React.ReactNode }) {
   const { isOwner } = useAuth();
@@ -152,6 +156,35 @@ function AppShell() {
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(getOfflineQueueSize);
+  const [availableBuild, setAvailableBuild] = useState<string | null>(null);
+  const [updateBlockedByDraft, setUpdateBlockedByDraft] = useState(false);
+  const lastLocationKey = useRef(location.key);
+
+  useEffect(() => {
+    reportReloadedChunkRecovery();
+    let disposed = false;
+    const checkBuild = async () => {
+      const version = await fetchBuildVersion();
+      if (!disposed && version && version.buildId !== __RIVASTOCK_BUILD_ID__) setAvailableBuild(version.buildId);
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') void checkBuild(); };
+    void checkBuild();
+    const timer = window.setInterval(() => { void checkBuild(); }, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onVisibility);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (lastLocationKey.current === location.key) return;
+    lastLocationKey.current = location.key;
+    if (availableBuild && !hasUnsavedAppChanges()) reloadCurrentPage();
+  }, [availableBuild, location.key]);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);
@@ -182,6 +215,15 @@ function AppShell() {
       <div className={`fixed ${isOnline ? 'top-[max(1rem,env(safe-area-inset-top))]' : 'top-[max(5rem,calc(env(safe-area-inset-top)_+_5rem))]'} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] sm:left-auto sm:w-[min(30rem,calc(100vw_-_2rem))] z-[100] flex flex-col gap-2 pointer-events-none`}>
         <ToastContainer />
       </div>
+      <ChunkRecoveryNotice />
+      {availableBuild && <div className="fixed left-1/2 top-[max(.75rem,env(safe-area-inset-top))] z-[190] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100">
+        <span>Hay una versión nueva</span>
+        <button type="button" className="font-bold text-indigo-700 underline dark:text-indigo-300" onClick={() => {
+          if (hasUnsavedAppChanges()) { setUpdateBlockedByDraft(true); return; }
+          reloadCurrentPage();
+        }}>Actualizar</button>
+        {updateBlockedByDraft && <span className="max-w-40 text-[10px]">Guardá o cerrá el formulario antes de actualizar.</span>}
+      </div>}
       <PWAInstallProvider allowInstallPrompt={location.pathname !== '/catalogo' && !location.pathname.startsWith('/catalogo/') && !location.pathname.startsWith('/p/')}><AppRoutes /></PWAInstallProvider>
     </>
   );

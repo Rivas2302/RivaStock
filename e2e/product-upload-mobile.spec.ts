@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const OWNER_ID = '10000000-0000-4000-8000-000000000081';
 const PROJECT_URL = 'https://rivastock-test.invalid';
@@ -50,7 +51,7 @@ async function photoFile(page: Page, name: string) {
   return { name, mimeType: 'image/jpeg', buffer: Buffer.from(bytes) };
 }
 
-async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; failProductSave?: boolean; unsupportedHeic?: boolean; deferPlanRefresh?: boolean } = {}) {
+async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean; failProductSave?: boolean; unsupportedHeic?: boolean; deferPlanRefresh?: boolean; failDetailChunkAfterSave?: boolean; failDetailChunkCompletely?: boolean; updateBuildOnSecondCheck?: boolean } = {}) {
   const rows: Record<string, unknown>[] = [];
   const uploads: Array<{ path: string; imageType: string; sizeBytes: number }> = [];
   const pageErrors: string[] = [];
@@ -60,6 +61,10 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
   let releaseDeferredPlanRefresh!: () => void;
   const planRefreshStarted = new Promise<void>((resolve) => { signalPlanRefreshStarted = resolve; });
   const deferredPlanRefresh = new Promise<void>((resolve) => { releaseDeferredPlanRefresh = resolve; });
+  let signalProductSaved!: () => void;
+  const productSaved = new Promise<void>((resolve) => { signalProductSaved = resolve; });
+  const detailChunkRequests: string[] = [];
+  let versionChecks = 0;
   page.on('pageerror', (error) => pageErrors.push(error.message));
   if (options.unsupportedHeic) {
     await page.addInitScript(() => {
@@ -72,7 +77,21 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
 
   await page.route('**/*', async (route: Route) => {
     const url = new URL(route.request().url());
-    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      if (url.pathname === '/version.json' && options.updateBuildOnSecondCheck) {
+        versionChecks += 1;
+        if (versionChecks > 1) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ buildId: 'fixture-new-build' }), headers: { 'cache-control': 'no-store' } });
+      }
+      if ((options.failDetailChunkAfterSave || options.failDetailChunkCompletely) && /\/assets\/MobileProductDetail-[^/]+\.js$/.test(url.pathname)) {
+        detailChunkRequests.push(url.href);
+        if (detailChunkRequests.length === 1 && (options.failDetailChunkAfterSave || options.failDetailChunkCompletely)) {
+          await productSaved;
+          if (options.failDetailChunkAfterSave) return route.abort('failed');
+        }
+        if (options.failDetailChunkCompletely) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html></html>' });
+      }
+      return route.continue();
+    }
     if (url.hostname !== 'rivastock-test.invalid') return route.abort();
 
     const path = url.pathname;
@@ -136,6 +155,7 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
           if (options.failProductSave) return route.fulfill({ status: 500, json: { message: 'No se pudo guardar el producto de prueba.' } });
           const row = { ...route.request().postDataJSON() as Record<string, unknown>, created_at: CREATED_AT, updated_at: CREATED_AT };
           rows.push(row);
+          if (options.failDetailChunkAfterSave || options.failDetailChunkCompletely) signalProductSaved();
           return route.fulfill({ status: 201, json: row });
         }
         return route.fulfill({ json: rows });
@@ -170,6 +190,8 @@ async function mountNewBusinessStock(page: Page, options: { failUpload?: boolean
     rows,
     uploads,
     pageErrors,
+    detailChunkRequests,
+    getVersionChecks: () => versionChecks,
     planRefreshStarted,
     releasePlanRefresh: releaseDeferredPlanRefresh,
     setStockModuleEnabled: (enabled: boolean) => { stockModuleEnabled = enabled; },
@@ -424,6 +446,69 @@ test('a new authenticated business uploads a photo from a new product form in An
   const catalogCard = page.locator('.catalog-theme-card').filter({ hasText: productName });
   await expect(catalogCard.getByRole('img', { name: productName })).toBeVisible();
   expect(fixture.pageErrors).toEqual([]);
+});
+
+test('a transient MobileProductDetail chunk failure does not interrupt a new product save', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'Run at 390 px in Android emulation.');
+  const fixture = await mountNewBusinessStock(page, { failDetailChunkAfterSave: true });
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await expect(form).toBeVisible();
+  const chooser = page.waitForEvent('filechooser');
+  await form.getByRole('button', { name: 'Galería' }).click();
+  await (await chooser).setFiles(await photoFile(page, 'chunk-recovery.jpg'));
+  await expect(form.getByRole('img', { name: 'Imagen 1' })).toBeVisible();
+  await form.getByLabel('Nombre').fill('[QA] Alta con reintento de módulo');
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  await form.getByLabel('Precio de venta').fill('1650');
+  await form.getByRole('button', { name: 'Guardar producto' }).click();
+
+  await expect(page.getByRole('region', { name: 'Ficha de [QA] Alta con reintento de módulo' })).toBeVisible();
+  await expect(page.getByText('Algo salió mal')).toHaveCount(0);
+  await expect(page.getByText('Producto guardado. No pudimos abrir el detalle')).toHaveCount(0);
+  expect(fixture.rows).toHaveLength(1);
+  expect(fixture.rows[0].name).toBe('[QA] Alta con reintento de módulo');
+  expect(fixture.detailChunkRequests.length).toBeGreaterThanOrEqual(2);
+  expect(new URL(fixture.detailChunkRequests.at(-1)!).searchParams.has('rs_retry')).toBe(true);
+  expect(fixture.pageErrors).toEqual([]);
+});
+
+test('a saved product stays in Stock when its detail chunk remains unavailable', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'Run at 390 px in Android emulation.');
+  const fixture = await mountNewBusinessStock(page, { failDetailChunkCompletely: true });
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await form.getByLabel('Nombre').fill('[QA] Alta con detalle sin conexión');
+  await form.getByLabel('Categoría').selectOption(CATEGORY_ID);
+  await form.getByLabel('Precio de venta').fill('1650');
+  await form.getByRole('button', { name: 'Guardar producto' }).click();
+
+  await expect(page.getByText('Producto guardado. No pudimos abrir el detalle; el producto sigue en Stock.')).toBeVisible({ timeout: 12_000 });
+  await expect(page.getByRole('button', { name: /Agregar producto/i }).first()).toBeVisible();
+  await expect(page.getByText('Algo salió mal')).toHaveCount(0);
+  expect(fixture.rows).toHaveLength(1);
+  expect(fixture.rows[0].name).toBe('[QA] Alta con detalle sin conexión');
+  expect(fixture.detailChunkRequests.length).toBeGreaterThanOrEqual(2);
+  expect(fixture.pageErrors).toEqual([]);
+});
+
+test('a newer build never reloads a dirty mobile product form', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'android-mobile-ai', 'Run at 390 px in Android emulation.');
+  const documentRequests: string[] = [];
+  page.on('request', (request) => { if (request.resourceType() === 'document') documentRequests.push(request.url()); });
+  const fixture = await mountNewBusinessStock(page, { updateBuildOnSecondCheck: true });
+  await expect.poll(() => fixture.getVersionChecks()).toBeGreaterThanOrEqual(1);
+  await page.getByRole('button', { name: /Agregar producto/i }).first().click();
+  const form = page.getByTestId('mobile-product-form');
+  await form.getByLabel('Nombre').fill('[QA] Borrador ante actualización');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+  const updateButton = page.getByRole('button', { name: 'Actualizar' }).last();
+  await expect(updateButton).toBeVisible();
+  await updateButton.click();
+  await expect(page.getByText('Guardá o cerrá el formulario antes de actualizar.')).toBeVisible();
+  await expect(form.getByLabel('Nombre')).toHaveValue('[QA] Borrador ante actualización');
+  expect(documentRequests).toHaveLength(1);
 });
 
 test('Android restores a new product draft after the camera returns through a tab reload', async ({ page }, testInfo) => {

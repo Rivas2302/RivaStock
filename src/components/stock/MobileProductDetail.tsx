@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import {
   Barcode,
   ChevronLeft,
@@ -22,7 +23,7 @@ import { showToast } from '../../lib/toast';
 import BottomSheet from '../mobile/BottomSheet';
 import StockBadge from './StockBadge';
 
-const MovementHistoryPanel = lazy(() => import('../inventory/MovementHistoryPanel'));
+const MovementHistoryPanel = lazyWithRetry('src/components/inventory/MovementHistoryPanel.tsx', () => import('../inventory/MovementHistoryPanel'));
 
 export interface MobileProductEconomics {
   stock: number;

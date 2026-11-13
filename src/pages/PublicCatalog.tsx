@@ -1,4 +1,5 @@
-import React, { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import React, { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
@@ -16,7 +17,7 @@ import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
 import '../components/catalog/catalogInteractions.css';
 import '../components/catalog/superOffers.css';
 
-const CatalogThemeEffects = lazy(() => import('../components/catalog/CatalogThemeEffects'));
+const CatalogThemeEffects = lazyWithRetry('src/components/catalog/CatalogThemeEffects.tsx', () => import('../components/catalog/CatalogThemeEffects'));
 import {
   matchesResellerAvailabilityFilter,
   type ResellerAvailabilityFilter,
@@ -150,6 +151,8 @@ export default function PublicCatalog() {
     const timer = window.setInterval(() => setHeroSlideIndex(index => index + 1), 7000);
     return () => window.clearInterval(timer);
   }, [config?.slug, config?.presentation?.ambience?.animatedEffects, motionPaused]);
+
+  useEffect(() => { void CatalogThemeEffects.preload().catch(() => undefined); }, []);
 
   useEffect(() => {
     if (!loading) {

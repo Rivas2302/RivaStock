@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { BookOpen, Check, Copy, Database, Loader2, MessageSquare, MoreHorizontal, Plus, RefreshCw, Send, Sparkles, StopCircle, Trash2, Undo2 } from 'lucide-react';
 import {
   deleteAIChat,
@@ -28,9 +29,9 @@ import StreamingAssistantMessage from './ai/StreamingAssistantMessage';
 import AIChatToolCalls from './ai/AIChatToolCalls';
 import type { AIChatActionRequest } from '../lib/aiActions';
 
-const MobileAIChatList = lazy(() => import('./ai/MobileAIChatList'));
-const MobileAIChatConversation = lazy(() => import('./ai/MobileAIChatConversation'));
-const AIChatActionProposalCard = lazy(() => import('./ai/AIChatActionProposalCard'));
+const MobileAIChatList = lazyWithRetry('src/components/ai/MobileAIChatList.tsx', () => import('./ai/MobileAIChatList'));
+const MobileAIChatConversation = lazyWithRetry('src/components/ai/MobileAIChatConversation.tsx', () => import('./ai/MobileAIChatConversation'));
+const AIChatActionProposalCard = lazyWithRetry('src/components/ai/AIChatActionProposalCard.tsx', () => import('./ai/AIChatActionProposalCard'));
 const noop = () => undefined;
 
 const PROVIDERS: Array<{ id: AIProviderId; label: string }> = [

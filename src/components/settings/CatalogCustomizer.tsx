@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { registerDirtyCheck } from '../../lib/buildRuntime';
 import { ArrowDown, ArrowLeft, ArrowUp, BadgePercent, Building2, Check, ChevronRight, Copy, ExternalLink, Eye, ImagePlus, LayoutGrid, MessageCircle, Plus, Share2, Sparkles, Trash2, Users } from 'lucide-react';
 import type { CatalogConfig, Category, Product } from '../../types';
 import { formatCurrency, roundPrice } from '../../lib/utils';
@@ -100,6 +101,7 @@ export default function CatalogCustomizer({ config, categories, products, canEdi
   const baseline = useMemo(() => catalogConfigSignature(config, normalize(config)), [config]);
   const current = catalogConfigSignature(draftConfig, draft);
   const dirty = baseline !== current;
+  useEffect(() => registerDirtyCheck('catalog-customizer', () => dirty && !saving), [dirty, saving]);
   const slugChanged = draftConfig.slug !== config.slug;
   const slugValidationError = validateCatalogSlug(draftConfig.slug);
   const activeTheme = getActiveCatalogTheme(draft);

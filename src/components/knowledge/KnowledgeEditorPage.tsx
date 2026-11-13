@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Check, ChevronDown, Download, Loader2, Save, Send, Sparkles } from 'lucide-react';
@@ -21,12 +22,13 @@ import {
 import { EMPTY_DOC, contentHash, stripImageSources, toMarkdown, toPlainText } from '../../lib/knowledge/editorContent';
 import { downloadKnowledgePdf, loadKnowledgePdfImage } from '../../lib/knowledge/pdfBrowser';
 import { showToast } from '../../lib/toast';
+import { registerDirtyCheck } from '../../lib/buildRuntime';
 import { KNOWLEDGE_STATUS_LABELS } from '../../lib/knowledge/format';
 import type { KnowledgeCategory, KnowledgeDocument, KnowledgeFolder, KnowledgeStatus, KnowledgeVersion } from '../../lib/knowledge/types';
 import { startVisiblePolling } from '../../lib/visiblePolling';
 
-const KnowledgeEditor = lazy(() => import('./editor/KnowledgeEditor'));
-const OrganizeWithAIDialog = lazy(() => import('./editor/OrganizeWithAIDialog'));
+const KnowledgeEditor = lazyWithRetry('src/components/knowledge/editor/KnowledgeEditor.tsx', () => import('./editor/KnowledgeEditor'));
+const OrganizeWithAIDialog = lazyWithRetry('src/components/knowledge/editor/OrganizeWithAIDialog.tsx', () => import('./editor/OrganizeWithAIDialog'));
 
 type SaveState = 'saved' | 'dirty' | 'saving' | 'offline' | 'error';
 
@@ -379,6 +381,7 @@ export default function KnowledgeEditorPage({ mode }: { mode: 'create' | 'edit' 
   }, [saveLatestDraft]);
 
   const hasPendingChanges = Boolean(document && dirtyRef.current);
+  useEffect(() => registerDirtyCheck('knowledge-editor', () => hasPendingChanges || saveState === 'saving'), [hasPendingChanges, saveState]);
   const blocker = useUnsavedNavigationBlocker(hasPendingChanges || saveState === 'saving');
 
   useEffect(() => {

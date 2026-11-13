@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useBusinessPlan } from '../hooks/useBusinessPlan';
@@ -22,7 +23,7 @@ import { normalizeCatalogSlug } from '../lib/catalogSlug';
 import { saveAccountProfile, validateDisplayName } from '../lib/accountProfile';
 import { Settings as SettingsIcon, Plus, Trash2, Globe, Palette, LayoutGrid, Tags, DollarSign, Moon, Sun, Copy, ExternalLink, Wrench, AlertTriangle, CheckCircle2, Users, ContactRound, Smartphone } from 'lucide-react';
 import Modal from '../components/Modal';
-const CatalogCustomizer = lazy(() => import('../components/settings/CatalogCustomizer'));
+const CatalogCustomizer = lazyWithRetry('src/components/settings/CatalogCustomizer.tsx', () => import('../components/settings/CatalogCustomizer'));
 import { diagnoseDuplicates, cleanupDuplicates, DiagnosticReport } from '../lib/cleanupDuplicates';
 import { motion, AnimatePresence } from 'motion/react';
 import { useIsMobile } from '../hooks/useIsMobile';

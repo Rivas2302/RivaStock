@@ -388,7 +388,7 @@ export default function useProductEditor({
         notes: '', images: [], inventoryOwnerId: primaryOwner?.id,
       });
       if (isMobile && savedProduct && !returnToResellerList) {
-        navigate(`/stock?producto=${encodeURIComponent(savedProduct.id)}`, { replace: true, state: { fromMobileStock: true } });
+        navigate(`/stock?producto=${encodeURIComponent(savedProduct.id)}`, { replace: true, state: { fromMobileStock: true, productJustSaved: true } });
       } else if (isMobile && returnToResellerList) {
         navigate('/stock', { replace: true, state: {} });
       }

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, type FormEvent } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Archive, ArrowDown, ArrowUp, Check, Edit2, Plus, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
@@ -13,7 +14,7 @@ import {
 import { setInventoryHoldingsEnabled } from '../../lib/inventoryHoldings';
 import { showToast } from '../../lib/toast';
 import type { InventoryOwner } from '../../types';
-const MovementHistoryPanel = lazy(() => import('./MovementHistoryPanel'));
+const MovementHistoryPanel = lazyWithRetry('src/components/inventory/MovementHistoryPanel.tsx', () => import('./MovementHistoryPanel'));
 
 export default function InventoryOwnersTab() {
   const [searchParams] = useSearchParams();

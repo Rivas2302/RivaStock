@@ -1,4 +1,5 @@
-import {lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import {Suspense,useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Zap,Send,MessagesSquare,ChartNoAxesCombined,Plus,RefreshCw,Monitor,Settings2,Clock3,History} from 'lucide-react';
 import {useAuth} from '../AuthContext';
@@ -14,11 +15,11 @@ import FacebookGroupsSettings from '../components/automations/FacebookGroupsSett
 import RehearsalHistory from '../components/automations/RehearsalHistory';
 import {wakeFacebookPublications} from '../lib/facebookConnection';
 import {startVisiblePolling} from '../lib/visiblePolling';
-const FacebookPublicationModal=lazy(()=>import('../components/FacebookPublicationModal'));
-const PublicationHistory=lazy(()=>import('../components/automations/PublicationHistory'));
-const FacebookGroupPerformancePanel=lazy(()=>import('../components/automations/FacebookGroupPerformancePanel'));
-const FacebookPacingSettings=lazy(()=>import('../components/automations/FacebookPacingSettings'));
-const AIActionNotification=lazy(()=>import('../components/automations/AIActionNotification'));
+const FacebookPublicationModal=lazyWithRetry('src/components/FacebookPublicationModal.tsx', () => import('../components/FacebookPublicationModal'));
+const PublicationHistory=lazyWithRetry('src/components/automations/PublicationHistory.tsx', () => import('../components/automations/PublicationHistory'));
+const FacebookGroupPerformancePanel=lazyWithRetry('src/components/automations/FacebookGroupPerformancePanel.tsx', () => import('../components/automations/FacebookGroupPerformancePanel'));
+const FacebookPacingSettings=lazyWithRetry('src/components/automations/FacebookPacingSettings.tsx', () => import('../components/automations/FacebookPacingSettings'));
+const AIActionNotification=lazyWithRetry('src/components/automations/AIActionNotification.tsx', () => import('../components/automations/AIActionNotification'));
 
 export default function Automations() {
   const {ownerUid,isOwner}=useAuth();const canConfigure=usePermission('config','write');const canPublish=usePermission('stock','write');

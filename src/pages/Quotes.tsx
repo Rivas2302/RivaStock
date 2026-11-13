@@ -1,3 +1,4 @@
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { usePagination } from '../hooks/usePagination';
 import Pagination from '../components/Pagination';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -24,7 +25,7 @@ import MobileQuotes from '../components/quotes/MobileQuotes';
 import { useSearchParams } from 'react-router-dom';
 import { calculateTotalWithShipping } from '../lib/saleShipping';
 
-const LazySaleShippingControl = React.lazy(() => import('../components/SaleShippingControl'));
+const LazySaleShippingControl = lazyWithRetry('src/components/SaleShippingControl.tsx', () => import('../components/SaleShippingControl'));
 
 const STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Borrador',

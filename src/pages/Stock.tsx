@@ -1,4 +1,5 @@
-import React, { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import React, { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import DeferredMount from '../components/DeferredMount';
 import NumberField from '../components/NumberField';
 import MoneyInput from '../components/MoneyInput';
@@ -36,6 +37,7 @@ import { getRecentRestockSales } from '../lib/recentSales';
 import { showToast } from '../lib/toast';
 import { clearMobileProductDraft, saveMobileProductDraft } from '../lib/mobileProductDraft';
 import type { MobileProductDraft } from '../lib/mobileProductDraft';
+import { registerBeforeAppReload } from '../lib/buildRuntime';
 import { getProductEditorRoute } from '../lib/productEditorRoute';
 import { validateProductEditorForm } from '../lib/productEditorValidation';
 import { Product, Category, PriceRange, Sale, InventoryHolding, InventoryHoldingDraft } from '../types';
@@ -68,14 +70,14 @@ import {
   ProductEditorTextField,
   ProductEditorTextareaField,
 } from '../components/stock/ProductEditorFields';
-const BarcodePrintModal = lazy(() => import('../components/BarcodePrintModal'));
-const BarcodeScannerOverlay = lazy(() => import('../components/BarcodeScannerOverlay'));
-const FacebookPublicationModal = lazy(() => import('../components/FacebookPublicationModal'));
-const ResellerPriceListModal = lazy(() => import('../components/ResellerPriceListModal'));
-const MobileStockEntry = lazy(() => import('../components/stock/MobileStockEntry'));
-const MobileProductForm = lazy(() => import('../components/stock/MobileProductForm'));
-const ProductDeleteConfirmation = lazy(() => import('../components/stock/ProductDeleteConfirmation'));
-const DesktopProductEditorRoute = lazy(() => import('../components/stock/DesktopProductEditorRoute'));
+const BarcodePrintModal = lazyWithRetry('src/components/BarcodePrintModal.tsx', () => import('../components/BarcodePrintModal'));
+const BarcodeScannerOverlay = lazyWithRetry('src/components/BarcodeScannerOverlay.tsx', () => import('../components/BarcodeScannerOverlay'));
+const FacebookPublicationModal = lazyWithRetry('src/components/FacebookPublicationModal.tsx', () => import('../components/FacebookPublicationModal'));
+const ResellerPriceListModal = lazyWithRetry('src/components/ResellerPriceListModal.tsx', () => import('../components/ResellerPriceListModal'));
+const MobileStockEntry = lazyWithRetry('src/components/stock/MobileStockEntry.tsx', () => import('../components/stock/MobileStockEntry'));
+const MobileProductForm = lazyWithRetry('src/components/stock/MobileProductForm.tsx', () => import('../components/stock/MobileProductForm'));
+const ProductDeleteConfirmation = lazyWithRetry('src/components/stock/ProductDeleteConfirmation.tsx', () => import('../components/stock/ProductDeleteConfirmation'));
+const DesktopProductEditorRoute = lazyWithRetry('src/components/stock/DesktopProductEditorRoute.tsx', () => import('../components/stock/DesktopProductEditorRoute'));
 import { generateInternalBarcode, normalizeBarcode } from '../lib/barcode';
 import { filterOwnInventoryProducts } from '../lib/ownInventory';
 import { ScanLine } from 'lucide-react';
@@ -112,6 +114,12 @@ export default function Stock() {
   const navigate = useNavigate();
   const isResellersRoute = location.pathname === '/revendedores';
   const isMobile = useIsMobile();
+  useEffect(() => {
+    if (!isMobile) return;
+    void MobileProductForm.preload().catch(() => undefined);
+    void BarcodeScannerOverlay.preload().catch(() => undefined);
+    void MobileStockEntry.preload().catch(() => undefined);
+  }, [isMobile]);
   const prefilledBarcodeRef = useRef<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogVisibilitySavingIds, setCatalogVisibilitySavingIds] = useState<Set<string>>(new Set());
@@ -200,6 +208,7 @@ export default function Stock() {
       promotingCatalogProduct,
       returnToResellerList,
     });
+    const unregisterBeforeReload = registerBeforeAppReload(persistDraft);
     const timeoutId = window.setTimeout(persistDraft, 400);
     const persistOnPageHide = () => { persistDraft(); };
     const persistWhenHidden = () => {
@@ -211,6 +220,7 @@ export default function Stock() {
       window.clearTimeout(timeoutId);
       window.removeEventListener('pagehide', persistOnPageHide);
       document.removeEventListener('visibilitychange', persistWhenHidden);
+      unregisterBeforeReload();
     };
   }, [
     creatingProductForReseller, editingProduct, formData, holdingDrafts, isModalOpen, isMobile,

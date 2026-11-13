@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type TouchEvent } from 'react';
+import { lazyWithRetry } from '../../lib/lazyWithRetry';
+import { Suspense, useEffect, useRef, useState, type FormEvent, type TouchEvent } from 'react';
 import { ArrowLeft, ArrowUp, Check, ChevronDown, Copy, Database, Loader2, MoreHorizontal, RefreshCw, Settings2, StopCircle, Trash2, WifiOff } from 'lucide-react';
 import type { AIChat, AIChatJob, AIChatMessage, AIBridgeState, AIJobStream, AIProviderId, CodexModelId, CodexReasoningEffort } from '../../lib/aiBridge';
 import type { KnowledgeJobSource } from '../../lib/knowledge/api';
@@ -11,7 +12,7 @@ import StreamingAssistantMessage from './StreamingAssistantMessage';
 import AIChatToolCalls from './AIChatToolCalls';
 import type { AIChatActionRequest } from '../../lib/aiActions';
 
-const AIChatActionProposalCard = lazy(() => import('./AIChatActionProposalCard'));
+const AIChatActionProposalCard = lazyWithRetry('src/components/ai/AIChatActionProposalCard.tsx', () => import('./AIChatActionProposalCard'));
 
 type ChatSheet = 'menu' | 'settings' | 'rename' | 'delete' | null;
 

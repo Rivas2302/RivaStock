@@ -1,15 +1,16 @@
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { Loader2, Sparkles, Upload } from 'lucide-react';
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useSearchParams } from 'react-router-dom';
 import { useBusinessWriteAccess } from '../hooks/useBusinessWriteAccess';
 import '../styles/knowledge.css';
 import KnowledgePanel from '../components/knowledge/KnowledgePanel';
 
-const KnowledgeDocumentDetail = lazy(() => import('../components/knowledge/KnowledgeDocumentDetail'));
-const KnowledgeAdmin = lazy(() => import('../components/knowledge/KnowledgeAdmin'));
-const KnowledgeLibrary = lazy(() => import('../components/knowledge/KnowledgeLibrary'));
-const UploadDialog = lazy(() => import('../components/knowledge/UploadDialog'));
-const KnowledgeEditorPage = lazy(() => import('../components/knowledge/KnowledgeEditorPage'));
+const KnowledgeDocumentDetail = lazyWithRetry('src/components/knowledge/KnowledgeDocumentDetail.tsx', () => import('../components/knowledge/KnowledgeDocumentDetail'));
+const KnowledgeAdmin = lazyWithRetry('src/components/knowledge/KnowledgeAdmin.tsx', () => import('../components/knowledge/KnowledgeAdmin'));
+const KnowledgeLibrary = lazyWithRetry('src/components/knowledge/KnowledgeLibrary.tsx', () => import('../components/knowledge/KnowledgeLibrary'));
+const UploadDialog = lazyWithRetry('src/components/knowledge/UploadDialog.tsx', () => import('../components/knowledge/UploadDialog'));
+const KnowledgeEditorPage = lazyWithRetry('src/components/knowledge/KnowledgeEditorPage.tsx', () => import('../components/knowledge/KnowledgeEditorPage'));
 
 function KnowledgeLoader() {
   return <div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={36}/></div>;

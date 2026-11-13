@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithRetry } from '../../../lib/lazyWithRetry';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSONContent } from '@tiptap/core';
 import { AlertTriangle, ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
 import Modal from '../../Modal';
@@ -16,7 +17,7 @@ import { buildNotesFromDraft, proposalToTiptap, validateProposal, type Knowledge
 import { removePaths, signedUrl, uploadAsset } from '../../../lib/knowledge/storage';
 import { startVisiblePolling } from '../../../lib/visiblePolling';
 
-const KnowledgeEditorPreview = lazy(() => import('./KnowledgeEditor'));
+const KnowledgeEditorPreview = lazyWithRetry('src/components/knowledge/editor/KnowledgeEditor.tsx', () => import('./KnowledgeEditor'));
 const MAX_NOTES_LENGTH = 7500;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_ORGANIZE_IMAGES = 12;
