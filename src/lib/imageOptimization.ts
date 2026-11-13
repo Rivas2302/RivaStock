@@ -17,6 +17,57 @@ export class ImageProcessingError extends Error {
   }
 }
 
+type WasmEncoderModule = typeof import('./webpWasmEncoder');
+let wasmEncoderModule: Promise<WasmEncoderModule> | undefined;
+
+/** Loads the encoder once; a failed download is forgotten so the next photo retries it. */
+function loadWasmEncoder(): Promise<WasmEncoderModule> {
+  wasmEncoderModule ??= import('./webpWasmEncoder').catch((error: unknown) => {
+    wasmEncoderModule = undefined;
+    throw error;
+  });
+  return wasmEncoderModule;
+}
+
+/** undefined = not probed yet. Safari (all iOS browsers) cannot encode WebP from a canvas. */
+let nativeWebPEncoding: boolean | undefined;
+
+/**
+ * Encodes the canvas as WebP. Chrome and Firefox do it natively. WebKit on
+ * Apple devices ignores the requested type and returns PNG, so those browsers
+ * use a WebAssembly build of libwebp that is downloaded on first use.
+ * Returns null when no encoder could produce WebP.
+ */
+export async function encodeCanvasAsWebP(
+  canvas: HTMLCanvasElement,
+  context: Pick<CanvasRenderingContext2D, 'getImageData'>,
+  quality: number,
+): Promise<Blob | null> {
+  if (nativeWebPEncoding !== false) {
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+    if (blob && blob.type === 'image/webp' && blob.size > 0) {
+      nativeWebPEncoding = true;
+      return blob;
+    }
+    // A PNG answer means "type not supported"; any other failure is not a codec verdict.
+    if (blob && blob.type !== 'image/webp') nativeWebPEncoding = false;
+    else return null;
+  }
+  try {
+    const { encodeWebPWithWasm } = await loadWasmEncoder();
+    const blob = await encodeWebPWithWasm(context.getImageData(0, 0, canvas.width, canvas.height), quality);
+    return blob.size > 0 ? blob : null;
+  } catch (error) {
+    console.error('[image-optimization] WebP WASM encoder failed', error);
+    return null;
+  }
+}
+
+/** Test hook. */
+export function resetWebPEncoderDetectionForTests(): void {
+  nativeWebPEncoding = undefined;
+}
+
 function isHeifFile(file: File): boolean {
   return /\.(?:heic|heif)$/i.test(file.name) || /^image\/hei[cf]/i.test(file.type);
 }
@@ -60,7 +111,7 @@ async function optimizeUploadImageAsWebP(file: File, maxEdge: number, maxBytes?:
     const qualities = maxBytes === undefined ? [0.85] : [0.85, 0.75, 0.65, 0.55, 0.45];
     let smallest: Blob | null = null;
     for (const quality of qualities) {
-      const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+      const blob = await encodeCanvasAsWebP(canvas!, context, quality);
       if (!blob || blob.type !== 'image/webp' || blob.size === 0) {
         throw new ImageProcessingError('compression_failed');
       }
@@ -131,7 +182,7 @@ export async function optimizeUploadImage(
     const context = canvas.getContext('2d');
     if (!context) return file;
     context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
-    const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', 0.85));
+    const blob = await encodeCanvasAsWebP(canvas!, context, 0.85);
     if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return file;
     return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, {
       type: blob.type, lastModified: file.lastModified,
@@ -163,7 +214,7 @@ export async function optimizeCatalogCover(file: File, maxBytes = 300_000): Prom
       if (!context) throw new Error('No se pudo preparar la portada.');
       context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
       for (const quality of [0.82, 0.72, 0.62, 0.52]) {
-        const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+        const blob = await encodeCanvasAsWebP(canvas!, context, quality);
         if (blob?.type === 'image/webp' && blob.size <= maxBytes) {
           return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp', lastModified: file.lastModified });
         }
@@ -193,7 +244,7 @@ export async function optimizeSupplierCatalogPhoto(file: File, maxEdge = 400, ma
       if (!context) throw new Error('No se pudo preparar la foto del proveedor.');
       context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
       for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]) {
-        const blob = await new Promise<Blob | null>(resolve => canvas!.toBlob(resolve, 'image/webp', quality));
+        const blob = await encodeCanvasAsWebP(canvas!, context, quality);
         if (blob?.type === 'image/webp' && blob.size > 0 && blob.size <= maxBytes) {
           return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp', lastModified: file.lastModified });
         }

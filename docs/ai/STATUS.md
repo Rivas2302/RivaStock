@@ -1,3 +1,9 @@
+# 2026-11-13 — fotos de producto en iPhone (WebP)
+
+- Causa confirmada de «No se pudo comprimir la foto» en iPhone: WebKit en dispositivos Apple no codifica WebP desde canvas; `canvas.toBlob(…, 'image/webp')` devuelve PNG (WebKit bug 226950, WONTFIX) y `optimizeUploadImageAsWebP` lo rechazaba como `compression_failed`. Ningún iPhone podía subir fotos. El WebKit de Playwright en Linux/Windows sí codifica WebP, por eso las pruebas «iPhone» no lo detectaban.
+- Arreglo: `encodeCanvasAsWebP` (`src/lib/imageOptimization.ts`) usa el codificador nativo y, si el navegador responde PNG, libwebp en WebAssembly (`@jsquash/webp` 1.5.0, `src/lib/webpWasmEncoder.ts`), descargado solo en esos navegadores (≈128 KB gzip). Cubre foto de producto, miniatura, portada, fotos de proveedor y el recorte de `SupplierListPhotoPicker`. Android no cambia.
+- Verificación sobre `714c331`: lint sin errores nuevos, 56 pruebas focales aprobadas, build con los `.wasm` en `dist/assets`. WebKit 26.5 y Chrome 153 con el canvas forzado a PNG como en iPhone: sin el cambio, `compression_failed`; con el cambio, WebP real de 1600×1200 (≈226 KB) y miniatura de ≈62 KB. Sin cambios en Android con codificación nativa. No se probó en un iPhone físico.
+
 # 2026-11-12 — estabilidad del editor de productos en Stock
 
 - PASO 0: el doble toque no se reprodujo en las pruebas de Playwright antes del cambio: 10 aperturas/cierres consecutivos a 390 px en Android y 10 aperturas/cierres en escritorio. Sí se confirmó en el código la carrera entre `isModalOpen` y el cambio asíncrono de URL: el efecto que cerraba el editor podía observar la ubicación anterior durante una transición de React Router.

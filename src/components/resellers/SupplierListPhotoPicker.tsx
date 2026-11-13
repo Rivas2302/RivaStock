@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { Crop, ImagePlus, X } from 'lucide-react';
+import { encodeCanvasAsWebP } from '../../lib/imageOptimization';
 
 type CropRect = { x: number; y: number; width: number; height: number };
 
@@ -18,7 +19,7 @@ export async function cropSupplierListImage(source: File, rect: CropRect, natura
     const context = canvas.getContext('2d');
     if (!context) throw new Error('No pudimos preparar el recorte.');
     context.drawImage(bitmap, x, y, width, height, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', 0.88));
+    const blob = await encodeCanvasAsWebP(canvas, context, 0.88);
     if (!blob) throw new Error('No pudimos preparar el recorte.');
     return new File([blob], 'foto-proveedor.webp', { type: 'image/webp', lastModified: Date.now() });
   } finally {

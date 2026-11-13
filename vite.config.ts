@@ -75,6 +75,10 @@ export default defineConfig(() => {
         },
       },
     },
+    // The WASM encoder resolves its .wasm next to the module; pre-bundling breaks that path in dev.
+    optimizeDeps: {
+      exclude: ['@jsquash/webp'],
+    },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
