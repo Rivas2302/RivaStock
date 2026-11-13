@@ -5,7 +5,7 @@
 - Se eliminaron los cierres por estado/URL duplicado y se verificó el atrás con y sin cambios, sin una segunda pulsación. Se agregó validación junto al campo, foco/scroll al primer error, motivo visible al fallar el guardado, indicador «Guardando…» y «Guardar y cargar otro» para móvil y escritorio. Se mantuvo el guardado de titulares con `save_product_with_holdings`.
 - Verificación local: `npm run lint`, `npm run build` y suite completa (258 archivos, 1.477 pruebas) aprobados. Vitest se ejecutó con URL y clave pública ficticias requeridas por los tests, sin credenciales reales. Playwright focal: 34 pasaron y 24 se omitieron por las restricciones de proyecto; incluyó Android a 390 px, Chromium a 390/1.440 px, escáner, edición, atrás, múltiples titulares, guardado fallido, foto tras volver de cámara y validación. Los datos fueron fixtures aislados; no se escribieron datos de producción.
 - No se pudo confirmar una reproducción visual del reporte antes del arreglo. La carrera de orden de renders era posible aunque no ocurriera en los 10 intentos baseline; se corrigió estructuralmente usando la URL como única fuente de apertura móvil.
-- Pendiente: integrar este commit en `main` y verificar el despliegue `Current` desde `main`.
+- El commit `08538a8` está en `origin/main` y se desplegó desde un checkout limpio de ese commit. Vercel `dpl_5WjwSASFeDMtNDUeS9AZ1BFvt3gP` quedó `READY` en Production y aliasado a `rivastock.vercel.app`; el chunk público de Stock confirmó las rutas derivadas y el aviso de recuperación, y el de `MobileProductForm` confirmó «Guardar y cargar otro».
 
 # 2026-11-10 — cierre seguro de I52 y estabilidad del catálogo
 
