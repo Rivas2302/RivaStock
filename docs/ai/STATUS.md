@@ -2241,3 +2241,13 @@ A producción (Vercel, Edge Functions, migraciones, descargas) solo se despliega
 | 4 | Luna / medio / nuevo | 6583 / 89 | 689 | 1585 | 808 | 1020 | 6 | 1155 | 0 | 5405 | 4 | 1705 | 15288 | `productos_buscar` / 2123 / 1; `previsualizar_cambio` / 1793 / 1; `proponer_desde_preview` / 1148 / 1 | 572 | 23912 | 24601 |
 
 La tabla posterior queda pendiente de los cuatro turnos que ejecutará el dueño después de actualizar el Bridge a 1.30.0. No crear mensajes para adelantarla.
+
+## 2026-11-13 — Recuperación ante fallos de chunks dinámicos
+
+- Se envolvieron todas las cargas `React.lazy` en `lazyWithRetry`: tres reintentos con pausas crecientes y URL nueva por intento para evitar la caché negativa del navegador. Cuando el error identifica el chunk anterior, se reintenta ese recurso exacto; la recarga automática se reserva para cuando `/version.json` confirme un build nuevo.
+- El build genera `version.json` y `lazy-chunks.json`, ambos con `Cache-Control: no-store`. La app consulta la versión al volver a primer plano y cada 10 minutos, conserva borradores antes de recargar, no recarga formularios modificados y ofrece una actualización discreta. La carga de pantallas clave se precalienta en segundo plano.
+- Un error del detalle después de guardar lleva al usuario a Stock con «Producto guardado». La pantalla general de error ofrece reintentar conservando la URL, muestra el detalle técnico plegado y no expone la URL del chunk.
+- `client-runtime-diagnostics` acepta solo el evento acotado de carga, sin usuario, URL ni contenido. El smoke de producción respondió **202** desde el origen permitido y **403** desde un origen ajeno.
+- Verificación local: lint y build aprobados; suite completa **261 archivos / 1.489 pruebas**. Playwright: **7 pasaron / 3 omitidas por plataforma**, incluyendo alta móvil con error transitorio y permanente del detalle en Android emulado a 390 px, y recuperación de catálogo/checkout en WebKit iPhone 11 a 390 px. No se usaron cuentas ni datos reales.
+- Commit `21501f6` pusheado a `main`. Vercel Production/Current quedó READY en `dpl_DYjsfid4Af723EpWGsRtiq2uMdkL`. `/version.json` y `/lazy-chunks.json` respondieron 200 con `no-store`; ambos coinciden con el build actual. El manifiesto enumera 527 chunks; `MobileProductDetail` responde 200 con MIME JavaScript y caché immutable.
+- Sin migraciones ni cambios de datos. I53 sigue en el cierre de Etapa 4: falta la aceptación manual de Riva con AI Bridge 1.30.0 en el mismo chat de prueba (cuatro comprobaciones, incluido alta oculta, Confirmar y Deshacer) para completar la tabla posterior de tiempos. No empezar Etapa 5.
