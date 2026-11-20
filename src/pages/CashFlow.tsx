@@ -233,6 +233,7 @@ export default function CashFlow() {
   const {
     availableBank,
     availableCash,
+    availableOther,
     filteredEntries,
     netBalance,
     totalCollected,
@@ -275,11 +276,16 @@ export default function CashFlow() {
       return matchesSearch && matchesType && (typeFilter !== 'gastos' || matchesExpenseCategory(entry, expenseCategory));
     });
 
+    const availableBank = bankIncome - bankExpenses;
+    const availableCash = cashIncome - cashExpenses;
+    const netBalance = totalCollected - totalExpenses;
+
     return {
-      availableBank: bankIncome - bankExpenses,
-      availableCash: cashIncome - cashExpenses,
+      availableBank,
+      availableCash,
+      availableOther: netBalance - availableCash - availableBank,
       filteredEntries,
-      netBalance: totalCollected - totalExpenses,
+      netBalance,
       totalCollected,
       totalExpenses,
       totalPendingExpenses,
@@ -416,7 +422,7 @@ export default function CashFlow() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">Balance Neto</p>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">Balance neto pagado</p>
             <div className="p-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 rounded-xl">
               <Wallet size={20} />
             </div>
@@ -427,7 +433,7 @@ export default function CashFlow() {
           )}>
             {formatCurrency(netBalance)}
           </p>
-          <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase">Efectivo</p>
               <p className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(availableCash)}</p>
@@ -436,7 +442,12 @@ export default function CashFlow() {
               <p className="text-[10px] font-bold text-slate-400 uppercase">Banco/Transf.</p>
               <p className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(availableBank)}</p>
             </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase" title="Neto de los demás medios de pago">Otros medios</p>
+              <p className="text-lg font-bold text-slate-900 dark:text-white">{formatCurrency(availableOther)}</p>
+            </div>
           </div>
+          <p className="text-xs text-slate-400 mt-3">Solo movimientos pagados; los pendientes se muestran por separado.</p>
         </div>
 
         <div className="space-y-4 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 md:space-y-0">
