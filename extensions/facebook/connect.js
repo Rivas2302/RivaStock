@@ -126,7 +126,7 @@ diagnose.addEventListener('click',async()=>{
   finally{diagnose.disabled=false;}
 });
 const status = document.querySelector('#status');
-const saved = await chrome.storage.local.get(['connection', 'status','paused','groupDiscovery','groupDiscoveryIssue']);
+const saved = await chrome.storage.local.get(['connection', 'status','paused','groupDiscovery','groupDiscoveryIssue','autoGroupMaintenance']);
 const {pendingConnection} = await chrome.storage.session.get('pendingConnection');
 if (!saved.connection && pendingConnection?.expiresAt > Date.now()) {
   document.querySelector('#url').value=pendingConnection.url;
@@ -141,7 +141,9 @@ const toggle = document.querySelector('#toggle');
 toggle.disabled = !saved.connection;
 toggle.textContent = saved.paused === false ? 'Pausar cola' : 'Activar cola';
 const groupsCheck=document.querySelector('#groups-check');
+const automaticGroupMaintenance=document.querySelector('#automatic-group-maintenance');
 const groupStatus=document.querySelector('#group-status');
+automaticGroupMaintenance.checked=saved.autoGroupMaintenance===true;
 function renderConnection(){
   document.querySelector('#connection-label').textContent=currentConnection?'PC vinculada':'PC sin vincular';
   document.querySelector('#connection-dot').className=currentConnection?'dot connected':'dot';
@@ -164,6 +166,12 @@ async function checkGroups(refresh=false){
   catch(error){groupStatus.textContent=error.message;groupStatus.className='activity error';groupStatus.setAttribute('role','alert');}
   finally{groupsCheck.disabled=!currentConnection;}
 }
+automaticGroupMaintenance.addEventListener('change',async()=>{
+  automaticGroupMaintenance.disabled=true;
+  try{await chrome.storage.local.set({autoGroupMaintenance:automaticGroupMaintenance.checked});}
+  catch(error){automaticGroupMaintenance.checked=!automaticGroupMaintenance.checked;groupStatus.textContent=error.message;groupStatus.className='activity error';}
+  finally{automaticGroupMaintenance.disabled=false;}
+});
 groupsCheck.addEventListener('click',()=>void checkGroups(true));renderConnection();renderGroups(saved);
 if(currentConnection)void checkGroups();
 toggle.addEventListener('click',async () => {

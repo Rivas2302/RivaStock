@@ -774,6 +774,8 @@ async function persistResult(connection,active,serverFeatures){
 let maintaining=false;
 async function maintainGroups(connection){
   if(maintaining||readingGroups)return;
+  const settings=await chrome.storage.local.get('autoGroupMaintenance');
+  if(settings.autoGroupMaintenance!==true)return;
   const api=globalThis.chrome;
   maintaining=true;
   try{
