@@ -31,6 +31,7 @@ interface MobileCashFlowExperienceProps {
   totalPendingExpenses: number;
   availableCash: number;
   availableBank: number;
+  availableOther: number;
   canWrite: boolean;
   saving: boolean;
   exporting: 'excel' | 'pdf' | null;
@@ -152,9 +153,10 @@ export default function MobileCashFlowExperience(props: MobileCashFlowExperience
     </header>
 
     <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm">
-      <div className="flex items-center justify-between"><p className="text-sm font-semibold text-[var(--ink-subtle)]">Disponible</p><Wallet size={19} className="text-[var(--brand)]" /></div>
+      <div className="flex items-center justify-between"><p className="text-sm font-semibold text-[var(--ink-subtle)]">Balance neto pagado</p><Wallet size={19} className="text-[var(--brand)]" /></div>
       <p className="mt-2 text-3xl font-black">{money(props.totalCollected - props.totalExpenses, props.currencySymbol)}</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--line)] pt-4 text-sm"><div><span className="text-[var(--ink-subtle)]">Efectivo</span><p className="mt-1 font-bold">{money(props.availableCash, props.currencySymbol)}</p></div><div><span className="text-[var(--ink-subtle)]">Banco</span><p className="mt-1 font-bold">{money(props.availableBank, props.currencySymbol)}</p></div></div>
+      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-[var(--line)] pt-4 text-sm"><div><span className="text-[var(--ink-subtle)]">Efectivo</span><p className="mt-1 font-bold">{money(props.availableCash, props.currencySymbol)}</p></div><div><span className="text-[var(--ink-subtle)]">Banco/Transf.</span><p className="mt-1 font-bold">{money(props.availableBank, props.currencySymbol)}</p></div><div><span className="text-[var(--ink-subtle)]">Otros</span><p className="mt-1 font-bold">{money(props.availableOther, props.currencySymbol)}</p></div></div>
+      <p className="mt-3 text-xs text-[var(--ink-subtle)]">Solo movimientos pagados; los pendientes se muestran por separado.</p>
     </section>
 
     <section className="grid grid-cols-2 gap-3">

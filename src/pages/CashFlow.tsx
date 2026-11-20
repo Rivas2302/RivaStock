@@ -404,6 +404,7 @@ export default function CashFlow() {
     totalPendingExpenses={totalPendingExpenses}
     availableCash={availableCash}
     availableBank={availableBank}
+    availableOther={availableOther}
     canWrite={canWrite}
     saving={saving}
     exporting={exporting}
