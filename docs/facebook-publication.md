@@ -18,7 +18,9 @@ La gestión está centralizada en **Automatizaciones → Publicaciones**. Ver [n
 
 La extensión 0.5.1 conserva el estado activo entre reinicios y reconstruye su alarma si Chrome la pierde. No hace falta abrir su panel ni pulsar Activar cada vez. Un error de un producto lo deja para revisión sin pausar todos los demás. Una caída de red se vuelve a comprobar automáticamente. Un envío de resultado desconocido nunca se vuelve a publicar por sí solo. Si se pausa la cola manualmente, se respeta esa decisión después de reiniciar.
 
-En Windows, ejecutar una vez `scripts/configure-facebook-startup.ps1` crea **RivaStock Facebook.lnk** en la carpeta de inicio del usuario, para abrir Chrome y Marketplace al iniciar sesión. No requiere administrador. Usa el perfil habitual de Chrome; si se necesita uno específico, pasar `-ChromeProfileDirectory 'Profile 1'` con el nombre real de su carpeta. Para desactivarlo, ejecutar el mismo archivo con `-Remove`.
+En Windows, ejecutar una vez `scripts/configure-facebook-startup.ps1` crea **RivaStock Facebook.lnk** en la carpeta de inicio del usuario, para abrir Chrome y Marketplace al iniciar sesión. No requiere administrador. Usa el perfil habitual de Chrome; si se necesita uno específico, pasar `-ChromeProfileDirectory 'Profile 1'` con el nombre real de su carpeta. Para desactivarlo, ejecutar el mismo archivo con `-Remove`; la cola no procesará publicaciones hasta que abras Chrome.
+
+La extensión puede actualizar los grupos automáticamente desde su panel. Esa lectura puede abrir una ventana de Facebook. Desactivá **Actualizar grupos automáticamente** para evitarla; la actualización manual y el procesamiento de publicaciones aprobadas siguen disponibles.
 
 El inicio se produce al entrar a Windows, no antes del PIN o contraseña. La PC debe seguir encendida y conectada a Internet. Si Facebook exige iniciar sesión o resolver una verificación, debe hacerlo el usuario. El inicio automático no puede funcionar con la PC apagada o suspendida.
 
