@@ -203,6 +203,10 @@ const buildDraftItem = (product: Product, list: PriceList, index: number): Price
   updatedAt: new Date().toISOString(),
 });
 const PRICE_LIST_PAGE_SIZE = 50;
+const SUPPLIER_CAPTURE_PHOTO_TIMEOUT_MS = SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse + SUPPLIER_PHOTO_TIMEOUT_MS.catalogDownload;
+const SUPPLIER_CAPTURE_PROXY_INTERVAL_MS = 550;
+const pendingSupplierCapturePhotos = new Map<string, Promise<File>>();
+let nextSupplierCaptureProxyAt = 0;
 
 type PriceListBulkAction = 'add' | 'remove' | PriceListAvailability;
 type PriceListBulkUndo =
@@ -237,6 +241,34 @@ type MarginApplyConfirmation = {
   nextItems: PriceListItem[];
 };
 
+function fetchSupplierCapturePhotoWithFallback(captureId: string, sourceUrl: string, supplierUrl: string, timeoutMs: number): Promise<File> {
+  const key = `${captureId}\u0000${sourceUrl}`;
+  const pending = pendingSupplierCapturePhotos.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    try {
+      return await fetchSupplierCaptureImage(captureId, sourceUrl, timeoutMs);
+    } catch (extensionError) {
+      try {
+        const now = Date.now();
+        const proxyRequestAt = Math.max(now, nextSupplierCaptureProxyAt);
+        nextSupplierCaptureProxyAt = proxyRequestAt + SUPPLIER_CAPTURE_PROXY_INTERVAL_MS;
+        if (proxyRequestAt > now) await new Promise(resolve => window.setTimeout(resolve, proxyRequestAt - now));
+        return await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+      } catch {
+        throw extensionError;
+      }
+    }
+  })();
+  pendingSupplierCapturePhotos.set(key, request);
+  void request.then(
+    () => { if (pendingSupplierCapturePhotos.get(key) === request) pendingSupplierCapturePhotos.delete(key); },
+    () => { if (pendingSupplierCapturePhotos.get(key) === request) pendingSupplierCapturePhotos.delete(key); },
+  );
+  return request;
+}
+
 function sameResellerSettings(left: ResellerSettingsSnapshot | null, right: ResellerSettingsSnapshot): boolean {
   return Boolean(left
     && left.publicEnabled === right.publicEnabled
@@ -252,11 +284,15 @@ function sameResellerSettings(left: ResellerSettingsSnapshot | null, right: Rese
 function SupplierImportPhotoPreview({
   sourceUrl,
   supplierUrl,
+  captureId,
+  file,
   isRivaCatalogSource = false,
   onFailure,
 }: {
   sourceUrl: string;
   supplierUrl: string;
+  captureId?: string | null;
+  file?: File;
   isRivaCatalogSource?: boolean;
   onFailure: () => void;
 }) {
@@ -273,13 +309,17 @@ function SupplierImportPhotoPreview({
     let active = true;
     let requested = false;
     let objectUrl: string | null = null;
+    setFailed(false);
+    setPreviewUrl(null);
     const load = async () => {
       if (requested) return;
       requested = true;
       try {
-        const image = isRivaCatalogSource
+        const image = file ?? (isRivaCatalogSource
           ? await fetchRivaCatalogImage(sourceUrl)
-          : await fetchSupplierCatalogImage(sourceUrl, supplierUrl);
+          : captureId
+            ? await fetchSupplierCapturePhotoWithFallback(captureId, sourceUrl, supplierUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse)
+            : await fetchSupplierCatalogImage(sourceUrl, supplierUrl));
         objectUrl = URL.createObjectURL(image);
         if (active) setPreviewUrl(objectUrl);
         else URL.revokeObjectURL(objectUrl);
@@ -309,7 +349,7 @@ function SupplierImportPhotoPreview({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [isRivaCatalogSource, sourceUrl, supplierUrl]);
+  }, [captureId, file, isRivaCatalogSource, sourceUrl, supplierUrl]);
 
   return (
     <span ref={containerRef} data-testid="supplier-import-photo-preview" className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">
@@ -1543,9 +1583,9 @@ export default function ResellerPriceListModal({
         } else {
           if (captureId) {
             file = await withSupplierPhotoTimeout(
-              () => fetchSupplierCaptureImage(captureId, candidate.sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
-              SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
-              'extensionResponse',
+              () => fetchSupplierCapturePhotoWithFallback(captureId, candidate.sourceUrl, supplierUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
+              SUPPLIER_CAPTURE_PHOTO_TIMEOUT_MS,
+              'catalogDownload',
             );
             setSupplierImportPhotoFiles(current => ({ ...current, [candidate.row.sourceRow]: file }));
           } else {
@@ -2161,9 +2201,9 @@ export default function ResellerPriceListModal({
           } else {
             if (supplierExtensionCaptureId) {
               file = await withSupplierPhotoTimeout(
-                () => fetchSupplierCaptureImage(supplierExtensionCaptureId, sourceUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
-                SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse,
-                'extensionResponse',
+                () => fetchSupplierCapturePhotoWithFallback(supplierExtensionCaptureId, sourceUrl, supplierImportPageUrl, SUPPLIER_PHOTO_TIMEOUT_MS.extensionResponse),
+                SUPPLIER_CAPTURE_PHOTO_TIMEOUT_MS,
+                'catalogDownload',
               );
             } else {
               file = await withSupplierPhotoTimeout(
@@ -2886,7 +2926,7 @@ export default function ResellerPriceListModal({
                                     <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                                   <div className="flex items-center gap-2 sm:w-24 sm:flex-col sm:items-start">
                                     {previewUrl && sourceImageUrl
-                                      ? <SupplierImportPhotoPreview sourceUrl={sourceImageUrl} supplierUrl={supplierImportPageUrl} isRivaCatalogSource={Boolean(supplierRivaCatalogSource)} onFailure={() => setSupplierImportPhotoFailedRows(current => current.includes(row.sourceRow) ? current : [...current, row.sourceRow])} />
+                                      ? <SupplierImportPhotoPreview sourceUrl={sourceImageUrl} supplierUrl={supplierImportPageUrl} captureId={supplierExtensionCaptureId} file={supplierImportPhotoFiles[row.sourceRow]} isRivaCatalogSource={Boolean(supplierRivaCatalogSource)} onFailure={() => setSupplierImportPhotoFailedRows(current => current.includes(row.sourceRow) ? current : [...current, row.sourceRow])} />
                                       : previewUrl
                                         ? <img src={previewUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover"/>
                                         : <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-[10px] text-[var(--ink-muted)]">Sin foto</span>}
