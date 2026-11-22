@@ -152,7 +152,7 @@ try {
   await extensionPage.setViewportSize({ width: 390, height: 760 });
   await extensionPage.goto(`chrome-extension://${extensionId}/connect.html`);
   await extensionPage.locator('#supplier-start').waitFor({ state: 'visible' });
-  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent?.startsWith('Versión 0.6.5 · actualizada automáticamente'));
+  await extensionPage.waitForFunction(() => document.querySelector('#version')?.textContent?.startsWith('Versión 0.6.7 · actualizada automáticamente'));
   if (!(await extensionPage.locator('.brand p').innerText()).includes('Importar listas de proveedores')) {
     throw new Error('The supplier import popup title is missing.');
   }

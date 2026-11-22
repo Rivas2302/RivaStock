@@ -140,7 +140,7 @@ describe('supplier list source extraction', () => {
   it('directs JavaScript-rendered catalogs to the browser extension instead of implying server-side scraping', async () => {
     invokeMock.mockResolvedValue({ data: { source: 'text', currency: null, items: [], text: 'Catálogo cargado con JavaScript' }, error: null });
     await expect(extractSupplierListCatalog('https://supplier.com/catalog'))
-      .rejects.toThrow('Este proveedor carga productos con JavaScript: usá la extensión para traer todo');
+      .rejects.toThrow('Esta tienda arma el catálogo con JavaScript y el lector por enlace no puede ejecutar la página.');
   });
 
   it('reads a RivaStock catalog directly and preserves its stable product ID without using fetch-url', async () => {

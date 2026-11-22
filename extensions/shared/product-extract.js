@@ -10,6 +10,8 @@
   const CODE_NAMES = ['sku', 'code', 'codigo', 'product_code', 'barcode', 'id', 'permalink'];
   const CATEGORY_NAMES = ['category', 'categoria', 'rubro', 'product_category'];
   const UNSAFE_DOM = 'form,button,input,select,textarea,[contenteditable="true"],.list_description,.video_centrado,.carousel-control,.swiper-button-next,.swiper-button-prev,[aria-label*="slide" i]';
+  const LIST_PRICE_SELECTORS = 'del,.old,[class~="old"],.price-original,[class*="original"],[class*="regular"],[data-list-price],[class*="old-price"],[class*="price-old"]';
+  const PRICE_TEXT = /(?:\bARS\b|\bUSD\b|U\$S|US\$|ARG\s*\$|AR\$|[$€£])\s*\d/i;
 
   function decodeHtmlEntities(value) {
     const named = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“' };
@@ -245,7 +247,7 @@
     const candidates = new Set();
     const selectors = [
       '.caja_producto', 'div[data-id]', 'article[data-sku]', '[data-sku]', '[data-product]', '[data-product-id]', '[itemtype*="Product" i]',
-      'article.product', 'article.product-card', 'li.product', '.product-card', '.product-item', '.wd-product', '.product-grid-item',
+      'article.product', 'article.product-card', 'article.card', 'li.product', '.product-card', '.product-item', '.wd-product', '.product-grid-item',
       '.js-item-product', '.item-product', '.grid-item.product', '[class*="product-card"]',
     ];
     for (const selector of selectors) for (const node of document.querySelectorAll(selector)) candidates.add(node);
@@ -255,10 +257,12 @@
       if (!visible(node)) continue;
       if (node.matches('img,svg,button,input,select,textarea')) continue;
       const title = node.querySelector('.descrip h1, .header, h1, h2, h3, [itemprop="name"], .product-title, .woocommerce-loop-product__title, .js-item-name, [class*="title"], [class*="nombre"], [class*="name"]');
-      const priceNodes = [...node.querySelectorAll('[itemprop="price"], p.datos strong, strong.caja_precio_noimptk, .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="price"], [class*="precio"], [class*="ars"], [class*="usd"]')]
-        .filter(candidate => !candidate.matches('del,[class*="original"],[class*="regular"],[data-list-price],[class*="bulto"],[class*="pack"]'));
+      const priceNodes = [...node.querySelectorAll('[itemprop="price"], p.datos strong, strong.caja_precio_noimptk, .price-current, .sale-price, .woocommerce-Price-amount, .price, [class*="price"], [class*="precio"], [class*="ars"], [class*="usd"], p, span, strong, b')]
+        .filter(candidate => !candidate.closest(`${LIST_PRICE_SELECTORS},[class*="bulto"],[class*="pack"],[class*="bulk"],[class*="case"]`)
+          && PRICE_TEXT.test(safeText(candidate.textContent)));
       const genericPriceLeaves = [...node.querySelectorAll('*')].filter(candidate => candidate.children.length === 0
-        && /(?:\bARS\b|\bUSD\b|U\$S|US\$|ARG\s*\$|AR\$|\$)\s*\d/i.test(safeText(candidate.textContent)));
+        && !candidate.closest(LIST_PRICE_SELECTORS)
+        && PRICE_TEXT.test(safeText(candidate.textContent)));
       const priceNode = chooseUnitPriceNode([...priceNodes, ...genericPriceLeaves]);
       const imageNodes = [...node.querySelectorAll('.carousel-inner .item img, img')]
         .filter(image => !image.closest(UNSAFE_DOM) && isLikelyProductImage(image))
@@ -294,8 +298,13 @@
         ?? permalinkCode
         ?? node.getAttribute('data-product');
       const categoryNode = node.querySelector('.meta .category, p.rubro_centrado, [itemprop="category"], [data-category], [class*="category"], [class*="categoria"], [class*="rubro"], [class*="ceja"], [class*="eyebrow"]');
-      const brandNode = node.querySelector('.meta .brand, [itemprop="brand"], [class*="brand"], [class*="marca"]');
-      const priceText = safeText(priceNode.textContent);
+      const previousTitleParagraph = title?.previousElementSibling;
+      const fallbackBrandNode = previousTitleParagraph?.tagName === 'P' && !PRICE_TEXT.test(safeText(previousTitleParagraph.textContent))
+        ? previousTitleParagraph : null;
+      const brandNode = node.querySelector('.meta .brand, [itemprop="brand"], [class*="brand"], [class*="marca"]') ?? fallbackBrandNode;
+      const currentPriceNode = priceNode.cloneNode(true);
+      currentPriceNode.querySelectorAll(LIST_PRICE_SELECTORS).forEach(listPrice => listPrice.remove());
+      const priceText = safeText(currentPriceNode.textContent);
       const imageUrls = imageNodes.flatMap(image => [
         image.currentSrc,
         bestSrcsetCandidate(image.getAttribute('data-srcset')),
@@ -303,7 +312,7 @@
         image.getAttribute('data-src'), image.getAttribute('data-lazy'), image.getAttribute('src'), image.src,
       ]).filter(Boolean);
       const allText = safeTexts.join(' ');
-      const listPriceNode = node.querySelector('del,.price-original,[class*="original"],[class*="regular"],[data-list-price]');
+      const listPriceNode = node.querySelector(LIST_PRICE_SELECTORS);
       const packPriceNode = node.querySelector('[class*="bulto-precio"],[class*="pack-price"],[class*="bulk-price"],[class*="case-price"]');
       cards.push({
         title: titleText, text: allText.slice(0, MAX_TEXT_LENGTH), priceText,
@@ -330,7 +339,7 @@
       return null;
     };
     const depth = node => { let value = 0; for (let parent = node; parent; parent = parent.parentElement) value += 1; return value; };
-    const sorted = nodes.filter(node => node && !node.closest('[class*="bulto"],[class*="pack"],[class*="bulk"],[class*="case"],[class*="original"],[class*="regular"],[data-list-price]'))
+    const sorted = nodes.filter(node => node && !node.closest(`${LIST_PRICE_SELECTORS},[class*="bulto"],[class*="pack"],[class*="bulk"],[class*="case"]`))
       .sort((left, right) => depth(right) - depth(left));
     return sorted.find(node => currencyKind(node.textContent) === 'ARS')
       ?? sorted.find(node => currencyKind(node.textContent) === 'USD')

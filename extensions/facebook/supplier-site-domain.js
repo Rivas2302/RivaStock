@@ -35,7 +35,8 @@ export function isKnownSupplierImageCdn(value) {
     const url = new URL(value);
     const host = url.hostname.toLowerCase().replace(/\.$/, '');
     return url.protocol === 'https:' && !url.username && !url.password
-      && (EXACT_IMAGE_CDN_HOSTS.has(host) || (host.endsWith('.imgix.net') && host.length > '.imgix.net'.length));
+      && (EXACT_IMAGE_CDN_HOSTS.has(host) || (host.endsWith('.imgix.net') && host.length > '.imgix.net'.length)
+        || (/^[a-z0-9-]+\.supabase\.co$/.test(host) && /^\/storage\/v1\/object\/public\/[^/]+\/.+/.test(url.pathname)));
   } catch { return false; }
 }
 

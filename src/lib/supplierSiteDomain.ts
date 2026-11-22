@@ -43,7 +43,8 @@ export function isKnownSupplierImageCdn(value: string): boolean {
     const url = new URL(value);
     const host = url.hostname.toLowerCase().replace(/\.$/, '');
     return url.protocol === 'https:' && !url.username && !url.password
-      && (EXACT_IMAGE_CDN_HOSTS.has(host) || IMAGE_CDN_SUFFIXES.some(suffix => host.endsWith(suffix) && host.length > suffix.length));
+      && (EXACT_IMAGE_CDN_HOSTS.has(host) || IMAGE_CDN_SUFFIXES.some(suffix => host.endsWith(suffix) && host.length > suffix.length)
+        || (/^[a-z0-9-]+\.supabase\.co$/.test(host) && /^\/storage\/v1\/object\/public\/[^/]+\/.+/.test(url.pathname)));
   } catch { return false; }
 }
 

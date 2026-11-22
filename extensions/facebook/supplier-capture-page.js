@@ -10,7 +10,7 @@
   const MAX_LOCAL_ACTIONS = 180;
   const MAX_LOCAL_READ_MS = 160_000;
   const SAFE_IMAGE_QUERY_KEYS = new Set(['auto', 'bg', 'c', 'crop', 'dpr', 'fit', 'fm', 'format', 'h', 'height', 'ixlib', 'q', 'quality', 's', 'scale', 'size', 'v', 'w', 'width']);
-  const CARDS = '.caja_producto,div[data-id],article[data-sku],[data-sku],[data-product],[data-product-id],article.product,article.product-card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
+  const CARDS = '.caja_producto,div[data-id],article[data-sku],[data-sku],[data-product],[data-product-id],article.product,article.product-card,article.card,li.product,.product-card,.product-item,.wd-product,.product-grid-item,.js-item-product,.item-product,[class*="product-card"]';
   let timer = null;
   let crawlStarted = false;
   let pageFinished = false;
@@ -63,7 +63,7 @@
   }
   function productListSignature() {
     const cards = [...document.querySelectorAll(CARDS)];
-    return `${cards.length}:${cards.map(card => card.getAttribute('data-sku') || card.getAttribute('data-id') || card.getAttribute('data-product-id') || card.querySelector('[itemprop="sku"]')?.textContent || '').join('|')}`;
+    return `${cards.length}:${cards.map(card => card.getAttribute('data-sku') || card.getAttribute('data-id') || card.getAttribute('data-product-id') || card.querySelector('[itemprop="sku"],[data-sku],[data-product-id]')?.textContent || card.querySelector('h1,h2,h3,[itemprop="name"]')?.textContent?.trim() || '').join('|')}`;
   }
   function waitForProductListChange(previous, timeoutMs = 15_000) {
     return new Promise(resolve => {

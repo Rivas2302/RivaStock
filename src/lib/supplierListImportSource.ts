@@ -261,7 +261,7 @@ export async function extractSupplierListCatalog(rawUrl: string): Promise<Suppli
     throw new Error('No encontramos productos en ese catálogo.');
   }
   if (data.source === 'text' && data.items.length < 3) {
-    throw new Error('Este proveedor carga productos con JavaScript: usá la extensión para traer todo');
+    throw new Error('Esta tienda arma el catálogo con JavaScript y el lector por enlace no puede ejecutar la página. Abrila en Chrome en tu PC, tocá el ícono de RivaStock y elegí «Importar productos de esta página».');
   }
   return data;
 }
