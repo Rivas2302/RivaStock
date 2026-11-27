@@ -1266,7 +1266,7 @@ export default function Sales() {
                 </button>
                 <button onClick={() => handleExportPDF('detail')} disabled={exporting}
                   className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 border-t border-slate-100 dark:border-slate-800">
-                  <FileDown size={16} className="text-rose-600" /> Detalle de ventas
+                  <FileDown size={16} className="text-rose-600" /> Detalle de ventas</button>
               </div>
             )}
           </div>
@@ -1540,7 +1540,7 @@ export default function Sales() {
                           title="Corregir medio de pago" className="p-2 text-slate-400 transition-colors hover:text-[#365fad] disabled:opacity-40"><CreditCard size={18} /></button>
                       )}
                       <button
-                        onClick={() => openSaleForEdit(s)
+                        onClick={() => openSaleForEdit(s)}
                         disabled={!canWrite || Boolean(projectedSaleMutationDenialReason(s))}
                         title={!canWrite
                           ? 'Sin permiso'
