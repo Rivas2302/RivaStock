@@ -1,5 +1,5 @@
 import { lazyWithRetry } from './lib/lazyWithRetry';
-import React, { Suspense, useRef } from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
@@ -169,7 +169,6 @@ function AppShell() {
   const [pendingSyncCount, setPendingSyncCount] = useState(getOfflineQueueSize);
   const [availableBuild, setAvailableBuild] = useState<string | null>(null);
   const [updateBlockedByDraft, setUpdateBlockedByDraft] = useState(false);
-  const lastLocationKey = useRef(location.key);
 
   useEffect(() => {
     reportReloadedChunkRecovery();
@@ -191,11 +190,6 @@ function AppShell() {
     };
   }, []);
 
-  useEffect(() => {
-    if (lastLocationKey.current === location.key) return;
-    lastLocationKey.current = location.key;
-    if (availableBuild && !hasUnsavedAppChanges()) reloadCurrentPage();
-  }, [availableBuild, location.key]);
 
   useEffect(() => {
     const handleOnline  = () => setIsOnline(true);

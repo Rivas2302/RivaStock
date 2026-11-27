@@ -1,5 +1,5 @@
 import { lazyWithRetry } from '../lib/lazyWithRetry';
-import { useEffect, useMemo, useState, Suspense } from 'react';
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../AuthContext';
@@ -55,6 +55,7 @@ export default function Dashboard() {
     user, refetchToken, refetchData, permissions, holdingsEnabled, isPlatformAdmin, isOwner,
     allowedInventoryOwnerIds, defaultInventoryOwnerId, inventoryAccessError,
   } = useAuth();
+  const userId = user?.uid;
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [now, setNow] = useState(() => new Date());
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -80,7 +82,8 @@ export default function Dashboard() {
   }, [isMobile]);
 
   useEffect(() => {
-    if (!user || inventoryAccessError) {
+    if (!userId || inventoryAccessError) {
+      loadedUserIdRef.current = null;
       setProducts([]);
       setHoldings([]);
       setOwners([]);
@@ -90,21 +93,24 @@ export default function Dashboard() {
     }
 
     let cancelled = false;
+    // Keep the dashboard visible while refreshing data for the same signed-in account.
+    const keepExistingData = loadedUserIdRef.current === userId;
 
     const fetchData = async () => {
-      setLoading(true);
+      if (!keepExistingData) setLoading(true);
       setError(null);
       try {
         // Never paint aggregate product stock before owner-specific data is ready.
         const [p, h, o] = await Promise.all([
-          db.listColumns<Product>('products', user.uid, DASHBOARD_PRODUCT_COLUMNS),
-          holdingsEnabled ? getInventoryHoldings(user.uid) : Promise.resolve([]),
-          db.list<InventoryOwner>('inventory_owners', user.uid),
+          db.listColumns<Product>('products', userId, DASHBOARD_PRODUCT_COLUMNS),
+          holdingsEnabled ? getInventoryHoldings(userId) : Promise.resolve([]),
+          db.list<InventoryOwner>('inventory_owners', userId),
         ]);
         if (cancelled) return;
         setProducts(p);
         setHoldings(h);
         setOwners(sortInventoryOwners(o));
+        loadedUserIdRef.current = userId;
         setLoading(false);
 
         setSourceStates({
@@ -113,9 +119,9 @@ export default function Dashboard() {
           orders: { loading: true, error: false },
         });
         const results = await Promise.allSettled([
-          db.listAllColumns<Sale>('sales', user.uid, DASHBOARD_SALE_COLUMNS),
-          db.listAllColumns<CashFlowEntry>('cash_flow', user.uid, DASHBOARD_CASH_FLOW_COLUMNS),
-          db.listColumns<Order>('orders', user.uid, 'id'),
+          db.listAllColumns<Sale>('sales', userId, DASHBOARD_SALE_COLUMNS),
+          db.listAllColumns<CashFlowEntry>('cash_flow', userId, DASHBOARD_CASH_FLOW_COLUMNS),
+          db.listColumns<Order>('orders', userId, 'id'),
         ]);
         if (cancelled) return;
         if (results[0].status === 'fulfilled') setSales(results[0].value);
@@ -132,7 +138,11 @@ export default function Dashboard() {
       } catch (err) {
         if (cancelled) return;
         console.error('Dashboard fetch error:', err);
-        setError(err instanceof Error ? err.message : 'Error cargando datos');
+        if (!keepExistingData) {
+          setError(err instanceof Error ? err.message : 'Error cargando datos');
+        } else {
+          console.warn('Dashboard background refresh error:', err);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -140,7 +150,7 @@ export default function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [user, refetchToken, holdingsEnabled, inventoryAccessError]);
+  }, [userId, refetchToken, holdingsEnabled, inventoryAccessError]);
 
   const visibleOwners = useMemo(
     () => filterInventoryOwnersByMembership(owners, allowedInventoryOwnerIds),
