@@ -13,7 +13,7 @@ describe('retail catalog order details', () => {
     expect(buildRetailOrderWhatsAppMessage({
       businessName: 'Bazar de prueba', orderCode: 'P-0042',
       items: [{ quantity: 2, name: 'Taza', price: 1200 }], total: 2400,
-      customerName: 'Ana', deliveryMethod: 'pickup',
+      customerName: 'Ana', deliveryMethod: 'pickup', trackingUrl: 'https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
     })).toBe([
       'Hola Bazar de prueba! Te hice un pedido por el catálogo.',
       'Pedido P-0042',
@@ -21,7 +21,7 @@ describe('retail catalog order details', () => {
       'Total: $ 2.400',
       'Nombre: Ana',
       'Entrega: Retiro',
-      'Ver pedido: https://rivastock.vercel.app/pedidos/P-0042',
+      'Ver pedido: https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
     ].join('\n'));
   });
 
@@ -39,6 +39,7 @@ describe('catalog order WhatsApp confirmation', () => {
     expect(buildCatalogOrderWhatsAppMessage({
       businessName: 'Tienda de prueba', orderCode: 'P-0042', channel: 'reseller',
       customerName: 'Ana', total: 11800,
+      trackingUrl: 'https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
       items: [
         { quantity: 1, name: 'Cable USB-C', price: 6800 },
         { quantity: 2, name: 'Auriculares', price: 2500, onOrder: true },
@@ -49,7 +50,7 @@ describe('catalog order WhatsApp confirmation', () => {
       '1 × Cable USB-C · $ 6.800',
       '2 × Auriculares (por pedido) · $ 2.500',
       'Total: $ 11.800',
-      'Ver pedido: https://rivastock.vercel.app/pedidos/P-0042',
+      'Ver pedido: https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
     ].join('\n'));
   });
 
@@ -69,10 +70,11 @@ describe('catalog order WhatsApp confirmation', () => {
       businessName: 'Tienda de prueba', orderCode: 'P-0042',
       items: [{ quantity: 2, name: 'Auriculares', price: 1200 }],
       subtotal: 2400, shippingAmount: 5000, total: 7400,
+      trackingUrl: 'https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
     })).toBe([
       'Hola Tienda de prueba', 'Pedido P-0042', '2 × Auriculares · $ 1.200',
       'Subtotal $ 2.400', 'Envío $ 5.000', 'Total $ 7.400',
-      'https://rivastock.vercel.app/pedidos/P-0042',
+      'https://rivastock.vercel.app/seguimiento-pedido/order-uuid',
     ].join('\n'));
   });
 });

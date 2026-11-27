@@ -126,6 +126,7 @@ export default function Sales() {
   const canDelete = usePermission('ventas', 'delete');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSaleId = searchParams.get('sale');
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [holdings, setHoldings] = useState<InventoryHolding[]>([]);
@@ -192,6 +193,15 @@ export default function Sales() {
     next.delete('action');
     setSearchParams(next, { replace: true });
   }, [canWrite, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!requestedSaleId || !sales.some(sale => sale.id === requestedSaleId)) return;
+    setExpandedSaleId(requestedSaleId);
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`sale-ticket-${requestedSaleId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [requestedSaleId, sales]);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [preferredOwnerId, setPreferredOwnerId] = useState<string>('');
   const [shippingEnabled, setShippingEnabled] = useState(false);
@@ -1024,22 +1034,26 @@ export default function Sales() {
 
   const { filteredSales, totalCollected, totalPending, totalSold, ticketCount, unitCount, grossProfit, costAvailableCount } = useMemo(() => {
     const selected: Array<OwnerSaleProjection & { isSearchSubset?: boolean }> = [];
-    const searchValue = deferredSearch.trim().toLocaleLowerCase('es-AR');
+    const searchValue = requestedSaleId ? '' : deferredSearch.trim().toLocaleLowerCase('es-AR');
 
     for (const sale of projectedSales) {
-      if (periodRange.from && sale.date < periodRange.from) continue;
-      if (periodRange.to && sale.date > periodRange.to) continue;
-      const matchesStatus = statusFilter === 'all'
-        || sale.status === statusFilter
-        || (statusFilter === 'Pendiente' && sale.status === 'No Pagado');
-      if (!matchesStatus) continue;
+      if (requestedSaleId) {
+        if (sale.id !== requestedSaleId) continue;
+      } else {
+        if (periodRange.from && sale.date < periodRange.from) continue;
+        if (periodRange.to && sale.date > periodRange.to) continue;
+        const matchesStatus = statusFilter === 'all'
+          || sale.status === statusFilter
+          || (statusFilter === 'Pendiente' && sale.status === 'No Pagado');
+        if (!matchesStatus) continue;
+      }
 
       const original = sales.find(candidate => candidate.id === sale.id);
       const matchesClient = Boolean(searchValue && sale.client?.toLocaleLowerCase('es-AR').includes(searchValue));
       const matchingItems = searchValue
         ? sale.items.filter(item => item.productName.toLocaleLowerCase('es-AR').includes(searchValue))
         : sale.items;
-      if (searchValue && !matchesClient && matchingItems.length === 0
+      if (!requestedSaleId && searchValue && !matchesClient && matchingItems.length === 0
         && !sale.productName.toLocaleLowerCase('es-AR').includes(searchValue)) continue;
 
       let row: OwnerSaleProjection & { isSearchSubset?: boolean } = sale;
@@ -1064,7 +1078,7 @@ export default function Sales() {
           isSearchSubset: true,
         };
       }
-      if (zeroOnly && Math.abs(roundPrice(row.total)) > 0.009) continue;
+      if (!requestedSaleId && zeroOnly && Math.abs(roundPrice(row.total)) > 0.009) continue;
       selected.push(row);
     }
 
@@ -1114,7 +1128,7 @@ export default function Sales() {
     };
   }, [
     deferredSearch, projectedSales, statusFilter, settlements, sales, periodRange,
-    zeroOnly, holdingsEnabled, activeAllocationsBySaleId,
+    zeroOnly, holdingsEnabled, activeAllocationsBySaleId, requestedSaleId,
   ]);
   const pagination = usePagination(filteredSales);
   const costMissingCount = Math.max(0, filteredSales.length - costAvailableCount);
@@ -1313,6 +1327,11 @@ export default function Sales() {
         </div>
       </div>
 
+      {requestedSaleId && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200">
+        <span>Mostrando el ticket {getSaleTicketLabel(requestedSaleId)} asociado al pedido.</span>
+        <button type="button" onClick={() => { const next = new URLSearchParams(searchParams); next.delete('sale'); setSearchParams(next, { replace: true }); }} className="min-h-9 rounded-lg border border-current/20 px-3 font-bold hover:bg-white/40 dark:hover:bg-white/5">Ver todas las ventas</button>
+      </div>}
+
       {inventoryAccessError && (
         <div role="alert" className="px-4 py-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-sm font-semibold">
           {inventoryAccessError}
@@ -1434,7 +1453,7 @@ export default function Sales() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {pagination.rows.map((s) => (
                 <React.Fragment key={s.id}>
-                  <tr className="table-row group text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <tr id={`sale-ticket-${s.id}`} data-sale-ticket={s.id} className="table-row group text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="sticky left-0 z-10 w-[112px] min-w-[112px] bg-white px-3 py-4 dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 dark:text-slate-300 whitespace-nowrap"><span className="block">{formatDate(s.date)}</span><span className="mt-1 block font-mono text-[9px] text-slate-400">Ticket {getSaleTicketLabel(s.id)}</span></td>
                   <td className="w-[190px] max-w-[190px] px-3 py-4">
                     <button

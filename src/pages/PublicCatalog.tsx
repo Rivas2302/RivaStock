@@ -1,6 +1,6 @@
 import { lazyWithRetry } from '../lib/lazyWithRetry';
 import React, { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { db, invalidateDbCache } from '../lib/db';
 import { TOAST_DURATION_MS } from '../lib/constants';
 import type { CatalogChannel, CatalogConfig, Category, PublicCatalogProduct, PublicResellerCatalog, PublicResellerSupplierRound } from '../types';
@@ -11,6 +11,7 @@ import { calculateSuperOfferShipping, getSuperOfferCountdown } from '../lib/supe
 import { getResellerBuyingPolicyLines } from '../lib/resellerBuyingPolicy';
 import { getCatalogShareUrl } from '../lib/catalogShare';
 import { buildCatalogOrderWhatsAppMessage, buildSuperOfferOrderWhatsAppMessage, type DeliveryMethod } from '../lib/catalogOrder';
+import { getPublicOrderTrackingPath, getPublicOrderTrackingUrl } from '../lib/orderTracking';
 import { CATALOG_SECTION_LABELS, CATALOG_THEME_OPTIONS, defaultCatalogPresentation, formatCatalogWhatsAppMessage, getActiveCatalogTheme, getCatalogAnnouncementBackgroundColor, getCatalogAnnouncementTextColor, getCatalogHeroTextTone, getCatalogOfferPrice, getCatalogThemeCountdown, normalizeCatalogSections } from '../lib/catalogPresentation';
 import CatalogCountdown from '../components/catalog/CatalogCountdown';
 import CatalogAnnouncement from '../components/catalog/CatalogAnnouncement';
@@ -62,6 +63,7 @@ import { motion, AnimatePresence } from 'motion/react';
 const ON_ORDER_EXPLANATION = 'Estos productos no tienen stock inmediato: se encargan especialmente y requieren un plazo adicional. Antes de confirmar la compra te informaremos la disponibilidad y la demora estimada.';
 
 interface CatalogOrderReceipt {
+  orderId?: string;
   orderCode: string;
   total: number;
   customerName: string;
@@ -944,6 +946,7 @@ useEffect(() => {
         }));
       }
       const receipt: CatalogOrderReceipt = {
+        orderId: createdOrderId,
         orderCode,
         total,
         customerName: name,
@@ -956,6 +959,7 @@ useEffect(() => {
       };
       setCatalogOrderReceipt(receipt);
       sessionStorage.setItem(`catalog-last-order:${slug ?? ''}`, JSON.stringify(receipt));
+      const trackingUrl = getPublicOrderTrackingUrl(createdOrderId);
       if (config.whatsappNumber) {
         const text = orderOrigin === 'super_offer'
           ? buildSuperOfferOrderWhatsAppMessage({
@@ -971,6 +975,7 @@ useEffect(() => {
               subtotal: receipt.subtotal ?? total,
               shippingAmount: receipt.shippingAmount ?? 0,
               total,
+              trackingUrl,
             })
           : buildCatalogOrderWhatsAppMessage({
               businessName: config.businessName || 'el negocio',
@@ -979,6 +984,7 @@ useEffect(() => {
               items: receipt.items,
               total,
               customerName: name,
+              trackingUrl,
             });
         const whatsappUrl = `https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
         if (whatsappWindow) {
@@ -1176,6 +1182,7 @@ if (loading) {
           subtotal: catalogOrderReceipt.subtotal ?? catalogOrderReceipt.total,
           shippingAmount: catalogOrderReceipt.shippingAmount ?? 0,
           total: catalogOrderReceipt.total,
+          trackingUrl: catalogOrderReceipt.orderId ? getPublicOrderTrackingUrl(catalogOrderReceipt.orderId) : undefined,
         })
       : buildCatalogOrderWhatsAppMessage({
         businessName: config.businessName || 'el negocio',
@@ -1184,6 +1191,7 @@ if (loading) {
         items: catalogOrderReceipt.items,
         total: catalogOrderReceipt.total,
         customerName: catalogOrderReceipt.customerName,
+        trackingUrl: catalogOrderReceipt.orderId ? getPublicOrderTrackingUrl(catalogOrderReceipt.orderId) : undefined,
       })
     : '';
   const catalogOrderWhatsAppUrl = catalogOrderReceipt && config?.whatsappNumber
@@ -2412,7 +2420,7 @@ if (loading) {
                 {catalogOrderWhatsAppUrl
                   ? <a href={catalogOrderWhatsAppUrl} target="_blank" rel="noreferrer" data-testid="send-order-whatsapp" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-base font-bold text-white"><MessageCircle size={20}/>Enviar pedido por WhatsApp</a>
                   : <p className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 text-sm font-semibold">El negocio te va a contactar.</p>}
-                <a href={`/pedidos/${encodeURIComponent(catalogOrderReceipt.orderCode)}`} data-testid="view-catalog-order" className="block text-center text-sm font-semibold text-[var(--brand-strong)]">Ver pedido</a>
+                {catalogOrderReceipt.orderId && <Link to={getPublicOrderTrackingPath(catalogOrderReceipt.orderId)} data-testid="view-catalog-order" className="block text-center text-sm font-semibold text-[var(--brand-strong)]">Estado de mi pedido</Link>}
               </div>
               <button
                 onClick={() => setIsSuccess(false)}

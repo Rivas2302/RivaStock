@@ -26,6 +26,7 @@ const Automations = lazyWithRetry('src/pages/Automations.tsx', () => import('./p
 const PublicCatalog = lazyWithRetry('src/pages/PublicCatalog.tsx', () => import('./pages/PublicCatalog'));
 const Quotes = lazyWithRetry('src/pages/Quotes.tsx', () => import('./pages/Quotes'));
 const QuotePublic = lazyWithRetry('src/pages/QuotePublic.tsx', () => import('./pages/QuotePublic'));
+const OrderStatusPublic = lazyWithRetry('src/pages/OrderStatusPublic.tsx', () => import('./pages/OrderStatusPublic'));
 const Customers = lazyWithRetry('src/pages/Customers.tsx', () => import('./pages/Customers'));
 const Suppliers = lazyWithRetry('src/pages/Suppliers.tsx', () => import('./pages/Suppliers'));
 const SupplierOrders = lazyWithRetry('src/pages/SupplierOrders.tsx', () => import('./pages/SupplierOrders'));
@@ -120,6 +121,7 @@ function AppRoutes() {
       <Route path="/catalogo/:slug/:productId?" element={withSuspense(<PublicCatalog />)} />
       <Route path="/ofertas/:slug/:productId?" element={withSuspense(<PublicCatalog />)} />
       <Route path="/presupuesto/:id" element={withSuspense(<QuotePublic />)} />
+      <Route path="/seguimiento-pedido/:orderId" element={withSuspense(<OrderStatusPublic />)} />
 
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={withSuspense(<Dashboard />)} />
@@ -153,7 +155,7 @@ function AppRoutes() {
   );
 }
 
-const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/ofertas/', '/presupuesto/', '/login', '/forgot-password', '/reset-password', '/auth/'];
+const PUBLIC_PATH_PREFIXES = ['/catalogo/', '/ofertas/', '/presupuesto/', '/seguimiento-pedido/', '/login', '/forgot-password', '/reset-password', '/auth/'];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return true;

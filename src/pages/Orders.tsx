@@ -26,6 +26,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import '../styles/business-redesign.css';
 
+function getOrderDeliveryMethod(order: Order): 'pickup' | 'shipping' {
+  return order.deliveryMethod === 'shipping' || (!order.deliveryMethod && Boolean(order.customerAddress?.trim()))
+    ? 'shipping'
+    : 'pickup';
+}
+
 export default function Orders() {
   const { user, refetchToken } = useAuth();
   const canWrite = usePermission('pedidos', 'write');
@@ -38,6 +44,11 @@ export default function Orders() {
   const [orderPendingDelete, setOrderPendingDelete] = useState<Order | null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [deleteOrderError, setDeleteOrderError] = useState<string | null>(null);
+  const [orderToConvert, setOrderToConvert] = useState<Order | null>(null);
+  const [conversionStatus, setConversionStatus] = useState<'' | 'Pagado' | 'Pendiente'>('');
+  const [conversionPaymentMethod, setConversionPaymentMethod] = useState<'' | 'Efectivo' | 'Transferencia' | 'Débito' | 'Crédito' | 'Otro'>('');
+  const [conversionError, setConversionError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const readReceiptIds = useRef(new Set<string>());
   const deferredStatusFilter = useDeferredValue(statusFilter);
@@ -103,33 +114,38 @@ export default function Orders() {
     }
   };
 
-  const handleConvertToSale = async (order: Order) => {
-    if (!user) return;
-    const today = todayString();
-    const createdSaleIds: string[] = [];
+  const openOrderConversion = (order: Order) => {
+    setOrderToConvert(order);
+    setConversionStatus('');
+    setConversionPaymentMethod('');
+    setConversionError(null);
+  };
+
+  const handleConvertToSale = async () => {
+    const order = orderToConvert;
+    if (!order || !user || !canWrite || !conversionStatus
+      || (conversionStatus === 'Pagado' && !conversionPaymentMethod) || converting) return;
+    setConverting(true);
+    setConversionError(null);
     try {
-      for (const item of order.items) {
-        const result = await callRpc<Sale[]>('register_sale', {
-          p_date: today,
-          p_product_id: item.productId,
-          p_quantity: item.quantity,
-          p_unit_price: item.price,
-          p_adjustment: 0,
-          p_status: 'Pagado',
-          p_payment_method: 'Efectivo',
-          p_client: order.customerName,
-          p_customer_id: null,
-        });
-        const sale = Array.isArray(result) ? result[0] : result;
-        if (sale?.id) createdSaleIds.push(sale.id);
-      }
-      await updateOrderStatus(order.id, 'Entregado');
-      alert('Pedido convertido en venta exitosamente.');
-      fetchData();
+      const result = await callRpc<Sale[]>('convert_catalog_order_to_sale', {
+        p_order_id: order.id,
+        p_status: conversionStatus,
+        p_payment_method: conversionStatus === 'Pagado' ? conversionPaymentMethod : null,
+        p_date: todayString(),
+      });
+      const sale = Array.isArray(result) ? result[0] : result;
+      if (!sale?.id) throw new Error('La base no devolvió el ticket de venta.');
+      setOrders(current => current.map(item => item.id === order.id
+        ? { ...item, convertedSaleId: sale.id, isRead: true }
+        : item));
+      setOrderToConvert(null);
+      navigate(`/ventas?sale=${encodeURIComponent(sale.id)}`);
+      void fetchData();
     } catch (error) {
-      await Promise.allSettled(createdSaleIds.map(id => callRpc('delete_sale', { p_sale_id: id })));
-      alert(`Error: ${(error as Error).message}. Se revirtieron las ventas parciales.`);
-      fetchData();
+      setConversionError(error instanceof Error ? error.message : 'No se pudo convertir el pedido.');
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -193,6 +209,7 @@ export default function Orders() {
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">{order.customerName}</h3>
                     {order.orderCode && <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-xs font-bold text-[var(--ink)]" data-testid="order-code">{order.orderCode}</span>}
+                    <span data-testid="order-delivery-method" className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-300">{getOrderDeliveryMethod(order) === 'shipping' ? 'Envío' : 'Retiro'}</span>
                     {!order.isRead && (
                       <span className="bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Nuevo</span>
                     )}
@@ -217,7 +234,9 @@ export default function Orders() {
                   </div>
                   <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 sm:col-span-2">
                     <MapPin size={16} className="text-indigo-500" />
-                    <span>{order.customerAddress}</span>
+                    <span>{getOrderDeliveryMethod(order) === 'shipping'
+                      ? <>Envío{order.customerAddress?.trim() ? ` · ${order.customerAddress.trim()}` : ''}</>
+                      : 'Retiro'}</span>
                   </div>
                 </div>
 
@@ -257,26 +276,49 @@ export default function Orders() {
                     disabled={!canWrite}
                     data-testid="order-status-select"
                     className={cn(
-                      "w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] py-2 pl-4 pr-10 text-sm font-bold text-[var(--ink)] [color-scheme:light] transition-all dark:[color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50",
+                      "w-full appearance-none rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] py-2 pl-4 pr-10 text-sm font-bold text-[var(--ink)] [color-scheme:light] transition-all dark:[color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-50",
                     )}
                   >
                     <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Nuevo">Nuevo</option>
                     <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="En Proceso">En Proceso</option>
-                    <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Entregado">Entregado</option>
+                    {order.status === 'Entregado' && <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Entregado" disabled>Entregado</option>}
                     <option className="bg-[var(--surface-raised)] text-[var(--ink)]" value="Cancelado">Cancelado</option>
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
                 </div>
 
-                <button
-                  onClick={() => handleConvertToSale(order)}
-                  disabled={!canWrite}
-                  title={!canWrite ? 'Sin permiso' : undefined}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ArrowRight size={18} />
-                  Convertir en Venta
-                </button>
+                {order.convertedSaleId
+                  ? <button
+                      type="button"
+                      onClick={() => navigate(`/ventas?sale=${encodeURIComponent(order.convertedSaleId ?? '')}`)}
+                      title={`Ticket ${order.convertedSaleId.slice(0, 8).toUpperCase()}`}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <CheckCircle2 size={18} />
+                      Ver venta
+                    </button>
+                  : <button
+                      type="button"
+                      onClick={() => openOrderConversion(order)}
+                      disabled={!canWrite || order.status === 'Cancelado'}
+                      title={!canWrite ? 'Sin permiso' : order.status === 'Cancelado' ? 'No se puede convertir un pedido cancelado' : undefined}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ArrowRight size={18} />
+                      Convertir en venta
+                    </button>}
+
+                {order.status !== 'Entregado' && order.status !== 'Cancelado' && (
+                  <button
+                    type="button"
+                    onClick={() => void updateOrderStatus(order.id, 'Entregado')}
+                    disabled={!canWrite}
+                    className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/35"
+                  >
+                    <CheckCircle2 size={16} />
+                    Marcar como entregado
+                  </button>
+                )}
 
                 {canDelete && <button
                   type="button"
@@ -314,6 +356,65 @@ export default function Orders() {
         )}
       </div>
       <Pagination {...pagination} />
+      {orderToConvert && <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/65 p-0 sm:items-center sm:p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="convert-catalog-order-title" className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[var(--line)] bg-[var(--surface)] p-5 text-[var(--ink)] shadow-2xl sm:rounded-3xl sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">{orderToConvert.orderCode ?? 'Pedido del catálogo'}</p>
+              <h2 id="convert-catalog-order-title" className="mt-1 text-xl font-black">Convertir pedido en venta</h2>
+            </div>
+            <button type="button" onClick={() => setOrderToConvert(null)} disabled={converting} className="min-h-10 rounded-lg border border-[var(--line)] px-3 text-sm font-semibold disabled:opacity-50">Cerrar</button>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div><p className="font-bold">{orderToConvert.customerName}</p><p className="mt-1 text-xs text-[var(--ink-subtle)]">{orderToConvert.items.length} productos · {getOrderDeliveryMethod(orderToConvert) === 'shipping' ? 'Envío' : 'Retiro'}</p></div>
+              <strong className="shrink-0 text-lg font-black text-indigo-600 dark:text-indigo-300">{formatCurrency(roundPrice(orderToConvert.total))}</strong>
+            </div>
+            <ul className="mt-3 space-y-1.5 border-t border-[var(--line)] pt-3 text-sm">
+              {orderToConvert.items.map((item, index) => <li key={`${item.productId}-${index}`} className="flex justify-between gap-3">
+                <span className="min-w-0 break-words"><span className="font-bold">×{item.quantity}</span> {item.productName}</span>
+                <span className="shrink-0 font-semibold">{formatCurrency(roundPrice(item.price) * item.quantity)}</span>
+              </li>)}
+            </ul>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="text-sm font-semibold">
+              Estado del cobro
+              <select value={conversionStatus} onChange={event => {
+                const value = event.target.value as '' | 'Pagado' | 'Pendiente';
+                setConversionStatus(value);
+                if (value !== 'Pagado') setConversionPaymentMethod('');
+              }} className="mt-1.5 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-sm text-[var(--ink)]">
+                <option value="">Elegir estado…</option>
+                <option value="Pagado">Pagado</option>
+                <option value="Pendiente">Pendiente</option>
+              </select>
+            </label>
+            {conversionStatus === 'Pagado' && <label className="text-sm font-semibold">
+              Medio de pago
+              <select value={conversionPaymentMethod} onChange={event => setConversionPaymentMethod(event.target.value as typeof conversionPaymentMethod)} className="mt-1.5 min-h-11 w-full rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-3 text-sm text-[var(--ink)]">
+                <option value="">Elegir medio…</option>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Transferencia">Transferencia</option>
+                <option value="Débito">Débito</option>
+                <option value="Crédito">Crédito</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>}
+          </div>
+          {conversionStatus === 'Pendiente' && <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm leading-5 text-amber-800 dark:text-amber-200">La deuda quedará asociada al cliente del pedido. Buscaremos una ficha con su WhatsApp; si no existe, se creará una con estos datos.</p>}
+          <p className="mt-3 text-xs leading-5 text-[var(--ink-subtle)]">Se registrará un único ticket con todos los productos y se actualizará el stock. El pedido conservará su estado de entrega; cuando el cliente retire o reciba los productos, marcá «Marcar como entregado».</p>
+          {conversionError && <p role="alert" className="mt-3 rounded-xl border border-[var(--danger-line)] bg-[var(--danger-surface)] px-4 py-3 text-sm text-[var(--danger-ink)]">{conversionError}</p>}
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" disabled={converting} onClick={() => setOrderToConvert(null)} className="min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm font-semibold disabled:opacity-50">Cancelar</button>
+            <button type="button" disabled={converting || !conversionStatus || (conversionStatus === 'Pagado' && !conversionPaymentMethod)} onClick={() => void handleConvertToSale()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {converting ? 'Registrando…' : 'Confirmar conversión'}
+            </button>
+          </div>
+        </section>
+      </div>}
       {orderPendingDelete && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4">
         <section role="alertdialog" aria-modal="true" aria-labelledby="delete-catalog-order-title" aria-describedby="delete-catalog-order-description" className="w-full max-w-md rounded-t-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-[var(--ink)] shadow-2xl sm:rounded-2xl">
           <h2 id="delete-catalog-order-title" className="text-lg font-bold">Eliminar pedido</h2>

@@ -10,6 +10,7 @@ export interface RetailOrderMessageInput {
   customerName: string;
   deliveryMethod: DeliveryMethod;
   address?: string;
+  trackingUrl?: string;
 }
 
 export interface CatalogOrderMessageInput {
@@ -19,6 +20,7 @@ export interface CatalogOrderMessageInput {
   items: Array<{ quantity: number; name: string; price: number; onOrder?: boolean }>;
   total: number;
   customerName: string;
+  trackingUrl?: string;
 }
 
 export function formatRetailOrderCode(value: number): string {
@@ -42,8 +44,8 @@ export function buildCatalogOrderWhatsAppMessage(input: CatalogOrderMessageInput
     `Pedido ${input.orderCode}`,
     ...lines,
     `Total: ${formatOrderAmount(input.total)}`,
-    `Ver pedido: https://rivastock.vercel.app/pedidos/${encodeURIComponent(input.orderCode)}`,
-  ].join('\n');
+    input.trackingUrl ? `Ver pedido: ${input.trackingUrl}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 export function buildSuperOfferOrderWhatsAppMessage(input: {
@@ -54,6 +56,7 @@ export function buildSuperOfferOrderWhatsAppMessage(input: {
   subtotal: number;
   shippingAmount: number;
   total: number;
+  trackingUrl?: string;
 }): string {
   const productLines = input.items.map(item => `${item.quantity} × ${item.name} · ${formatOrderAmount(item.price)}`).join('\n');
   const values: Record<string, string> = {
@@ -63,7 +66,7 @@ export function buildSuperOfferOrderWhatsAppMessage(input: {
     subtotal: formatOrderAmount(input.subtotal),
     envio: formatOrderAmount(input.shippingAmount),
     total: formatOrderAmount(input.total),
-    link: `https://rivastock.vercel.app/pedidos/${encodeURIComponent(input.orderCode)}`,
+    link: input.trackingUrl ?? '',
   };
   return input.template.replace(/\{(negocio|codigo|productos|subtotal|envio|total|link)\}/g, (_, key: string) => values[key]);
 }
@@ -80,6 +83,6 @@ export function buildRetailOrderWhatsAppMessage(input: RetailOrderMessageInput):
     `Total: ${formatOrderAmount(input.total)}`,
     `Nombre: ${input.customerName.trim()}`,
     `Entrega: ${delivery}`,
-    `Ver pedido: https://rivastock.vercel.app/pedidos/${encodeURIComponent(input.orderCode)}`,
-  ].join('\n');
+    input.trackingUrl ? `Ver pedido: ${input.trackingUrl}` : '',
+  ].filter(Boolean).join('\n');
 }

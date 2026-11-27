@@ -431,6 +431,7 @@ export interface Order {
   orderOrigin?: 'catalog' | 'super_offer' | null;
   shippingAmount?: number | null;
   superOfferBatchId?: string | null;
+  convertedSaleId?: string | null;
 }
 
 export interface PublicCatalogProduct extends Product {
