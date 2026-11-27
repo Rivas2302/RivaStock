@@ -60,6 +60,13 @@ function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<PageLoader />}>{element}</Suspense>;
 }
 
+function WelcomePageRedirect() {
+  useEffect(() => {
+    window.location.replace('/presentacion/index.html');
+  }, []);
+  return <div className="min-h-dvh bg-[#0b0f0d]" />;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, authUser, loading, authError, refetchData, logout } = useAuth();
   const location = useLocation();
@@ -84,7 +91,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}${location.hash}` }} replace />;
+  if (!user) {
+    if (location.pathname === '/') return <WelcomePageRedirect />;
+    return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}${location.hash}` }} replace />;
+  }
   if (authUser?.forcePass) {
     const type = authUser.signupKind === 'business_owner' || authUser.signupKind === 'collaborator'
       ? 'invite'
@@ -152,7 +162,8 @@ function isPublicPath(pathname: string): boolean {
 
 function AppShell() {
   const location = useLocation();
-  const publicRoute = isPublicPath(location.pathname);
+  const { user } = useAuth();
+  const publicRoute = isPublicPath(location.pathname) || (location.pathname === '/' && !user);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(getOfflineQueueSize);

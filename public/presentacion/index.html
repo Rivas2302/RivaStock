@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f0d">
+<meta name="description" content="Conocé RivaStock: stock, ventas, clientes, proveedores, caja y catálogo online para tu comercio.">
+<title>RivaStock | Tu comercio, en orden</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Manrope:wght@400..800&display=swap" rel="stylesheet">
+<script src="/presentacion/boot.js"></script>
+<link rel="stylesheet" href="/presentacion/styles.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+<div class="cursor" id="cursor" aria-hidden="true"></div>
+<div class="progress" id="progress" aria-hidden="true"></div>
+<a class="skip" href="#contenido">Ir al contenido</a>
+
+<header class="topbar" id="topbar">
+  <div class="wrap bar">
+    <a class="brand" href="#inicio" aria-label="RivaStock, inicio"><span class="mark" aria-hidden="true">R</span><span>RivaStock</span></a>
+    <nav class="nav" aria-label="Navegación principal"><a href="#funciones">Funciones</a><a href="#modulos">Módulos</a></nav>
+    <a class="btn btn-p btn-sm" href="https://rivastock.vercel.app/login">Ingresar <span class="arr" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 10h11M10 5l5 5-5 5"/></svg></span></a>
+  </div>
+</header>
+
+<main id="contenido">
+<section class="hero" id="inicio" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div>
+      <h1 id="hero-title"><span class="ln"><i>Tu comercio,</i></span><span class="ln"><i><span class="grad">en orden.</span></i></span></h1>
+      <p class="lead fade fade-delay-500">Stock, ventas, cuentas, proveedores y caja: encontrá las herramientas de tu negocio en un mismo lugar. Conocé RivaStock y explorá cómo puede acompañar tu trabajo diario.</p>
+      <div class="acts fade fade-delay-650">
+        <a class="btn btn-p" href="https://rivastock.vercel.app/login">Ingresar a RivaStock <span class="arr" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 10h11M10 5l5 5-5 5"/></svg></span></a>
+        <a class="btn btn-s" href="#funciones">Ver cómo funciona <span class="dn" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3v13m-5-5 5 5 5-5"/></svg></span></a>
+      </div>
+      <p class="note fade fade-delay-800"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.5 16 5v4.1c0 4.1-2.6 6.8-6 8.4-3.4-1.6-6-4.3-6-8.4V5l6-2.5Z" stroke="currentColor" stroke-width="1.5"/><path d="m7.3 9.9 1.8 1.8 3.7-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg>¿Ya tenés cuenta? Entrá con tu acceso habitual.</p>
+    </div>
+
+    <div class="stage-wrap" id="tilt">
+      <div class="chip c1" aria-hidden="true"><b><svg viewBox="0 0 20 20"><path d="m3 14 5-5 3 3 6-7M12 5h5v5"/></svg></b><span>Venta registrada<small>Ejemplo · $ 7.000</small></span></div>
+      <div class="chip c2" aria-hidden="true"><b><svg viewBox="0 0 20 20"><path d="M10 3 2.5 16h15L10 3ZM10 8v4M10 14h.01"/></svg></b><span>Quedan pocas unidades<small>Ejemplo · Aceite 900 ml</small></span></div>
+      <div class="stage" role="img" aria-label="Vista ilustrativa del panel RivaStock con un listado de productos y movimientos de ejemplo">
+        <div class="bbar" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.rivastock</span><span class="demo">Datos ficticios</span></div>
+        <div class="app" aria-hidden="true">
+          <aside class="side">
+            <div class="mini"><b>R</b> RivaStock</div>
+            <div class="sl on"><i></i> Stock</div><div class="sl"><i></i> Ventas</div><div class="sl"><i></i> Clientes</div><div class="sl"><i></i> Proveedores</div><div class="sl"><i></i> Caja</div><div class="sl"><i></i> Catálogo</div>
+          </aside>
+          <div class="cont">
+            <div class="top"><div><strong>Productos y stock</strong><small>Vista de muestra · Inventario</small></div><span class="av">R</span></div>
+            <div class="ws">
+              <div class="card">
+                <div class="ch">Productos <small>Ejemplo</small></div>
+                <div class="th"><span>Producto</span><span>Stock</span><span>Precio</span></div>
+                <div class="sr"><span class="sn">Yerba 1 kg</span><span class="ss">12 un.</span><strong class="sp">$ 3.500</strong></div>
+                <div class="sr"><span class="sn">Aceite 900 ml</span><span class="ss low">2 un.</span><strong class="sp">$ 2.100</strong></div>
+                <div class="sr"><span class="sn">Fideos 500 g</span><span class="ss">30 un.</span><strong class="sp">$ 1.200</strong></div>
+                <div class="sr"><span class="sn">Cargador USB-C</span><span class="ss">6 un.</span><strong class="sp">$ 8.900</strong></div>
+              </div>
+              <div class="card feedcard">
+                <div class="ch">Actividad <small>Ejemplo</small></div>
+                <div class="feed" id="feed">
+                  <div class="act"><em><svg viewBox="0 0 20 20"><path d="m3 14 5-5 3 3 6-7M12 5h5v5"/></svg></em><span><strong>Venta registrada</strong>Yerba 1 kg · 2 unidades</span></div>
+                  <div class="act"><em><svg viewBox="0 0 20 20"><path d="M4 7.5 10 4l6 3.5v7L10 18l-6-3.5v-7Z"/><path d="M10 11v7M4.5 7.8 10 11l5.5-3.2"/></svg></em><span><strong>Stock actualizado</strong>Cargador USB-C</span></div>
+                  <div class="act"><em><svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-8"/></svg></em><span><strong>Catálogo listo</strong>Productos para compartir</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="card chart">
+              <div class="ch">Ventas de la semana <small>Ejemplo</small></div>
+              <svg viewBox="0 0 300 64" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ef0bf" stop-opacity=".35"/><stop offset="1" stop-color="#8ef0bf" stop-opacity="0"/></linearGradient></defs>
+                <path class="area" d="M0 52C30 48 40 34 70 38S110 16 140 24S190 46 220 26S270 8 300 12V64H0Z" fill="url(#g)"/>
+                <path class="line" pathLength="1" d="M0 52C30 48 40 34 70 38S110 16 140 24S190 46 220 26S270 8 300 12"/>
+                <circle class="pr" cx="300" cy="12" r="4"/><circle class="pt" cx="300" cy="12" r="4"/></svg>
+            </div>
+          </div>
+        </div>
+        <p class="cap"><span>Interfaz de muestra</span><span>Los registros no son reales</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="ribbon" aria-label="Módulos de RivaStock"><div class="track" id="track"><span>Stock</span><span>Ventas</span><span>Clientes</span><span>Proveedores</span><span>Compras</span><span>Flujo de caja</span><span>Reportes</span><span>Catálogo</span></div></div>
+
+<section class="section" id="funciones" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="sh rv">
+      <h2 id="features-title">Las tareas de todos los días, más claras.</h2>
+      <p class="intro">Recorré algunas funciones de RivaStock. Cada pantalla es una representación de ejemplo; los nombres y valores son ficticios.</p>
+    </div>
+    <div class="shell rv">
+      <div class="tabs auto" id="tabs" role="tablist" aria-label="Funciones de RivaStock">
+        <button role="tab" id="tab-stock" aria-selected="true" aria-controls="panel-stock" tabindex="0">Stock</button>
+        <button role="tab" id="tab-ventas" aria-selected="false" aria-controls="panel-ventas" tabindex="-1">Ventas</button>
+        <button role="tab" id="tab-clientes" aria-selected="false" aria-controls="panel-clientes" tabindex="-1">Clientes</button>
+        <button role="tab" id="tab-catalogo" aria-selected="false" aria-controls="panel-catalogo" tabindex="-1">Catálogo online</button>
+      </div>
+      <div class="panel is-active" role="tabpanel" id="panel-stock" aria-labelledby="tab-stock" tabindex="0">
+        <div class="pc"><h3>Sabé qué tenés disponible.</h3><p>Consultá tus productos y cantidades de stock desde el mismo espacio donde organizás el negocio.</p><span class="pd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M10 4l6 6-6 6"/></svg> Productos e inventario</span></div>
+        <div class="mock" aria-label="Ejemplo de inventario"><div class="mt"><span>Stock</span><span>Datos de ejemplo</span></div><div class="mb"><div class="mtl">Productos <small>4 resultados</small></div>
+          <div class="mr"><span>Yerba 1 kg</span><span class="bd">12 disponibles</span></div><div class="mr"><span>Aceite 900 ml</span><span class="bd w">Quedan 2</span></div><div class="mr"><span>Fideos 500 g</span><span class="bd">30 disponibles</span></div></div></div>
+      </div>
+      <div class="panel" role="tabpanel" id="panel-ventas" aria-labelledby="tab-ventas" tabindex="0" hidden>
+        <div class="pc"><h3>Registrá cada venta y su cobro.</h3><p>Cargá los productos vendidos y consultá el movimiento de tus ventas desde su historial.</p><span class="pd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M10 4l6 6-6 6"/></svg> Ventas y medios de pago</span></div>
+        <div class="mock" aria-label="Ejemplo de una venta"><div class="mt"><span>Detalle de venta</span><span>Datos de ejemplo</span></div><div class="mb"><div class="mtl">Productos vendidos <small>2 artículos</small></div>
+          <div class="mr"><span>Yerba 1 kg × 2</span><strong>$ 7.000</strong></div><div class="mr"><span>Fideos 500 g × 1</span><strong>$ 1.200</strong></div><div class="mr"><span>Total ilustrativo</span><span class="bd b">$ 8.200</span></div></div></div>
+      </div>
+      <div class="panel" role="tabpanel" id="panel-clientes" aria-labelledby="tab-clientes" tabindex="0" hidden>
+        <div class="pc"><h3>Seguí las cuentas de tus clientes.</h3><p>Consultá saldos pendientes, registrá pagos y revisá el historial de cada cuenta corriente.</p><span class="pd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M10 4l6 6-6 6"/></svg> Saldos e historial de pagos</span></div>
+        <div class="mock" aria-label="Ejemplo de cuentas de clientes"><div class="mt"><span>Cuentas corrientes</span><span>Datos de ejemplo</span></div><div class="mb"><div class="mtl">Saldos pendientes <small>2 cuentas</small></div>
+          <div class="mr"><span>Cliente de ejemplo A</span><span class="bd w">$ 12.500</span></div><div class="mr"><span>Cliente de ejemplo B</span><span class="bd w">$ 4.000</span></div><div class="mr"><span>Total ilustrativo</span><strong>$ 16.500</strong></div></div></div>
+      </div>
+      <div class="panel" role="tabpanel" id="panel-catalogo" aria-labelledby="tab-catalogo" tabindex="0" hidden>
+        <div class="pc"><h3>Compartí tu catálogo online.</h3><p>Mostrá los productos de tu comercio en un enlace para que tus clientes puedan conocerlos y hacer consultas.</p><span class="pd"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M10 4l6 6-6 6"/></svg> Catálogo para compartir</span></div>
+        <div class="mock" aria-label="Ejemplo de catálogo online"><div class="mt"><span>Catálogo de ejemplo</span><span>Vista ilustrativa</span></div><div class="mb"><div class="mtl">Productos destacados <small>3 productos</small></div>
+          <div class="mr"><span>Yerba 1 kg</span><span class="bd">Ver producto</span></div><div class="mr"><span>Fideos 500 g</span><span class="bd">Ver producto</span></div><div class="mr"><span>Compartir catálogo</span><span class="bd b">Copiar enlace</span></div></div></div>
+      </div>
+      <p class="st" id="tab-status" role="status" aria-live="polite">Mostrando un ejemplo de stock.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section msec" id="modulos" aria-labelledby="modules-title">
+  <div class="wrap">
+    <div class="mh rv"><h2 id="modules-title">Una vista completa del trabajo.</h2><p>Además de productos y ventas, RivaStock reúne herramientas para seguir compras, cuentas, movimientos y catálogo.</p></div>
+    <div class="grp rv">
+      <h3>Operación diaria</h3>
+      <div class="cards">
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 7.5 10 4l6 3.5v7L10 18l-6-3.5v-7Z"/><path d="M10 11v7M4.5 7.8 10 11l5.5-3.2"/></svg></div><strong>Stock</strong><span>Productos, cantidades y disponibilidad.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="m3 14 5-5 3 3 6-7M12 5h5v5"/></svg></div><strong>Ventas</strong><span>Registro de operaciones y cobros.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM4 17c0-3 2.7-5 6-5s6 2 6 5"/></svg></div><strong>Clientes</strong><span>Cuentas corrientes e historial de pagos.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M2 6h10v8H2zM12 9h3l3 3v2h-6"/><circle cx="5.5" cy="15" r="1.5"/><circle cx="14.5" cy="15" r="1.5"/></svg></div><strong>Proveedores</strong><span>Contactos y condiciones de compra.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 7h12l-1 10H5L4 7ZM7 7a3 3 0 0 1 6 0"/></svg></div><strong>Compras</strong><span>Pedidos, comprobantes y envíos de proveedores.</span></div>
+      </div>
+    </div>
+    <div class="grp rv">
+      <h3>Seguimiento y catálogo</h3>
+      <div class="cards">
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 6h14v9H3zM3 9h14M13 12h2"/></svg></div><strong>Flujo de caja</strong><span>Ingresos, egresos y balance.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5"/></svg></div><strong>Reportes</strong><span>Métricas y exportaciones del período.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10V3h7l7 7-7 7-7-7ZM7 7h.01"/></svg></div><strong>Revendedores</strong><span>Lista de precios y pedidos por encargo.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg></div><strong>Catálogo online</strong><span>Productos para mostrar y compartir.</span></div>
+        <div class="mc"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 4a6 6 0 1 1-5.2 3M4 3v4h4M10 7v3l2 2"/></svg></div><strong>Trazabilidad</strong><span>Historial de cambios operativos.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="closing-title">
+  <div class="wrap cp rv">
+    <div><h2 id="closing-title">Volvé a tener tu negocio a mano.</h2><p>Entrá a RivaStock para seguir con tus productos, ventas y cuentas.</p></div>
+    <a class="btn" href="https://rivastock.vercel.app/login">Ingresar a mi cuenta <span class="arr" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 10h11M10 5l5 5-5 5"/></svg></span></a>
+  </div>
+</section>
+</main>
+
+<footer class="foot"><div class="wrap fi"><p>RivaStock · Una herramienta de RivaTech</p><a href="https://rivastock.vercel.app/login">Ingresar</a></div></footer>
+
+<script src="/presentacion/interactions.js"></script>
+</body>
+</html>
