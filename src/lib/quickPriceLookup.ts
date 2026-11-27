@@ -126,6 +126,92 @@ export function resolveSelectedProduct(
 }
 
 export function searchProducts(products: Product[], rawQuery: string): Product[] {
+  return searchQuickPriceProducts(products, rawQuery);
+}
+
+export function buildQuickPriceProductCodes(products: Product[]): Map<string, string> {
+  const skuCounts = new Map<string, number>();
+  const codeOwners = new Map<string, Set<string>>();
+  const reservedCodes = new Set<string>();
+
+  for (const product of products) {
+    const sku = getProductSku(product);
+    const barcode = product.barcode?.trim() ?? '';
+    for (const code of [sku, barcode]) {
+      if (!code) continue;
+      const key = normalizeText(code);
+      reservedCodes.add(key);
+      const owners = codeOwners.get(key) ?? new Set<string>();
+      owners.add(product.id);
+      codeOwners.set(key, owners);
+    }
+    if (sku) {
+      const key = normalizeText(sku);
+      skuCounts.set(key, (skuCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const codes = new Map<string, string>();
+  for (const product of products) {
+    const sku = getProductSku(product);
+    if (!sku) continue;
+    const key = normalizeText(sku);
+    const owners = codeOwners.get(key);
+    if (skuCounts.get(key) === 1 && owners?.size === 1) {
+      codes.set(product.id, sku);
+      reservedCodes.add(key);
+    }
+  }
+
+  for (const product of products) {
+    if (codes.has(product.id)) continue;
+    const compactId = product.id.replace(/[^a-z0-9]/gi, '').toUpperCase() || 'PRODUCT';
+    let code = '';
+    for (let length = Math.min(6, compactId.length); length <= compactId.length; length += 1) {
+      const candidate = `RT-${compactId.slice(-length)}`;
+      const key = normalizeText(candidate);
+      if (reservedCodes.has(key)) continue;
+      code = candidate;
+      reservedCodes.add(key);
+      break;
+    }
+    if (!code) {
+      // A product ID is unique in the catalog; this fallback only matters if
+      // an existing user SKU already happens to use the full generated code.
+      code = `RT-${compactId}-ID`;
+      if (reservedCodes.has(normalizeText(code))) {
+        let hash = 2166136261;
+        for (const character of product.id) {
+          hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+        }
+        code = `RT-${compactId}-${(hash >>> 0).toString(36).toUpperCase()}`;
+      }
+      reservedCodes.add(normalizeText(code));
+    }
+    codes.set(product.id, code);
+  }
+
+  return codes;
+}
+
+export function getExactQuickPriceCodeMatchIds(
+  products: Product[],
+  rawQuery: string,
+  productCodes: ReadonlyMap<string, string>,
+): Set<string> {
+  const query = normalizeText(rawQuery);
+  if (!query) return new Set();
+  return new Set(products.flatMap((product) => {
+    const codes = [productCodes.get(product.id) ?? '', product.barcode ?? ''];
+    return codes.some((code) => code && normalizeText(code) === query) ? [product.id] : [];
+  }));
+}
+
+export function searchQuickPriceProducts(
+  products: Product[],
+  rawQuery: string,
+  productCodes?: ReadonlyMap<string, string>,
+): Product[] {
   const query = normalizeText(rawQuery);
   if (!query) return [];
   const terms = query.split(' ');
@@ -138,6 +224,9 @@ export function searchProducts(products: Product[], rawQuery: string): Product[]
       product.name,
       product.category,
       product.barcode ?? '',
+      getProductSku(product) ?? '',
+      getProductVariantModel(product) ?? '',
+      productCodes?.get(product.id) ?? '',
       ...customValues,
       ...Object.keys(product.customFields ?? {}),
     ].map(normalizeText);
@@ -145,11 +234,15 @@ export function searchProducts(products: Product[], rawQuery: string): Product[]
     const matchesEveryTerm = terms.every((term) => searchableValues.some((value) => value.includes(term)));
     if (!matchesEveryTerm) return [];
 
-    const rank = name.startsWith(query)
+    const exactProductCode = [product.barcode ?? '', productCodes?.get(product.id) ?? '']
+      .some((code) => code && normalizeText(code) === query);
+    const rank = exactProductCode
       ? 0
-      : terms.every((term) => name.includes(term))
+      : name.startsWith(query)
         ? 1
-        : 2;
+      : terms.every((term) => name.includes(term))
+          ? 2
+          : 3;
     return [{ product, rank, index }];
   })
     .sort((a, b) => a.rank - b.rank || a.index - b.index)
